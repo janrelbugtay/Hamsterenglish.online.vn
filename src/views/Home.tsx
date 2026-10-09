@@ -15,16 +15,6 @@ export function Home({
   onViewChange?: (view: ViewState, data?: any) => void;
   openAuthModal?: () => void;
 }) {
-  const { user } = useAuth();
-
-  const handleCreateGameClick = () => {
-    if (!user || user.isAnonymous) {
-      if (openAuthModal) openAuthModal();
-    } else {
-      if (onViewChange) onViewChange("games");
-    }
-  };
-
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col gap-6">
       {/* Top Banner / Action Bar */}
@@ -38,13 +28,12 @@ export function Home({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={handleCreateGameClick}
-            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none hover:-translate-y-1 transition-all group cursor-pointer"
+          <div 
+            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none select-none pointer-events-none cursor-default"
           >
-            <PlusCircle size={22} className="group-hover:rotate-90 transition-transform duration-300" />
+            <PlusCircle size={22} />
             <span>Create a Game</span>
-          </button>
+          </div>
         </div>
       </div>
 

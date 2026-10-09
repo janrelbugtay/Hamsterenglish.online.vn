@@ -26,16 +26,25 @@ interface NavigationProps {
   onViewChange: (view: ViewState) => void;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
+  openAuthModal?: () => void;
+  openGoogleAuthModal?: (feature?: string) => void;
 }
 
-export function Navigation({ currentView, onViewChange, isMobileMenuOpen, setIsMobileMenuOpen }: NavigationProps) {
+export function Navigation({ 
+  currentView, 
+  onViewChange, 
+  isMobileMenuOpen, 
+  setIsMobileMenuOpen, 
+  openAuthModal,
+  openGoogleAuthModal 
+}: NavigationProps) {
   const { user } = useAuth();
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
 
   const navItems = [
     { id: "home", label: "Home", icon: Home, view: "home" as ViewState },
     { id: "public-dashboard", label: "Community", icon: Users, view: "public-dashboard" as ViewState },
-    ...(user && !user.isAnonymous ? [{ id: "games", label: "My Games", icon: Gamepad2, view: "games" as ViewState }] : []),
+    { id: "games", label: "My Games", icon: Gamepad2, view: "games" as ViewState },
     { id: "homework", label: "Homework", icon: BookOpen, view: "homework" as ViewState },
     { id: "class-rewards", label: "Class rewards", icon: Award, view: "class-rewards" as ViewState },
     ...(isAdmin ? [{ id: "admin-dashboard", label: "Admin Dashboard", icon: Shield, view: "admin-dashboard" as ViewState }] : []),
@@ -95,7 +104,15 @@ export function Navigation({ currentView, onViewChange, isMobileMenuOpen, setIsM
               <button
                 key={item.id}
                 onClick={() => {
-                  onViewChange(item.view);
+                  const googleProtectedViews = ["games", "homework", "class-rewards", "class-record"];
+                  if ((!user || user.isAnonymous) && googleProtectedViews.includes(item.view)) {
+                    if (openGoogleAuthModal) {
+                      openGoogleAuthModal(item.label);
+                    }
+                    onViewChange(item.view);
+                  } else {
+                    onViewChange(item.view);
+                  }
                   setIsMobileMenuOpen(false);
                 }}
                 className={cn(

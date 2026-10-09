@@ -720,6 +720,29 @@ export const GamesLibrary = ({
               </div>
             </div>
           ))}
+
+          {folders.filter(f => (f.parentId || null) === (selectedFolderId || null)).length === 0 && filteredGames.length === 0 && (
+            <div className="col-span-full py-16 px-6 bg-white dark:bg-slate-800 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-center">
+              <div className="w-20 h-20 bg-purple-50 dark:bg-purple-900/20 text-brand-purple rounded-3xl flex items-center justify-center mb-4 shadow-sm">
+                <Gamepad2 size={36} />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">
+                {selectedFolderId ? "This Folder is Empty" : "No Saved Games Yet"}
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm max-w-md mb-6 leading-relaxed">
+                {selectedFolderId
+                  ? "Move games into this folder or create a new game inside it."
+                  : "Start creating your personalized games like Bubble Pop, Sumo, Mystery Box, and more!"}
+              </p>
+              <button
+                onClick={() => setShowNewGameModal(true)}
+                className="flex items-center gap-2 px-6 py-3 bg-brand-purple hover:bg-purple-700 text-white font-bold rounded-2xl shadow-lg transition-all cursor-pointer"
+              >
+                <Plus size={20} />
+                <span>Create a Game</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
