@@ -1,0 +1,6 @@
+{
+  "name": "Hamster English - ESL Studio",
+  "description": "Premium AI-Powered ESL Games Platform for Teachers and Students.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
