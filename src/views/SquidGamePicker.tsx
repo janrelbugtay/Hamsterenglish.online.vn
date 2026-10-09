@@ -27,18 +27,7 @@ const getSavedRoster = () => {
         try { 
             const parsed = JSON.parse(saved); 
             if (Array.isArray(parsed) && parsed.length > 0) {
-                // If the saved roster contains legacy preloaded mock names, purge them
-                const legacyMockNames = [
-                    'Anh Tài', 'Bui', 'Công Danh', 'Gia Bảo', 'Gia Hân', 'Hải Đăng', 
-                    'Hoàng Ân', 'Hoàng Gia Bảo', 'Hoàng Gia Huy', 'Hữu Bảo', 'Kim Ngọc', 
-                    'Minh An', 'Minh Anh', 'Thùy Dung', 'Quốc Bảo', 'Thanh Mai', 'Tuấn Kiệt', 
-                    'Bảo Ngọc', 'Đức Huy', 'Khánh Linh', 'Minh Khôi', 'Phương Thảo', 
-                    'Trọng Hiếu', 'Hồng Ánh', 'Văn Nam'
-                ];
-                const hasMock = parsed.some(p => legacyMockNames.includes(p));
-                if (!hasMock) {
-                    return parsed;
-                }
+                return parsed;
             }
         } catch(e) {}
     }

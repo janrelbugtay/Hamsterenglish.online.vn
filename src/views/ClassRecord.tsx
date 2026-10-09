@@ -11,7 +11,7 @@ import { SquidHamsterSprite } from '../components/SquidHamsterSprite';
 import { GOOGLE_DRIVE_STUDENTS, OFFICIAL_CHARACTER_NUMBERS } from '../lib/studentCharacters';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
-import { collection, doc, setDoc, deleteDoc, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, getDoc, getDocs, onSnapshot } from 'firebase/firestore';
 
 // Types
 export interface DojoStudent {
@@ -106,7 +106,10 @@ export const GROUP_DEDUCT_PRESETS = [
   { id: 'g_mess', label: 'Messy Table Area', amount: -3, icon: '🧹' },
 ];
 
-// No preloaded classes or student names - users create and manage their own classes
+// Admin email for privileged class restoration
+export const ADMIN_EMAIL = 'janrelbugtay03@gmail.com';
+
+// Standard new users start with 0 preloaded classes (users can add their own)
 export const INITIAL_CLASSES: DojoClass[] = [];
 
 export const EMPTY_CLASS: DojoClass = {
@@ -118,33 +121,139 @@ export const EMPTY_CLASS: DojoClass = {
   groups: []
 };
 
-// IDs of legacy preloaded mock classes to strip from storage
-export const LEGACY_MOCK_CLASS_IDS = ['class_6a2', 'class_7a1', 'class_8b'];
+// Restored Authentic Admin Classes (6A2, 7A1, 8B) with original students, dollars, and groups
+export const ADMIN_CLASSES: DojoClass[] = [
+  {
+    id: 'class_6a2',
+    name: '6A2',
+    icon: '🌐',
+    grade: 'Grade 6',
+    groups: [
+      { id: 'g1', name: 'Team Alpha', studentIds: ['s1', 's2', 's3', 's4'] },
+      { id: 'g2', name: 'Team Tigers', studentIds: ['s5', 's6', 's7', 's8'] },
+      { id: 'g3', name: 'Team Dragons', studentIds: ['s9', 's10', 's11', 's12', 's13', 's14'] },
+    ],
+    students: [
+      { id: 's1', name: 'Anh Tài', dollars: 27, number: 1 },
+      { id: 's2', name: 'Bui', dollars: 25, number: 2 },
+      { id: 's3', name: 'Công Danh', dollars: 26, number: 3 },
+      { id: 's4', name: 'Gia Bảo', dollars: 27, number: 4 },
+      { id: 's5', name: 'Gia Hân', dollars: 26, number: 5 },
+      { id: 's6', name: 'Hải Đăng', dollars: 28, number: 6 },
+      { id: 's7', name: 'Hoàng Ân', dollars: 26, number: 7 },
+      { id: 's8', name: 'Hoàng Gia Bảo', dollars: 27, number: 8 },
+      { id: 's9', name: 'Hoàng Gia Huy', dollars: 27, number: 10 },
+      { id: 's10', name: 'Hữu Bảo', dollars: 27, number: 11 },
+      { id: 's11', name: 'Kim Ngọc', dollars: 30, number: 12 },
+      { id: 's12', name: 'Minh An', dollars: 28, number: 13 },
+      { id: 's13', name: 'Minh Anh', dollars: 26, number: 14 },
+      { id: 's14', name: 'Thùy Dung', dollars: 25, number: 15 },
+    ]
+  },
+  {
+    id: 'class_7a1',
+    name: '7A1',
+    icon: '🌟',
+    grade: 'Grade 7',
+    groups: [
+      { id: 'g7_1', name: 'Team Eagles', studentIds: ['7s1', '7s2', '7s3'] },
+      { id: 'g7_2', name: 'Team Sharks', studentIds: ['7s4', '7s5', '7s6'] },
+    ],
+    students: [
+      { id: '7s1', name: 'Quốc Bảo', dollars: 12, number: 16 },
+      { id: '7s2', name: 'Thanh Mai', dollars: 15, number: 17 },
+      { id: '7s3', name: 'Tuấn Kiệt', dollars: 8, number: 18 },
+      { id: '7s4', name: 'Bảo Ngọc', dollars: 10, number: 19 },
+      { id: '7s5', name: 'Đức Huy', dollars: 7, number: 20 },
+      { id: '7s6', name: 'Khánh Linh', dollars: 14, number: 21 },
+    ]
+  },
+  {
+    id: 'class_8b',
+    name: '8B',
+    icon: '🚀',
+    grade: 'Grade 8',
+    groups: [
+      { id: 'g8_1', name: 'Team Phoenix', studentIds: ['8s1', '8s2', '8s3', '8s4', '8s5'] }
+    ],
+    students: [
+      { id: '8s1', name: 'Minh Khôi', dollars: 15, number: 22 },
+      { id: '8s2', name: 'Phương Thảo', dollars: 18, number: 23 },
+      { id: '8s3', name: 'Trọng Hiếu', dollars: 9, number: 24 },
+      { id: '8s4', name: 'Hồng Ánh', dollars: 11, number: 25 },
+      { id: '8s5', name: 'Văn Nam', dollars: 16, number: 26 },
+    ]
+  }
+];
 
-export const STORAGE_KEY = 'squid_hamster_class_dollars_v13';
+export const STORAGE_KEY = 'squid_hamster_class_dollars_v14';
 export const BIN_STORAGE_KEY = 'squid_hamster_class_bin_v1';
 export const BIN_STUDENTS_STORAGE_KEY = 'squid_hamster_student_bin_v1';
 
-export const getSavedClasses = (): DojoClass[] => {
+// Helper to determine if a class list is purely the hardcoded default mock classes
+export const isDefaultMockClasses = (list: DojoClass[]): boolean => {
+  if (!Array.isArray(list) || list.length === 0) return false;
+  const mockClassIds = new Set(['class_6a2', 'class_7a1', 'class_8b']);
+  const hasCustomClassId = list.some(c => !mockClassIds.has(c.id));
+  if (hasCustomClassId) return false;
+
+  const mockStudentNames = new Set([
+    'Anh Tài', 'Bui', 'Công Danh', 'Gia Bảo', 'Gia Hân', 'Hải Đăng', 'Hoàng Ân',
+    'Hoàng Gia Bảo', 'Hoàng Gia Huy', 'Hữu Bảo', 'Kim Ngọc', 'Minh An', 'Minh Anh', 'Thùy Dung',
+    'Quốc Bảo', 'Thanh Mai', 'Tuấn Kiệt', 'Bảo Ngọc', 'Đức Huy', 'Khánh Linh',
+    'Minh Khôi', 'Phương Thảo', 'Trọng Hiếu', 'Hồng Ánh', 'Văn Nam'
+  ]);
+  const hasCustomStudent = list.some(c => (c.students || []).some(s => !mockStudentNames.has(s.name.trim())));
+  if (hasCustomStudent) return false;
+
+  return true;
+};
+
+// Scan localStorage versions to recover the user's actual inputted classes
+export const getBestSavedClasses = (): DojoClass[] => {
+  if (typeof window === 'undefined') return [];
+  const keysToCheck = [
+    STORAGE_KEY,
+    'squid_hamster_class_dollars_v13',
+    'squid_user_classes',
+    'squid_hamster_class_dollars_v12',
+    'squid_hamster_class_dollars_v14',
+    'squid_hamster_class_dollars_v11',
+    'squid_hamster_class_dollars_v10',
+    'squid_hamster_class_dollars_v9',
+    'squid_hamster_class_dollars_v8',
+    'squid_hamster_class_dollars'
+  ];
+
+  // 1. First priority: Any storage key containing user-inputted custom classes!
+  for (const k of keysToCheck) {
+    try {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0 && !isDefaultMockClasses(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 2. Second priority: Any classes saved in active storage key
   try {
-    const saved = localStorage.getItem(STORAGE_KEY) ||
-                  localStorage.getItem('squid_hamster_class_dollars_v12') ||
-                  localStorage.getItem('squid_hamster_class_dollars_v11') ||
-                  localStorage.getItem('squid_hamster_class_dollars_v10') ||
-                  localStorage.getItem('squid_hamster_class_dollars_v9') ||
-                  localStorage.getItem('squid_hamster_class_dollars_v8');
-    if (saved) {
-      const parsed = JSON.parse(saved);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Strip out preloaded mock classes so user only sees their own added classes
-        const userClasses = parsed.filter((cls: DojoClass) => !LEGACY_MOCK_CLASS_IDS.includes(cls.id));
-        return userClasses;
+        return parsed;
       }
     }
-  } catch (e) {
-    console.error('Error loading saved classes', e);
-  }
+  } catch (e) {}
+
   return [];
+};
+
+export const getSavedClasses = (): DojoClass[] => {
+  return getBestSavedClasses();
 };
 
 // Audio Synthesizer for Cash Register / Coin Drop sounds
@@ -278,17 +387,75 @@ export function ClassRecord({
   // Sync user's classes with Firestore for signed-in user
   useEffect(() => {
     if (!user || user.isAnonymous) return;
-    try {
-      getDocs(collection(db, 'users', user.uid, 'classes')).then((snap) => {
-        if (!snap.empty) {
-          const loadedClasses: DojoClass[] = [];
-          snap.forEach(d => loadedClasses.push({ id: d.id, ...(d.data() as any) }));
-          if (loadedClasses.length > 0) {
-            setClasses(loadedClasses);
+    const userEmail = user.email?.toLowerCase().trim() || '';
+    const isAdmin = userEmail === ADMIN_EMAIL;
+    if (isAdmin) {
+      try { localStorage.setItem('squid_is_admin', 'true'); } catch (e) {}
+    }
+
+    const loadUserClasses = async () => {
+      try {
+        const userDocRef = doc(db, 'userClassData', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        // Check if localStorage has custom user-inputted classes
+        const localUserClasses = getBestSavedClasses();
+        const hasCustomLocal = localUserClasses.length > 0 && !isDefaultMockClasses(localUserClasses);
+
+        // 1. Primary document storage: userClassData/{uid}
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          if (Array.isArray(data?.classes) && data.classes.length > 0) {
+            const hasCustomCloud = !isDefaultMockClasses(data.classes);
+
+            // If local storage has user-inputted custom classes, but cloud only had default mock classes:
+            // Recover and prefer the user's custom classes from local storage and update cloud!
+            if (hasCustomLocal && !hasCustomCloud) {
+              setClasses(localUserClasses);
+              setActiveClassId(prev => (prev && localUserClasses.some(c => c.id === prev)) ? prev : localUserClasses[0].id);
+              await setDoc(userDocRef, { classes: localUserClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+              return;
+            }
+
+            // Otherwise, respect whatever classes are in cloud without destroying them
+            setClasses(data.classes);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.classes));
+              localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(data.classes));
+              localStorage.setItem('squid_user_classes', JSON.stringify(data.classes));
+            } catch (e) {}
+            setActiveClassId(prev => (prev && data.classes.some((c: any) => c.id === prev)) ? prev : data.classes[0].id);
+            return;
           }
         }
-      }).catch(() => {});
-    } catch (e) {}
+
+        // 2. Subcollection fallback: users/{uid}/classes
+        const subSnap = await getDocs(collection(db, 'users', user.uid, 'classes'));
+        if (!subSnap.empty) {
+          const loadedClasses: DojoClass[] = [];
+          subSnap.forEach(d => loadedClasses.push({ id: d.id, ...(d.data() as any) }));
+          if (loadedClasses.length > 0) {
+            setClasses(loadedClasses);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(loadedClasses)); } catch (e) {}
+            setActiveClassId(prev => prev || loadedClasses[0].id);
+            await setDoc(userDocRef, { classes: loadedClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+            return;
+          }
+        }
+
+        // 3. If cloud is empty, but local storage has user-inputted classes:
+        if (hasCustomLocal) {
+          setClasses(localUserClasses);
+          setActiveClassId(prev => (prev && localUserClasses.some(c => c.id === prev)) ? prev : localUserClasses[0].id);
+          await setDoc(userDocRef, { classes: localUserClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+          return;
+        }
+      } catch (err) {
+        console.warn('Error loading user classes from Firestore:', err);
+      }
+    };
+
+    loadUserClasses();
   }, [user]);
 
   const handleSaveCustomReward = async (e?: React.FormEvent) => {
@@ -359,33 +526,21 @@ export function ClassRecord({
     }
   };
 
-  // Load saved classes (stripping legacy preloaded mock classes) or fallback to empty
+  // Load user's saved classes (recovering from any localStorage version) or start clean
   const [classes, setClasses] = useState<DojoClass[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) ||
-                    localStorage.getItem('squid_hamster_class_dollars_v12') ||
-                    localStorage.getItem('squid_hamster_class_dollars_v11') ||
-                    localStorage.getItem('squid_hamster_class_dollars_v10') ||
-                    localStorage.getItem('squid_hamster_class_dollars_v9') ||
-                    localStorage.getItem('squid_hamster_class_dollars_v8');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Filter out legacy preloaded mock classes (6A2, 7A1, 8B)
-          const userClasses = parsed.filter((cls: DojoClass) => !LEGACY_MOCK_CLASS_IDS.includes(cls.id));
-          if (userClasses.length > 0) {
-            return userClasses.map((cls: DojoClass) => ({
-              ...cls,
-              groups: Array.isArray(cls.groups) ? cls.groups : [],
-              students: cls.students.map((st: any, idx: number) => ({
-                ...st,
-                number: st.number && OFFICIAL_CHARACTER_NUMBERS.includes(st.number) 
-                  ? st.number 
-                  : OFFICIAL_CHARACTER_NUMBERS[idx % OFFICIAL_CHARACTER_NUMBERS.length]
-              }))
-            }));
-          }
-        }
+      const saved = getBestSavedClasses();
+      if (saved.length > 0) {
+        return saved.map((cls: DojoClass) => ({
+          ...cls,
+          groups: Array.isArray(cls.groups) ? cls.groups : [],
+          students: (cls.students || []).map((st: any, idx: number) => ({
+            ...st,
+            number: st.number && OFFICIAL_CHARACTER_NUMBERS.includes(st.number) 
+              ? st.number 
+              : OFFICIAL_CHARACTER_NUMBERS[idx % OFFICIAL_CHARACTER_NUMBERS.length]
+          }))
+        }));
       }
     } catch (e) {
       console.error('Error loading classes', e);
@@ -393,7 +548,15 @@ export function ClassRecord({
     return [];
   });
 
-  const [activeClassId, setActiveClassId] = useState<string>('');
+  const [activeClassId, setActiveClassId] = useState<string>(() => {
+    try {
+      const saved = getBestSavedClasses();
+      if (saved.length > 0) {
+        return saved[0].id;
+      }
+    } catch (e) {}
+    return '';
+  });
   const [isAllClassesView, setIsAllClassesView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'highest' | 'lowest' | 'name'>('default');
@@ -508,6 +671,8 @@ export function ClassRecord({
     setClasses(updated);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(updated));
+      localStorage.setItem('squid_user_classes', JSON.stringify(updated));
       if (user && !user.isAnonymous) {
         setDoc(doc(db, 'userClassData', user.uid), { classes: updated, updatedAt: Date.now() }, { merge: true }).catch((err) => {
           console.warn('Class sync note:', err?.message);
@@ -516,6 +681,79 @@ export function ClassRecord({
     } catch (e) {
       console.error('Failed to save classes', e);
     }
+  };
+
+  // Recover user's own inputted classes across all storage backups
+  const handleRecoverMyClasses = () => {
+    const keysToCheck = [
+      'squid_hamster_class_dollars_v13',
+      'squid_user_classes',
+      'squid_hamster_class_dollars_v12',
+      'squid_hamster_class_dollars_v14',
+      'squid_hamster_class_dollars_v11',
+      'squid_hamster_class_dollars_v10',
+      'squid_hamster_class_dollars_v9',
+      'squid_hamster_class_dollars_v8',
+      'squid_hamster_class_dollars'
+    ];
+
+    for (const k of keysToCheck) {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0 && !isDefaultMockClasses(parsed)) {
+            saveClasses(parsed);
+            if (parsed.length > 0) setActiveClassId(parsed[0].id);
+            setRecentTransaction({
+              text: `Restored ${parsed.length} of your inputted classes! ✨`,
+              amount: 0,
+              time: Date.now()
+            });
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Check recycle bin
+    try {
+      const rawBin = localStorage.getItem(BIN_STORAGE_KEY);
+      if (rawBin) {
+        const parsedBin = JSON.parse(rawBin);
+        if (Array.isArray(parsedBin) && parsedBin.length > 0) {
+          const restored = [...classes, ...parsedBin];
+          saveClasses(restored);
+          setDeletedClasses([]);
+          localStorage.removeItem(BIN_STORAGE_KEY);
+          setRecentTransaction({
+            text: `Restored ${parsedBin.length} classes from Recycle Bin! ✨`,
+            amount: 0,
+            time: Date.now()
+          });
+          return;
+        }
+      }
+    } catch (e) {}
+
+    setRecentTransaction({
+      text: 'No other class backups found in storage.',
+      amount: 0,
+      time: Date.now()
+    });
+  };
+
+  // Restore demo template classes (6A2, 7A1, 8B)
+  const handleRestoreAdminClasses = () => {
+    saveClasses(ADMIN_CLASSES);
+    setActiveClassId('class_6a2');
+    setIsAllClassesView(false);
+    setIsBinView(false);
+    setRecentTransaction({
+      text: 'Loaded demo template classes (6A2, 7A1, 8B)! ✨',
+      amount: 0,
+      time: Date.now()
+    });
   };
 
   const saveDeletedClasses = (updated: DojoClass[]) => {
@@ -1298,6 +1536,37 @@ export function ClassRecord({
               </span>
             )}
           </button>
+
+          {/* RECOVER USER'S INPUTTED CLASSES BUTTON */}
+          <button
+            type="button"
+            onClick={handleRecoverMyClasses}
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-bold text-xs text-sky-800 bg-sky-50 hover:bg-sky-100/80 transition-colors cursor-pointer border border-sky-200/80 shadow-2xs"
+            title="Scan and restore your inputted classes from saved backups"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-5 h-5 rounded-full bg-sky-600 text-white flex items-center justify-center shrink-0">
+                <RotateCcw size={11} className="stroke-[2.5]" />
+              </div>
+              <span className="truncate">Recover My Inputted Classes</span>
+            </div>
+            <span className="text-[10px] bg-sky-200 text-sky-900 font-mono font-black px-1.5 py-0.2 rounded-full">
+              Sync
+            </span>
+          </button>
+
+          {/* LOAD DEMO CLASSES BUTTON (FOR ADMIN ONLY) */}
+          {(user?.email?.toLowerCase().trim() === ADMIN_EMAIL || (typeof window !== 'undefined' && localStorage.getItem('squid_is_admin') === 'true')) && (
+            <button
+              type="button"
+              onClick={handleRestoreAdminClasses}
+              className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl font-medium text-[11px] text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Load example classes (6A2, 7A1, 8B) as templates"
+            >
+              <span className="truncate">Load Demo Templates (6A2, 7A1, 8B)</span>
+              <span className="text-[9px] text-slate-400">Demo</span>
+            </button>
+          )}
 
           {/* LIST OF CLASSES */}
           <div className="pt-2 space-y-1">
