@@ -106,78 +106,29 @@ export const GROUP_DEDUCT_PRESETS = [
   { id: 'g_mess', label: 'Messy Table Area', amount: -3, icon: '🧹' },
 ];
 
-// Classes list with embedded Google Drive photo characters numbered 1 to 40
-export const INITIAL_CLASSES: DojoClass[] = [
-  {
-    id: 'class_6a2',
-    name: '6A2',
-    icon: '🌐',
-    grade: 'Grade 6',
-    groups: [
-      { id: 'g1', name: 'Team Alpha', studentIds: ['s1', 's2', 's3', 's4'] },
-      { id: 'g2', name: 'Team Tigers', studentIds: ['s5', 's6', 's7', 's8'] },
-      { id: 'g3', name: 'Team Dragons', studentIds: ['s9', 's10', 's11', 's12', 's13', 's14'] },
-    ],
-    students: [
-      { id: 's1', name: 'Anh Tài', dollars: 27, number: 1 },
-      { id: 's2', name: 'Bui', dollars: 25, number: 2 },
-      { id: 's3', name: 'Công Danh', dollars: 26, number: 3 },
-      { id: 's4', name: 'Gia Bảo', dollars: 27, number: 4 },
-      { id: 's5', name: 'Gia Hân', dollars: 26, number: 5 },
-      { id: 's6', name: 'Hải Đăng', dollars: 28, number: 6 },
-      { id: 's7', name: 'Hoàng Ân', dollars: 26, number: 7 },
-      { id: 's8', name: 'Hoàng Gia Bảo', dollars: 27, number: 8 },
-      { id: 's9', name: 'Hoàng Gia Huy', dollars: 27, number: 10 },
-      { id: 's10', name: 'Hữu Bảo', dollars: 27, number: 11 },
-      { id: 's11', name: 'Kim Ngọc', dollars: 30, number: 12 },
-      { id: 's12', name: 'Minh An', dollars: 28, number: 13 },
-      { id: 's13', name: 'Minh Anh', dollars: 26, number: 14 },
-      { id: 's14', name: 'Thùy Dung', dollars: 25, number: 15 },
-    ]
-  },
-  {
-    id: 'class_7a1',
-    name: '7A1',
-    icon: '🌟',
-    grade: 'Grade 7',
-    groups: [
-      { id: 'g7_1', name: 'Team Eagles', studentIds: ['7s1', '7s2', '7s3'] },
-      { id: 'g7_2', name: 'Team Sharks', studentIds: ['7s4', '7s5', '7s6'] },
-    ],
-    students: [
-      { id: '7s1', name: 'Quốc Bảo', dollars: 12, number: 16 },
-      { id: '7s2', name: 'Thanh Mai', dollars: 15, number: 17 },
-      { id: '7s3', name: 'Tuấn Kiệt', dollars: 8, number: 18 },
-      { id: '7s4', name: 'Bảo Ngọc', dollars: 10, number: 19 },
-      { id: '7s5', name: 'Đức Huy', dollars: 7, number: 20 },
-      { id: '7s6', name: 'Khánh Linh', dollars: 14, number: 21 },
-    ]
-  },
-  {
-    id: 'class_8b',
-    name: '8B',
-    icon: '🚀',
-    grade: 'Grade 8',
-    groups: [
-      { id: 'g8_1', name: 'Team Phoenix', studentIds: ['8s1', '8s2', '8s3', '8s4', '8s5'] }
-    ],
-    students: [
-      { id: '8s1', name: 'Minh Khôi', dollars: 15, number: 22 },
-      { id: '8s2', name: 'Phương Thảo', dollars: 18, number: 23 },
-      { id: '8s3', name: 'Trọng Hiếu', dollars: 9, number: 24 },
-      { id: '8s4', name: 'Hồng Ánh', dollars: 11, number: 25 },
-      { id: '8s5', name: 'Văn Nam', dollars: 16, number: 26 },
-    ]
-  }
-];
+// No preloaded classes or student names - users create and manage their own classes
+export const INITIAL_CLASSES: DojoClass[] = [];
 
-export const STORAGE_KEY = 'squid_hamster_class_dollars_v12';
+export const EMPTY_CLASS: DojoClass = {
+  id: '',
+  name: 'No Class',
+  icon: '🏫',
+  grade: 'General',
+  students: [],
+  groups: []
+};
+
+// IDs of legacy preloaded mock classes to strip from storage
+export const LEGACY_MOCK_CLASS_IDS = ['class_6a2', 'class_7a1', 'class_8b'];
+
+export const STORAGE_KEY = 'squid_hamster_class_dollars_v13';
 export const BIN_STORAGE_KEY = 'squid_hamster_class_bin_v1';
 export const BIN_STUDENTS_STORAGE_KEY = 'squid_hamster_student_bin_v1';
 
 export const getSavedClasses = (): DojoClass[] => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY) ||
+                  localStorage.getItem('squid_hamster_class_dollars_v12') ||
                   localStorage.getItem('squid_hamster_class_dollars_v11') ||
                   localStorage.getItem('squid_hamster_class_dollars_v10') ||
                   localStorage.getItem('squid_hamster_class_dollars_v9') ||
@@ -185,7 +136,9 @@ export const getSavedClasses = (): DojoClass[] => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Strip out preloaded mock classes so user only sees their own added classes
+        const userClasses = parsed.filter((cls: DojoClass) => !LEGACY_MOCK_CLASS_IDS.includes(cls.id));
+        return userClasses;
       }
     }
   } catch (e) {
@@ -406,57 +359,41 @@ export function ClassRecord({
     }
   };
 
-  // Load saved classes or fallback
+  // Load saved classes (stripping legacy preloaded mock classes) or fallback to empty
   const [classes, setClasses] = useState<DojoClass[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY) ||
+                    localStorage.getItem('squid_hamster_class_dollars_v12') ||
+                    localStorage.getItem('squid_hamster_class_dollars_v11') ||
+                    localStorage.getItem('squid_hamster_class_dollars_v10') ||
+                    localStorage.getItem('squid_hamster_class_dollars_v9') ||
+                    localStorage.getItem('squid_hamster_class_dollars_v8');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((cls: DojoClass) => ({
-            ...cls,
-            groups: Array.isArray(cls.groups) ? cls.groups : [],
-            students: cls.students.map((st: any, idx: number) => ({
-              ...st,
-              number: st.number && OFFICIAL_CHARACTER_NUMBERS.includes(st.number) 
-                ? st.number 
-                : OFFICIAL_CHARACTER_NUMBERS[idx % OFFICIAL_CHARACTER_NUMBERS.length]
-            }))
-          }));
-        }
-      }
-      // Migrate from earlier versions if exists
-      const prev = localStorage.getItem('squid_hamster_class_dollars_v11') ||
-                   localStorage.getItem('squid_hamster_class_dollars_v10') ||
-                   localStorage.getItem('squid_hamster_class_dollars_v9') ||
-                   localStorage.getItem('squid_hamster_class_dollars_v8');
-      if (prev) {
-        const parsed = JSON.parse(prev);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((cls: DojoClass) => {
-            const initialMatch = INITIAL_CLASSES.find(ic => ic.id === cls.id);
-            return {
+          // Filter out legacy preloaded mock classes (6A2, 7A1, 8B)
+          const userClasses = parsed.filter((cls: DojoClass) => !LEGACY_MOCK_CLASS_IDS.includes(cls.id));
+          if (userClasses.length > 0) {
+            return userClasses.map((cls: DojoClass) => ({
               ...cls,
-              groups: Array.isArray(cls.groups) && cls.groups.length > 0 
-                ? cls.groups 
-                : (initialMatch?.groups || []),
+              groups: Array.isArray(cls.groups) ? cls.groups : [],
               students: cls.students.map((st: any, idx: number) => ({
                 ...st,
                 number: st.number && OFFICIAL_CHARACTER_NUMBERS.includes(st.number) 
                   ? st.number 
                   : OFFICIAL_CHARACTER_NUMBERS[idx % OFFICIAL_CHARACTER_NUMBERS.length]
               }))
-            };
-          });
+            }));
+          }
         }
       }
     } catch (e) {
       console.error('Error loading classes', e);
     }
-    return INITIAL_CLASSES;
+    return [];
   });
 
-  const [activeClassId, setActiveClassId] = useState<string>('class_6a2');
+  const [activeClassId, setActiveClassId] = useState<string>('');
   const [isAllClassesView, setIsAllClassesView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'highest' | 'lowest' | 'name'>('default');
@@ -803,17 +740,17 @@ export function ClassRecord({
   };
 
   const activeClass = useMemo(() => {
-    return classes.find(c => c.id === activeClassId) || classes[0] || INITIAL_CLASSES[0];
+    return classes.find(c => c.id === activeClassId) || classes[0] || EMPTY_CLASS;
   }, [classes, activeClassId]);
 
   // Total Class Vault Dollars
   const totalClassDollars = useMemo(() => {
-    return activeClass.students.reduce((sum, s) => sum + s.dollars, 0);
+    return (activeClass?.students || []).reduce((sum, s) => sum + s.dollars, 0);
   }, [activeClass]);
 
   // Filter & sort students
   const displayedStudents = useMemo(() => {
-    let list = [...activeClass.students];
+    let list = [...(activeClass?.students || [])];
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -1202,9 +1139,7 @@ export function ClassRecord({
         number: OFFICIAL_CHARACTER_NUMBERS[index % OFFICIAL_CHARACTER_NUMBERS.length]
       }));
     } else {
-      initialStudents = [
-        { id: `st_${Date.now()}_1`, name: 'Student 1', dollars: 0, number: 1 },
-      ];
+      initialStudents = [];
     }
 
     const newId = `class_${Date.now()}`;
@@ -1366,7 +1301,20 @@ export function ClassRecord({
 
           {/* LIST OF CLASSES */}
           <div className="pt-2 space-y-1">
-            {classes.map(cls => {
+            {classes.length === 0 ? (
+              <div className="p-3 text-center rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+                <p className="text-[11px] font-semibold text-slate-400 mb-2">No classes yet</p>
+                <button
+                  type="button"
+                  onClick={() => setShowNewClassModal(true)}
+                  className="w-full py-1.5 px-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Plus size={13} />
+                  <span>+ Add Class</span>
+                </button>
+              </div>
+            ) : (
+              classes.map(cls => {
               const isSelected = !isAllClassesView && !isBinView && cls.id === activeClass.id;
               const totalClassBal = cls.students.reduce((sum, s) => sum + s.dollars, 0);
 
@@ -1416,7 +1364,7 @@ export function ClassRecord({
                   </div>
                 </div>
               );
-            })}
+            }))}
           </div>
 
           {/* BIN BUTTON (UNDER GFDG / CLASSES LIST) */}
@@ -1726,6 +1674,29 @@ export function ClassRecord({
                 </div>
               )
             )}
+          </div>
+        ) : classes.length === 0 ? (
+          /* ============================================================ */
+          /* NO CLASSES ONBOARDING VIEW */
+          /* ============================================================ */
+          <div className="flex-1 overflow-y-auto p-6 md:p-12 flex flex-col items-center justify-center">
+            <div className="w-full max-w-lg text-center p-8 sm:p-10 bg-slate-50/80 rounded-3xl border-2 border-dashed border-slate-200 shadow-xs">
+              <div className="w-20 h-20 rounded-3xl bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center mx-auto mb-5 text-4xl shadow-xs">
+                🏫
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mb-2">No Classes Added Yet</h3>
+              <p className="text-sm font-medium text-slate-500 mb-6 leading-relaxed">
+                Add your own classes to begin tracking classroom dollars, awarding points, and launching Squid mini-games with your students.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowNewClassModal(true)}
+                className="w-full py-4 px-6 rounded-2xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:scale-102 active:scale-98"
+              >
+                <Plus size={20} className="stroke-[3]" />
+                <span>Add Your First Class</span>
+              </button>
+            </div>
           </div>
         ) : isAllClassesView ? (
           /* ALL CLASSES GRID VIEW */
@@ -2412,8 +2383,26 @@ export function ClassRecord({
                 </div>
 
                 {displayedStudents.length === 0 && (
-                  <div className="py-20 text-center">
-                    <p className="text-slate-400 font-semibold text-sm">No students found matching "{searchQuery}"</p>
+                  <div className="py-20 text-center max-w-sm mx-auto">
+                    {searchQuery ? (
+                      <p className="text-slate-400 font-semibold text-sm">No students found matching "{searchQuery}"</p>
+                    ) : (
+                      <div className="flex flex-col items-center">
+                        <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+                          <Users size={32} />
+                        </div>
+                        <h4 className="text-base font-black text-slate-800 mb-1">No Students in this Class</h4>
+                        <p className="text-xs text-slate-400 mb-4">Add your students to award Squid dollars and start playing mini-games.</p>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddStudentsModal(true)}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Plus size={14} />
+                          <span>Add Students</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -3601,7 +3590,7 @@ export function ClassRecord({
                 </div>
                 <textarea
                   rows={4}
-                  placeholder="Type or copy/paste student names (one per line or separated by commas)&#10;e.g.:&#10;Anh Tài&#10;Gia Bảo&#10;Minh Anh"
+                  placeholder="Type or copy/paste student names (one per line or separated by commas)&#10;e.g.:&#10;Alex&#10;Jordan&#10;Taylor"
                   value={newClassStudentsInput}
                   onChange={(e) => setNewClassStudentsInput(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans resize-none placeholder:text-slate-400"

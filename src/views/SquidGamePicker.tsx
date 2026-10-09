@@ -24,8 +24,33 @@ const randomSeeded = (seed: number) => {
 const getSavedRoster = () => {
     const saved = localStorage.getItem('squid_roster');
     if (saved) {
-        try { return JSON.parse(saved); } catch(e) {}
+        try { 
+            const parsed = JSON.parse(saved); 
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                // If the saved roster contains legacy preloaded mock names, purge them
+                const legacyMockNames = [
+                    'Anh Tài', 'Bui', 'Công Danh', 'Gia Bảo', 'Gia Hân', 'Hải Đăng', 
+                    'Hoàng Ân', 'Hoàng Gia Bảo', 'Hoàng Gia Huy', 'Hữu Bảo', 'Kim Ngọc', 
+                    'Minh An', 'Minh Anh', 'Thùy Dung', 'Quốc Bảo', 'Thanh Mai', 'Tuấn Kiệt', 
+                    'Bảo Ngọc', 'Đức Huy', 'Khánh Linh', 'Minh Khôi', 'Phương Thảo', 
+                    'Trọng Hiếu', 'Hồng Ánh', 'Văn Nam'
+                ];
+                const hasMock = parsed.some(p => legacyMockNames.includes(p));
+                if (!hasMock) {
+                    return parsed;
+                }
+            }
+        } catch(e) {}
     }
+
+    // Default to user's first class students if available
+    try {
+        const savedClasses = getSavedClasses();
+        if (savedClasses.length > 0 && savedClasses[0].students.length > 0) {
+            return savedClasses[0].students.map(s => s.name);
+        }
+    } catch(e) {}
+
     return Array.from({ length: 30 }, (_, i) => `Player ${i + 1}`);
 };
 
@@ -4464,72 +4489,105 @@ class ThreeManager {
                 
                 const totalDuration = 9.2 + Math.random() * 0.4; // Matches the 10-second countdown timer
 
-                // Dynamic variety in running stunts: jumping hurdles, stumbling/falling & scrambling crawl, shove/pull jostling
+                // Distinct running drama variants:
+                // 1) Fall & Crawl: trips, falls flat on belly/knees, crawls forward, scrambles back up
+                // 2) Stumble & Sprint: brief trip/wobble with recovery sprint
+                // 3) Pure Natural Sprint: smooth high-speed dash straight into safety
                 const runnerStuntType = isEliminated 
                     ? 'fall_and_crawl' 
-                    : (playerIdxInDoor % 3 === 0 ? 'high_hurdle_jump' : playerIdxInDoor % 3 === 1 ? 'scramble_crawl' : 'shove_and_tussle');
+                    : (playerIdxInDoor % 3 === 0 ? 'fall_and_crawl' : playerIdxInDoor % 3 === 1 ? 'stumble_and_sprint' : 'pure_sprint');
 
                 movePromises.push(new Promise<void>(resolve => {
                     const tl = gsap.timeline({ onComplete: () => {
                         char.userData.isMoving = false;
                         char.userData.behavior = 'normal';
                         char.userData.isCustomArmAnim = false;
+                        char.userData.isFallen = false;
                         resolve();
                     }});
+
+                    const currentWorldPos = char.position.clone();
+                    const directVector = roomPos.clone().sub(currentWorldPos);
+                    const totalDist = Math.max(1, directVector.length());
+                    const runDir = directVector.clone().normalize();
                     
                     if (isEliminated) {
-                        // ELIMINATED PLAYER: Desperately sprints, trips & scrambles crawling, recovers, then bangs on door!
-                        char.userData.behavior = 'normal';
-                        const midwayTripPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(12)).add(new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2));
+                        // ELIMINATED PLAYER: Runs toward door, trips, falls down flat, crawls desperately on turf, gets up, rushes to door only for it to slam shut!
+                        const tripDist = Math.min(totalDist * 0.35, 10);
+                        const tripPos = currentWorldPos.clone().add(runDir.clone().multiplyScalar(tripDist));
+                        const crawlDist = Math.min(totalDist * 0.28, 8);
+                        const crawlEndPos = tripPos.clone().add(runDir.clone().multiplyScalar(crawlDist));
                         const approachPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(1.2));
                         
-                        // Phase A: Initial frantic sprint
-                        tl.call(() => char.lookAt(midwayTripPos.x, 1, midwayTripPos.z));
-                        tl.to(char.position, { x: midwayTripPos.x, z: midwayTripPos.z, duration: totalDuration * 0.28, ease: "power1.in" });
-                        tl.to(char.position, { y: "+=1.6", duration: 0.16, yoyo: true, repeat: Math.floor((totalDuration * 0.28) / 0.16) }, "<");
-
-                        // Phase B: Comic stumble and dramatic fall on the grass!
+                        // Phase 1: Smooth natural sprint towards door (smooth lookAt)
                         tl.call(() => {
+                            char.lookAt(tripPos.x, 1, tripPos.z);
+                            char.userData.runSpeed = 16;
+                        });
+                        tl.to(char.position, {
+                            x: tripPos.x,
+                            z: tripPos.z,
+                            duration: totalDuration * 0.26,
+                            ease: "power1.inOut"
+                        });
+
+                        // Phase 2: Dramatic trip and fall flat down onto the grass!
+                        tl.call(() => {
+                            char.userData.isFallen = true;
                             char.userData.behavior = 'crawl';
                             char.userData.isCustomArmAnim = true;
                             if (globalAudio) globalAudio.play('bonk', 180);
+                            if (char.userData.parts?.armL && char.userData.parts?.armR) {
+                                gsap.to(char.userData.parts.armL.rotation, { x: -Math.PI * 0.8, z: 0.3, duration: 0.2 });
+                                gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.8, z: -0.3, duration: 0.2 });
+                            }
                         });
-                        tl.to(char.position, { y: 0.42, duration: 0.25, ease: "bounce.out" });
-                        tl.to(char.rotation, { x: Math.PI * 0.4, z: 0.3, duration: 0.25 }, "<");
+                        tl.to(char.position, { y: 0.38, duration: 0.3, ease: "power2.out" });
+                        tl.to(char.rotation, { x: Math.PI * 0.42, z: 0.25, duration: 0.3, ease: "power2.out" }, "<");
 
-                        // Phase C: Desperate crawling forward along the ground
-                        const crawlEndPos = approachPos.clone().sub(doorDir.clone().multiplyScalar(4));
-                        tl.to(char.position, { x: crawlEndPos.x, z: crawlEndPos.z, duration: totalDuration * 0.24, ease: "linear" });
+                        // Phase 3: Desperately crawl forward along the ground
+                        tl.to(char.position, {
+                            x: crawlEndPos.x,
+                            z: crawlEndPos.z,
+                            duration: totalDuration * 0.26,
+                            ease: "linear"
+                        });
 
-                        // Phase D: Scramble back onto feet and desperate final sprint!
+                        // Phase 4: Push back up onto feet and frantic last-second sprint!
                         tl.call(() => {
+                            char.userData.isFallen = false;
                             char.userData.behavior = 'normal';
                             char.userData.isCustomArmAnim = false;
                             char.lookAt(approachPos.x, 1, approachPos.z);
+                            char.userData.runSpeed = 22;
                         });
-                        tl.to(char.position, { y: 1.0, duration: 0.25, ease: "power2.out" });
-                        tl.to(char.rotation, { x: 0, z: 0, duration: 0.25 }, "<");
-                        tl.to(char.position, { x: approachPos.x, z: approachPos.z, duration: totalDuration * 0.28, ease: "power2.in" });
-                        tl.to(char.position, { y: "+=1.8", duration: 0.15, yoyo: true, repeat: Math.floor((totalDuration * 0.28) / 0.15) }, "<");
+                        tl.to(char.position, { y: 1.0, duration: 0.35, ease: "power2.out" });
+                        tl.to(char.rotation, { x: 0, z: 0, duration: 0.35, ease: "power2.out" }, "<");
+                        tl.to(char.position, {
+                            x: approachPos.x,
+                            z: approachPos.z,
+                            duration: totalDuration * 0.32,
+                            ease: "power2.in"
+                        });
 
-                        // Door slams shut right in their face at the buzzer! Heavy crash!
+                        // Door slams shut right at their face!
                         tl.call(() => {
                             if (globalAudio) {
                                 globalAudio.play('bonk', 120);
                                 globalAudio.play('alarm');
                             }
                         });
-                        // Bounce back from closed door
+                        // Smooth bounce back from closed door
                         tl.to(char.position, { 
                             x: finalPos.x, 
                             z: finalPos.z, 
                             y: 0.6, 
                             duration: 0.35, 
-                            ease: "bounce.out" 
+                            ease: "power2.out" 
                         });
-                        tl.to(char.rotation, { x: 0.3, duration: 0.2 }, "<");
+                        tl.to(char.rotation, { x: 0.25, duration: 0.25 }, "<");
 
-                        // Desperately bang both hands on the closed door panel!
+                        // Desperately bang hands on the closed door
                         tl.call(() => {
                             char.lookAt(roomPos.x, 1, roomPos.z);
                             if (char.userData.parts?.armL && char.userData.parts?.armR) {
@@ -4538,57 +4596,84 @@ class ThreeManager {
                             }
                             if (globalAudio) globalAudio.play('bonk', 140);
                         });
-                        tl.to({}, { duration: 0.6 }); // banging pause
+                        tl.to({}, { duration: 0.5 }); // banging duration
 
-                        // Collapse to knees in despair outside the locked doors
-                        tl.to(char.position, { y: 0.45, duration: 0.4, ease: "power2.out" });
-                        tl.to(char.rotation, { x: Math.PI / 2.3, duration: 0.4 }, "<");
+                        // Collapse down to knees in despair outside the locked doors
+                        tl.to(char.position, { y: 0.45, duration: 0.45, ease: "power2.out" });
+                        tl.to(char.rotation, { x: Math.PI / 2.3, duration: 0.45, ease: "power2.out" }, "<");
 
-                    } else if (runnerStuntType === 'high_hurdle_jump') {
-                        // SURVIVOR VARIANT 1: High speed sprint with multiple dynamic acrobatic jumps and hurdles!
-                        const thresholdPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(0.5));
-                        const hurdlePos1 = roomPos.clone().sub(doorDir.clone().multiplyScalar(14));
-                        const hurdlePos2 = roomPos.clone().sub(doorDir.clone().multiplyScalar(7));
+                    } else if (runnerStuntType === 'fall_and_crawl') {
+                        // SURVIVOR: Trips, falls down, scrambles crawling on grass, pushes up, smoothly enters room!
+                        const tripDist = Math.min(totalDist * 0.3, 8);
+                        const tripPos = currentWorldPos.clone().add(runDir.clone().multiplyScalar(tripDist));
+                        const crawlDist = Math.min(totalDist * 0.25, 6);
+                        const crawlEndPos = tripPos.clone().add(runDir.clone().multiplyScalar(crawlDist));
+                        const thresholdPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(0.4));
 
-                        tl.call(() => char.lookAt(thresholdPos.x, 1, thresholdPos.z));
-                        // Dash to hurdle 1
-                        tl.to(char.position, { x: hurdlePos1.x, z: hurdlePos1.z, duration: totalDuration * 0.25, ease: "power1.in" });
-                        tl.to(char.position, { y: "+=1.5", duration: 0.16, yoyo: true, repeat: Math.floor((totalDuration * 0.25) / 0.16) }, "<");
-
-                        // Acrobatic High Jump 1 over obstacles
+                        // Phase 1: Natural smooth run to trip point
                         tl.call(() => {
-                            if (char.userData.parts?.armL && char.userData.parts?.armR) {
-                                gsap.to(char.userData.parts.armL.rotation, { x: -Math.PI * 0.9, duration: 0.2 });
-                                gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.9, duration: 0.2 });
-                            }
+                            char.lookAt(tripPos.x, 1, tripPos.z);
+                            char.userData.runSpeed = 16;
                         });
-                        tl.to(char.position, { y: 3.8, duration: 0.25, ease: "power2.out" });
-                        tl.to(char.rotation, { x: 0.2, duration: 0.25 }, "<");
-                        tl.to(char.position, { y: 1.0, duration: 0.22, ease: "bounce.out" });
-                        tl.to(char.rotation, { x: 0, duration: 0.22 }, "<");
+                        tl.to(char.position, {
+                            x: tripPos.x,
+                            z: tripPos.z,
+                            duration: totalDuration * 0.25,
+                            ease: "power1.inOut"
+                        });
 
-                        // Dash to hurdle 2
-                        tl.to(char.position, { x: hurdlePos2.x, z: hurdlePos2.z, duration: totalDuration * 0.22, ease: "linear" });
-                        tl.to(char.position, { y: "+=1.4", duration: 0.16, yoyo: true, repeat: Math.floor((totalDuration * 0.22) / 0.16) }, "<");
+                        // Phase 2: Stumble and fall to knees/belly on grass
+                        tl.call(() => {
+                            char.userData.isFallen = true;
+                            char.userData.behavior = 'crawl';
+                            char.userData.isCustomArmAnim = true;
+                            if (globalAudio) globalAudio.play('bonk', 200);
+                        });
+                        tl.to(char.position, { y: 0.4, duration: 0.28, ease: "power2.out" });
+                        tl.to(char.rotation, { x: Math.PI * 0.4, z: -0.2, duration: 0.28, ease: "power2.out" }, "<");
 
-                        // High Jump 2 into threshold
-                        tl.to(char.position, { y: 4.2, duration: 0.28, ease: "power2.out" });
-                        tl.to(char.position, { x: thresholdPos.x, z: thresholdPos.z, duration: 0.45, ease: "none" }, "<");
-                        tl.to(char.position, { y: 1.0, duration: 0.22, ease: "bounce.out" });
+                        // Phase 3: Desperate crawl on grass
+                        tl.to(char.position, {
+                            x: crawlEndPos.x,
+                            z: crawlEndPos.z,
+                            duration: totalDuration * 0.24,
+                            ease: "linear"
+                        });
 
-                        // Final leap into room
-                        tl.to(char.position, { x: finalPos.x, z: finalPos.z, duration: 0.35, ease: "power2.out" });
-                        tl.to(char.position, { y: "+=2.0", duration: 0.18, yoyo: true, repeat: 1 }, "<");
+                        // Phase 4: Push back up to feet
+                        tl.call(() => {
+                            char.userData.isFallen = false;
+                            char.userData.behavior = 'normal';
+                            char.userData.isCustomArmAnim = false;
+                            char.lookAt(thresholdPos.x, 1, thresholdPos.z);
+                            char.userData.runSpeed = 18;
+                        });
+                        tl.to(char.position, { y: 1.0, duration: 0.35, ease: "power2.out" });
+                        tl.to(char.rotation, { x: 0, z: 0, duration: 0.35, ease: "power2.out" }, "<");
 
-                        // Celebration inside
+                        // Phase 5: Smooth sprint right through the door into room
+                        tl.to(char.position, {
+                            x: thresholdPos.x,
+                            z: thresholdPos.z,
+                            duration: totalDuration * 0.35,
+                            ease: "power1.out"
+                        });
+                        tl.to(char.position, {
+                            x: finalPos.x,
+                            z: finalPos.z,
+                            duration: totalDuration * 0.16,
+                            ease: "power1.out"
+                        });
+
+                        // Phase 6: Inside the room celebration
                         tl.call(() => {
                             char.lookAt(door.group.position.x, 1, door.group.position.z);
                             if (char.userData.parts?.armL && char.userData.parts?.armR) {
-                                gsap.to(char.userData.parts.armL.rotation, { x: -Math.PI * 0.85, duration: 0.25 });
-                                gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.85, duration: 0.25 });
+                                gsap.to(char.userData.parts.armL.rotation, { x: -Math.PI * 0.8, duration: 0.3 });
+                                gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.8, duration: 0.3 });
                             }
                         });
-                        tl.to(char.position, { y: "+=1.8", duration: 0.18, yoyo: true, repeat: 2, ease: "power1.out" });
+                        tl.to(char.position, { y: "+=1.2", duration: 0.22, yoyo: true, repeat: 2, ease: "power1.out" });
                         tl.to([
                             char.userData.parts?.armL?.rotation, 
                             char.userData.parts?.armR?.rotation, 
@@ -4597,51 +4682,54 @@ class ThreeManager {
                             char.userData.parts?.head?.rotation
                         ].filter(Boolean), { x: 0, duration: 0.3 });
 
-                    } else if (runnerStuntType === 'scramble_crawl') {
-                        // SURVIVOR VARIANT 2: Trips on turf, crawls under a crush of runners, then vaults in!
-                        const thresholdPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(0.5));
-                        const tripPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(13));
-                        const crawlEnd = roomPos.clone().sub(doorDir.clone().multiplyScalar(6));
+                    } else if (runnerStuntType === 'stumble_and_sprint') {
+                        // SURVIVOR: Smooth sprint, momentary stumble, then fast smooth stride into safety
+                        const stumbleDist = Math.min(totalDist * 0.4, 10);
+                        const stumblePos = currentWorldPos.clone().add(runDir.clone().multiplyScalar(stumbleDist));
+                        const thresholdPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(0.4));
 
-                        tl.call(() => char.lookAt(tripPos.x, 1, tripPos.z));
-                        tl.to(char.position, { x: tripPos.x, z: tripPos.z, duration: totalDuration * 0.25, ease: "power1.in" });
-                        tl.to(char.position, { y: "+=1.4", duration: 0.16, yoyo: true, repeat: Math.floor((totalDuration * 0.25) / 0.16) }, "<");
-
-                        // Sudden trip and slide/crawl
                         tl.call(() => {
-                            char.userData.behavior = 'crawl';
-                            char.userData.isCustomArmAnim = true;
-                            if (globalAudio) globalAudio.play('bonk', 220);
+                            char.lookAt(stumblePos.x, 1, stumblePos.z);
+                            char.userData.runSpeed = 16;
                         });
-                        tl.to(char.position, { y: 0.45, duration: 0.2, ease: "bounce.out" });
-                        tl.to(char.rotation, { x: Math.PI * 0.42, z: -0.25, duration: 0.2 }, "<");
-                        // Crawling slide along ground
-                        tl.to(char.position, { x: crawlEnd.x, z: crawlEnd.z, duration: totalDuration * 0.22, ease: "linear" });
+                        tl.to(char.position, {
+                            x: stumblePos.x,
+                            z: stumblePos.z,
+                            duration: totalDuration * 0.38,
+                            ease: "power1.inOut"
+                        });
 
-                        // Pop back up to sprint
+                        // Subtle natural stumble
+                        tl.to(char.position, { y: 0.65, duration: 0.25, yoyo: true, repeat: 1, ease: "power1.inOut" });
+                        tl.to(char.rotation, { x: 0.35, duration: 0.25, yoyo: true, repeat: 1, ease: "power1.inOut" }, "<");
+
+                        // Smooth sprint to threshold and into room
                         tl.call(() => {
-                            char.userData.behavior = 'normal';
-                            char.userData.isCustomArmAnim = false;
                             char.lookAt(thresholdPos.x, 1, thresholdPos.z);
+                            char.userData.runSpeed = 20;
                         });
-                        tl.to(char.position, { y: 1.0, duration: 0.2, ease: "power2.out" });
-                        tl.to(char.rotation, { x: 0, z: 0, duration: 0.2 }, "<");
+                        tl.to(char.position, {
+                            x: thresholdPos.x,
+                            z: thresholdPos.z,
+                            duration: totalDuration * 0.44,
+                            ease: "power1.out"
+                        });
+                        tl.to(char.position, {
+                            x: finalPos.x,
+                            z: finalPos.z,
+                            duration: totalDuration * 0.18,
+                            ease: "power1.out"
+                        });
 
-                        // Dash and dive leap through door!
-                        tl.to(char.position, { x: thresholdPos.x, z: thresholdPos.z, duration: totalDuration * 0.22, ease: "power2.in" });
-                        tl.to(char.position, { y: 3.2, duration: 0.25, ease: "power2.out" });
-                        tl.to(char.position, { x: finalPos.x, z: finalPos.z, duration: 0.35, ease: "none" }, "<");
-                        tl.to(char.position, { y: 1.0, duration: 0.18, ease: "bounce.out" });
-
-                        // Celebration inside
+                        // Relief celebration inside
                         tl.call(() => {
                             char.lookAt(door.group.position.x, 1, door.group.position.z);
                             if (char.userData.parts?.armL && char.userData.parts?.armR) {
-                                gsap.to(char.userData.parts.armL.rotation, { x: -Math.PI * 0.8, duration: 0.25 });
-                                gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.8, duration: 0.25 });
+                                gsap.to(char.userData.parts.armL.rotation, { x: -Math.PI * 0.8, duration: 0.3 });
+                                gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.8, duration: 0.3 });
                             }
                         });
-                        tl.to(char.position, { y: "+=1.6", duration: 0.2, yoyo: true, repeat: 2, ease: "power1.out" });
+                        tl.to(char.position, { y: "+=1.2", duration: 0.22, yoyo: true, repeat: 2, ease: "power1.out" });
                         tl.to([
                             char.userData.parts?.armL?.rotation, 
                             char.userData.parts?.armR?.rotation, 
@@ -4651,35 +4739,28 @@ class ThreeManager {
                         ].filter(Boolean), { x: 0, duration: 0.3 });
 
                     } else {
-                        // SURVIVOR VARIANT 3: Shoving, elbow jostling, and pulling ahead of other runners!
-                        const thresholdPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(0.5));
-                        const jostlePos1 = roomPos.clone().sub(doorDir.clone().multiplyScalar(12));
-                        const jostlePos2 = roomPos.clone().sub(doorDir.clone().multiplyScalar(6));
+                        // SURVIVOR: Pure natural continuous sprint from platform straight into room
+                        const thresholdPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(0.4));
 
-                        tl.call(() => char.lookAt(thresholdPos.x, 1, thresholdPos.z));
-                        tl.to(char.position, { x: jostlePos1.x, z: jostlePos1.z, duration: totalDuration * 0.28, ease: "power1.in" });
-                        tl.to(char.position, { y: "+=1.5", duration: 0.17, yoyo: true, repeat: Math.floor((totalDuration * 0.28) / 0.17) }, "<");
-
-                        // Shoving and pulling arm movements to wrestle through the crowd
                         tl.call(() => {
-                            if (char.userData.parts?.armL && char.userData.parts?.armR) {
-                                gsap.to(char.userData.parts.armL.rotation, { x: -Math.PI * 0.65, z: 0.45, yoyo: true, repeat: 3, duration: 0.15 });
-                                gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.65, z: -0.45, yoyo: true, repeat: 3, duration: 0.15 });
-                            }
-                            if (globalAudio) globalAudio.play('pop', 250);
+                            char.lookAt(thresholdPos.x, 1, thresholdPos.z);
+                            char.userData.runSpeed = 18;
                         });
-                        tl.to(char.rotation, { y: "+=0.35", yoyo: true, repeat: 3, duration: 0.15 });
-                        tl.to(char.position, { x: jostlePos2.x, z: jostlePos2.z, duration: totalDuration * 0.24, ease: "linear" }, "<");
 
-                        // Burst forward leap across threshold!
-                        tl.to(char.position, { y: 2.8, duration: 0.25, ease: "power2.out" });
-                        tl.to(char.position, { x: thresholdPos.x, z: thresholdPos.z, duration: 0.35, ease: "none" }, "<");
-                        tl.to(char.position, { y: 1.0, duration: 0.18, ease: "bounce.out" });
+                        tl.to(char.position, {
+                            x: thresholdPos.x,
+                            z: thresholdPos.z,
+                            duration: totalDuration * 0.82,
+                            ease: "power1.inOut"
+                        });
+                        tl.to(char.position, {
+                            x: finalPos.x,
+                            z: finalPos.z,
+                            duration: totalDuration * 0.18,
+                            ease: "power1.out"
+                        });
 
-                        // Slide into final room position
-                        tl.to(char.position, { x: finalPos.x, z: finalPos.z, duration: 0.3, ease: "power2.out" });
-
-                        // Victory arm celebration inside room
+                        // Relief celebration inside
                         tl.call(() => {
                             char.lookAt(door.group.position.x, 1, door.group.position.z);
                             if (char.userData.parts?.armL && char.userData.parts?.armR) {
@@ -4687,7 +4768,7 @@ class ThreeManager {
                                 gsap.to(char.userData.parts.armR.rotation, { x: -Math.PI * 0.8, duration: 0.3 });
                             }
                         });
-                        tl.to(char.position, { y: "+=1.6", duration: 0.2, yoyo: true, repeat: 2, ease: "power1.out" });
+                        tl.to(char.position, { y: "+=1.2", duration: 0.22, yoyo: true, repeat: 2, ease: "power1.out" });
                         tl.to([
                             char.userData.parts?.armL?.rotation, 
                             char.userData.parts?.armR?.rotation, 
@@ -5909,7 +5990,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
 
                 <div className="flex flex-col gap-4 items-center relative z-10">
                     <Button size="lg" onClick={startGame} className="w-full">
-                        <Play className="w-6 h-6" /> COMMENCE GAME
+                        <Play className="w-6 h-6" /> START
                     </Button>
                     <Button variant="secondary" onClick={() => setView('students')} className="w-full">
                         <UserRound className="w-5 h-5" /> MANAGE ROSTER ({students.length})
