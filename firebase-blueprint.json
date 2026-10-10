@@ -43,6 +43,22 @@
         }
       },
       "required": ["name", "score", "joinedAt"]
+    },
+    "UserClassData": {
+      "title": "User Class Data",
+      "description": "User classes and student data for classroom economy",
+      "type": "object",
+      "properties": {
+        "classes": {
+          "type": "array",
+          "description": "List of user classes"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["classes", "updatedAt"]
     }
   },
   "firestore": {
@@ -57,6 +73,12 @@
         "$ref": "#/entities/Player"
       },
       "description": "Players in a room"
+    },
+    "userClassData/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserClassData"
+      },
+      "description": "User classroom data"
     }
   }
 }

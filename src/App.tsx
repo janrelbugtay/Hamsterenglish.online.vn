@@ -27,7 +27,7 @@ import { StudentRace } from "./views/StudentRace";
 import { LetterLock } from "./views/LetterLock";
 import { TicTacToe } from "./views/TicTacToe";
 import { Homework } from "./views/Homework";
-import { ClassRecord } from "./views/ClassRecord";
+import { ClassRecord, getBestSavedClasses, isDefaultMockClasses, STORAGE_KEY } from "./views/ClassRecord";
 import { PhonemicMaster } from "./views/PhonemicMaster";
 import SquidGamePicker from "./views/SquidGamePicker";
 import { useAuth } from "./contexts/AuthContext";
@@ -67,6 +67,42 @@ export default function App() {
       }
     }
     prevUserRef.current = user;
+  }, [user]);
+
+  // Proactive multi-device cloud sync on authentication
+  useEffect(() => {
+    if (!user || user.isAnonymous) return;
+
+    const syncClassesBackground = async () => {
+      try {
+        const localClasses = getBestSavedClasses();
+        const hasCustomLocal = localClasses.length > 0 && !isDefaultMockClasses(localClasses);
+        const userDocRef = doc(db, 'userClassData', user.uid);
+        const backupDocRef = doc(db, 'users', user.uid, 'classesData', 'current');
+
+        if (hasCustomLocal) {
+          // Device has classes: ensure cloud has them
+          const payload = { classes: localClasses, updatedAt: Date.now() };
+          await setDoc(userDocRef, payload, { merge: true });
+          await setDoc(backupDocRef, payload, { merge: true });
+        } else {
+          // Device has no local classes: check if cloud has classes and cache them
+          const snap = await getDoc(userDocRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            if (Array.isArray(data?.classes) && data.classes.length > 0) {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.classes));
+              localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(data.classes));
+              localStorage.setItem('squid_user_classes', JSON.stringify(data.classes));
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('Background class sync note:', err?.message);
+      }
+    };
+
+    syncClassesBackground();
   }, [user]);
 
   useEffect(() => {

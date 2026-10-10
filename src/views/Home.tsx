@@ -11,9 +11,11 @@ import { useAuth } from "../contexts/AuthContext";
 export function Home({
   onViewChange,
   openAuthModal,
+  openGoogleAuthModal,
 }: {
   onViewChange?: (view: ViewState, data?: any) => void;
   openAuthModal?: () => void;
+  openGoogleAuthModal?: (feature?: string) => void;
 }) {
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col gap-6">

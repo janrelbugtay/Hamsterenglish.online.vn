@@ -384,7 +384,7 @@ export function ClassRecord({
     }
   }, [user]);
 
-  // Sync user's classes with Firestore for signed-in user
+  // Sync user's classes with Firestore in REAL-TIME for signed-in user
   useEffect(() => {
     if (!user || user.isAnonymous) return;
     const userEmail = user.email?.toLowerCase().trim() || '';
@@ -393,69 +393,78 @@ export function ClassRecord({
       try { localStorage.setItem('squid_is_admin', 'true'); } catch (e) {}
     }
 
-    const loadUserClasses = async () => {
-      try {
-        const userDocRef = doc(db, 'userClassData', user.uid);
-        const userDocSnap = await getDoc(userDocRef);
+    const userDocRef = doc(db, 'userClassData', user.uid);
+    const backupDocRef = doc(db, 'users', user.uid, 'classesData', 'current');
 
-        // Check if localStorage has custom user-inputted classes
-        const localUserClasses = getBestSavedClasses();
-        const hasCustomLocal = localUserClasses.length > 0 && !isDefaultMockClasses(localUserClasses);
+    // STEP A: If this device has custom user classes in localStorage, immediately push them to Firestore!
+    // This ensures classes created on this device are instantly backed up to the cloud for all devices
+    const localUserClasses = getBestSavedClasses();
+    const hasCustomLocal = localUserClasses.length > 0 && !isDefaultMockClasses(localUserClasses);
+    if (hasCustomLocal) {
+      const payload = { classes: localUserClasses, updatedAt: Date.now() };
+      setDoc(userDocRef, payload, { merge: true }).catch((err) => {
+        console.warn('Initial push to cloud note:', err?.message);
+      });
+      setDoc(backupDocRef, payload, { merge: true }).catch(() => {});
+    }
 
-        // 1. Primary document storage: userClassData/{uid}
-        if (userDocSnap.exists()) {
-          const data = userDocSnap.data();
-          if (Array.isArray(data?.classes) && data.classes.length > 0) {
-            const hasCustomCloud = !isDefaultMockClasses(data.classes);
+    // STEP B: Real-time Firestore snapshot listener: whenever classes change on ANY device, update immediately!
+    const unsubscribe = onSnapshot(userDocRef, async (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data?.classes) && data.classes.length > 0) {
+          const hasCustomCloud = !isDefaultMockClasses(data.classes);
 
-            // If local storage has user-inputted custom classes, but cloud only had default mock classes:
-            // Recover and prefer the user's custom classes from local storage and update cloud!
-            if (hasCustomLocal && !hasCustomCloud) {
-              setClasses(localUserClasses);
-              setActiveClassId(prev => (prev && localUserClasses.some(c => c.id === prev)) ? prev : localUserClasses[0].id);
-              await setDoc(userDocRef, { classes: localUserClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
-              return;
-            }
-
-            // Otherwise, respect whatever classes are in cloud without destroying them
-            setClasses(data.classes);
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.classes));
-              localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(data.classes));
-              localStorage.setItem('squid_user_classes', JSON.stringify(data.classes));
-            } catch (e) {}
-            setActiveClassId(prev => (prev && data.classes.some((c: any) => c.id === prev)) ? prev : data.classes[0].id);
+          // If local has custom classes, but cloud was somehow set to mock classes, re-push local custom classes!
+          if (hasCustomLocal && !hasCustomCloud) {
+            const payload = { classes: localUserClasses, updatedAt: Date.now() };
+            setDoc(userDocRef, payload, { merge: true }).catch(() => {});
             return;
           }
-        }
 
-        // 2. Subcollection fallback: users/{uid}/classes
-        const subSnap = await getDocs(collection(db, 'users', user.uid, 'classes'));
-        if (!subSnap.empty) {
-          const loadedClasses: DojoClass[] = [];
-          subSnap.forEach(d => loadedClasses.push({ id: d.id, ...(d.data() as any) }));
-          if (loadedClasses.length > 0) {
-            setClasses(loadedClasses);
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(loadedClasses)); } catch (e) {}
-            setActiveClassId(prev => prev || loadedClasses[0].id);
-            await setDoc(userDocRef, { classes: loadedClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
-            return;
-          }
-        }
+          // Update local state and storage with latest cloud classes!
+          setClasses(data.classes);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.classes));
+            localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(data.classes));
+            localStorage.setItem('squid_user_classes', JSON.stringify(data.classes));
+          } catch (e) {}
 
-        // 3. If cloud is empty, but local storage has user-inputted classes:
-        if (hasCustomLocal) {
-          setClasses(localUserClasses);
-          setActiveClassId(prev => (prev && localUserClasses.some(c => c.id === prev)) ? prev : localUserClasses[0].id);
-          await setDoc(userDocRef, { classes: localUserClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+          setActiveClassId((prev) => {
+            if (prev && data.classes.some((c: any) => c.id === prev)) return prev;
+            return data.classes[0].id;
+          });
           return;
         }
-      } catch (err) {
-        console.warn('Error loading user classes from Firestore:', err);
       }
-    };
 
-    loadUserClasses();
+      // Fallback: check backup doc if primary is not found
+      try {
+        const backupSnap = await getDoc(backupDocRef);
+        if (backupSnap.exists()) {
+          const bData = backupSnap.data();
+          if (Array.isArray(bData?.classes) && bData.classes.length > 0) {
+            setClasses(bData.classes);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(bData.classes));
+              localStorage.setItem('squid_user_classes', JSON.stringify(bData.classes));
+            } catch (e) {}
+            setActiveClassId((prev) => (prev && bData.classes.some((c: any) => c.id === prev) ? prev : bData.classes[0].id));
+            setDoc(userDocRef, bData, { merge: true }).catch(() => {});
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // If cloud is empty, but local has custom classes, push to cloud
+      if (hasCustomLocal) {
+        setDoc(userDocRef, { classes: localUserClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+      }
+    }, (err) => {
+      console.warn('Real-time class sync listener note:', err?.message);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   const handleSaveCustomReward = async (e?: React.FormEvent) => {
@@ -673,23 +682,70 @@ export function ClassRecord({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(updated));
       localStorage.setItem('squid_user_classes', JSON.stringify(updated));
-      if (user && !user.isAnonymous) {
-        setDoc(doc(db, 'userClassData', user.uid), { classes: updated, updatedAt: Date.now() }, { merge: true }).catch((err) => {
+    } catch (e) {
+      console.error('Failed to save classes to localStorage', e);
+    }
+
+    if (user && !user.isAnonymous) {
+      const payload = { classes: updated, updatedAt: Date.now() };
+      setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true })
+        .then(() => {
+          console.log('Class data successfully synced to Firestore!');
+        })
+        .catch((err) => {
           console.warn('Class sync note:', err?.message);
         });
-      }
-    } catch (e) {
-      console.error('Failed to save classes', e);
+
+      setDoc(doc(db, 'users', user.uid, 'classesData', 'current'), payload, { merge: true })
+        .catch(() => {});
     }
   };
 
-  // Recover user's own inputted classes across all storage backups
-  const handleRecoverMyClasses = () => {
+  // Recover user's own inputted classes across Cloud and storage backups
+  const handleRecoverMyClasses = async () => {
+    // 1. Check Cloud Firestore account first!
+    if (user && !user.isAnonymous) {
+      try {
+        const userDocSnap = await getDoc(doc(db, 'userClassData', user.uid));
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          if (Array.isArray(data?.classes) && data.classes.length > 0) {
+            saveClasses(data.classes);
+            setActiveClassId(data.classes[0].id);
+            setRecentTransaction({
+              text: `Synced ${data.classes.length} classes from your Cloud account! ☁️✨`,
+              amount: 0,
+              time: Date.now()
+            });
+            return;
+          }
+        }
+
+        const backupSnap = await getDoc(doc(db, 'users', user.uid, 'classesData', 'current'));
+        if (backupSnap.exists()) {
+          const bData = backupSnap.data();
+          if (Array.isArray(bData?.classes) && bData.classes.length > 0) {
+            saveClasses(bData.classes);
+            setActiveClassId(bData.classes[0].id);
+            setRecentTransaction({
+              text: `Synced ${bData.classes.length} classes from Cloud backup! ☁️✨`,
+              amount: 0,
+              time: Date.now()
+            });
+            return;
+          }
+        }
+      } catch (err: any) {
+        console.warn('Cloud pull note:', err?.message);
+      }
+    }
+
+    // 2. Check localStorage versions
     const keysToCheck = [
+      'squid_hamster_class_dollars_v14',
       'squid_hamster_class_dollars_v13',
       'squid_user_classes',
       'squid_hamster_class_dollars_v12',
-      'squid_hamster_class_dollars_v14',
       'squid_hamster_class_dollars_v11',
       'squid_hamster_class_dollars_v10',
       'squid_hamster_class_dollars_v9',
@@ -716,7 +772,7 @@ export function ClassRecord({
       } catch (e) {}
     }
 
-    // Check recycle bin
+    // 3. Check recycle bin
     try {
       const rawBin = localStorage.getItem(BIN_STORAGE_KEY);
       if (rawBin) {
@@ -736,8 +792,23 @@ export function ClassRecord({
       }
     } catch (e) {}
 
+    // 4. If current classes exist in state, force sync them to cloud now!
+    if (classes.length > 0 && user && !user.isAnonymous) {
+      try {
+        const payload = { classes, updatedAt: Date.now() };
+        await setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true });
+        await setDoc(doc(db, 'users', user.uid, 'classesData', 'current'), payload, { merge: true });
+        setRecentTransaction({
+          text: `Uploaded ${classes.length} classes to your Cloud account! ☁️✨`,
+          amount: 0,
+          time: Date.now()
+        });
+        return;
+      } catch (e) {}
+    }
+
     setRecentTransaction({
-      text: 'No other class backups found in storage.',
+      text: 'No other class backups found.',
       amount: 0,
       time: Date.now()
     });
@@ -1957,14 +2028,27 @@ export function ClassRecord({
               <p className="text-sm font-medium text-slate-500 mb-6 leading-relaxed">
                 Add your own classes to begin tracking classroom dollars, awarding points, and launching Squid mini-games with your students.
               </p>
-              <button
-                type="button"
-                onClick={() => setShowNewClassModal(true)}
-                className="w-full py-4 px-6 rounded-2xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:scale-102 active:scale-98"
-              >
-                <Plus size={20} className="stroke-[3]" />
-                <span>Add Your First Class</span>
-              </button>
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                <button
+                  type="button"
+                  onClick={() => setShowNewClassModal(true)}
+                  className="flex-1 py-4 px-6 rounded-2xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:scale-102 active:scale-98"
+                >
+                  <Plus size={20} className="stroke-[3]" />
+                  <span>Add Your First Class</span>
+                </button>
+                {user && !user.isAnonymous && (
+                  <button
+                    type="button"
+                    onClick={handleRecoverMyClasses}
+                    className="py-4 px-6 rounded-2xl font-bold text-sm bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/90 shadow-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:scale-102 active:scale-98"
+                    title="Pull your classes from your Google cloud account"
+                  >
+                    <RotateCcw size={18} />
+                    <span>Sync from Cloud</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ) : isAllClassesView ? (
