@@ -206,7 +206,7 @@ export const SumoStadiumEnvironment: React.FC<SumoStadiumEnvironmentProps> = ({
       </div>
 
       {/* FOREGROUND GAME CONTENT (Top Scoreboard, Dohyo Center Arena, Question & Answer Cards) */}
-      <div className="relative z-30 flex flex-col justify-between h-full p-2 sm:p-4 md:p-5">
+      <div className="relative z-30 flex flex-col justify-between h-full p-2 sm:p-4 md:p-5 overflow-y-auto">
         {children}
       </div>
     </div>

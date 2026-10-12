@@ -194,26 +194,26 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
   const floatingItems = ['☀️', '☁️', '🌻', '🦋', '🐹', '🌼', '☁️', '✨'];
 
   return (
-    <div id="game-container" className="h-[calc(100vh-2rem)] w-full -m-4 md:-m-8 text-slate-800 font-nunito overflow-y-auto overflow-x-hidden bg-gradient-to-br from-sky-300 via-cyan-200 to-yellow-100 relative selection:bg-yellow-400 selection:text-slate-900 rounded-[2rem] border-8 border-white/40 shadow-2xl" style={{ margin: "-1rem", height: "calc(100% + 2rem)" }}>
+    <div id="game-container" className="w-full min-h-full flex-1 text-slate-800 font-nunito overflow-y-auto overflow-x-hidden bg-gradient-to-br from-sky-300 via-cyan-200 to-yellow-100 relative selection:bg-yellow-400 selection:text-slate-900 rounded-none sm:rounded-[2rem] border-0 sm:border-4 md:border-8 border-white/40 shadow-2xl">
 
       <div className="absolute top-4 left-4 z-[60] flex items-center gap-2">
         <button 
           onClick={() => onViewChange("games")}
           className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border text-slate-600 hover:text-slate-900 bg-white/50 hover:bg-white border-white/50 shadow-sm"
         >
-          <ArrowLeft size={24} />
+          <ArrowLeft size={20} className="sm:w-6 sm:h-6" />
         </button>
         <FullscreenButton targetId="game-container" />
       </div>
 
-      <div className="absolute top-4 right-4 z-[60] flex items-center gap-4">
-        <div className="flex items-center gap-2 bg-yellow-400/90 backdrop-blur-md px-4 py-2 rounded-full border-2 border-yellow-300 shadow-md">
-          <Star className="text-white" fill="currentColor" size={18} />
-          <span className="font-bold text-yellow-900">{xp} XP</span>
+      <div className="absolute top-4 right-4 z-[60] flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-2 bg-yellow-400/90 backdrop-blur-md px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-yellow-300 shadow-md">
+          <Star className="text-white w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" />
+          <span className="font-bold text-xs sm:text-sm text-yellow-900">{xp} XP</span>
         </div>
-        <div className="flex items-center gap-2 bg-orange-400/90 backdrop-blur-md px-4 py-2 rounded-full border-2 border-orange-300 shadow-md">
-          <Flame className="text-white" fill="currentColor" size={18} />
-          <span className="font-bold text-orange-900">{streak}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 bg-orange-400/90 backdrop-blur-md px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-orange-300 shadow-md">
+          <Flame className="text-white w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" />
+          <span className="font-bold text-xs sm:text-sm text-orange-900">{streak}</span>
         </div>
       </div>
 

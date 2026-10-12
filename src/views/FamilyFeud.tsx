@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Play, ChevronRight, RefreshCw, ArrowLeft, Save, Edit3, Trash2, Sun, Moon, Maximize, Minimize, ClipboardList, Info, Check } from 'lucide-react';
+import { User, Play, ChevronRight, RefreshCw, ArrowLeft, Save, Edit3, Trash2, Sun, Moon, Maximize, Minimize, ClipboardList, Info, Check, Sliders, X } from 'lucide-react';
 import { ViewState } from "../types";
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
@@ -151,11 +151,11 @@ const AnswerBoard = ({ answers, revealedIndices, isDark }: { answers: any[], rev
   const slots = Array.from({ length: 8 }).map((_, i) => answers[i] || null);
 
   return (
-    <div className={`relative bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t-4 border-indigo-500 rounded-[2rem] p-4 md:p-8 shadow-2xl w-full max-w-5xl overflow-hidden`}>
+    <div className={`relative bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t-4 border-indigo-500 rounded-2xl sm:rounded-[2rem] p-2 sm:p-4 md:p-8 shadow-2xl w-full max-w-5xl overflow-hidden`}>
       {/* Clean modern overlay replacing the heavy gold styling */}
-      <div className="absolute inset-0 pointer-events-none rounded-[2rem] border border-slate-200 dark:border-white/10"></div>
+      <div className="absolute inset-0 pointer-events-none rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-white/10"></div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 relative z-10">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 md:gap-6 relative z-10">
         {slots.map((answer, index) => {
           const isRevealed = revealedIndices.includes(index);
           const hasAnswer = answer !== null;
@@ -163,16 +163,16 @@ const AnswerBoard = ({ answers, revealedIndices, isDark }: { answers: any[], rev
           return (
             <div 
               key={index} 
-              className={`h-20 md:h-[6.5rem] relative overflow-hidden rounded-xl border-2 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'} shadow-md`}
+              className={`h-14 sm:h-20 md:h-[6.5rem] relative overflow-hidden rounded-lg sm:rounded-xl border sm:border-2 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'} shadow-md`}
             >
               {/* Revealed State Background */}
-              <div className="absolute inset-0 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 flex justify-between items-center px-4 md:px-6"
+              <div className="absolute inset-0 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 flex justify-between items-center px-2 sm:px-4 md:px-6"
                    style={{ backgroundImage: isDark ? 'linear-gradient(90deg, #1e293b 0%, #334155 50%, #1e293b 100%)' : 'linear-gradient(90deg, #e2e8f0 0%, #f8fafc 50%, #e2e8f0 100%)' }}>
-                <span className={`${isDark ? 'text-white' : 'text-slate-900'} font-black text-2xl md:text-4xl uppercase tracking-widest truncate pr-4 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]`} style={{ fontFamily: 'Impact, sans-serif' }}>
+                <span className={`${isDark ? 'text-white' : 'text-slate-900'} font-black text-xs sm:text-2xl md:text-4xl uppercase tracking-wider sm:tracking-widest truncate pr-1 sm:pr-4 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]`} style={{ fontFamily: 'Impact, sans-serif' }}>
                   {answer?.text}
                 </span>
-                <div className={`h-full flex items-center border-l-4 border-[#0f172a] pl-4 md:pl-6 ${isDark ? 'bg-[#0f172a]/80' : 'bg-slate-200/80'} shadow-[inset_10px_0_15px_rgba(0,0,0,0.4)]`}>
-                  <span className="text-yellow-400 font-black text-3xl md:text-5xl drop-shadow-[0_0_12px_rgba(250,204,21,0.8)]" style={{ fontFamily: 'Impact, sans-serif' }}>
+                <div className={`h-full flex items-center border-l-2 sm:border-l-4 border-[#0f172a] pl-2 sm:pl-4 md:pl-6 ${isDark ? 'bg-[#0f172a]/80' : 'bg-slate-200/80'} shadow-[inset_10px_0_15px_rgba(0,0,0,0.4)]`}>
+                  <span className="text-yellow-400 font-black text-lg sm:text-3xl md:text-5xl drop-shadow-[0_0_12px_rgba(250,204,21,0.8)]" style={{ fontFamily: 'Impact, sans-serif' }}>
                     {answer?.points}
                   </span>
                 </div>
@@ -180,7 +180,7 @@ const AnswerBoard = ({ answers, revealedIndices, isDark }: { answers: any[], rev
 
               {/* Covered State Flap */}
               <div 
-                className={`absolute inset-0 bg-gradient-to-b from-blue-500 via-blue-600 to-blue-900 border-[3px] border-blue-400 flex items-center justify-center transition-all duration-[800ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] origin-top ${isRevealed ? 'rotate-x-90 opacity-0' : 'rotate-x-0 opacity-100 shadow-[inset_0_0_30px_rgba(0,0,0,0.8)]'}`}
+                className={`absolute inset-0 bg-gradient-to-b from-blue-500 via-blue-600 to-blue-900 border-2 sm:border-[3px] border-blue-400 flex items-center justify-center transition-all duration-[800ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] origin-top ${isRevealed ? 'rotate-x-90 opacity-0' : 'rotate-x-0 opacity-100 shadow-[inset_0_0_30px_rgba(0,0,0,0.8)]'}`}
                 style={{ transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
               >
                 {/* Subtle digital pattern on the flap */}
@@ -189,8 +189,8 @@ const AnswerBoard = ({ answers, revealedIndices, isDark }: { answers: any[], rev
                 <div className="absolute top-0 left-0 w-full h-[45%] bg-gradient-to-b from-white/30 to-transparent pointer-events-none"></div>
                 
                 {hasAnswer ? (
-                  <div className="w-16 h-12 md:w-24 md:h-16 rounded-full bg-indigo-600 border-4 border-indigo-300 flex items-center justify-center shadow-inner relative overflow-hidden">
-                    <span className="text-white font-black text-3xl md:text-4xl drop-shadow-md relative z-10" style={{ fontFamily: 'Impact, sans-serif' }}>
+                  <div className="w-9 h-8 sm:w-16 sm:h-12 md:w-24 md:h-16 rounded-full bg-indigo-600 border-2 sm:border-4 border-indigo-300 flex items-center justify-center shadow-inner relative overflow-hidden">
+                    <span className="text-white font-black text-lg sm:text-3xl md:text-4xl drop-shadow-md relative z-10" style={{ fontFamily: 'Impact, sans-serif' }}>
                       {index + 1}
                     </span>
                   </div>
@@ -243,6 +243,7 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
   
   const [customGameData, setCustomGameData] = useState<any>(initialGame?.customQuestions || null);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showMobileHostPanel, setShowMobileHostPanel] = useState(false);
   
   // Bulk Paste State
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
@@ -806,21 +807,21 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
   };
 
   return (
-    <div ref={gameContainerRef} className={`h-[calc(100vh-2rem)] w-full -m-4 md:-m-8 ${bgColors[theme][feedback]} font-sans ${isDark ? 'text-white' : 'text-slate-900'} flex flex-col relative selection:bg-blue-500/30 transition-colors duration-500 overflow-hidden`} style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }}>
-      <div className="absolute top-4 left-4 z-[60] flex items-center gap-3">
+    <div ref={gameContainerRef} className={`w-full min-h-full flex-1 ${bgColors[theme][feedback]} font-sans ${isDark ? 'text-white' : 'text-slate-900'} flex flex-col relative selection:bg-blue-500/30 transition-colors duration-500 overflow-hidden`}>
+      <div className="absolute top-4 left-4 z-[60] flex items-center gap-2 sm:gap-3">
         <button 
           onClick={() => onViewChange("home")}
           className={`flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border ${isDark ? 'text-white/80 hover:text-white bg-black/20 hover:bg-black/50 border-white/20' : 'text-slate-600 hover:text-slate-900 bg-white/50 hover:bg-white border-slate-300'}`}
           title="Back to Home"
         >
-          <ArrowLeft size={24} />
+          <ArrowLeft size={20} className="sm:w-6 sm:h-6" />
         </button>
         <button 
           onClick={() => setTheme(isDark ? 'light' : 'dark')}
           className={`flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border ${isDark ? 'text-white/80 hover:text-white bg-black/20 hover:bg-black/50 border-white/20' : 'text-slate-600 hover:text-slate-900 bg-white/50 hover:bg-white border-slate-300'}`}
           title="Toggle Theme"
         >
-          {isDark ? <Sun size={24} /> : <Moon size={24} />}
+          {isDark ? <Sun size={20} className="sm:w-6 sm:h-6" /> : <Moon size={20} className="sm:w-6 sm:h-6" />}
         </button>
         <button 
           onClick={async () => {
@@ -841,8 +842,21 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
           className={`flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border ${isDark ? 'text-white/80 hover:text-white bg-black/20 hover:bg-black/50 border-white/20' : 'text-slate-600 hover:text-slate-900 bg-white/50 hover:bg-white border-slate-300'}`}
           title="Toggle Fullscreen"
         >
-          <Maximize size={24} />
+          <Maximize size={20} className="sm:w-6 sm:h-6" />
         </button>
+        {gameState !== 'setup' && (
+          <button 
+            onClick={() => setShowMobileHostPanel(prev => !prev)}
+            className={`md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors backdrop-blur-md border text-xs font-bold cursor-pointer ${
+              showMobileHostPanel 
+                ? 'bg-yellow-500 text-black border-yellow-400' 
+                : isDark ? 'text-white/90 bg-black/40 border-white/20' : 'text-slate-800 bg-white/70 border-slate-300'
+            }`}
+            title="Host Controls"
+          >
+            <Sliders size={14} /> Host
+          </button>
+        )}
       </div>
 
       <style>{`
@@ -870,56 +884,107 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
       <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-yellow-500/15 rounded-full blur-[150px] pointer-events-none mix-blend-screen"></div>
       <div className="absolute top-[20%] right-[10%] w-[30vw] h-[30vw] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none mix-blend-screen"></div>
 
-
-      {/* Host Controls Sidebar */}
+      {/* Host Controls Sidebar (Desktop + Mobile Drawer) */}
       {gameState !== 'setup' && (
-        <div className={`absolute top-0 right-0 h-full ${isDark ? 'bg-slate-950/90' : 'bg-white/95'} backdrop-blur-md border-l ${isDark ? 'border-slate-800' : 'border-slate-200'} p-4 shadow-2xl ${isDark ? 'text-white' : 'text-slate-900'} flex flex-col gap-4 z-50 w-44 overflow-y-auto`}>
-          <div className={`font-black text-center border-b border-slate-700 pb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'} tracking-widest text-xs`}>HOST PANEL</div>
+        <>
+          {/* Desktop Host Panel */}
+          <div className={`hidden md:flex absolute top-0 right-0 h-full ${isDark ? 'bg-slate-950/90' : 'bg-white/95'} backdrop-blur-md border-l ${isDark ? 'border-slate-800' : 'border-slate-200'} p-4 shadow-2xl ${isDark ? 'text-white' : 'text-slate-900'} flex-col gap-4 z-50 w-44 overflow-y-auto`}>
+            <div className={`font-black text-center border-b border-slate-700 pb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'} tracking-widest text-xs`}>HOST PANEL</div>
 
-          <div className="text-center font-bold text-slate-500 text-[10px] tracking-widest -mb-2 mt-2">REVEAL TILE</div>
-          <div className="grid grid-cols-2 gap-2">
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => {
-              const hasAnswer = !!currentQ?.answers[index];
-              const isRevealed = revealedAnswers.includes(index);
-              return (
-                <button
-                  key={index}
-                  onClick={() => revealAnswer(index)}
-                  disabled={!hasAnswer || isRevealed || gameState === 'setup' || gameState === 'game_over'}
-                  className={`py-3 bg-slate-800 hover:bg-blue-600 disabled:bg-slate-900 disabled:text-slate-700 rounded ${isDark ? 'text-white' : 'text-slate-900'} font-bold transition-colors shadow-inner text-sm border border-slate-700 disabled:border-slate-800`}
-                >
-                  {index + 1}
-                </button>
-              );
-            })}
+            <div className="text-center font-bold text-slate-500 text-[10px] tracking-widest -mb-2 mt-2">REVEAL TILE</div>
+            <div className="grid grid-cols-2 gap-2">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => {
+                const hasAnswer = !!currentQ?.answers[index];
+                const isRevealed = revealedAnswers.includes(index);
+                return (
+                  <button
+                    key={index}
+                    onClick={() => revealAnswer(index)}
+                    disabled={!hasAnswer || isRevealed || gameState === 'setup' || gameState === 'game_over'}
+                    className={`py-3 bg-slate-800 hover:bg-blue-600 disabled:bg-slate-900 disabled:text-slate-700 rounded ${isDark ? 'text-white' : 'text-slate-900'} font-bold transition-colors shadow-inner text-sm border border-slate-700 disabled:border-slate-800 cursor-pointer`}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="h-px bg-slate-800 my-4"></div>
+
+            <div className="mt-auto flex flex-col gap-3">
+              <button 
+                onClick={revealAll} 
+                disabled={gameState !== 'playing'}
+                className={`w-full py-3 ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-900' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300'} disabled:opacity-50 disabled:cursor-not-allowed rounded font-bold text-slate-300 transition-colors text-xs border border-slate-700 cursor-pointer`}
+              >
+                REVEAL ALL
+              </button>
+              
+              <button 
+                onClick={nextRound} 
+                disabled={gameState === 'game_over'}
+                className="w-full py-4 bg-gradient-to-b from-yellow-500 to-yellow-700 hover:from-yellow-400 hover:to-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-black rounded font-black transition-all shadow-lg flex flex-col items-center justify-center gap-1 text-sm border-2 border-yellow-300 cursor-pointer"
+              >
+                NEXT TOPIC <ChevronRight size={18} strokeWidth={3} />
+              </button>
+            </div>
           </div>
 
-          <div className="h-px bg-slate-800 my-4"></div>
+          {/* Mobile Drawer */}
+          {showMobileHostPanel && (
+            <div className="fixed inset-0 z-[100] md:hidden bg-black/70 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
+              <div className={`w-64 h-full ${isDark ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'} p-5 flex flex-col gap-4 shadow-2xl border-l ${isDark ? 'border-slate-800' : 'border-slate-200'} overflow-y-auto`}>
+                <div className="flex items-center justify-between border-b pb-3 border-slate-700">
+                  <div className="font-black text-sm tracking-widest">HOST PANEL</div>
+                  <button onClick={() => setShowMobileHostPanel(false)} className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer">
+                    <X size={20} />
+                  </button>
+                </div>
 
-          <div className="mt-auto flex flex-col gap-3">
-            <button 
-              onClick={revealAll} 
-              disabled={gameState !== 'playing'}
-              className={`w-full py-3 ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-900' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300'} disabled:opacity-50 disabled:cursor-not-allowed rounded font-bold text-slate-300 transition-colors text-xs border border-slate-700`}
-            >
-              REVEAL ALL
-            </button>
-            
-            <button 
-              onClick={nextRound} 
-              disabled={gameState === 'game_over'}
-              className="w-full py-4 bg-gradient-to-b from-yellow-500 to-yellow-700 hover:from-yellow-400 hover:to-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-black rounded font-black transition-all shadow-lg flex flex-col items-center justify-center gap-1 text-sm border-2 border-yellow-300"
-            >
-              NEXT TOPIC <ChevronRight size={18} strokeWidth={3} />
-            </button>
-          </div>
-        </div>
+                <div className="text-center font-bold text-slate-400 text-xs tracking-wider">REVEAL TILE</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => {
+                    const hasAnswer = !!currentQ?.answers[index];
+                    const isRevealed = revealedAnswers.includes(index);
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => revealAnswer(index)}
+                        disabled={!hasAnswer || isRevealed || gameState === 'setup' || gameState === 'game_over'}
+                        className="py-3 bg-slate-800 hover:bg-blue-600 disabled:bg-slate-900 disabled:text-slate-700 rounded text-white font-bold transition-colors shadow-inner text-base border border-slate-700 disabled:border-slate-800 cursor-pointer"
+                      >
+                        {index + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-auto flex flex-col gap-3 pt-4">
+                  <button 
+                    onClick={() => { revealAll(); setShowMobileHostPanel(false); }} 
+                    disabled={gameState !== 'playing'}
+                    className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-50 rounded font-bold text-sm border border-slate-700 cursor-pointer"
+                  >
+                    REVEAL ALL
+                  </button>
+                  <button 
+                    onClick={() => { nextRound(); setShowMobileHostPanel(false); }} 
+                    disabled={gameState === 'game_over'}
+                    className="w-full py-4 bg-gradient-to-b from-yellow-500 to-yellow-600 text-black font-black text-base rounded-xl shadow-lg border-2 border-yellow-300 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    NEXT TOPIC <ChevronRight size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <StrikeOverlay show={showStrike} />
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col items-center z-10 w-full pb-32 transition-transform duration-300 ${gameState !== 'setup' ? 'pr-44' : ''} ${feedback === 'wrong' ? 'animate-shake' : ''}`}>
+      <div className={`flex-1 flex flex-col items-center z-10 w-full pb-32 transition-transform duration-300 ${gameState !== 'setup' ? 'md:pr-44' : ''} ${feedback === 'wrong' ? 'animate-shake' : ''}`}>
         
         {renderHeaderInfo()}
 
@@ -927,10 +992,37 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
         {gameState === 'game_over' && renderGameOver()}
 
         {(gameState === 'playing' || gameState === 'round_over') && (
-          <div className="flex-1 w-full max-w-[1400px] mx-auto flex flex-col md:flex-row items-center justify-start md:justify-center gap-8 lg:gap-16 px-4 mt-8 md:mt-12 overflow-y-auto">
+          <div className="flex-1 w-full max-w-[1400px] mx-auto flex flex-col md:flex-row items-center justify-start md:justify-center gap-3 sm:gap-6 lg:gap-16 px-2 sm:px-4 mt-6 sm:mt-8 md:mt-12 overflow-y-auto">
             
-            {/* Team 1 Area */}
-            <div className={`flex flex-col items-center gap-3 transition-all duration-700 ${currentPlayer === 1 ? 'scale-110 drop-shadow-[0_0_40px_rgba(59,130,246,0.8)]' : 'opacity-40 grayscale-[60%] scale-95'}`}>
+            {/* Mobile Teams Score Bar (Visible on mobile screens only) */}
+            <div className="flex md:hidden w-full justify-between items-center px-2 py-1 gap-2 shrink-0">
+              {/* Team 1 Chip */}
+              <div className={`flex-1 flex items-center gap-2 p-2 rounded-2xl border-2 transition-all ${currentPlayer === 1 ? 'border-blue-400 bg-blue-950/80 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'border-slate-800 bg-slate-900/60 opacity-60'}`}>
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${currentPlayer === 1 ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <User size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-black uppercase text-blue-400 truncate">Team 1</div>
+                  <div className="text-xl font-black text-white leading-none" style={{ fontFamily: 'Impact, sans-serif' }}>{scores[1]}</div>
+                </div>
+                {currentPlayer === 1 && <span className="text-[9px] bg-blue-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase">TURN</span>}
+              </div>
+
+              {/* Team 2 Chip */}
+              <div className={`flex-1 flex items-center gap-2 p-2 rounded-2xl border-2 transition-all ${currentPlayer === 2 ? 'border-green-400 bg-green-950/80 shadow-[0_0_15px_rgba(34,197,94,0.5)]' : 'border-slate-800 bg-slate-900/60 opacity-60'}`}>
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${currentPlayer === 2 ? 'bg-green-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <User size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-black uppercase text-green-400 truncate">Team 2</div>
+                  <div className="text-xl font-black text-white leading-none" style={{ fontFamily: 'Impact, sans-serif' }}>{scores[2]}</div>
+                </div>
+                {currentPlayer === 2 && <span className="text-[9px] bg-green-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase">TURN</span>}
+              </div>
+            </div>
+
+            {/* Desktop Team 1 Area */}
+            <div className={`hidden md:flex flex-col items-center gap-3 transition-all duration-700 ${currentPlayer === 1 ? 'scale-110 drop-shadow-[0_0_40px_rgba(59,130,246,0.8)]' : 'opacity-40 grayscale-[60%] scale-95'}`}>
               <div className={`w-32 h-32 md:w-40 md:h-40 rounded-3xl border-[6px] ${currentPlayer === 1 ? 'border-blue-400 bg-gradient-to-br from-blue-500 to-blue-900 shadow-[0_0_30px_rgba(59,130,246,0.5),inset_0_4px_20px_rgba(255,255,255,0.4)]' : 'border-slate-700 bg-slate-800'} flex items-center justify-center relative overflow-hidden`}>
                 {currentPlayer === 1 && <div className="absolute inset-0 bg-white/20 animate-pulse"></div>}
                 <User size={80} className={currentPlayer === 1 ? (isDark ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]' : 'text-blue-600 drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)]') : 'text-slate-600'} />
@@ -942,12 +1034,12 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
             </div>
 
             {/* Center Board */}
-            <div className="w-full md:w-auto flex-1 flex justify-center order-first md:order-none mb-8 md:mb-0 relative z-20">
+            <div className="w-full md:w-auto flex-1 flex justify-center order-first md:order-none mb-2 md:mb-0 relative z-20">
                <AnswerBoard answers={currentQ.answers} revealedIndices={revealedAnswers} isDark={isDark} />
             </div>
 
-            {/* Team 2 Area */}
-            <div className={`flex flex-col items-center gap-3 transition-all duration-700 ${currentPlayer === 2 ? 'scale-110 drop-shadow-[0_0_40px_rgba(34,197,94,0.8)]' : 'opacity-40 grayscale-[60%] scale-95'}`}>
+            {/* Desktop Team 2 Area */}
+            <div className={`hidden md:flex flex-col items-center gap-3 transition-all duration-700 ${currentPlayer === 2 ? 'scale-110 drop-shadow-[0_0_40px_rgba(34,197,94,0.8)]' : 'opacity-40 grayscale-[60%] scale-95'}`}>
                <div className={`w-32 h-32 md:w-40 md:h-40 rounded-3xl border-[6px] ${currentPlayer === 2 ? 'border-green-400 bg-gradient-to-br from-green-500 to-green-900 shadow-[0_0_30px_rgba(34,197,94,0.5),inset_0_4px_20px_rgba(255,255,255,0.4)]' : 'border-slate-700 bg-slate-800'} flex items-center justify-center relative overflow-hidden`}>
                  {currentPlayer === 2 && <div className="absolute inset-0 bg-white/20 animate-pulse"></div>}
                  <User size={80} className={currentPlayer === 2 ? (isDark ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]' : 'text-blue-600 drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)]') : 'text-slate-600'} />
@@ -964,20 +1056,20 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
 
       {/* Bottom Input Area */}
       {gameState === 'playing' && (
-        <div className={`absolute bottom-0 left-0 w-[calc(100%-11rem)] ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-t p-6 shadow-2xl z-20`}>
+        <div className={`absolute bottom-0 left-0 w-full md:w-[calc(100%-11rem)] ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-t p-2.5 sm:p-4 md:p-6 shadow-2xl z-20`}>
           <div className="max-w-5xl mx-auto relative">
-            <div className="text-center mb-6 text-xl font-black uppercase tracking-[0.2em] flex items-center justify-center gap-4">
-               <div className={`h-px w-16 ${currentPlayer === 1 ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+            <div className="text-center mb-2 sm:mb-4 text-xs sm:text-base md:text-xl font-black uppercase tracking-wider sm:tracking-[0.2em] flex items-center justify-center gap-2 sm:gap-4">
+               <div className={`h-px w-6 sm:w-16 ${currentPlayer === 1 ? 'bg-blue-500' : 'bg-green-500'}`}></div>
                <span className={currentPlayer === 1 ? 'text-blue-400 drop-shadow-[0_0_12px_rgba(96,165,250,0.8)]' : 'text-green-400 drop-shadow-[0_0_12px_rgba(74,222,128,0.8)]'}>
                  TEAM {currentPlayer}'S TURN TO GUESS
                </span>
-               <div className={`h-px w-16 ${currentPlayer === 1 ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+               <div className={`h-px w-6 sm:w-16 ${currentPlayer === 1 ? 'bg-blue-500' : 'bg-green-500'}`}></div>
             </div>
-            <form onSubmit={handleGuessSubmit} className="flex gap-4">
+            <form onSubmit={handleGuessSubmit} className="flex gap-2 sm:gap-4">
                <button 
                  type="button" 
                  onClick={() => setInputValue('')}
-                 className={`px-8 py-5 ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-900' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300'} rounded-2xl text-slate-400 font-bold transition-all border-b-4 border-slate-900 active:border-b-0 active:translate-y-1`}
+                 className={`px-3 py-2.5 sm:px-6 sm:py-4 md:px-8 md:py-5 ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-900' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300'} rounded-xl sm:rounded-2xl text-slate-400 font-bold transition-all border-b-2 sm:border-b-4 border-slate-900 text-xs sm:text-base active:border-b-0 active:translate-y-1 cursor-pointer`}
                >
                  CLEAR
                </button>
@@ -987,13 +1079,13 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
                  value={inputValue}
                  onChange={(e) => setInputValue(e.target.value)}
                  placeholder="TYPE YOUR ANSWER..."
-                 className={`flex-1 ${isDark ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-50 text-slate-900 border-slate-200'} placeholder-slate-400 px-8 py-5 rounded-2xl font-black text-2xl uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500 border-2 shadow-sm transition-all`}
+                 className={`flex-1 min-w-0 ${isDark ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-50 text-slate-900 border-slate-200'} placeholder-slate-400 px-3 py-2.5 sm:px-6 sm:py-4 md:px-8 md:py-5 rounded-xl sm:rounded-2xl font-black text-sm sm:text-xl md:text-2xl uppercase tracking-wide sm:tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500 border sm:border-2 shadow-sm transition-all`}
                  autoComplete="off"
                />
                <button 
                  type="submit"
                  disabled={!inputValue.trim()}
-                 className="px-12 py-5 bg-gradient-to-b from-yellow-400 to-amber-600 hover:from-yellow-300 hover:to-amber-500 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-600 text-black rounded-2xl font-black transition-all shadow-[0_0_30px_rgba(245,158,11,0.5)] disabled:shadow-none flex items-center text-3xl border-b-[6px] border-amber-700 disabled:border-slate-900 active:border-b-0 active:translate-y-1"
+                 className="px-4 py-2.5 sm:px-8 sm:py-4 md:px-12 md:py-5 bg-gradient-to-b from-yellow-400 to-amber-600 hover:from-yellow-300 hover:to-amber-500 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-600 text-black rounded-xl sm:rounded-2xl font-black transition-all shadow-[0_0_30px_rgba(245,158,11,0.5)] disabled:shadow-none flex items-center text-sm sm:text-2xl md:text-3xl border-b-2 sm:border-b-[6px] border-amber-700 disabled:border-slate-900 active:border-b-0 active:translate-y-1 cursor-pointer shrink-0"
                  style={{ fontFamily: 'Impact, sans-serif' }}
                >
                  SUBMIT
@@ -1005,12 +1097,12 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
 
       {/* Round Over Action */}
       {gameState === 'round_over' && (
-         <div className="absolute bottom-0 left-0 w-[calc(100%-11rem)] bg-gradient-to-t from-slate-900 to-blue-950 border-t-4 border-blue-800 p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.8)] z-20 flex justify-center">
+         <div className="absolute bottom-0 left-0 w-full md:w-[calc(100%-11rem)] bg-gradient-to-t from-slate-900 to-blue-950 border-t-4 border-blue-800 p-4 sm:p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.8)] z-20 flex justify-center">
             <button 
               onClick={nextRound}
-              className="px-12 py-5 bg-gradient-to-b from-yellow-400 to-yellow-600 hover:from-yellow-300 hover:to-yellow-500 text-black rounded-full font-black text-3xl transition-all shadow-[0_0_30px_rgba(234,179,8,0.6)] flex items-center gap-4 animate-bounce border-4 border-yellow-200"
+              className="px-6 py-3 sm:px-12 sm:py-5 bg-gradient-to-b from-yellow-400 to-yellow-600 hover:from-yellow-300 hover:to-yellow-500 text-black rounded-full font-black text-lg sm:text-3xl transition-all shadow-[0_0_30px_rgba(234,179,8,0.6)] flex items-center gap-2 sm:gap-4 animate-bounce border-2 sm:border-4 border-yellow-200 cursor-pointer"
             >
-              NEXT QUESTION <ChevronRight strokeWidth={4} size={32} />
+              NEXT QUESTION <ChevronRight strokeWidth={4} size={24} className="sm:w-8 sm:h-8" />
             </button>
          </div>
       )}

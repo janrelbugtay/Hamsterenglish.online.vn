@@ -134,7 +134,7 @@ export function FlashcardsMatch({ onViewChange }: { onViewChange: (view: ViewSta
   }
 
   return (
-    <div id="game-container" className="h-[calc(100vh-2rem)] w-full -m-4 md:-m-8 bg-slate-50 text-slate-900 flex flex-col font-sans overflow-hidden relative selection:bg-cyan-500/30 rounded-xl" style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }}>
+    <div id="game-container" className="w-full min-h-full flex-1 bg-slate-50 text-slate-900 flex flex-col font-sans overflow-y-auto overflow-x-hidden relative selection:bg-cyan-500/30 rounded-xl">
       <style>{customStyles}</style>
       
       {/* Top Toolbar Navigation */}

@@ -4,7 +4,7 @@ import gsap from 'gsap';
 import {
     Users, Play, Check, MousePointerClick, Skull, UserRound, VolumeX,
     Volume2, Volume1, Power, Crown, RotateCcw, Square, Circle, Triangle, Gamepad2, ClipboardList,
-    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare
+    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { getSavedClasses, DojoClass } from './ClassRecord';
@@ -5582,6 +5582,7 @@ interface SquidGamePickerProps {
 
 export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) {
     const [view, setView] = useState('home'); 
+    const [showMobileDrawer, setShowMobileDrawer] = useState(false);
     const [activeGame, setActiveGame] = useState<'mingle' | 'tag'>('mingle');
     const [students, setStudents] = useState<string[]>(getSavedRoster());
     const [gameState, setGameState] = useState<any>({ phase: 'IDLE', msg: '', eliminatedThisRound: [], isMusicPlaying: false }); 
@@ -5734,6 +5735,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     }, []);
 
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -5882,22 +5884,22 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     };
 
     const renderHome = () => (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm pointer-events-auto z-20">
-            <div className="text-center bg-slate-900/95 p-10 rounded-[3rem] border-4 border-rose-600 shadow-[0_0_60px_rgba(244,63,94,0.4)] relative overflow-hidden w-full max-w-xl">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm pointer-events-auto z-20 p-3 sm:p-6 overflow-y-auto">
+            <div className="text-center bg-slate-900/95 p-5 sm:p-10 rounded-3xl sm:rounded-[3rem] border-2 sm:border-4 border-rose-600 shadow-[0_0_60px_rgba(244,63,94,0.4)] relative overflow-hidden w-full max-w-xl my-auto">
                 
-                <div className="text-5xl mb-4 text-rose-500 flex justify-center gap-6 relative z-10 items-center">
-                    <Circle className="w-12 h-12 animate-pulse" />
-                    <Triangle className="w-12 h-12 animate-pulse" style={{animationDelay: '0.3s'}} />
-                    <Square className="w-12 h-12 animate-pulse" style={{animationDelay: '0.6s'}} />
+                <div className="text-3xl sm:text-5xl mb-2 sm:mb-4 text-rose-500 flex justify-center gap-4 sm:gap-6 relative z-10 items-center">
+                    <Circle className="w-8 h-8 sm:w-12 sm:h-12 animate-pulse" />
+                    <Triangle className="w-8 h-8 sm:w-12 sm:h-12 animate-pulse" style={{animationDelay: '0.3s'}} />
+                    <Square className="w-8 h-8 sm:w-12 sm:h-12 animate-pulse" style={{animationDelay: '0.6s'}} />
                 </div>
-                <h1 className="text-5xl text-white font-bold mb-2 tracking-wide text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 relative z-10" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                <h1 className="text-3xl sm:text-5xl text-white font-bold mb-1.5 sm:mb-2 tracking-wide text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 relative z-10" style={{fontFamily: "'Fredoka', sans-serif"}}>
                     {activeGame === 'tag' ? 'TAG' : 'MINGLE'} <span className="text-rose-500">GAME</span>
                 </h1>
-                <p className="text-lg text-emerald-400 mb-8 font-medium tracking-widest uppercase relative z-10">
+                <p className="text-xs sm:text-lg text-emerald-400 mb-4 sm:mb-8 font-medium tracking-widest uppercase relative z-10">
                     {activeGame === 'tag' ? 'Tag • Will your number be called?' : 'Mingle Game • Will your number be called?'}
                 </p>
                 
-                <div className="bg-slate-800/80 rounded-2xl p-4 mb-8 border border-slate-700">
+                <div className="bg-slate-800/80 rounded-2xl p-3 sm:p-4 mb-4 sm:mb-8 border border-slate-700">
                     {activeGame === 'tag' && (
                         <div className="flex gap-4 justify-center mb-4">
                             <Button 
@@ -5991,33 +5993,33 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
 
     const renderGameUI = () => (
         <div className="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between">
-            <div className="flex justify-between items-start p-6">
-                <div className="flex gap-4 pointer-events-auto">
-                    <div className="bg-slate-900/90 backdrop-blur text-white px-6 py-3 rounded-2xl border-2 border-slate-700 shadow-lg flex items-center gap-4">
+            <div className="flex justify-between items-start p-2.5 sm:p-6 gap-2">
+                <div className="flex gap-2 sm:gap-4 pointer-events-auto flex-wrap sm:flex-nowrap">
+                    <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-slate-700 shadow-lg flex items-center gap-2 sm:gap-4">
                         <div className="text-center">
-                            <div className="text-emerald-400 text-xs font-bold tracking-widest mb-1 uppercase">Players Alive</div>
-                            <div className="text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                            <div className="text-emerald-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase">Players Alive</div>
+                            <div className="text-2xl sm:text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
                                 {gameState.phase === 'WINNER' ? (gameMode === 'survival' ? 1 : (threeManagerRef.current?.currentRoundData?.activePlayers.length || students.length) - pickCount) : 
                                  threeManagerRef.current?.currentRoundData?.activePlayers.length || students.length}
                             </div>
                         </div>
                     </div>
-                    <div className="bg-slate-900/90 backdrop-blur text-white px-6 py-3 rounded-2xl border-2 border-slate-700 shadow-lg flex items-center gap-4">
+                    <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-slate-700 shadow-lg flex items-center gap-2 sm:gap-4">
                         <div className="text-center">
-                            <div className="text-rose-500 text-xs font-bold tracking-widest mb-1 uppercase">Eliminated</div>
-                            <div className="text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                            <div className="text-rose-500 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase">Eliminated</div>
+                            <div className="text-2xl sm:text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
                                 {totalEliminated}
                             </div>
                         </div>
                     </div>
                     {activeGame === 'tag' && gameState.chaseSecondsLeft !== undefined && (
-                        <div className="bg-slate-900/90 backdrop-blur text-white px-6 py-3 rounded-2xl border-2 border-amber-500/70 shadow-[0_0_25px_rgba(245,158,11,0.35)] flex items-center gap-4">
+                        <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-amber-500/70 shadow-[0_0_25px_rgba(245,158,11,0.35)] flex items-center gap-2 sm:gap-4">
                             <div className="text-center">
-                                <div className="text-amber-400 text-xs font-bold tracking-widest mb-1 uppercase flex items-center justify-center gap-1.5">
-                                    <Clock className={`w-3.5 h-3.5 ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-400'}`} />
+                                <div className="text-amber-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase flex items-center justify-center gap-1">
+                                    <Clock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-400'}`} />
                                     Chase Timer
                                 </div>
-                                <div className={`text-4xl font-bold leading-none ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-300'}`} style={{fontFamily: "'Fredoka', sans-serif"}}>
+                                <div className={`text-2xl sm:text-4xl font-bold leading-none ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-300'}`} style={{fontFamily: "'Fredoka', sans-serif"}}>
                                     {gameState.chaseSecondsLeft}s
                                 </div>
                             </div>
@@ -6025,13 +6027,13 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                     )}
                 </div>
                 
-                <div className="flex gap-3 pointer-events-auto">
+                <div className="flex gap-2 sm:gap-3 pointer-events-auto shrink-0">
                     <button 
                         onClick={toggleFullscreen} 
-                        className="w-12 h-12 bg-slate-900/90 rounded-full text-white hover:bg-slate-700 transition border-2 border-slate-700 flex items-center justify-center shadow-lg"
+                        className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-900/90 rounded-full text-white hover:bg-slate-700 transition border-2 border-slate-700 flex items-center justify-center shadow-lg cursor-pointer"
                         title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
                     >
-                        {isFullscreen ? <Minimize className="w-5 h-5 text-emerald-400" /> : <Maximize className="w-5 h-5 text-slate-200" />}
+                        {isFullscreen ? <Minimize className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" /> : <Maximize className="w-4 h-4 sm:w-5 sm:h-5 text-slate-200" />}
                     </button>
 
                     <div className="relative" ref={gameVolumeRef}>
@@ -6330,77 +6332,163 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             <div id="ui-layer" className="absolute inset-0 z-20 flex font-sans text-slate-100 pointer-events-none">
                 
                 {(view === 'home' || view === 'students') && (
-                    <div className="w-72 bg-slate-900/95 backdrop-blur border-r border-slate-700 flex flex-col pointer-events-auto shadow-2xl z-30">
-                        <div className="p-8 border-b border-slate-800 flex items-center gap-4">
-                            <div className="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(244,63,94,0.5)]">
-                                {activeGame === 'tag' ? <Tag className="text-white w-6 h-6" /> : <Square className="text-white w-6 h-6" />}
+                    <>
+                        {/* Desktop Sidebar */}
+                        <div className="hidden md:flex w-72 bg-slate-900/95 backdrop-blur border-r border-slate-700 flex-col pointer-events-auto shadow-2xl z-30">
+                            <div className="p-8 border-b border-slate-800 flex items-center gap-4">
+                                <div className="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(244,63,94,0.5)]">
+                                    {activeGame === 'tag' ? <Tag className="text-white w-6 h-6" /> : <Square className="text-white w-6 h-6" />}
+                                </div>
+                                <div>
+                                    <h2 className="font-bold text-2xl leading-none text-white tracking-wide" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                                        {activeGame === 'tag' ? 'TAG' : 'MINGLE'}<br/><span className="text-rose-500">GAME</span>
+                                    </h2>
+                                    <span className="text-[10px] text-emerald-400 font-mono tracking-wider uppercase block mt-1">
+                                        {activeGame === 'tag' ? 'Tag Active' : 'Mingle Active'}
+                                    </span>
+                                </div>
                             </div>
-                            <div>
-                                <h2 className="font-bold text-2xl leading-none text-white tracking-wide" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                    {activeGame === 'tag' ? 'TAG' : 'MINGLE'}<br/><span className="text-rose-500">GAME</span>
-                                </h2>
-                                <span className="text-[10px] text-emerald-400 font-mono tracking-wider uppercase block mt-1">
-                                    {activeGame === 'tag' ? 'Tag Active' : 'Mingle Active'}
+                            
+                            <nav className="flex-1 p-6 flex flex-col gap-3">
+                                <button 
+                                    onClick={() => setView('students')} 
+                                    className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'students' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                                    title="Player Roster"
+                                >
+                                    <ClipboardList className="w-6 h-6 text-center" /> 
+                                    <span className="font-semibold">Player Roster</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => {
+                                        setActiveGame('mingle');
+                                        setGameMode('picker');
+                                        setView('home');
+                                        if (threeManagerRef.current) {
+                                            threeManagerRef.current.setGameType('mingle');
+                                            threeManagerRef.current.spawnPlayers(students);
+                                        }
+                                    }} 
+                                    className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'home' && activeGame === 'mingle' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                                    title="Mingle Game"
+                                >
+                                    <Users className="w-6 h-6 text-center text-rose-400" /> 
+                                    <span className="font-semibold text-white">Mingle Game</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => {
+                                        setActiveGame('tag');
+                                        setView('home');
+                                        if (threeManagerRef.current) {
+                                            threeManagerRef.current.setGameType('tag');
+                                            threeManagerRef.current.spawnPlayers(students);
+                                        }
+                                    }} 
+                                    className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'home' && activeGame === 'tag' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                                    title="Tag"
+                                >
+                                    <Tag className="w-6 h-6 text-center text-rose-400" /> 
+                                    <span className="font-semibold text-white">Tag</span>
+                                </button>
+                            </nav>
+                            
+                            <div className="p-6 border-t border-slate-800 text-xs text-slate-600 text-center uppercase tracking-widest font-bold flex flex-col gap-1">
+                                <span>Version 3.0</span>
+                                <span className={activeGame === 'mingle' || gameMode === 'picker' ? 'text-rose-500' : 'text-emerald-500'}>
+                                    {activeGame === 'tag' ? `Tag • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}` : 'Mingle • Picker Active'}
                                 </span>
                             </div>
                         </div>
-                        
-                        <nav className="flex-1 p-6 flex flex-col gap-3">
-                            <button 
-                                onClick={() => setView('students')} 
-                                className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'students' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
-                                title="Player Roster"
-                            >
-                                <ClipboardList className="w-6 h-6 text-center" /> 
-                                <span className="font-semibold">Player Roster</span>
-                            </button>
 
-                            <button 
-                                onClick={() => {
-                                    setActiveGame('mingle');
-                                    setGameMode('picker');
-                                    setView('home');
-                                    if (threeManagerRef.current) {
-                                        threeManagerRef.current.setGameType('mingle');
-                                        threeManagerRef.current.spawnPlayers(students);
-                                    }
-                                }} 
-                                className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'home' && activeGame === 'mingle' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
-                                title="Mingle Game"
-                            >
-                                <Users className="w-6 h-6 text-center text-rose-400" /> 
-                                <span className="font-semibold text-white">Mingle Game</span>
-                            </button>
-
-                            <button 
-                                onClick={() => {
-                                    setActiveGame('tag');
-                                    setView('home');
-                                    if (threeManagerRef.current) {
-                                        threeManagerRef.current.setGameType('tag');
-                                        threeManagerRef.current.spawnPlayers(students);
-                                    }
-                                }} 
-                                className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'home' && activeGame === 'tag' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
-                                title="Tag"
-                            >
-                                <Tag className="w-6 h-6 text-center text-rose-400" /> 
-                                <span className="font-semibold text-white">Tag</span>
-                            </button>
-                        </nav>
-                        
-                        <div className="p-6 border-t border-slate-800 text-xs text-slate-600 text-center uppercase tracking-widest font-bold flex flex-col gap-1">
-                            <span>Version 3.0</span>
-                            <span className={activeGame === 'mingle' || gameMode === 'picker' ? 'text-rose-500' : 'text-emerald-500'}>
-                                {activeGame === 'tag' ? `Tag • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}` : 'Mingle • Picker Active'}
-                            </span>
-                        </div>
-                    </div>
+                        {/* Mobile Drawer Slide-over */}
+                        {showMobileDrawer && (
+                            <div className="fixed inset-0 z-[100] md:hidden bg-black/80 backdrop-blur-sm flex justify-start pointer-events-auto animate-in fade-in duration-200">
+                                <div className="w-72 h-full bg-slate-900 text-white p-6 flex flex-col gap-4 shadow-2xl border-r border-slate-700 overflow-y-auto">
+                                    <div className="flex items-center justify-between border-b pb-4 border-slate-800">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-xl shadow-[0_0_15px_rgba(244,63,94,0.5)]">
+                                                {activeGame === 'tag' ? <Tag className="text-white w-5 h-5" /> : <Square className="text-white w-5 h-5" />}
+                                            </div>
+                                            <div>
+                                                <h2 className="font-bold text-lg leading-none text-white tracking-wide" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                                                    {activeGame === 'tag' ? 'TAG' : 'MINGLE'} <span className="text-rose-500">GAME</span>
+                                                </h2>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setShowMobileDrawer(false)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+                                            <X size={20} />
+                                        </button>
+                                    </div>
+                                    <nav className="flex-1 flex flex-col gap-3 py-2">
+                                        <button 
+                                            onClick={() => { setView('students'); setShowMobileDrawer(false); }} 
+                                            className={`flex items-center gap-3 p-3.5 rounded-xl transition font-medium ${view === 'students' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400'}`}
+                                        >
+                                            <ClipboardList className="w-5 h-5" /> 
+                                            <span className="font-semibold text-white">Player Roster</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                setActiveGame('mingle');
+                                                setGameMode('picker');
+                                                setView('home');
+                                                setShowMobileDrawer(false);
+                                                if (threeManagerRef.current) {
+                                                    threeManagerRef.current.setGameType('mingle');
+                                                    threeManagerRef.current.spawnPlayers(students);
+                                                }
+                                            }} 
+                                            className={`flex items-center gap-3 p-3.5 rounded-xl transition font-medium ${view === 'home' && activeGame === 'mingle' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400'}`}
+                                        >
+                                            <Users className="w-5 h-5 text-rose-400" /> 
+                                            <span className="font-semibold text-white">Mingle Game</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                setActiveGame('tag');
+                                                setView('home');
+                                                setShowMobileDrawer(false);
+                                                if (threeManagerRef.current) {
+                                                    threeManagerRef.current.setGameType('tag');
+                                                    threeManagerRef.current.spawnPlayers(students);
+                                                }
+                                            }} 
+                                            className={`flex items-center gap-3 p-3.5 rounded-xl transition font-medium ${view === 'home' && activeGame === 'tag' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400'}`}
+                                        >
+                                            <Tag className="w-5 h-5 text-rose-400" /> 
+                                            <span className="font-semibold text-white">Tag</span>
+                                        </button>
+                                    </nav>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
 
                 <div className="flex-1 relative">
                     {(view === 'home' || view === 'students') && (
-                        <div className="absolute top-6 right-6 z-40 flex items-center gap-3 pointer-events-auto">
+                        <>
+                            {/* Top Left Navigation (Back to Games & Mobile Menu) */}
+                            <div className="absolute top-4 sm:top-6 left-4 sm:left-6 z-40 flex items-center gap-2 pointer-events-auto">
+                                <button
+                                    onClick={() => onViewChange ? onViewChange('home') : setView('home')}
+                                    className="p-2 sm:p-2.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white transition border-2 border-slate-700 flex items-center justify-center shadow-lg"
+                                    title="Exit to Home"
+                                >
+                                    <ArrowLeft className="w-5 h-5" />
+                                </button>
+                                <button
+                                    onClick={() => setShowMobileDrawer(true)}
+                                    className="md:hidden flex items-center gap-1.5 px-3 py-2 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white transition border-2 border-slate-700 shadow-lg text-xs font-bold"
+                                    title="Open Menu"
+                                >
+                                    <Menu className="w-4 h-4 text-rose-400" />
+                                    <span>Menu</span>
+                                </button>
+                            </div>
+
+                            <div className="absolute top-4 sm:top-6 right-4 sm:right-6 z-40 flex items-center gap-2 sm:gap-3 pointer-events-auto">
                             <button
                                 onClick={toggleFullscreen}
                                 className="w-12 h-12 bg-slate-900/90 hover:bg-slate-700 rounded-full text-white transition border-2 border-slate-700 flex items-center justify-center shadow-lg"
@@ -6459,7 +6547,8 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 )}
                             </div>
                         </div>
-                    )}
+                    </>
+                )}
                     {view === 'home' && renderHome()}
                     {view === 'students' && <StudentManager students={students} setStudents={setStudents} onBack={() => setView('home')} onViewChange={onViewChange} />}
                     {view === 'game' && renderGameUI()}

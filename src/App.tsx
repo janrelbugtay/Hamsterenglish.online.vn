@@ -311,6 +311,14 @@ export default function App() {
     }
   };
 
+  const isGame = [
+    "mystery-box", "bubble-pop", "yoga-quiz", "bubble-sentence-pro",
+    "family-feud", "sumo", "hamster-pop-quiz", "student-race",
+    "squid-game-picker", "letter-lock", "tic-tac-toe", "neon-chain",
+    "flashcards-match", "phonemic-master"
+  ].includes(currentView);
+  const isClass = currentView === "class-record" || currentView === "class-rewards";
+
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 font-sans text-slate-800 dark:text-slate-200 overflow-hidden">
       <AuthSliderModal 
@@ -345,14 +353,16 @@ export default function App() {
         openGoogleAuthModal={openGoogleAuthModal}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header 
-          onViewChange={handleViewChange} 
-          setIsMobileMenuOpen={setIsMobileMenuOpen}
-          openAuthModal={() => setIsAuthModalOpen(true)}
-        />
-        <main className={`flex-1 overflow-y-auto ${currentView === "class-record" || currentView === "class-rewards" || currentView === "sumo" ? "p-2 md:p-3 space-y-0" : "p-4 md:p-8 space-y-6"}`}>
+        <div className={isGame ? "hidden md:block shrink-0" : "shrink-0"}>
+          <Header 
+            onViewChange={handleViewChange} 
+            setIsMobileMenuOpen={setIsMobileMenuOpen}
+            openAuthModal={() => setIsAuthModalOpen(true)}
+          />
+        </div>
+        <main className={`flex-1 ${isGame ? "p-0 space-y-0 h-full flex flex-col overflow-y-auto" : isClass ? "p-2 md:p-3 space-y-0 overflow-y-auto" : "p-4 md:p-8 space-y-6 overflow-y-auto"}`}>
           {renderView()}
-          {currentView !== "sumo" && currentView !== "class-record" && currentView !== "class-rewards" && <Footer />}
+          {!isGame && !isClass && <Footer />}
         </main>
       </div>
     </div>

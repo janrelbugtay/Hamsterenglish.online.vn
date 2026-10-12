@@ -186,8 +186,8 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
   }
 
   return (
-    <div id="game-container" className="h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)] w-full -m-4 md:-m-8 bg-[#ccfbf1] text-slate-900 flex flex-col font-sans overflow-hidden relative selection:bg-teal-500/30 rounded-xl" 
-         style={{ margin: '-1rem', height: 'calc(100% + 2rem)', backgroundImage: 'radial-gradient(#99f6e4 2px, transparent 2px)', backgroundSize: '40px 40px' }}>
+    <div id="game-container" className="w-full min-h-full flex-1 bg-[#ccfbf1] text-slate-900 flex flex-col font-sans overflow-hidden relative selection:bg-teal-500/30 rounded-xl" 
+         style={{ backgroundImage: 'radial-gradient(#99f6e4 2px, transparent 2px)', backgroundSize: '40px 40px' }}>
       
       <style>{`
         @keyframes fadeIn {
@@ -1224,21 +1224,21 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                       </div>
                       
                       {/* Header with progress */}
-                      <div className="bg-teal-50 pt-20 md:pt-20 pb-4 px-4 border-b-[4px] border-teal-100 flex flex-col items-center shrink-0 gap-4">
+                      <div className="bg-teal-50 pt-16 sm:pt-20 pb-2 sm:pb-4 px-2 sm:px-4 border-b-[4px] border-teal-100 flex flex-col items-center shrink-0 gap-2 sm:gap-4">
                           {/* Center Teams */}
-                          <div className="w-full max-w-[95vw] overflow-x-auto custom-scrollbar px-4 pb-4">
-                              <div className="flex flex-nowrap justify-start lg:justify-center items-center gap-4 md:gap-6 min-w-full w-max mx-auto">
+                          <div className="w-full max-w-[95vw] overflow-x-auto custom-scrollbar px-2 sm:px-4 pb-2 sm:pb-4">
+                              <div className="flex flex-nowrap justify-start lg:justify-center items-center gap-2 sm:gap-4 md:gap-6 min-w-full w-max mx-auto">
                               {teams.map((team, index) => {
                                   const theme = teamColors[team.colorIdx];
                                   // Alternate layout for variety, or just keep consistent. Let's make minus on left, plus on right for all in the middle
                                   return (
-                                      <div key={team.id} className={`flex items-stretch rounded-3xl shadow-xl border-[6px] md:border-[8px] ${theme.border} overflow-hidden shrink-0 transform transition-transform hover:scale-105`}>
-                                          <button onClick={() => updateTeamScore(team.id, -1)} className={`px-3 md:px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 transition-colors border-r-[6px] md:border-r-[8px] ${theme.borderLight} flex items-center justify-center cursor-pointer`}>
-                                              <span className="font-black text-3xl md:text-4xl leading-none opacity-40 hover:opacity-100">-</span>
+                                      <div key={team.id} className={`flex items-stretch rounded-2xl sm:rounded-3xl shadow-xl border-4 sm:border-[6px] md:border-[8px] ${theme.border} overflow-hidden shrink-0 transform transition-transform hover:scale-105`}>
+                                          <button onClick={() => updateTeamScore(team.id, -1)} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 bg-white hover:bg-gray-100 text-gray-700 transition-colors border-r-4 sm:border-r-[6px] md:border-r-[8px] ${theme.borderLight} flex items-center justify-center cursor-pointer`}>
+                                              <span className="font-black text-2xl sm:text-3xl md:text-4xl leading-none opacity-40 hover:opacity-100">-</span>
                                           </button>
-                                          <button onClick={() => updateTeamScore(team.id, 1)} className={`px-4 md:px-6 py-2 md:py-3 font-black text-white ${theme.bg} hover:brightness-110 transition-all flex items-center gap-3 md:gap-4 cursor-pointer`}>
+                                          <button onClick={() => updateTeamScore(team.id, 1)} className={`px-3 sm:px-6 py-1.5 sm:py-2 md:py-3 font-black text-white ${theme.bg} hover:brightness-110 transition-all flex items-center gap-2 sm:gap-4 cursor-pointer`}>
                                               <span className={playerTextClass}>{team.name}</span>
-                                              <span className="bg-white/20 px-4 md:px-5 py-1 md:py-2 rounded-xl text-3xl md:text-4xl drop-shadow-lg leading-none">{team.score}</span>
+                                              <span className="bg-white/20 px-2.5 sm:px-5 py-0.5 sm:py-1 md:py-2 rounded-xl text-xl sm:text-3xl md:text-4xl drop-shadow-lg leading-none">{team.score}</span>
                                           </button>
                                       </div>
                                   );
@@ -1247,20 +1247,20 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                           </div>
                       </div>
 
-                      <div className="p-4 md:p-6 flex-grow flex flex-col justify-center overflow-hidden bg-white/50">
+                      <div className="p-2 sm:p-4 md:p-6 flex-grow flex flex-col justify-start sm:justify-center overflow-y-auto bg-white/50">
                           {/* Question */}
-                          <div className="text-center mb-4 md:mb-6 shrink-0">
-                              <p className="text-teal-500 font-black uppercase tracking-widest text-sm md:text-base mb-2">Complete the sentence...</p>
-                              <h2 className={`${questionTextClass} font-black text-indigo-900 bg-indigo-50 py-6 md:py-10 px-8 md:px-12 rounded-[2rem] border-[6px] border-indigo-100 shadow-inner inline-block min-w-[60%] max-w-[95%] leading-tight`}>
+                          <div className="text-center mb-2 sm:mb-4 md:mb-6 shrink-0">
+                              <p className="text-teal-500 font-black uppercase tracking-widest text-xs sm:text-sm md:text-base mb-1 sm:mb-2">Complete the sentence...</p>
+                              <h2 className={`font-black text-indigo-900 bg-indigo-50 py-3 sm:py-6 md:py-10 px-4 sm:px-8 md:px-12 rounded-2xl sm:rounded-[2rem] border-4 sm:border-[6px] border-indigo-100 shadow-inner inline-block min-w-[60%] max-w-[95%] leading-tight text-lg sm:text-3xl md:text-4xl`}>
                                   {quiz.questions[currentIdx]?.text}
                               </h2>
                           </div>
 
                           {/* Answer Buttons */}
-                          <div className="flex flex-row justify-center items-stretch gap-2 sm:gap-4 md:gap-6 w-full max-w-[98%] xl:max-w-7xl mx-auto">
+                          <div className="grid grid-cols-2 md:flex md:flex-row justify-center items-stretch gap-2 sm:gap-4 md:gap-6 w-full max-w-[98%] xl:max-w-7xl mx-auto">
                               {shuffledOptions.map((opt, index) => {
                                   const isMany = shuffledOptions.length > 4;
-                                  let btnClasses = `flex-1 min-w-0 bg-white border-4 md:border-[6px] border-gray-100 text-gray-700 font-bold p-2 sm:p-3 md:p-4 ${isMany ? 'rounded-[1.5rem]' : 'md:p-6 rounded-[2rem]'} transition-all duration-300 flex flex-col items-center text-center shadow-lg relative group outline-none `;
+                                  let btnClasses = `flex-1 min-w-0 bg-white border-2 sm:border-4 md:border-[6px] border-gray-100 text-gray-700 font-bold p-2 sm:p-3 md:p-4 ${isMany ? 'rounded-[1.2rem] sm:rounded-[1.5rem]' : 'rounded-2xl md:rounded-[2rem]'} transition-all duration-300 flex flex-col items-center text-center shadow-lg relative group outline-none `;
                                   
                                   if (isAnswering) {
                                       if (index === selectedOption) {
@@ -1286,26 +1286,24 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                                          className={btnClasses}
                                       >
                                           {isAnswering && (index === selectedOption || opt.isCorrect) && (
-                                              <div className={`absolute -top-4 -right-4 md:-top-6 md:-right-6 w-10 h-10 md:w-16 md:h-16 rounded-full flex items-center justify-center text-white text-2xl md:text-4xl font-black shadow-lg z-30 animate-bounce ${opt.isCorrect ? 'bg-green-500' : 'bg-red-500'}`}>
+                                              <div className={`absolute -top-3 -right-3 sm:-top-4 sm:-right-4 md:-top-6 md:-right-6 w-8 h-8 sm:w-10 sm:h-10 md:w-16 md:h-16 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl md:text-4xl font-black shadow-lg z-30 animate-bounce ${opt.isCorrect ? 'bg-green-500' : 'bg-red-500'}`}>
                                                   {opt.isCorrect ? '✓' : '✗'}
                                               </div>
                                           )}
-                                          <div className={`w-full aspect-square max-h-[25vh] ${isMany ? 'md:max-h-[20vh]' : ''} rounded-xl md:rounded-[1.5rem] overflow-hidden relative bg-teal-50/50 border-4 border-teal-100 mb-2 md:mb-4 shadow-inner transition-transform duration-300 shrink-0 flex items-center justify-center ${!isAnswering ? 'group-hover:scale-[1.05]' : ''}`}>
+                                          <div className={`w-full aspect-square max-h-[16vh] sm:max-h-[22vh] md:max-h-[25vh] ${isMany ? 'md:max-h-[20vh]' : ''} rounded-xl md:rounded-[1.5rem] overflow-hidden relative bg-teal-50/50 border-2 sm:border-4 border-teal-100 mb-1.5 sm:mb-2 md:mb-4 shadow-inner transition-transform duration-300 shrink-0 flex items-center justify-center ${!isAnswering ? 'group-hover:scale-[1.05]' : ''}`}>
 
                                               {(() => {
-                                                  // We use the pre-assigned random poseIndex for this option (so it doesn't change on render)
-                                                  // And if we have more options than active poses, we loop back through the active poses
                                                   const activePoseValue = activePoses[opt.poseIndex % activePoses.length] || AVAILABLE_POSES[0].value;
                                                   const poseObj = AVAILABLE_POSES.find(p => p.value === activePoseValue) || { type: 'emoji', value: activePoseValue };
                                                   
                                                   if (poseObj.type === 'image') {
                                                       return <img src={poseObj.value} alt="Pose" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />;
                                                   } else {
-                                                      return <span className={`${optionEmojiClass} drop-shadow-sm leading-none`}>{poseObj.value}</span>;
+                                                      return <span className={`${optionEmojiClass} drop-shadow-sm leading-none text-3xl sm:text-5xl md:text-6xl`}>{poseObj.value}</span>;
                                                   }
                                               })()}
                                           </div>
-                                          <span className={`${isMany ? 'text-lg sm:text-xl md:text-2xl xl:text-3xl' : 'text-2xl sm:text-3xl md:text-4xl xl:text-5xl'} font-black text-gray-800 leading-tight w-full flex items-center justify-center break-words pb-1 md:pb-2 flex-grow`}>{opt.text}</span>
+                                          <span className={`${isMany ? 'text-xs sm:text-lg md:text-2xl' : 'text-sm sm:text-2xl md:text-4xl'} font-black text-gray-800 leading-tight w-full flex items-center justify-center break-words pb-1 md:pb-2 flex-grow`}>{opt.text}</span>
                                       </button>
                                   );
                               })}

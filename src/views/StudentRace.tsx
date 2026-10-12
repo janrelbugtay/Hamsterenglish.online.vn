@@ -910,19 +910,19 @@ const RaceEngine = ({ students, theme, onWin, onRemove, onBack }: any) => {
   }, []);
 
   return (
-    <div className="flex flex-col w-full h-full rounded-3xl relative overflow-hidden bg-gradient-to-br from-indigo-900 to-slate-900 shadow-inner flex-1 p-4 md:p-8">
+    <div className="flex flex-col w-full h-full rounded-2xl sm:rounded-3xl relative overflow-hidden bg-gradient-to-br from-indigo-900 to-slate-900 shadow-inner flex-1 p-2 sm:p-4 md:p-8">
       {/* Top Bar for Exit */}
-      <div className="flex justify-between items-center mb-8 z-10">
+      <div className="flex justify-between items-center mb-3 sm:mb-8 z-10">
         <button 
           onClick={onBack}
-          className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-all"
+          className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-bold flex items-center gap-1.5 sm:gap-2 text-xs sm:text-base transition-all"
         >
-          <X size={20} /> Exit
+          <X size={18} className="sm:w-5 sm:h-5" /> Exit
         </button>
         <button 
           onClick={startRace}
           disabled={isRacing}
-          className={`px-8 py-3 rounded-full font-black text-xl shadow-xl transition-transform border-4 border-white
+          className={`px-5 sm:px-8 py-2 sm:py-3 rounded-full font-black text-sm sm:text-xl shadow-xl transition-transform border-2 sm:border-4 border-white
             ${isRacing ? 'bg-slate-500 text-slate-300 border-slate-400 cursor-not-allowed scale-95' : 'bg-gradient-to-b from-yellow-300 to-yellow-500 text-yellow-950 hover:scale-105 active:scale-95'}`}
         >
           {isRacing ? 'RACING...' : 'START RACE'}
@@ -930,7 +930,7 @@ const RaceEngine = ({ students, theme, onWin, onRemove, onBack }: any) => {
       </div>
 
       {/* Racetrack */}
-      <div className="flex-1 bg-black/40 rounded-3xl p-4 md:p-8 overflow-y-auto border border-white/10 relative shadow-inner flex flex-col gap-2 relative">
+      <div className="flex-1 bg-black/40 rounded-2xl sm:rounded-3xl p-2 sm:p-4 md:p-8 overflow-y-auto border border-white/10 relative shadow-inner flex flex-col gap-2 relative">
          {/* Finish Line Indicator (Vertical Line) */}
          <div className="absolute top-0 bottom-0 border-l-4 border-dashed border-yellow-400 z-0 opacity-50 pointer-events-none" style={{ left: `${finishLine}%` }}></div>
          
@@ -975,12 +975,12 @@ const WinnerModal = ({ isOpen, winner, onClose, onRemove }: any) => {
   if (!isOpen || !winner) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
-      <div className="bg-gradient-to-b from-white to-slate-50 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] w-full max-w-lg overflow-hidden flex flex-col items-center p-12 text-center animate-in zoom-in-50 duration-500 border-4 border-yellow-400">
-        <div className="text-yellow-400 mb-6 animate-bounce drop-shadow-[0_10px_10px_rgba(250,204,21,0.5)]">
-           <Trophy size={100} className="fill-current drop-shadow-md" />
+      <div className="bg-gradient-to-b from-white to-slate-50 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] w-full max-w-lg overflow-hidden flex flex-col items-center p-6 sm:p-12 text-center animate-in zoom-in-50 duration-500 border-4 border-yellow-400">
+        <div className="text-yellow-400 mb-4 sm:mb-6 animate-bounce drop-shadow-[0_10px_10px_rgba(250,204,21,0.5)]">
+           <Trophy size={70} className="sm:w-24 sm:h-24 fill-current drop-shadow-md" />
         </div>
-        <h3 className="text-indigo-400 font-black text-xl uppercase tracking-widest mb-4">WINNER</h3>
-        <h2 className="text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-10 break-words w-full px-4 drop-shadow-sm leading-tight">
+        <h3 className="text-indigo-400 font-black text-sm sm:text-xl uppercase tracking-widest mb-2 sm:mb-4">WINNER</h3>
+        <h2 className="text-3xl sm:text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-6 sm:mb-10 break-words w-full px-2 sm:px-4 drop-shadow-sm leading-tight">
           {winner.name}
         </h2>
         

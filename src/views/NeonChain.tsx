@@ -414,7 +414,7 @@ export function NeonChain({ onViewChange }: { onViewChange: (view: ViewState) =>
   const borderLight = isLight ? 'border-slate-200' : 'border-white/5';
   
   return (
-    <div id="game-container" className={`h-[calc(100vh-2rem)] w-full -m-4 md:-m-8 ${bgMain} flex flex-col font-sans ${textMain} overflow-hidden relative selection:bg-cyan-500/30 rounded-xl transition-colors duration-500`} style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }}>
+    <div id="game-container" className={`w-full min-h-full flex-1 ${bgMain} flex flex-col font-sans ${textMain} overflow-y-auto overflow-x-hidden relative selection:bg-cyan-500/30 rounded-xl transition-colors duration-500`}>
       
       {/* Immersive Background Effects */}
       {!isLight && (

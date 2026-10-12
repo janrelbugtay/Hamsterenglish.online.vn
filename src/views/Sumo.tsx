@@ -195,7 +195,7 @@ const SumoCharacter = ({ team, isPushing, isOpponentPushing, isStunned, isFrozen
 
   return (
     <div 
-      className={`relative z-20 w-[170px] h-[180px] sm:w-[210px] sm:h-[225px] md:w-[255px] md:h-[270px] lg:w-[290px] lg:h-[310px] xl:w-[320px] xl:h-[340px] transition-transform duration-200 ease-out origin-center select-none ${className || ''}`}
+      className={`relative z-20 w-[110px] h-[120px] sm:w-[170px] sm:h-[180px] md:w-[255px] md:h-[270px] lg:w-[290px] lg:h-[310px] xl:w-[320px] xl:h-[340px] transition-transform duration-200 ease-out origin-center select-none ${className || ''}`}
       style={{ transform }}
     >
       <svg viewBox="0 0 120 120" className="w-full h-full overflow-visible drop-shadow-xl">
@@ -919,7 +919,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     const currentQ = studyQuestions[studyIndex];
     
     return (
-      <div id="game-container" className="h-[calc(100vh-2rem)] bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex flex-col font-sans p-4 relative" style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }}>
+      <div id="game-container" className="w-full min-h-full flex-1 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex flex-col font-sans p-2 sm:p-4 relative">
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-white/10 rounded-2xl backdrop-blur-md mb-8 border border-white/10">
            <button 
@@ -1003,7 +1003,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
 
   if (screen === 'menu') {
     return (
-      <div id="game-container" className="h-[calc(100vh-2rem)] bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center font-sans p-4 overflow-hidden relative" style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }}>
+      <div id="game-container" className="w-full min-h-full flex-1 bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center font-sans p-2 sm:p-4 overflow-y-auto relative">
         <div className="absolute top-4 left-4 z-[60] flex items-center gap-2">
           <button 
             onClick={() => onViewChange("home")}
@@ -1148,7 +1148,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
 
   if (screen === 'end') {
     return (
-      <div id="game-container" className="h-[calc(100vh-2rem)] bg-slate-100 dark:bg-black/95 flex items-center justify-center font-sans p-4 overflow-hidden relative" style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }}>
+      <div id="game-container" className="w-full min-h-full flex-1 bg-slate-100 dark:bg-black/95 flex items-center justify-center font-sans p-2 sm:p-4 overflow-y-auto relative">
         <div className="absolute top-4 left-4 z-[60] flex items-center gap-2">
           <button 
             onClick={() => onViewChange("home")}
@@ -1220,7 +1220,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     const currentQText = leftTeam.q?.text || rightTeam.q?.text || DEFAULT_QUESTIONS[0].text;
 
     return (
-      <div id="game-container" className="h-[calc(100vh-2rem)] w-full select-none overflow-hidden font-sans relative" style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }}>
+      <div id="game-container" className="w-full min-h-full flex-1 select-none overflow-hidden font-sans relative flex flex-col">
         <SumoStadiumEnvironment 
           battlePos={battlePos} 
           winner={winner} 
@@ -1381,19 +1381,19 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
           </div>
 
           {/* BOTTOM ANSWER AREA (TWO HORIZONTAL CONTAINERS SIDE BY SIDE) */}
-          <div className="w-full flex flex-col md:flex-row gap-3 md:gap-5 shrink-0 z-20">
+          <div className="w-full flex flex-col md:flex-row gap-2 sm:gap-3 md:gap-5 shrink-0 z-20">
             {/* BLUE ANSWER CONTAINER */}
-            <div className="flex-1 bg-[#0055fe] rounded-3xl md:rounded-[2.5rem] p-3 sm:p-4 md:p-5 shadow-2xl border-b-6 md:border-b-8 border-[#0038b3] flex flex-col justify-between">
+            <div className="flex-1 bg-[#0055fe] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#0038b3] flex flex-col justify-between">
               {/* Split Mode: Blue Question displayed directly on Blue side */}
               {questionMode === 'split' && (
-                <div className="bg-white rounded-2xl md:rounded-3xl p-3 sm:p-4 mb-2.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col justify-center min-h-[68px] sm:min-h-[82px]">
-                  <div className={`${getQuestionFontSize(leftTeam.q?.text || "")} font-black text-[#0f172a] leading-tight px-1 break-words`}>
+                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col justify-center min-h-[50px] sm:min-h-[82px]">
+                  <div className={`${getQuestionFontSize(leftTeam.q?.text || "")} font-black text-[#0f172a] leading-tight px-1 break-words text-xs sm:text-base md:text-xl`}>
                     {renderQuestionText(leftTeam.q?.text || "")}
                   </div>
                 </div>
               )}
 
-              <div className={`grid gap-2 sm:gap-3 md:gap-4 ${
+              <div className={`grid gap-1.5 sm:gap-3 md:gap-4 ${
                 (leftTeam.q?.options?.length || 4) === 2 
                   ? 'grid-cols-2' 
                   : (leftTeam.q?.options?.length || 4) === 3 
@@ -1412,15 +1412,15 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                         handleAnswer('left', idx);
                       }}
                       disabled={leftTeam.stunned || leftTeam.frozen}
-                      className={`bg-white hover:bg-blue-50 active:translate-y-2 rounded-2xl md:rounded-3xl p-2 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[76px] sm:min-h-[88px] md:min-h-[105px] lg:min-h-[120px] shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                      className={`bg-white hover:bg-blue-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[52px] sm:min-h-[76px] md:min-h-[105px] lg:min-h-[120px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
                         isKeyActive ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-blue-100 ring-4 ring-white' : ''
                       } ${leftTeam.stunned || leftTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded-md sm:rounded-lg bg-[#dbeafe] flex items-center justify-center font-black text-[#0055fe] text-[10px] sm:text-xs md:text-sm shadow-xs mb-1 shrink-0">
+                      <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#dbeafe] flex items-center justify-center font-black text-[#0055fe] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
                         {keyHints[idx] || (idx + 1)}
                       </div>
                       <div className="flex-1 w-full flex items-center justify-center px-0.5 overflow-hidden">
-                        <span className={`${getOptionFontSize(opt, leftTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-normal whitespace-normal line-clamp-2`}>
+                        <span className={`${getOptionFontSize(opt, leftTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-normal whitespace-normal line-clamp-2 text-[11px] sm:text-sm md:text-base`}>
                           {opt}
                         </span>
                       </div>
@@ -1431,17 +1431,17 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             </div>
 
             {/* RED ANSWER CONTAINER */}
-            <div className="flex-1 bg-[#cc0000] rounded-3xl md:rounded-[2.5rem] p-3 sm:p-4 md:p-5 shadow-2xl border-b-6 md:border-b-8 border-[#990000] flex flex-col justify-between">
+            <div className="flex-1 bg-[#cc0000] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#990000] flex flex-col justify-between">
               {/* Split Mode: Red Question displayed directly on Red side */}
               {questionMode === 'split' && (
-                <div className="bg-white rounded-2xl md:rounded-3xl p-3 sm:p-4 mb-2.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col justify-center min-h-[68px] sm:min-h-[82px]">
-                  <div className={`${getQuestionFontSize(rightTeam.q?.text || "")} font-black text-[#0f172a] leading-tight px-1 break-words`}>
+                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col justify-center min-h-[50px] sm:min-h-[82px]">
+                  <div className={`${getQuestionFontSize(rightTeam.q?.text || "")} font-black text-[#0f172a] leading-tight px-1 break-words text-xs sm:text-base md:text-xl`}>
                     {renderQuestionText(rightTeam.q?.text || "")}
                   </div>
                 </div>
               )}
 
-              <div className={`grid gap-2 sm:gap-3 md:gap-4 ${
+              <div className={`grid gap-1.5 sm:gap-3 md:gap-4 ${
                 (rightTeam.q?.options?.length || 4) === 2 
                   ? 'grid-cols-2' 
                   : (rightTeam.q?.options?.length || 4) === 3 
@@ -1460,15 +1460,15 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                         handleAnswer('right', idx);
                       }}
                       disabled={rightTeam.stunned || rightTeam.frozen}
-                      className={`bg-white hover:bg-red-50 active:translate-y-2 rounded-2xl md:rounded-3xl p-2 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[76px] sm:min-h-[88px] md:min-h-[105px] lg:min-h-[120px] shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                      className={`bg-white hover:bg-red-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[52px] sm:min-h-[76px] md:min-h-[105px] lg:min-h-[120px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
                         isKeyActive ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-red-100 ring-4 ring-white' : ''
                       } ${rightTeam.stunned || rightTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded-md sm:rounded-lg bg-[#fee2e2] flex items-center justify-center font-black text-[#cc0000] text-[10px] sm:text-xs md:text-sm shadow-xs mb-1 shrink-0">
+                      <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#fee2e2] flex items-center justify-center font-black text-[#cc0000] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
                         {keyHints[idx] || (idx + 1)}
                       </div>
                       <div className="flex-1 w-full flex items-center justify-center px-0.5 overflow-hidden">
-                        <span className={`${getOptionFontSize(opt, rightTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-normal whitespace-normal line-clamp-2`}>
+                        <span className={`${getOptionFontSize(opt, rightTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-normal whitespace-normal line-clamp-2 text-[11px] sm:text-sm md:text-base`}>
                           {opt}
                         </span>
                       </div>

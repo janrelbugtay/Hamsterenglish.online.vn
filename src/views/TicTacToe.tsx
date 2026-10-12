@@ -609,56 +609,56 @@ const HostLobby = ({ state, dispatch }: { state: any, dispatch: any }) => {
     const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}?joinCode=${state.roomId}` : '';
 
     return (
-        <div className="min-h-screen bg-emerald-100 text-gray-900 flex flex-col font-sans p-8">
+        <div className="min-h-screen bg-emerald-100 text-gray-900 flex flex-col font-sans p-3 sm:p-8">
             <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col">
-                <div className="text-center mb-12 flex flex-col items-center">
-                    <h2 className="text-gray-900 font-bold uppercase tracking-[0.2em] mb-2 text-2xl">Scan to Join or Enter Code</h2>
-                    <div className="flex gap-8 items-center bg-gray-900 p-8 rounded-3xl shadow-2xl border-4 border-gray-800">
-                        <div className="bg-white p-4 rounded-xl">
-                            <QRCodeSVG value={joinUrl} size={150} />
+                <div className="text-center mb-6 sm:mb-12 flex flex-col items-center">
+                    <h2 className="text-gray-900 font-bold uppercase tracking-[0.2em] mb-2 text-lg sm:text-2xl">Scan to Join or Enter Code</h2>
+                    <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 items-center bg-gray-900 p-4 sm:p-8 rounded-3xl shadow-2xl border-2 sm:border-4 border-gray-800 text-center sm:text-left">
+                        <div className="bg-white p-3 sm:p-4 rounded-xl">
+                            <QRCodeSVG value={joinUrl} size={120} className="sm:w-[150px] sm:h-[150px]" />
                         </div>
-                        <div className="flex flex-col items-start text-left">
-                            <p className="text-gray-400 font-medium mb-1 uppercase tracking-widest text-sm">Join at <span className="text-white font-bold">hamsterenglish.online/play</span> or use Code</p>
-                            <span className="text-7xl font-black tracking-[0.2em] text-white leading-none">{state.roomId}</span>
+                        <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
+                            <p className="text-gray-400 font-medium mb-1 uppercase tracking-widest text-xs sm:text-sm">Join at <span className="text-white font-bold">hamsterenglish.online/play</span> or use Code</p>
+                            <span className="text-5xl sm:text-7xl font-black tracking-[0.2em] text-white leading-none">{state.roomId}</span>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex-1 grid grid-cols-2 gap-12">
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8 md:gap-12">
                     {/* Team X Roster */}
-                    <div className="bg-gray-900/50 border-2 border-blue-900/50 rounded-3xl p-6 relative overflow-hidden">
+                    <div className="bg-gray-900/50 border-2 border-blue-900/50 rounded-3xl p-4 sm:p-6 relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-5 text-9xl font-black text-blue-500">X</div>
-                        <h3 className="text-2xl font-black text-blue-400 mb-6 flex items-center justify-between">
-                            TEAM X <span className="bg-blue-900/50 text-blue-300 text-sm px-3 py-1 rounded-full">{teamX.length} Players</span>
+                        <h3 className="text-xl sm:text-2xl font-black text-blue-400 mb-4 sm:mb-6 flex items-center justify-between">
+                            TEAM X <span className="bg-blue-900/50 text-blue-300 text-xs sm:text-sm px-3 py-1 rounded-full">{teamX.length} Players</span>
                         </h3>
-                        <div className="flex flex-wrap gap-3 relative z-10">
+                        <div className="flex flex-wrap gap-2 sm:gap-3 relative z-10">
                             {teamX.map((p: any) => (
-                                <div key={p.id} className="bg-gray-950 border border-blue-900/50 px-4 py-2 rounded-xl font-bold text-white animate-in zoom-in">{p.nickname}</div>
+                                <div key={p.id} className="bg-gray-950 border border-blue-900/50 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-bold text-sm sm:text-base text-white animate-in zoom-in">{p.nickname}</div>
                             ))}
                         </div>
                     </div>
 
                     {/* Team O Roster */}
-                    <div className="bg-gray-900/50 border-2 border-red-900/50 rounded-3xl p-6 relative overflow-hidden">
+                    <div className="bg-gray-900/50 border-2 border-red-900/50 rounded-3xl p-4 sm:p-6 relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-5 text-9xl font-black text-red-500">O</div>
-                        <h3 className="text-2xl font-black text-red-400 mb-6 flex items-center justify-between">
-                            TEAM O <span className="bg-red-900/50 text-red-300 text-sm px-3 py-1 rounded-full">{teamO.length} Players</span>
+                        <h3 className="text-xl sm:text-2xl font-black text-red-400 mb-4 sm:mb-6 flex items-center justify-between">
+                            TEAM O <span className="bg-red-900/50 text-red-300 text-xs sm:text-sm px-3 py-1 rounded-full">{teamO.length} Players</span>
                         </h3>
-                        <div className="flex flex-wrap gap-3 relative z-10">
+                        <div className="flex flex-wrap gap-2 sm:gap-3 relative z-10">
                             {teamO.map((p: any) => (
-                                <div key={p.id} className="bg-gray-950 border border-red-900/50 px-4 py-2 rounded-xl font-bold text-white animate-in zoom-in">{p.nickname}</div>
+                                <div key={p.id} className="bg-gray-950 border border-red-900/50 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-bold text-sm sm:text-base text-white animate-in zoom-in">{p.nickname}</div>
                             ))}
                         </div>
                     </div>
                 </div>
 
-                <div className="mt-12 flex justify-center">
+                <div className="mt-6 sm:mt-12 flex justify-center">
                     <button 
                         onClick={() => dispatch({ type: 'START_GAME' })}
                         disabled={players.length === 0}
-                        className="bg-white text-gray-950 disabled:opacity-50 disabled:hover:scale-100 hover:scale-105 font-black py-5 px-16 rounded-2xl text-2xl shadow-[0_0_40px_rgba(255,255,255,0.2)] transition-all flex items-center gap-4"
+                        className="bg-white text-gray-950 disabled:opacity-50 disabled:hover:scale-100 hover:scale-105 font-black py-3 sm:py-5 px-8 sm:px-16 rounded-2xl text-lg sm:text-2xl shadow-[0_0_40px_rgba(255,255,255,0.2)] transition-all flex items-center gap-2 sm:gap-4"
                     >
-                        <Play size={28}/> START BATTLE
+                        <Play size={24} className="sm:w-7 sm:h-7" /> START BATTLE
                     </button>
                 </div>
             </div>
@@ -963,52 +963,52 @@ const HostGameScreen = ({ state, dispatch, isMultiplayer }: { state: any, dispat
     return (
         <div className="min-h-screen bg-emerald-100 text-gray-900 overflow-hidden flex flex-col font-sans relative selection:bg-transparent">
             {/* Header / Info Bar */}
-            <div className="absolute top-6 left-0 right-0 flex justify-between px-12 z-50 pointer-events-none mt-16">
-                 <div className="flex gap-4">
-                     <div className="text-gray-500 font-bold bg-gray-900/80 px-6 py-3 rounded-full backdrop-blur-sm border border-gray-800 text-xl">
+            <div className="absolute top-2 sm:top-6 left-0 right-0 flex justify-between px-3 sm:px-12 z-50 pointer-events-none mt-2 sm:mt-16">
+                 <div className="flex gap-2 sm:gap-4">
+                     <div className="text-gray-500 font-bold bg-gray-900/80 px-3 sm:px-6 py-1.5 sm:py-3 rounded-full backdrop-blur-sm border border-gray-800 text-xs sm:text-xl">
                          Q {state.currentQuestionIndex + 1} / {state.questionQueue.length}
                      </div>
                      {isMultiplayer && (
-                         <div className="text-gray-400 font-bold bg-gray-900/80 px-6 py-3 rounded-full backdrop-blur-sm border border-gray-800 text-xl flex items-center gap-2">
+                         <div className="text-gray-400 font-bold bg-gray-900/80 px-3 sm:px-6 py-1.5 sm:py-3 rounded-full backdrop-blur-sm border border-gray-800 text-xs sm:text-xl flex items-center gap-2">
                             ROOM <span className="text-white font-black">{state.roomId}</span>
                          </div>
                      )}
                  </div>
                  
                  {state.timer > 0 && (state.status === 'QUESTION' || state.status === 'STEAL_PHASE') && (
-                     <div className={`text-4xl font-black px-8 py-3 rounded-full backdrop-blur-sm border border-gray-800 ${state.timer <= 5 ? 'bg-red-900/80 text-red-400 animate-pulse' : 'bg-gray-900/80 text-white'}`}>
+                     <div className={`text-xl sm:text-4xl font-black px-4 sm:px-8 py-1.5 sm:py-3 rounded-full backdrop-blur-sm border border-gray-800 ${state.timer <= 5 ? 'bg-red-900/80 text-red-400 animate-pulse' : 'bg-gray-900/80 text-white'}`}>
                         {state.timer}s
                      </div>
                  )}
             </div>
 
-            <div className="flex-1 flex items-center justify-between px-8 lg:px-16 max-w-[2400px] mx-auto w-full pt-16">
+            <div className="flex-1 flex items-center justify-between px-2 sm:px-8 lg:px-16 max-w-[2400px] mx-auto w-full pt-12 sm:pt-16">
                 <div className="hidden lg:block h-[80vh]"><TeamPanel id="X" /></div>
 
                 {/* Center Stage */}
-                <div className="flex-1 flex flex-col items-center justify-center relative px-12 max-w-6xl mx-auto h-full mt-10">
+                <div className="flex-1 flex flex-col items-center justify-center relative px-2 sm:px-12 max-w-6xl mx-auto h-full mt-4 sm:mt-10">
                     
                     {state.status === 'INTRO' && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center z-50 bg-gray-950/90 backdrop-blur-md rounded-3xl animate-in fade-in zoom-in duration-300">
-                            <h2 className="text-5xl text-gray-400 font-bold mb-6 uppercase tracking-[0.5em]">Get Ready</h2>
-                            <h1 className="text-9xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]">Question {state.currentQuestionIndex + 1}</h1>
+                            <h2 className="text-2xl sm:text-5xl text-gray-400 font-bold mb-3 sm:mb-6 uppercase tracking-[0.5em]">Get Ready</h2>
+                            <h1 className="text-5xl sm:text-9xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]">Question {state.currentQuestionIndex + 1}</h1>
                         </div>
                     )}
 
                     {(state.status === 'QUESTION' || state.status === 'EVALUATING' || state.status === 'STEAL_PHASE') && currentQ && (
                         <div className="w-full flex flex-col h-full justify-center max-h-[85vh]">
                              {state.status === 'STEAL_PHASE' && (
-                                <div className="text-center mb-6">
-                                     <span className="inline-block bg-yellow-500 text-black font-black text-3xl px-8 py-3 rounded-full animate-bounce shadow-[0_0_40px_rgba(234,179,8,0.5)]">STEAL OPPORTUNITY!</span>
+                                <div className="text-center mb-3 sm:mb-6">
+                                     <span className="inline-block bg-yellow-500 text-black font-black text-lg sm:text-3xl px-4 sm:px-8 py-1.5 sm:py-3 rounded-full animate-bounce shadow-[0_0_40px_rgba(234,179,8,0.5)]">STEAL OPPORTUNITY!</span>
                                 </div>
                              )}
                              
-                            <div className="bg-gray-800 border-2 border-gray-700 p-10 rounded-3xl shadow-2xl mb-10 w-full text-center relative overflow-hidden">
+                            <div className="bg-gray-800 border-2 border-gray-700 p-4 sm:p-10 rounded-2xl sm:rounded-3xl shadow-2xl mb-4 sm:mb-10 w-full text-center relative overflow-hidden">
                                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-red-500"></div>
-                                <h2 className="text-5xl font-bold leading-tight text-white mb-2">{currentQ.text}</h2>
+                                <h2 className="text-xl sm:text-3xl md:text-5xl font-bold leading-tight text-white mb-2">{currentQ.text}</h2>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-8 w-full">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-8 w-full">
                                 {currentQ.options.map((opt: string, idx: number) => {
                                     const labels = ['A', 'B', 'C', 'D'];
                                     let btnStyle = "bg-gray-900 border-2 border-gray-700 text-white";

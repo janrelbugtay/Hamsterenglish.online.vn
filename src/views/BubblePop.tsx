@@ -1354,7 +1354,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   }, [screen, studyIndex, activeQuiz]);
 
   return (
-    <div id="game-container" className="h-[calc(100vh-2rem)] w-full -m-4 md:-m-8 bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-white flex flex-col font-['Fredoka',sans-serif] overflow-hidden relative selection:bg-cyan-500/30 rounded-xl" style={{ margin: '-1rem', height: 'calc(100% + 2rem)' }} ref={containerRef}>
+    <div id="game-container" className="w-full min-h-full flex-1 bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-white flex flex-col font-['Fredoka',sans-serif] overflow-hidden relative selection:bg-cyan-500/30 rounded-xl" ref={containerRef}>
       
       {/* Back button overlay */}
       <div className="absolute top-4 left-4 z-[60] flex items-center gap-3">
@@ -1856,38 +1856,38 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                     }} className="glass-panel px-6 py-2 rounded-full hover:bg-white/20 font-bold border border-white/20 cursor-pointer text-slate-800 dark:text-white shadow-sm transition-all hover:scale-105 active:scale-95 flex items-center justify-center">Exit</button>
                 </div>
 
-                <div className="flex justify-center items-end w-full gap-2 md:gap-4 pointer-events-none mt-auto px-4 sm:px-12 lg:px-20 relative z-30">
-                    <div className={`bg-white/80 dark:bg-slate-900/80 rounded-3xl p-3 min-w-[100px] md:min-w-[140px] border border-white/40 dark:border-white/10 flex flex-col items-center shadow-xl backdrop-blur-md pointer-events-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[0] ? 'opacity-70 grayscale border-cyan-400/50' : ''}`}>
+                <div className="flex justify-center items-end w-full gap-1.5 sm:gap-2 md:gap-4 pointer-events-none mt-auto px-2 sm:px-12 lg:px-20 relative z-30">
+                    <div className={`bg-white/80 dark:bg-slate-900/80 rounded-2xl sm:rounded-3xl p-2 sm:p-3 min-w-[70px] sm:min-w-[100px] md:min-w-[140px] border border-white/40 dark:border-white/10 flex flex-col items-center shadow-xl backdrop-blur-md pointer-events-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[0] ? 'opacity-70 grayscale border-cyan-400/50' : ''}`}>
                         {frozenTeams[0] && <div className="absolute inset-0 bg-cyan-400/20 backdrop-blur-[2px] z-10 flex items-center justify-center pointer-events-none"><span className="text-4xl absolute opacity-50">❄️</span></div>}
-                        <div className="flex flex-col items-center gap-1 mb-1">
-                            <div className="min-w-[3rem] md:min-w-[4rem] px-2 md:px-3 h-6 md:h-8 rounded-full bg-blue-500 flex items-center justify-center text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider">{p1Name}</div>
-                            <div className="text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">Score</div>
+                        <div className="flex flex-col items-center gap-0.5 sm:gap-1 mb-0.5 sm:mb-1">
+                            <div className="min-w-[2.5rem] sm:min-w-[3rem] md:min-w-[4rem] px-1.5 sm:px-2 md:px-3 h-5 sm:h-6 md:h-8 rounded-full bg-blue-500 flex items-center justify-center text-[10px] sm:text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider">{p1Name}</div>
+                            <div className="text-[8px] sm:text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5 sm:mt-1">Score</div>
                         </div>
-                        <div className="text-3xl md:text-5xl font-black text-blue-500 dark:text-blue-400 drop-shadow-sm tabular-nums tracking-tighter">{scores[0]}</div>
+                        <div className="text-2xl sm:text-3xl md:text-5xl font-black text-blue-500 dark:text-blue-400 drop-shadow-sm tabular-nums tracking-tighter">{scores[0]}</div>
                     </div>
 
-                    <div className="glass-panel bg-white/90 dark:bg-slate-900/90 rounded-3xl w-full max-w-4xl p-4 md:p-6 text-center border-t-4 border-indigo-500 shadow-2xl relative overflow-hidden backdrop-blur-xl mb-2 pointer-events-auto flex-1">
-                        <h1 className="text-xl md:text-3xl font-black text-slate-800 dark:text-white leading-relaxed drop-shadow-md">{questionText}</h1>
+                    <div className="glass-panel bg-white/90 dark:bg-slate-900/90 rounded-2xl sm:rounded-3xl w-full max-w-4xl p-2.5 sm:p-4 md:p-6 text-center border-t-4 border-indigo-500 shadow-2xl relative overflow-hidden backdrop-blur-xl mb-2 pointer-events-auto flex-1">
+                        <h1 className="text-base sm:text-xl md:text-3xl font-black text-slate-800 dark:text-white leading-snug sm:leading-relaxed drop-shadow-md">{questionText}</h1>
                         
                         {showCombo && (
-                            <div key={`combo-${combo}`} className="absolute right-4 top-1/2 -translate-y-1/2 text-center animate-pop">
-                                <div className="text-[10px] md:text-xs font-bold text-yellow-400 uppercase tracking-widest">Combo</div>
-                                <div className="text-xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-orange-500">x{combo}</div>
+                            <div key={`combo-${combo}`} className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-center animate-pop">
+                                <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-yellow-400 uppercase tracking-widest">Combo</div>
+                                <div className="text-base sm:text-xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-orange-500">x{combo}</div>
                             </div>
                         )}
                     </div>
                     
                     {numPlayers === 2 ? (
-                        <div className={`bg-white/80 dark:bg-slate-900/80 rounded-3xl p-3 min-w-[100px] md:min-w-[140px] border border-white/40 dark:border-white/10 flex flex-col items-center shadow-xl backdrop-blur-md pointer-events-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[1] ? 'opacity-70 grayscale border-cyan-400/50' : ''}`}>
+                        <div className={`bg-white/80 dark:bg-slate-900/80 rounded-2xl sm:rounded-3xl p-2 sm:p-3 min-w-[70px] sm:min-w-[100px] md:min-w-[140px] border border-white/40 dark:border-white/10 flex flex-col items-center shadow-xl backdrop-blur-md pointer-events-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[1] ? 'opacity-70 grayscale border-cyan-400/50' : ''}`}>
                             {frozenTeams[1] && <div className="absolute inset-0 bg-cyan-400/20 backdrop-blur-[2px] z-10 flex items-center justify-center pointer-events-none"><span className="text-4xl absolute opacity-50">❄️</span></div>}
-                            <div className="flex flex-col items-center gap-1 mb-1">
-                                <div className="min-w-[3rem] md:min-w-[4rem] px-2 md:px-3 h-6 md:h-8 rounded-full bg-red-500 flex items-center justify-center text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider">{p2Name}</div>
-                                <div className="text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">Score</div>
+                            <div className="flex flex-col items-center gap-0.5 sm:gap-1 mb-0.5 sm:mb-1">
+                                <div className="min-w-[2.5rem] sm:min-w-[3rem] md:min-w-[4rem] px-1.5 sm:px-2 md:px-3 h-5 sm:h-6 md:h-8 rounded-full bg-red-500 flex items-center justify-center text-[10px] sm:text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider">{p2Name}</div>
+                                <div className="text-[8px] sm:text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5 sm:mt-1">Score</div>
                             </div>
-                            <div className="text-3xl md:text-5xl font-black text-red-500 dark:text-red-400 drop-shadow-sm tabular-nums tracking-tighter">{scores[1]}</div>
+                            <div className="text-2xl sm:text-3xl md:text-5xl font-black text-red-500 dark:text-red-400 drop-shadow-sm tabular-nums tracking-tighter">{scores[1]}</div>
                         </div>
                     ) : (
-                        <div className="min-w-[100px] md:min-w-[140px] shrink-0"></div>
+                        <div className="hidden sm:block min-w-[100px] md:min-w-[140px] shrink-0"></div>
                     )}
                 </div>
             </div>

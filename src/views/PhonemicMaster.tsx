@@ -18,7 +18,7 @@ export function PhonemicMaster({ onViewChange }: { onViewChange: (view: ViewStat
   };
 
   return (
-    <div ref={containerRef} id="game-container" className="w-full h-full flex flex-col -mx-4 md:-mx-8 -my-4 md:-my-8 relative bg-white dark:bg-slate-900">
+    <div ref={containerRef} id="game-container" className="w-full min-h-full flex-1 flex flex-col relative bg-white dark:bg-slate-900">
       <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shadow-sm z-10">
         <button
           onClick={() => onViewChange("games")}
