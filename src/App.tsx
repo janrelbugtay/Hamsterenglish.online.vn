@@ -33,7 +33,7 @@ import SquidGamePicker from "./views/SquidGamePicker";
 import { useAuth } from "./contexts/AuthContext";
 import { doc, onSnapshot, getDoc, updateDoc, increment, setDoc } from "firebase/firestore";
 import { db } from "./lib/firebase";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { AuthSliderModal } from "./components/AuthSliderModal";
 import { GoogleAuthModal } from "./components/GoogleAuthModal";
 
@@ -189,33 +189,43 @@ export default function App() {
       const feature = getFeatureInfo();
 
       return (
-        <div className="flex flex-col items-center justify-center h-full min-h-[60vh] p-4">
-          <div className="bg-white dark:bg-slate-800 p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 text-center max-w-md w-full">
-            <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-brand-purple rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-xs">
-              <AlertTriangle size={32} />
+        <div className="flex flex-col items-center justify-center h-full min-h-[60vh] p-4 font-sans">
+          <div className="bg-white dark:bg-[#1f1f1f] p-8 sm:p-10 rounded-[28px] shadow-xl border border-[#dadce0] dark:border-[#444746] text-left max-w-[448px] w-full">
+            <div className="mb-4">
+              <img
+                src="https://www.gstatic.com/images/branding/googleg_gradient/svg/googleg_gradient_standard_48px.svg"
+                width={48}
+                height={48}
+                alt="Google"
+                className="w-12 h-12 object-contain"
+              />
             </div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2">
-              Sign In with Google
-            </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 leading-relaxed">
-              {feature.desc}
-            </p>
             
+            <h2 className="text-2xl font-normal text-[#1f1f1f] dark:text-[#e3e3e3] tracking-tight">
+              Sign in
+            </h2>
+            <p className="text-[#444746] dark:text-[#c4c7c5] text-sm mt-1 leading-relaxed">
+              Use your Google Account to continue to <span className="font-semibold text-slate-800 dark:text-white">HamsterEnglish</span>
+            </p>
+            <div className="mt-2 inline-block px-2.5 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-brand-purple dark:text-purple-300 text-xs font-semibold rounded-full mb-6">
+              Required for {feature.title}
+            </div>
+
             {authError && (
-              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-left">
-                <p className="text-sm text-red-600 dark:text-red-400 font-medium whitespace-pre-line">
+              <div className="mb-5 p-3.5 bg-[#fce8e6] dark:bg-red-950/40 border border-[#f5c2c7] dark:border-red-900/60 rounded-xl text-left">
+                <p className="text-xs text-[#c5221f] dark:text-red-300 font-medium whitespace-pre-line leading-relaxed">
                   {authError}
                 </p>
               </div>
             )}
-            
+
             <button
               onClick={() => signInWithGoogle()}
               disabled={isAuthenticating}
-              className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500 hover:bg-slate-50 text-slate-800 dark:text-white font-bold py-3.5 px-6 rounded-2xl transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+              className="w-full flex items-center justify-center gap-3 h-12 bg-white dark:bg-[#131314] hover:bg-[#f8fafd] dark:hover:bg-[#1f1f1f] border border-[#747775]/50 hover:border-[#747775] dark:border-[#8e918f]/50 dark:hover:border-[#8e918f] rounded-full transition-all shadow-xs hover:shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mb-4"
             >
               {isAuthenticating ? (
-                <Loader2 className="animate-spin text-brand-purple" size={22} />
+                <Loader2 className="animate-spin text-[#0b57d0]" size={20} />
               ) : (
                 <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -224,12 +234,14 @@ export default function App() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               )}
-              <span>{isAuthenticating ? "Connecting..." : "Continue with Google"}</span>
+              <span className="text-sm font-medium text-[#1f1f1f] dark:text-[#e3e3e3]">
+                {isAuthenticating ? "Connecting to Google..." : "Sign in with Google"}
+              </span>
             </button>
 
             <button
               onClick={() => setCurrentView("public-dashboard")}
-              className="w-full text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-xs font-semibold py-2 transition-colors cursor-pointer"
+              className="w-full text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-xs font-semibold py-2 transition-colors cursor-pointer text-center block"
             >
               Play free games in Community without signing in →
             </button>
