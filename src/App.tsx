@@ -118,9 +118,12 @@ export default function App() {
 
   const [pendingAction, setPendingAction] = useState<{ view: ViewState; data?: any } | null>(null);
 
-  // Proactively redirect to home if visitor has no session and is on a non-home view
+  // Name Picker games can be used freely by anyone without signing in
+  const isNamePickerView = (v: ViewState) => v === "squid-game-picker" || v === "student-race";
+
+  // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {
-    if (!loading && !user && currentView !== "home") {
+    if (!loading && !user && currentView !== "home" && !isNamePickerView(currentView)) {
       setPendingAction({ view: currentView, data: selectedGame });
       setCurrentView("home");
       setIsAuthModalOpen(true);
@@ -133,8 +136,10 @@ export default function App() {
       return;
     }
 
-    // All actions and games require signing in or playing as guest
-    if (!user && view !== "home") {
+    // Name Picker is completely free and accessible without signing in!
+    // All other actions, games, and views require signing in or entering a guest name.
+    const isFreeAccess = view === "home" || isNamePickerView(view);
+    if (!user && !isFreeAccess) {
       setPendingAction({ view, data });
       setIsAuthModalOpen(true);
       return;
