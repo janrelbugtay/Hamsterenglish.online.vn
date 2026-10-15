@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for multi-choice authentication (Google Sign-In, non-Google email/password account creation, and zero-barrier guest access) combined with Red Light Green Light player orientation and forward-only stop-and-go movement bug fixes.",
+  "updatedAt": "2026-10-14T11:13:07.993197777Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

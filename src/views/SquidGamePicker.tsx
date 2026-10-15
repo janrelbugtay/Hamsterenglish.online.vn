@@ -4,7 +4,7 @@ import gsap from 'gsap';
 import {
     Users, Play, Check, MousePointerClick, Skull, UserRound, VolumeX,
     Volume2, Volume1, Power, Crown, RotateCcw, Square, Circle, Triangle, Gamepad2, ClipboardList,
-    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft
+    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft, Eye, Crosshair
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { getSavedClasses, DojoClass } from './ClassRecord';
@@ -19,6 +19,43 @@ const generateSeed = (str: string) => {
 const randomSeeded = (seed: number) => {
     let x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
+};
+
+const cryptoRandom = (): number => {
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+        const buf = new Uint32Array(1);
+        window.crypto.getRandomValues(buf);
+        return buf[0] / 4294967296;
+    }
+    return Math.random();
+};
+
+const cryptoShuffle = <T,>(arr: T[]): T[] => {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(cryptoRandom() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+};
+
+const recentEliminatedMemory: string[] = [];
+const selectUnpredictableTargets = (candidates: string[], count: number): string[] => {
+    if (candidates.length === 0 || count <= 0) return [];
+    const safeCount = Math.min(candidates.length, count);
+    const shuffled = cryptoShuffle(candidates);
+    const maxMemory = Math.max(1, Math.min(8, Math.floor(candidates.length * 0.45)));
+    const recentSet = new Set(recentEliminatedMemory.slice(-maxMemory));
+    const fresh = shuffled.filter(c => !recentSet.has(c));
+    const recent = shuffled.filter(c => recentSet.has(c));
+    // 22% wild-card full entropy so no player is ever immune, 78% fresh-prioritized entropy to prevent predictable repeats
+    const pool = cryptoRandom() < 0.22 ? shuffled : [...fresh, ...recent];
+    const picked = pool.slice(0, safeCount);
+    picked.forEach(p => {
+        recentEliminatedMemory.push(p);
+        if (recentEliminatedMemory.length > 30) recentEliminatedMemory.shift();
+    });
+    return picked;
 };
 
 const getSavedRoster = () => {
@@ -397,6 +434,84 @@ function buildGlassesMesh(glassesType: number): THREE.Group {
 
 
 
+// YouTube Audio Controller for Squid Game Red Light Green Light (vAzRFDI-0Zc)
+export const playSquidGameYouTubeAudio = (seekSeconds: number = 0, shouldSeek: boolean = true) => {
+    try {
+        const iframe = document.getElementById('squid-yt-audio-player') as HTMLIFrameElement | null;
+        if (iframe && iframe.contentWindow) {
+            if (shouldSeek) {
+                iframe.contentWindow.postMessage(JSON.stringify({
+                    event: 'command',
+                    func: 'seekTo',
+                    args: [seekSeconds, true]
+                }), '*');
+            }
+            const isMuted = globalAudio ? globalAudio.muted || globalAudio.volume <= 0 : false;
+            const vol = globalAudio ? Math.round(globalAudio.volume * 100) : 80;
+            if (isMuted) {
+                iframe.contentWindow.postMessage(JSON.stringify({
+                    event: 'command',
+                    func: 'mute',
+                    args: []
+                }), '*');
+            } else {
+                iframe.contentWindow.postMessage(JSON.stringify({
+                    event: 'command',
+                    func: 'unMute',
+                    args: []
+                }), '*');
+                iframe.contentWindow.postMessage(JSON.stringify({
+                    event: 'command',
+                    func: 'setVolume',
+                    args: [vol]
+                }), '*');
+            }
+            iframe.contentWindow.postMessage(JSON.stringify({
+                event: 'command',
+                func: 'playVideo',
+                args: []
+            }), '*');
+        }
+    } catch (e) {
+        console.warn('YouTube audio play error:', e);
+    }
+};
+
+export const pauseSquidGameYouTubeAudio = () => {
+    try {
+        const iframe = document.getElementById('squid-yt-audio-player') as HTMLIFrameElement | null;
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage(JSON.stringify({
+                event: 'command',
+                func: 'pauseVideo',
+                args: []
+            }), '*');
+        }
+    } catch (e) {
+        console.warn('YouTube audio pause error:', e);
+    }
+};
+
+export const stopSquidGameYouTubeAudio = () => {
+    try {
+        const iframe = document.getElementById('squid-yt-audio-player') as HTMLIFrameElement | null;
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage(JSON.stringify({
+                event: 'command',
+                func: 'pauseVideo',
+                args: []
+            }), '*');
+            iframe.contentWindow.postMessage(JSON.stringify({
+                event: 'command',
+                func: 'seekTo',
+                args: [0, true]
+            }), '*');
+        }
+    } catch (e) {
+        console.warn('YouTube audio stop error:', e);
+    }
+};
+
 class AudioEngine {
     ctx: AudioContext;
     muted: boolean;
@@ -428,6 +543,11 @@ class AudioEngine {
         this.muted = muted;
         if (this.masterGain) {
             this.masterGain.gain.setValueAtTime(this.muted ? 0 : this.volume, this.ctx.currentTime);
+        }
+        if (muted) {
+            pauseSquidGameYouTubeAudio();
+        } else {
+            playSquidGameYouTubeAudio();
         }
     }
 
@@ -567,6 +687,125 @@ class AudioEngine {
         osc.connect(gain);
         gain.connect(this.masterGain);
     }
+
+    playDollChantSnippet(durationSec: number = 0.8) {
+        if (this.muted) return;
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+        try {
+            // Iconic 6-note Korean doll melody ("무궁화 꽃이 피었습니다")
+            const notes = [587.33, 659.25, 587.33, 523.25, 440.0, 523.25]; // D5, E5, D5, C5, A4, C5
+            const noteDur = durationSec / notes.length;
+            notes.forEach((freq, i) => {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                const startTime = this.ctx.currentTime + i * noteDur;
+                const endTime = startTime + noteDur;
+                osc.frequency.setValueAtTime(freq, startTime);
+                gain.gain.setValueAtTime(0.24, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, endTime - 0.01);
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start(startTime);
+                osc.stop(endTime);
+            });
+        } catch {
+            // WebAudio fallback
+        }
+    }
+
+    playDollChant(tempoMultiplier = 1.0): number {
+        if (this.muted) return 3.2;
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+
+        // Cancel previous speech so chants don't pile up
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel();
+            } catch (e) {
+                // Ignore cancel errors
+            }
+        }
+
+        const baseSpeed = Math.max(0.75, Math.min(2.4, tempoMultiplier));
+
+        // Authentic Korean Squid Game doll voice ("무궁화 꽃이 피었습니다")
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window && !this.muted) {
+            try {
+                const utterance = new SpeechSynthesisUtterance("무궁화 꽃이 피었습니다");
+                const voices = window.speechSynthesis.getVoices();
+                
+                // Prioritize Korean voices
+                const koreanVoice = voices.find(v => v.lang && (v.lang.toLowerCase().includes('ko') || v.lang.toLowerCase().includes('kr')));
+                if (koreanVoice) {
+                    utterance.voice = koreanVoice;
+                    utterance.lang = 'ko-KR';
+                    utterance.pitch = 1.35; // Iconic young animatronic girl pitch
+                } else {
+                    // Fallback to female voice with phonetic romanization
+                    utterance.text = "Moo goong hwa kko chi pee ut seum ni da";
+                    const femaleVoice = voices.find(v => 
+                        v.name.includes('Female') || 
+                        v.name.includes('Samantha') || 
+                        v.name.includes('Zira') || 
+                        v.name.includes('Google UK English Female') ||
+                        v.name.includes('Google US English') ||
+                        v.name.includes('Karen') ||
+                        v.name.includes('Victoria')
+                    );
+                    if (femaleVoice) {
+                        utterance.voice = femaleVoice;
+                    }
+                    utterance.pitch = 1.45;
+                }
+                
+                // Rate adjusts with tempo multiplier
+                utterance.rate = Math.max(0.8, Math.min(1.85, 0.92 * baseSpeed));
+                utterance.volume = Math.min(1.0, this.volume * 1.5);
+                window.speechSynthesis.speak(utterance);
+            } catch (err) {
+                console.warn("Doll voice chant speech error:", err);
+            }
+        }
+
+        // Signature 10-note melodic chime accompanying the doll voice
+        const notes = [
+            { f: 392, d: 0.28 }, // Mu (G4)
+            { f: 392, d: 0.28 }, // gung (G4)
+            { f: 330, d: 0.32 }, // hwa (E4)
+            { f: 392, d: 0.28 }, // kko (G4)
+            { f: 440, d: 0.35 }, // ci (A4)
+            { f: 392, d: 0.28 }, // pi (G4)
+            { f: 330, d: 0.28 }, // eot (E4)
+            { f: 294, d: 0.22 }, // seum (D4)
+            { f: 294, d: 0.22 }, // ni (D4)
+            { f: 262, d: 0.45 }, // da (C4)
+        ];
+        let timeOffset = 0;
+        notes.forEach((note) => {
+            const dur = note.d / baseSpeed;
+            const now = this.ctx.currentTime + timeOffset;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(note.f, now);
+            const vol = 0.2;
+            gain.gain.setValueAtTime(0.01, now);
+            gain.gain.linearRampToValueAtTime(vol, now + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+            osc.start(now);
+            osc.stop(now + dur);
+            timeOffset += dur;
+        });
+        return Math.max(2.2, timeOffset);
+    }
+
     toggleMute() {
         this.muted = !this.muted;
         if (this.masterGain) {
@@ -634,39 +873,28 @@ const announce = (text: string) => {
 
 const GameEngine = {
     generateGameSequence: (studentNames: string[], mode = 'picker', pickCount = 1) => {
-        let activePlayers = [...studentNames];
+        let activePlayers = cryptoShuffle([...studentNames]);
         let rounds = [];
 
         if (mode === 'picker') {
-            // True Fisher-Yates shuffle for unpredictable randomness
-            let shuffled = [...activePlayers];
-            for (let i = shuffled.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-            }
-            let eliminated = shuffled.slice(0, pickCount);
-            let survivors = shuffled.slice(pickCount);
+            const eliminated = selectUnpredictableTargets(activePlayers, pickCount);
+            const elimSet = new Set(eliminated);
+            const survivors = cryptoShuffle(activePlayers.filter(p => !elimSet.has(p)));
             
             let numDoors = Math.min(5, Math.max(2, Math.min(activePlayers.length, 6))); 
-            
-            // True Mingle Door Lockout:
-            // All doors are safe shelters. Contestants scramble to enter before doors lock.
-            // Players who CANNOT get inside the door before the buzzer are locked out and eliminated!
             const pattern = 'lockout';
             
             let distribution: string[][] = Array.from({length: numDoors}, () => []);
             let safeDoors: number[] = [];
             for (let i = 0; i < numDoors; i++) safeDoors.push(i);
-            let trapDoors: number[] = []; // No redundant trap rooms! All rooms are safe havens.
+            let trapDoors: number[] = [];
 
-            // Distribute survivors across all open doors (they successfully enter inside!)
             survivors.forEach((p, i) => {
                 distribution[i % numDoors].push(p);
             });
             
-            // Assign each eliminated player a door they desperately sprint toward (they will fail to enter and get locked out outside)
             eliminated.forEach(p => {
-                const targetDoor = Math.floor(Math.random() * numDoors);
+                const targetDoor = Math.floor(cryptoRandom() * numDoors);
                 distribution[targetDoor].push(p);
             });
 
@@ -695,25 +923,21 @@ const GameEngine = {
                 else numDoors = 5;
 
                 let distribution: string[][] = Array.from({length: numDoors}, () => []);
-                let shuffled = [...activePlayers].sort(() => 0.5 - Math.random());
-                
-                // In survival mode, 1 or 2 contestants cannot enter the doors in time and get eliminated
                 const elimCount = activePlayers.length > 6 ? 2 : 1;
-                const roundEliminated = shuffled.slice(0, elimCount);
-                const roundSurvivors = shuffled.slice(elimCount);
+                const roundEliminated = selectUnpredictableTargets(activePlayers, elimCount);
+                const elimSet = new Set(roundEliminated);
+                const roundSurvivors = cryptoShuffle(activePlayers.filter(p => !elimSet.has(p)));
 
                 let safeDoors: number[] = [];
                 for(let i = 0; i < numDoors; i++) safeDoors.push(i);
-                let trapDoors: number[] = []; // No redundant trap rooms!
+                let trapDoors: number[] = [];
 
-                // Survivors successfully distribute and enter inside the doors
                 roundSurvivors.forEach((p, i) => {
                     distribution[i % numDoors].push(p);
                 });
 
-                // Eliminated players sprint toward doors but get locked out at threshold
                 roundEliminated.forEach((p) => {
-                    const doorIdx = Math.floor(Math.random() * numDoors);
+                    const doorIdx = Math.floor(cryptoRandom() * numDoors);
                     distribution[doorIdx].push(p);
                 });
 
@@ -983,82 +1207,242 @@ class ThreeManager {
     waitingForTagStartResolve: any = null;
     clickHandler: ((e: MouseEvent) => void) | null = null;
     resizeObserver: ResizeObserver | null = null;
-    gameType: 'mingle' | 'tag' = 'mingle';
+    gameType: 'mingle' | 'tag' | 'redlight' = 'mingle';
     mingleEnvGroup: THREE.Group | null = null;
     tagEnvGroup: THREE.Group | null = null;
+    redLightEnvGroup: THREE.Group | null = null;
+    giantDoll: THREE.Group | null = null;
+    dollHead: THREE.Group | null = null;
+    dollEyes: THREE.Mesh[] = [];
+    dollEyeBeams: THREE.Object3D[] = [];
+    dollStatusRing: THREE.Mesh | null = null;
     itPlayerName: string = '';
     tagRoundCount: number = 0;
     lastCaughtPlayer: string | null = null;
     tagTimer: number = 15;
     activeChaseInterval: any = null;
     activeDoorCountdownInterval: any = null;
+    activeRedLightInterval: any = null;
     stopEvasion: (() => void) | null = null;
     mingleSpinCount: number = 0;
     currentCamLookAt: THREE.Vector3 = new THREE.Vector3(0, 0, 1.5);
     tagCamTargetPos: THREE.Vector3 | null = null;
     tagCamTargetLook: THREE.Vector3 | null = null;
+    redLightCamTargetPos: THREE.Vector3 | null = null;
+    redLightCamTargetLook: THREE.Vector3 | null = null;
+    waitingForRedLightStartResolve: (() => void) | null = null;
+    isRedLightCancelled: boolean = false;
+    currentRedLightPhase: string = 'IDLE';
+
+    createShortTripStars(targetChar: THREE.Object3D) {
+        const starGroup = new THREE.Group();
+        starGroup.position.set(0, 2.9, 0);
+        const matStar = new THREE.MeshStandardMaterial({
+            color: 0xfacc15,
+            emissive: 0xf59e0b,
+            emissiveIntensity: 0.9,
+            metalness: 0.4,
+            roughness: 0.2
+        });
+        const starCount = 3;
+        const radius = 0.72;
+        for (let i = 0; i < starCount; i++) {
+            const angle = (i / starCount) * Math.PI * 2;
+            const starMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.14, 0), matStar);
+            starMesh.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+            starGroup.add(starMesh);
+        }
+        targetChar.add(starGroup);
+
+        let elapsed = 0;
+        this.addEliminationEffect({
+            type: 'dizzy_stars',
+            mesh: starGroup,
+            update: (time: number, delta: number) => {
+                elapsed += delta;
+                starGroup.rotation.y = time * 6.5;
+                return elapsed < 1.25 && Boolean((targetChar as any).userData?.isFallen);
+            }
+        });
+    }
+
+    triggerPlayerCollisionTrip(tripperChar: any, victimChar: any) {
+        if (!tripperChar || !victimChar || tripperChar === victimChar) return;
+        if (!tripperChar.userData?.isAlive || !victimChar.userData?.isAlive) return;
+        if (victimChar.userData.isFallen || victimChar.userData.isSafe || victimChar.userData.wasTagged) return;
+        const now = Date.now();
+        if (now < (victimChar.userData.tripCooldownUntil || 0)) return;
+
+        tripperChar.userData.tripCooldownUntil = now + 1800 + Math.floor(cryptoRandom() * 900);
+        victimChar.userData.tripCooldownUntil = now + 2800 + Math.floor(cryptoRandom() * 1200);
+
+        // Tripper physical shove / leg-clip animation
+        const tParts = tripperChar.userData.parts;
+        if (tParts?.armL && tParts?.armR) {
+            tripperChar.userData.isCustomArmAnim = true;
+            gsap.to(tParts.armL.rotation, { x: -Math.PI * 0.7, z: 0.28, duration: 0.16, yoyo: true, repeat: 1 });
+            gsap.to(tParts.armR.rotation, { x: -Math.PI * 0.7, z: -0.28, duration: 0.16, yoyo: true, repeat: 1, onComplete: () => {
+                if (tripperChar.userData) tripperChar.userData.isCustomArmAnim = false;
+            }});
+        }
+        tripperChar.userData.sprintBoost = 1.22;
+
+        // Lateral knockback impulse on the tripped victim
+        const pushDir = victimChar.position.x >= tripperChar.position.x ? 1 : -1;
+        const knockX = Math.max(-23, Math.min(23, victimChar.position.x + pushDir * (0.85 + cryptoRandom() * 0.95)));
+        gsap.to(victimChar.position, {
+            x: knockX,
+            duration: 0.28,
+            ease: "power2.out"
+        });
+
+        this.triggerPlayerTrip(victimChar, false);
+
+        // Flash brief excitement badge on victim's label without revealing final outcome
+        const victimName = victimChar.userData.name;
+        const label = victimName ? this.labels[victimName] : null;
+        if (label && !victimChar.userData.isSafe && victimChar.userData.isAlive) {
+            const callouts = ['💥 TRIPPED!', '⚠️ SHOVED!', '🤸 WIPED OUT!', '💨 BUMPED!'];
+            const tagText = callouts[Math.floor(cryptoRandom() * callouts.length)];
+            label.innerHTML = `<span style="background:#f59e0b; color:#0f172a; padding:1px 5px; border-radius:4px; font-weight:800; margin-right:3px; font-size:10px;">${tagText}</span> ${victimName}`;
+            label.style.borderColor = '#f59e0b';
+            setTimeout(() => {
+                if (label && victimChar?.userData?.isAlive && !victimChar?.userData?.isSafe && !victimChar?.userData?.wasTagged) {
+                    label.innerHTML = `${victimName}`;
+                    label.style.borderColor = '#10b981';
+                }
+            }, 850);
+        }
+    }
 
     triggerPlayerTrip(char: any, isVictimSlip: boolean = false) {
         if (!char || !char.userData || !char.userData.isAlive || char.userData.isFallen || char.userData.wasTagged) return;
         char.userData.isFallen = true;
-        char.userData.fallState = 'tripping';
-        char.userData.isCustomArmAnim = true;
+        char.userData.fallState = isVictimSlip ? 'eliminated' : 'crawling';
+        char.userData.crawlTime = 0;
+        char.userData.crawlDurationTarget = 0.95 + cryptoRandom() * 0.65;
+        char.userData.isCustomArmAnim = false;
 
         const parts = char.userData.parts;
-        // Phase 1: Lurch forward losing balance (0.2s)
-        if (parts?.torso) gsap.to(parts.torso.rotation, { x: 0.55, duration: 0.2, overwrite: 'auto' });
-        if (parts?.head) gsap.to(parts.head.rotation, { x: 0.35, duration: 0.2, overwrite: 'auto' });
-        if (parts?.armL) gsap.to(parts.armL.rotation, { x: -Math.PI * 0.75, z: 0.35, duration: 0.2, overwrite: 'auto' });
-        if (parts?.armR) gsap.to(parts.armR.rotation, { x: -Math.PI * 0.75, z: -0.35, duration: 0.2, overwrite: 'auto' });
+        const worldPos = new THREE.Vector3();
+        char.getWorldPosition(worldPos);
+        this.createSmokePuffs(worldPos);
+        if (!isVictimSlip) {
+            this.createShortTripStars(char);
+            globalAudio?.play('bonk', 165 + Math.floor(cryptoRandom() * 75));
+        }
 
-        // Phase 2: Fall down flat onto grass/knees (0.35s)
+        const facingY = this.gameType === 'redlight' ? Math.PI : char.rotation.y;
+
+        if (isVictimSlip) {
+            // Player eliminated: collapses flat onto the turf
+            gsap.to(char.position, { y: 0.32, duration: 0.35, ease: "bounce.out" });
+            gsap.to(char.rotation, {
+                x: Math.PI * 0.45,
+                y: facingY,
+                z: (cryptoRandom() - 0.5) * 0.45,
+                duration: 0.35,
+                ease: "power2.out"
+            });
+            if (parts?.head) gsap.to(parts.head.rotation, { x: 0.2, y: 0, z: 0, duration: 0.3 });
+            return;
+        }
+
+        // Gameplay trip: dramatic forward dive & tumble onto the sand/turf into a frantic crawl
+        const sideTilt = (cryptoRandom() - 0.5) * 0.32;
         gsap.to(char.position, {
-            y: 0.38,
-            duration: 0.35,
-            delay: 0.18,
+            y: 0.35,
+            duration: 0.28,
             ease: "bounce.out"
         });
-        const tiltRoll = (Math.random() > 0.5 ? 0.35 : -0.35);
         gsap.to(char.rotation, {
             x: Math.PI * 0.42,
-            z: tiltRoll,
-            duration: 0.35,
-            delay: 0.18,
-            ease: "power2.out",
-            onComplete: () => {
-                char.userData.fallState = 'fallen';
-                if (!char.userData.wasTagged) {
-                    const stayDownTime = isVictimSlip ? 750 : 850 + Math.random() * 450;
-                    setTimeout(() => {
-                        if (!char.userData.isAlive || char.userData.wasTagged) return;
-                        char.userData.fallState = 'standing_up';
+            y: facingY,
+            z: sideTilt,
+            duration: 0.28,
+            ease: "power2.out"
+        });
 
-                        // Phase 3: Push back up and stand up!
-                        gsap.to(char.position, { y: 1.0, duration: 0.45, ease: "power2.out" });
-                        gsap.to(char.rotation, { x: 0, z: 0, duration: 0.45, ease: "power2.out" });
-                        if (parts?.torso) gsap.to(parts.torso.rotation, { x: 0, duration: 0.4 });
-                        if (parts?.head) gsap.to(parts.head.rotation, { x: 0, y: 0, duration: 0.4 });
-                        if (parts?.armL) gsap.to(parts.armL.rotation, { x: 0, z: 0, duration: 0.35 });
-                        if (parts?.armR) gsap.to(parts.armR.rotation, { x: 0, z: 0, duration: 0.35 });
+        // Set limbs into crawling readiness
+        if (parts?.head) gsap.to(parts.head.rotation, { x: -0.45, y: 0, z: 0, duration: 0.22 });
+        if (parts?.armL) gsap.to(parts.armL.rotation, { x: -Math.PI * 0.68, z: 0.24, duration: 0.22 });
+        if (parts?.armR) gsap.to(parts.armR.rotation, { x: -Math.PI * 0.68, z: -0.24, duration: 0.22 });
+        if (parts?.torso) gsap.to(parts.torso.rotation, { x: 0, y: 0, z: 0, duration: 0.22 });
+        if (parts?.legLGroup) gsap.to(parts.legLGroup.rotation, { x: 0.25, duration: 0.22 });
+        if (parts?.legRGroup) gsap.to(parts.legRGroup.rotation, { x: -0.25, duration: 0.22 });
+    }
 
-                        setTimeout(() => {
-                            if (!char.userData.isAlive) return;
-                            char.userData.isFallen = false;
-                            char.userData.fallState = 'upright';
-                            char.userData.isCustomArmAnim = false;
-                            char.userData.sprintBoost = 1.45;
-                            setTimeout(() => {
-                                if (char.userData) char.userData.sprintBoost = 1.0;
-                            }, 1500);
-                        }, 480);
-                    }, stayDownTime);
-                }
+    smoothRecoverFromCrawl(char: any) {
+        if (!char || !char.userData || !char.userData.isAlive || !char.userData.isFallen || char.userData.wasTagged) return;
+        if (this.gameType === 'redlight' && this.currentRedLightPhase !== 'GREEN_LIGHT') return;
+        if (char.userData.fallState === 'standing_up') return;
+        char.userData.fallState = 'standing_up';
+        const parts = char.userData.parts;
+        const facingY = this.gameType === 'redlight' ? Math.PI : char.rotation.y;
+
+        // Smoothly scramble back up to feet over 0.46s
+        gsap.to(char.position, { y: 1.0, duration: 0.46, ease: "power2.out" });
+        gsap.to(char.rotation, { x: 0, y: facingY, z: 0, duration: 0.46, ease: "power2.out" });
+        if (parts?.head) gsap.to(parts.head.rotation, { x: 0, duration: 0.38 });
+        if (parts?.armL) gsap.to(parts.armL.rotation, { x: 0, z: 0, duration: 0.38 });
+        if (parts?.armR) gsap.to(parts.armR.rotation, { x: 0, z: 0, duration: 0.38 });
+        if (parts?.legLGroup) gsap.to(parts.legLGroup.rotation, { x: 0, duration: 0.38 });
+        if (parts?.legRGroup) gsap.to(parts.legRGroup.rotation, { x: 0, duration: 0.38 });
+
+        setTimeout(() => {
+            if (!char || !char.userData || !char.userData.isAlive || char.userData.wasTagged) return;
+            if (this.gameType === 'redlight' && this.currentRedLightPhase !== 'GREEN_LIGHT') return;
+            if (char.userData.fallState === 'standing_up') {
+                char.userData.isFallen = false;
+                char.userData.fallState = 'upright';
+                char.userData.sprintBoost = 1.38 + cryptoRandom() * 0.28;
+                if (this.gameType === 'redlight') char.rotation.set(0, Math.PI, 0);
+                setTimeout(() => {
+                    if (char.userData) char.userData.sprintBoost = 1.0;
+                }, 1600);
+            }
+        }, 480);
+    }
+
+    freezeAllContestants() {
+        Object.values(this.characters).forEach((char: any) => {
+            if (!char || !char.userData || !char.userData.isAlive) return;
+            char.userData.isMoving = false;
+
+            // Kill any active transitions
+            gsap.killTweensOf(char.position);
+            gsap.killTweensOf(char.rotation);
+            const parts = char.userData.parts;
+            if (parts?.head) gsap.killTweensOf(parts.head.rotation);
+            if (parts?.torso) gsap.killTweensOf(parts.torso.rotation);
+            if (parts?.armL) gsap.killTweensOf(parts.armL.rotation);
+            if (parts?.armR) gsap.killTweensOf(parts.armR.rotation);
+            if (parts?.legLGroup) gsap.killTweensOf(parts.legLGroup.rotation);
+            if (parts?.legRGroup) gsap.killTweensOf(parts.legRGroup.rotation);
+
+            // If fallen / crawling / trying to rise: FREEZE FLAT IN PLACE ON THE GROUND! DO NOT STAND!
+            if (char.userData.isFallen || char.userData.fallState === 'standing_up' || char.userData.fallState === 'crawling') {
+                char.userData.isFallen = true;
+                char.userData.fallState = 'crawling';
+                char.position.y = 0.34;
+                char.rotation.set(Math.PI * 0.42, Math.PI, (char.rotation.z || 0) * 0.5); // Flat on ground strictly facing doll
+                if (parts?.head) parts.head.rotation.set(-0.45, 0, 0); // Looking up frozen
+                if (parts?.armL) parts.armL.rotation.set(-Math.PI * 0.65, 0, 0.2);
+                if (parts?.armR) parts.armR.rotation.set(-Math.PI * 0.65, 0, -0.2);
+            } else if (!char.userData.isSafe) {
+                // Standing freeze in dramatic mid-run pose facing doll
+                char.rotation.set(0, Math.PI, 0);
+                char.position.y = 1.0;
             }
         });
     }
 
     setTagTimer(seconds: number) {
-        this.tagTimer = Math.max(5, Math.min(60, seconds));
+        if (this.gameType === 'redlight') {
+            this.tagTimer = seconds >= 45 ? 60 : 30;
+        } else {
+            this.tagTimer = Math.max(5, Math.min(60, seconds));
+        }
     }
 
     cancelChase() {
@@ -1077,13 +1461,21 @@ class ThreeManager {
         if (this.waitingForTagStartResolve) {
             this.waitingForTagStartResolve = null;
         }
+        if (this.waitingForRedLightStartResolve) {
+            this.waitingForRedLightStartResolve = null;
+        }
+        this.isRedLightCancelled = true;
+        if (this.activeRedLightInterval) {
+            clearInterval(this.activeRedLightInterval);
+            this.activeRedLightInterval = null;
+        }
         if (this.waitingForSpinResolve) {
             this.waitingForSpinResolve = null;
         }
         if (this.onStateChange) {
             this.onStateChange({ chaseSecondsLeft: undefined, isMusicPlaying: false });
         }
-        if (this.gameType === 'tag') {
+        if (this.gameType === 'tag' || this.gameType === 'redlight') {
             this.updateCameraFraming(false);
         }
     }
@@ -1490,6 +1882,7 @@ class ThreeManager {
     }
 
     updateStandbyMovement(time: number) {
+        if (this.gameType === 'redlight') return; // Red Light contestants strictly face forward and stop-and-go
         const delta = 0.016;
 
         Object.values(this.characters).forEach((char: any) => {
@@ -1691,17 +2084,30 @@ class ThreeManager {
 
     setupLights() {
         if(!this.scene) return;
-        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
         this.scene.add(this.ambientLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xffffff, this.baseLightIntensity);
-        this.dirLight.position.set(20, 40, 20);
+        const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0xfde68a, 0.65);
+        hemiLight.position.set(0, 50, 0);
+        this.scene.add(hemiLight);
+
+        this.dirLight = new THREE.DirectionalLight(0xfffbeb, this.baseLightIntensity);
+        this.dirLight.position.set(22, 45, 28);
         this.dirLight.castShadow = true;
-        this.dirLight.shadow.mapSize.width = 1024;
-        this.dirLight.shadow.mapSize.height = 1024;
+        this.dirLight.shadow.mapSize.width = 2048;
+        this.dirLight.shadow.mapSize.height = 2048;
         this.dirLight.shadow.camera.near = 0.5;
-        this.dirLight.shadow.camera.far = 150;
+        this.dirLight.shadow.camera.far = 160;
+        this.dirLight.shadow.camera.left = -45;
+        this.dirLight.shadow.camera.right = 45;
+        this.dirLight.shadow.camera.top = 45;
+        this.dirLight.shadow.camera.bottom = -45;
         this.scene.add(this.dirLight);
+
+        // Front-camera fill light so the backs of contestants' green tracksuits & white numbers pop crisply
+        const frontFillLight = new THREE.DirectionalLight(0xffffff, 0.55);
+        frontFillLight.position.set(-12, 26, 52);
+        this.scene.add(frontFillLight);
         
         this.spotLight = new THREE.SpotLight(0xffaa00, 0); 
         this.spotLight.position.set(0, 30, 0);
@@ -2123,16 +2529,569 @@ class ThreeManager {
         this.scene.add(tagGroup);
         this.tagEnvGroup = tagGroup;
 
+        // 4. Red Light, Green Light Courtyard & Giant Doll Environment
+        const redLightGroup = this.createRedLightEnvironment();
+        this.scene.add(redLightGroup);
+        this.redLightEnvGroup = redLightGroup;
+
         // Set initial visibility based on gameType
         if (this.gameType === 'tag') {
             this.mingleEnvGroup.visible = false;
             this.innerPlatform.visible = false;
             this.tagEnvGroup.visible = true;
+            this.redLightEnvGroup.visible = false;
+        } else if (this.gameType === 'redlight') {
+            this.mingleEnvGroup.visible = false;
+            this.innerPlatform.visible = false;
+            this.tagEnvGroup.visible = false;
+            this.redLightEnvGroup.visible = true;
         } else {
             this.mingleEnvGroup.visible = true;
             this.innerPlatform.visible = true;
             this.tagEnvGroup.visible = false;
+            this.redLightEnvGroup.visible = false;
         }
+    }
+
+    createRedLightEnvironment(): THREE.Group {
+        const group = new THREE.Group();
+
+        // 1. Procedural Sunlit Golden Sand Court Texture with Yard Lines
+        const sandCanvas = document.createElement('canvas');
+        sandCanvas.width = 512;
+        sandCanvas.height = 512;
+        const sCtx = sandCanvas.getContext('2d');
+        if (sCtx) {
+            const sandGrad = sCtx.createLinearGradient(0, 0, 0, 512);
+            sandGrad.addColorStop(0, '#f3dfb9');
+            sandGrad.addColorStop(0.5, '#ecd2a4');
+            sandGrad.addColorStop(1, '#e4c590');
+            sCtx.fillStyle = sandGrad;
+            sCtx.fillRect(0, 0, 512, 512);
+
+            // Subtle organic sand speckles & ripples
+            for (let i = 0; i < 2200; i++) {
+                const x = (i * 73) % 512;
+                const y = (i * 137) % 512;
+                sCtx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(161,118,64,0.12)';
+                sCtx.fillRect(x, y, 2, 2);
+            }
+            // Faint chalk distance lines across court
+            sCtx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+            sCtx.lineWidth = 2;
+            for (let y = 64; y < 512; y += 64) {
+                sCtx.beginPath();
+                sCtx.moveTo(24, y);
+                sCtx.lineTo(488, y);
+                sCtx.stroke();
+            }
+        }
+        const sandTex = new THREE.CanvasTexture(sandCanvas);
+        sandTex.colorSpace = THREE.SRGBColorSpace;
+
+        const groundGeo = new THREE.BoxGeometry(68, 2, 96);
+        const groundMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            map: sandTex,
+            roughness: 0.92
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.position.y = -1.0;
+        ground.receiveShadow = true;
+        group.add(ground);
+
+        // Waiting zone behind red line (rich terracotta-tinted warm sand)
+        const waitingMat = new THREE.MeshStandardMaterial({ color: 0xdec092, roughness: 0.95 });
+        const waitingZone = new THREE.Mesh(new THREE.BoxGeometry(67.8, 0.05, 14), waitingMat);
+        waitingZone.position.set(0, 0.02, 33);
+        waitingZone.receiveShadow = true;
+        group.add(waitingZone);
+
+        // 2. Red Starting Line at Z = +26 with glowing white sidelines
+        const startLineGeo = new THREE.BoxGeometry(58, 0.14, 1.1);
+        const startLineMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+        const startLine = new THREE.Mesh(startLineGeo, startLineMat);
+        startLine.position.set(0, 0.06, 26);
+        group.add(startLine);
+
+        // Left & Right White Court Sidelines
+        [-28.8, 28.8].forEach(sx => {
+            const sideLine = new THREE.Mesh(
+                new THREE.BoxGeometry(0.35, 0.08, 45),
+                new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+            sideLine.position.set(sx, 0.04, 4);
+            group.add(sideLine);
+        });
+
+        // 3. Bright Yellow Finish Line at Z = -18 (Crossing line for safety)
+        const finishLineGeo = new THREE.BoxGeometry(58, 0.18, 2.2);
+        const finishLineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+        const finishLine = new THREE.Mesh(finishLineGeo, finishLineMat);
+        finishLine.position.set(0, 0.08, -18);
+        group.add(finishLine);
+
+        // Hazard striped border in front of yellow finish line
+        const finishStripeGeo = new THREE.BoxGeometry(58, 0.13, 0.65);
+        const finishStripeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+        const finishStripe = new THREE.Mesh(finishStripeGeo, finishStripeMat);
+        finishStripe.position.set(0, 0.07, -16.8);
+        group.add(finishStripe);
+
+        // Yellow finish line boundary posts on left & right with glowing beacons
+        [-28.5, 28.5].forEach(posX => {
+            const postBase = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.75, 0.9, 0.6, 16),
+                new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 })
+            );
+            postBase.position.set(posX, 0.3, -18);
+
+            const postGeo = new THREE.CylinderGeometry(0.38, 0.48, 5.2, 16);
+            const postMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+            const post = new THREE.Mesh(postGeo, postMat);
+            post.position.set(posX, 2.7, -18);
+            
+            const topperGeo = new THREE.SphereGeometry(0.7, 16, 16);
+            const topperMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+            const topper = new THREE.Mesh(topperGeo, topperMat);
+            topper.position.set(posX, 5.5, -18);
+            group.add(postBase, post, topper);
+        });
+
+        // Glowing finish illumination plane
+        const finishGlowGeo = new THREE.PlaneGeometry(59, 4.2);
+        const finishGlowMat = new THREE.MeshBasicMaterial({
+            color: 0xfef08a,
+            transparent: true,
+            opacity: 0.42,
+            side: THREE.DoubleSide
+        });
+        const finishGlow = new THREE.Mesh(finishGlowGeo, finishGlowMat);
+        finishGlow.rotation.x = -Math.PI / 2;
+        finishGlow.position.set(0, 0.04, -18);
+        group.add(finishGlow);
+
+        // Lush Green Safe Zone Turf behind finish line (Z = -19 to -26.5)
+        const safeZoneMat = new THREE.MeshStandardMaterial({ color: 0x86efac, roughness: 0.85 });
+        const safeZone = new THREE.Mesh(new THREE.BoxGeometry(67.8, 0.06, 8.5), safeZoneMat);
+        safeZone.position.set(0, 0.03, -22.5);
+        safeZone.receiveShadow = true;
+        group.add(safeZone);
+
+        // 4. Painted Sky & Rolling Green Meadow Mural Walls (Iconic Squid Game Set Design)
+        const wallCanvas = document.createElement('canvas');
+        wallCanvas.width = 1024;
+        wallCanvas.height = 512;
+        const wCtx = wallCanvas.getContext('2d');
+        if (wCtx) {
+            // Sky blue gradient
+            const skyGrad = wCtx.createLinearGradient(0, 0, 0, 410);
+            skyGrad.addColorStop(0, '#0284c7');
+            skyGrad.addColorStop(0.55, '#38bdf8');
+            skyGrad.addColorStop(1, '#bae6fd');
+            wCtx.fillStyle = skyGrad;
+            wCtx.fillRect(0, 0, 1024, 512);
+
+            // Soft painted distant clouds on wall mural
+            wCtx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+            [160, 480, 820].forEach((cx, idx) => {
+                const cy = 150 + (idx % 2) * 45;
+                wCtx.beginPath();
+                wCtx.arc(cx, cy, 42, 0, Math.PI * 2);
+                wCtx.arc(cx + 36, cy - 12, 52, 0, Math.PI * 2);
+                wCtx.arc(cx + 76, cy + 4, 38, 0, Math.PI * 2);
+                wCtx.fill();
+            });
+
+            // Painted rolling green hills along bottom of stadium walls
+            wCtx.fillStyle = '#4ade80';
+            wCtx.beginPath();
+            wCtx.moveTo(0, 430);
+            wCtx.quadraticCurveTo(180, 355, 360, 415);
+            wCtx.quadraticCurveTo(540, 465, 720, 375);
+            wCtx.quadraticCurveTo(880, 315, 1024, 410);
+            wCtx.lineTo(1024, 512);
+            wCtx.lineTo(0, 512);
+            wCtx.closePath();
+            wCtx.fill();
+
+            wCtx.fillStyle = '#22c55e';
+            wCtx.beginPath();
+            wCtx.moveTo(0, 460);
+            wCtx.quadraticCurveTo(260, 395, 520, 455);
+            wCtx.quadraticCurveTo(780, 505, 1024, 435);
+            wCtx.lineTo(1024, 512);
+            wCtx.lineTo(0, 512);
+            wCtx.closePath();
+            wCtx.fill();
+        }
+        const wallMuralTex = new THREE.CanvasTexture(wallCanvas);
+        wallMuralTex.colorSpace = THREE.SRGBColorSpace;
+
+        const wallMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            map: wallMuralTex,
+            roughness: 0.75
+        });
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(70, 36, 2), wallMat);
+        backWall.position.set(0, 17, -47);
+        group.add(backWall);
+
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(2, 36, 96), wallMat);
+        leftWall.position.set(-34, 17, 0);
+        group.add(leftWall);
+
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(2, 36, 96), wallMat);
+        rightWall.position.set(34, 17, 0);
+        group.add(rightWall);
+
+        // Top Concrete Wall Coping Ledges & Guard Observation Railings
+        const copingMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.6 });
+        const backCoping = new THREE.Mesh(new THREE.BoxGeometry(71, 1.2, 3.2), copingMat);
+        backCoping.position.set(0, 35.4, -47);
+        const leftCoping = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.2, 97), copingMat);
+        leftCoping.position.set(-34, 35.4, 0);
+        const rightCoping = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.2, 97), copingMat);
+        rightCoping.position.set(34, 35.4, 0);
+        group.add(backCoping, leftCoping, rightCoping);
+
+        // Iconic Front Man / VIP Observation Booth Window high on the Back Wall
+        const boothGroup = new THREE.Group();
+        boothGroup.position.set(0, 31.2, -45.7);
+        const boothFrame = new THREE.Mesh(
+            new THREE.BoxGeometry(16, 4.6, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 })
+        );
+        const boothGlass = new THREE.Mesh(
+            new THREE.PlaneGeometry(14.8, 3.6),
+            new THREE.MeshBasicMaterial({ color: 0x020617 })
+        );
+        boothGlass.position.z = 0.42;
+        boothGroup.add(boothFrame, boothGlass);
+
+        // Glowing Squid Game ○ △ □ Neon Emblems on Observation Booth
+        const neonMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e, side: THREE.DoubleSide });
+        const neonCircle = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 24), neonMat);
+        neonCircle.position.set(-3.4, 0, 0.45);
+        const neonTriangle = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.0, 3), neonMat);
+        neonTriangle.rotation.z = Math.PI / 2;
+        neonTriangle.position.set(0, -0.1, 0.45);
+        const neonSquare = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.0, 4), neonMat);
+        neonSquare.rotation.z = Math.PI / 4;
+        neonSquare.position.set(3.4, 0, 0.45);
+        boothGroup.add(neonCircle, neonTriangle, neonSquare);
+        group.add(boothGroup);
+
+        // Pure White Multi-Puff 3D Clouds in Relief on Walls (unshaded bright white so never grey)
+        const cloudWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const cloudShadeMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
+        const cloudPositions = [
+            { x: -21, y: 24.5, z: -45.4, rot: 0, scale: 1.05 },
+            { x: 21, y: 23.5, z: -45.4, rot: 0, scale: 1.0 },
+            { x: -32.6, y: 24.5, z: -22, rot: Math.PI / 2, scale: 1.1 },
+            { x: -32.6, y: 21.5, z: 4, rot: Math.PI / 2, scale: 0.95 },
+            { x: -32.6, y: 25.5, z: 26, rot: Math.PI / 2, scale: 1.05 },
+            { x: 32.6, y: 23.5, z: -18, rot: -Math.PI / 2, scale: 1.05 },
+            { x: 32.6, y: 26.0, z: 8, rot: -Math.PI / 2, scale: 1.1 },
+            { x: 32.6, y: 21.5, z: 28, rot: -Math.PI / 2, scale: 0.95 }
+        ];
+        cloudPositions.forEach(cp => {
+            const cg = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.BoxGeometry(7.2, 2.2, 0.9), cloudShadeMat);
+            base.position.set(0, -0.3, 0);
+            const mainPuff = new THREE.Mesh(new THREE.BoxGeometry(6.8, 2.4, 1.1), cloudWhiteMat);
+            const topPuff = new THREE.Mesh(new THREE.BoxGeometry(4.4, 2.0, 1.2), cloudWhiteMat);
+            topPuff.position.set(-0.4, 1.6, 0.05);
+            const sidePuff = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 1.15), cloudWhiteMat);
+            sidePuff.position.set(1.6, 1.1, 0.05);
+            cg.add(base, mainPuff, topPuff, sidePuff);
+            cg.position.set(cp.x, cp.y, cp.z);
+            cg.rotation.y = cp.rot;
+            cg.scale.setScalar(cp.scale);
+            group.add(cg);
+        });
+
+        // 5. Iconic Gnarled Tree behind Doll at (0, 0, -34.5)
+        const treeGroup = new THREE.Group();
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+        const trunkBase = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 4.4, 5, 12), trunkMat);
+        trunkBase.position.set(0, 2.5, 0);
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.8, 18, 12), trunkMat);
+        trunk.position.set(0, 11, 0);
+        trunk.castShadow = true;
+        treeGroup.add(trunkBase, trunk);
+
+        // Spreading tree branches
+        [-1, 1].forEach(side => {
+            const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.2, 8, 8), trunkMat);
+            branch.position.set(side * 3.2, 17.5, 0);
+            branch.rotation.z = -side * 0.65;
+            treeGroup.add(branch);
+        });
+
+        // Multi-tiered lush foliage clusters
+        const foliageClusters = [
+            { x: 0, y: 22.5, z: 0, rx: 16, ry: 8.5, rz: 12, color: 0x15803d },
+            { x: -5.5, y: 20.5, z: 0.5, rx: 9, ry: 6.5, rz: 9, color: 0x166534 },
+            { x: 5.5, y: 20.8, z: 0.5, rx: 9, ry: 6.5, rz: 9, color: 0x16a34a },
+            { x: 0, y: 27.2, z: -0.5, rx: 11.5, ry: 6.5, rz: 9.5, color: 0x22c55e }
+        ];
+        foliageClusters.forEach(fc => {
+            const fMat = new THREE.MeshStandardMaterial({ color: fc.color, roughness: 0.8 });
+            const fMesh = new THREE.Mesh(new THREE.BoxGeometry(fc.rx, fc.ry, fc.rz), fMat);
+            fMesh.position.set(fc.x, fc.y, fc.z);
+            fMesh.castShadow = true;
+            treeGroup.add(fMesh);
+        });
+        treeGroup.position.set(0, 0, -34.5);
+        group.add(treeGroup);
+
+        // 6. Giant Young-hee Robotic Doll at (0, 0, -28)
+        const dollGroup = new THREE.Group();
+        dollGroup.position.set(0, 0, -28);
+
+        // Tiered Stage Pedestal with Glowing Status Ring
+        const pedestalOuterMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
+        const pedestalBase = new THREE.Mesh(new THREE.CylinderGeometry(4.9, 5.4, 0.8, 36), pedestalOuterMat);
+        pedestalBase.position.y = 0.4;
+        const pedestalTop = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 4.5, 0.9, 36), new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5 }));
+        pedestalTop.position.y = 1.1;
+        dollGroup.add(pedestalBase, pedestalTop);
+
+        const statusRingGeo = new THREE.TorusGeometry(4.65, 0.16, 12, 48);
+        statusRingGeo.rotateX(Math.PI / 2);
+        const statusRingMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+        this.dollStatusRing = new THREE.Mesh(statusRingGeo, statusRingMat);
+        this.dollStatusRing.position.y = 0.82;
+        dollGroup.add(this.dollStatusRing);
+
+        // Legs, White Knee-High Socks with Red Stripes & Mary Jane Shoes
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.55 });
+        const sockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+        const sockStripeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+        const shoeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.25 });
+
+        [-1.25, 1.25].forEach(lx => {
+            // Upper bare knee/leg
+            const upperLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.58, 1.8, 16), skinMat);
+            upperLeg.position.set(lx, 4.8, 0);
+            // Knee-high white sock
+            const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.55, 2.6, 16), sockMat);
+            sock.position.set(lx, 2.8, 0);
+            sock.castShadow = true;
+            // Red sport stripe on sock top
+            const sockStripe = new THREE.Mesh(new THREE.CylinderGeometry(0.61, 0.61, 0.22, 16), sockStripeMat);
+            sockStripe.position.set(lx, 3.85, 0);
+            // Mary Jane shoe + strap
+            const shoe = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.95, 2.25), shoeMat);
+            shoe.position.set(lx, 1.65, 0.35);
+            shoe.castShadow = true;
+            dollGroup.add(upperLeg, sock, sockStripe, shoe);
+        });
+
+        // Sculpted Orange Pinafore Dress with Straps & Yellow Collared Blouse
+        const dressMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.65 });
+        const dress = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 3.65, 6.4, 24), dressMat);
+        dress.position.y = 8.2;
+        dress.castShadow = true;
+        dollGroup.add(dress);
+
+        // Yellow collared shirt
+        const shirtMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
+        const shirt = new THREE.Mesh(new THREE.CylinderGeometry(2.05, 2.0, 2.6, 24), shirtMat);
+        shirt.position.y = 11.2;
+        shirt.castShadow = true;
+        dollGroup.add(shirt);
+
+        // Overall straps & yellow buttons on front and back
+        [-0.95, 0.95].forEach(sx => {
+            const strap = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.5, 2.5), dressMat);
+            strap.position.set(sx, 11.25, 0);
+            const button = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.15, 12), shirtMat);
+            button.rotation.x = Math.PI / 2;
+            button.position.set(sx, 10.6, 1.98);
+            dollGroup.add(strap, button);
+        });
+
+        // Neck
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.95, 1.2, 16), skinMat);
+        neck.position.y = 12.6;
+        dollGroup.add(neck);
+
+        // Puffed Yellow Short Sleeves & Sculpted Arms
+        [-2.75, 2.75].forEach(ax => {
+            const puffSleeve = new THREE.Mesh(new THREE.SphereGeometry(0.95, 16, 16), shirtMat);
+            puffSleeve.position.set(ax * 0.9, 11.5, 0);
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.45, 4.4, 16), skinMat);
+            arm.position.set(ax, 9.1, 0);
+            arm.castShadow = true;
+            const hand = new THREE.Mesh(new THREE.SphereGeometry(0.52, 12, 12), skinMat);
+            hand.position.set(ax, 6.8, 0);
+            dollGroup.add(puffSleeve, arm, hand);
+        });
+
+        // Rotating Head Group
+        const headGroup = new THREE.Group();
+        headGroup.position.y = 14.3;
+
+        const headBox = new THREE.Mesh(new THREE.BoxGeometry(4.1, 4.1, 3.7), skinMat);
+        headBox.castShadow = true;
+        headGroup.add(headBox);
+
+        // Hair, Fringe Bangs & Pigtails with Red Ribbons
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.45 });
+        const hairTop = new THREE.Mesh(new THREE.BoxGeometry(4.35, 1.45, 4.0), hairMat);
+        hairTop.position.y = 1.75;
+        const hairBack = new THREE.Mesh(new THREE.BoxGeometry(4.35, 4.15, 1.3), hairMat);
+        hairBack.position.set(0, 0, -1.45);
+        // Front bangs with center part
+        const bangsL = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.95, 0.35), hairMat);
+        bangsL.position.set(-1.05, 1.35, 1.8);
+        const bangsR = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.95, 0.35), hairMat);
+        bangsR.position.set(1.05, 1.35, 1.8);
+        headGroup.add(hairTop, hairBack, bangsL, bangsR);
+
+        // Two pigtails with red hair clips
+        [-2.65, 2.65].forEach(px => {
+            const bun = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 16), hairMat);
+            bun.scale.set(0.9, 1.25, 0.9);
+            bun.position.set(px, 0.1, -0.3);
+            const clipMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+            const clip = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.85, 1.55), clipMat);
+            clip.position.set(px * 0.82, 0.85, -0.3);
+            headGroup.add(bun, clip);
+        });
+
+        // Eyebrows
+        [-0.95, 0.95].forEach(bx => {
+            const brow = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 0.12), hairMat);
+            brow.position.set(bx, 0.88, 1.86);
+            headGroup.add(brow);
+        });
+
+        // Rosy Cheeks
+        const cheekMat = new THREE.MeshBasicMaterial({ color: 0xfb7185 });
+        [-1.35, 1.35].forEach(cx => {
+            const cheek = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20), cheekMat);
+            cheek.position.set(cx, -0.42, 1.87);
+            headGroup.add(cheek);
+        });
+
+        // Sculpted Nose & Red Lips
+        const nose = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.45, 0.35), skinMat);
+        nose.position.set(0, -0.12, 1.92);
+        const mouth = new THREE.Mesh(
+            new THREE.BoxGeometry(1.15, 0.34, 0.12),
+            new THREE.MeshBasicMaterial({ color: 0xe11d48 })
+        );
+        mouth.position.set(0, -0.95, 1.86);
+        headGroup.add(nose, mouth);
+
+        // Doll Eyes: White Sclera + Pupil/Iris (Turns Glowing Red on Red Light)
+        this.dollEyes = [];
+        const scleraMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        [-0.95, 0.95].forEach(ex => {
+            const sclera = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.64, 0.12), scleraMat);
+            sclera.position.set(ex, 0.32, 1.84);
+            headGroup.add(sclera);
+
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+            const eye = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.56, 0.16), eyeMat);
+            eye.position.set(ex, 0.32, 1.87);
+            headGroup.add(eye);
+            this.dollEyes.push(eye);
+        });
+
+        // =========================================================================
+        // FIXED EYE LASER BEAMS:
+        // Narrow origin (0.05) anchored directly inside each eye (ex, 0.32, 1.90)
+        // and angled downward (Math.PI / 2 + 0.48 = 117.5°) so the laser light cones
+        // shine straight from her eyes DOWN onto the contestants on the field!
+        // =========================================================================
+        this.dollEyeBeams = [];
+        [-0.95, 0.95].forEach(ex => {
+            const beamGroup = new THREE.Group();
+            beamGroup.position.set(ex, 0.32, 1.90);
+
+            // 1) Glowing red eye lens flare right on the pupil
+            const flareGeo = new THREE.SphereGeometry(0.32, 16, 16);
+            const flareMat = new THREE.MeshBasicMaterial({
+                color: 0xff2222,
+                transparent: true,
+                opacity: 0.95
+            });
+            const eyeFlare = new THREE.Mesh(flareGeo, flareMat);
+            beamGroup.add(eyeFlare);
+
+            // 2) Outer volumetric laser scan cone:
+            // radiusTop = 2.4 (wide cone hitting players on ground), radiusBottom = 0.05 (pinpoint at eye)
+            const beamLength = 30;
+            const outerConeGeo = new THREE.CylinderGeometry(2.4, 0.05, beamLength, 24, 1, true);
+            // Translate +Y by beamLength/2 so local (0,0,0) is the narrow 0.05 tip at the eye!
+            outerConeGeo.translate(0, beamLength / 2, 0);
+            // Rotate around X by 117.5° (Math.PI/2 + 0.48) so +Y points FORWARD (+Z) and DOWNWARD (-Y) onto the players!
+            outerConeGeo.rotateX(Math.PI / 2 + 0.48);
+
+            const outerConeMat = new THREE.MeshBasicMaterial({
+                color: 0xef4444,
+                transparent: true,
+                opacity: 0.28,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+            const outerCone = new THREE.Mesh(outerConeGeo, outerConeMat);
+            beamGroup.add(outerCone);
+
+            // 3) Bright inner laser core beam shining down the center of the cone
+            const innerCoreGeo = new THREE.CylinderGeometry(0.26, 0.025, beamLength, 16, 1, true);
+            innerCoreGeo.translate(0, beamLength / 2, 0);
+            innerCoreGeo.rotateX(Math.PI / 2 + 0.48);
+
+            const innerCoreMat = new THREE.MeshBasicMaterial({
+                color: 0xff8080,
+                transparent: true,
+                opacity: 0.82,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+            const innerCore = new THREE.Mesh(innerCoreGeo, innerCoreMat);
+            beamGroup.add(innerCore);
+
+            beamGroup.visible = false;
+            headGroup.add(beamGroup);
+            this.dollEyeBeams.push(beamGroup);
+        });
+
+        dollGroup.add(headGroup);
+        dollGroup.scale.set(1.22, 1.22, 1.22);
+        this.dollHead = headGroup;
+        this.giantDoll = dollGroup;
+        group.add(dollGroup);
+
+        // 7. Stationary Pink Soldier Guards watching the court
+        const guardFinL = this.createGuard('circle', 0, 0);
+        guardFinL.position.set(-23, 1, -18);
+        guardFinL.lookAt(0, 1, -18);
+        group.add(guardFinL);
+
+        const guardFinR = this.createGuard('triangle', 0, 0);
+        guardFinR.position.set(23, 1, -18);
+        guardFinR.lookAt(0, 1, -18);
+        group.add(guardFinR);
+
+        const guardStartL = this.createGuard('square', 0, 0);
+        guardStartL.position.set(-23, 1, 26);
+        guardStartL.lookAt(0, 1, 26);
+        group.add(guardStartL);
+
+        const guardStartR = this.createGuard('circle', 0, 0);
+        guardStartR.position.set(23, 1, 26);
+        guardStartR.lookAt(0, 1, 26);
+        group.add(guardStartR);
+
+        return group;
     }
 
     updateCameraFraming(immediate = false) {
@@ -2143,8 +3102,6 @@ class ThreeManager {
         const aspect = width / Math.max(1, height);
 
         if (this.gameType === 'tag') {
-            // Precise camera matching the user's reference view:
-            // Centered overview looking down into the ring, perfectly showing the whole playground
             const aspectScale = aspect < 1.65 ? 1.65 / Math.max(0.65, aspect) : 1.0;
             const targetX = 0;
             const targetY = 40 * aspectScale;
@@ -2153,6 +3110,23 @@ class ThreeManager {
 
             this.tagCamTargetPos = new THREE.Vector3(targetX, targetY, targetZ);
             this.tagCamTargetLook = lookTarget.clone();
+
+            gsap.killTweensOf(this.camera.position);
+
+            if (immediate) {
+                this.camera.position.set(targetX, targetY, targetZ);
+                this.currentCamLookAt.copy(lookTarget);
+                this.camera.lookAt(lookTarget);
+            }
+        } else if (this.gameType === 'redlight') {
+            const aspectScale = aspect < 1.65 ? 1.65 / Math.max(0.65, aspect) : 1.0;
+            const targetX = 0;
+            const targetY = 18.5 * aspectScale;
+            const targetZ = 40 * aspectScale;
+            const lookTarget = new THREE.Vector3(0, 5.2, -12);
+
+            this.redLightCamTargetPos = new THREE.Vector3(targetX, targetY, targetZ);
+            this.redLightCamTargetLook = lookTarget.clone();
 
             gsap.killTweensOf(this.camera.position);
 
@@ -2188,7 +3162,7 @@ class ThreeManager {
         }
     }
 
-    setGameType(type: 'mingle' | 'tag') {
+    setGameType(type: 'mingle' | 'tag' | 'redlight') {
         this.gameType = type;
         if (type === 'mingle') {
             this.tagRoundCount = 0;
@@ -2197,10 +3171,11 @@ class ThreeManager {
         }
         if (this.mingleEnvGroup) this.mingleEnvGroup.visible = (type === 'mingle');
         if (this.tagEnvGroup) this.tagEnvGroup.visible = (type === 'tag');
+        if (this.redLightEnvGroup) this.redLightEnvGroup.visible = (type === 'redlight');
         if (this.innerPlatform) this.innerPlatform.visible = (type === 'mingle');
 
-        if (type === 'tag') {
-            // Remove any doors in tag mode
+        if (type === 'tag' || type === 'redlight') {
+            // Remove any doors in tag and redlight modes
             this.doors.forEach(d => {
                 if (d.group && d.group.parent) d.group.parent.remove(d.group);
             });
@@ -2241,6 +3216,12 @@ class ThreeManager {
             if (this.gameType === 'tag') {
                 if (this.waitingForTagStartResolve) {
                     this.startTagChase();
+                }
+                return;
+            }
+            if (this.gameType === 'redlight') {
+                if (this.waitingForRedLightStartResolve) {
+                    this.startRedLightGame();
                 }
                 return;
             }
@@ -2608,14 +3589,19 @@ class ThreeManager {
         const ctx = canvas.getContext('2d');
         if (!ctx) return null;
 
-        // Base green tracksuit fabric
-        ctx.fillStyle = '#1b4d3e';
+        // Vibrant Squid Game teal-green tracksuit fabric
+        const grad = ctx.createLinearGradient(0, 0, 0, 512);
+        grad.addColorStop(0, '#0d9488');
+        grad.addColorStop(1, '#0f766e');
+        ctx.fillStyle = grad;
         ctx.fillRect(0, 0, 512, 512);
 
-        // White racing shoulder stripes
+        // Double white racing shoulder stripes
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(50, 0, 36, 512);
-        ctx.fillRect(426, 0, 36, 512);
+        ctx.fillRect(38, 0, 26, 512);
+        ctx.fillRect(74, 0, 14, 512);
+        ctx.fillRect(448, 0, 26, 512);
+        ctx.fillRect(424, 0, 14, 512);
 
         // White zipper down the middle
         ctx.fillStyle = '#ffffff';
@@ -2623,31 +3609,33 @@ class ThreeManager {
         ctx.fillStyle = '#e2e8f0';
         ctx.fillRect(244, 90, 24, 34);
 
-        // Left chest number patch (White badge with bold green number on the jacket)
-        ctx.fillStyle = '#f8fafc';
+        // Left chest number patch (White badge with bold teal-green number on the jacket)
+        ctx.fillStyle = '#ffffff';
         if (ctx.roundRect) {
             ctx.beginPath();
-            ctx.roundRect(100, 100, 130, 85, 14);
+            ctx.roundRect(100, 100, 132, 86, 14);
             ctx.fill();
-            ctx.strokeStyle = '#0f2921';
+            ctx.strokeStyle = '#115e59';
             ctx.lineWidth = 4;
             ctx.stroke();
         } else {
-            ctx.fillRect(100, 100, 130, 85);
-            ctx.strokeStyle = '#0f2921';
+            ctx.fillRect(100, 100, 132, 86);
+            ctx.strokeStyle = '#115e59';
             ctx.lineWidth = 4;
-            ctx.strokeRect(100, 100, 130, 85);
+            ctx.strokeRect(100, 100, 132, 86);
         }
 
-        ctx.fillStyle = '#0f382c';
+        ctx.fillStyle = '#0f5132';
         const fontSize = playerNum.length > 3 ? 42 : playerNum.length === 3 ? 50 : 58;
         ctx.font = `900 ${fontSize}px "Arial Black", Impact, Inter, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(playerNum, 165, 143);
+        ctx.fillText(playerNum, 166, 143);
 
-        // Bottom elastic hem band
-        ctx.fillStyle = '#153e32';
+        // Bottom elastic hem band with white trim
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 472, 512, 8);
+        ctx.fillStyle = '#115e59';
         ctx.fillRect(0, 480, 512, 32);
 
         const tex = new THREE.CanvasTexture(canvas);
@@ -2670,29 +3658,45 @@ class ThreeManager {
         const ctx = canvas.getContext('2d');
         if (!ctx) return null;
 
-        // Base green tracksuit
-        ctx.fillStyle = '#1b4d3e';
+        // Vibrant Squid Game teal-green tracksuit
+        const grad = ctx.createLinearGradient(0, 0, 0, 512);
+        grad.addColorStop(0, '#0d9488');
+        grad.addColorStop(1, '#0f766e');
+        ctx.fillStyle = grad;
         ctx.fillRect(0, 0, 512, 512);
 
-        // White racing shoulder stripes
+        // Double white racing shoulder stripes
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(50, 0, 36, 512);
-        ctx.fillRect(426, 0, 36, 512);
+        ctx.fillRect(38, 0, 26, 512);
+        ctx.fillRect(74, 0, 14, 512);
+        ctx.fillRect(448, 0, 26, 512);
+        ctx.fillRect(424, 0, 14, 512);
 
-        // Center spine seam
-        ctx.fillStyle = '#153e32';
-        ctx.fillRect(252, 0, 8, 512);
+        // High-contrast back number plate & bold white participant number
+        if (ctx.roundRect) {
+            ctx.fillStyle = 'rgba(17, 94, 89, 0.65)';
+            ctx.beginPath();
+            ctx.roundRect(108, 125, 296, 195, 24);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
 
-        // Big bold printed participant number on back of jacket
-        ctx.fillStyle = '#ffffff';
         const backFontSize = playerNum.length > 3 ? 125 : playerNum.length === 3 ? 148 : 170;
         ctx.font = `900 ${backFontSize}px "Arial Black", Impact, Inter, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(playerNum, 256, 225);
+        ctx.strokeStyle = '#042f2e';
+        ctx.lineWidth = 10;
+        ctx.strokeText(playerNum, 256, 226);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(playerNum, 256, 226);
 
-        // Bottom elastic hem band
-        ctx.fillStyle = '#153e32';
+        // Bottom elastic hem band with white trim
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 472, 512, 8);
+        ctx.fillStyle = '#115e59';
         ctx.fillRect(0, 480, 512, 32);
 
         const tex = new THREE.CanvasTexture(canvas);
@@ -2718,27 +3722,27 @@ class ThreeManager {
         const hairPalette = HAIR_PALETTES[rng.int(0, HAIR_PALETTES.length - 1)];
 
         const skinTone = new THREE.Color(skinPalette.skin);
-        const uniformColor = new THREE.Color(0x1b4d3e);
+        const uniformColor = new THREE.Color(0x0d9488);
         const stripeWhite = new THREE.Color(0xffffff);
 
-        const matSkin = new THREE.MeshStandardMaterial({ color: skinTone, roughness: 0.7 });
-        const matUniform = new THREE.MeshStandardMaterial({ color: uniformColor, roughness: 0.85 });
-        const matWhite = new THREE.MeshStandardMaterial({ color: stripeWhite, roughness: 0.7 });
+        const matSkin = new THREE.MeshStandardMaterial({ color: skinTone, roughness: 0.65 });
+        const matUniform = new THREE.MeshStandardMaterial({ color: uniformColor, roughness: 0.68 });
+        const matWhite = new THREE.MeshStandardMaterial({ color: stripeWhite, roughness: 0.5 });
 
         const matFace = new THREE.MeshStandardMaterial({
             map: this.createFaceTexture(name, numberStr, skinPalette, hairPalette, rng) || undefined,
-            roughness: 0.7
+            roughness: 0.65
         });
 
         const matTorsoFront = new THREE.MeshStandardMaterial({
             color: 0xffffff,
             map: this.createFrontTorsoTexture(numberStr) || undefined,
-            roughness: 0.85
+            roughness: 0.65
         });
         const matTorsoBack = new THREE.MeshStandardMaterial({
             color: 0xffffff,
             map: this.createBackTorsoTexture(numberStr) || undefined,
-            roughness: 0.85
+            roughness: 0.65
         });
 
         // Head Group
@@ -3530,19 +4534,87 @@ class ThreeManager {
             return;
         }
 
-        // Mingle game standard concentric rings placement - spaced generously across the enlarged platform
+        // Red Light, Green Light player placement behind start line (randomized slots every match!)
+        if (this.gameType === 'redlight') {
+            const total = players.length;
+            const maxPerRow = Math.min(12, Math.max(6, Math.ceil(Math.sqrt(total * 2.2))));
+            const spacingX = Math.min(3.8, 48 / Math.max(1, maxPerRow - 1));
+            const randomizedSlots = cryptoShuffle(Array.from({ length: total }, (_, i) => i));
+
+            players.forEach((name, idx) => {
+                const numberStr = getPlayerNumber(name);
+                const char = this.createCharacter(name, numberStr);
+
+                const slotIdx = randomizedSlots[idx];
+                const row = Math.floor(slotIdx / maxPerRow);
+                const col = slotIdx % maxPerRow;
+                const itemsInThisRow = Math.min(maxPerRow, total - row * maxPerRow);
+                const rowWidth = (itemsInThisRow - 1) * spacingX;
+
+                const startX = -rowWidth / 2 + col * spacingX + (cryptoRandom() - 0.5) * 0.45;
+                const startZ = 26.5 + row * 2.8 + (cryptoRandom() - 0.5) * 0.35;
+
+                char.position.set(startX, 1, startZ);
+                char.rotation.set(0, Math.PI, 0); // Local face (+Z) faces strictly toward doll (-Z)
+                char.userData.isAlive = true;
+                char.userData.isMoving = false;
+                char.userData.isSafe = false;
+                char.userData.isFallen = false;
+                char.userData.fallState = 'upright';
+                char.userData.homePos = new THREE.Vector3(startX, 1, startZ);
+                char.userData.standbyTarget = new THREE.Vector3(startX, 1, startZ);
+                char.userData.standbyTimer = 0.5 + cryptoRandom() * 2.5;
+                char.userData.standbyAction = (idx % 3 === 0) ? 'warmup' : (idx % 3 === 1) ? 'lookAround' : 'wave';
+                char.userData.isStandbyMoving = false;
+
+                if (this.scene) this.scene.add(char);
+                this.characters[name] = char;
+
+                if (this.labelContainer) {
+                    const label = document.createElement('div');
+                    label.className = 'character-label';
+                    label.innerHTML = `${name}`;
+                    label.style.position = 'absolute';
+                    label.style.left = '0px';
+                    label.style.top = '0px';
+                    label.style.background = 'rgba(15, 23, 42, 0.88)';
+                    label.style.border = '2px solid #10b981';
+                    label.style.color = 'white';
+                    label.style.padding = '2px 8px';
+                    label.style.borderRadius = '8px';
+                    label.style.fontFamily = "'Fredoka', sans-serif";
+                    label.style.fontSize = '14px';
+                    label.style.fontWeight = '600';
+                    label.style.pointerEvents = 'none';
+                    label.style.willChange = 'transform';
+                    label.style.backfaceVisibility = 'hidden';
+                    (label.style as any).webkitFontSmoothing = 'antialiased';
+                    label.style.zIndex = '5';
+                    label.style.whiteSpace = 'nowrap';
+                    label.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+                    this.labelContainer.appendChild(label);
+                    this.labels[name] = label;
+                }
+            });
+
+            this.updateCameraFraming(false);
+            return;
+        }
+
+        // Mingle game standard concentric rings placement (randomized ring positions!)
+        const shuffledMinglePlayers = cryptoShuffle([...players]);
         let currentRing = 0;
         let playersPlaced = 0;
-        let baseRadius = 8; // expanded from 5 to give spacious room
+        let baseRadius = 8;
 
-        while (playersPlaced < players.length) {
+        while (playersPlaced < shuffledMinglePlayers.length) {
             let capacity = 10 + currentRing * 8; 
-            let playersInRing = Math.min(capacity, players.length - playersPlaced);
+            let playersInRing = Math.min(capacity, shuffledMinglePlayers.length - playersPlaced);
             let radius = baseRadius + currentRing * 4.5;
             let angleStep = (Math.PI * 2) / playersInRing;
 
             for (let i = 0; i < playersInRing; i++) {
-                const name = players[playersPlaced];
+                const name = shuffledMinglePlayers[playersPlaced];
                 const numberStr = getPlayerNumber(name);
                 const char = this.createCharacter(name, numberStr);
                 const angle = i * angleStep;
@@ -3556,7 +4628,7 @@ class ThreeManager {
                 char.lookAt(0, 1, 0); 
                 char.userData.homePos = new THREE.Vector3(spawnX, 1, spawnZ);
                 char.userData.standbyTarget = char.userData.homePos.clone();
-                char.userData.standbyTimer = 0.5 + Math.random() * 2.5;
+                char.userData.standbyTimer = 0.5 + cryptoRandom() * 2.5;
                 char.userData.standbyAction = (playersPlaced % 4 === 0) ? 'walk' : (playersPlaced % 4 === 1) ? 'wave' : (playersPlaced % 4 === 2) ? 'warmup' : 'lookAround';
                 char.userData.isStandbyMoving = false; 
 
@@ -3613,6 +4685,18 @@ class ThreeManager {
         const width = this.renderer?.domElement.clientWidth || window.innerWidth;
         const height = this.renderer?.domElement.clientHeight || window.innerHeight;
 
+        // Project Giant Doll screen region in Red Light mode so no label ever covers the doll
+        let dollScreenX = -9999;
+        let dollScreenY = -9999;
+        if (this.gameType === 'redlight') {
+            const dollVec = new THREE.Vector3(0, 11.5, -28);
+            dollVec.project(this.camera);
+            if (dollVec.z <= 1.0) {
+                dollScreenX = (dollVec.x * 0.5 + 0.5) * width;
+                dollScreenY = (dollVec.y * -0.5 + 0.5) * height;
+            }
+        }
+
         const visibleItems: Array<{
             name: string;
             label: HTMLElement;
@@ -3628,13 +4712,20 @@ class ThreeManager {
             const label = this.labels[name];
             if(!char || !label) return;
 
+            if (this.gameType === 'redlight' && char.userData.hideSafeLabel) {
+                label.style.opacity = '0';
+                return;
+            }
+
             if(char.userData.isAlive || char.userData.wasTagged) {
-                // Read base character position to isolate name tag from dynamic mesh banking/hop jitter
                 const charPos = new THREE.Vector3();
                 char.getWorldPosition(charPos);
+                const labelHeightOffset = this.gameType === 'tag'
+                    ? 4.2
+                    : (this.gameType === 'redlight' && char.userData.isSafe ? 2.8 : 3.6);
                 const vector = new THREE.Vector3(
                     charPos.x,
-                    charPos.y + (this.gameType === 'tag' ? 4.2 : 4.0),
+                    charPos.y + labelHeightOffset,
                     charPos.z
                 );
                 vector.project(this.camera!);
@@ -3661,25 +4752,41 @@ class ThreeManager {
             }
         });
 
-        // STABLE deterministic sort by player number.
-        // Sorting by fluctuating screenX causes index swapping at 60Hz which was the main source of jitter!
         visibleItems.sort((a, b) => a.orderKey - b.orderKey);
 
+        const candidateOffsets = [0, -22, 18, -42];
         for (let i = 0; i < visibleItems.length; i++) {
             const current = visibleItems[i];
-            for (let j = 0; j < i; j++) {
-                const prev = visibleItems[j];
-                const dx = Math.abs(current.x - prev.x);
-                const dy = Math.abs((current.y + current.offsetY) - (prev.y + prev.offsetY));
-                
-                // If two labels overlap in screen space:
-                if (dx < 70 && dy < 24) {
-                    current.offsetY = prev.offsetY - 26; // Stagger vertically with stable precedence
+            let chosenOffset = 0;
+
+            for (const cand of candidateOffsets) {
+                const testY = current.y + cand;
+                if (
+                    this.gameType === 'redlight' &&
+                    Math.abs(current.x - dollScreenX) < 78 &&
+                    Math.abs(testY - dollScreenY) < 95
+                ) {
+                    continue;
+                }
+
+                let collides = false;
+                for (let j = 0; j < i; j++) {
+                    const prev = visibleItems[j];
+                    const dx = Math.abs(current.x - prev.x);
+                    const dy = Math.abs(testY - (prev.y + prev.offsetY));
+                    if (dx < 62 && dy < 19) {
+                        collides = true;
+                        break;
+                    }
+                }
+                if (!collides) {
+                    chosenOffset = cand;
+                    break;
                 }
             }
+            current.offsetY = chosenOffset;
         }
 
-        // Apply smooth temporal LERP interpolation to completely eliminate position jumping & jitter
         for (let i = 0; i < visibleItems.length; i++) {
             const item = visibleItems[i];
             const targetX = item.x;
@@ -3694,10 +4801,8 @@ class ThreeManager {
                 };
             } else {
                 const smoothed = this.labelSmoothedPos[item.name];
-                // Smooth LERP factor 0.35 gives responsive tracking while absorbing all micro-jitter
                 smoothed.x += (targetX - smoothed.x) * 0.35;
                 smoothed.y += (targetY - smoothed.y) * 0.35;
-                // Slower lerp on vertical collision offset (0.2) ensures buttery smooth stack transitions
                 smoothed.offsetY += (targetOffsetY - smoothed.offsetY) * 0.2;
             }
 
@@ -3715,8 +4820,6 @@ class ThreeManager {
         this.currentRoundData = roundData;
         this.updateCameraFraming(false);
         
-        // 1. Determine IT: Round 1 is strictly the Squid Guard with NO player names!
-        // Round 2 onwards is the player caught in the preceding round.
         const isFirstGame = (roundData.roundNum === 1);
         let itName = '';
 
@@ -3731,7 +4834,6 @@ class ThreeManager {
                 this.characters['__GUARD__'] = guardChar;
             }
         } else {
-            // Remove the Squid Guard from round 1 so only player is IT
             if (this.characters['__GUARD__']) {
                 if (this.scene) this.scene.remove(this.characters['__GUARD__']);
                 if (this.labels['__GUARD__']) {
@@ -3767,26 +4869,25 @@ class ThreeManager {
             itChar.userData.isStandbyMoving = false;
         }
 
-        // Place other players naturally dispersed around the wide arena ring (so they are spread out rather than huddled in one clump)
-        const others = isFirstGame ? roundData.activePlayers : roundData.activePlayers.filter((p: string) => p !== itName);
+        // Randomize runner dispersion every round so positions are never predictable
+        const rawOthers = isFirstGame ? roundData.activePlayers : roundData.activePlayers.filter((p: string) => p !== itName);
+        const others = cryptoShuffle<string>(rawOthers);
         const nOthers = others.length;
         others.forEach((name: string, i: number) => {
             const c = this.characters[name];
             if (c) {
-                // Distribute across the upper 240 degrees (avoiding right next to IT at (0, 1, 17))
                 const angleSpread = Math.PI * 1.35;
                 const startAngle = Math.PI * 0.5 - angleSpread / 2;
                 const t = nOthers > 1 ? i / (nOthers - 1) : 0.5;
-                const jitterAngle = ((i * 13) % 7 - 3) * 0.04;
+                const jitterAngle = (cryptoRandom() - 0.5) * 0.24;
                 const angle = startAngle + t * angleSpread + jitterAngle;
                 
                 const ringTier = i % 3;
                 const baseRadius = ringTier === 0 ? 11.0 : ringTier === 1 ? 15.5 : 19.5;
-                const jitterR = ((i * 17) % 5 - 2) * 0.6;
-                const r = Math.min(21.5, Math.max(8.5, baseRadius + jitterR));
+                const r = Math.min(21.5, Math.max(8.5, baseRadius + (cryptoRandom() - 0.5) * 2.4));
                 
                 const px = Math.cos(angle) * r;
-                const pz = -Math.abs(Math.sin(angle) * r) * 0.95; // mostly across negative Z (opposite IT)
+                const pz = -Math.abs(Math.sin(angle) * r) * 0.95;
                 
                 c.position.set(px, 1, pz);
                 c.rotation.set(0, 0, 0);
@@ -3798,16 +4899,14 @@ class ThreeManager {
                 c.userData.isFallen = false;
                 c.userData.fallState = 'upright';
                 c.userData.sprintBoost = 1.0;
+                c.userData.tripCooldownUntil = 0;
                 c.userData.homePos = new THREE.Vector3(px, 1, pz);
                 c.userData.standbyTarget = new THREE.Vector3(px, 1, pz);
                 c.userData.standbyAction = (i % 3 === 0) ? 'warmup' : (i % 3 === 1) ? 'lookAround' : 'wave';
-                c.userData.standbyTimer = 0.5 + Math.random() * 2.0;
+                c.userData.standbyTimer = 0.5 + cryptoRandom() * 2.0;
                 c.userData.isStandbyMoving = false;
             }
         });
-
-        // Set labels and state - Squid Guard has no label; player IT gets IT badge
-        const itNum = isFirstGame ? 'GUARD' : getPlayerNumber(itName);
 
         if (isFirstGame) {
             if (this.labels['__GUARD__']) {
@@ -3821,7 +4920,6 @@ class ThreeManager {
             }
         }
 
-        // Prompt user in-game to click to start tag round & music!
         this.onStateChange({ 
             phase: 'TAG_READY', 
             round: roundData.roundNum, 
@@ -3831,34 +4929,31 @@ class ThreeManager {
 
         this.isStandbyActive = true;
 
-        // Wait for user to explicitly click to start!
         await new Promise<void>(resolve => {
             this.waitingForTagStartResolve = resolve;
         });
 
         this.stopStandbyMode();
 
-        // Evasion loop: players run avoiding IT, strictly staying inside the circle!
+        // Evasion loop: players run avoiding IT, bumping and tripping each other in panic!
         let evasionActive = true;
         this.stopEvasion = () => { evasionActive = false; };
         const circleMaxRadius = 22.5;
-        let currentTargetName: string | null = null;
-        let currentChaseProgress = 0;
         let lastRandomTripTime = Date.now();
 
         const evasionLoop = () => {
             if (!evasionActive) return;
             const itPos = itChar ? itChar.position : new THREE.Vector3(0, 1, 0);
 
-            // Dynamic fall/stumble events: upright runners occasionally stumble and get back up
-            if (Date.now() - lastRandomTripTime > 3200 && others.length > 2) {
+            // Solo panic stumbles every ~1.7s
+            if (Date.now() - lastRandomTripTime > 1700 && others.length > 2) {
                 lastRandomTripTime = Date.now();
                 const candidates = others.filter((n: string) => {
                     const char = this.characters[n];
-                    return char && char.userData.isAlive && !char.userData.isFallen && !char.userData.wasTagged && n !== currentTargetName;
+                    return char && char.userData.isAlive && !char.userData.isFallen && !char.userData.wasTagged;
                 });
-                if (candidates.length > 0) {
-                    const pickedName = candidates[Math.floor(Math.random() * candidates.length)];
+                if (candidates.length > 0 && cryptoRandom() < 0.75) {
+                    const pickedName = candidates[Math.floor(cryptoRandom() * candidates.length)];
                     const pickedChar = this.characters[pickedName];
                     if (pickedChar) {
                         this.triggerPlayerTrip(pickedChar, false);
@@ -3877,11 +4972,11 @@ class ThreeManager {
                 awayDir.normalize();
 
                 const perpDir = new THREE.Vector2(-awayDir.y, awayDir.x);
-                const isTarget = (name === currentTargetName);
 
-                // If fallen and recovering on the turf: crawl slowly away
+                // If fallen on the turf: crawl frantically and then scramble back up!
                 if (c.userData.isFallen) {
-                    const crawlSpeed = 0.035;
+                    c.userData.crawlTime = (c.userData.crawlTime || 0) + 0.032;
+                    const crawlSpeed = 0.045;
                     let crawlX = c.position.x + awayDir.x * crawlSpeed;
                     let crawlZ = c.position.z + awayDir.y * crawlSpeed;
                     const dCenter = Math.sqrt(crawlX * crawlX + crawlZ * crawlZ);
@@ -3892,10 +4987,17 @@ class ThreeManager {
                     }
                     c.position.x = crawlX;
                     c.position.z = crawlZ;
+
+                    if (
+                        c.userData.fallState === 'crawling' &&
+                        c.userData.crawlTime >= (c.userData.crawlDurationTarget || 1.1)
+                    ) {
+                        this.smoothRecoverFromCrawl(c);
+                    }
                     return;
                 }
 
-                // Flocking separation between runners to prevent overlapping clumps with gentle force
+                // Player-to-player collision tripping & separation
                 let repulseX = 0;
                 let repulseZ = 0;
                 others.forEach((otherName: string) => {
@@ -3905,11 +5007,24 @@ class ThreeManager {
                     const diffX = c.position.x - oc.position.x;
                     const diffZ = c.position.z - oc.position.z;
                     const dSq = diffX * diffX + diffZ * diffZ;
-                    if (dSq < 9.0 && dSq > 0.01) {
+
+                    // Domino trip over a fallen player in path!
+                    if (oc.userData.isFallen && dSq < 2.8 && cryptoRandom() < 0.045) {
+                        this.triggerPlayerTrip(c, false);
+                        return;
+                    }
+
+                    // Two upright runners colliding & tripping each other!
+                    if (!oc.userData.isFallen && dSq < 3.4 && dSq > 0.01) {
+                        if (cryptoRandom() < 0.018) {
+                            this.triggerPlayerCollisionTrip(c, oc);
+                        }
                         const d = Math.sqrt(dSq);
-                        const force = (3.0 - d) / 3.0;
-                        repulseX += (diffX / d) * force * 0.08;
-                        repulseZ += (diffZ / d) * force * 0.08;
+                        const force = (2.2 - d) / 2.2;
+                        if (force > 0) {
+                            repulseX += (diffX / d) * force * 0.09;
+                            repulseZ += (diffZ / d) * force * 0.09;
+                        }
                     }
                 });
 
@@ -3918,34 +5033,16 @@ class ThreeManager {
                     (c.position.z - itPos.z) * (c.position.z - itPos.z)
                 );
 
-                let baseSpeed = 0.20;
-                let dodgeMult = 0.25;
-                if (isTarget) {
-                    if (currentChaseProgress < 0.85) {
-                        baseSpeed = distToIt < 4.8 ? 0.28 : 0.24;
-                        dodgeMult = 0.35;
-                        c.userData.runSpeed = distToIt < 6 ? 20 : 16;
-                    } else {
-                        // Final stretch: slow down so IT makes the dramatic catch
-                        baseSpeed = 0.13;
-                        dodgeMult = 0.12;
-                        c.userData.runSpeed = 13;
-                    }
-                } else {
-                    if (distToIt < 7.5) {
-                        baseSpeed = 0.24;
-                        c.userData.runSpeed = 19; // panic sprint
-                    } else {
-                        baseSpeed = 0.17;
-                        c.userData.runSpeed = 14;
-                    }
-                }
+                // Every runner uses identical, unscripted evasion speed so nobody can tell who will be caught!
+                let baseSpeed = distToIt < 7.8 ? (0.23 + (idx % 3) * 0.015) : 0.175;
+                let dodgeMult = distToIt < 7.8 ? 0.34 : 0.24;
+                c.userData.runSpeed = distToIt < 7.8 ? 19 : 14;
 
                 if (c.userData.sprintBoost) {
                     baseSpeed *= c.userData.sprintBoost;
                 }
 
-                const dodgeOffset = Math.sin(Date.now() * 0.0028 + idx * 1.8) * dodgeMult;
+                const dodgeOffset = Math.sin(Date.now() * 0.0032 + idx * 1.9) * dodgeMult;
                 const moveVec = awayDir.clone().multiplyScalar(baseSpeed)
                     .add(perpDir.clone().multiplyScalar(dodgeOffset))
                     .add(new THREE.Vector2(repulseX, repulseZ));
@@ -3953,7 +5050,6 @@ class ThreeManager {
                 let newX = c.position.x + moveVec.x;
                 let newZ = c.position.z + moveVec.y;
 
-                // Smooth inward boundary deflection to keep players inside playing field without vibrating at walls
                 const currentDistFromCenter = Math.sqrt(newX * newX + newZ * newZ);
                 if (currentDistFromCenter > 18.0) {
                     const steerForce = (currentDistFromCenter - 18.0) / (circleMaxRadius - 18.0);
@@ -3970,7 +5066,6 @@ class ThreeManager {
                 c.position.x = newX;
                 c.position.z = newZ;
 
-                // Smooth character facing angle without sudden jerks
                 if (moveVec.lengthSq() > 0.001) {
                     const targetAngle = Math.atan2(moveVec.x, moveVec.y);
                     let diff = targetAngle - c.rotation.y;
@@ -3979,11 +5074,9 @@ class ThreeManager {
                     c.rotation.y += diff * 0.25;
                 }
 
-                // Gentle body banking roll into evasive turns
                 c.rotation.z = -dodgeOffset * 0.10;
 
-                // Panicked backward glance towards IT
-                if (Math.random() < 0.012 && c.userData.parts?.head && !c.userData.isGlancing) {
+                if (cryptoRandom() < 0.012 && c.userData.parts?.head && !c.userData.isGlancing) {
                     c.userData.isGlancing = true;
                     const head = c.userData.parts.head;
                     const glanceSide = (idx % 2 === 0 ? 1 : -1) * 0.75;
@@ -3999,8 +5092,7 @@ class ThreeManager {
                     });
                 }
 
-                // Panicked hop / jump
-                if (Math.random() < 0.006 && !c.userData.isHopping && distToIt < 12) {
+                if (cryptoRandom() < 0.007 && !c.userData.isHopping && distToIt < 12) {
                     c.userData.isHopping = true;
                     gsap.to(c.position, {
                         y: 1.55,
@@ -4013,49 +5105,51 @@ class ThreeManager {
                         }
                     });
                 }
-
-                c.position.x = newX;
-                c.position.z = newZ;
             });
 
             requestAnimationFrame(evasionLoop);
         };
         requestAnimationFrame(evasionLoop);
 
-        // IT catches designated target(s)
-        let targetsToCatch: string[] = roundData.eliminated.filter((name: string) => name !== itName);
-        if (targetsToCatch.length === 0 && others.length > 0) {
-            targetsToCatch = [others[Math.floor(Math.random() * others.length)]];
-        }
+        // Determine how many players IT must catch this round
+        const catchCount = Math.max(1, Math.min(others.length - 1, (roundData.eliminated || []).filter((n: string) => n !== itName).length || 1));
+        const caughtList: string[] = [];
 
         const totalDuration = this.tagTimer || 15;
-        const perTargetDurationSec = Math.max(5, Math.round(totalDuration / Math.max(1, targetsToCatch.length)));
+        const perTargetDurationSec = Math.max(5, Math.round(totalDuration / Math.max(1, catchCount)));
         const chaseDurationMs = perTargetDurationSec * 1000;
 
-        for (let tIdx = 0; tIdx < targetsToCatch.length; tIdx++) {
-            const victimName = targetsToCatch[tIdx];
-            const victimChar = this.characters[victimName];
-            const victimNum = getPlayerNumber(victimName);
-
-            if (!victimChar || !itChar) continue;
-
-            currentTargetName = victimName;
-            currentChaseProgress = 0;
+        for (let tIdx = 0; tIdx < catchCount; tIdx++) {
+            if (!itChar) break;
             itChar.userData.isMoving = true;
             this.onStateChange({ isMusicPlaying: true });
-
-            // Random decoy diversions: Pick 1 to 3 other alive players that IT briefly lunges/feints toward before locking in on victim
-            const aliveDecoys = others.filter((n: string) => n !== victimName && this.characters[n]?.userData.isAlive);
-            const shuffledDecoys = [...aliveDecoys].sort(() => Math.random() - 0.5).slice(0, Math.min(3, aliveDecoys.length));
 
             await new Promise<void>((resolveCatch) => {
                 const chaseStart = Date.now();
                 let lastReportedSec = -1;
-                let activeChaseTargetName = shuffledDecoys.length > 0 ? shuffledDecoys[0] : victimName;
+                let lastTargetSwitchTime = 0;
+                let activeChaseTargetName = '';
+                let lockedFinalVictimName: string | null = null;
                 let currentFacingAngle = itChar.rotation.y;
 
+                const pickDynamicTarget = () => {
+                    const aliveRunners = others.filter(n => this.characters[n]?.userData?.isAlive && !caughtList.includes(n));
+                    if (aliveRunners.length === 0) return '';
+                    // Mix of closest runners and random unpredictable switches
+                    const scored = aliveRunners.map(n => {
+                        const ch = this.characters[n];
+                        const d = Math.hypot(ch.position.x - itChar.position.x, ch.position.z - itChar.position.z);
+                        return { name: n, dist: d, fallen: Boolean(ch.userData.isFallen) };
+                    }).sort((a, b) => a.dist - b.dist);
+                    const topPool = scored.slice(0, Math.min(4, scored.length)).map(s => s.name);
+                    const chosen = selectUnpredictableTargets(topPool, 1)[0];
+                    return chosen || aliveRunners[0];
+                };
+
+                activeChaseTargetName = pickDynamicTarget();
+
                 const chaseInterval = setInterval(() => {
-                    if (!itChar || !victimChar) {
+                    if (!itChar) {
                         clearInterval(chaseInterval);
                         this.activeChaseInterval = null;
                         this.onStateChange({ chaseSecondsLeft: undefined });
@@ -4065,7 +5159,6 @@ class ThreeManager {
 
                     const elapsed = Date.now() - chaseStart;
                     const progress = Math.min(1, elapsed / chaseDurationMs);
-                    currentChaseProgress = progress;
                     const secLeft = Math.max(0, Math.ceil((chaseDurationMs - elapsed) / 1000));
 
                     if (secLeft !== lastReportedSec) {
@@ -4075,20 +5168,32 @@ class ThreeManager {
 
                     itChar.userData.moveTime = (itChar.userData.moveTime || 0) + 0.08;
 
-                    // Unpredictable dynamic targeting schedule:
-                    // - 0% to ~28%: Lunge at Decoy 1 (if available)
-                    // - ~28% to ~55%: Swerve and feint toward Decoy 2 (or 1)
-                    // - >= 55%: Unrelentingly lock onto the actual victim for the climax!
-                    if (progress < 0.28 && shuffledDecoys.length > 0) {
-                        activeChaseTargetName = shuffledDecoys[0];
-                    } else if (progress < 0.55 && shuffledDecoys.length > 1) {
-                        activeChaseTargetName = shuffledDecoys[1];
-                    } else {
-                        activeChaseTargetName = victimName;
+                    // Until 88% of the timer, IT erratically switches between runners every 1.4s-2.0s so NOBODY knows who will be caught!
+                    if (progress < 0.88) {
+                        if (elapsed - lastTargetSwitchTime > 1450 + cryptoRandom() * 550) {
+                            lastTargetSwitchTime = elapsed;
+                            const aliveRunners = others.filter(n => this.characters[n]?.userData?.isAlive && !caughtList.includes(n));
+                            const diffRunners = aliveRunners.filter(n => n !== activeChaseTargetName);
+                            const pool = diffRunners.length > 0 ? diffRunners : aliveRunners;
+                            if (pool.length > 0) {
+                                activeChaseTargetName = pool[Math.floor(cryptoRandom() * pool.length)];
+                            }
+                        }
+                    } else if (!lockedFinalVictimName) {
+                        // At 88% (final ~1.2s!), dynamically lock onto an unpredictable victim from the nearby pack!
+                        lockedFinalVictimName = pickDynamicTarget();
+                        activeChaseTargetName = lockedFinalVictimName;
+                        const vChar = this.characters[lockedFinalVictimName];
+                        if (vChar && !vChar.userData.isFallen) {
+                            this.triggerPlayerTrip(vChar, true);
+                        }
                     }
 
-                    const activeTargetChar = this.characters[activeChaseTargetName] || victimChar;
-                    const isFocusingActualVictim = (activeChaseTargetName === victimName);
+                    const activeTargetChar = this.characters[activeChaseTargetName];
+                    if (!activeTargetChar) {
+                        activeChaseTargetName = pickDynamicTarget();
+                        return;
+                    }
 
                     const targetX = activeTargetChar.position.x;
                     const targetZ = activeTargetChar.position.z;
@@ -4096,23 +5201,15 @@ class ThreeManager {
                     const dz = targetZ - itChar.position.z;
                     const distToActive = Math.sqrt(dx * dx + dz * dz);
 
-                    // Distance to actual victim (for camera and catch trigger)
-                    const distToVictim = Math.sqrt(
-                        (victimChar.position.x - itChar.position.x) * (victimChar.position.x - itChar.position.x) +
-                        (victimChar.position.z - itChar.position.z) * (victimChar.position.z - itChar.position.z)
-                    );
-
-                    // Smooth turning toward whichever player IT is currently menacing
                     if (distToActive > 0.1) {
                         const desiredAngle = Math.atan2(dx, dz);
                         let angleDiff = desiredAngle - currentFacingAngle;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                        currentFacingAngle += angleDiff * 0.18;
+                        currentFacingAngle += angleDiff * 0.20;
                         itChar.rotation.y = currentFacingAngle;
                     }
 
-                    // Immersive Stable Progressive Camera: Gently zooms closer synchronized with timer without fast panning or spinning
                     if (this.camera) {
                         const midX = (itChar.position.x + activeTargetChar.position.x) * 0.5;
                         const midZ = (itChar.position.z + activeTargetChar.position.z) * 0.5;
@@ -4125,79 +5222,40 @@ class ThreeManager {
 
                         const baseY = 40 * aspectScale;
                         const baseZ = 48 * aspectScale;
-
-                        // Very gentle zoom: from 1.0 down to ~0.76 as timer counts down
                         const zoomFactor = 1.0 - (0.24 * Math.pow(progress, 0.9));
 
-                        // Stable overhead vantage point: gentle X tracking clamped to ±5 units so names remain clear and readable
                         const camX = Math.max(-5, Math.min(5, midX * 0.18));
                         const camY = baseY * zoomFactor;
                         const camZ = baseZ * zoomFactor;
 
-                        // Clamped smooth lookAt target centered on chase action
                         const lookX = Math.max(-6, Math.min(6, midX * 0.35));
                         const lookZ = Math.max(-6, Math.min(6, midZ * 0.35 + 1.2));
-                        const targetLook = new THREE.Vector3(lookX, 1.2, lookZ);
-
                         this.tagCamTargetPos = new THREE.Vector3(camX, camY, camZ);
-                        this.tagCamTargetLook = targetLook;
+                        this.tagCamTargetLook = new THREE.Vector3(lookX, 1.2, lookZ);
                     }
 
-                    // Target victim dramatic slip/stumble as IT closes in during the final stretch
-                    if (progress >= 0.74 && !victimChar.userData.isFallen && !victimChar.userData.wasTagged) {
-                        this.triggerPlayerTrip(victimChar, true);
-                    }
-
-                    // IT reaches arms forward to touch/catch the player
-                    if (distToActive < 3.2 && distToActive > 1.35) {
+                    if (distToActive < 3.4 && distToActive > 1.35) {
                         if (itChar.userData.parts?.armR && itChar.userData.parts?.armL) {
                             itChar.userData.isCustomArmAnim = true;
-                            gsap.to(itChar.userData.parts.armR.rotation, {
-                                x: -Math.PI * 0.72,
-                                z: -0.22,
-                                duration: 0.18,
-                                overwrite: "auto"
-                            });
-                            gsap.to(itChar.userData.parts.armL.rotation, {
-                                x: -Math.PI * 0.70,
-                                z: 0.22,
-                                duration: 0.18,
-                                overwrite: "auto"
-                            });
+                            gsap.to(itChar.userData.parts.armR.rotation, { x: -Math.PI * 0.72, z: -0.22, duration: 0.18, overwrite: "auto" });
+                            gsap.to(itChar.userData.parts.armL.rotation, { x: -Math.PI * 0.70, z: 0.22, duration: 0.18, overwrite: "auto" });
                         }
                         if (itChar.userData.parts?.torso) {
-                            gsap.to(itChar.userData.parts.torso.rotation, {
-                                x: 0.32,
-                                duration: 0.18,
-                                overwrite: "auto"
-                            });
+                            gsap.to(itChar.userData.parts.torso.rotation, { x: 0.32, duration: 0.18, overwrite: "auto" });
                         }
                     }
 
-                    // Pacing of IT:
-                    let itSpeed = 0.25;
-                    if (progress < 0.55) {
-                        // Decoy pursuit phase: fast erratic dashes keeping all players on edge
-                        itSpeed = distToActive > 4.5 ? 0.32 : 0.24;
-                    } else if (progress < 0.85) {
-                        // Pursuit phase locked on real victim: stay on victim's heels
-                        if (distToVictim > 5.5) {
-                            itSpeed = 0.35;
-                        } else if (distToVictim > 3.8) {
-                            itSpeed = 0.26;
-                        } else {
-                            itSpeed = 0.20;
-                        }
+                    let itSpeed = 0.28;
+                    if (progress < 0.88) {
+                        itSpeed = distToActive > 4.2 ? 0.34 : 0.22;
                     } else {
-                        // Final stretch: surge to tag victim!
-                        itSpeed = 0.44 + (progress - 0.85) * 0.9;
+                        itSpeed = 0.52 + (progress - 0.88) * 1.2;
                     }
 
-                    // Contact condition strictly for actual victim (or timeout finish):
-                    const isContact = isFocusingActualVictim && (
-                        (distToVictim <= 1.35 && progress >= 0.80) || 
-                        (progress >= 1.0 && distToVictim <= 2.2) || 
-                        elapsed >= (chaseDurationMs + 800)
+                    const isContact = Boolean(lockedFinalVictimName) && (
+                        (distToActive <= 1.45 && progress >= 0.88) ||
+                        progress >= 1.0 ||
+                        elapsed >= (chaseDurationMs + 500)
                     );
 
                     if (!isContact) {
@@ -4206,19 +5264,16 @@ class ThreeManager {
                             itChar.position.z += (dz / distToActive) * itSpeed;
                         }
                     } else {
-                        // Contact! TOUCH / CATCH!
+                        const victimName = lockedFinalVictimName || activeChaseTargetName;
+                        const victimChar = this.characters[victimName] || activeTargetChar;
+                        caughtList.push(victimName);
+
                         clearInterval(chaseInterval);
                         this.activeChaseInterval = null;
                         this.onStateChange({ chaseSecondsLeft: undefined, isMusicPlaying: false });
 
-                        // Physical hand tap/touch impact
                         if (itChar.userData.parts?.armR) {
-                            gsap.to(itChar.userData.parts.armR.position, {
-                                z: 0.35,
-                                duration: 0.1,
-                                yoyo: true,
-                                repeat: 1
-                            });
+                            gsap.to(itChar.userData.parts.armR.position, { z: 0.35, duration: 0.1, yoyo: true, repeat: 1 });
                         }
 
                         globalAudio?.play('boom', 420);
@@ -4228,14 +5283,12 @@ class ThreeManager {
                         victimChar.userData.wasTagged = true;
                         victimChar.userData.isMoving = false;
 
-                        // Victim physical reaction to being touched: arms fly up in shock
                         if (victimChar.userData.parts) {
                             victimChar.userData.isCustomArmAnim = true;
                             gsap.to(victimChar.userData.parts.armL.rotation, { x: -Math.PI * 0.85, z: -0.25, duration: 0.2 });
                             gsap.to(victimChar.userData.parts.armR.rotation, { x: -Math.PI * 0.85, z: 0.25, duration: 0.2 });
                         }
 
-                        // Victim stumbles forward from touch impact
                         const impactDx = victimChar.position.x - itChar.position.x;
                         const impactDz = victimChar.position.z - itChar.position.z;
                         const impactDist = Math.max(0.1, Math.sqrt(impactDx * impactDx + impactDz * impactDz));
@@ -4246,19 +5299,8 @@ class ThreeManager {
                             ease: "power1.out"
                         });
 
-                        // Victim sits down on turf
-                        gsap.to(victimChar.position, {
-                            y: 0.4,
-                            duration: 0.4,
-                            delay: 0.15,
-                            ease: "bounce.out"
-                        });
-                        gsap.to(victimChar.rotation, {
-                            z: Math.PI / 2.2,
-                            y: victimChar.rotation.y + 0.4,
-                            duration: 0.4,
-                            delay: 0.15
-                        });
+                        gsap.to(victimChar.position, { y: 0.4, duration: 0.4, delay: 0.15, ease: "bounce.out" });
+                        gsap.to(victimChar.rotation, { z: Math.PI / 2.2, y: victimChar.rotation.y + 0.4, duration: 0.4, delay: 0.15 });
 
                         const vLabel = this.labels[victimName];
                         if (vLabel) {
@@ -4267,11 +5309,9 @@ class ThreeManager {
                             vLabel.style.boxShadow = '0 0 15px rgba(225,29,72,0.8)';
                         }
 
-                        // Store this caught player as the IT for the NEXT game round!
                         this.lastCaughtPlayer = victimName;
                         this.tagRoundCount++;
 
-                        // Rich dramatic elimination visual effects
                         this.createDizzyStars(victimChar);
                         const vPos = new THREE.Vector3();
                         victimChar.getWorldPosition(vPos);
@@ -4286,7 +5326,6 @@ class ThreeManager {
                             globalAudio.play('ghost');
                         }
 
-                        // IT player triumphant victory pose & hop
                         if (itChar) {
                             itChar.userData.isCustomArmAnim = true;
                             if (itChar.userData.parts?.armL) gsap.to(itChar.userData.parts.armL.rotation, { x: -Math.PI * 0.9, duration: 0.25 });
@@ -4297,13 +5336,11 @@ class ThreeManager {
                         this.onStateChange({
                             phase: 'ELIMINATED',
                             msg: `${victimName} WAS CAUGHT!`,
-                            eliminatedThisRound: targetsToCatch.slice(0, tIdx + 1),
+                            eliminatedThisRound: [...caughtList],
                             isMusicPlaying: false
                         });
 
-                        // Hold close camera framing for 2.2s so user enjoys the dramatic catch
                         setTimeout(() => {
-                            // Smoothly restore wide arena framing
                             this.updateCameraFraming(false);
                             if (itChar.userData.parts?.torso) {
                                 gsap.to(itChar.userData.parts.torso.rotation, { x: 0, duration: 0.4 });
@@ -4319,14 +5356,16 @@ class ThreeManager {
             });
         }
 
-        // Stop evasion movement
+        // Update roundData with the dynamically caught player(s) and survivors!
+        roundData.eliminated = [...caughtList];
+        roundData.survivors = roundData.activePlayers.filter((n: string) => !caughtList.includes(n));
+
         evasionActive = false;
         this.stopEvasion = null;
         this.activeChaseInterval = null;
         this.onStateChange({ chaseSecondsLeft: undefined, isMusicPlaying: false });
         if (itChar) itChar.userData.isMoving = false;
 
-        // Survivors celebrate escaping!
         roundData.survivors.forEach((sName: string) => {
             const sChar = this.characters[sName];
             if (sChar && sChar.userData.isAlive) {
@@ -4342,7 +5381,6 @@ class ThreeManager {
             }
         });
 
-        // IT victory hop
         if (itChar) {
             gsap.to(itChar.position, {
                 y: 2.5,
@@ -4365,10 +5403,712 @@ class ThreeManager {
         await new Promise(r => setTimeout(r, 1500));
     }
 
+    startRedLightGame() {
+        if (this.waitingForRedLightStartResolve) {
+            const res = this.waitingForRedLightStartResolve;
+            this.waitingForRedLightStartResolve = null;
+            res();
+        }
+    }
+
+    async playRedLightRound(roundData: any) {
+        if (!globalAudio) return;
+        this.stopStandbyMode();
+        this.currentRoundData = roundData;
+        this.isRedLightCancelled = false;
+        this.updateCameraFraming(false);
+
+        stopSquidGameYouTubeAudio();
+
+        Object.values(this.characters).forEach((char: any) => {
+            if (char && char.userData && char.userData.isAlive) {
+                char.rotation.set(0, Math.PI, 0);
+                char.userData.isMoving = false;
+                char.userData.isStandbyMoving = false;
+                char.userData.hideSafeLabel = false;
+            }
+        });
+
+        if (this.dollHead) {
+            this.dollHead.rotation.y = Math.PI;
+        }
+        if (this.dollEyes) {
+            this.dollEyes.forEach(e => {
+                if ((e.material as any)?.color) {
+                    (e.material as any).color.setHex(0x0f172a);
+                }
+            });
+        }
+        if (this.dollEyeBeams) {
+            this.dollEyeBeams.forEach(b => { b.visible = false; });
+        }
+
+        this.onStateChange({
+            phase: 'RED_LIGHT_READY',
+            round: roundData.roundNum,
+            msg: '',
+            isMusicPlaying: false
+        });
+
+        await new Promise<void>(resolve => {
+            this.waitingForRedLightStartResolve = resolve;
+        });
+
+        if (this.isRedLightCancelled) return;
+
+        globalAudio.play('pop', 900);
+
+        const isPicker = (roundData.pattern !== 'survival' && Array.isArray(roundData.eliminated));
+        const activeParticipants = cryptoShuffle<string>([...roundData.activePlayers]);
+        const totalToEliminate = isPicker
+            ? Math.min(activeParticipants.length - 1, Math.max(1, (roundData.eliminated || []).length))
+            : (activeParticipants.length > 6 ? 2 : 1);
+
+        const safePlayers = new Set<string>();
+        const dynamicallyEliminated = new Set<string>();
+
+        const updateDynamicRedLightCamera = (isRedLightScan: boolean = false) => {
+            const container = document.getElementById(this.containerId);
+            const width = container?.clientWidth || window.innerWidth;
+            const height = container?.clientHeight || Math.round(window.innerHeight * 0.85);
+            const aspect = width / Math.max(1, height);
+            const aspectScale = aspect < 1.65 ? 1.65 / Math.max(0.65, aspect) : 1.0;
+
+            const racingChars = activeParticipants
+                .map(n => this.characters[n])
+                .filter(c => c && c.userData.isAlive && !c.userData.isSafe);
+
+            let focusZ = -15.5;
+            if (racingChars.length > 0) {
+                const sumZ = racingChars.reduce((acc, c) => acc + c.position.z, 0);
+                focusZ = sumZ / racingChars.length;
+            }
+
+            const progress = Math.max(0, Math.min(1, (26 - focusZ) / 42));
+
+            const targetY = (18.5 - progress * 7.2 - (isRedLightScan ? 1.0 : 0)) * aspectScale;
+            const targetZ = (40.0 - progress * 28.5 - (isRedLightScan ? 3.2 : 0)) * aspectScale;
+            const lookY = 5.2 + progress * 0.8 + (isRedLightScan ? 0.5 : 0);
+            const lookZ = -12.0 - progress * 10.5;
+
+            if (this.redLightCamTargetPos && this.redLightCamTargetLook) {
+                this.redLightCamTargetPos.set(0, targetY, targetZ);
+                this.redLightCamTargetLook.set(0, lookY, lookZ);
+            }
+        };
+
+        let roundSecondsLeft = (this.tagTimer >= 45 || this.tagTimer === 60) ? 60 : 30;
+        this.tagTimer = roundSecondsLeft;
+        const totalDuration = roundSecondsLeft;
+        const isThirtySec = (totalDuration === 30);
+
+        this.onStateChange({ 
+            chaseSecondsLeft: roundSecondsLeft,
+            safePlayersCount: 0,
+            racingCount: activeParticipants.length
+        });
+
+        // Helper to move a player who crossed Z <= -18 into the Left/Right Safe Wings
+        const markRunnerSafeInWing = (name: string, char: any) => {
+            if (!char || char.userData.isSafe || !char.userData.isAlive) return;
+            char.userData.isSafe = true;
+            char.userData.isMoving = false;
+            char.userData.isFallen = false;
+            safePlayers.add(name);
+            const safeOrdinal = safePlayers.size;
+
+            const wingSide = char.position.x < -1
+                ? -1
+                : char.position.x > 1
+                ? 1
+                : (safeOrdinal % 2 === 0 ? -1 : 1);
+            const wingIdx = Math.floor((safeOrdinal - 1) / 2);
+            const wingCol = wingIdx % 5;
+            const wingRow = Math.floor(wingIdx / 5);
+            const safeWingX = wingSide * (11.8 + wingCol * 3.1 + (cryptoRandom() - 0.5) * 0.6);
+            const safeWingZ = -20.2 - (wingRow % 3) * 1.7 - cryptoRandom() * 0.6;
+
+            gsap.to(char.position, {
+                x: safeWingX,
+                z: safeWingZ,
+                duration: 0.55,
+                ease: "power2.out"
+            });
+
+            gsap.to(char.position, {
+                y: 1.45,
+                duration: 0.22,
+                yoyo: true,
+                repeat: 1,
+                ease: "power2.out",
+                onComplete: () => {
+                    if (char.position) char.position.y = 1.0;
+                    char.rotation.set(0, 0, 0);
+                }
+            });
+            const parts = char.userData.parts;
+            if (parts?.armL) gsap.to(parts.armL.rotation, { z: 1.6, x: -0.4, duration: 0.35 });
+            if (parts?.armR) gsap.to(parts.armR.rotation, { z: -1.6, x: -0.4, duration: 0.35 });
+
+            globalAudio?.play('win', 950);
+
+            const label = this.labels[name];
+            if (label) {
+                label.innerHTML = `<span style="background:#10b981; color:white; padding:1px 6px; border-radius:5px; font-weight:bold; margin-right:3px; font-size:11px;">✓ SAFE</span> ${name}`;
+                label.style.borderColor = '#10b981';
+                label.style.fontSize = '12px';
+                label.style.boxShadow = '0 0 10px rgba(16,185,129,0.5)';
+            }
+
+            setTimeout(() => {
+                if (char && char.userData && char.userData.isSafe) {
+                    char.userData.hideSafeLabel = true;
+                }
+            }, 1100);
+
+            this.onStateChange({
+                safePlayersCount: safePlayers.size,
+                racingCount: activeParticipants.length - safePlayers.size - dynamicallyEliminated.size
+            });
+        };
+
+        // Helper to laser-eliminate a specific contestant (either mid-round on Red Light or at final buzzer)
+        const eliminateContestantWithLaser = async (name: string, reasonBadge: string = '❌ ELIMINATED') => {
+            const char = this.characters[name];
+            if (!char || !char.userData.isAlive) return;
+            dynamicallyEliminated.add(name);
+            char.userData.isAlive = false;
+            char.userData.wasTagged = true;
+            char.userData.isMoving = false;
+            char.userData.hideSafeLabel = false;
+
+            // Aim Young-hee's laser beams directly toward the victim's position!
+            if (this.dollEyeBeams) {
+                const aimYaw = Math.max(-0.42, Math.min(0.42, char.position.x / Math.max(8, 29 + char.position.z)));
+                this.dollEyeBeams.forEach(b => {
+                    b.visible = true;
+                    gsap.killTweensOf(b.rotation);
+                    gsap.to(b.rotation, { y: aimYaw, x: 0.04, duration: 0.18 });
+                });
+            }
+
+            this.triggerPlayerTrip(char, true);
+            globalAudio?.play('laser', 420);
+            globalAudio?.play('boom', 300);
+
+            const vPos = new THREE.Vector3();
+            char.getWorldPosition(vPos);
+            this.createEliminationShockwave(vPos);
+            this.createSmokePuffs(vPos);
+            this.createDizzyStars(char);
+            this.createGhostHamster(vPos);
+
+            const label = this.labels[name];
+            if (label) {
+                label.innerHTML = `<span style="background:#ef4444; color:white; padding:2px 8px; border-radius:6px; font-weight:bold; margin-right:4px; box-shadow:0 0 12px rgba(239,68,68,0.85);">${reasonBadge}</span> ${name}`;
+                label.style.borderColor = '#ef4444';
+                label.style.boxShadow = 'none';
+                label.style.opacity = '1';
+            }
+
+            this.onStateChange({
+                safePlayersCount: safePlayers.size,
+                racingCount: Math.max(0, activeParticipants.length - safePlayers.size - dynamicallyEliminated.size),
+                eliminatedThisRound: Array.from(dynamicallyEliminated)
+            });
+        };
+
+        // Initialize contestants: ZERO pre-selected targets! Every single player starts with identical unbiased random speed!
+        activeParticipants.forEach((name, idx) => {
+            const char = this.characters[name];
+            if (char) {
+                char.rotation.set(0, Math.PI, 0);
+                char.userData.isAlive = true;
+                char.userData.isMoving = false;
+                char.userData.isSafe = false;
+                char.userData.hideSafeLabel = false;
+                char.userData.isFallen = false;
+                char.userData.fallState = 'upright';
+                char.userData.sprintBoost = 1.0;
+                char.userData.runTimeSeed = cryptoRandom() * 10;
+                char.userData.crawlTime = 0;
+                char.userData.tripCooldownUntil = 0;
+                char.userData.baseStepSpeed = isThirtySec
+                    ? (2.65 + cryptoRandom() * 0.55)
+                    : (1.42 + cryptoRandom() * 0.34);
+                char.userData.cycleTempo = 0.88 + cryptoRandom() * 0.32;
+                char.userData.weaveTargetX = char.position.x + (cryptoRandom() - 0.5) * 4.5;
+            }
+        });
+
+        // Decide cryptographically whether one surprise elimination will happen during a mid-game RED LIGHT scan!
+        const willHaveMidRoundCatch = totalToEliminate >= 2 || (totalToEliminate === 1 && cryptoRandom() < 0.48);
+        const targetMidRoundCycle = isThirtySec ? 2 : (2 + Math.floor(cryptoRandom() * 2));
+
+        if (this.activeRedLightInterval) clearInterval(this.activeRedLightInterval);
+        this.activeRedLightInterval = setInterval(() => {
+            roundSecondsLeft--;
+            if (roundSecondsLeft >= 0) {
+                this.onStateChange({ 
+                    chaseSecondsLeft: roundSecondsLeft,
+                    safePlayersCount: safePlayers.size,
+                    racingCount: Math.max(0, activeParticipants.length - safePlayers.size - dynamicallyEliminated.size)
+                });
+            }
+            if (roundSecondsLeft <= 0) {
+                clearInterval(this.activeRedLightInterval);
+                this.activeRedLightInterval = null;
+            }
+        }, 1000);
+
+        const waitInterruptible = async (ms: number) => {
+            const step = 50;
+            let waited = 0;
+            while (waited < ms && roundSecondsLeft > 0 && !this.isRedLightCancelled) {
+                await new Promise(r => setTimeout(r, step));
+                waited += step;
+            }
+        };
+
+        let cycleCount = 0;
+
+        while (roundSecondsLeft > 0 && !this.isRedLightCancelled) {
+            cycleCount++;
+
+            // 1. GREEN LIGHT: Doll sings "Mugunghwa kkochi pieot seumnida"
+            this.currentRedLightPhase = 'GREEN_LIGHT';
+            if (this.dollHead) {
+                this.dollHead.rotation.y = Math.PI;
+            }
+            if (this.dollEyes) {
+                this.dollEyes.forEach(e => {
+                    if ((e.material as any)?.color) {
+                        (e.material as any).color.setHex(0x0f172a);
+                    }
+                });
+            }
+            if (this.dollEyeBeams) {
+                this.dollEyeBeams.forEach(b => {
+                    b.visible = false;
+                    gsap.killTweensOf(b.rotation);
+                    b.rotation.set(0, 0, 0);
+                });
+            }
+            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
+                (this.dollStatusRing.material as any).color.setHex(0x10b981);
+            }
+
+            updateDynamicRedLightCamera(false);
+
+            this.onStateChange({
+                phase: 'GREEN_LIGHT',
+                msg: '',
+                isMusicPlaying: true,
+                safePlayersCount: safePlayers.size,
+                racingCount: Math.max(0, activeParticipants.length - safePlayers.size - dynamicallyEliminated.size)
+            });
+
+            playSquidGameYouTubeAudio(0, cycleCount > 1);
+
+            const activeRunners = activeParticipants.filter(name => {
+                const char = this.characters[name];
+                return char && char.userData.isAlive && !char.userData.isSafe;
+            });
+
+            // Re-roll each runner's tempo and lateral weaving target every cycle so the pack constantly swaps leads & jostles!
+            activeRunners.forEach(name => {
+                const char = this.characters[name];
+                if (char) {
+                    char.rotation.set(0, Math.PI, 0);
+                    char.userData.isMoving = true;
+                    char.userData.cycleTempo = 0.80 + cryptoRandom() * 0.48;
+                    char.userData.weaveTargetX = Math.max(-19, Math.min(19, char.position.x + (cryptoRandom() - 0.5) * 6.0));
+                }
+            });
+
+            let phaseElapsed = 0;
+            const maxConcurrentFalls = Math.max(2, Math.min(5, Math.ceil(activeRunners.length * 0.28)));
+
+            const runInterval = setInterval(() => {
+                if (this.isRedLightCancelled || roundSecondsLeft <= 0) {
+                    clearInterval(runInterval);
+                    return;
+                }
+                const dt = 0.04;
+                phaseElapsed += dt;
+
+                updateDynamicRedLightCamera(false);
+
+                const currentlyRacing = activeParticipants.filter(n => {
+                    const c = this.characters[n];
+                    return c && c.userData.isAlive && !c.userData.isSafe;
+                });
+
+                const currentFallenCount = currentlyRacing.filter(n => this.characters[n]?.userData?.isFallen).length;
+                const eliminationsRemaining = Math.max(0, totalToEliminate - dynamicallyEliminated.size);
+                // Keep a thrilling photo-finish pack of (eliminationsRemaining + 3..5 decoys) near the finish line so nobody stands out!
+                const minPhotoFinishPack = eliminationsRemaining + Math.min(4, Math.max(2, Math.floor(activeParticipants.length * 0.25)));
+
+                // Shuffle iteration order each tick so collision checks have zero index bias
+                const tickOrder = cryptoShuffle(currentlyRacing);
+
+                tickOrder.forEach((name, rIdx) => {
+                    const char = this.characters[name];
+                    if (!char || !char.userData.isAlive || char.userData.isSafe) return;
+
+                    // 1) Check player-to-player collisions, shoves, and domino trips!
+                    if (!char.userData.isFallen && currentFallenCount < maxConcurrentFalls && char.position.z < 24.5 && char.position.z > -16.8) {
+                        for (let j = 0; j < currentlyRacing.length; j++) {
+                            const otherName = currentlyRacing[j];
+                            if (otherName === name) continue;
+                            const otherChar = this.characters[otherName];
+                            if (!otherChar || !otherChar.userData.isAlive || otherChar.userData.isSafe) continue;
+
+                            const dx = Math.abs(char.position.x - otherChar.position.x);
+                            const dz = char.position.z - otherChar.position.z;
+
+                            // Domino trip: running right behind a fallen player on the sand!
+                            if (otherChar.userData.isFallen && dx < 1.65 && dz > 0.1 && dz < 2.25 && cryptoRandom() < 0.085) {
+                                this.triggerPlayerTrip(char, false);
+                                break;
+                            }
+
+                            // Rival shove / accidental leg-clip between two close upright runners!
+                            if (!otherChar.userData.isFallen && dx < 1.85 && Math.abs(dz) < 1.85 && cryptoRandom() < 0.024) {
+                                this.triggerPlayerCollisionTrip(char, otherChar);
+                                break;
+                            }
+                        }
+                    }
+
+                    // 2) Solo high-speed sand stumble
+                    if (
+                        !char.userData.isFallen &&
+                        currentFallenCount < maxConcurrentFalls &&
+                        char.position.z < 22.0 &&
+                        char.position.z > -16.2 &&
+                        Date.now() > (char.userData.tripCooldownUntil || 0) &&
+                        cryptoRandom() < 0.0085
+                    ) {
+                        char.userData.tripCooldownUntil = Date.now() + 3000;
+                        this.triggerPlayerTrip(char, false);
+                    }
+
+                    // 3) Advance fallen/crawling or upright runner
+                    if (char.userData.isFallen) {
+                        char.userData.crawlTime = (char.userData.crawlTime || 0) + dt;
+                        const crawlSpeed = isThirtySec ? 2.15 : 1.35;
+                        char.position.z -= crawlSpeed * dt;
+
+                        if (
+                            char.userData.fallState === 'crawling' &&
+                            char.userData.crawlTime >= (char.userData.crawlDurationTarget || 1.15)
+                        ) {
+                            this.smoothRecoverFromCrawl(char);
+                        }
+                    } else {
+                        let speed = (char.userData.baseStepSpeed || 2.6) * (char.userData.cycleTempo || 1.0) * (char.userData.sprintBoost || 1.0);
+
+                        // Natural lateral weaving so runners cross paths and bump each other
+                        if (typeof char.userData.weaveTargetX === 'number') {
+                            char.position.x += (char.userData.weaveTargetX - char.position.x) * 0.022;
+                        }
+
+                        // Surge in the final seconds so the pack reaches the yellow line for a photo-finish!
+                        if (roundSecondsLeft <= (isThirtySec ? 10 : 16)) {
+                            speed *= 1.32;
+                        }
+                        if (roundSecondsLeft <= 5) {
+                            speed = Math.max(speed, isThirtySec ? 5.0 : 3.8);
+                        }
+
+                        char.position.z -= speed * dt;
+
+                        const animTime = Date.now() * 0.015 + (char.userData.runTimeSeed || rIdx);
+                        char.rotation.set(0, Math.PI, 0);
+                        if (char.userData.parts?.legLGroup) char.userData.parts.legLGroup.rotation.x = Math.sin(animTime) * 0.75;
+                        if (char.userData.parts?.legRGroup) char.userData.parts.legRGroup.rotation.x = -Math.sin(animTime) * 0.75;
+                        if (char.userData.parts?.armL && !char.userData.isCustomArmAnim) char.userData.parts.armL.rotation.x = -Math.sin(animTime) * 0.65;
+                        if (char.userData.parts?.armR && !char.userData.isCustomArmAnim) char.userData.parts.armR.rotation.x = Math.sin(animTime) * 0.65;
+                        char.position.y = 1.0 + Math.abs(Math.sin(animTime * 1.2)) * 0.12;
+                    }
+
+                    // 4) Finish line & Photo-Finish Pack management:
+                    // Early frontrunners can cross Z <= -18 freely ONLY while more than `minPhotoFinishPack` runners remain on the court.
+                    // Once down to the final `minPhotoFinishPack` runners, they jostle, trip, and battle right at the yellow line (Z = -16.4 to -17.6)
+                    // until the final climax so nobody knows which runner in the pack will be eliminated!
+                    const stillOnCourtCount = activeParticipants.length - safePlayers.size - dynamicallyEliminated.size;
+                    if (char.position.z <= -16.3 && stillOnCourtCount <= minPhotoFinishPack && eliminationsRemaining > 0) {
+                        // Trigger dramatic finish-line trip/scramble in the final pack!
+                        if (!char.userData.isFallen && cryptoRandom() < 0.18) {
+                            this.triggerPlayerTrip(char, false);
+                        }
+                        char.position.z = Math.max(-17.45 - cryptoRandom() * 0.25, char.position.z);
+                    } else if (char.position.z <= -18.0) {
+                        markRunnerSafeInWing(name, char);
+                    }
+                });
+            }, 40);
+
+            const chantDurationMs = cycleCount === 1 ? 5100 : 4800;
+            await waitInterruptible(chantDurationMs);
+            clearInterval(runInterval);
+
+            if (this.isRedLightCancelled || roundSecondsLeft <= 0) break;
+
+            // 2. AFTER "SEUMNIDA": Pause music & smoothly turn the doll's head toward players (0.75s)
+            pauseSquidGameYouTubeAudio();
+            this.currentRedLightPhase = 'TURNING';
+            updateDynamicRedLightCamera(true);
+            this.onStateChange({
+                phase: 'TURNING',
+                msg: '',
+                isMusicPlaying: false,
+                safePlayersCount: safePlayers.size,
+                racingCount: Math.max(0, activeParticipants.length - safePlayers.size - dynamicallyEliminated.size)
+            });
+
+            if (this.dollHead) {
+                gsap.to(this.dollHead.rotation, { y: 0, duration: 0.75, ease: "power2.inOut" });
+            }
+            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
+                (this.dollStatusRing.material as any).color.setHex(0xf59e0b);
+            }
+
+            this.freezeAllContestants();
+
+            await waitInterruptible(750);
+            if (this.isRedLightCancelled || roundSecondsLeft <= 0) break;
+
+            // 3. RED LIGHT: Doll scans frozen contestants with downward-shining eye beams sweeping across the field
+            this.currentRedLightPhase = 'RED_LIGHT';
+            updateDynamicRedLightCamera(true);
+
+            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
+                (this.dollStatusRing.material as any).color.setHex(0xef4444);
+            }
+            if (this.dollEyes) {
+                this.dollEyes.forEach(e => {
+                    if ((e.material as any)?.color) {
+                        (e.material as any).color.setHex(0xff1e1e);
+                    }
+                });
+            }
+            if (this.dollEyeBeams) {
+                this.dollEyeBeams.forEach((b) => {
+                    b.visible = true;
+                    gsap.killTweensOf(b.rotation);
+                    b.rotation.set(0, -0.22, 0);
+                    gsap.to(b.rotation, {
+                        y: 0.22,
+                        x: 0.08,
+                        duration: 0.78,
+                        yoyo: true,
+                        repeat: 1,
+                        ease: "sine.inOut"
+                    });
+                });
+            }
+
+            this.onStateChange({
+                phase: 'RED_LIGHT',
+                msg: '',
+                isMusicPlaying: false,
+                safePlayersCount: safePlayers.size,
+                racingCount: Math.max(0, activeParticipants.length - safePlayers.size - dynamicallyEliminated.size)
+            });
+
+            this.freezeAllContestants();
+
+            // SURPRISE MID-ROUND RED LIGHT CATCH:
+            // If scheduled for this cycle and eliminations are still needed, a random runner gets bumped/slips during RED LIGHT and is blasted!
+            const eliminationsStillNeeded = totalToEliminate - dynamicallyEliminated.size;
+            const currentOnCourt = activeParticipants.filter(n => {
+                const c = this.characters[n];
+                return c && c.userData.isAlive && !c.userData.isSafe;
+            });
+
+            if (
+                willHaveMidRoundCatch &&
+                cycleCount === targetMidRoundCycle &&
+                eliminationsStillNeeded > 0 &&
+                currentOnCourt.length > eliminationsStillNeeded
+            ) {
+                await waitInterruptible(420);
+                if (!this.isRedLightCancelled && roundSecondsLeft > 0) {
+                    const midVictim = selectUnpredictableTargets(currentOnCourt, 1)[0];
+                    const midChar = midVictim ? this.characters[midVictim] : null;
+                    if (midVictim && midChar) {
+                        // Victim visibly wobbles/slips forward during Red Light!
+                        gsap.to(midChar.position, { z: midChar.position.z - 0.85, duration: 0.22 });
+                        gsap.to(midChar.rotation, { z: 0.28, duration: 0.15, yoyo: true, repeat: 1 });
+                        await waitInterruptible(240);
+                        await eliminateContestantWithLaser(midVictim, '❌ MOVED ON RED LIGHT!');
+                        await waitInterruptible(950);
+                    }
+                }
+            } else {
+                await waitInterruptible(1600);
+            }
+
+            if (this.isRedLightCancelled || roundSecondsLeft <= 0) break;
+
+            if (this.dollEyeBeams) {
+                this.dollEyeBeams.forEach(b => {
+                    b.visible = false;
+                    gsap.killTweensOf(b.rotation);
+                    b.rotation.set(0, 0, 0);
+                });
+            }
+            if (this.dollEyes) {
+                this.dollEyes.forEach(e => {
+                    if ((e.material as any)?.color) {
+                        (e.material as any).color.setHex(0x0f172a);
+                    }
+                });
+            }
+            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
+                (this.dollStatusRing.material as any).color.setHex(0xf59e0b);
+            }
+
+            // 4. Smoothly turn doll's head back to the tree (0.75s) before starting the music again
+            if (this.dollHead) {
+                gsap.to(this.dollHead.rotation, { y: Math.PI, duration: 0.75, ease: "power2.inOut" });
+            }
+            updateDynamicRedLightCamera(false);
+            await waitInterruptible(750);
+
+            // Check if everyone on the court has reached the photo-finish zone near the yellow line:
+            const remainingOnCourt = activeParticipants.filter(n => {
+                const c = this.characters[n];
+                return c && c.userData.isAlive && !c.userData.isSafe;
+            });
+            const allNearFinish = remainingOnCourt.length > 0 && remainingOnCourt.every(n => this.characters[n].position.z <= -15.2);
+            if ((remainingOnCourt.length === 0 || allNearFinish) && roundSecondsLeft > 3) {
+                roundSecondsLeft = 3;
+            }
+        }
+
+        if (this.activeRedLightInterval) {
+            clearInterval(this.activeRedLightInterval);
+            this.activeRedLightInterval = null;
+        }
+
+        stopSquidGameYouTubeAudio();
+
+        // ==========================================================
+        // 5. PHOTO-FINISH CLIMAX & DYNAMIC UNPREDICTABLE ELIMINATION
+        // ==========================================================
+        const remainingOnCourtAtEnd = activeParticipants.filter(n => {
+            const c = this.characters[n];
+            return c && c.userData.isAlive && !c.userData.isSafe;
+        });
+        const stillNeededCount = Math.max(0, totalToEliminate - dynamicallyEliminated.size);
+
+        // Dynamically pick the final victim(s) right now using cryptographic randomness from the runners still on the court!
+        let endVictims: string[] = [];
+        if (stillNeededCount > 0 && remainingOnCourtAtEnd.length > 0) {
+            endVictims = selectUnpredictableTargets(remainingOnCourtAtEnd, stillNeededCount);
+        }
+        const endVictimSet = new Set(endVictims);
+
+        // All non-victim runners in the final pack make a thrilling last-millisecond dive/scramble across the yellow line into the Safe Wings!
+        remainingOnCourtAtEnd.forEach(name => {
+            if (!endVictimSet.has(name)) {
+                const char = this.characters[name];
+                if (char) {
+                    markRunnerSafeInWing(name, char);
+                }
+            } else {
+                // Victim gets tripped/stranded inches short of the yellow line!
+                const vChar = this.characters[name];
+                if (vChar) {
+                    vChar.position.z = Math.max(-17.4, vChar.position.z);
+                    if (!vChar.userData.isFallen) {
+                        this.triggerPlayerTrip(vChar, false);
+                    }
+                }
+            }
+        });
+
+        this.currentRedLightPhase = 'ELIMINATING';
+        this.onStateChange({
+            chaseSecondsLeft: 0,
+            phase: 'ELIMINATING',
+            msg: endVictims.length > 0
+                ? '⏰ TIME IS UP! ELIMINATING PLAYERS CAUGHT SHORT OF THE LINE...'
+                : '🎉 ALL SURVIVORS CROSSED THE FINISH LINE!',
+            isMusicPlaying: false
+        });
+
+        if (this.redLightCamTargetPos && this.redLightCamTargetLook) {
+            this.redLightCamTargetPos.set(0, 9.5, 4.5);
+            this.redLightCamTargetLook.set(0, 4.8, -21.5);
+        }
+
+        globalAudio.play('alarm', 260);
+        globalAudio.play('gong');
+
+        if (this.dollHead) {
+            gsap.to(this.dollHead.rotation, { y: 0, duration: 0.5, ease: "power2.inOut" });
+        }
+        if (this.dollEyes) {
+            this.dollEyes.forEach(e => {
+                if ((e.material as any)?.color) {
+                    (e.material as any).color.setHex(0xff0000);
+                }
+            });
+        }
+        if (this.dollEyeBeams) {
+            this.dollEyeBeams.forEach(b => { b.visible = true; });
+        }
+
+        for (const name of endVictims) {
+            if (this.isRedLightCancelled) break;
+            await eliminateContestantWithLaser(name, '❌ ELIMINATED');
+            await new Promise(r => setTimeout(r, 550));
+        }
+
+        if (this.dollEyeBeams) {
+            this.dollEyeBeams.forEach(b => { b.visible = false; });
+        }
+        if (this.dollEyes) {
+            this.dollEyes.forEach(e => {
+                if ((e.material as any)?.color) {
+                    (e.material as any).color.setHex(0x0f172a);
+                }
+            });
+        }
+
+        const toEliminateList = Array.from(dynamicallyEliminated);
+        const finalSurvivors = activeParticipants.filter(n => !dynamicallyEliminated.has(n));
+
+        // Synchronize roundData with the dynamically determined eliminations and survivors!
+        roundData.eliminated = toEliminateList;
+        roundData.survivors = finalSurvivors;
+
+        if (finalSurvivors.length > 0) {
+            globalAudio.play('win', 900);
+        }
+
+        this.onStateChange({
+            chaseSecondsLeft: undefined,
+            phase: 'IDLE',
+            msg: `${finalSurvivors.length} PLAYERS CROSSED SAFELY AND SURVIVED!`,
+            eliminatedThisRound: toEliminateList,
+            isMusicPlaying: false
+        });
+
+        await new Promise(r => setTimeout(r, 2000));
+    }
+
     async playRound(roundData: any) {
         if(!globalAudio) return;
         if (this.gameType === 'tag') {
             return this.playTagRound(roundData);
+        }
+        if (this.gameType === 'redlight') {
+            return this.playRedLightRound(roundData);
         }
         this.currentRoundData = roundData;
         this.createDoors(roundData.numDoors);
@@ -4447,44 +6187,58 @@ class ThreeManager {
 
         const numDoorsTotal = this.doors.length;
 
+        // Dynamically re-roll Mingle eliminations & door groups at the moment the doors open for 100% unpredictability
+        const aliveForDoors = Object.keys(this.characters).filter(name => this.characters[name]?.userData?.isAlive);
+        const targetElimCount = Math.min(roundData.eliminated?.length || 1, Math.max(0, aliveForDoors.length - 1));
+        if (targetElimCount > 0 && aliveForDoors.length > 1) {
+            const freshEliminated = selectUnpredictableTargets(aliveForDoors, targetElimCount, this.lastCaughtPlayer);
+            const freshSurvivors = cryptoShuffle(aliveForDoors.filter(p => !freshEliminated.includes(p)));
+            roundData.eliminated = freshEliminated;
+            roundData.survivors = freshSurvivors;
+            if (freshEliminated.length > 0) {
+                this.lastCaughtPlayer = freshEliminated[freshEliminated.length - 1];
+            }
+            const refreshedDist: string[][] = Array.from({ length: numDoorsTotal }, () => []);
+            freshSurvivors.forEach((p, idx) => {
+                refreshedDist[idx % numDoorsTotal].push(p);
+            });
+            freshEliminated.forEach((p) => {
+                const randomDoorIdx = Math.floor(cryptoRandom() * numDoorsTotal);
+                refreshedDist[randomDoorIdx].push(p);
+            });
+            roundData.distribution = refreshedDist.map(group => cryptoShuffle(group));
+        }
+
         roundData.distribution.forEach((doorGroup: string[], doorIndex: number) => {
             const door = this.doors[doorIndex];
             const doorDir = door.group.position.clone().normalize();
             const roomPos = door.group.position.clone().add(doorDir.multiplyScalar(3.2)); 
 
-            // Pick an alternate door across the arena for indecisive players who switch doors
-            const otherDoorIndex = (doorIndex + 1 + Math.floor(Math.random() * (numDoorsTotal - 1))) % numDoorsTotal;
-            const otherDoor = this.doors[otherDoorIndex];
-            const otherDoorDir = otherDoor.group.position.clone().normalize();
-            const otherRoomPos = otherDoor.group.position.clone().add(otherDoorDir.multiplyScalar(3.2));
-
-            doorGroup.forEach((playerName, playerIdxInDoor) => {
+            doorGroup.forEach((playerName) => {
                 const char = this.characters[playerName];
                 if(!char) return;
                 
                 const isEliminated = roundData.eliminated.includes(playerName);
                 char.userData.isMoving = true;
 
-                const offset = new THREE.Vector3((Math.random() - 0.5) * 3.0, 0, (Math.random() - 0.5) * 3.0);
+                const offset = new THREE.Vector3((cryptoRandom() - 0.5) * 3.0, 0, (cryptoRandom() - 0.5) * 3.0);
                 let finalPos = roomPos.clone().add(offset);
                 
                 // In Mingle Game: The player who cannot go inside the door is locked out outside and eliminated!
                 if (isEliminated) {
                     // Locked out outside the closed door threshold
-                    finalPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(2.2)).add(new THREE.Vector3((Math.random() - 0.5) * 1.6, 0, (Math.random() - 0.5) * 1.6));
+                    finalPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(2.2)).add(new THREE.Vector3((cryptoRandom() - 0.5) * 1.6, 0, (cryptoRandom() - 0.5) * 1.6));
                 }
                 
                 finalPos.y = 1;
                 
-                const totalDuration = 9.2 + Math.random() * 0.4; // Matches the 10-second countdown timer
+                const totalDuration = 9.1 + cryptoRandom() * 0.55; // Matches the 10-second countdown timer
 
-                // Distinct running drama variants:
-                // 1) Fall & Crawl: trips, falls flat on belly/knees, crawls forward, scrambles back up
-                // 2) Stumble & Sprint: brief trip/wobble with recovery sprint
-                // 3) Pure Natural Sprint: smooth high-speed dash straight into safety
-                const runnerStuntType = isEliminated 
-                    ? 'fall_and_crawl' 
-                    : (playerIdxInDoor % 3 === 0 ? 'fall_and_crawl' : playerIdxInDoor % 3 === 1 ? 'stumble_and_sprint' : 'pure_sprint');
+                // Randomize stunt types for both survivors and eliminated players so nobody can guess who gets locked out early!
+                const stuntRoll = cryptoRandom();
+                const runnerStuntType = stuntRoll < 0.42
+                    ? 'fall_and_crawl'
+                    : (stuntRoll < 0.76 ? 'stumble_and_sprint' : 'pure_sprint');
 
                 movePromises.push(new Promise<void>(resolve => {
                     const tl = gsap.timeline({ onComplete: () => {
@@ -4501,17 +6255,19 @@ class ThreeManager {
                     const runDir = directVector.clone().normalize();
                     
                     if (isEliminated) {
-                        // ELIMINATED PLAYER: Runs toward door, trips, falls down flat, crawls desperately on turf, gets up, rushes to door only for it to slam shut!
-                        const tripDist = Math.min(totalDist * 0.35, 10);
+                        // ELIMINATED PLAYER: Either trips early and crawls, OR sprints fast right up to the door and gets bumped/tripped at the threshold right as it slams shut!
+                        const lateDoorTrip = cryptoRandom() < 0.5;
+                        const tripFraction = lateDoorTrip ? (0.62 + cryptoRandom() * 0.16) : (0.28 + cryptoRandom() * 0.22);
+                        const tripDist = Math.min(totalDist * tripFraction, totalDist - 2.2);
                         const tripPos = currentWorldPos.clone().add(runDir.clone().multiplyScalar(tripDist));
-                        const crawlDist = Math.min(totalDist * 0.28, 8);
+                        const crawlDist = Math.min(totalDist * (lateDoorTrip ? 0.14 : 0.28), 7);
                         const crawlEndPos = tripPos.clone().add(runDir.clone().multiplyScalar(crawlDist));
                         const approachPos = roomPos.clone().sub(doorDir.clone().multiplyScalar(1.2));
                         
                         // Phase 1: Smooth natural sprint towards door (smooth lookAt)
                         tl.call(() => {
                             char.lookAt(tripPos.x, 1, tripPos.z);
-                            char.userData.runSpeed = 16;
+                            char.userData.runSpeed = 16 + cryptoRandom() * 4;
                         });
                         tl.to(char.position, {
                             x: tripPos.x,
@@ -4881,10 +6637,12 @@ class ThreeManager {
         if(!globalAudio) return;
         const winnerMsg = this.gameType === 'tag'
             ? (mode === 'picker' ? (chosenOnes.length > 1 ? 'PLAYERS CAUGHT' : 'PLAYER CAUGHT') : 'SOLE SURVIVOR • ESCAPED ALL TAGS!')
+            : this.gameType === 'redlight'
+            ? (mode === 'picker' ? (chosenOnes.length > 1 ? 'PLAYERS CAUGHT BY DOLL' : 'PLAYER CAUGHT BY DOLL') : 'SOLE SURVIVOR • CROSSED SAFELY!')
             : (mode === 'picker' ? 'ELIMINATION COMPLETE' : 'SOLE SURVIVOR');
         this.onStateChange({ phase: 'WINNER', msg: winnerMsg, isMusicPlaying: false });
         
-        if (this.gameType === 'tag') {
+        if (this.gameType === 'tag' || this.gameType === 'redlight') {
             gsap.to(this.spotLight, { intensity: 6, duration: 2 });
             gsap.to(this.ambientLight, { intensity: 0.6, duration: 2 });
             gsap.to(this.dirLight, { intensity: 0.8, duration: 2 });
@@ -4997,12 +6755,22 @@ class ThreeManager {
                         }
                     }
                 } else if (char.userData.isFallen && char.userData.isMoving) {
-                    // Subtle scrambling kicks while crawling on the turf
+                    // Full crawling motion on the sand: arms drag/pull forward alternately, legs push, head looks ahead at doll
+                    const crawlRate = time * 7.5 + (char.userData.moveTime || 0);
+                    if (char.userData.parts?.armL) {
+                        char.userData.parts.armL.rotation.x = -Math.PI * 0.65 + Math.sin(crawlRate) * 0.42;
+                    }
+                    if (char.userData.parts?.armR) {
+                        char.userData.parts.armR.rotation.x = -Math.PI * 0.65 + Math.sin(crawlRate + Math.PI) * 0.42;
+                    }
                     if (char.userData.parts?.legLGroup) {
-                        char.userData.parts.legLGroup.rotation.x = Math.sin(time * 8) * 0.22;
+                        char.userData.parts.legLGroup.rotation.x = Math.sin(crawlRate) * 0.32;
                     }
                     if (char.userData.parts?.legRGroup) {
-                        char.userData.parts.legRGroup.rotation.x = Math.sin(time * 8 + Math.PI) * 0.22;
+                        char.userData.parts.legRGroup.rotation.x = Math.sin(crawlRate + Math.PI) * 0.32;
+                    }
+                    if (char.userData.parts?.head) {
+                        char.userData.parts.head.rotation.x = -0.45;
                     }
                 }
             }
@@ -5057,6 +6825,10 @@ class ThreeManager {
         if (this.gameType === 'tag' && this.camera && this.tagCamTargetPos && this.tagCamTargetLook) {
             this.camera.position.lerp(this.tagCamTargetPos, 0.04);
             this.currentCamLookAt.lerp(this.tagCamTargetLook, 0.04);
+            this.camera.lookAt(this.currentCamLookAt);
+        } else if (this.gameType === 'redlight' && this.camera && this.redLightCamTargetPos && this.redLightCamTargetLook) {
+            this.camera.position.lerp(this.redLightCamTargetPos, 0.04);
+            this.currentCamLookAt.lerp(this.redLightCamTargetLook, 0.04);
             this.camera.lookAt(this.currentCamLookAt);
         }
 
@@ -5576,6 +7348,86 @@ const MingleMusicPlayer = ({ isPlaying, isMuted, volume = 80 }: { isPlaying: boo
     );
 };
 
+const RedLightMusicPlayer = ({ isPlaying, isMuted, volume = 80 }: { isPlaying: boolean; isMuted: boolean; volume?: number }) => {
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const [mounted, setMounted] = useState(false);
+
+    const sendCommand = (func: string, args: any[] = []) => {
+        if (!iframeRef.current?.contentWindow) return;
+        try {
+            iframeRef.current.contentWindow.postMessage(
+                JSON.stringify({ event: 'command', func, args }),
+                '*'
+            );
+        } catch {
+            // Ignore cross-origin warnings
+        }
+    };
+
+    useEffect(() => {
+        if (isPlaying) {
+            setMounted(true);
+        }
+    }, [isPlaying]);
+
+    const handleIframeLoad = () => {
+        if (isPlaying && !isMuted && volume > 0) {
+            sendCommand('unMute');
+            sendCommand('setVolume', [volume]);
+            sendCommand('playVideo');
+        } else if (isPlaying && (isMuted || volume === 0)) {
+            sendCommand('mute');
+            sendCommand('playVideo');
+        } else {
+            sendCommand('pauseVideo');
+        }
+    };
+
+    useEffect(() => {
+        if (!iframeRef.current || !mounted) return;
+        if (isPlaying && !isMuted && volume > 0) {
+            sendCommand('unMute');
+            sendCommand('setVolume', [volume]);
+            sendCommand('playVideo');
+        } else if (isPlaying && (isMuted || volume === 0)) {
+            sendCommand('mute');
+            sendCommand('playVideo');
+        } else {
+            sendCommand('pauseVideo');
+        }
+    }, [isPlaying, isMuted, volume, mounted]);
+
+    if (!mounted) return null;
+
+    return (
+        <div
+            style={{
+                position: 'fixed',
+                top: -9999,
+                left: -9999,
+                width: '320px',
+                height: '240px',
+                pointerEvents: 'none',
+                opacity: 0.001,
+                zIndex: -999
+            }}
+            aria-hidden="true"
+        >
+            <iframe
+                id="squid-yt-audio-player"
+                ref={iframeRef}
+                width="320"
+                height="240"
+                src="https://www.youtube.com/embed/vAzRFDI-0Zc?enablejsapi=1&autoplay=1&loop=1&playlist=vAzRFDI-0Zc&controls=0&disablekb=1&fs=0&playsinline=1"
+                title="Squid Game Red Light Green Light Song"
+                allow="autoplay; encrypted-media"
+                style={{ border: 0 }}
+                onLoad={handleIframeLoad}
+            />
+        </div>
+    );
+};
+
 interface SquidGamePickerProps {
     onViewChange?: (view: ViewState) => void;
 }
@@ -5583,7 +7435,7 @@ interface SquidGamePickerProps {
 export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) {
     const [view, setView] = useState('home'); 
     const [showMobileDrawer, setShowMobileDrawer] = useState(false);
-    const [activeGame, setActiveGame] = useState<'mingle' | 'tag'>('mingle');
+    const [activeGame, setActiveGame] = useState<'mingle' | 'tag' | 'redlight'>('mingle');
     const [students, setStudents] = useState<string[]>(getSavedRoster());
     const [gameState, setGameState] = useState<any>({ phase: 'IDLE', msg: '', eliminatedThisRound: [], isMusicPlaying: false }); 
     const [chosenOnes, setChosenOnes] = useState<string[]>([]);
@@ -5591,11 +7443,19 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     const [gameMode, setGameMode] = useState('picker');
     const [pickCount, setPickCount] = useState(1);
     const [tagTimer, setTagTimer] = useState<number>(15);
+    const [contestantCount, setContestantCount] = useState<number>(() => Math.min(20, Math.max(5, getSavedRoster().length)));
     
     // Mingle game is strictly picker mode - never survival
     useEffect(() => {
         if (activeGame === 'mingle' && gameMode !== 'picker') {
             setGameMode('picker');
+        }
+        if (activeGame === 'redlight') {
+            setTagTimer(prev => {
+                const chosen = prev === 60 ? 60 : 30;
+                threeManagerRef.current?.setTagTimer(chosen);
+                return chosen;
+            });
         }
     }, [activeGame, gameMode]);
 
@@ -5788,7 +7648,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         setView('game');
         setChosenOnes([]);
         setTotalEliminated(0);
-        setGameState({ phase: 'SETUP', msg: 'GET READY', eliminatedThisRound: [], isMusicPlaying: false });
+        setGameState({ phase: 'SETUP', msg: activeGame === 'redlight' ? '' : 'GET READY', eliminatedThisRound: [], isMusicPlaying: false });
         
         const tm = threeManagerRef.current;
         if(!tm) return;
@@ -5802,10 +7662,10 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         // Spawn players before starting sequence in proper game type
         tm.setGameType(activeGame);
         tm.spawnPlayers(roster);
-        if(tm.ambientLight) tm.ambientLight.intensity = activeGame === 'tag' ? 0.6 : 0.7;
-        if(tm.dirLight) tm.dirLight.intensity = activeGame === 'tag' ? 0.8 : tm.baseLightIntensity;
+        if(tm.ambientLight) tm.ambientLight.intensity = (activeGame === 'tag' || activeGame === 'redlight') ? 0.6 : 0.7;
+        if(tm.dirLight) tm.dirLight.intensity = (activeGame === 'tag' || activeGame === 'redlight') ? 0.8 : tm.baseLightIntensity;
         if(tm.spotLight) tm.spotLight.intensity = 0;
-        if(tm.scene) tm.scene.background = new THREE.Color(activeGame === 'tag' ? '#38bdf8' : '#87CEEB'); 
+        if(tm.scene) tm.scene.background = new THREE.Color((activeGame === 'tag' || activeGame === 'redlight') ? '#38bdf8' : '#87CEEB'); 
 
         const engine = GameEngine.generateGameSequence(roster, currentMode, pickCount);
         
@@ -5837,7 +7697,13 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         await tm.playWinnerSequence(engine.chosenOnes, engine.mode);
     };
 
-    const startGame = async () => startGameWith(students);
+    const startGame = async () => {
+        let rosterToUse = cryptoShuffle(students);
+        if (activeGame === 'redlight' && contestantCount < students.length) {
+            rosterToUse = rosterToUse.slice(0, contestantCount);
+        }
+        return startGameWith(rosterToUse);
+    };
 
     
     const continueGame = () => {
@@ -5866,6 +7732,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
 
     const resetGame = () => {
         stopAnnounce();
+        stopSquidGameYouTubeAudio();
         if (nextRoundResolverRef.current) {
             nextRoundResolverRef.current();
             nextRoundResolverRef.current = null;
@@ -5893,14 +7760,21 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                     <Square className="w-8 h-8 sm:w-12 sm:h-12 animate-pulse" style={{animationDelay: '0.6s'}} />
                 </div>
                 <h1 className="text-3xl sm:text-5xl text-white font-bold mb-1.5 sm:mb-2 tracking-wide text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 relative z-10" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                    {activeGame === 'tag' ? 'TAG' : 'MINGLE'} <span className="text-rose-500">GAME</span>
+                    {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}{' '}
+                    <span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>
+                        {activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}
+                    </span>
                 </h1>
                 <p className="text-xs sm:text-lg text-emerald-400 mb-4 sm:mb-8 font-medium tracking-widest uppercase relative z-10">
-                    {activeGame === 'tag' ? 'Tag • Will your number be called?' : 'Mingle Game • Will your number be called?'}
+                    {activeGame === 'tag' 
+                        ? 'Tag • Will your number be called?' 
+                        : activeGame === 'redlight'
+                        ? 'Red Light, Green Light • Will you survive the doll?'
+                        : 'Mingle Game • Will your number be called?'}
                 </p>
                 
                 <div className="bg-slate-800/80 rounded-2xl p-3 sm:p-4 mb-4 sm:mb-8 border border-slate-700">
-                    {activeGame === 'tag' && (
+                    {(activeGame === 'tag' || activeGame === 'redlight') && (
                         <div className="flex gap-4 justify-center mb-4">
                             <Button 
                                 variant={gameMode === 'picker' ? 'primary' : 'secondary'} 
@@ -5908,7 +7782,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 active={gameMode === 'picker'}
                                 className="flex-1 text-sm py-2"
                             >
-                                <MousePointerClick className="w-4 h-4" /> Tag Picker
+                                <MousePointerClick className="w-4 h-4" /> {activeGame === 'redlight' ? 'Doll Picker' : 'Tag Picker'}
                             </Button>
                             <Button 
                                 variant={gameMode === 'survival' ? 'success' : 'secondary'} 
@@ -5916,7 +7790,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 active={gameMode === 'survival'}
                                 className="flex-1 text-sm py-2"
                             >
-                                <Tag className="w-4 h-4" /> Tag Survival
+                                {activeGame === 'redlight' ? <Eye className="w-4 h-4" /> : <Tag className="w-4 h-4" />} {activeGame === 'redlight' ? 'Red Light Survival' : 'Tag Survival'}
                             </Button>
                         </div>
                     )}
@@ -5941,7 +7815,77 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             </div>
                         </div>
                     )}
-                    {activeGame === 'tag' && (
+                    {activeGame === 'redlight' && (
+                        <div className="flex flex-col gap-2 bg-slate-900 p-4 rounded-xl border border-slate-700/50">
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-300 font-bold text-sm uppercase tracking-wider flex items-center gap-1.5">
+                                    <Users className="w-4 h-4 text-emerald-400" />
+                                    Total Contestants:
+                                </span>
+                                <span className="text-emerald-400 font-bold text-lg bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 shadow-inner">
+                                    {Math.min(contestantCount, students.length)} / {students.length}
+                                </span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min={Math.min(students.length, 2)} 
+                                max={students.length} 
+                                value={Math.min(contestantCount, students.length)} 
+                                onChange={(e) => setContestantCount(parseInt(e.target.value))}
+                                className="w-full mt-2 accent-emerald-500 cursor-pointer"
+                            />
+                            <div className="flex justify-between text-xs text-slate-500 font-bold px-1 mt-1">
+                                <span>2 Min</span>
+                                <span>{Math.round(students.length / 2)} Half</span>
+                                <span>{students.length} All</span>
+                            </div>
+                        </div>
+                    )}
+                    {activeGame === 'redlight' ? (
+                        <div className="flex flex-col gap-2 bg-slate-900 p-4 rounded-xl border border-slate-700/50">
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-300 font-bold text-sm uppercase tracking-wider flex items-center gap-1.5">
+                                    <Clock className="w-4 h-4 text-amber-400" />
+                                    Match Duration:
+                                </span>
+                                <span className="text-amber-400 font-bold text-lg bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 shadow-inner">
+                                    {tagTimer === 60 ? '1 Minute (60s)' : '30 Seconds'}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2.5 mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTagTimer(30);
+                                        threeManagerRef.current?.setTagTimer(30);
+                                    }}
+                                    className={`py-3 px-4 rounded-xl font-bold border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                                        tagTimer === 30 
+                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.02]' 
+                                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    <span className="text-sm font-black">⚡ 30 Seconds</span>
+                                    <span className={`text-[11px] ${tagTimer === 30 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Fast Match</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTagTimer(60);
+                                        threeManagerRef.current?.setTagTimer(60);
+                                    }}
+                                    className={`py-3 px-4 rounded-xl font-bold border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                                        tagTimer === 60 
+                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.02]' 
+                                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    <span className="text-sm font-black">⏱️ 1 Minute (60s)</span>
+                                    <span className={`text-[11px] ${tagTimer === 60 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Standard Match</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : activeGame === 'tag' ? (
                         <div className="flex flex-col gap-2 bg-slate-900 p-4 rounded-xl border border-slate-700/50">
                             <div className="flex justify-between items-center">
                                 <span className="text-slate-300 font-bold text-sm uppercase tracking-wider flex items-center gap-1.5">
@@ -5949,7 +7893,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     Chase Timer:
                                 </span>
                                 <span className="text-amber-400 font-bold text-lg bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 shadow-inner">
-                                    {tagTimer === 60 ? '1 Min' : `${tagTimer}s`}
+                                    {tagTimer}s
                                 </span>
                             </div>
                             <input 
@@ -5968,13 +7912,13 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             <div className="flex justify-between text-xs text-slate-500 font-bold px-1 mt-1">
                                 <span>5s</span>
                                 <span>30s</span>
-                                <span>60s (1 min)</span>
+                                <span>60s</span>
                             </div>
                         </div>
-                    )}
-                    {activeGame === 'tag' && gameMode === 'survival' && (
+                    ) : null}
+                    {(activeGame === 'tag' || activeGame === 'redlight') && gameMode === 'survival' && (
                         <div className="text-emerald-400 text-sm font-bold tracking-widest py-2">
-                            MULTIPLE ROUNDS • ONE SOLE SURVIVOR
+                            {activeGame === 'redlight' ? 'CROSS THE FINISH LINE • MULTIPLE ROUNDS' : 'MULTIPLE ROUNDS • ONE SOLE SURVIVOR'}
                         </div>
                     )}
                 </div>
@@ -6004,30 +7948,85 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             </div>
                         </div>
                     </div>
-                    <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-slate-700 shadow-lg flex items-center gap-2 sm:gap-4">
-                        <div className="text-center">
-                            <div className="text-rose-500 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase">Eliminated</div>
-                            <div className="text-2xl sm:text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                {totalEliminated}
+                    {activeGame === 'redlight' && gameState.safePlayersCount !== undefined ? (
+                        <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.35)] flex items-center gap-2 sm:gap-4">
+                            <div className="text-center">
+                                <div className="text-emerald-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase flex items-center justify-center gap-1">
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                    Safe Across Yellow Line
+                                </div>
+                                <div className="text-2xl sm:text-4xl font-bold text-emerald-300 leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                                    {gameState.safePlayersCount || 0}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    {activeGame === 'tag' && gameState.chaseSecondsLeft !== undefined && (
+                    ) : (
+                        <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-slate-700 shadow-lg flex items-center gap-2 sm:gap-4">
+                            <div className="text-center">
+                                <div className="text-rose-500 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase">Eliminated</div>
+                                <div className="text-2xl sm:text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                                    {totalEliminated}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {(activeGame === 'tag' || activeGame === 'redlight') && gameState.chaseSecondsLeft !== undefined && (
                         <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-amber-500/70 shadow-[0_0_25px_rgba(245,158,11,0.35)] flex items-center gap-2 sm:gap-4">
                             <div className="text-center">
                                 <div className="text-amber-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase flex items-center justify-center gap-1">
                                     <Clock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-400'}`} />
-                                    Chase Timer
+                                    {activeGame === 'redlight' ? 'Match Timer' : 'Chase Timer'}
                                 </div>
                                 <div className={`text-2xl sm:text-4xl font-bold leading-none ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-300'}`} style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                    {gameState.chaseSecondsLeft}s
+                                    {gameState.chaseSecondsLeft >= 60 
+                                        ? `${Math.floor(gameState.chaseSecondsLeft / 60)}:${(gameState.chaseSecondsLeft % 60).toString().padStart(2, '0')}` 
+                                        : `${gameState.chaseSecondsLeft}s`}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {activeGame === 'redlight' && (gameState.phase === 'GREEN_LIGHT' || gameState.phase === 'TURNING' || gameState.phase === 'RED_LIGHT') && (
+                        <div className={`bg-slate-900/90 backdrop-blur text-white px-3 sm:px-5 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 flex items-center gap-2.5 transition-all duration-300 ${
+                            gameState.phase === 'GREEN_LIGHT'
+                                ? 'border-emerald-500/80 shadow-[0_0_22px_rgba(16,185,129,0.4)]'
+                                : gameState.phase === 'TURNING'
+                                ? 'border-amber-500/80 shadow-[0_0_22px_rgba(245,158,11,0.45)]'
+                                : 'border-rose-500/90 shadow-[0_0_26px_rgba(244,63,94,0.55)]'
+                        }`}>
+                            <span className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full shrink-0 ${
+                                gameState.phase === 'GREEN_LIGHT'
+                                    ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse'
+                                    : gameState.phase === 'TURNING'
+                                    ? 'bg-amber-400 shadow-[0_0_12px_#fbbf24] animate-ping'
+                                    : 'bg-rose-500 shadow-[0_0_14px_#f43f5e]'
+                            }`} />
+                            <div className="text-left">
+                                <div className={`text-[10px] sm:text-xs font-bold tracking-widest uppercase ${
+                                    gameState.phase === 'GREEN_LIGHT'
+                                        ? 'text-emerald-400'
+                                        : gameState.phase === 'TURNING'
+                                        ? 'text-amber-400'
+                                        : 'text-rose-400'
+                                }`}>
+                                    {gameState.phase === 'GREEN_LIGHT'
+                                        ? 'Green Light • Run!'
+                                        : gameState.phase === 'TURNING'
+                                        ? 'Seumnida! • Head Turning'
+                                        : 'Red Light • Freeze!'}
+                                </div>
+                                <div className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[180px] sm:max-w-[240px]" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                                    {gameState.phase === 'GREEN_LIGHT'
+                                        ? '🎵 "Mugunghwa kkochi pieot seumnida"'
+                                        : gameState.phase === 'TURNING'
+                                        ? '👀 Doll turning around...'
+                                        : '🚨 Scanning field — Do not move!'}
                                 </div>
                             </div>
                         </div>
                     )}
                 </div>
                 
-                <div className="flex gap-2 sm:gap-3 pointer-events-auto shrink-0">
+                <div className="flex gap-2 sm:gap-3 pointer-events-auto shrink-0 items-center">
                     <button 
                         onClick={toggleFullscreen} 
                         className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-900/90 rounded-full text-white hover:bg-slate-700 transition border-2 border-slate-700 flex items-center justify-center shadow-lg cursor-pointer"
@@ -6092,9 +8091,15 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 </div>
             </div>
 
-            {/* Full-screen Danger Vignette during Elimination */}
+            {/* Full-screen Danger Vignette during Elimination and Light Phases */}
             {gameState.phase === 'ELIMINATED' && (
                 <div className="absolute inset-0 pointer-events-none z-30 shadow-[inset_0_0_140px_rgba(244,63,94,0.75)] animate-pulse" />
+            )}
+            {gameState.phase === 'RED_LIGHT' && (
+                <div className="absolute inset-0 pointer-events-none z-30 shadow-[inset_0_0_55px_rgba(239,68,68,0.28)]" />
+            )}
+            {gameState.phase === 'GREEN_LIGHT' && (
+                <div className="absolute inset-0 pointer-events-none z-30 shadow-[inset_0_0_45px_rgba(34,197,94,0.18)]" />
             )}
 
             {/* Corner eliminated roster widget */}
@@ -6125,7 +8130,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 }
             `}} />
 
-            {gameState.msg && gameState.phase !== 'WINNER' && (
+            {gameState.msg && gameState.phase !== 'WINNER' && activeGame !== 'redlight' && (
                 <div className="absolute top-24 left-1/2 transform -translate-x-1/2 w-full text-center pointer-events-none z-30 flex flex-col items-center gap-3 px-4">
                     <div className="inline-block bg-slate-900/90 backdrop-blur-md border-b-4 border-rose-600 px-8 py-3 rounded-xl shadow-[0_10px_40px_rgba(244,63,94,0.4)]">
                         <h2 className="text-2xl md:text-4xl text-white tracking-widest uppercase drop-shadow-md font-bold" style={{fontFamily: "'Fredoka', sans-serif"}}>
@@ -6153,7 +8158,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 </div>
                                 <div className={`text-4xl md:text-5xl font-black font-mono leading-none tracking-tight ${
                                     gameState.chaseSecondsLeft <= 3 ? 'text-rose-400' : gameState.chaseSecondsLeft <= 5 ? 'text-amber-300' : 'text-emerald-300'
-                                }`}>
+                                    }`}>
                                     00:0{gameState.chaseSecondsLeft}
                                 </div>
                             </div>
@@ -6173,6 +8178,20 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Red Light, Green Light in-game manual start button */}
+            {activeGame === 'redlight' && gameState.phase === 'RED_LIGHT_READY' && (
+                <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 pointer-events-auto z-30 flex flex-col items-center">
+                    <button
+                        onClick={() => threeManagerRef.current?.startRedLightGame()}
+                        className="px-10 py-4 bg-gradient-to-r from-rose-600 via-rose-500 to-emerald-500 hover:from-rose-500 hover:to-emerald-400 text-white rounded-2xl font-black text-2xl tracking-wider shadow-[0_0_50px_rgba(244,63,94,0.7)] border-4 border-rose-300/80 flex items-center gap-3 active:scale-95 hover:scale-105 transition-all cursor-pointer animate-pulse"
+                        style={{ fontFamily: "'Fredoka', sans-serif" }}
+                    >
+                        <Play className="w-8 h-8 fill-white text-white" />
+                        START GAME
+                    </button>
                 </div>
             )}
 
@@ -6311,7 +8330,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             <div id="canvas-container" className="absolute inset-0 z-10" />
 
             {/* YouTube Audio Player for Tag Game */}
-            {activeGame === 'tag' && (
+            {activeGame === 'tag' && view === 'game' && (
                 <TagMusicPlayer
                     isPlaying={!muteUI && volume > 0 && Boolean(gameState.isMusicPlaying) && view === 'game'}
                     isMuted={muteUI || volume === 0}
@@ -6320,8 +8339,17 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             )}
 
             {/* YouTube Audio Player for Mingle Game */}
-            {activeGame === 'mingle' && (
+            {activeGame === 'mingle' && view === 'game' && (
                 <MingleMusicPlayer
+                    isPlaying={!muteUI && volume > 0 && Boolean(gameState.isMusicPlaying) && view === 'game'}
+                    isMuted={muteUI || volume === 0}
+                    volume={volume}
+                />
+            )}
+
+            {/* YouTube Audio Player for Red Light Game (vAzRFDI-0Zc) */}
+            {activeGame === 'redlight' && view === 'game' && (
+                <RedLightMusicPlayer
                     isPlaying={!muteUI && volume > 0 && Boolean(gameState.isMusicPlaying) && view === 'game'}
                     isMuted={muteUI || volume === 0}
                     volume={volume}
@@ -6337,14 +8365,14 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         <div className="hidden md:flex w-72 bg-slate-900/95 backdrop-blur border-r border-slate-700 flex-col pointer-events-auto shadow-2xl z-30">
                             <div className="p-8 border-b border-slate-800 flex items-center gap-4">
                                 <div className="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(244,63,94,0.5)]">
-                                    {activeGame === 'tag' ? <Tag className="text-white w-6 h-6" /> : <Square className="text-white w-6 h-6" />}
+                                    {activeGame === 'tag' ? <Tag className="text-white w-6 h-6" /> : activeGame === 'redlight' ? <Eye className="text-white w-6 h-6" /> : <Square className="text-white w-6 h-6" />}
                                 </div>
                                 <div>
                                     <h2 className="font-bold text-2xl leading-none text-white tracking-wide" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                        {activeGame === 'tag' ? 'TAG' : 'MINGLE'}<br/><span className="text-rose-500">GAME</span>
+                                        {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}<br/><span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>{activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}</span>
                                     </h2>
                                     <span className="text-[10px] text-emerald-400 font-mono tracking-wider uppercase block mt-1">
-                                        {activeGame === 'tag' ? 'Tag Active' : 'Mingle Active'}
+                                        {activeGame === 'tag' ? 'Tag Active' : activeGame === 'redlight' ? 'Red Light Active' : 'Mingle Active'}
                                     </span>
                                 </div>
                             </div>
@@ -6391,12 +8419,32 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     <Tag className="w-6 h-6 text-center text-rose-400" /> 
                                     <span className="font-semibold text-white">Tag</span>
                                 </button>
+
+                                <button 
+                                    onClick={() => {
+                                        setActiveGame('redlight');
+                                        setView('home');
+                                        if (threeManagerRef.current) {
+                                            threeManagerRef.current.setGameType('redlight');
+                                            threeManagerRef.current.spawnPlayers(students);
+                                        }
+                                    }} 
+                                    className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'home' && activeGame === 'redlight' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                                    title="Red Light, Green Light"
+                                >
+                                    <Eye className="w-6 h-6 text-center text-rose-400" /> 
+                                    <span className="font-semibold text-white">Red Light, Green Light</span>
+                                </button>
                             </nav>
                             
                             <div className="p-6 border-t border-slate-800 text-xs text-slate-600 text-center uppercase tracking-widest font-bold flex flex-col gap-1">
                                 <span>Version 3.0</span>
                                 <span className={activeGame === 'mingle' || gameMode === 'picker' ? 'text-rose-500' : 'text-emerald-500'}>
-                                    {activeGame === 'tag' ? `Tag • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}` : 'Mingle • Picker Active'}
+                                    {activeGame === 'tag' 
+                                        ? `Tag • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}` 
+                                        : activeGame === 'redlight'
+                                        ? `Red Light • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}`
+                                        : 'Mingle • Picker Active'}
                                 </span>
                             </div>
                         </div>
@@ -6408,11 +8456,11 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     <div className="flex items-center justify-between border-b pb-4 border-slate-800">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-xl shadow-[0_0_15px_rgba(244,63,94,0.5)]">
-                                                {activeGame === 'tag' ? <Tag className="text-white w-5 h-5" /> : <Square className="text-white w-5 h-5" />}
+                                                {activeGame === 'tag' ? <Tag className="text-white w-5 h-5" /> : activeGame === 'redlight' ? <Eye className="text-white w-5 h-5" /> : <Square className="text-white w-5 h-5" />}
                                             </div>
                                             <div>
                                                 <h2 className="font-bold text-lg leading-none text-white tracking-wide" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                                    {activeGame === 'tag' ? 'TAG' : 'MINGLE'} <span className="text-rose-500">GAME</span>
+                                                    {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'} <span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>{activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}</span>
                                                 </h2>
                                             </div>
                                         </div>
@@ -6458,6 +8506,21 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                         >
                                             <Tag className="w-5 h-5 text-rose-400" /> 
                                             <span className="font-semibold text-white">Tag</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                setActiveGame('redlight');
+                                                setView('home');
+                                                setShowMobileDrawer(false);
+                                                if (threeManagerRef.current) {
+                                                    threeManagerRef.current.setGameType('redlight');
+                                                    threeManagerRef.current.spawnPlayers(students);
+                                                }
+                                            }} 
+                                            className={`flex items-center gap-3 p-3.5 rounded-xl transition font-medium ${view === 'home' && activeGame === 'redlight' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400'}`}
+                                        >
+                                            <Eye className="w-5 h-5 text-rose-400" /> 
+                                            <span className="font-semibold text-white">Red Light, Green Light</span>
                                         </button>
                                     </nav>
                                 </div>

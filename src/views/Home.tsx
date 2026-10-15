@@ -66,7 +66,7 @@ function FeaturedGamesSection({
     {
       id: "squid-game-picker",
       title: "NAME PICKER",
-      description: "Pick students randomly with the Mingle Game or Tag using a Squid Game theme.",
+      description: "Pick students randomly with Mingle Game, Tag, or Red Light, Green Light using a Squid Game theme.",
       difficulty: "Medium",
       players: "Classroom",
       time: "5m",

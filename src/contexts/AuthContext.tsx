@@ -23,8 +23,9 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signInWithFacebook: () => Promise<void>;
   linkWithGoogle: () => Promise<void>;
-  signInWithEmail: (email: string, pass: string) => Promise<void>;
-  signUpWithEmail: (email: string, pass: string, name: string) => Promise<void>;
+  signInWithEmail: (email: string, pass: string) => Promise<any>;
+  signUpWithEmail: (email: string, pass: string, name: string) => Promise<any>;
+  signInAsGuest: (guestName?: string) => Promise<any>;
   logout: () => Promise<void>;
   clearAuthError: () => void;
 }
@@ -249,10 +250,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsAuthenticating(true);
     setAuthError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+      setUser(cred.user);
+      return cred.user;
     } catch (error: any) {
-      setAuthError(`Sign in failed: ${error.message}`);
-      console.error(error);
+      let msg = error.message;
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        msg = 'Invalid email or password. Please check your credentials or create a new account.';
+      } else if (error.code === 'auth/invalid-email') {
+        msg = 'Please enter a valid email address.';
+      }
+      setAuthError(msg);
+      throw new Error(msg);
     } finally {
       setIsAuthenticating(false);
     }
@@ -262,22 +271,77 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsAuthenticating(true);
     setAuthError(null);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), pass);
       if (userCredential.user) {
-        await updateProfile(userCredential.user, { displayName: name });
-        const userRef = doc(db, 'users', userCredential.user.uid);
-        await setDoc(userRef, {
-          uid: userCredential.user.uid,
-          email: userCredential.user.email || email,
-          displayName: name,
-          photoURL: null,
-          isAnonymous: false,
-          lastLoginAt: serverTimestamp(),
-        }, { merge: true });
+        const displayName = name.trim() || email.split('@')[0];
+        try {
+          await updateProfile(userCredential.user, { displayName });
+        } catch (pErr) {
+          console.warn('Update profile notice:', pErr);
+        }
+        try {
+          const userRef = doc(db, 'users', userCredential.user.uid);
+          await setDoc(userRef, {
+            uid: userCredential.user.uid,
+            email: userCredential.user.email || email.trim(),
+            displayName,
+            photoURL: null,
+            isAnonymous: false,
+            lastLoginAt: serverTimestamp(),
+          }, { merge: true });
+        } catch (dbErr) {
+          console.warn('Firestore profile write notice:', dbErr);
+        }
+        setUser(userCredential.user);
       }
+      return userCredential.user;
     } catch (error: any) {
-      setAuthError(`Sign up failed: ${error.message}`);
-      console.error(error);
+      let msg = error.message;
+      if (error.code === 'auth/email-already-in-use') {
+        msg = 'This email is already in use. Please sign in instead.';
+      } else if (error.code === 'auth/weak-password') {
+        msg = 'Password is too weak. Please use at least 6 characters.';
+      } else if (error.code === 'auth/invalid-email') {
+        msg = 'Please enter a valid email address.';
+      }
+      setAuthError(msg);
+      throw new Error(msg);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const signInAsGuest = async (guestName?: string) => {
+    setIsAuthenticating(true);
+    setAuthError(null);
+    try {
+      let currentUser = auth.currentUser;
+      if (!currentUser || !currentUser.isAnonymous) {
+        const cred = await signInAnonymously(auth);
+        currentUser = cred.user;
+      }
+      const displayName = guestName?.trim() || 'Guest Player';
+      if (currentUser) {
+        try {
+          await updateProfile(currentUser, { displayName });
+          const userRef = doc(db, 'users', currentUser.uid);
+          await setDoc(userRef, {
+            uid: currentUser.uid,
+            displayName,
+            isAnonymous: true,
+            email: 'Guest',
+            photoURL: null,
+            lastLoginAt: serverTimestamp(),
+          }, { merge: true });
+        } catch (e) {
+          console.warn('Guest profile write notice:', e);
+        }
+        setUser(currentUser);
+      }
+      return currentUser;
+    } catch (error: any) {
+      console.warn('Guest session notice:', error);
+      setAuthError(null);
     } finally {
       setIsAuthenticating(false);
     }
@@ -303,6 +367,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       linkWithGoogle, 
       signInWithEmail, 
       signUpWithEmail, 
+      signInAsGuest,
       logout,
       clearAuthError
     }}>
