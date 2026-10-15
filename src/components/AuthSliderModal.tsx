@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, ArrowRight, Loader2, Mail, KeyRound, Eye, EyeOff, Hash } from 'lucide-react';
+import { X, User, ArrowRight, Loader2, Hash } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -9,17 +9,17 @@ export function AuthSliderModal({
   isOpen, 
   onClose, 
   onJoinRoom, 
-  initialRoomCode 
+  initialRoomCode,
+  onSuccess
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
   onJoinRoom?: (code: string, nickname: string, gameType: string) => void; 
   initialRoomCode?: string; 
+  onSuccess?: () => void;
 }) {
   const { 
     signInWithGoogle, 
-    signInWithEmail,
-    signUpWithEmail,
     signInAsGuest,
     isAuthenticating, 
     user, 
@@ -27,26 +27,17 @@ export function AuthSliderModal({
     clearAuthError 
   } = useAuth();
   
-  // View tab: 'quick' | 'email-signup' | 'email-signin' | 'room'
-  const [activeTab, setActiveTab] = useState<'quick' | 'email-signup' | 'email-signin' | 'room'>('quick');
+  // View tab: 'quick' | 'room'
+  const [activeTab, setActiveTab] = useState<'quick' | 'room'>('quick');
 
   // Room Join State
   const [roomCode, setRoomCode] = useState(initialRoomCode || '');
   const [nickname, setNickname] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
-  // Guest State
+  // Guest State - name is mandatory to play as guest
   const [guestName, setGuestName] = useState('');
   const [isGuestLoading, setIsGuestLoading] = useState(false);
-  const [showGuestInput, setShowGuestInput] = useState(false);
-
-  // Email/Password state (without Google)
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isEmailSubmitting, setIsEmailSubmitting] = useState(false);
 
   const [localError, setLocalError] = useState('');
 
@@ -60,20 +51,16 @@ export function AuthSliderModal({
   // Automatically close modal when user successfully signs in
   useEffect(() => {
     if (user && !user.isAnonymous && isOpen) {
+      if (onSuccess) onSuccess();
       onClose();
     }
-  }, [user, isOpen, onClose]);
+  }, [user, isOpen, onClose, onSuccess]);
 
   useEffect(() => {
     if (!isOpen) {
       setActiveTab('quick');
       setLocalError('');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
-      setFullName('');
-      setShowPassword(false);
-      setShowGuestInput(false);
+      setGuestName('');
       if (clearAuthError) clearAuthError();
     }
   }, [isOpen, clearAuthError]);
@@ -86,74 +73,42 @@ export function AuthSliderModal({
     if (clearAuthError) clearAuthError();
     try {
       await signInWithGoogle();
+      if (onSuccess) onSuccess();
       onClose();
     } catch {
       // Handled in context
     }
   };
 
-  // 2. Email Auth (Create Account or Sign In without Google)
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLocalError('');
-    if (clearAuthError) clearAuthError();
-
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setLocalError('Please enter your email address.');
+  // 2. Play as Guest - Requires Name Input
+  const handleGuestPlay = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = guestName.trim();
+    if (!trimmed) {
+      setLocalError('Please enter your name to play as a guest.');
       return;
     }
-    if (!trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
-      setLocalError('Please enter a valid email address.');
-      return;
-    }
-    if (!password) {
-      setLocalError('Please enter your password.');
+    if (trimmed.length < 2) {
+      setLocalError('Name must be at least 2 characters.');
       return;
     }
 
-    if (activeTab === 'email-signup') {
-      if (password.length < 6) {
-        setLocalError('Password must be at least 6 characters.');
-        return;
-      }
-      if (confirmPassword && password !== confirmPassword) {
-        setLocalError('Passwords do not match.');
-        return;
-      }
-    }
-
-    setIsEmailSubmitting(true);
-    try {
-      if (activeTab === 'email-signup') {
-        await signUpWithEmail(trimmedEmail, password, fullName.trim() || trimmedEmail.split('@')[0]);
-      } else {
-        await signInWithEmail(trimmedEmail, password);
-      }
-      onClose();
-    } catch (err: any) {
-      setLocalError(err?.message || 'Authentication failed. Please check credentials.');
-    } finally {
-      setIsEmailSubmitting(false);
-    }
-  };
-
-  // 3. Play as Guest (No Sign-In Needed)
-  const handleGuestPlay = async () => {
     setIsGuestLoading(true);
     setLocalError('');
     try {
-      await signInAsGuest(guestName.trim() || 'Guest Player');
+      await signInAsGuest(trimmed);
+      if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {
       console.warn('Guest sign in notice:', err);
+      if (onSuccess) onSuccess();
       onClose();
     } finally {
       setIsGuestLoading(false);
     }
   };
 
-  // 4. Room Code Join
+  // 3. Room Code Join
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomCode.trim() || !nickname.trim()) {
@@ -215,11 +170,7 @@ export function AuthSliderModal({
                 HamsterEnglish
               </h2>
               <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium mt-1">
-                {activeTab === 'email-signup' 
-                  ? 'Create account without Google' 
-                  : activeTab === 'email-signin'
-                  ? 'Sign in with your email'
-                  : activeTab === 'room'
+                {activeTab === 'room'
                   ? 'Enter room code to join game'
                   : 'Choose how you want to play'}
               </p>
@@ -263,94 +214,58 @@ export function AuthSliderModal({
                   </button>
                 </div>
 
-                {/* CHOICE 2: MAKE ACCOUNT / SIGN IN WITHOUT GOOGLE */}
+                {/* CHOICE 2: PLAY AS GUEST (MANDATORY NAME INPUT) */}
                 <div className="space-y-1">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
-                    Option 2: Without Google
+                    Option 2: Play as Guest
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('email-signup');
-                        setLocalError('');
-                      }}
-                      className="p-3 bg-brand-purple/5 hover:bg-brand-purple/10 border-2 border-brand-purple/20 rounded-2xl text-center text-brand-purple dark:text-purple-300 font-bold text-xs transition-all flex flex-col items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <Mail size={18} />
-                      <span>Create Account</span>
-                      <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">No Google needed</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('email-signin');
-                        setLocalError('');
-                      }}
-                      className="p-3 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-850 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-center text-slate-700 dark:text-slate-200 font-bold text-xs transition-all flex flex-col items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <KeyRound size={18} className="text-slate-400" />
-                      <span>Sign In</span>
-                      <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">Existing account</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* CHOICE 3: NO NEED TO SIGN IN (PLAY AS GUEST) */}
-                <div className="space-y-1">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
-                    Option 3: No Need to Sign In
-                  </div>
-                  <div className="bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-500/20 rounded-2xl p-3">
-                    <div className="flex items-center justify-between mb-2">
+                  <form onSubmit={handleGuestPlay} className="bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-500/20 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                          <User size={15} />
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                          <User size={16} />
                         </div>
-                        <div className="text-xs font-bold text-slate-800 dark:text-white">
-                          Play as Guest
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-white">
+                            Play as Guest
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Enter your name to start playing
+                          </div>
                         </div>
                       </div>
-                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
                         Instant Free
                       </span>
                     </div>
 
-                    {showGuestInput && (
-                      <div className="mb-2">
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16} />
                         <input
                           type="text"
                           value={guestName}
-                          onChange={(e) => setGuestName(e.target.value)}
-                          placeholder="Your display name"
-                          maxLength={15}
-                          className="w-full p-2 text-xs rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white outline-none"
+                          onChange={(e) => {
+                            setGuestName(e.target.value);
+                            setLocalError('');
+                          }}
+                          placeholder="Enter your name or nickname *"
+                          maxLength={20}
+                          className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                           autoFocus
                         />
                       </div>
-                    )}
 
-                    <div className="flex items-center gap-2">
                       <button
-                        type="button"
-                        onClick={handleGuestPlay}
+                        type="submit"
                         disabled={isGuestLoading}
-                        className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                       >
-                        {isGuestLoading ? <Loader2 className="animate-spin" size={14} /> : <ArrowRight size={14} />}
-                        <span>{isGuestLoading ? "Entering..." : "Play Without Sign In"}</span>
+                        {isGuestLoading ? <Loader2 className="animate-spin" size={15} /> : <ArrowRight size={15} />}
+                        <span>{isGuestLoading ? "Entering..." : "Play as Guest"}</span>
                       </button>
-                      {!showGuestInput && (
-                        <button
-                          type="button"
-                          onClick={() => setShowGuestInput(true)}
-                          className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline px-2 py-1 cursor-pointer"
-                        >
-                          Set Name
-                        </button>
-                      )}
                     </div>
-                  </div>
+                  </form>
                 </div>
 
                 {/* ROOM CODE COLLAPSIBLE BUTTON */}
@@ -366,132 +281,6 @@ export function AuthSliderModal({
                 </div>
 
               </div>
-            )}
-
-            {/* EMAIL ACCOUNT FORMS (NOT USING GOOGLE) */}
-            {(activeTab === 'email-signup' || activeTab === 'email-signin') && (
-              <form onSubmit={handleEmailSubmit} className="space-y-3">
-                <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-900 rounded-xl mb-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab('email-signup');
-                      setLocalError('');
-                    }}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      activeTab === 'email-signup'
-                        ? 'bg-white dark:bg-slate-800 text-brand-purple dark:text-purple-300 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
-                    }`}
-                  >
-                    Create Account
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab('email-signin');
-                      setLocalError('');
-                    }}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      activeTab === 'email-signin'
-                        ? 'bg-white dark:bg-slate-800 text-brand-purple dark:text-purple-300 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
-                    }`}
-                  >
-                    Sign In
-                  </button>
-                </div>
-
-                {activeTab === 'email-signup' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Full Name or Nickname
-                    </label>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="e.g. Alex Rivera"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-purple text-xs"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    autoComplete="email"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-purple text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Password {activeTab === 'email-signup' && <span className="text-slate-400 font-normal">(min 6 characters)</span>}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      autoComplete={activeTab === 'email-signup' ? 'new-password' : 'current-password'}
-                      className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-purple text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {activeTab === 'email-signup' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Confirm Password
-                    </label>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                      autoComplete="new-password"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-purple text-xs"
-                    />
-                  </div>
-                )}
-
-                <div className="pt-2 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab('quick');
-                      setLocalError('');
-                    }}
-                    className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
-                  >
-                    ← Back to choices
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={isEmailSubmitting || isAuthenticating}
-                    className="px-5 py-2.5 bg-brand-purple hover:bg-brand-purple/90 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    {(isEmailSubmitting || isAuthenticating) && <Loader2 className="animate-spin" size={14} />}
-                    <span>{activeTab === 'email-signup' ? 'Create Account' : 'Sign In'}</span>
-                  </button>
-                </div>
-              </form>
             )}
 
             {/* ROOM JOIN VIEW */}

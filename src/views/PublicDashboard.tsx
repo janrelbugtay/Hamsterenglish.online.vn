@@ -90,6 +90,8 @@ export function PublicDashboard({
     { id: "student-race", title: "Student Race", color: "text-violet-600", icon: "https://images.unsplash.com/photo-1541604193435-22287d32c2c2?q=80&w=1000&auto=format&fit=crop" },
     { id: "letter-lock", title: "Letter Lock", color: "text-blue-600", icon: "https://images.unsplash.com/photo-1555448248-2571daf6344b?q=80&w=1000&auto=format&fit=crop" },
     
+    { id: "squid-game-picker", title: "Name Picker", color: "text-rose-600", icon: "/images/name-picker-card.png" },
+    { id: "neon-chain", title: "Neon Chain", color: "text-cyan-600", icon: "https://drive.google.com/thumbnail?id=1kovfYZSlp6X8HTqQ9OF_gSpf3wgJgNYG&sz=w1000" },
     { id: "tic-tac-toe", title: "Tic Tac Toe Battle", color: "text-gray-800", icon: "https://images.unsplash.com/photo-1668901382969-8c73e450a1f5?q=80&w=1000&auto=format&fit=crop" },
     { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "https://images.unsplash.com/photo-1546410531-bf4caa381ce6?q=80&w=1000&auto=format&fit=crop" }
   ];
@@ -261,26 +263,42 @@ export function PublicDashboard({
               >
                 <div className="aspect-[4/3] bg-slate-50 dark:bg-slate-900 flex items-center justify-center relative overflow-hidden border-b-2 border-slate-100 dark:border-slate-700">
                    <div className="absolute inset-0 bg-gradient-to-br from-brand-purple/5 to-transparent z-10"></div>
-                   <GameThumbnail gameType={game.gameType} info={info} />
+                    <GameThumbnail gameType={game.gameType} info={info} game={game} />
 
-                   {/* Play overlay */}
-                   <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300 z-30">
-                     <div className="w-16 h-16 bg-brand-purple text-white rounded-full flex items-center justify-center transform scale-50 group-hover:scale-100 transition-transform duration-300 shadow-xl">
-                       <Play className="ml-1" size={28} />
-                     </div>
-                   </div>
+                    {/* Play overlay */}
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300 z-30">
+                      <div className="w-16 h-16 bg-brand-purple text-white rounded-full flex items-center justify-center transform scale-50 group-hover:scale-100 transition-transform duration-300 shadow-xl">
+                        <Play className="ml-1" size={28} />
+                      </div>
+                    </div>
                 </div>
 
-                <div className="p-5 flex-1 flex flex-col">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 line-clamp-1">
-                      {game.topic || game.name || "Untitled Game"}
-                    </h3>
-                    {game.classLevel && (
-                      <span className="px-2 py-1 bg-brand-yellow/20 text-yellow-800 dark:text-yellow-500 rounded-md text-xs font-bold whitespace-nowrap shrink-0">
-                        {game.classLevel}
+                <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <h3 className="font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100 line-clamp-1">
+                        {game.topic || game.name || "Untitled Game"}
+                      </h3>
+                      {(game.classLevel || game.className) && (
+                        <span className="px-2 py-0.5 bg-brand-yellow/20 text-yellow-800 dark:text-yellow-500 rounded-md text-xs font-bold whitespace-nowrap shrink-0">
+                          {game.classLevel || game.className}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
+                      <span>{info.title}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {(game.customQuestions?.length || game.questions?.length || game.customSentences?.length || game.sentences?.length || 10)}{" "}
+                        {game.gameType === 'bubble-sentence-pro' && (game.customSentences?.length || game.sentences?.length) ? 'Sentences' : 'Questions'}
                       </span>
-                    )}
+                      {game.creatorName && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="truncate">by {game.creatorName}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

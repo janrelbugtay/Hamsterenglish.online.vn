@@ -30,12 +30,18 @@ export function Home({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div 
-            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none select-none pointer-events-none cursor-default"
+          <button 
+            type="button"
+            onClick={() => {
+              if (onViewChange) {
+                onViewChange("generator");
+              }
+            }}
+            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-purple-700 hover:to-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none transition-all cursor-pointer"
           >
             <PlusCircle size={22} />
             <span>Create a Game</span>
-          </div>
+          </button>
         </div>
       </div>
 

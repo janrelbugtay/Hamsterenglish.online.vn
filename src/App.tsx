@@ -116,9 +116,27 @@ export default function App() {
     }
   }, []);
 
+  const [pendingAction, setPendingAction] = useState<{ view: ViewState; data?: any } | null>(null);
+
+  // Proactively redirect to home if visitor has no session and is on a non-home view
+  useEffect(() => {
+    if (!loading && !user && currentView !== "home") {
+      setPendingAction({ view: currentView, data: selectedGame });
+      setCurrentView("home");
+      setIsAuthModalOpen(true);
+    }
+  }, [loading, user]);
+
   const handleViewChange = (view: ViewState, data?: any) => {
     if (view === "admin-dashboard" && !isAdmin) {
       setCurrentView("home");
+      return;
+    }
+
+    // All actions and games require signing in or playing as guest
+    if (!user && view !== "home") {
+      setPendingAction({ view, data });
+      setIsAuthModalOpen(true);
       return;
     }
 
@@ -244,28 +262,13 @@ export default function App() {
                 </span>
               </button>
 
-              {/* CHOICE 2: MAKE ACCOUNT / SIGN IN WITHOUT GOOGLE */}
-              <button
-                onClick={() => {
-                  setGoogleAuthFeature(feature.title);
-                  setIsGoogleAuthModalOpen(true);
-                }}
-                className="w-full flex items-center justify-center gap-2 h-11 bg-brand-purple/5 hover:bg-brand-purple/10 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 border-2 border-brand-purple/20 text-brand-purple dark:text-purple-300 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-xs hover:shadow"
-              >
-                <span>Make Account or Sign In without Google</span>
-              </button>
-
-              {/* CHOICE 3: NO NEED TO SIGN IN (PLAY AS GUEST) */}
+              {/* CHOICE 2: PLAY AS GUEST (MANDATORY NAME INPUT) */}
               <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 flex flex-col gap-2">
                 <button
-                  onClick={() => {
-                    // Enter guest session and remain on the view (or community)
-                    const { signInAsGuest } = (window as any);
-                    setCurrentView("public-dashboard");
-                  }}
+                  onClick={() => setIsAuthModalOpen(true)}
                   className="w-full text-center py-2.5 px-4 bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <span>No need to sign in — Play Free Games in Community →</span>
+                  <span>Play as Guest (Enter Name to Play) →</span>
                 </button>
               </div>
             </div>
@@ -361,6 +364,13 @@ export default function App() {
         isOpen={isAuthModalOpen} 
         initialRoomCode={initialRoomCode}
         onClose={() => setIsAuthModalOpen(false)} 
+        onSuccess={() => {
+          if (pendingAction) {
+            setCurrentView(pendingAction.view);
+            setSelectedGame(pendingAction.data || null);
+            setPendingAction(null);
+          }
+        }}
         onJoinRoom={(code, name, type) => {
           setJoinData({code, nickname: name, gameType: type});
           setCurrentView(type as ViewState);
@@ -372,7 +382,11 @@ export default function App() {
         featureName={googleAuthFeature}
         onViewChange={handleViewChange}
         onSuccess={() => {
-          if (googleAuthFeature === "Create Game" || googleAuthFeature === "My Games") {
+          if (pendingAction) {
+            setCurrentView(pendingAction.view);
+            setSelectedGame(pendingAction.data || null);
+            setPendingAction(null);
+          } else if (googleAuthFeature === "Create Game" || googleAuthFeature === "My Games") {
             setCurrentView("games");
           } else if (googleAuthFeature === "Homework") {
             setCurrentView("homework");
@@ -386,6 +400,7 @@ export default function App() {
         onViewChange={handleViewChange} 
         isMobileMenuOpen={isMobileMenuOpen}
         setIsMobileMenuOpen={setIsMobileMenuOpen}
+        openAuthModal={() => setIsAuthModalOpen(true)}
         openGoogleAuthModal={openGoogleAuthModal}
       />
       <div className="flex-1 flex flex-col overflow-hidden">

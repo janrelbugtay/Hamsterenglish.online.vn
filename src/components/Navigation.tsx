@@ -104,14 +104,25 @@ export function Navigation({
               <button
                 key={item.id}
                 onClick={() => {
-                  const googleProtectedViews = ["games", "homework", "class-rewards", "class-record"];
-                  if ((!user || user.isAnonymous) && googleProtectedViews.includes(item.view)) {
-                    if (openGoogleAuthModal) {
-                      openGoogleAuthModal(item.label);
+                  if (!user) {
+                    if (item.view === "home") {
+                      onViewChange("home");
+                    } else {
+                      if (openAuthModal) {
+                        openAuthModal();
+                      }
+                      onViewChange(item.view);
                     }
-                    onViewChange(item.view);
                   } else {
-                    onViewChange(item.view);
+                    const googleProtectedViews = ["games", "homework", "class-rewards", "class-record", "admin-dashboard"];
+                    if (user.isAnonymous && googleProtectedViews.includes(item.view)) {
+                      if (openGoogleAuthModal) {
+                        openGoogleAuthModal(item.label);
+                      }
+                      onViewChange(item.view);
+                    } else {
+                      onViewChange(item.view);
+                    }
                   }
                   setIsMobileMenuOpen(false);
                 }}

@@ -563,7 +563,7 @@ export const GamesLibrary = ({
                     </h3>
                   </div>
                   <div className="w-16 h-16 bg-white dark:bg-slate-800 shadow-sm border-2 border-slate-100 dark:border-slate-700 rounded-2xl flex items-center justify-center font-bold text-4xl group-hover:scale-[1.10] transition-transform shrink-0 z-20 relative overflow-hidden">
-                    <GameThumbnail gameType={game.gameType} info={gameTemplates.find(t => t.id === game.gameType) || {}} />
+                    <GameThumbnail gameType={game.gameType} info={gameTemplates.find(t => t.id === game.gameType) || {}} game={game} compact={true} />
                   </div>
                 </div>
 

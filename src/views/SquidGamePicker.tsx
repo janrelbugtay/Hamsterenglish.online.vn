@@ -6191,7 +6191,7 @@ class ThreeManager {
         const aliveForDoors = Object.keys(this.characters).filter(name => this.characters[name]?.userData?.isAlive);
         const targetElimCount = Math.min(roundData.eliminated?.length || 1, Math.max(0, aliveForDoors.length - 1));
         if (targetElimCount > 0 && aliveForDoors.length > 1) {
-            const freshEliminated = selectUnpredictableTargets(aliveForDoors, targetElimCount, this.lastCaughtPlayer);
+            const freshEliminated = selectUnpredictableTargets(aliveForDoors, targetElimCount);
             const freshSurvivors = cryptoShuffle(aliveForDoors.filter(p => !freshEliminated.includes(p)));
             roundData.eliminated = freshEliminated;
             roundData.survivors = freshSurvivors;
