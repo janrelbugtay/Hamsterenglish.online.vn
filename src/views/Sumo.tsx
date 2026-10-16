@@ -3,10 +3,19 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
-import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, Info, ClipboardList, Copy, Trophy, Shuffle, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, Info, ClipboardList, Copy, Trophy, Shuffle, Volume2, VolumeX, Users, Camera, Type } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
-import { SumoStadiumEnvironment } from "../components/SumoStadiumEnvironment";
+import {
+  SumoStadiumEnvironment,
+  SumoCharacter,
+  CircularSumoArena,
+  SumoCharacterPickerModal,
+  SUMO_CHARACTER_OPTIONS,
+  SUMO_CAMERA_OPTIONS,
+  SumoCharacterType,
+  SumoCameraMode
+} from "../components/SumoStadiumEnvironment";
 
 let sharedAudioCtx: AudioContext | null = null;
 let soundMutedGlobal = false;
@@ -134,313 +143,6 @@ const DEFAULT_QUESTIONS: Question[] = [
   { id: 8, text: "You didn't see him, ____?", options: ["did you?", "didn’t you?", "do you?", "don’t you?"], answerIndex: 0 }
 ];
 
-const SumoCharacter = ({ team, isPushing, isOpponentPushing, isStunned, isFrozen, hasLost, isWinner, className }: any) => {
-  const isLeft = team === 'left';
-
-  // Character Fur Colors: Blue Team mascot is Blue in color, Red Team mascot is Red in color
-  const furBase = isLeft ? "#2563eb" : "#dc2626";
-  const furHighlight = isLeft ? "#60a5fa" : "#f87171";
-  const furShadow = isLeft ? "#1d4ed8" : "#991b1b";
-  const creamBelly = isLeft ? "#eff6ff" : "#fff1f2";
-  const creamBellyShade = isLeft ? "#dbeafe" : "#ffe4e6";
-  const innerEarColor = isLeft ? "#bfdbfe" : "#fecdd3";
-  const cheekBlush = isLeft ? "#38bdf8" : "#fb7185";
-  const whiskerColor = isLeft ? "#1e3a8a" : "#7f1d1d";
-  const pawPadColor = isLeft ? "#bfdbfe" : "#fecdd3";
-  const pawPadOutline = isLeft ? "#3b82f6" : "#ef4444";
-
-  // Mawashi (Sumo Belt)
-  const clothingColor = isLeft ? "#1e3a8a" : "#7f1d1d";
-  const clothingHighlight = isLeft ? "#3b82f6" : "#ef4444";
-  const clothingShadow = isLeft ? "#0f172a" : "#450a0a";
-  const beltAccent = "#fbbf24";
-  const beltAccentBorder = "#d97706";
-
-  let rotation = 0;
-  let translateX = 0;
-  let translateY = 0;
-
-  if (hasLost) {
-    rotation = -65;
-    translateX = -35;
-    translateY = 24;
-  } else if (isWinner) {
-    rotation = -6;
-    translateY = -16;
-  } else if (isPushing) {
-    // Forward lunge into opponent
-    rotation = 12;
-    translateX = 22;
-    translateY = 2;
-  } else if (isOpponentPushing) {
-    // Bracing back slightly against push
-    rotation = -12;
-    translateX = -14;
-    translateY = 3;
-  } else if (isStunned) {
-    rotation = -14; 
-    translateX = -14;
-    translateY = 8;
-  } else {
-    // Natural sumo stance facing center
-    rotation = 3;
-    translateX = 0;
-  }
-
-  // Right team is flipped horizontally with scaleX(-1) so both hamsters face each other!
-  const isFlipped = !isLeft;
-  const flipScale = isFlipped ? "scaleX(-1)" : "scaleX(1)";
-  const transform = `${flipScale} rotate(${rotation}deg) translateX(${translateX}px) translateY(${translateY}px)`;
-  const gradId = isLeft ? "blue" : "red";
-
-  return (
-    <div 
-      className={`relative z-20 w-[110px] h-[120px] sm:w-[170px] sm:h-[180px] md:w-[255px] md:h-[270px] lg:w-[290px] lg:h-[310px] xl:w-[320px] xl:h-[340px] transition-transform duration-200 ease-out origin-center select-none ${className || ''}`}
-      style={{ transform }}
-    >
-      <svg viewBox="0 0 120 120" className="w-full h-full overflow-visible drop-shadow-xl">
-        <defs>
-          <linearGradient id={`fur-grad-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={furHighlight} />
-            <stop offset="100%" stopColor={furBase} />
-          </linearGradient>
-          <linearGradient id={`belly-grad-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={creamBelly} />
-            <stop offset="100%" stopColor={creamBellyShade} />
-          </linearGradient>
-          <linearGradient id={`belt-grad-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={clothingHighlight} />
-            <stop offset="100%" stopColor={clothingColor} />
-          </linearGradient>
-        </defs>
-
-        {/* Soft, grounded contact shadow on the dohyo dirt */}
-        <ellipse cx="60" cy="112" rx="42" ry="9" fill="rgba(0,0,0,0.35)" />
-
-        {/* Action dust & speed lines when charging forward */}
-        {isPushing && (
-          <g opacity="0.9">
-            <circle cx="8" cy="106" r="7" fill="#fde047" opacity="0.6" className="animate-ping" />
-            <circle cx="15" cy="102" r="8" fill="#f59e0b" opacity="0.5" />
-            <line x1="-14" y1="52" x2="6" y2="52" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-            <line x1="-20" y1="40" x2="0" y2="44" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-            <line x1="-16" y1="72" x2="4" y2="68" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-          </g>
-        )}
-
-        {/* Cute Little Hamster Tail in Back */}
-        <circle cx="16" cy="76" r="5.5" fill={`url(#fur-grad-${gradId})`} stroke={furShadow} strokeWidth="1.2" />
-
-        {/* SOLID GROUNDED SUMO LEGS & FEET */}
-        {/* Back Thigh & Foot */}
-        <ellipse cx="32" cy="96" rx="10" ry="8" fill={furBase} />
-        <ellipse cx="32" cy="104" rx="12" ry="5.5" fill={pawPadColor} stroke={pawPadOutline} strokeWidth="1.2" />
-        <circle cx="30" cy="104" r="1.5" fill={pawPadOutline} opacity="0.6" />
-        <circle cx="34" cy="104" r="1.5" fill={pawPadOutline} opacity="0.6" />
-
-        {/* Front Thigh & Foot */}
-        <ellipse cx="76" cy="96" rx="11" ry="8" fill={furBase} />
-        <ellipse cx="78" cy="104" rx="12" ry="5.5" fill={pawPadColor} stroke={pawPadOutline} strokeWidth="1.2" />
-        <circle cx="76" cy="104" r="1.5" fill={pawPadOutline} opacity="0.6" />
-        <circle cx="80" cy="104" r="1.5" fill={pawPadOutline} opacity="0.6" />
-
-        {/* Round Hamster Ears */}
-        {/* Left Ear */}
-        <g>
-          <ellipse cx="34" cy="22" rx="11" ry="13" fill={`url(#fur-grad-${gradId})`} transform="rotate(-15 34 22)" />
-          <ellipse cx="34" cy="22" rx="6.5" ry="8.5" fill={innerEarColor} transform="rotate(-15 34 22)" />
-        </g>
-        {/* Right Ear */}
-        <g>
-          <ellipse cx="78" cy="20" rx="11" ry="13" fill={`url(#fur-grad-${gradId})`} transform="rotate(15 78 20)" />
-          <ellipse cx="78" cy="20" rx="6.5" ry="8.5" fill={innerEarColor} transform="rotate(15 78 20)" />
-        </g>
-
-        {/* Sumo Chonmage Topknot neatly centered on top */}
-        <rect x="52" y="7" width="9" height="17" rx="4.5" fill="#2b231c" />
-        <rect x="50" y="15" width="13" height="4" rx="2" fill={beltAccent} stroke={beltAccentBorder} strokeWidth="0.8" />
-
-        {/* BIG CHUBBY SUMO BODY */}
-        <ellipse cx="58" cy="74" rx="36" ry="30" fill={`url(#fur-grad-${gradId})`} />
-        <ellipse cx="58" cy="46" rx="32" ry="28" fill={`url(#fur-grad-${gradId})`} />
-        {/* Body Depth Shadow */}
-        <path d="M 24 82 Q 58 104 92 82 Q 58 106 24 82 Z" fill={furShadow} opacity="0.32" />
-
-        {/* Creamy White Tummy Patch */}
-        <ellipse cx="60" cy="76" rx="24" ry="18" fill={`url(#belly-grad-${gradId})`} />
-
-        {/* Creamy White Muzzle / Cheek Patch */}
-        <ellipse cx="64" cy="49" rx="20" ry="16" fill={`url(#belly-grad-${gradId})`} />
-
-        {/* Rosy Blushing Cheeks */}
-        <ellipse cx="44" cy="51" rx="5.5" ry="3.5" fill={cheekBlush} opacity="0.45" />
-        <ellipse cx="80" cy="51" rx="6" ry="3.5" fill={cheekBlush} opacity="0.45" />
-
-        {/* Delicate Whiskers */}
-        <line x1="38" y1="50" x2="26" y2="48" stroke={whiskerColor} strokeWidth="1.2" strokeLinecap="round" opacity="0.65" />
-        <line x1="38" y1="54" x2="28" y2="56" stroke={whiskerColor} strokeWidth="1.2" strokeLinecap="round" opacity="0.65" />
-        <line x1="84" y1="50" x2="96" y2="48" stroke={whiskerColor} strokeWidth="1.2" strokeLinecap="round" opacity="0.65" />
-        <line x1="84" y1="54" x2="94" y2="56" stroke={whiskerColor} strokeWidth="1.2" strokeLinecap="round" opacity="0.65" />
-
-        {/* EYES (Expressive Anime Eyes with Double Sparkles) */}
-        {hasLost ? (
-          <g>
-            <path d="M 74 43 Q 78 37 78 47 T 70 43" fill="none" stroke={whiskerColor} strokeWidth="2.8" strokeLinecap="round" />
-            <path d="M 50 43 Q 54 37 54 47 T 46 43" fill="none" stroke={whiskerColor} strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M 78 46 L 96 60 M 46 46 L 28 60" stroke="#38bdf8" strokeWidth="3.5" strokeLinecap="round" strokeDasharray="4 3" className="animate-pulse" />
-          </g>
-        ) : isStunned ? (
-          <g>
-            <path d="M 70 40 L 78 48 M 78 40 L 70 48" stroke={whiskerColor} strokeWidth="3" strokeLinecap="round" />
-            <path d="M 46 40 L 54 48 M 54 40 L 46 48" stroke={whiskerColor} strokeWidth="2.6" strokeLinecap="round" />
-            <path d="M 84 24 Q 92 34 84 38 Q 76 34 84 24 Z" fill="#60a5fa" stroke="#2563eb" strokeWidth="1" />
-          </g>
-        ) : isWinner ? (
-          <g>
-            <path d="M 68 44 Q 74 37 80 44" fill="none" stroke={whiskerColor} strokeWidth="3.5" strokeLinecap="round" />
-            <path d="M 44 44 Q 50 37 56 44" fill="none" stroke={whiskerColor} strokeWidth="2.8" strokeLinecap="round" />
-          </g>
-        ) : isPushing ? (
-          <g>
-            <line x1="46" y1="36" x2="56" y2="39" stroke={whiskerColor} strokeWidth="2.8" strokeLinecap="round" />
-            <line x1="68" y1="39" x2="80" y2="36" stroke={whiskerColor} strokeWidth="2.8" strokeLinecap="round" />
-            <ellipse cx="50" cy="43" rx="5" ry="5.5" fill="#18181b" />
-            <circle cx="51.5" cy="41.5" r="1.6" fill="#ffffff" />
-            <ellipse cx="74" cy="43" rx="5.5" ry="6" fill="#18181b" />
-            <circle cx="75.5" cy="41.5" r="2" fill="#ffffff" />
-          </g>
-        ) : (
-          <g>
-            {/* Left Eye */}
-            <ellipse cx="50" cy="44" rx="5" ry="5.5" fill="#18181b" />
-            <circle cx="51.5" cy="42" r="1.8" fill="#ffffff" />
-            {/* Right Eye (facing center) */}
-            <ellipse cx="74" cy="44" rx="5.8" ry="6.2" fill="#18181b" />
-            <circle cx="75.5" cy="42" r="2.2" fill="#ffffff" />
-            <circle cx="72.5" cy="46" r="1" fill="#ffffff" />
-            {/* Subtle Eyebrows */}
-            <path d="M 46 36 Q 50 34 54 36" fill="none" stroke={whiskerColor} strokeWidth="2" strokeLinecap="round" />
-            <path d="M 70 36 Q 74 34 78 36" fill="none" stroke={whiskerColor} strokeWidth="2" strokeLinecap="round" />
-          </g>
-        )}
-
-        {/* NOSE (Centered between eyes on the muzzle, with cute shine) */}
-        <ellipse cx="68" cy="49" rx="3.5" ry="2.5" fill={cheekBlush} />
-        <circle cx="67.2" cy="48.2" r="0.8" fill="#ffffff" />
-
-        {/* MOUTH & BUCKTOOTH (Directly below the nose, completely clear of arms) */}
-        {hasLost ? (
-          <ellipse cx="68" cy="58" rx="6" ry="8" fill="#7f1d1d" stroke={whiskerColor} strokeWidth="1.2" />
-        ) : isStunned ? (
-          <path d="M 64 55 Q 68 52 72 55" fill="none" stroke={whiskerColor} strokeWidth="2" strokeLinecap="round" />
-        ) : isWinner ? (
-          <g>
-            <path d="M 64 52 Q 68 62 72 52 Z" fill="#991b1b" stroke={whiskerColor} strokeWidth="1.2" />
-            <rect x="66.5" y="52" width="3" height="2.5" rx="0.8" fill="#ffffff" />
-          </g>
-        ) : isPushing ? (
-          <g>
-            <path d="M 64 52 Q 68 60 72 52 Z" fill="#7f1d1d" stroke={whiskerColor} strokeWidth="1.5" />
-            <rect x="66.5" y="52" width="3" height="2.5" rx="0.8" fill="#ffffff" />
-          </g>
-        ) : (
-          <g>
-            <path d="M 64 52 Q 68 56 72 52" fill="none" stroke={whiskerColor} strokeWidth="2" strokeLinecap="round" />
-            <rect x="66.5" y="52" width="3" height="3" rx="0.8" fill="#ffffff" stroke={whiskerColor} strokeWidth="0.7" />
-          </g>
-        )}
-
-        {/* THICK SUMO MAWASHI BELT WITH ACCENT */}
-        <path d="M 24 74 Q 60 88 94 74 L 92 88 Q 60 102 26 88 Z" fill={`url(#belt-grad-${gradId})`} />
-        <path d="M 25 75 Q 60 88 93 75" fill="none" stroke={clothingHighlight} strokeWidth="2.5" strokeLinecap="round" />
-        <path d="M 26 88 Q 60 102 92 88" fill="none" stroke={clothingShadow} strokeWidth="2" strokeLinecap="round" />
-
-        {/* Front Hanging Loincloth Flap (Sagari) with Gold Trim */}
-        <path d="M 54 82 L 67 82 L 65 102 L 56 102 Z" fill={clothingColor} />
-        <path d="M 54 82 L 67 82" fill="none" stroke={beltAccent} strokeWidth="2" />
-        <circle cx="60.5" cy="85" r="2.5" fill={beltAccent} stroke={beltAccentBorder} strokeWidth="0.8" />
-
-        {/* SUMO ARMS: SYMMETRICALLY ATTACHED AT FLANKS / SHOULDERS (CLEAR OF MOUTH!) */}
-        {hasLost ? (
-          // Defeated: both arms flailing back
-          <g>
-            <path d="M 30 66 Q 18 64 14 74" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="14" cy="74" rx="4.5" ry="4" fill={innerEarColor} stroke={furShadow} strokeWidth="1" />
-            <path d="M 86 66 Q 98 64 102 74" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="102" cy="74" rx="4.5" ry="4" fill={innerEarColor} stroke={furShadow} strokeWidth="1" />
-          </g>
-        ) : isWinner ? (
-          // Winner: Both arms raised high in victory \o/
-          <g>
-            <path d="M 30 62 Q 22 42 26 24" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="26" cy="24" rx="5" ry="4.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1" />
-            <path d="M 86 62 Q 94 42 90 24" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="90" cy="24" rx="5" ry="4.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1" />
-          </g>
-        ) : isPushing ? (
-          // PUSHING: BOTH ARMS UP AND THRUSTING FORWARD TOGETHER!
-          // Both arms anchored at shoulder level (y=64), thrusting forward cleanly below the mouth (y=52)!
-          <g>
-            {/* Left Arm: thrusting forward from left shoulder */}
-            <path d="M 30 64 Q 52 60 76 62" stroke={furBase} strokeWidth="9" strokeLinecap="round" fill="none" />
-            <ellipse cx="78" cy="62" rx="6" ry="5.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1.2" />
-
-            {/* Right Arm: symmetrically thrusting forward from right shoulder, copying left arm's motion! */}
-            <path d="M 86 64 L 108 62" stroke={furBase} strokeWidth="9.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="110" cy="62" rx="6.5" ry="5.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1.2" />
-
-            {/* Comic clash star spark at paw impact point */}
-            <g transform="translate(112, 62)">
-              <polygon points="0,-12 3.5,-3.5 12,0 3.5,3.5 0,12 -3.5,3.5 -12,0 -3.5,-3.5" fill={beltAccent} />
-              <polygon points="0,-7 2,-2 7,0 2,2 0,7 -2,2 -7,0 -2,-2" fill="#ffffff" />
-            </g>
-          </g>
-        ) : isOpponentPushing ? (
-          // Defensive guard: both arms pulled up in front of chest (y=66-68, well below mouth!)
-          <g>
-            <path d="M 30 66 Q 44 66 54 68" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="56" cy="68" rx="5" ry="4.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1.2" />
-            <path d="M 86 66 Q 74 66 64 68" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="62" cy="68" rx="5" ry="4.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1.2" />
-          </g>
-        ) : (
-          // REST: BOTH ARMS DOWN SYMMETRICALLY ON FLANKS (CLEAR OF MOUTH!)
-          <g>
-            {/* Left Arm: attached on left flank at shoulder (y=66), resting DOWN along left side */}
-            <path d="M 30 66 Q 22 74 24 82" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="24" cy="82" rx="5" ry="4.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1.2" />
-
-            {/* Right Arm: attached on right flank at shoulder (y=66), copying left arm's position symmetrically! */}
-            <path d="M 86 66 Q 94 74 92 82" stroke={furBase} strokeWidth="8.5" strokeLinecap="round" fill="none" />
-            <ellipse cx="92" cy="82" rx="5" ry="4.5" fill={innerEarColor} stroke={furShadow} strokeWidth="1.2" />
-          </g>
-        )}
-
-        {/* Frozen Ice Block Overlay */}
-        {isFrozen && (
-          <g>
-            <rect x="-6" y="2" width="132" height="118" rx="18" fill="rgba(165, 243, 252, 0.78)" stroke="rgba(103, 232, 249, 0.95)" strokeWidth="5" />
-            <path d="M 4 18 L 24 6 M 14 112 L 34 96 M 94 8 L 116 24 M 90 104 L 122 114" stroke="rgba(255,255,255,0.85)" strokeWidth="3.5" strokeLinecap="round" />
-            <rect x="8" y="16" width="22" height="40" rx="11" fill="rgba(255,255,255,0.55)" transform="rotate(15 19 36)" />
-            <text 
-              x={isFlipped ? "-60" : "60"} 
-              y="62" 
-              fontFamily="sans-serif" 
-              fontSize="22" 
-              fontWeight="900" 
-              fill="#083344" 
-              textAnchor="middle" 
-              transform={isFlipped ? "scale(-1, 1) rotate(8 -60 62)" : "rotate(-8 60 62)"} 
-              style={{ paintOrder: 'stroke', stroke: '#cffafe', strokeWidth: '5px' }}
-            >
-              FROZEN
-            </text>
-          </g>
-        )}
-      </svg>
-    </div>
-  );
-};
 
 export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void, initialGame?: any }) {
   const { user } = useAuth();
@@ -452,6 +154,19 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
   );
   const [screen, setScreen] = useState<'menu' | 'playing' | 'end' | 'setup' | 'study'>(initialGame && !initialGame.editMode && hasLoadedQuestions ? 'menu' : 'setup');
   const [showModeModal, setShowModeModal] = useState(false);
+  const [showCharacterModal, setShowCharacterModal] = useState(false);
+  const [leftCharacter, setLeftCharacter] = useState<SumoCharacterType>('rikishi');
+  const [rightCharacter, setRightCharacter] = useState<SumoCharacterType>('panda');
+  const [cameraMode, setCameraMode] = useState<SumoCameraMode>('dynamic');
+  const [fontSizeScale, setFontSizeScale] = useState<'small' | 'medium' | 'large'>('medium');
+  const [showFontSizePopup, setShowFontSizePopup] = useState(false);
+
+  const cycleCameraMode = useCallback(() => {
+    setCameraMode((prev) => {
+      const idx = SUMO_CAMERA_OPTIONS.findIndex((c) => c.id === prev);
+      return SUMO_CAMERA_OPTIONS[(idx + 1) % SUMO_CAMERA_OPTIONS.length].id;
+    });
+  }, []);
   const [studyIndex, setStudyIndex] = useState(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null); 
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
@@ -841,49 +556,62 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleAnswer]);
 
-  const getQuestionFontSize = (text: string) => {
-    if (!text) return "text-xl sm:text-2xl md:text-3xl";
-    const len = text.trim().length;
-    if (len <= 28) {
-      return "text-xl sm:text-2xl md:text-3xl lg:text-4xl";
-    } else if (len <= 60) {
-      return "text-lg sm:text-xl md:text-2xl lg:text-3xl";
-    } else if (len <= 95) {
-      return "text-base sm:text-lg md:text-xl lg:text-2xl";
-    } else if (len <= 135) {
-      return "text-sm sm:text-base md:text-lg lg:text-xl";
-    } else {
-      return "text-xs sm:text-sm md:text-base";
+  const scaleShift = fontSizeScale === 'large' ? -1 : fontSizeScale === 'small' ? 1 : 0;
+
+  const getQuestionFontSize = (text: string, isSplit = false) => {
+    const len = (text || "").trim().length;
+
+    if (isSplit) {
+      let tier = 0;
+      if (len <= 32) tier = 0;
+      else if (len <= 60) tier = 1;
+      else if (len <= 95) tier = 2;
+      else if (len <= 135) tier = 3;
+      else tier = 4;
+
+      const idx = Math.max(-1, Math.min(4, tier + scaleShift));
+      if (idx <= -1) return "text-lg sm:text-2xl md:text-3xl lg:text-4xl";
+      if (idx === 0) return "text-base sm:text-xl md:text-2xl lg:text-3xl";
+      if (idx === 1) return "text-sm sm:text-lg md:text-xl lg:text-2xl";
+      if (idx === 2) return "text-xs sm:text-base md:text-lg lg:text-xl";
+      if (idx === 3) return "text-xs sm:text-sm md:text-base lg:text-lg";
+      return "text-[11px] sm:text-xs md:text-sm lg:text-base";
     }
+
+    let tier = 0;
+    if (len <= 36) tier = 0;
+    else if (len <= 68) tier = 1;
+    else if (len <= 105) tier = 2;
+    else if (len <= 145) tier = 3;
+    else tier = 4;
+
+    const idx = Math.max(-1, Math.min(4, tier + scaleShift));
+    if (idx <= -1) return "text-2xl sm:text-4xl md:text-5xl lg:text-[3.25rem]";
+    if (idx === 0) return "text-xl sm:text-3xl md:text-4xl lg:text-[2.75rem]";
+    if (idx === 1) return "text-lg sm:text-2xl md:text-3xl lg:text-4xl";
+    if (idx === 2) return "text-base sm:text-xl md:text-2xl lg:text-3xl";
+    if (idx === 3) return "text-sm sm:text-lg md:text-xl lg:text-2xl";
+    return "text-xs sm:text-base md:text-lg lg:text-xl";
   };
 
   const getOptionFontSize = (text: string, count = 4) => {
-    if (!text) return "text-sm sm:text-base md:text-lg";
-    const len = text.trim().length;
-    if (count <= 2) {
-      if (len <= 8) return "text-2xl sm:text-3xl md:text-4xl";
-      if (len <= 14) return "text-xl sm:text-2xl md:text-3xl";
-      if (len <= 24) return "text-lg sm:text-xl md:text-2xl";
-      return "text-base sm:text-lg md:text-xl";
-    }
-    if (count === 3) {
-      if (len <= 6) return "text-xl sm:text-2xl md:text-3xl";
-      if (len <= 10) return "text-lg sm:text-xl md:text-2xl";
-      if (len <= 18) return "text-base sm:text-lg md:text-xl";
-      return "text-sm sm:text-base md:text-lg";
-    }
-    // 4 options (standard):
-    if (len <= 5) {
-      return "text-base sm:text-lg md:text-xl lg:text-2xl";
-    } else if (len <= 8) {
-      return "text-sm sm:text-base md:text-lg lg:text-xl";
-    } else if (len <= 12) {
-      return "text-xs sm:text-sm md:text-base lg:text-lg";
-    } else if (len <= 18) {
-      return "text-[11px] sm:text-xs md:text-sm lg:text-base";
-    } else {
-      return "text-[10px] sm:text-[11px] md:text-xs";
-    }
+    const len = (text || "").trim().length;
+    let tier = 0;
+    if (len <= 8) tier = 0;
+    else if (len <= 15) tier = 1;
+    else if (len <= 24) tier = 2;
+    else if (len <= 36) tier = 3;
+    else tier = 4;
+
+    if (count <= 2) tier -= 1;
+
+    const idx = Math.max(-1, Math.min(4, tier + scaleShift));
+    if (idx <= -1) return "text-lg sm:text-2xl md:text-3xl lg:text-4xl";
+    if (idx === 0) return "text-base sm:text-xl md:text-2xl lg:text-3xl";
+    if (idx === 1) return "text-sm sm:text-lg md:text-xl lg:text-2xl";
+    if (idx === 2) return "text-xs sm:text-base md:text-lg lg:text-xl";
+    if (idx === 3) return "text-[11px] sm:text-sm md:text-base lg:text-lg";
+    return "text-[10px] sm:text-xs md:text-sm lg:text-base";
   };
 
   const renderQuestionText = (text: string) => {
@@ -893,13 +621,16 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
       return text;
     }
     return (
-      <div className="flex flex-col items-center justify-center">
-        <span>{parts[0].trim()}</span>
-        <div className="flex items-center justify-center mt-0.5 sm:mt-1 flex-wrap">
-          <span className="inline-block border-b-4 md:border-b-6 border-[#8c5225] min-w-[2.5rem] sm:min-w-[3.5rem] md:min-w-[4.5rem] mx-1.5 sm:mx-2 align-baseline translate-y-[-2px]"></span>
-          <span>{parts[1]?.trim() || "?"}</span>
-        </div>
-      </div>
+      <span>
+        {parts.map((part, i) => (
+          <React.Fragment key={i}>
+            <span>{part}</span>
+            {i < parts.length - 1 && (
+              <span className="inline-block border-b-4 md:border-b-[5px] border-[#8c5225] min-w-[2.5rem] sm:min-w-[4rem] md:min-w-[5rem] mx-1.5 align-baseline translate-y-[-2px]" />
+            )}
+          </React.Fragment>
+        ))}
+      </span>
     );
   };
 
@@ -919,26 +650,77 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     const currentQ = studyQuestions[studyIndex];
     
     return (
-      <div id="game-container" className="w-full min-h-full flex-1 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex flex-col font-sans p-2 sm:p-4 relative">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-white/10 rounded-2xl backdrop-blur-md mb-8 border border-white/10">
+      <div id="game-container" className="w-full min-h-full flex-1 bg-white text-black flex flex-col font-sans p-4 sm:p-6 md:p-8 relative">
+        {/* Header — Pure White Background with Black Text & Top-Right Font Size Pop-Up */}
+        <div className="flex items-center justify-between p-4 bg-white rounded-2xl mb-8 border-2 border-slate-200 shadow-xs">
            <button 
              onClick={() => setScreen('menu')}
-             className="flex items-center gap-2 p-2 rounded-full transition-all bg-white/15 hover:bg-white/25 shadow-sm text-white font-bold px-4 cursor-pointer"
+             className="flex items-center gap-2 py-2 px-4 rounded-full transition-all bg-white hover:bg-slate-100 border-2 border-slate-300 text-black font-bold cursor-pointer"
            >
-             <ArrowLeft size={20} /> Back to Menu
+             <ArrowLeft size={20} className="text-black" /> Back to Menu
            </button>
-           <div className="text-xl font-black text-amber-300">
-              Question {studyIndex + 1} of {studyQuestions.length}
+           <div className="flex items-center gap-3">
+             <div className="text-lg sm:text-xl font-black text-black">
+                Question {studyIndex + 1} of {studyQuestions.length}
+             </div>
+             <div className="relative">
+               <button
+                 onClick={() => setShowFontSizePopup((prev) => !prev)}
+                 className="px-3.5 py-2 rounded-full bg-white hover:bg-slate-100 border-2 border-slate-300 text-black font-black text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer"
+                 title="Change Font Size (Small, Medium, Large)"
+               >
+                 <Type size={16} className="text-black" />
+                 <span className="capitalize">{fontSizeScale}</span>
+               </button>
+               {showFontSizePopup && (
+                 <>
+                   <div
+                     className="fixed inset-0 z-40"
+                     onClick={() => setShowFontSizePopup(false)}
+                   />
+                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border-2 border-slate-300 p-2 z-50">
+                     <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 px-2.5 py-1">
+                       Font Size
+                     </div>
+                     {([
+                       { id: 'small', label: 'Small', badge: 'A' },
+                       { id: 'medium', label: 'Medium', badge: 'A+' },
+                       { id: 'large', label: 'Large', badge: 'A++' },
+                     ] as const).map((item) => {
+                       const active = fontSizeScale === item.id;
+                       return (
+                         <button
+                           key={item.id}
+                           onClick={() => {
+                             setFontSizeScale(item.id);
+                             setShowFontSizePopup(false);
+                           }}
+                           className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-black text-xs sm:text-sm transition-all cursor-pointer mb-1 last:mb-0 ${
+                             active
+                               ? 'bg-black text-white'
+                               : 'text-black hover:bg-slate-100'
+                           }`}
+                         >
+                           <span>{item.label}</span>
+                           <span className={`px-2 py-0.5 rounded-md text-xs font-black ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-black'}`}>
+                             {item.badge}
+                           </span>
+                         </button>
+                       );
+                     })}
+                   </div>
+                 </>
+               )}
+             </div>
            </div>
         </div>
         
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-4xl mx-auto w-full">
+        {/* Main Content — Pure White Background & Crisp Black Text */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-5xl mx-auto w-full">
            {studyQuestions.length > 0 ? (
               <>
-                 <h1 className="text-3xl md:text-5xl font-black text-indigo-950 dark:text-white tracking-tight leading-tight text-center max-w-full break-words drop-shadow-sm mb-12">
-                     {currentQ?.text}
+                 <h1 className={`${getQuestionFontSize(currentQ?.text || "", false)} font-black text-black tracking-tight leading-snug text-center max-w-full break-words mb-12`}>
+                     {renderQuestionText(currentQ?.text || "")}
                  </h1>
                  
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
@@ -958,24 +740,27 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                                      }
                                  }}
                                  disabled={studySelectedOption !== null}
-                                 className={`relative p-6 rounded-2xl text-xl md:text-2xl font-bold transition-all duration-300 transform ${
-                                     showAsCorrect ? 'bg-green-500 text-white shadow-[0_6px_0_#15803d] scale-105 z-10' :
-                                     showAsIncorrect ? 'bg-red-500 text-white opacity-90 scale-95 shadow-[0_4px_0_#991b1b]' :
-                                     studySelectedOption !== null ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 opacity-50 shadow-none' :
-                                     'bg-white text-indigo-900 hover:bg-indigo-50 hover:scale-[1.02] shadow-[0_6px_0_#cbd5e1] dark:shadow-[0_6px_0_#334155] border-2 border-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                                 className={`relative p-6 rounded-2xl ${getOptionFontSize(opt, 2)} font-bold transition-all duration-200 border-2 cursor-pointer ${
+                                     showAsCorrect
+                                       ? 'bg-green-500 text-white border-green-600 shadow-[0_6px_0_#15803d] scale-[1.02] z-10'
+                                       : showAsIncorrect
+                                         ? 'bg-red-500 text-white border-red-600 shadow-[0_4px_0_#991b1b]'
+                                         : studySelectedOption !== null
+                                           ? 'bg-white text-black/40 border-slate-200 shadow-none'
+                                           : 'bg-white text-black border-slate-300 hover:border-black hover:bg-slate-50 shadow-[0_5px_0_#cbd5e1]'
                                  }`}
                              >
                                  <div className="flex items-center justify-center gap-4">
-                                     {opt}
-                                     {showAsCorrect && <span className="text-3xl animate-bounce">✅</span>}
-                                     {showAsIncorrect && <span className="text-3xl">❌</span>}
+                                     <span>{opt}</span>
+                                     {showAsCorrect && <span className="text-2xl font-black">✓</span>}
+                                     {showAsIncorrect && <span className="text-2xl font-black">✕</span>}
                                  </div>
                              </button>
                          );
                      })}
                  </div>
                  
-                 <div className={`mt-12 h-20 transition-all duration-500 ${studySelectedOption !== null ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+                 <div className={`mt-12 h-20 transition-all duration-300 ${studySelectedOption !== null ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                      <button
                          onClick={() => {
                              if (studyIndex < studyQuestions.length - 1) {
@@ -987,14 +772,14 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                                  setStudySelectedOption(null);
                              }
                          }}
-                         className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xl rounded-full shadow-[0_6px_0_#4338ca] active:translate-y-1 active:shadow-none transition-all"
+                         className="px-10 py-4 bg-black hover:bg-slate-800 text-white font-black text-xl rounded-full shadow-[0_6px_0_#334155] active:translate-y-1 active:shadow-none transition-all cursor-pointer"
                      >
                          {studyIndex < studyQuestions.length - 1 ? 'Next Question →' : 'Finish Study'}
                      </button>
                  </div>
               </>
            ) : (
-              <div className="text-slate-500 text-3xl font-bold">No questions available!</div>
+              <div className="text-black text-3xl font-bold">No questions available!</div>
            )}
         </div>
       </div>
@@ -1002,53 +787,173 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
   }
 
   if (screen === 'menu') {
+    const leftInfo = SUMO_CHARACTER_OPTIONS.find((c) => c.id === leftCharacter);
+    const rightInfo = SUMO_CHARACTER_OPTIONS.find((c) => c.id === rightCharacter);
+
     return (
-      <div id="game-container" className="w-full min-h-full flex-1 bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center font-sans p-2 sm:p-4 overflow-y-auto relative">
-        <div className="absolute top-4 left-4 z-[60] flex items-center gap-2">
-          <button 
-            onClick={() => onViewChange("home")}
-            className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border text-slate-600 dark:text-white/80 hover:text-slate-900 dark:hover:text-white bg-slate-200/50 dark:bg-black/20 hover:bg-slate-300/50 dark:hover:bg-black/50 border-slate-300/50 dark:border-white/20"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <FullscreenButton targetId="game-container" />
-          <button
-            onClick={() => setShowModeModal(true)}
-            className="px-3.5 py-1.5 rounded-full bg-slate-900/60 hover:bg-slate-900/80 dark:bg-white/10 dark:hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
-            title="Switch to Bubble Pop or Yoga Quiz"
-          >
-            <Shuffle size={14} className="text-amber-400" />
-            <span>Switch Mode</span>
-          </button>
-          <button 
-            onClick={() => {
-              setLeftTeam(prev => ({ ...prev, wins: 0 }));
-              setRightTeam(prev => ({ ...prev, wins: 0 }));
-              setScreen('menu');
-            }}
-            className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 bg-red-100/80 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-900/60 border-red-300/50 dark:border-red-500/20 shadow-sm"
-            title="Quit Game"
-          >
-            <X size={24} />
-          </button>
+      <div id="game-container" className="w-full min-h-full flex-1 bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-950 text-white flex flex-col justify-between font-sans p-4 sm:p-6 md:p-8 overflow-y-auto relative select-none">
+        {/* FULL-SCREEN TOP HEADER BAR */}
+        <div className="w-full max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/15 z-20 shrink-0">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => onViewChange("home")}
+              className="flex items-center gap-2 p-2.5 rounded-full transition-colors bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
+              title="Back to Home"
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <FullscreenButton targetId="game-container" />
+            <button
+              onClick={() => setShowModeModal(true)}
+              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="Switch to Bubble Pop or Yoga Quiz"
+            >
+              <Shuffle size={15} className="text-amber-400" />
+              <span>Switch Mode</span>
+            </button>
+          </div>
+
+          <div className="text-center flex-1 min-w-[200px]">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white italic uppercase tracking-tight leading-none drop-shadow">
+              {activeGame?.title || "SUMO SHOWDOWN"}
+            </h1>
+            <p className="text-amber-300 font-bold text-xs sm:text-sm uppercase tracking-widest mt-1">
+              {activeGame?.topic || "Choose Your Sumo Fighters & Start Battle"}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setStudyIndex(0); setStudySelectedOption(null); setScreen('study'); }}
+              className="px-4 sm:px-5 py-2.5 rounded-full bg-white hover:bg-slate-100 text-slate-900 font-black text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all hover:scale-105 cursor-pointer"
+            >
+              <span>📖</span>
+              <span>STUDY MODE</span>
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white p-8 md:p-12 rounded-[2.5rem] text-center shadow-2xl border-b-8 border-yellow-500 max-w-lg w-full">
-          <div className="mb-6 flex justify-center gap-6 animate-pulse">
-             <div className="w-12 h-12 bg-blue-600 rounded-full border-4 border-blue-900 shadow-lg"></div>
-             <div className="w-12 h-12 bg-red-600 rounded-full border-4 border-red-900 shadow-lg"></div>
+        {/* FULL-SCREEN CHOOSE FIGHTER ARENA (LEFT BLUE ROSTER · CENTER VS STAGE · RIGHT RED ROSTER) */}
+        <div className="w-full max-w-[1440px] mx-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch my-4 z-20">
+          {/* BLUE TEAM FIGHTER ROSTER (5 cols) */}
+          <div className="lg:col-span-5 bg-blue-950/65 border-2 border-blue-500/50 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full bg-blue-500 inline-block shadow-[0_0_10px_#3b82f6]" />
+                <span className="font-black text-base sm:text-lg md:text-xl text-blue-300 uppercase tracking-wider">
+                  Choose Blue Fighter
+                </span>
+              </div>
+              <span className="bg-blue-600 text-white font-black text-xs px-3 py-1 rounded-full shadow">
+                {leftInfo?.name}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
+              {SUMO_CHARACTER_OPTIONS.map((opt) => {
+                const selected = leftCharacter === opt.id;
+                return (
+                  <button
+                    key={`menu-left-${opt.id}`}
+                    onClick={() => setLeftCharacter(opt.id)}
+                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
+                      selected
+                        ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white border-amber-300 shadow-[0_0_20px_rgba(59,130,246,0.65)] scale-[1.03]'
+                        : 'bg-slate-900/80 hover:bg-blue-900/50 text-slate-200 border-blue-500/30 hover:border-blue-400'
+                    }`}
+                  >
+                    <div className="py-1 flex items-center justify-center">
+                      <SumoCharacter team="left" character={opt.id} size="card" />
+                    </div>
+                    <div className="mt-1">
+                      <div className="font-black text-xs sm:text-sm leading-tight">{opt.name}</div>
+                      <div className={`text-[10px] font-semibold mt-0.5 ${selected ? 'text-blue-100' : 'text-slate-400'}`}>
+                        {opt.title}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <h1 className="text-4xl md:text-5xl font-black mb-4 text-indigo-900 italic uppercase tracking-tighter leading-tight">{activeGame?.title || "QUESTION TAGS SHOWDOWN"}</h1>
-          <p className="text-slate-500 mb-8 font-bold text-lg uppercase tracking-widest">{activeGame?.topic || "Master the Tags"}</p>
+
+          {/* CENTER LIVE MATCHUP SHOWCASE & START BATTLE CTA (2 cols) */}
+          <div className="lg:col-span-2 bg-gradient-to-b from-sky-200 via-emerald-100 to-emerald-300 text-slate-900 rounded-3xl p-4 sm:p-5 border-4 border-amber-400 shadow-2xl flex flex-col items-center justify-between gap-3">
+            <div className="flex flex-col items-center text-center w-full">
+              <span className="text-[11px] font-black uppercase tracking-wider text-white bg-blue-600 px-3 py-0.5 rounded-full shadow mb-1">
+                Blue: {leftInfo?.name}
+              </span>
+              <SumoCharacter team="left" character={leftCharacter} compact />
+            </div>
+
+            <div className="w-12 h-12 rounded-full bg-amber-400 border-4 border-white shadow-lg flex items-center justify-center font-black italic text-xl text-slate-950 shrink-0">
+              VS
+            </div>
+
+            <div className="flex flex-col items-center text-center w-full">
+              <SumoCharacter team="right" character={rightCharacter} compact />
+              <span className="text-[11px] font-black uppercase tracking-wider text-white bg-red-600 px-3 py-0.5 rounded-full shadow mt-1">
+                Red: {rightInfo?.name}
+              </span>
+            </div>
+          </div>
+
+          {/* RED TEAM FIGHTER ROSTER (5 cols) */}
+          <div className="lg:col-span-5 bg-red-950/65 border-2 border-red-500/50 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full bg-red-500 inline-block shadow-[0_0_10px_#ef4444]" />
+                <span className="font-black text-base sm:text-lg md:text-xl text-red-300 uppercase tracking-wider">
+                  Choose Red Fighter
+                </span>
+              </div>
+              <span className="bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow">
+                {rightInfo?.name}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
+              {SUMO_CHARACTER_OPTIONS.map((opt) => {
+                const selected = rightCharacter === opt.id;
+                return (
+                  <button
+                    key={`menu-right-${opt.id}`}
+                    onClick={() => setRightCharacter(opt.id)}
+                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
+                      selected
+                        ? 'bg-gradient-to-b from-red-500 to-red-700 text-white border-amber-300 shadow-[0_0_20px_rgba(239,68,68,0.65)] scale-[1.03]'
+                        : 'bg-slate-900/80 hover:bg-red-900/50 text-slate-200 border-red-500/30 hover:border-red-400'
+                    }`}
+                  >
+                    <div className="py-1 flex items-center justify-center">
+                      <SumoCharacter team="right" character={opt.id} size="card" />
+                    </div>
+                    <div className="mt-1">
+                      <div className="font-black text-xs sm:text-sm leading-tight">{opt.name}</div>
+                      <div className={`text-[10px] font-semibold mt-0.5 ${selected ? 'text-red-100' : 'text-slate-400'}`}>
+                        {opt.title}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* FULL-SCREEN BOTTOM ACTION BAR */}
+        <div className="w-full max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-center gap-4 pt-2 z-20 shrink-0">
           <button 
             onClick={() => setShowStartBattleModal(true)} 
-            className="bg-yellow-400 hover:bg-yellow-300 text-slate-900 text-2xl font-black px-12 py-6 rounded-full shadow-[0_8px_0_#ca8a04] active:translate-y-1 active:shadow-none transition-all w-full md:w-auto mb-4 cursor-pointer hover:scale-105"
+            className="bg-yellow-400 hover:bg-yellow-300 text-slate-950 text-xl sm:text-2xl md:text-3xl font-black px-14 py-4 sm:py-5 rounded-full shadow-[0_8px_0_#ca8a04] active:translate-y-1 active:shadow-none transition-all w-full sm:w-auto cursor-pointer hover:scale-105"
           >
-            START BATTLE
+            ⚔️ START BATTLE
           </button>
-          
-          <button onClick={() => { setStudyIndex(0); setStudySelectedOption(null); setScreen('study'); }} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-900 text-xl font-bold px-12 py-4 rounded-full shadow-[0_6px_0_#818cf8] active:translate-y-1 active:shadow-none transition-all w-full md:w-auto flex items-center justify-center gap-3 mx-auto cursor-pointer">
-             <span className="text-3xl">📖</span> STUDY MODE
+          <button
+            onClick={() => { setStudyIndex(0); setStudySelectedOption(null); setScreen('study'); }}
+            className="bg-white hover:bg-slate-100 text-slate-900 text-lg sm:text-xl font-black px-10 py-4 sm:py-5 rounded-full shadow-[0_6px_0_#94a3b8] active:translate-y-1 active:shadow-none transition-all w-full sm:w-auto flex items-center justify-center gap-2.5 cursor-pointer"
+          >
+            <span>📖</span> STUDY MODE
           </button>
         </div>
 
@@ -1237,10 +1142,17 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
               <ArrowLeft size={22} className="stroke-[2.5]" />
             </button>
 
-            {/* TOP MIDDLE: Blue Team and Red Team Banners */}
+            {/* TOP MIDDLE: Blue Team and Red Team Banners with Real Character SVG Avatars */}
             <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
               {/* Blue Team Banner */}
-              <div className="bg-[#0055fe] rounded-2xl md:rounded-3xl px-3 sm:px-5 md:px-6 py-1 sm:py-1.5 md:py-2 flex items-center gap-2 sm:gap-3 shadow-lg shadow-blue-500/25 border-b-4 border-[#0038b3]">
+              <div className="bg-[#0055fe] rounded-2xl md:rounded-3xl px-2.5 sm:px-4 md:px-5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 shadow-lg shadow-blue-500/25 border-b-4 border-[#0038b3]">
+                <button
+                  onClick={() => setShowCharacterModal(true)}
+                  className="bg-white/95 hover:bg-white rounded-full p-0.5 shadow-sm flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+                  title="Change Blue Team Sumo Character"
+                >
+                  <SumoCharacter team="left" character={leftCharacter} size="icon" />
+                </button>
                 <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
                   BLUE TEAM
                 </span>
@@ -1250,18 +1162,94 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
               </div>
 
               {/* Red Team Banner */}
-              <div className="bg-[#cc0000] rounded-2xl md:rounded-3xl px-3 sm:px-5 md:px-6 py-1 sm:py-1.5 md:py-2 flex items-center gap-2 sm:gap-3 shadow-lg shadow-red-500/25 border-b-4 border-[#990000]">
+              <div className="bg-[#cc0000] rounded-2xl md:rounded-3xl px-2.5 sm:px-4 md:px-5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 shadow-lg shadow-red-500/25 border-b-4 border-[#990000]">
                 <div className="bg-white text-red-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
                   {rightTeam.wins} WINS
                 </div>
                 <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
                   RED TEAM
                 </span>
+                <button
+                  onClick={() => setShowCharacterModal(true)}
+                  className="bg-white/95 hover:bg-white rounded-full p-0.5 shadow-sm flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+                  title="Change Red Team Sumo Character"
+                >
+                  <SumoCharacter team="right" character={rightCharacter} size="icon" />
+                </button>
               </div>
             </div>
 
-            {/* TOP RIGHT: Three Icons (Fullscreen, Sound, Shuffle) */}
-            <div className="flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-md px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full shadow-md border border-amber-900/15">
+            {/* TOP RIGHT: Five Controls (Choose Fighters, Font Size Pop-Up, Fullscreen, Sound, Shuffle) */}
+            <div className="relative flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-md px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full shadow-md border border-amber-900/15">
+              <button
+                onClick={() => setShowCharacterModal(true)}
+                className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-[11px] sm:text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Choose Sumo Characters"
+              >
+                <Users size={15} className="text-amber-700" />
+                <span className="hidden sm:inline">Characters</span>
+              </button>
+
+              {/* FONT SIZE ICON + POP-UP SELECTOR (SMALL / MEDIUM / LARGE) */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowFontSizePopup((prev) => !prev)}
+                  className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full font-black text-[11px] sm:text-xs flex items-center gap-1 transition-all cursor-pointer ${
+                    showFontSizePopup
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-900'
+                  }`}
+                  title="Adjust Question & Option Font Size (Small, Medium, Large)"
+                >
+                  <Type size={15} />
+                  <span className="hidden md:inline capitalize">{fontSizeScale}</span>
+                </button>
+
+                {showFontSizePopup && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowFontSizePopup(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border-2 border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2.5 py-1">
+                        Font Size
+                      </div>
+                      {([
+                        { id: 'small', label: 'Small', badge: 'A' },
+                        { id: 'medium', label: 'Medium', badge: 'A+' },
+                        { id: 'large', label: 'Large', badge: 'A++' },
+                      ] as const).map((item) => {
+                        const active = fontSizeScale === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => {
+                              setFontSizeScale(item.id);
+                              setShowFontSizePopup(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-black text-xs sm:text-sm transition-all cursor-pointer mb-1 last:mb-0 ${
+                              active
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-xs font-black ${
+                                active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {item.badge}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <FullscreenButton 
                 targetId="game-container" 
                 className="!p-1.5 sm:!p-2 !rounded-full !bg-blue-100 hover:!bg-blue-200 !text-blue-700 !border-0 !shadow-none cursor-pointer" 
@@ -1283,98 +1271,29 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             </div>
           </div>
 
-          {/* CENTER SUMO BATTLE STAGE (INTEGRATED DIRECTLY INTO STADIUM GROUND) */}
-          <div className={`flex-1 w-full max-w-5xl mx-auto flex flex-col items-center justify-center relative min-h-[160px] sm:min-h-[200px] my-auto transition-transform duration-150 overflow-visible ${isRumbling ? 'scale-[1.015] translate-y-[-2px]' : ''}`}>
-            
-            {/* Arena Battle Field (Open Grounded Stage - No Circular Arena) */}
-            <div className="w-[96%] sm:w-[92%] md:w-[88%] h-[140px] sm:h-[170px] md:h-[195px] relative flex items-center justify-center overflow-visible z-10">
-              
-              {/* Grounded Battle Mat / Center Stage (Grounded rect with soft rounded corners, not circular) */}
-              <div className="absolute inset-x-2 sm:inset-x-6 top-1/2 -translate-y-1/2 h-[56px] sm:h-[72px] md:h-[84px] bg-gradient-to-r from-blue-950/40 via-amber-950/35 to-red-950/40 rounded-2xl sm:rounded-3xl border-y-2 border-amber-600/40 shadow-[inset_0_2px_14px_rgba(0,0,0,0.6)] flex items-center justify-between px-3 sm:px-6 pointer-events-none">
-                {/* Left Blue Ring-Out Boundary Line */}
-                <div className="h-4/5 w-2 sm:w-2.5 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.7)]"></div>
-
-                {/* Center Shikiri-sen Starting Lines & Center Marker */}
-                <div className="flex items-center gap-4 sm:gap-8 md:gap-12">
-                  {/* Left Shikiri-sen */}
-                  <div className="w-8 sm:w-14 md:w-16 h-2 sm:h-2.5 bg-white/95 rounded-full shadow-[0_1px_6px_rgba(0,0,0,0.5)]"></div>
-                  {/* Center Line Indicator */}
-                  <div className="w-2 h-7 sm:h-9 bg-amber-400/70 rounded-full shadow-sm"></div>
-                  {/* Right Shikiri-sen */}
-                  <div className="w-8 sm:w-14 md:w-16 h-2 sm:h-2.5 bg-white/95 rounded-full shadow-[0_1px_6px_rgba(0,0,0,0.5)]"></div>
-                </div>
-
-                {/* Right Red Ring-Out Boundary Line */}
-                <div className="h-4/5 w-2 sm:w-2.5 bg-gradient-to-b from-red-400 to-red-600 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.7)]"></div>
-              </div>
-
-              {/* Edge Danger Alerts */}
-              {battlePos <= 30 && !winner && (
-                <div className="absolute -top-1 sm:top-1 left-2 sm:left-8 bg-red-600 text-white font-black text-xs sm:text-sm px-3.5 py-1 rounded-full animate-bounce shadow-md z-30">
-                  BLUE RING-OUT DANGER!
-                </div>
-              )}
-              {battlePos >= 70 && !winner && (
-                <div className="absolute -top-1 sm:top-1 right-2 sm:right-8 bg-blue-600 text-white font-black text-xs sm:text-sm px-3.5 py-1 rounded-full animate-bounce shadow-md z-30">
-                  RED RING-OUT DANGER!
-                </div>
-              )}
-
-              {/* Clashing Sumo Hamsters Moving Across Arena to the Ends */}
-              <div 
-                className="absolute top-[50%] left-1/2 flex items-center justify-center transition-all duration-300 ease-out z-20 pointer-events-none"
-                style={{ 
-                  left: `${Math.max(12, Math.min(88, battlePos))}%`, 
-                  transform: 'translate(-50%, -50%)' 
-                }}
-              >
-                <div className="flex items-center -space-x-8 sm:-space-x-12 md:-space-x-16 lg:-space-x-20">
-                  <SumoCharacter 
-                    team="left"
-                    isPushing={leftTeam.pushing}
-                    isOpponentPushing={rightTeam.pushing}
-                    isStunned={leftTeam.stunned}
-                    isFrozen={leftTeam.frozen}
-                    hasLost={winner === 'Red Team'}
-                    isWinner={winner === 'Blue Team'}
-                  />
-                  <SumoCharacter 
-                    team="right"
-                    isPushing={rightTeam.pushing}
-                    isOpponentPushing={leftTeam.pushing}
-                    isStunned={rightTeam.stunned}
-                    isFrozen={rightTeam.frozen}
-                    hasLost={winner === 'Blue Team'}
-                    isWinner={winner === 'Red Team'}
-                  />
-                </div>
-              </div>
-
-              {/* Dramatic Ring-Out Victory Callout Banner */}
-              {winner && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 backdrop-blur-[2px] rounded-2xl z-50 animate-in fade-in duration-300 pointer-events-none">
-                  <div className="bg-[#1f1a16]/95 border-2 border-amber-600/50 text-white px-6 py-3.5 rounded-2xl shadow-2xl flex flex-col items-center text-center">
-                    <div className="text-amber-400 font-black tracking-widest text-xs uppercase mb-0.5">
-                      OSHIDASHI · RING-OUT!
-                    </div>
-                    <div className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow">
-                      {winner.toUpperCase()} WINS!
-                    </div>
-                    <div className="text-xs text-amber-200/80 font-semibold mt-1">
-                      {winner === 'Blue Team' ? 'Red Team' : 'Blue Team'} was pushed out of the arena!
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* STATIONARY CLOSE-UP CIRCULAR SUMO DOHYO ARENA & HEROIC FIGHTERS */}
+          <div className="flex-1 w-full max-w-[1440px] mx-auto flex flex-col items-center justify-center relative min-h-[250px] sm:min-h-[320px] md:min-h-[370px] pb-1 overflow-visible">
+            <CircularSumoArena
+              battlePos={battlePos}
+              winner={winner}
+              isRumbling={isRumbling}
+              leftPushing={leftTeam.pushing}
+              rightPushing={rightTeam.pushing}
+              leftStunned={leftTeam.stunned}
+              rightStunned={rightTeam.stunned}
+              leftFrozen={leftTeam.frozen}
+              rightFrozen={rightTeam.frozen}
+              leftCharacter={leftCharacter}
+              rightCharacter={rightCharacter}
+            />
 
             {/* Grammar Question Centered Directly UNDER the Arena in Single Question Mode */}
             {questionMode === 'single' && (
-              <div className="w-full max-w-4xl mx-auto pt-2 pb-1 px-4 text-center z-20 shrink-0 pointer-events-none">
-                <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl py-2.5 sm:py-3 px-5 sm:px-6 shadow-lg border-2 border-amber-900/15">
-                  <span className={`${getQuestionFontSize(currentQText)} font-black text-[#0f172a] leading-tight tracking-tight drop-shadow-sm break-words`}>
+              <div className="w-full max-w-5xl mx-auto pt-1 pb-1.5 px-4 text-center z-20 shrink-0 pointer-events-none">
+                <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl py-3 sm:py-4 px-6 sm:px-10 shadow-xl border-2 border-amber-900/15">
+                  <div className={`${getQuestionFontSize(currentQText, false)} font-black text-[#0f172a] leading-snug tracking-tight drop-shadow-xs break-words`}>
                     {renderQuestionText(currentQText)}
-                  </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -1386,8 +1305,8 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             <div className="flex-1 bg-[#0055fe] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#0038b3] flex flex-col justify-between">
               {/* Split Mode: Blue Question displayed directly on Blue side */}
               {questionMode === 'split' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col justify-center min-h-[50px] sm:min-h-[82px]">
-                  <div className={`${getQuestionFontSize(leftTeam.q?.text || "")} font-black text-[#0f172a] leading-tight px-1 break-words text-xs sm:text-base md:text-xl`}>
+                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
+                  <div className={`${getQuestionFontSize(leftTeam.q?.text || "", true)} font-black text-[#0f172a] leading-snug px-1.5 break-words`}>
                     {renderQuestionText(leftTeam.q?.text || "")}
                   </div>
                 </div>
@@ -1412,17 +1331,21 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                         handleAnswer('left', idx);
                       }}
                       disabled={leftTeam.stunned || leftTeam.frozen}
-                      className={`bg-white hover:bg-blue-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[52px] sm:min-h-[76px] md:min-h-[105px] lg:min-h-[120px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                      className={`bg-white hover:bg-blue-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[56px] sm:min-h-[80px] md:min-h-[108px] lg:min-h-[124px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
                         isKeyActive ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-blue-100 ring-4 ring-white' : ''
                       } ${leftTeam.stunned || leftTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
                       <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#dbeafe] flex items-center justify-center font-black text-[#0055fe] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
                         {keyHints[idx] || (idx + 1)}
                       </div>
-                      <div className="flex-1 w-full flex items-center justify-center px-0.5 overflow-hidden">
-                        <span className={`${getOptionFontSize(opt, leftTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-normal whitespace-normal line-clamp-2 text-[11px] sm:text-sm md:text-base`}>
-                          {opt}
-                        </span>
+                      <div className="flex-1 w-full flex items-center justify-center px-1 overflow-hidden">
+                        {typeof opt === 'string' && (opt.startsWith('http') || opt.startsWith('data:image')) ? (
+                          <img src={opt} alt={`Option ${idx + 1}`} className="max-h-14 sm:max-h-20 w-full object-contain rounded-lg" />
+                        ) : (
+                          <span className={`${getOptionFontSize(opt, leftTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2`}>
+                            {opt}
+                          </span>
+                        )}
                       </div>
                     </button>
                   );
@@ -1434,8 +1357,8 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             <div className="flex-1 bg-[#cc0000] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#990000] flex flex-col justify-between">
               {/* Split Mode: Red Question displayed directly on Red side */}
               {questionMode === 'split' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col justify-center min-h-[50px] sm:min-h-[82px]">
-                  <div className={`${getQuestionFontSize(rightTeam.q?.text || "")} font-black text-[#0f172a] leading-tight px-1 break-words text-xs sm:text-base md:text-xl`}>
+                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
+                  <div className={`${getQuestionFontSize(rightTeam.q?.text || "", true)} font-black text-[#0f172a] leading-snug px-1.5 break-words`}>
                     {renderQuestionText(rightTeam.q?.text || "")}
                   </div>
                 </div>
@@ -1460,17 +1383,21 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                         handleAnswer('right', idx);
                       }}
                       disabled={rightTeam.stunned || rightTeam.frozen}
-                      className={`bg-white hover:bg-red-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[52px] sm:min-h-[76px] md:min-h-[105px] lg:min-h-[120px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                      className={`bg-white hover:bg-red-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[56px] sm:min-h-[80px] md:min-h-[108px] lg:min-h-[124px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
                         isKeyActive ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-red-100 ring-4 ring-white' : ''
                       } ${rightTeam.stunned || rightTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
                       <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#fee2e2] flex items-center justify-center font-black text-[#cc0000] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
                         {keyHints[idx] || (idx + 1)}
                       </div>
-                      <div className="flex-1 w-full flex items-center justify-center px-0.5 overflow-hidden">
-                        <span className={`${getOptionFontSize(opt, rightTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-normal whitespace-normal line-clamp-2 text-[11px] sm:text-sm md:text-base`}>
-                          {opt}
-                        </span>
+                      <div className="flex-1 w-full flex items-center justify-center px-1 overflow-hidden">
+                        {typeof opt === 'string' && (opt.startsWith('http') || opt.startsWith('data:image')) ? (
+                          <img src={opt} alt={`Option ${idx + 1}`} className="max-h-14 sm:max-h-20 w-full object-contain rounded-lg" />
+                        ) : (
+                          <span className={`${getOptionFontSize(opt, rightTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2`}>
+                            {opt}
+                          </span>
+                        )}
                       </div>
                     </button>
                   );
@@ -1479,6 +1406,16 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             </div>
           </div>
         </SumoStadiumEnvironment>
+
+        {/* Sumo Character Picker Modal */}
+        <SumoCharacterPickerModal
+          isOpen={showCharacterModal}
+          leftCharacter={leftCharacter}
+          rightCharacter={rightCharacter}
+          onSelectLeft={setLeftCharacter}
+          onSelectRight={setRightCharacter}
+          onClose={() => setShowCharacterModal(false)}
+        />
 
         {/* 3-Mode Selection Modal */}
         <GameModeModal

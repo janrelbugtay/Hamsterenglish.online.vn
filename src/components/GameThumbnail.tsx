@@ -581,14 +581,14 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     const rightOpt = options[1] || 'Option B';
 
     return (
-      <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-amber-950 via-stone-900 to-slate-950 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
-        {/* Dojo Top Rafters Accent */}
+      <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-sky-300 via-emerald-200 to-green-500 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
+        {/* Sunny Park Sumo Header */}
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-amber-500/20 border border-amber-400/40 px-2.5 py-0.5 rounded-full">
-            <span className="text-xs leading-none">🤼</span>
-            <span className="text-[10px] font-black text-amber-300 uppercase tracking-wider">Sumo Clash</span>
+          <div className="flex items-center gap-1.5 bg-white/85 border border-emerald-500/40 px-2.5 py-0.5 rounded-full shadow-xs">
+            <span className="text-xs leading-none">🐹</span>
+            <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Sumo Park</span>
           </div>
-          <span className="text-[10px] font-black text-amber-200/90 bg-black/40 px-2 py-0.5 rounded-full border border-amber-500/30">
+          <span className="text-[10px] font-black text-emerald-950 bg-white/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
             {totalCount} Qs
           </span>
         </div>
@@ -696,7 +696,14 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
                 }`}
               >
                 <span className="opacity-75 font-black">{String.fromCharCode(65 + idx)}.</span>
-                <span className="truncate">{opt}</span>
+                {typeof opt === 'string' && (opt.startsWith('http') || opt.startsWith('data:image')) ? (
+                  <span className="inline-flex items-center gap-1 truncate">
+                    <img src={opt} alt="" className="w-3.5 h-3.5 rounded object-cover inline shrink-0" />
+                    <span>Picture</span>
+                  </span>
+                ) : (
+                  <span className="truncate">{opt}</span>
+                )}
               </div>
             );
           })}

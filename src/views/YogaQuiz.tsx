@@ -3,26 +3,37 @@ import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 
 import { MediaPickerModal } from "../components/MediaPickerModal";
-import { ChevronLeft, Plus, Edit3, Trash2, Play, Search, Sparkles, Save, X, BookOpen, Clock, Heart, ArrowLeft, Download, Maximize, Minimize, ClipboardList, Info, Copy, Image as ImageIcon, Settings, User, Pencil, Shuffle } from 'lucide-react';
-import Papa from 'papaparse';
+import { Plus, Trash2, Sparkles, Save, X, ArrowLeft, Maximize, Minimize, ClipboardList, Info, Copy, Image as ImageIcon, Settings, User, Pencil, Shuffle } from 'lucide-react';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
 import { playSound } from '../lib/audio';
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
-import { Folder } from "lucide-react";
 import { GameModeModal } from "../components/GameModeModal";
+import {
+  SumoStadiumEnvironment,
+  SumoCharacter,
+  CircularSumoArena,
+  SumoCharacterPickerModal,
+  SUMO_CHARACTER_OPTIONS,
+  SUMO_CAMERA_OPTIONS,
+  SumoCharacterType,
+  SumoCameraMode
+} from "../components/SumoStadiumEnvironment";
 
-interface Question {
-  id: number;
+export interface Question {
+  id: number | string;
   text: string;
   options: string[];
   answerIndex: number;
+  optionImages?: (string | null)[];
+  image?: string;
+  imageUrl?: string;
 }
 
-interface Quiz {
-  id: number;
+export interface Quiz {
+  id: number | string;
   title: string;
   subject: string;
   topic?: string;
@@ -33,6 +44,19 @@ interface Quiz {
   folderId?: string;
   isPublic?: boolean;
 }
+
+export const isImageUrl = (url: string | undefined | null): boolean => {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('data:image/')) return true;
+  if (/^https?:\/\/.+/i.test(trimmed)) {
+    if (/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(trimmed)) return true;
+    if (trimmed.includes('giphy.com') || trimmed.includes('unsplash.com') || trimmed.includes('googleusercontent.com') || trimmed.includes('drive.google.com/thumbnail')) return true;
+    if (trimmed.includes('images.') || trimmed.includes('/images/') || trimmed.includes('/img/') || trimmed.includes('/photos/')) return true;
+    if (!trimmed.includes(' ') && (trimmed.startsWith('http://') || trimmed.startsWith('https://'))) return true;
+  }
+  return false;
+};
 
 const initialQuizzes: Quiz[] = [
   {
@@ -53,14 +77,35 @@ const initialQuizzes: Quiz[] = [
   },
   {
     id: 2,
-    title: "Simple Past Tense",
-    subject: "Grammar",
-    thumbnail: "🕰️",
-    isFavorite: false,
+    title: "Yoga Poses (Picture Quiz)",
+    subject: "Vocabulary",
+    topic: "Yoga Poses",
+    classLevel: "All Levels",
+    thumbnail: "🧘",
+    isFavorite: true,
     questions: [
-      { id: 1, text: "Yesterday, I ____ to the park.", options: ["go", "goes", "went"], answerIndex: 2 },
-      { id: 2, text: "They ____ pizza for dinner.", options: ["eat", "ate", "eated"], answerIndex: 1 },
-      { id: 3, text: "She ____ a beautiful song.", options: ["sings", "sang", "sung"], answerIndex: 1 },
+      {
+        id: 1,
+        text: "Which of these shows the Tree Pose (standing on one foot)?",
+        options: ["Tree Pose", "Lotus Pose", "Warrior Pose"],
+        optionImages: [
+          "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=500&q=80",
+          "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=500&q=80",
+          "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=500&q=80"
+        ],
+        answerIndex: 0
+      },
+      {
+        id: 2,
+        text: "Which picture represents deep meditative Lotus Pose?",
+        options: ["Lotus Pose", "Running", "Jumping"],
+        optionImages: [
+          "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=500&q=80",
+          "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=500&q=80",
+          "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=500&q=80"
+        ],
+        answerIndex: 0
+      }
     ]
   },
   {
@@ -68,7 +113,7 @@ const initialQuizzes: Quiz[] = [
     title: "Yoga Vocabulary",
     subject: "Vocabulary",
     thumbnail: "🧘‍♀️",
-    isFavorite: true,
+    isFavorite: false,
     questions: [
       { id: 1, text: "What is the English word for sitting cross-legged in yoga?", options: ["Tree Pose", "Downward Dog", "Lotus Pose"], answerIndex: 2 },
       { id: 2, text: "When you breathe in deeply, you...", options: ["Inhale", "Exhale", "Hold"], answerIndex: 0 },
@@ -141,7 +186,7 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
   };
 
   const getQuizData = (): Quiz => {
-    const fallbackQuestions = [
+    const fallbackQuestions: Question[] = [
       { id: 1, text: "Which sentence is grammatically correct?", options: ["She doesn't like apples.", "She don't like apples.", "She not like apples.", "She isn't like apples."], answerIndex: 0 },
       { id: 2, text: "What is the past tense of 'eat'?", options: ["Ate", "Eated", "Eating", "Eats"], answerIndex: 0 },
       { id: 3, text: "Which of these is a fruit?", options: ["Apple", "Carrot", "Potato", "Broccoli"], answerIndex: 0 },
@@ -154,28 +199,46 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
         ? initialGame.customQuestions
         : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : fallbackQuestions);
 
+      const sanitized: Question[] = qList.map((q: any, i: number) => ({
+        id: q.id || (i + 1),
+        text: q.text || q.question || "",
+        options: Array.isArray(q.options) && q.options.length >= 2 ? q.options : ["Option 1", "Option 2"],
+        answerIndex: typeof q.answerIndex === 'number' ? q.answerIndex : (typeof q.correctIndex === 'number' ? q.correctIndex : 0),
+        optionImages: Array.isArray(q.optionImages) ? q.optionImages : undefined,
+        image: q.image || q.imageUrl || undefined,
+        imageUrl: q.imageUrl || q.image || undefined,
+      }));
+
       return {
         id: initialGame.id || Date.now(),
         title: initialGame.name || initialGame.title || initialGame.topic || "Yoga Quiz",
-        subject: "Grammar",
+        subject: "Vocabulary",
         topic: initialGame.topic || initialGame.name || "",
         classLevel: initialGame.className || initialGame.classLevel || "",
-        questions: qList,
+        questions: sanitized,
         thumbnail: "🧘",
         folderId: initialGame.folderId,
         isPublic: initialGame.isPublic,
       };
     }
     return {
-        id: Date.now(),
-        title: "",
-        subject: "Grammar",
-        topic: "",
-        classLevel: "",
-        questions: [{ id: Date.now(), text: "", options: ["", ""], answerIndex: 0 }],
-        thumbnail: "🧘",
-        folderId: "",
-        isPublic: false
+      id: Date.now(),
+      title: "",
+      subject: "Vocabulary",
+      topic: "",
+      classLevel: "",
+      questions: [
+        { 
+          id: Date.now(), 
+          text: "", 
+          options: ["", ""], 
+          answerIndex: 0, 
+          optionImages: [null, null] 
+        }
+      ],
+      thumbnail: "🧘",
+      folderId: "",
+      isPublic: false
     };
   };
 
@@ -242,9 +305,21 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   const [folderId, setFolderId] = useState(quiz.folderId || "");
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
-  const [questions, setQuestions] = useState<Question[]>(quiz.questions);
+  const [questions, setQuestions] = useState<Question[]>(() => {
+    return quiz.questions.map(q => ({
+      ...q,
+      options: q.options || ["", ""],
+      optionImages: q.optionImages || Array(q.options?.length || 2).fill(null)
+    }));
+  });
   const [errorMsg, setErrorMsg] = useState("");
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number } | null>(null);
+  
+  // Active media picker targeting either an option or question
+  const [activeMediaPicker, setActiveMediaPicker] = useState<
+    | { type: 'option'; qId: number | string; optIndex: number }
+    | { type: 'question'; qId: number | string }
+    | null
+  >(null);
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
@@ -264,13 +339,16 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
       text: item.text || "",
       options: item.options || ["", "", "", ""],
       answerIndex: item.answerIndex || 0,
+      optionImages: item.optionImages || Array(item.options?.length || 4).fill(null),
+      image: item.image,
+      imageUrl: item.imageUrl
     }));
 
     if (action === 'replace') {
       setQuestions(newItems);
     } else {
       setQuestions(prev => {
-        if (prev.length === 1 && !prev[0].text.trim()) {
+        if (prev.length === 1 && !prev[0].text.trim() && !prev[0].image) {
           return newItems;
         }
         return [...prev, ...newItems];
@@ -289,7 +367,6 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
 
     const parsedItems = parsePastedQuiz(pastedText);
     
-    // If it's just a single question with no options and it matches exactly, let normal paste handle it
     if (parsedItems.length === 1 && parsedItems[0].text === pastedText && parsedItems[0].options?.every(o => !o)) {
        return;
     }
@@ -302,13 +379,16 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
         text: item.text || "",
         options: item.options || ["", "", "", ""],
         answerIndex: item.answerIndex || 0,
+        optionImages: item.optionImages || Array(item.options?.length || 4).fill(null),
+        image: item.image,
+        imageUrl: item.imageUrl
       }));
 
       setQuestions(prev => {
         const updated = [...prev];
         const current = updated[index];
 
-        if (current && !current.text.trim()) {
+        if (current && !current.text.trim() && !current.image) {
           updated.splice(index, 1, ...newItems);
         } else {
           updated.splice(index + 1, 0, ...newItems);
@@ -327,21 +407,81 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     }
   };
 
-
   const addQuestion = () => {
-    setQuestions([...questions, { id: Date.now(), text: '', options: ['', ''], answerIndex: 0 }]);
+    setQuestions([...questions, { 
+      id: Date.now(), 
+      text: '', 
+      options: ['', ''], 
+      answerIndex: 0,
+      optionImages: [null, null] 
+    }]);
   };
 
   const updateQuestion = (id: number | string, field: keyof Question, value: any) => {
     setQuestions(questions.map(q => q.id === id ? { ...q, [field]: value } : q));
   };
 
-  const updateOption = (qId: number | string, optIndex: number, value: string) => {
+  const updateOptionText = (qId: number | string, optIndex: number, textValue: string) => {
     setQuestions(questions.map(q => {
       if (q.id === qId) {
         const newOptions = [...q.options];
-        newOptions[optIndex] = value;
+        newOptions[optIndex] = textValue;
         return { ...q, options: newOptions };
+      }
+      return q;
+    }));
+  };
+
+  const updateOptionImage = (qId: number | string, optIndex: number, imgUrl: string) => {
+    setQuestions(questions.map(q => {
+      if (q.id === qId) {
+        const newOptionImages = [...(q.optionImages || Array(q.options.length).fill(null))];
+        while (newOptionImages.length < q.options.length) newOptionImages.push(null);
+        newOptionImages[optIndex] = imgUrl;
+
+        const newOptions = [...q.options];
+        if (isImageUrl(newOptions[optIndex])) {
+          newOptions[optIndex] = "";
+        }
+        return { ...q, options: newOptions, optionImages: newOptionImages };
+      }
+      return q;
+    }));
+  };
+
+  const removeOptionImage = (qId: number | string, optIndex: number) => {
+    setQuestions(questions.map(q => {
+      if (q.id === qId) {
+        const newOptionImages = [...(q.optionImages || [])];
+        if (newOptionImages[optIndex]) {
+          newOptionImages[optIndex] = null;
+        }
+        const newOptions = [...q.options];
+        if (isImageUrl(newOptions[optIndex])) {
+          newOptions[optIndex] = "";
+        }
+        return { ...q, options: newOptions, optionImages: newOptionImages };
+      }
+      return q;
+    }));
+  };
+
+  const updateQuestionImage = (qId: number | string, imgUrl: string) => {
+    setQuestions(questions.map(q => {
+      if (q.id === qId) {
+        return { ...q, image: imgUrl, imageUrl: imgUrl };
+      }
+      return q;
+    }));
+  };
+
+  const removeQuestionImage = (qId: number | string) => {
+    setQuestions(questions.map(q => {
+      if (q.id === qId) {
+        const copy = { ...q };
+        delete copy.image;
+        delete copy.imageUrl;
+        return copy;
       }
       return q;
     }));
@@ -349,22 +489,24 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
 
   const addOption = (qId: number | string) => {
     setQuestions(questions.map(q => {
-        if (q.id === qId && q.options.length < 6) {
-            return { ...q, options: [...q.options, ''] };
-        }
-        return q;
+      if (q.id === qId && q.options.length < 6) {
+        const newImgs = q.optionImages ? [...q.optionImages, null] : Array(q.options.length + 1).fill(null);
+        return { ...q, options: [...q.options, ''], optionImages: newImgs };
+      }
+      return q;
     }));
   };
 
   const removeOption = (qId: number | string) => {
     setQuestions(questions.map(q => {
-        if (q.id === qId && q.options.length > 2) {
-            const newOptions = [...q.options];
-            newOptions.pop();
-            const newAnswerIndex = q.answerIndex >= newOptions.length ? newOptions.length - 1 : q.answerIndex;
-            return { ...q, options: newOptions, answerIndex: newAnswerIndex };
-        }
-        return q;
+      if (q.id === qId && q.options.length > 2) {
+        const newOptions = [...q.options];
+        newOptions.pop();
+        const newImgs = q.optionImages ? q.optionImages.slice(0, newOptions.length) : undefined;
+        const newAnswerIndex = q.answerIndex >= newOptions.length ? newOptions.length - 1 : q.answerIndex;
+        return { ...q, options: newOptions, answerIndex: newAnswerIndex, ...(newImgs ? { optionImages: newImgs } : {}) };
+      }
+      return q;
     }));
   };
 
@@ -381,10 +523,13 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     setQuestions(prev => {
       const newQuestions = [...prev];
       const qToCopy = prev[index];
-      const duplicatedQ = {
+      const duplicatedQ: Question = {
         ...qToCopy,
         id: Date.now() + Math.random(),
-        options: [...qToCopy.options]
+        options: [...qToCopy.options],
+        optionImages: qToCopy.optionImages ? [...qToCopy.optionImages] : undefined,
+        image: qToCopy.image,
+        imageUrl: qToCopy.imageUrl
       };
       newQuestions.splice(index + 1, 0, duplicatedQ);
       return newQuestions;
@@ -408,9 +553,9 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const handleSave = () => {
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = questions.filter(q => q.text.trim() || q.image || q.options.some((o, i) => o.trim() || q.optionImages?.[i]));
     if(validQuestions.length === 0) {
-      setErrorMsg("Please add at least one complete question.");
+      setErrorMsg("Please add at least one complete question or picture question.");
       setTimeout(() => setErrorMsg(""), 3000);
       return;
     }
@@ -418,8 +563,8 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const confirmSave = (isPublic: boolean) => {
-    const generatedTitle = "Yoga Quiz";
-    const validQuestions = questions.filter(q => q.text.trim());
+    const generatedTitle = topic.trim() ? topic.trim() : "Yoga Quiz";
+    const validQuestions = questions.filter(q => q.text.trim() || q.image || q.options.some((o, i) => o.trim() || q.optionImages?.[i]));
     onSave({
       ...quiz,
       title: generatedTitle,
@@ -436,14 +581,20 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
       <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
       <div className="w-full max-w-4xl glass-panel rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8">
-        <div className="bg-white dark:bg-slate-800/80 p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
+        <div className="bg-white dark:bg-slate-800/80 p-8 flex flex-col gap-6 border-b-2 border-teal-500/50">
             <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">GAME SETUP</h2>
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">🧘</span>
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">YOGA QUIZ SETUP</h2>
+                    <p className="text-xs text-teal-600 dark:text-teal-400 font-semibold">Include text, images, or pictures as options & question clues!</p>
+                  </div>
+                </div>
                 <div className="flex gap-3 items-center">
-                    <button onClick={onCancel} className="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">
+                    <button onClick={onCancel} className="px-4 sm:px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer text-sm">
                         Cancel
                     </button>
-                    <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer">
+                    <button onClick={handleSave} className="flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-xl bg-teal-500 text-white font-bold hover:bg-teal-600 transition-colors shadow-lg shadow-teal-500/30 cursor-pointer text-sm">
                         <Save size={18} /> Save Quiz
                     </button>
                 </div>
@@ -454,20 +605,20 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Topic</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Present Simple" 
+                      placeholder="e.g. Yoga Poses, Action Verbs" 
                       value={topic}
                       onChange={(e) => setTopic(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
+                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-teal-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
                     />
                 </div>
                 <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Class Level</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. KET, Starters" 
+                      placeholder="e.g. Grade 3, Starters, KET" 
                       value={classLevel}
                       onChange={(e) => setClassLevel(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
+                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-teal-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
                     />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -475,7 +626,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                     <select 
                       value={folderId}
                       onChange={(e) => setFolderId(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 appearance-none cursor-pointer transition-colors"
+                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-teal-500 appearance-none cursor-pointer transition-colors"
                     >
                       <option value="">No Folder (Root)</option>
                       {folders.map(f => (
@@ -493,7 +644,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
         )}
 
         {toastMsg && (
-          <div className="bg-cyan-500/20 text-cyan-500 dark:text-cyan-300 p-3 mx-6 mt-6 rounded-xl font-bold text-center border border-cyan-500/30 animate-in fade-in slide-in-from-top-2 duration-300 flex items-center justify-center gap-2 shadow-sm">
+          <div className="bg-teal-500/20 text-teal-600 dark:text-teal-300 p-3 mx-6 mt-6 rounded-xl font-bold text-center border border-teal-500/30 animate-in fade-in slide-in-from-top-2 duration-300 flex items-center justify-center gap-2 shadow-sm">
             <Sparkles size={18} /> {toastMsg}
           </div>
         )}
@@ -504,7 +655,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
             <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 transform scale-100 animate-in fade-in zoom-in duration-200 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
+                  <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-500 flex items-center justify-center font-bold">
                     <ClipboardList size={22} />
                   </div>
                   <div>
@@ -512,7 +663,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                       Bulk Paste & Auto-Divide
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Paste multiple questions, numbered lists with options & answer (e.g. Answer: B), or tabular TSV data.
+                      Paste numbered questions, option lines, image links, or Excel tabular data.
                     </p>
                   </div>
                 </div>
@@ -526,20 +677,20 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
 
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Paste Text Below (Supports multi-line Q&A format or Excel copy)
+                  Paste Text Below (Supports questions with image URLs as options)
                 </label>
                 <textarea 
                   rows={7}
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={"Example:\n1. What is the capital of France?\na) London\nb) Paris\nc) Berlin\nd) Madrid\nAnswer: B\n\nOr paste tabular data directly from Excel!"}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-cyan-500 transition-colors custom-scrollbar"
+                  placeholder={"Example:\n1. Which is Tree Pose?\na) https://images.unsplash.com/photo-1...\nb) https://images.unsplash.com/photo-2...\nc) Lotus Pose\nAnswer: A"}
+                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-teal-500 transition-colors custom-scrollbar"
                 />
               </div>
 
               {bulkText.trim() && (
                 <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <div className="text-cyan-500 mt-0.5"><Info size={16} /></div>
+                  <div className="text-teal-500 mt-0.5"><Info size={16} /></div>
                   <p className="text-sm text-slate-600 dark:text-slate-300">
                     Found <span className="font-bold text-slate-800 dark:text-white">{parsePastedQuiz(bulkText).length}</span> items. 
                   </p>
@@ -549,13 +700,13 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <button 
                   onClick={() => handleApplyBulkPaste('replace')}
-                  className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                  className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
                 >
                   Replace All
                 </button>
                 <button 
                   onClick={() => handleApplyBulkPaste('append')}
-                  className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30"
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-teal-500 hover:bg-teal-600 transition-colors shadow-lg shadow-teal-500/30 cursor-pointer"
                 >
                   Append to End
                 </button>
@@ -566,28 +717,29 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
 
         <div className="p-6 flex flex-col gap-6 bg-slate-100 dark:bg-slate-900/50">
           {/* Smart Tip Bar */}
-          <div className="bg-blue-500/10 dark:bg-blue-950/30 border border-blue-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-blue-900 dark:text-blue-200">
+          <div className="bg-teal-500/10 dark:bg-teal-950/30 border border-teal-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-teal-900 dark:text-teal-200">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 font-bold">
-                <Info size={18} />
+              <div className="w-8 h-8 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0 font-bold">
+                <ImageIcon size={18} />
               </div>
               <p className="text-xs sm:text-sm font-medium">
-                <span className="font-bold">Smart Paste:</span> Paste multiple lines, numbered Q&As, or Excel rows directly into any box below — they will automatically populate!
+                <span className="font-bold">Picture Options Enabled:</span> Click <span className="text-teal-600 dark:text-teal-300 font-bold">+ Picture</span> on any option to add photos, uploaded images, or GIFs!
               </p>
             </div>
             <button
               onClick={() => setShowBulkPasteModal(true)}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer self-end sm:self-auto"
+              className="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer self-end sm:self-auto"
             >
-              <ClipboardList size={14} /> Bulk Paste Modal
+              <ClipboardList size={14} /> Bulk Paste
             </button>
           </div>
+
           {questions.map((q, index) => (
             <div key={q.id} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-300 dark:border-slate-700 shadow-sm relative group">
               <button 
                 onClick={() => duplicateQuestion(index)}
                 title="Duplicate Question"
-                className="absolute right-6 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10"
+                className="absolute right-6 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-teal-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10"
               >
                 <Copy size={14} />
               </button>
@@ -599,64 +751,141 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                 <Trash2 size={14} />
               </button>
               
-              <div className="flex gap-4 mb-4 items-start">
-                <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+              {/* Question Row */}
+              <div className="flex gap-3 mb-4 items-start">
+                <div className="w-8 h-8 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 font-bold flex items-center justify-center shrink-0 border border-teal-500/30">
                   {index + 1}
                 </div>
-                <input 
-                  id={`question-input-${index}`}
-                  type="text"
-                  value={q.text}
-                  onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(e, index)}
-                  onPaste={(e) => handlePaste(e, index)}
-                  placeholder="Type your question here..."
-                  className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
-                />
+                <div className="flex-1 flex flex-col gap-2">
+                  <div className="flex gap-2 items-center">
+                    <input 
+                      id={`question-input-${index}`}
+                      type="text"
+                      value={q.text}
+                      onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, index)}
+                      onPaste={(e) => handlePaste(e, index)}
+                      placeholder="Type your question prompt here..."
+                      className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-teal-500 text-slate-800 dark:text-white font-medium text-sm sm:text-base"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setActiveMediaPicker({ type: 'question', qId: q.id })}
+                      className="px-3 py-3 bg-teal-50 hover:bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:hover:bg-teal-900 dark:text-teal-300 rounded-xl flex items-center gap-1.5 text-xs sm:text-sm font-bold border border-teal-200 dark:border-teal-800 transition-all shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95"
+                      title="Attach picture to this question"
+                    >
+                      <ImageIcon size={16} />
+                      <span className="hidden sm:inline">{q.image ? 'Change Picture' : '+ Clue Picture'}</span>
+                    </button>
+                  </div>
+                  
+                  {q.image && (
+                    <div className="flex items-center gap-3 bg-teal-50/50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60 rounded-xl p-2 w-fit">
+                      <img src={q.image} alt="Question Visual" className="w-14 h-14 object-cover rounded-lg border border-teal-200 dark:border-teal-700" />
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-bold text-teal-900 dark:text-teal-200">Question Clue Picture Attached</span>
+                        <button 
+                          type="button"
+                          onClick={() => removeQuestionImage(q.id)}
+                          className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <X size={12} /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {q.options.map((opt, optIndex) => (
-                  <div key={optIndex} className="flex items-center gap-2">
-                    <input 
-                      type="radio" 
-                      name={`answer-${q.id}`} 
-                      checked={q.answerIndex === optIndex}
-                      onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                      className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-                    />
-                    {opt.startsWith('data:image') || opt.startsWith('http') ? (
-                      <div className="flex-1 flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 pr-3">
-                        <img src={opt} alt="Option" className="w-8 h-8 rounded object-cover" />
-                        <span className="text-xs text-slate-400 flex-1 truncate">Image/GIF</span>
-                        <button onClick={() => updateOption(q.id, optIndex, '')} className="text-red-400 hover:text-red-300 cursor-pointer p-1">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex-1 flex items-center gap-2">
+              {/* Options Grid */}
+              <div className="ml-11 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {q.options.map((opt, optIndex) => {
+                  const optImg = q.optionImages?.[optIndex] || (isImageUrl(opt) ? opt : null);
+                  const optText = isImageUrl(opt) && !q.optionImages?.[optIndex] ? "" : opt;
+
+                  return (
+                    <div key={optIndex} className="flex flex-col gap-1.5 p-2 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80">
+                      <div className="flex items-center gap-2">
                         <input 
-                          type="text"
-                          value={opt}
-                          onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
-                          placeholder={`Option ${optIndex + 1}`}
-                          className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${q.answerIndex === optIndex ? 'border-blue-500/50 bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'} rounded-lg px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium`}
+                          type="radio" 
+                          name={`answer-${q.id}`} 
+                          checked={q.answerIndex === optIndex}
+                          onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
+                          className="w-4 h-4 text-teal-500 focus:ring-teal-500 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
+                          title="Mark as correct answer"
                         />
-                        <button 
-                          onClick={() => setActiveGiphyInput({ qId: q.id, optIndex })}
-                          className="bg-purple-500/20 text-purple-400 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
-                          title="Search Giphy"
-                        >
-                          <ImageIcon size={16} />
-                        </button>
+                        <span className="text-xs font-black text-slate-500 dark:text-slate-400 w-5">
+                          {String.fromCharCode(65 + optIndex)}.
+                        </span>
+
+                        {optImg ? (
+                          <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700 rounded-xl p-1.5 pr-2.5 shadow-xs">
+                            <div 
+                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex })}
+                              className="relative group w-11 h-11 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 shrink-0 cursor-pointer hover:border-teal-400 transition-colors"
+                              title="Click to change picture"
+                            >
+                              <img src={optImg} alt="Option Visual" className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                                <Pencil size={14} />
+                              </div>
+                            </div>
+                            <input 
+                              type="text"
+                              value={optText}
+                              onChange={(e) => updateOptionText(q.id, optIndex, e.target.value)}
+                              placeholder="Label (optional)"
+                              className="flex-1 min-w-0 bg-transparent outline-none text-slate-800 dark:text-white text-xs sm:text-sm font-medium"
+                            />
+                            <button 
+                              type="button"
+                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex })}
+                              className="p-1.5 text-teal-600 hover:text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950 rounded-lg cursor-pointer transition-colors"
+                              title="Change Picture"
+                            >
+                              <ImageIcon size={15} />
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => removeOptionImage(q.id, optIndex)}
+                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg cursor-pointer transition-colors"
+                              title="Remove Picture"
+                            >
+                              <X size={15} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex-1 flex items-center gap-2">
+                            <input 
+                              type="text"
+                              value={opt}
+                              onChange={(e) => updateOptionText(q.id, optIndex, e.target.value)}
+                              placeholder={`Option ${optIndex + 1}`}
+                              className={`flex-1 min-w-0 bg-white dark:bg-slate-800 border ${
+                                q.answerIndex === optIndex 
+                                  ? 'border-teal-500/60 bg-teal-50/30 dark:bg-teal-950/20 text-teal-900 dark:text-teal-200 font-bold' 
+                                  : 'border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+                              } rounded-xl px-3 py-2 outline-none focus:border-teal-500 text-xs sm:text-sm font-medium transition-colors`}
+                            />
+                            <button 
+                              type="button"
+                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex })}
+                              className="px-2.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:hover:bg-teal-900 dark:text-teal-300 rounded-xl flex items-center gap-1 text-xs font-bold border border-teal-200/80 dark:border-teal-800 transition-all shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95"
+                              title="Add Picture / Photo / GIF to this option"
+                            >
+                              <ImageIcon size={14} className="text-teal-600 dark:text-teal-400" />
+                              <span className="hidden sm:inline">+ Picture</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
-              <div className="ml-12 mt-3 flex gap-2">
-                  <button onClick={() => addOption(q.id)} disabled={q.options.length >= 6} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer">+ Option</button>
-                  <button onClick={() => removeOption(q.id)} disabled={q.options.length <= 2} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer">- Option</button>
+              <div className="ml-11 mt-3 flex gap-2">
+                  <button onClick={() => addOption(q.id)} disabled={q.options.length >= 6} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer font-bold">+ Option</button>
+                  <button onClick={() => removeOption(q.id)} disabled={q.options.length <= 2} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer font-bold">- Option</button>
               </div>
             </div>
           ))}
@@ -672,15 +901,19 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
       </div>
       
       <MediaPickerModal 
-        isOpen={activeGiphyInput !== null}
-        onClose={() => setActiveGiphyInput(null)}
+        isOpen={activeMediaPicker !== null}
+        onClose={() => setActiveMediaPicker(null)}
         onSelect={(url) => {
-          if (activeGiphyInput) {
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, url);
-            setActiveGiphyInput(null);
+          if (!activeMediaPicker) return;
+          if (activeMediaPicker.type === 'option') {
+            updateOptionImage(activeMediaPicker.qId, activeMediaPicker.optIndex, url);
+          } else if (activeMediaPicker.type === 'question') {
+            updateQuestionImage(activeMediaPicker.qId, url);
           }
+          setActiveMediaPicker(null);
         }}
       />
+
       {showPublishModal && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div 
@@ -688,11 +921,11 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Publish Game?</h3>
-            <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">Would you like to publish this game to the Community so other teachers can use it?</p>
+            <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">Would you like to publish this Yoga Quiz to the Community so other teachers can use it?</p>
             <div className="flex flex-col gap-3 w-full">
               <button 
                 onClick={() => confirmSave(true)}
-                className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer text-lg"
+                className="w-full py-4 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-teal-500/30 hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer text-lg"
               >
                 Yes, Publish (Public)
               </button>
@@ -726,14 +959,19 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
     lines.forEach(line => {
       const parts = line.split('\t').map(p => p.trim());
       if (parts.length > 0) {
+        const options = [
+          parts[1] || "",
+          parts[2] || "",
+          parts[3] || "",
+          parts[4] || ""
+        ];
+        const optionImages = options.map(o => isImageUrl(o) ? o : null);
+        const cleanOptions = options.map(o => isImageUrl(o) ? "" : o);
+
         items.push({
           text: parts[0],
-          options: [
-            parts[1] || "",
-            parts[2] || "",
-            parts[3] || "",
-            parts[4] || ""
-          ],
+          options: cleanOptions,
+          optionImages: optionImages,
           answerIndex: 0
         });
       }
@@ -772,7 +1010,7 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
     const optMatch = line.match(optionRegex);
     if (optMatch) {
        if (!currentQ) {
-          currentQ = { text: "Question", options: ["", "", "", ""], answerIndex: 0 };
+          currentQ = { text: "Question", options: ["", "", "", ""], optionImages: [null, null, null, null], answerIndex: 0 };
           items.push(currentQ);
        }
        
@@ -782,22 +1020,31 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
        if (/[A-E]/.test(prefix)) expectedIndex = prefix.charCodeAt(0) - 65;
        else if (/[1-4]/.test(prefix)) expectedIndex = parseInt(prefix) - 1;
        
+       if (!currentQ.optionImages) {
+         currentQ.optionImages = [null, null, null, null];
+       }
+
+       const isImg = isImageUrl(optText);
        if (expectedIndex >= 0 && expectedIndex < 4) {
-           currentQ.options![expectedIndex] = optText;
+           currentQ.options![expectedIndex] = isImg ? "" : optText;
+           if (isImg) currentQ.optionImages[expectedIndex] = optText;
        } else {
-           const emptyIdx = currentQ.options!.findIndex(o => o === "");
-           if (emptyIdx !== -1) currentQ.options![emptyIdx] = optText;
+           const emptyIdx = currentQ.options!.findIndex((o, idx) => o === "" && !currentQ?.optionImages?.[idx]);
+           if (emptyIdx !== -1) {
+             currentQ.options![emptyIdx] = isImg ? "" : optText;
+             if (isImg) currentQ.optionImages[emptyIdx] = optText;
+           }
        }
        
        if (inlineAnswerIndex !== -1) {
            currentQ.answerIndex = inlineAnswerIndex;
        }
     } else {
-       const hasOptions = currentQ && currentQ.options!.some(o => o !== "");
+       const hasOptions = currentQ && currentQ.options!.some((o, idx) => o !== "" || Boolean(currentQ?.optionImages?.[idx]));
        const qText = line.replace(/^(?:\d+[\.\)\:\-]|\[\d+\])\s+/, "");
        
        if (!currentQ || hasOptions) {
-           currentQ = { text: qText, options: ["", "", "", ""], answerIndex: 0 };
+           currentQ = { text: qText, options: ["", "", "", ""], optionImages: [null, null, null, null], answerIndex: 0 };
            items.push(currentQ);
            if (inlineAnswerIndex !== -1) {
                currentQ.answerIndex = inlineAnswerIndex;
@@ -811,43 +1058,48 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
     }
   }
 
-  const allEmptyOptions = items.every(q => q.options!.every(o => o === ""));
-  if (allEmptyOptions && items.length > 0) {
-     return items; 
-  }
-
   return items;
 }
 
-
-const fallbackEmojis = ['🧘', '🙆', '🧎', '🧍', '🚶', '🏃', '🤸'];
-const AVAILABLE_POSES = [
-    ...fallbackEmojis.map(e => ({ type: 'emoji', value: e }))
+export const AVAILABLE_POSES = [
+  { type: 'emoji', value: '🧘', name: 'Lotus Pose' },
+  { type: 'emoji', value: '🙆', name: 'Overhead Stretch' },
+  { type: 'emoji', value: '🧎', name: 'Kneeling Pose' },
+  { type: 'emoji', value: '🧍', name: 'Mountain Pose' },
+  { type: 'emoji', value: '🚶', name: 'Warrior Walk' },
+  { type: 'emoji', value: '🏃', name: 'Runner Pose' },
+  { type: 'emoji', value: '🤸', name: 'Star / Cartwheel' },
+  { type: 'emoji', value: '🌳', name: 'Tree Pose' },
+  { type: 'emoji', value: '🐕', name: 'Downward Dog' },
+  { type: 'emoji', value: '🐍', name: 'Cobra Pose' },
+  { type: 'emoji', value: '🦋', name: 'Butterfly Pose' },
+  { type: 'emoji', value: '🦅', name: 'Eagle Pose' },
+  { type: 'emoji', value: '🤹', name: 'Balance Pose' },
+  { type: 'emoji', value: '🧗', name: 'Mountain Climber' },
 ];
 
 function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => void, onSwitchMode?: () => void }) {
     const [gameState, setGameState] = useState<'start' | 'playing' | 'end'>('start');
     const [activePoses, setActivePoses] = useState<string[]>(() => {
         try {
-            const saved = localStorage.getItem('yogaActivePoses_v3');
+            const saved = localStorage.getItem('yogaActivePoses_v4');
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // Validate that all saved poses actually exist
                 const validPoses = parsed.filter((p: string) => AVAILABLE_POSES.some(ap => ap.value === p));
                 if (validPoses.length > 0) return validPoses;
             }
         } catch(e) {}
-        return AVAILABLE_POSES.map(p => p.value); // Select all by default
+        return AVAILABLE_POSES.map(p => p.value);
     });
 
     useEffect(() => {
-        localStorage.setItem('yogaActivePoses_v3', JSON.stringify(activePoses));
+        localStorage.setItem('yogaActivePoses_v4', JSON.stringify(activePoses));
     }, [activePoses]);
 
     const togglePose = (val: string) => {
         setActivePoses(prev => {
             if (prev.includes(val)) {
-                if (prev.length <= 1) return prev; // prevent deselecting all
+                if (prev.length <= 1) return prev;
                 return prev.filter(p => p !== val);
             }
             return [...prev, val];
@@ -876,12 +1128,64 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         setTeams([...teams, { id: newId, name: `Player ${teams.length + 1}`, score: 0, colorIdx: teams.length % teamColors.length }]);
     };
 
+    const [sumoBattlePos, setSumoBattlePos] = useState(50);
+    const [sumoLeftPushing, setSumoLeftPushing] = useState(false);
+    const [sumoRightPushing, setSumoRightPushing] = useState(false);
+    const [sumoLeftStunned, setSumoLeftStunned] = useState(false);
+    const [leftCharacter, setLeftCharacter] = useState<SumoCharacterType>('rikishi');
+    const [rightCharacter, setRightCharacter] = useState<SumoCharacterType>('panda');
+    const [showCharacterModal, setShowCharacterModal] = useState(false);
+    const [cameraMode, setCameraMode] = useState<SumoCameraMode>('dynamic');
+    const cycleCameraMode = () => {
+        setCameraMode((prev) => {
+            const idx = SUMO_CAMERA_OPTIONS.findIndex((c) => c.id === prev);
+            return SUMO_CAMERA_OPTIONS[(idx + 1) % SUMO_CAMERA_OPTIONS.length].id;
+        });
+    };
+    const [sumoRightStunned, setSumoRightStunned] = useState(false);
+    const [sumoRumbling, setSumoRumbling] = useState(false);
+
+    const triggerSumoMovement = (side: 'left' | 'right', isPositive: boolean) => {
+        setSumoRumbling(true);
+        setTimeout(() => setSumoRumbling(false), 320);
+
+        if (isPositive) {
+            if (side === 'left') {
+                setSumoLeftPushing(true);
+                setSumoBattlePos(prev => Math.min(82, prev + 12));
+                setTimeout(() => setSumoLeftPushing(false), 450);
+            } else {
+                setSumoRightPushing(true);
+                setSumoBattlePos(prev => Math.max(18, prev - 12));
+                setTimeout(() => setSumoRightPushing(false), 450);
+            }
+        } else {
+            if (side === 'left') {
+                setSumoLeftStunned(true);
+                setSumoBattlePos(prev => Math.max(18, prev - 6));
+                setTimeout(() => setSumoLeftStunned(false), 800);
+            } else {
+                setSumoRightStunned(true);
+                setSumoBattlePos(prev => Math.min(82, prev + 6));
+                setTimeout(() => setSumoRightStunned(false), 800);
+            }
+        }
+    };
+
     const updateTeamScore = (id: string, delta: number) => {
+        const teamIdx = teams.findIndex(t => t.id === id);
+        const side = teamIdx % 2 === 0 ? 'left' : 'right';
+        triggerSumoMovement(side, delta > 0);
         setTeams(teams.map(t => t.id === id ? { ...t, score: Math.max(0, t.score + delta) } : t));
     };
 
     const [isAnswering, setIsAnswering] = useState(false);
-    const [shuffledOptions, setShuffledOptions] = useState<{text: string, isCorrect: boolean, poseIndex: number}[]>([]);
+    const [shuffledOptions, setShuffledOptions] = useState<{
+      text: string;
+      image?: string;
+      isCorrect: boolean;
+      poseIndex: number;
+    }[]>([]);
     const [selectedOption, setSelectedOption] = useState<number | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [timer, setTimer] = useState<number | null>(null);
@@ -896,20 +1200,11 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
 
-    let questionTextClass = "text-3xl md:text-4xl xl:text-5xl";
-    let optionTextClass = "text-base md:text-xl xl:text-2xl";
-    let playerTextClass = "text-lg md:text-xl";
     let optionEmojiClass = "text-[3rem] sm:text-[4rem] md:text-[5rem] lg:text-[6rem]";
 
     if (uiScale === 'small') {
-        questionTextClass = "text-2xl md:text-4xl xl:text-5xl";
-        optionTextClass = "text-base md:text-xl xl:text-2xl";
-        playerTextClass = "text-base md:text-lg";
         optionEmojiClass = "text-[2rem] sm:text-[3rem] md:text-[4rem] lg:text-[5rem]";
     } else if (uiScale === 'big') {
-        questionTextClass = "text-5xl md:text-6xl xl:text-7xl";
-        optionTextClass = "text-xl md:text-3xl xl:text-4xl";
-        playerTextClass = "text-2xl md:text-3xl";
         optionEmojiClass = "text-[4rem] sm:text-[5rem] md:text-[6rem] lg:text-[7rem]";
     }
 
@@ -924,6 +1219,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
 
     const startGame = () => {
         setCurrentIdx(0);
+        setSumoBattlePos(50);
         setTeams(teams.map(t => ({ ...t, score: 0 })));
         setGameState('playing');
         loadQuestion(0);
@@ -937,23 +1233,42 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         if (!currentItem) return;
 
         const rawOptions = Array.isArray(currentItem.options) ? currentItem.options : [];
-        let validOpts = rawOptions.filter((opt: any) => typeof opt === 'string' && opt.trim() !== "");
-        if (validOpts.length < 2) validOpts = ["Yes", "No"];
-        const correctOptText = rawOptions[currentItem.answerIndex] !== undefined ? rawOptions[currentItem.answerIndex] : validOpts[0];
+        const optionImages = Array.isArray(currentItem.optionImages) ? currentItem.optionImages : [];
 
-        let opts = validOpts
-            .map((opt, i) => ({ 
-                text: opt, 
-                isCorrect: opt === correctOptText, 
-                poseIndex: i % 6 
-            }));
+        let validOpts = rawOptions.map((opt: any, i: number) => {
+            const raw = typeof opt === 'string' ? opt : '';
+            const imgField = optionImages[i];
+            const image = isImageUrl(imgField) ? imgField : (isImageUrl(raw) ? raw : undefined);
+            const displayText = isImageUrl(raw) && !imgField ? "" : raw;
+
+            return {
+                originalIndex: i,
+                text: displayText,
+                image: image,
+                hasContent: Boolean(displayText.trim() || image)
+            };
+        }).filter(o => o.hasContent);
+
+        if (validOpts.length < 2) {
+          validOpts = [
+            { originalIndex: 0, text: "Yes", image: undefined, hasContent: true },
+            { originalIndex: 1, text: "No", image: undefined, hasContent: true }
+          ];
+        }
+
+        const correctIndex = typeof currentItem.answerIndex === 'number' ? currentItem.answerIndex : 0;
+
+        let opts = validOpts.map((opt, i) => ({ 
+            text: opt.text, 
+            image: opt.image,
+            isCorrect: opt.originalIndex === correctIndex, 
+            poseIndex: i % Math.max(1, activePoses.length) 
+        }));
         
-        // Shuffle the rendering order so the correct answer isn't always in the same visual position
+        // Shuffle the rendering order so the correct answer isn't in a predictable spot
         opts.sort(() => Math.random() - 0.5);
         
-        // Assign a sequential pose index based on visual rendering order
-        // This guarantees no duplicated poses in the grid (unless there are more options than checked poses)
-        setShuffledOptions(opts.map((opt, idx) => ({...opt, poseIndex: idx})));
+        setShuffledOptions(opts.map((opt, idx) => ({ ...opt, poseIndex: idx })));
     };
 
     const handleAnswer = (index: number, isCorrect: boolean) => {
@@ -964,8 +1279,10 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         if (isCorrect) {
             playSound('correct');
             setShowConfetti(true);
+            triggerSumoMovement(currentIdx % 2 === 0 ? 'left' : 'right', true);
         } else {
             playSound('incorrect');
+            triggerSumoMovement(currentIdx % 2 === 0 ? 'left' : 'right', false);
         }
 
         if (autoAdvanceDelay === 'manual') {
@@ -1005,7 +1322,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
             loadQuestion(nextIdx);
         } else {
             setGameState('end');
-                    playSound('win');
+            playSound('win');
         }
     };
 
@@ -1038,24 +1355,22 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                           </div>
 
                           <div>
-                              <label className="block text-teal-700 font-bold mb-4 text-2xl">Active Poses</label>
-                              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-7 gap-4">
+                              <label className="block text-teal-700 font-bold mb-4 text-2xl">Active Yoga Poses</label>
+                              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-7 gap-3">
                                   {AVAILABLE_POSES.map((pose, i) => {
                                       const isSelected = activePoses.includes(pose.value);
                                       return (
                                           <button 
                                               key={i}
                                               onClick={() => togglePose(pose.value)}
-                                              className={`aspect-square rounded-2xl flex items-center justify-center border-4 transition-all relative overflow-hidden ${isSelected ? 'border-teal-500 bg-teal-100 scale-105 shadow-md' : 'border-slate-200 bg-slate-50 opacity-60 grayscale hover:grayscale-0 hover:opacity-100'}`}
+                                              title={pose.name}
+                                              className={`aspect-square rounded-2xl flex flex-col items-center justify-center border-4 transition-all relative overflow-hidden p-1 ${isSelected ? 'border-teal-500 bg-teal-100 scale-105 shadow-md' : 'border-slate-200 bg-slate-50 opacity-60 grayscale hover:grayscale-0 hover:opacity-100'}`}
                                           >
-                                              {pose.type === 'emoji' ? (
-                                                  <span className="text-4xl drop-shadow-sm">{pose.value}</span>
-                                              ) : (
-                                                  <img src={pose.value} alt="Pose" className="w-full h-full object-cover rounded-xl" />
-                                              )}
+                                              <span className="text-3xl sm:text-4xl drop-shadow-sm leading-none">{pose.value}</span>
+                                              <span className="text-[9px] font-black text-teal-800 truncate max-w-full mt-1">{pose.name}</span>
                                               {isSelected && (
                                                   <div className="absolute top-1 right-1 bg-teal-500 text-white rounded-full p-0.5">
-                                                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                                   </div>
                                               )}
                                           </button>
@@ -1097,11 +1412,13 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                   </button>
               </div>
           )}
-          
-          
 
-          <div className={`bg-white shadow-2xl w-full overflow-hidden border-8 border-teal-500 relative flex flex-col ${isFullscreen ? 'h-full rounded-none border-0' : 'min-h-[75vh] rounded-[3rem]'}`}>
-              
+          <div className={`bg-sky-200 shadow-2xl w-full overflow-hidden border-8 border-teal-500 relative flex flex-col ${isFullscreen ? 'h-full rounded-none border-0' : 'min-h-[80vh] rounded-[3rem]'}`}>
+              <SumoStadiumEnvironment
+                battlePos={sumoBattlePos}
+                winner={null}
+                isRumbling={sumoRumbling}
+              >
               {timer !== null && (
                   <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/40 backdrop-blur-sm">
                       <div className="text-[12rem] font-black text-teal-500 drop-shadow-2xl animate-[ping_1s_cubic-bezier(0,0,0.2,1)_infinite]">
@@ -1111,13 +1428,13 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
               )}
               
               {gameState === 'start' && (
-                  <div className="flex flex-col h-full flex-grow relative bg-slate-500 overflow-y-auto items-center justify-center p-4 md:p-8">
-                      <div className="bg-white rounded-[3rem] w-full max-w-3xl shadow-2xl relative flex flex-col items-center p-8 md:p-12">
+                  <div className="flex flex-col h-full flex-grow relative overflow-y-auto items-center justify-center p-4 md:p-8">
+                      <div className="bg-white/95 backdrop-blur-md rounded-[3rem] w-full max-w-3xl shadow-2xl relative flex flex-col items-center p-8 md:p-12 border-4 border-teal-300">
                           {onSwitchMode && (
                               <button 
                                   onClick={onSwitchMode} 
                                   className="absolute top-6 left-8 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black py-2.5 px-4 rounded-2xl flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer text-sm uppercase tracking-wide"
-                                  title="Switch to Bubble Pop or Sumo Showdown"
+                                  title="Switch to Bubble Pop, Sumo Showdown, or Mystery Box"
                               >
                                   <Shuffle size={18} className="text-amber-300" />
                                   <span>Switch Mode</span>
@@ -1126,13 +1443,24 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                           <button onClick={onBack} className="absolute top-6 right-8 text-pink-400 hover:text-pink-500 transition-colors cursor-pointer">
                               <X size={48} strokeWidth={4} />
                           </button>
-                          
-                          <h1 className="text-5xl md:text-6xl font-black text-slate-700 mt-4 mb-4 tracking-tight">Game Setup Lobby</h1>
-                          
-                          <div className="flex gap-6 mb-12 text-lg md:text-xl font-bold">
-                              <span className="text-blue-300">Best Score: 0</span>
-                              <span className="text-amber-400">Stars: 3</span>
+
+                          <div className="flex items-center justify-center gap-3 mt-2 mb-1">
+                            <SumoCharacter team="left" character={leftCharacter} compact />
+                            <span className="text-2xl font-black italic text-amber-500">VS</span>
+                            <SumoCharacter team="right" character={rightCharacter} compact />
                           </div>
+                          <button
+                            onClick={() => setShowCharacterModal(true)}
+                            className="mb-3 px-4 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-xs uppercase tracking-wider border border-amber-300 shadow-xs cursor-pointer"
+                          >
+                            🥋 Choose Sumo Characters ({SUMO_CHARACTER_OPTIONS.find(c => c.id === leftCharacter)?.badge} vs {SUMO_CHARACTER_OPTIONS.find(c => c.id === rightCharacter)?.badge})
+                          </button>
+                          
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-4xl">🧘</span>
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-700 tracking-tight">Yoga Sumo Park Lobby</h1>
+                          </div>
+                          <p className="text-teal-600 font-extrabold text-sm sm:text-base mb-6">Strike the yoga pose that matches the right picture or answer to push in the sumo ring!</p>
                           
                           <div className="w-full max-w-xl flex flex-col gap-6">
                               <div className="flex flex-col md:flex-row items-start md:items-center justify-between w-full gap-4">
@@ -1146,7 +1474,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                                   </button>
                               </div>
                               
-                              <div className="flex flex-wrap gap-4 mt-2 mb-4 w-full justify-start min-h-[100px]">
+                              <div className="flex flex-wrap gap-4 mt-2 mb-4 w-full justify-start min-h-[80px]">
                                   {teams.map((team) => (
                                       <div key={team.id} className="relative">
                                           {editingTeamId === team.id ? (
@@ -1179,10 +1507,10 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                                   ))}
                               </div>
                               
-                              <p className="text-cyan-200 italic font-bold text-center mb-8">Tip: Click a player name to edit it!</p>
+                              <p className="text-slate-500 italic font-semibold text-center mb-4">Tip: Click a player name to edit it!</p>
                           </div>
                           
-                          <button onClick={startGame} className="w-full max-w-xl bg-gradient-to-r from-[#4ff0b4] to-[#46e6a5] text-white font-black text-3xl md:text-4xl py-6 rounded-full shadow-[0_8px_0_#23c483] hover:shadow-[0_4px_0_#23c483] hover:translate-y-1 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-4 cursor-pointer mt-4">
+                          <button onClick={startGame} className="w-full max-w-xl bg-gradient-to-r from-[#4ff0b4] to-[#46e6a5] text-white font-black text-3xl md:text-4xl py-6 rounded-full shadow-[0_8px_0_#23c483] hover:shadow-[0_4px_0_#23c483] hover:translate-y-1 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-4 cursor-pointer mt-2">
                               🚀 START GAME
                           </button>
                       </div>
@@ -1191,75 +1519,113 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
 
               {gameState === 'playing' && (
                   <div className="flex flex-col h-full flex-grow relative animate-fade-in min-h-0 overflow-hidden">
-                      {/* Absolute Top Controls */}
-                      <div className="absolute top-4 md:top-6 left-0 right-0 px-4 md:px-6 flex justify-between items-start z-20 pointer-events-none">
-                          <div className="flex items-center gap-2 pointer-events-auto">
-                            <button onClick={onBack} className="px-4 md:px-6 py-2 md:py-3 text-teal-600 hover:bg-teal-200 rounded-2xl transition-colors font-black cursor-pointer bg-teal-100 shadow-sm text-lg md:text-xl uppercase tracking-widest flex items-center gap-2">
-                              <ArrowLeft size={24} /> Exit
+                      {/* Top Controls */}
+                      <div className="w-full px-2 md:px-4 pt-1 pb-2 flex justify-between items-center z-30 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <button onClick={onBack} className="px-3 md:px-5 py-2 text-teal-800 hover:bg-white rounded-2xl transition-colors font-black cursor-pointer bg-white/90 backdrop-blur-md shadow-md text-sm md:text-lg uppercase tracking-wider flex items-center gap-2">
+                              <ArrowLeft size={20} /> Exit
                             </button>
                             {onSwitchMode && (
                               <button 
                                 onClick={onSwitchMode} 
-                                className="px-4 md:px-5 py-2 md:py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-md text-sm md:text-base uppercase tracking-wider flex items-center gap-2"
-                                title="Switch to Bubble Pop or Sumo Showdown"
+                                className="px-3 md:px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-md text-xs md:text-sm uppercase tracking-wider flex items-center gap-1.5"
+                                title="Switch to Bubble Pop, Sumo, or Mystery Box"
                               >
-                                <Shuffle size={20} className="text-amber-300" />
+                                <Shuffle size={16} className="text-amber-300" />
                                 <span>Switch Mode</span>
                               </button>
                             )}
                           </div>
                           
-                          <div className="flex items-center gap-3 pointer-events-auto">
-                            <div className="font-bold text-teal-800 bg-teal-200/50 px-4 md:px-6 py-2 rounded-2xl shadow-sm border-[4px] border-teal-200 text-center flex items-center justify-center gap-2 h-[52px] md:h-[60px]">
-                                <span className="text-3xl md:text-4xl font-black">{currentIdx + 1}</span> 
-                                <span className="text-xl md:text-2xl opacity-70">/ {quiz.questions.length}</span>
-                            </div>
-                            <button onClick={() => setShowSettings(true)} className="w-[52px] h-[52px] md:w-[60px] md:h-[60px] text-teal-600 hover:bg-teal-200 rounded-2xl transition-colors font-bold cursor-pointer bg-teal-100 shadow-sm flex items-center justify-center" title="Settings">
-                                <Settings size={28} />
-                            </button>
-                            <button onClick={toggleFullscreen} className="w-[52px] h-[52px] md:w-[60px] md:h-[60px] text-teal-600 hover:bg-teal-200 rounded-2xl transition-colors font-bold cursor-pointer bg-teal-100 shadow-sm flex items-center justify-center" title="Fullscreen">
-                                {isFullscreen ? <Minimize size={28} /> : <Maximize size={28} />}
-                            </button>
-                          </div>
-                      </div>
-                      
-                      {/* Header with progress */}
-                      <div className="bg-teal-50 pt-16 sm:pt-20 pb-2 sm:pb-4 px-2 sm:px-4 border-b-[4px] border-teal-100 flex flex-col items-center shrink-0 gap-2 sm:gap-4">
-                          {/* Center Teams */}
-                          <div className="w-full max-w-[95vw] overflow-x-auto custom-scrollbar px-2 sm:px-4 pb-2 sm:pb-4">
-                              <div className="flex flex-nowrap justify-start lg:justify-center items-center gap-2 sm:gap-4 md:gap-6 min-w-full w-max mx-auto">
-                              {teams.map((team, index) => {
+                          {/* Players / Teams Scoreboard */}
+                          <div className="flex flex-nowrap items-center gap-2 sm:gap-3 overflow-x-auto max-w-[55vw] px-2">
+                              {teams.map((team) => {
                                   const theme = teamColors[team.colorIdx];
-                                  // Alternate layout for variety, or just keep consistent. Let's make minus on left, plus on right for all in the middle
                                   return (
-                                      <div key={team.id} className={`flex items-stretch rounded-2xl sm:rounded-3xl shadow-xl border-4 sm:border-[6px] md:border-[8px] ${theme.border} overflow-hidden shrink-0 transform transition-transform hover:scale-105`}>
-                                          <button onClick={() => updateTeamScore(team.id, -1)} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 bg-white hover:bg-gray-100 text-gray-700 transition-colors border-r-4 sm:border-r-[6px] md:border-r-[8px] ${theme.borderLight} flex items-center justify-center cursor-pointer`}>
-                                              <span className="font-black text-2xl sm:text-3xl md:text-4xl leading-none opacity-40 hover:opacity-100">-</span>
+                                      <div key={team.id} className={`flex items-stretch rounded-2xl shadow-lg border-4 ${theme.border} overflow-hidden shrink-0 transform transition-transform hover:scale-105`}>
+                                          <button onClick={() => updateTeamScore(team.id, -1)} className={`px-2 sm:px-3 py-1 bg-white hover:bg-gray-100 text-gray-700 transition-colors border-r-4 ${theme.borderLight} flex items-center justify-center cursor-pointer`}>
+                                              <span className="font-black text-xl sm:text-2xl leading-none opacity-60 hover:opacity-100">-</span>
                                           </button>
-                                          <button onClick={() => updateTeamScore(team.id, 1)} className={`px-3 sm:px-6 py-1.5 sm:py-2 md:py-3 font-black text-white ${theme.bg} hover:brightness-110 transition-all flex items-center gap-2 sm:gap-4 cursor-pointer`}>
-                                              <span className={playerTextClass}>{team.name}</span>
-                                              <span className="bg-white/20 px-2.5 sm:px-5 py-0.5 sm:py-1 md:py-2 rounded-xl text-xl sm:text-3xl md:text-4xl drop-shadow-lg leading-none">{team.score}</span>
+                                          <button onClick={() => updateTeamScore(team.id, 1)} className={`px-3 sm:px-4 py-1 font-black text-white ${theme.bg} hover:brightness-110 transition-all flex items-center gap-2 cursor-pointer`}>
+                                              <span className="text-xs sm:text-base">{team.name}</span>
+                                              <span className="bg-white/25 px-2 py-0.5 rounded-lg text-base sm:text-xl drop-shadow leading-none">{team.score}</span>
                                           </button>
                                       </div>
                                   );
                               })}
-                              </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setShowCharacterModal(true)}
+                              className="px-2.5 py-1 rounded-2xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-xs sm:text-sm shadow-md border-2 border-amber-300 cursor-pointer flex items-center gap-1"
+                              title="Choose Sumo Characters"
+                            >
+                              <SumoCharacter team="left" character={leftCharacter} size="icon" />
+                              <span className="text-[10px] font-black uppercase">VS</span>
+                              <SumoCharacter team="right" character={rightCharacter} size="icon" />
+                            </button>
+                            <div className="font-bold text-teal-900 bg-white/90 backdrop-blur-md px-3 md:px-4 py-1.5 rounded-2xl shadow-md border-2 border-teal-300 text-center flex items-center justify-center gap-1.5">
+                                <span className="text-xl md:text-2xl font-black">{currentIdx + 1}</span> 
+                                <span className="text-sm md:text-base opacity-70">/ {quiz.questions.length}</span>
+                            </div>
+                            <button onClick={() => setShowSettings(true)} className="w-10 h-10 md:w-12 md:h-12 text-teal-800 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-md flex items-center justify-center" title="Settings">
+                                <Settings size={22} />
+                            </button>
+                            <button onClick={toggleFullscreen} className="w-10 h-10 md:w-12 md:h-12 text-teal-800 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-md flex items-center justify-center" title="Fullscreen">
+                                {isFullscreen ? <Minimize size={22} /> : <Maximize size={22} />}
+                            </button>
                           </div>
                       </div>
 
-                      <div className="p-2 sm:p-4 md:p-6 flex-grow flex flex-col justify-start sm:justify-center overflow-y-auto bg-white/50">
-                          {/* Question */}
-                          <div className="text-center mb-2 sm:mb-4 md:mb-6 shrink-0">
-                              <p className="text-teal-500 font-black uppercase tracking-widest text-xs sm:text-sm md:text-base mb-1 sm:mb-2">Complete the sentence...</p>
-                              <h2 className={`font-black text-indigo-900 bg-indigo-50 py-3 sm:py-6 md:py-10 px-4 sm:px-8 md:px-12 rounded-2xl sm:rounded-[2rem] border-4 sm:border-[6px] border-indigo-100 shadow-inner inline-block min-w-[60%] max-w-[95%] leading-tight text-lg sm:text-3xl md:text-4xl`}>
-                                  {quiz.questions[currentIdx]?.text}
-                              </h2>
+                      {/* GROUNDED CIRCULAR SUMO ARENA ON THE PARK LAWN */}
+                      <div className="w-full shrink-0 my-0.5">
+                          <CircularSumoArena
+                            compact
+                            battlePos={sumoBattlePos}
+                            winner={null}
+                            isRumbling={sumoRumbling}
+                            leftPushing={sumoLeftPushing}
+                            rightPushing={sumoRightPushing}
+                            leftStunned={sumoLeftStunned}
+                            rightStunned={sumoRightStunned}
+                            leftCharacter={leftCharacter}
+                            rightCharacter={rightCharacter}
+                          />
+                      </div>
+
+                      <div className="p-2 sm:p-3 md:p-4 flex-grow flex flex-col justify-start sm:justify-center overflow-y-auto">
+                          {/* Question Prompt */}
+                          <div className="text-center mb-2 sm:mb-3 shrink-0">
+                              {/* Optional Question Clue Picture */}
+                              {quiz.questions[currentIdx]?.image && (
+                                <div className="mb-2 max-h-32 sm:max-h-44 mx-auto rounded-2xl overflow-hidden border-4 border-teal-200 shadow-md inline-block bg-white p-1">
+                                  <img 
+                                    src={quiz.questions[currentIdx]?.image} 
+                                    alt="Question Visual" 
+                                    className="max-h-32 sm:max-h-44 object-contain rounded-xl mx-auto" 
+                                  />
+                                </div>
+                              )}
+                              
+                              {quiz.questions[currentIdx]?.text && (
+                                <div>
+                                  <h2 className="font-black text-indigo-950 bg-white/95 backdrop-blur-md py-2 sm:py-3 md:py-4 px-4 sm:px-6 md:px-10 rounded-2xl sm:rounded-3xl border-4 border-amber-400/80 shadow-xl inline-block min-w-[45%] max-w-[95%] leading-tight text-base sm:text-xl md:text-2xl">
+                                      {quiz.questions[currentIdx]?.text}
+                                  </h2>
+                                </div>
+                              )}
                           </div>
 
-                          {/* Answer Buttons */}
-                          <div className="grid grid-cols-2 md:flex md:flex-row justify-center items-stretch gap-2 sm:gap-4 md:gap-6 w-full max-w-[98%] xl:max-w-7xl mx-auto">
+                          {/* Options Grid (Supports Pictures & Poses) */}
+                          <div className={`grid ${shuffledOptions.length <= 2 ? 'grid-cols-2 max-w-2xl' : shuffledOptions.length === 3 ? 'grid-cols-1 sm:grid-cols-3 max-w-5xl' : 'grid-cols-2 md:grid-cols-4 max-w-7xl'} gap-2 sm:gap-4 md:gap-6 w-full mx-auto justify-center items-stretch`}>
                               {shuffledOptions.map((opt, index) => {
                                   const isMany = shuffledOptions.length > 4;
+                                  const isImageOption = Boolean(opt.image);
+
+                                  const activePoseValue = activePoses[opt.poseIndex % activePoses.length] || AVAILABLE_POSES[0].value;
+                                  const poseObj = AVAILABLE_POSES.find(p => p.value === activePoseValue) || { type: 'emoji', value: activePoseValue, name: 'Pose' };
+
                                   let btnClasses = `flex-1 min-w-0 bg-white border-2 sm:border-4 md:border-[6px] border-gray-100 text-gray-700 font-bold p-2 sm:p-3 md:p-4 ${isMany ? 'rounded-[1.2rem] sm:rounded-[1.5rem]' : 'rounded-2xl md:rounded-[2rem]'} transition-all duration-300 flex flex-col items-center text-center shadow-lg relative group outline-none `;
                                   
                                   if (isAnswering) {
@@ -1281,29 +1647,61 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                                   return (
                                       <button 
                                           key={index}
-                                         disabled={isAnswering}
-                                         onClick={() => handleAnswer(index, opt.isCorrect)}
-                                         className={btnClasses}
+                                          disabled={isAnswering}
+                                          onClick={() => handleAnswer(index, opt.isCorrect)}
+                                          className={btnClasses}
                                       >
+                                          {/* Correct / Incorrect Indicator */}
                                           {isAnswering && (index === selectedOption || opt.isCorrect) && (
                                               <div className={`absolute -top-3 -right-3 sm:-top-4 sm:-right-4 md:-top-6 md:-right-6 w-8 h-8 sm:w-10 sm:h-10 md:w-16 md:h-16 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl md:text-4xl font-black shadow-lg z-30 animate-bounce ${opt.isCorrect ? 'bg-green-500' : 'bg-red-500'}`}>
                                                   {opt.isCorrect ? '✓' : '✗'}
                                               </div>
                                           )}
-                                          <div className={`w-full aspect-square max-h-[16vh] sm:max-h-[22vh] md:max-h-[25vh] ${isMany ? 'md:max-h-[20vh]' : ''} rounded-xl md:rounded-[1.5rem] overflow-hidden relative bg-teal-50/50 border-2 sm:border-4 border-teal-100 mb-1.5 sm:mb-2 md:mb-4 shadow-inner transition-transform duration-300 shrink-0 flex items-center justify-center ${!isAnswering ? 'group-hover:scale-[1.05]' : ''}`}>
 
-                                              {(() => {
-                                                  const activePoseValue = activePoses[opt.poseIndex % activePoses.length] || AVAILABLE_POSES[0].value;
-                                                  const poseObj = AVAILABLE_POSES.find(p => p.value === activePoseValue) || { type: 'emoji', value: activePoseValue };
-                                                  
-                                                  if (poseObj.type === 'image') {
-                                                      return <img src={poseObj.value} alt="Pose" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />;
-                                                  } else {
-                                                      return <span className={`${optionEmojiClass} drop-shadow-sm leading-none text-3xl sm:text-5xl md:text-6xl`}>{poseObj.value}</span>;
-                                                  }
-                                              })()}
+                                          {/* Floating Yoga Pose Badge for Picture Options */}
+                                          {isImageOption && (
+                                              <div className="absolute top-2 left-2 z-20 bg-white/95 backdrop-blur-sm border-2 border-teal-300 rounded-full px-2 sm:px-3 py-0.5 sm:py-1 shadow-md flex items-center gap-1.5 font-black text-teal-800 pointer-events-none">
+                                                  <span className="text-lg sm:text-2xl leading-none">{poseObj.value}</span>
+                                                  <span className="hidden sm:inline uppercase tracking-wider text-[10px] text-teal-700 font-extrabold">
+                                                      {poseObj.name || `Pose ${opt.poseIndex + 1}`}
+                                                  </span>
+                                              </div>
+                                          )}
+
+                                          {/* Visual Box: Renders Picture if Option is an Image, otherwise renders Yoga Pose */}
+                                          <div className={`w-full aspect-square max-h-[16vh] sm:max-h-[22vh] md:max-h-[26vh] ${isMany ? 'md:max-h-[20vh]' : ''} rounded-xl md:rounded-[1.5rem] overflow-hidden relative bg-teal-50/60 border-2 sm:border-4 border-teal-100 mb-1.5 sm:mb-2 md:mb-3 shadow-inner transition-transform duration-300 shrink-0 flex items-center justify-center ${!isAnswering ? 'group-hover:scale-[1.04]' : ''} p-1`}>
+                                              {isImageOption ? (
+                                                  <img 
+                                                      src={opt.image} 
+                                                      alt={opt.text || `Option ${index + 1}`} 
+                                                      className="w-full h-full object-contain sm:object-cover rounded-lg"
+                                                      onError={(e) => {
+                                                          // Fallback to text icon if load fails
+                                                          (e.currentTarget as HTMLElement).style.display = 'none';
+                                                      }}
+                                                  />
+                                              ) : (
+                                                  <div className="flex flex-col items-center justify-center">
+                                                    <span className={`${optionEmojiClass} drop-shadow-sm leading-none`}>
+                                                        {poseObj.value}
+                                                    </span>
+                                                    <span className="text-[10px] sm:text-xs font-black text-teal-700 uppercase tracking-widest mt-1">
+                                                      {poseObj.name}
+                                                    </span>
+                                                  </div>
+                                              )}
                                           </div>
-                                          <span className={`${isMany ? 'text-xs sm:text-lg md:text-2xl' : 'text-sm sm:text-2xl md:text-4xl'} font-black text-gray-800 leading-tight w-full flex items-center justify-center break-words pb-1 md:pb-2 flex-grow`}>{opt.text}</span>
+
+                                          {/* Text / Label */}
+                                          {opt.text ? (
+                                              <span className={`${isMany ? 'text-xs sm:text-lg md:text-2xl' : 'text-sm sm:text-2xl md:text-3xl'} font-black text-gray-800 leading-tight w-full flex items-center justify-center break-words pb-1 md:pb-2 flex-grow`}>
+                                                  {opt.text}
+                                              </span>
+                                          ) : isImageOption ? (
+                                              <span className="text-xs sm:text-sm font-extrabold text-teal-700 uppercase tracking-wider pb-1">
+                                                  Option {['A', 'B', 'C', 'D', 'E', 'F'][index] || (index + 1)}
+                                              </span>
+                                          ) : null}
                                       </button>
                                   );
                               })}
@@ -1312,7 +1710,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                       
                       {/* Progress Bar */}
                       <div className="w-full bg-teal-100 h-6 absolute bottom-0 left-0 shrink-0 overflow-hidden">
-                          <div className="bg-teal-500 h-full transition-all duration-500 ease-out rounded-r-full" style={{ width: `${(currentIdx / quiz.questions.length) * 100}%` }}></div>
+                          <div className="bg-teal-500 h-full transition-all duration-500 ease-out rounded-r-full" style={{ width: `${(currentIdx / Math.max(1, quiz.questions.length)) * 100}%` }}></div>
                       </div>
                   </div>
               )}
@@ -1339,7 +1737,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                               {[...teams].sort((a,b) => b.score - a.score).map((team, idx) => (
                                   <div key={team.id} className={`flex flex-col items-center bg-white p-4 md:p-6 rounded-2xl shadow-sm border-4 min-w-[120px] md:min-w-[150px] ${idx === 0 ? 'border-yellow-400 scale-110 shadow-lg' : 'border-gray-100'}`}>
                                       {idx === 0 && <span className="text-4xl mb-2 drop-shadow-sm">👑</span>}
-                                      <span className={`font-bold text-lg md:text-xl mb-2 text-gray-600`}>{team.name}</span>
+                                      <span className="font-bold text-lg md:text-xl mb-2 text-gray-600">{team.name}</span>
                                       <span className={`text-4xl md:text-5xl font-black ${teamColors[team.colorIdx].text}`}>{team.score}</span>
                                   </div>
                               ))}
@@ -1356,7 +1754,17 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                       </div>
                   </div>
               )}
+              </SumoStadiumEnvironment>
           </div>
+
+          <SumoCharacterPickerModal
+            isOpen={showCharacterModal}
+            leftCharacter={leftCharacter}
+            rightCharacter={rightCharacter}
+            onSelectLeft={setLeftCharacter}
+            onSelectRight={setRightCharacter}
+            onClose={() => setShowCharacterModal(false)}
+          />
       </div>
     );
 }

@@ -117,6 +117,7 @@ export const GamesLibrary = ({
         text,
         options,
         answerIndex,
+        ...(Array.isArray(q.optionImages) ? { optionImages: q.optionImages } : {}),
         ...(q.image || q.imageUrl ? { image: q.image || q.imageUrl, imageUrl: q.image || q.imageUrl } : {})
       };
     });
