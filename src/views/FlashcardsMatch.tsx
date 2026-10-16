@@ -101,11 +101,56 @@ const initialActivities = [
   }
 ];
 
-export function FlashcardsMatch({ onViewChange }: { onViewChange: (view: ViewState) => void }) {
-  const [currentView, setCurrentView] = useState('lobby'); // lobby, editor, flashcards, match
-  const [activities, setActivities] = useState(initialActivities);
-  const [activeActivity, setActiveActivity] = useState<any>(null);
+export function FlashcardsMatch({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void; initialGame?: any }) {
+  const buildActivityFromInitialGame = (game: any) => {
+    if (!game) return null;
+    const rawQuestions = game.customQuestions || game.questions || [];
+    const cardsFromQuestions = Array.isArray(rawQuestions) && rawQuestions.length > 0
+      ? rawQuestions.map((q: any, idx: number) => {
+          const text = q.text || q.question || `Question ${idx + 1}`;
+          const opts = Array.isArray(q.options) ? q.options : [];
+          const ansIdx = typeof q.answerIndex === 'number' ? q.answerIndex : 0;
+          const answerText = opts[ansIdx] || opts[0] || 'Answer';
+          return {
+            id: q.id || idx + 1,
+            front: text,
+            back: answerText,
+          };
+        })
+      : Array.isArray(game.cards) && game.cards.length > 0
+      ? game.cards
+      : null;
+
+    if (!cardsFromQuestions || cardsFromQuestions.length === 0) return null;
+    return {
+      id: game.id || Date.now(),
+      title: game.topic || game.name || game.title || 'Custom Study Set',
+      subject: game.className || game.classLevel || 'ESL',
+      grade: game.classLevel || game.className || 'All',
+      lastEdited: 'Just now',
+      author: 'Teacher',
+      isFavorite: true,
+      thumbnail: '🎴',
+      cards: cardsFromQuestions,
+    };
+  };
+
+  const initialImportedActivity = buildActivityFromInitialGame(initialGame);
+  const [currentView, setCurrentView] = useState(initialImportedActivity ? 'match' : 'lobby'); // lobby, editor, flashcards, match
+  const [activities, setActivities] = useState(() =>
+    initialImportedActivity ? [initialImportedActivity, ...initialActivities] : initialActivities
+  );
+  const [activeActivity, setActiveActivity] = useState<any>(initialImportedActivity);
   const [activityToDelete, setActivityToDelete] = useState<number | null>(null);
+
+  useEffect(() => {
+    const imported = buildActivityFromInitialGame(initialGame);
+    if (imported) {
+      setActivities((prev) => [imported, ...prev.filter((a) => a.id !== imported.id)]);
+      setActiveActivity(imported);
+      setCurrentView('match');
+    }
+  }, [initialGame]);
 
   const navigateTo = (view: string, activity: any = null) => {
     setActiveActivity(activity);
@@ -140,12 +185,32 @@ export function FlashcardsMatch({ onViewChange }: { onViewChange: (view: ViewSta
       {/* Top Toolbar Navigation */}
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 sticky top-0 z-30 shadow-sm shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md cursor-pointer" onClick={() => onViewChange("home")}>
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md cursor-pointer" onClick={() => onViewChange("games")}>
             <ChevronLeft size={18} fill="currentColor" />
           </div>
           <span className="font-black text-xl tracking-tight text-indigo-950 cursor-pointer hidden sm:block" onClick={() => navigateTo('lobby')}>
             FLASH MATCH
           </span>
+          {activeActivity && (currentView === 'match' || currentView === 'flashcards') && (
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl ml-2">
+              <button
+                onClick={() => setCurrentView('match')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  currentView === 'match' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Memory Match Grid
+              </button>
+              <button
+                onClick={() => setCurrentView('flashcards')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  currentView === 'flashcards' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                3D Flashcards
+              </button>
+            </div>
+          )}
         </div>
 
         {currentView === 'lobby' && (
@@ -163,7 +228,7 @@ export function FlashcardsMatch({ onViewChange }: { onViewChange: (view: ViewSta
            {currentView !== 'editor' && (
             <button 
               onClick={() => navigateTo('editor', { id: null, title: 'New Activity', cards: [{id: 1, front: '', back: ''}] })}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold transition-all shadow-md shadow-indigo-200"
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold transition-all shadow-md shadow-indigo-200 cursor-pointer"
             >
               <Plus size={18} /> <span className="hidden sm:inline">New Activity</span>
             </button>

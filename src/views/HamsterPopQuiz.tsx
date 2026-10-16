@@ -146,14 +146,57 @@ const CEFR_LEVELS = ['Pre-A1', 'A1 Starters', 'A2 Movers', 'A2 Key', 'B1 Prelimi
 const QUESTION_TYPES = ['Multiple Choice', 'True or False', 'Vocabulary Meaning', 'Grammar Choice', 'Listen & Type', 'Put in Order'];
 
 export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (view: ViewState) => void; initialGame?: any; }) {
-  const [currentView, setCurrentView] = useState('home');
-  const [questions, setQuestions] = useState<any[]>([]);
-  const [lessonConfig, setLessonConfig] = useState(null);
+  const buildQuestionsFromInitialGame = (game: any) => {
+    const raw = game?.customQuestions || game?.questions || [];
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const total = raw.length;
+    return raw.map((q: any, idx: number) => {
+      const text = q.text || q.question || `Question ${idx + 1}`;
+      const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['Yes', 'No'];
+      const ansIdx = typeof q.answerIndex === 'number' ? q.answerIndex : 0;
+      return {
+        id: q.id || idx + 1,
+        timeTrigger: Math.round(((idx + 1) / (total + 1)) * 90) + 5,
+        type: 'Multiple Choice',
+        xp: 100,
+        question: text,
+        options: opts.map((o: any, oIdx: number) => ({
+          text: typeof o === 'string' ? o : o?.text || `Option ${oIdx + 1}`,
+          isCorrect: oIdx === ansIdx,
+        })),
+        explanation: `Correct Answer: ${typeof opts[ansIdx] === 'string' ? opts[ansIdx] : opts[ansIdx]?.text || ''}`,
+      };
+    });
+  };
+
+  const initialMappedQuestions = buildQuestionsFromInitialGame(initialGame);
+  const [currentView, setCurrentView] = useState(initialMappedQuestions ? 'player' : 'home');
+  const [questions, setQuestions] = useState<any[]>(initialMappedQuestions || []);
+  const [lessonConfig, setLessonConfig] = useState<any>(
+    initialGame
+      ? {
+          topic: initialGame.topic || initialGame.name || initialGame.title || 'Custom Quiz',
+          level: initialGame.classLevel || initialGame.className || 'All Levels',
+        }
+      : null
+  );
   const [videoUrl, setVideoUrl] = useState('');
   
   const [xp, setXp] = useState(0);
   const [streak, setStreak] = useState(0);
   const [wordsLearned, setWordsLearned] = useState(0);
+
+  useEffect(() => {
+    const mapped = buildQuestionsFromInitialGame(initialGame);
+    if (mapped) {
+      setQuestions(mapped);
+      setLessonConfig({
+        topic: initialGame.topic || initialGame.name || initialGame.title || 'Custom Quiz',
+        level: initialGame.classLevel || initialGame.className || 'All Levels',
+      });
+      setCurrentView('player');
+    }
+  }, [initialGame]);
 
   const navigateTo = (view: string) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -688,6 +731,21 @@ function PlayerView({ config, questions, setQuestions, xp, setXp, streak, setStr
           <span className="text-base font-bold tabular-nums text-slate-500 min-w-[90px] text-right">
              {Math.floor(currentTime)}s / {Math.floor(videoDuration)}s
           </span>
+          {questions.some((q: any) => !quizHistory.includes(q.id)) && !activeQuiz && (
+            <button
+              type="button"
+              onClick={() => {
+                const nextQ = questions.find((q: any) => !quizHistory.includes(q.id));
+                if (nextQ) {
+                  setIsPlaying(false);
+                  setActiveQuiz(nextQ);
+                }
+              }}
+              className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-950 font-black text-xs sm:text-sm rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer"
+            >
+              Pop Next Quiz →
+            </button>
+          )}
         </div>
       </div>
 

@@ -124,24 +124,24 @@ export function PublicDashboard({
       return false;
     }
 
-    // Check direct gameType for other multiple-choice quiz games
-    if (['bubblepop', 'sumo', 'sumotags', 'yoga', 'yogaquiz'].includes(normalized)) {
+    // Check direct gameType for other multiple-choice / adaptable quiz games
+    if (['bubblepop', 'sumo', 'sumotags', 'yoga', 'yogaquiz', 'mysterybox', 'tictactoe', 'flashcardsmatch', 'hamsterpopquiz', 'familyfeud'].includes(normalized)) {
       return true;
     }
 
     // Check title/topic/name if game object is provided
     if (typeof game === 'object') {
       const title = (game.name || game.title || game.topic || '').toLowerCase();
-      if (title.includes('bubble pop') || title.includes('sumo') || title.includes('yoga')) {
+      if (title.includes('bubble pop') || title.includes('sumo') || title.includes('yoga') || title.includes('mystery box') || title.includes('family feud')) {
         return true;
       }
       // If it has multiple-choice questions (options array) and isn't another distinct game format
       const questions = game.customQuestions || game.questions;
       if (Array.isArray(questions) && questions.length > 0) {
-        const hasOptions = questions.some((q: any) => q && Array.isArray(q.options) && q.options.length >= 2);
+        const hasOptions = questions.some((q: any) => q && (Array.isArray(q.options) && q.options.length >= 2 || Array.isArray(q.answers) && q.answers.length >= 1));
         const distinctOtherTypes = [
           'squidgamepicker', 'neonchain', 'bubbleisland', 'bubblesentencepro',
-          'familyfeud', 'letterlock', 'tictactoe', 'phonemicmaster', 'studentrace', 'flashcardsmatch'
+          'letterlock', 'phonemicmaster', 'studentrace'
         ];
         if (hasOptions && !distinctOtherTypes.includes(normalized)) {
           return true;

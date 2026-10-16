@@ -581,14 +581,16 @@ const HostSetupScreen = ({ state, dispatch, isMultiplayer }: { state: any, dispa
                         <Play size={24} /> {isMultiplayer ? 'CREATE ROOM' : 'START LOCAL'}
                     </button>
                 </div>
-                {/* Simplified Question Bank Display for Space */}
+                {/* Question Bank Display */}
                 <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800">
-                    <h2 className="text-xl font-bold mb-4 flex items-center justify-between">
+                    <h2 className="text-xl font-bold mb-4 flex items-center justify-between text-white">
                         <span>Question Bank ({state.questions.length})</span>
-                        <span className="text-sm font-medium text-gray-500 bg-gray-800 px-3 py-1 rounded-full">Default Questions Loaded for Preview</span>
+                        <span className="text-sm font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1 rounded-full">
+                            {state.settings.title !== "TIC-TAC-TOE BATTLE" ? `Loaded: ${state.settings.title}` : "Ready to Play"}
+                        </span>
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {state.questions.slice(0, 4).map((q: any, i: number) => (
+                        {state.questions.slice(0, 6).map((q: any, i: number) => (
                             <div key={i} className="bg-gray-950 border border-gray-800 p-4 rounded-xl">
                                 <p className="font-medium text-gray-300 line-clamp-2">{q.text}</p>
                             </div>
@@ -1165,10 +1167,38 @@ const HostGameScreen = ({ state, dispatch, isMultiplayer }: { state: any, dispat
 };
 
 
-export const TicTacToe = ({ onViewChange, initialJoinData }: { onViewChange: (view: ViewState) => void, initialJoinData?: {code: string, nickname: string} | null }) => {
-    const [appMode, setAppMode] = useState<string | null>(null); // 'LOCAL', 'HOST', 'JOIN', 'PLAYER_APP'
+export const TicTacToe = ({
+    onViewChange,
+    initialJoinData,
+    initialGame,
+}: {
+    onViewChange: (view: ViewState) => void;
+    initialJoinData?: { code: string; nickname: string } | null;
+    initialGame?: any;
+}) => {
+    const [appMode, setAppMode] = useState<string | null>(initialGame && !initialGame.editMode ? 'LOCAL' : null); // 'LOCAL', 'HOST', 'JOIN', 'PLAYER_APP'
     const [state, dispatch] = useReducer(gameReducer, initialState);
-    
+
+    // Load custom questions when launched via Choose How to Play
+    useEffect(() => {
+        if (initialGame) {
+            const rawQuestions = initialGame.customQuestions || initialGame.questions || [];
+            if (Array.isArray(rawQuestions) && rawQuestions.length > 0) {
+                const mapped = rawQuestions.map((q: any, idx: number) => ({
+                    id: q.id || idx + 1,
+                    text: q.text || q.question || `Question ${idx + 1}`,
+                    options: Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['Yes', 'No'],
+                    correct: typeof q.answerIndex === 'number' ? q.answerIndex : (typeof q.correct === 'number' ? q.correct : 0),
+                }));
+                dispatch({ type: 'UPDATE_QUESTIONS', payload: mapped });
+            }
+            const gameTitle = initialGame.topic || initialGame.name || initialGame.title;
+            if (gameTitle) {
+                dispatch({ type: 'UPDATE_SETTINGS', payload: { title: gameTitle } });
+            }
+        }
+    }, [initialGame]);
+
     // Automatically join if initialJoinData is provided
     useEffect(() => {
         if (initialJoinData) {

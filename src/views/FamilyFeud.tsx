@@ -223,7 +223,36 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
     }
   }, [user]);
 
-  const [gameState, setGameState] = useState(initialGame && !initialGame.editMode ? 'playing' : 'setup');
+  const normalizeFeudRounds = (rawList: any[]) => {
+    if (!Array.isArray(rawList) || rawList.length === 0) return null;
+    return rawList.map((item: any, idx: number) => {
+      if (Array.isArray(item.answers) && item.answers.some((a: any) => a && a.text)) {
+        return {
+          question: item.question || item.text || `Question ${idx + 1}`,
+          answers: item.answers.filter((a: any) => a && a.text),
+        };
+      }
+      const opts = Array.isArray(item.options) ? item.options.filter((o: any) => typeof o === 'string' && o.trim() !== '') : ['Yes', 'No'];
+      const ansIdx = typeof item.answerIndex === 'number' ? item.answerIndex : 0;
+      const topAnswer = opts[ansIdx] || opts[0] || 'Answer';
+      const otherOpts = opts.filter((_: string, i: number) => i !== ansIdx);
+      return {
+        question: item.text || item.question || `Question ${idx + 1}`,
+        answers: [
+          { text: topAnswer, points: 50, aliases: [topAnswer.toLowerCase()] },
+          ...otherOpts.map((o: string, i: number) => ({
+            text: o,
+            points: Math.max(10, 30 - i * 10),
+            aliases: [o.toLowerCase()],
+          })),
+        ],
+      };
+    });
+  };
+
+  const initialNormalizedRounds = normalizeFeudRounds(initialGame?.customQuestions || initialGame?.questions);
+
+  const [gameState, setGameState] = useState(initialGame && !initialGame.editMode && initialNormalizedRounds ? 'playing' : 'setup');
   
   const [folderId, setFolderId] = useState(initialGame?.folderId || "");
   const [topic, setTopic] = useState(initialGame?.topic || "");
@@ -236,12 +265,18 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
   };
   
   const [rounds, setRounds] = useState<any[]>(
-    initialGame?.customQuestions && initialGame.customQuestions.length > 0 
-      ? initialGame.customQuestions 
+    initialNormalizedRounds
+      ? initialNormalizedRounds.map((r: any) => ({
+          question: r.question,
+          answers: [
+            ...r.answers,
+            ...Array.from({ length: Math.max(0, 8 - r.answers.length) }, () => ({ text: '', points: 0 })),
+          ].slice(0, 8),
+        }))
       : [JSON.parse(JSON.stringify(defaultRound))]
   );
   
-  const [customGameData, setCustomGameData] = useState<any>(initialGame?.customQuestions || null);
+  const [customGameData, setCustomGameData] = useState<any>(initialNormalizedRounds || null);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showMobileHostPanel, setShowMobileHostPanel] = useState(false);
   
