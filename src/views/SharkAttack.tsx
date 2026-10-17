@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
@@ -10,44 +10,1610 @@ import {
   Sparkles,
   Volume2,
   VolumeX,
-  RotateCcw,
   Users,
   Play,
-  BookOpen,
-  Edit3,
-  Gamepad2,
   ClipboardList,
   Image as ImageIcon,
   Info,
-  Trophy,
-  Anchor,
-  Zap,
-  Shield,
-  Skull,
+  Shuffle,
   Type,
-  CheckCircle2,
-  XCircle,
+  Edit3,
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { db } from '../lib/firebase';
 import { collection, addDoc, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaPickerModal } from '../components/MediaPickerModal';
-import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { FullscreenButton } from '../components/FullscreenButton';
 import { GameModeModal } from '../components/GameModeModal';
 
+// ============================================================================
+// HELPER: STRIP CONFUSING A. / B. / C. / D. PREFIXES FROM OPTION TEXT
+// ============================================================================
+const stripOptionPrefix = (text: string): string => {
+  if (!text || typeof text !== 'string') return '';
+  const trimmed = text.trim();
+  if (trimmed.startsWith('http') || trimmed.startsWith('data:image')) return trimmed;
+  return trimmed.replace(/^(?:[a-fA-F1-6][\.\)\:\-]|\([a-fA-F1-6]\))\s+/, '').trim();
+};
+
+// ============================================================================
+// UPGRADED ARCADE AUDIO ENGINE (Round Win, Step Up Loss, Falling Whistle, Chomp & Victory Fanfare)
+// ============================================================================
+let sharedAudioCtx: AudioContext | null = null;
+let soundMutedGlobal = false;
+
+const playSFX = (
+  type:
+    | 'roundWin'
+    | 'stepDanger'
+    | 'splash'
+    | 'stun'
+    | 'freeze'
+    | 'fallWhistle'
+    | 'chomp'
+    | 'win'
+    | 'clack'
+) => {
+  if (soundMutedGlobal) return;
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new AudioContextClass();
+    }
+    const ctx = sharedAudioCtx;
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+
+    const now = ctx.currentTime;
+
+    if (type === 'roundWin') {
+      // Bright celebratory 4-note arcade chime + harmonic sparkle
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const sub = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        sub.type = 'sine';
+        const t = now + i * 0.055;
+        osc.frequency.setValueAtTime(freq, t);
+        sub.frequency.setValueAtTime(freq * 1.5, t);
+        gain.gain.setValueAtTime(0.24, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+        osc.connect(gain);
+        sub.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        sub.start(t);
+        osc.stop(t + 0.24);
+        sub.stop(t + 0.24);
+      });
+    } else if (type === 'stepDanger') {
+      // Dramatic danger horn + wooden step thud when loser climbs closer to shark
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(310, now + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(145, now + 0.34);
+      gain.gain.setValueAtTime(0.26, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + 0.06);
+      osc.stop(now + 0.36);
+
+      // Step plank thump
+      const thud = ctx.createOscillator();
+      const tGain = ctx.createGain();
+      thud.type = 'sine';
+      thud.frequency.setValueAtTime(140, now);
+      thud.frequency.exponentialRampToValueAtTime(48, now + 0.14);
+      tGain.gain.setValueAtTime(0.32, now);
+      tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      thud.connect(tGain);
+      tGain.connect(ctx.destination);
+      thud.start(now);
+      thud.stop(now + 0.14);
+    } else if (type === 'splash') {
+      const bufferSize = Math.floor(ctx.sampleRate * 0.32);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.1));
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1100, now);
+      filter.frequency.exponentialRampToValueAtTime(420, now + 0.3);
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.32, now);
+      nGain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(ctx.destination);
+      noise.start(now);
+    } else if (type === 'clack') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(760, now);
+      osc.frequency.exponentialRampToValueAtTime(340, now + 0.08);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } else if (type === 'stun') {
+      // Dual-oscillator wrong answer buzzer
+      [0, 1].forEach((idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(idx === 0 ? 185 : 173, now);
+        osc.frequency.linearRampToValueAtTime(idx === 0 ? 110 : 98, now + 0.28);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.008, now + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.28);
+      });
+    } else if (type === 'freeze') {
+      const freqs = [980, 1320, 1760];
+      freqs.forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, now + i * 0.05);
+        gain.gain.setValueAtTime(0.16, now + i * 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.05);
+        osc.stop(now + i * 0.05 + 0.22);
+      });
+    } else if (type === 'fallWhistle') {
+      // Classic cartoon falling whistle as hamster plunges off the top edge
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1180, now);
+      osc.frequency.exponentialRampToValueAtTime(195, now + 0.55);
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.56);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.56);
+    } else if (type === 'chomp') {
+      // Massive shark jaw snap + deep bass impact + water splash burst
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(32, now + 0.42);
+      gain.gain.setValueAtTime(0.45, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.42);
+
+      // Crunch & splash burst
+      const bufferSize = Math.floor(ctx.sampleRate * 0.45);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.14));
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1400, now);
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.38, now);
+      nGain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(ctx.destination);
+      noise.start(now);
+    } else if (type === 'win') {
+      // Full championship victory fanfare
+      const melody = [
+        { f: 523.25, t: 0, d: 0.14 },
+        { f: 523.25, t: 0.15, d: 0.14 },
+        { f: 523.25, t: 0.3, d: 0.14 },
+        { f: 659.25, t: 0.46, d: 0.28 },
+        { f: 783.99, t: 0.76, d: 0.24 },
+        { f: 1046.5, t: 1.02, d: 0.65 },
+      ];
+      melody.forEach((n) => {
+        const osc = ctx.createOscillator();
+        const harm = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        harm.type = 'sine';
+        osc.frequency.setValueAtTime(n.f, now + n.t);
+        harm.frequency.setValueAtTime(n.f * 0.5, now + n.t);
+        gain.gain.setValueAtTime(0.28, now + n.t);
+        gain.gain.exponentialRampToValueAtTime(0.008, now + n.t + n.d);
+        osc.connect(gain);
+        harm.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + n.t);
+        harm.start(now + n.t);
+        osc.stop(now + n.t + n.d);
+        harm.stop(now + n.t + n.d);
+      });
+    }
+  } catch (e) {
+    console.error('Audio playback failed', e);
+  }
+};
+
+// ============================================================================
+// CUTE HAMSTER ROSTER & SVG COMPONENT
+// ============================================================================
+export type HamsterCharacterType = 'mochi' | 'ichigo' | 'captain' | 'boba' | 'yuki' | 'oreo';
+
+export interface HamsterCharacterOption {
+  id: HamsterCharacterType;
+  name: string;
+  title: string;
+}
+
+export const HAMSTER_CHARACTER_OPTIONS: HamsterCharacterOption[] = [
+  { id: 'mochi', name: 'Mochi Hamster', title: 'Golden Cheeky Puff' },
+  { id: 'ichigo', name: 'Ichigo Hamster', title: 'Strawberry Puff' },
+  { id: 'captain', name: 'Captain Pip', title: 'Sailor Hamster' },
+  { id: 'boba', name: 'Boba Hamster', title: 'Milk Tea Pearl' },
+  { id: 'yuki', name: 'Yuki Hamster', title: 'Snow Marshmallow' },
+  { id: 'oreo', name: 'Oreo Hamster', title: 'Cookies & Cream' },
+];
+
+export interface CuteHamsterCharacterProps {
+  team: 'left' | 'right';
+  character?: HamsterCharacterType;
+  isPushing?: boolean;
+  isClimbing?: boolean;
+  isDangerEdge?: boolean;
+  isStunned?: boolean;
+  isFrozen?: boolean;
+  hasLost?: boolean;
+  isWinner?: boolean;
+  compact?: boolean;
+  size?: 'icon' | 'card' | 'compact' | 'normal';
+  className?: string;
+}
+
+export const CuteHamsterCharacter: React.FC<CuteHamsterCharacterProps> = ({
+  team,
+  character = 'mochi',
+  isPushing = false,
+  isClimbing = false,
+  isDangerEdge = false,
+  isStunned = false,
+  isFrozen = false,
+  hasLost = false,
+  isWinner = false,
+  compact = false,
+  size,
+  className = '',
+}) => {
+  const isLeft = team === 'left';
+  const teamMain = isLeft ? '#0055fe' : '#dc2626';
+  const teamDark = isLeft ? '#1e3a8a' : '#7f1d1d';
+
+  const palettes: Record<
+    HamsterCharacterType,
+    {
+      furTop: string;
+      furBase: string;
+      furStroke: string;
+      belly: string;
+      earOuter: string;
+      earInner: string;
+      cheek: string;
+      headPatch?: string;
+    }
+  > = {
+    mochi: {
+      furTop: '#fbbf24',
+      furBase: '#f59e0b',
+      furStroke: '#92400e',
+      belly: '#fffbeb',
+      earOuter: '#d97706',
+      earInner: '#fda4af',
+      cheek: '#fb7185',
+      headPatch: '#d97706',
+    },
+    ichigo: {
+      furTop: '#f9a8d4',
+      furBase: '#f472b6',
+      furStroke: '#9d174d',
+      belly: '#fff1f2',
+      earOuter: '#ec4899',
+      earInner: '#fecdd3',
+      cheek: '#f43f5e',
+      headPatch: '#ec4899',
+    },
+    captain: {
+      furTop: '#fdba74',
+      furBase: '#ea580c',
+      furStroke: '#7c2d12',
+      belly: '#ffffff',
+      earOuter: '#c2410c',
+      earInner: '#fda4af',
+      cheek: '#fb7185',
+      headPatch: '#c2410c',
+    },
+    boba: {
+      furTop: '#e6ccb2',
+      furBase: '#c89f7c',
+      furStroke: '#582f0e',
+      belly: '#fdf8f5',
+      earOuter: '#7f4f24',
+      earInner: '#f4a261',
+      cheek: '#f28482',
+      headPatch: '#7f4f24',
+    },
+    yuki: {
+      furTop: '#ffffff',
+      furBase: '#e2e8f0',
+      furStroke: '#475569',
+      belly: '#ffffff',
+      earOuter: '#93c5fd',
+      earInner: '#fbcfe8',
+      cheek: '#f472b6',
+      headPatch: '#bae6fd',
+    },
+    oreo: {
+      furTop: '#475569',
+      furBase: '#1e293b',
+      furStroke: '#0f172a',
+      belly: '#f8fafc',
+      earOuter: '#0f172a',
+      earInner: '#fda4af',
+      cheek: '#fb7185',
+      headPatch: '#0f172a',
+    },
+  };
+
+  const pal = palettes[character] || palettes.mochi;
+  const resolvedSize = size || (compact ? 'compact' : 'normal');
+  const uid = `${team}-${character}-${resolvedSize}`;
+
+  const sizeClasses =
+    resolvedSize === 'icon'
+      ? 'w-[34px] h-[34px] sm:w-[42px] sm:h-[42px]'
+      : resolvedSize === 'card'
+        ? 'w-[70px] h-[70px] sm:w-[84px] sm:h-[84px] md:w-[96px] md:h-[96px]'
+        : resolvedSize === 'compact'
+          ? 'w-[100px] h-[100px] sm:w-[122px] sm:h-[122px] md:w-[140px] md:h-[140px]'
+          : 'w-[74px] h-[74px] sm:w-[90px] sm:h-[90px] md:w-[104px] md:h-[104px] lg:w-[116px] lg:h-[116px]';
+
+  const isPanic = isClimbing || isDangerEdge || hasLost;
+
+  return (
+    <div
+      className={`relative z-20 ${sizeClasses} transition-all duration-300 ease-out select-none ${className}`}
+      style={{
+        transform: `${!isLeft ? 'scaleX(-1)' : 'scaleX(1)'} ${
+          isPushing
+            ? 'translateY(-12px) scale(1.12)'
+            : isClimbing
+              ? 'translateY(-10px) rotate(-8deg) scale(1.05)'
+              : ''
+        }`,
+      }}
+    >
+      <svg viewBox="0 0 140 140" className="w-full h-full overflow-visible">
+        <defs>
+          <linearGradient id={`ham-fur-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={pal.furTop} />
+            <stop offset="100%" stopColor={pal.furBase} />
+          </linearGradient>
+        </defs>
+
+        {/* Ground Shadow */}
+        {!hasLost && <ellipse cx="70" cy="126" rx="38" ry="8" fill="rgba(15, 23, 42, 0.32)" />}
+
+        {/* Round Win Celebration Glow & Sparkles */}
+        {(isPushing || isWinner) && (
+          <g>
+            <circle
+              cx="70"
+              cy="72"
+              r="58"
+              fill="rgba(250, 204, 21, 0.22)"
+              stroke="#fde047"
+              strokeWidth="3"
+              strokeDasharray="6 4"
+            />
+            <polygon
+              points="16,32 19,40 27,40 21,45 23,53 16,48 9,53 11,45 5,40 13,40"
+              fill="#facc15"
+              stroke="#ca8a04"
+              strokeWidth="1.2"
+            />
+            <polygon
+              points="124,28 126,35 133,35 128,39 130,46 124,42 118,46 120,39 115,35 122,35"
+              fill="#4ade80"
+              stroke="#15803d"
+              strokeWidth="1.2"
+            />
+          </g>
+        )}
+
+        {/* Round Stubby Hamster Tail */}
+        <circle cx="34" cy="102" r="7.5" fill={pal.belly} stroke={pal.furStroke} strokeWidth="2.5" />
+
+        {/* Cute Stubby Feet */}
+        <ellipse
+          cx="50"
+          cy="120"
+          rx="12"
+          ry="6.5"
+          fill="#fde2e4"
+          stroke={pal.furStroke}
+          strokeWidth="2.4"
+          transform={isPanic ? 'rotate(-18 50 120)' : ''}
+        />
+        <ellipse
+          cx="90"
+          cy="120"
+          rx="12"
+          ry="6.5"
+          fill="#fde2e4"
+          stroke={pal.furStroke}
+          strokeWidth="2.4"
+          transform={isPanic ? 'rotate(18 90 120)' : ''}
+        />
+
+        {/* Round Hamster Ears */}
+        <g transform={isPanic ? 'translate(0, -3)' : ''}>
+          <circle cx="38" cy="34" r="15" fill={pal.earOuter} stroke={pal.furStroke} strokeWidth="2.8" />
+          <circle cx="38" cy="35" r="8.5" fill={pal.earInner} />
+          <circle cx="102" cy="34" r="15" fill={pal.earOuter} stroke={pal.furStroke} strokeWidth="2.8" />
+          <circle cx="102" cy="35" r="8.5" fill={pal.earInner} />
+        </g>
+
+        {/* Chubby Potato/Mochi Hamster Body & Giant Cheeks */}
+        <path
+          d="M 34 56 C 22 74, 22 118, 70 120 C 118 118, 118 74, 106 56 C 98 32, 42 32, 34 56 Z"
+          fill={`url(#ham-fur-${uid})`}
+          stroke={pal.furStroke}
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+
+        {/* Head Fur Forehead Patch */}
+        {pal.headPatch && (
+          <path
+            d="M 44 40 Q 70 62 96 40 Q 84 32 70 32 Q 56 32 44 40 Z"
+            fill={pal.headPatch}
+            opacity="0.85"
+          />
+        )}
+
+        {/* Creamy White Belly & Lower Cheek Mask */}
+        <path
+          d="M 28 74 Q 44 62 70 66 Q 96 62 112 74 C 116 98, 102 119, 70 119 C 38 119, 24 98, 28 74 Z"
+          fill={pal.belly}
+        />
+
+        {/* Puffy Chubby Cheeks */}
+        <ellipse cx="35" cy="76" rx="14" ry="11" fill={pal.belly} />
+        <ellipse cx="105" cy="76" rx="14" ry="11" fill={pal.belly} />
+        <ellipse cx="38" cy="75" rx="7.5" ry="4.8" fill={pal.cheek} opacity="0.68" />
+        <ellipse cx="102" cy="75" rx="7.5" ry="4.8" fill={pal.cheek} opacity="0.68" />
+
+        {/* Team Bandana / Collar Scarf */}
+        <path
+          d="M 38 88 Q 70 100 102 88 L 96 97 Q 70 107 44 97 Z"
+          fill={teamMain}
+          stroke={teamDark}
+          strokeWidth="2"
+        />
+        <polygon points="70,96 63,108 77,108" fill={teamMain} stroke={teamDark} strokeWidth="1.8" />
+        <circle cx="70" cy="96" r="3.5" fill="#fbbf24" />
+
+        {/* Character-Specific Hats & Accessories */}
+        {character === 'mochi' && (
+          <g>
+            <path d="M 70 33 Q 70 20 78 16" fill="none" stroke="#15803d" strokeWidth="3" strokeLinecap="round" />
+            <ellipse cx="81" cy="16" rx="7" ry="4" transform="rotate(-20 81 16)" fill="#4ade80" stroke="#15803d" strokeWidth="1.8" />
+            <ellipse cx="64" cy="19" rx="6" ry="3.5" transform="rotate(25 64 19)" fill="#22c55e" stroke="#15803d" strokeWidth="1.8" />
+          </g>
+        )}
+        {character === 'ichigo' && (
+          <g>
+            <ellipse cx="70" cy="30" rx="22" ry="10" fill="#f43f5e" stroke="#9f1239" strokeWidth="2.2" />
+            <circle cx="62" cy="29" r="1.4" fill="#fef08a" />
+            <circle cx="70" cy="32" r="1.4" fill="#fef08a" />
+            <circle cx="78" cy="29" r="1.4" fill="#fef08a" />
+            <path d="M 64 21 L 70 24 L 76 21 M 70 16 L 70 24" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" />
+          </g>
+        )}
+        {character === 'captain' && (
+          <g>
+            <ellipse cx="70" cy="29" rx="23" ry="9" fill="#ffffff" stroke="#1e3a8a" strokeWidth="2.4" />
+            <path d="M 49 32 Q 70 37 91 32 L 90 36 Q 70 41 50 36 Z" fill="#0284c7" />
+            <circle cx="70" cy="27" r="3.5" fill="#fbbf24" stroke="#b45309" strokeWidth="1.2" />
+          </g>
+        )}
+        {character === 'boba' && (
+          <g>
+            <circle cx="70" cy="31" r="4.5" fill="#451a03" />
+            <ellipse cx="61" cy="31" rx="7" ry="4.5" fill="#f472b6" stroke="#9d174d" strokeWidth="1.8" />
+            <ellipse cx="79" cy="31" rx="7" ry="4.5" fill="#f472b6" stroke="#9d174d" strokeWidth="1.8" />
+          </g>
+        )}
+        {character === 'yuki' && (
+          <g>
+            <polygon
+              points="56,33 59,19 66,27 70,17 74,27 81,19 84,33"
+              fill="#facc15"
+              stroke="#b45309"
+              strokeWidth="2"
+              strokeLinejoin="round"
+            />
+            <circle cx="70" cy="27" r="2.2" fill="#38bdf8" />
+          </g>
+        )}
+        {character === 'oreo' && (
+          <g>
+            <polygon
+              points="70,17 73,24 80,24 74,28 76,35 70,31 64,35 66,28 60,24 67,24"
+              fill="#fbbf24"
+              stroke="#b45309"
+              strokeWidth="1.6"
+            />
+          </g>
+        )}
+
+        {/* Expressive Eyes, Nose, Whiskers & Mouth */}
+        {isStunned ? (
+          <g stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round">
+            <path d="M 48 56 L 56 64 M 56 56 L 48 64" />
+            <path d="M 84 56 L 92 64 M 92 56 L 84 64" />
+            <circle cx="70" cy="73" r="4" fill="#fb7185" />
+          </g>
+        ) : isPanic ? (
+          <g>
+            <circle cx="52" cy="60" r="8" fill="#ffffff" stroke="#0f172a" strokeWidth="2.4" />
+            <circle cx="52" cy="60" r="3" fill="#0f172a" />
+            <circle cx="88" cy="60" r="8" fill="#ffffff" stroke="#0f172a" strokeWidth="2.4" />
+            <circle cx="88" cy="60" r="3" fill="#0f172a" />
+            <ellipse cx="70" cy="66" rx="3.2" ry="2.2" fill="#fb7185" />
+            <ellipse cx="70" cy="76" rx="7" ry="8.5" fill="#9f1239" stroke="#0f172a" strokeWidth="2" />
+            <rect x="67.5" y="68" width="5" height="3.8" rx="1" fill="#ffffff" />
+            {/* Flying panic sweat drops */}
+            <path d="M 18 44 Q 13 53 18 57 Q 23 53 18 44 Z" fill="#38bdf8" stroke="#0284c7" strokeWidth="1" />
+            <path d="M 122 44 Q 117 53 122 57 Q 127 53 122 44 Z" fill="#38bdf8" stroke="#0284c7" strokeWidth="1" />
+          </g>
+        ) : isPushing || isWinner ? (
+          <g>
+            {/* Happy cheering eyes ^ ^ */}
+            <path d="M 45 61 Q 52 52 59 61" fill="none" stroke="#1e1b4b" strokeWidth="3.4" strokeLinecap="round" />
+            <path d="M 81 61 Q 88 52 95 61" fill="none" stroke="#1e1b4b" strokeWidth="3.4" strokeLinecap="round" />
+            <ellipse cx="70" cy="66" rx="3.5" ry="2.4" fill="#f43f5e" />
+            <path d="M 60 70 Q 70 82 80 70 Z" fill="#fb7185" stroke={pal.furStroke} strokeWidth="2" />
+            <rect x="67.5" y="70" width="5" height="4" rx="1" fill="#ffffff" />
+          </g>
+        ) : (
+          <g>
+            <circle cx="52" cy="60" r="7.2" fill="#1e1b4b" />
+            <circle cx="49.5" cy="57.5" r="2.8" fill="#ffffff" />
+            <circle cx="54.5" cy="62.5" r="1.3" fill="#ffffff" />
+
+            <circle cx="88" cy="60" r="7.2" fill="#1e1b4b" />
+            <circle cx="85.5" cy="57.5" r="2.8" fill="#ffffff" />
+            <circle cx="90.5" cy="62.5" r="1.3" fill="#ffffff" />
+
+            <ellipse cx="70" cy="66" rx="3.5" ry="2.4" fill="#f43f5e" />
+
+            <rect
+              x="67.5"
+              y="70.5"
+              width="5"
+              height="4.8"
+              rx="1.2"
+              fill="#ffffff"
+              stroke={pal.furStroke}
+              strokeWidth="1.4"
+            />
+            <path
+              d="M 61 70 Q 65.5 75 70 70 Q 74.5 75 79 70"
+              fill="none"
+              stroke={pal.furStroke}
+              strokeWidth="2.4"
+              strokeLinecap="round"
+            />
+          </g>
+        )}
+
+        {/* Cute Whiskers */}
+        <g stroke={pal.furStroke} strokeWidth="1.8" strokeLinecap="round" opacity="0.65">
+          <line x1="18" y1="69" x2="31" y2="71" />
+          <line x1="17" y1="76" x2="30" y2="76" />
+          <line x1="122" y1="69" x2="109" y2="71" />
+          <line x1="123" y1="76" x2="110" y2="76" />
+        </g>
+
+        {/* Little Hamster Paws */}
+        {isWinner || isPushing || isPanic ? (
+          <g>
+            <ellipse
+              cx="30"
+              cy="82"
+              rx="9"
+              ry="6"
+              transform="rotate(-40 30 82)"
+              fill="#fde2e4"
+              stroke={pal.furStroke}
+              strokeWidth="2.2"
+            />
+            <ellipse
+              cx="110"
+              cy="82"
+              rx="9"
+              ry="6"
+              transform="rotate(40 110 82)"
+              fill="#fde2e4"
+              stroke={pal.furStroke}
+              strokeWidth="2.2"
+            />
+          </g>
+        ) : (
+          <g>
+            <ellipse
+              cx="53"
+              cy="98"
+              rx="8.5"
+              ry="5.5"
+              transform="rotate(18 53 98)"
+              fill="#fde2e4"
+              stroke={pal.furStroke}
+              strokeWidth="2.2"
+            />
+            <ellipse
+              cx="87"
+              cy="98"
+              rx="8.5"
+              ry="5.5"
+              transform="rotate(-18 87 98)"
+              fill="#fde2e4"
+              stroke={pal.furStroke}
+              strokeWidth="2.2"
+            />
+            {character === 'mochi' && (
+              <ellipse
+                cx="70"
+                cy="99"
+                rx="5"
+                ry="7.5"
+                fill="#451a03"
+                stroke="#fef3c7"
+                strokeWidth="1.5"
+              />
+            )}
+          </g>
+        )}
+
+        {/* Frozen Ice Cube Effect */}
+        {isFrozen && (
+          <g>
+            <rect
+              x="16"
+              y="14"
+              width="108"
+              height="114"
+              rx="20"
+              fill="rgba(125, 211, 252, 0.52)"
+              stroke="#e0f2fe"
+              strokeWidth="4"
+            />
+            <line x1="30" y1="30" x2="55" y2="55" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" opacity="0.8" />
+            <line x1="90" y1="80" x2="112" y2="105" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" opacity="0.8" />
+          </g>
+        )}
+      </svg>
+    </div>
+  );
+};
+
+// ============================================================================
+// IN-GAME HAMSTER PICKER MODAL
+// ============================================================================
+export const HamsterCharacterPickerModal: React.FC<{
+  isOpen: boolean;
+  leftCharacter: HamsterCharacterType;
+  rightCharacter: HamsterCharacterType;
+  onSelectLeft: (c: HamsterCharacterType) => void;
+  onSelectRight: (c: HamsterCharacterType) => void;
+  onClose: () => void;
+}> = ({ isOpen, leftCharacter, rightCharacter, onSelectLeft, onSelectRight, onClose }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+      <div
+        className="bg-slate-900 border-4 border-amber-400 rounded-[2.2rem] max-w-4xl w-full p-5 sm:p-7 shadow-2xl text-white max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-5">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-black uppercase italic tracking-tight text-white">
+              🐹 Choose Cute Hamsters
+            </h2>
+            <p className="text-xs sm:text-sm text-amber-300 font-bold">
+              Pick a cute hamster climber for Blue Team and Red Team!
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+          >
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Blue Team */}
+          <div className="bg-blue-950/70 border-2 border-blue-500/50 rounded-3xl p-4">
+            <div className="font-black text-blue-300 uppercase tracking-wider text-sm sm:text-base mb-3 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
+              Blue Team Hamster
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
+                const selected = leftCharacter === opt.id;
+                return (
+                  <button
+                    key={`modal-left-${opt.id}`}
+                    onClick={() => onSelectLeft(opt.id)}
+                    className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center transition-all cursor-pointer ${
+                      selected
+                        ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white border-amber-300 shadow-lg scale-[1.03]'
+                        : 'bg-slate-900/80 hover:bg-blue-900/40 text-slate-200 border-blue-500/30'
+                    }`}
+                  >
+                    <CuteHamsterCharacter team="left" character={opt.id} size="card" />
+                    <div className="font-black text-xs mt-1 leading-tight">{opt.name}</div>
+                    <div className="text-[10px] text-blue-200/80 font-semibold">{opt.title}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Red Team */}
+          <div className="bg-red-950/70 border-2 border-red-500/50 rounded-3xl p-4">
+            <div className="font-black text-red-300 uppercase tracking-wider text-sm sm:text-base mb-3 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
+              Red Team Hamster
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
+                const selected = rightCharacter === opt.id;
+                return (
+                  <button
+                    key={`modal-right-${opt.id}`}
+                    onClick={() => onSelectRight(opt.id)}
+                    className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center transition-all cursor-pointer ${
+                      selected
+                        ? 'bg-gradient-to-b from-red-500 to-red-700 text-white border-amber-300 shadow-lg scale-[1.03]'
+                        : 'bg-slate-900/80 hover:bg-red-900/40 text-slate-200 border-red-500/30'
+                    }`}
+                  >
+                    <CuteHamsterCharacter team="right" character={opt.id} size="card" />
+                    <div className="font-black text-xs mt-1 leading-tight">{opt.name}</div>
+                    <div className="text-[10px] text-red-200/80 font-semibold">{opt.title}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-8 py-3 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-base shadow-[0_5px_0_#ca8a04] active:translate-y-0.5 cursor-pointer"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// IMPROVED GREAT WHITE MEGALODON SHARK & STAIRCASE LAGOON ARENA
+// ============================================================================
+const MAX_STAIR_STEPS = 5;
+
+const SharkLagoonArena: React.FC<{
+  leftStep: number;
+  rightStep: number;
+  leftFloatingFeedback: { text: string; color: string; id: number } | null;
+  rightFloatingFeedback: { text: string; color: string; id: number } | null;
+  leftCharacter: HamsterCharacterType;
+  rightCharacter: HamsterCharacterType;
+  leftPushing: boolean;
+  rightPushing: boolean;
+  leftStunned: boolean;
+  rightStunned: boolean;
+  leftFrozen: boolean;
+  rightFrozen: boolean;
+  sharkLungeSide: 'left' | 'right' | 'center' | null;
+  fallingPhase: 'none' | 'diving' | 'chomped';
+  winner: string | null;
+  isRumbling: boolean;
+}> = ({
+  leftStep,
+  rightStep,
+  leftFloatingFeedback,
+  rightFloatingFeedback,
+  leftCharacter,
+  rightCharacter,
+  leftPushing,
+  rightPushing,
+  leftStunned,
+  rightStunned,
+  leftFrozen,
+  rightFrozen,
+  sharkLungeSide,
+  fallingPhase,
+  winner,
+  isRumbling,
+}) => {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let rafId: number;
+    const start = performance.now();
+    const update = (now: number) => {
+      setTick((now - start) / 1000);
+      rafId = requestAnimationFrame(update);
+    };
+    rafId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const highestStep = Math.max(leftStep, rightStep);
+  const dangerRatio = Math.min(1, highestStep / MAX_STAIR_STEPS);
+
+  const targetLookBias =
+    leftStep > rightStep ? -1 : rightStep > leftStep ? 1 : Math.sin(tick * 1.4) * 0.6;
+  const swimSwayX = Math.sin(tick * 2.1) * 18 + targetLookBias * 24;
+  const swimBobY = Math.cos(tick * 3.0) * 6 - dangerRatio * 18;
+  const swimTilt = Math.sin(tick * 1.8) * 3.5 + targetLookBias * 6;
+  const finWave = Math.sin(tick * 4.5) * 8;
+
+  const isDiving = fallingPhase === 'diving';
+  const isChomped = fallingPhase === 'chomped';
+  const isLunging = sharkLungeSide !== null;
+
+  // During 'diving' the shark opens its mouth wide (1.0) to catch the falling hamster;
+  // During 'chomped' the shark snaps its jaws shut (0.12) and chomps!
+  const baseJawOpen = 0.28 + dangerRatio * 0.42 + Math.sin(tick * 3.8) * 0.1;
+  const jawOpen = isDiving
+    ? 1.0
+    : isChomped
+      ? 0.16 + Math.abs(Math.sin(tick * 16)) * 0.25
+      : isLunging
+        ? 0.88
+        : Math.max(0.2, Math.min(0.95, baseJawOpen));
+
+  const sharkTranslateY = isDiving ? -52 : isChomped ? -34 : isLunging ? -28 : swimBobY;
+  const sharkTranslateX =
+    isDiving || isChomped
+      ? 0
+      : sharkLungeSide === 'left'
+        ? -38
+        : sharkLungeSide === 'right'
+          ? 38
+          : swimSwayX;
+
+  const leftFell = leftStep > MAX_STAIR_STEPS;
+  const rightFell = rightStep > MAX_STAIR_STEPS;
+
+  // Exact percentage alignment with SVG staircase planks (viewBox 1200x360)
+  const getStepCoords = (side: 'left' | 'right', stepIdx: number) => {
+    const s = Math.max(0, Math.min(MAX_STAIR_STEPS, stepIdx));
+    const sx = side === 'left' ? 88 + s * 64 : 1200 - (88 + s * 64);
+    const sy = 294 - s * 38;
+    const xPct = (sx / 1200) * 100;
+    const bottomPct = ((360 - sy + 4) / 360) * 100;
+    return { xPct, bottomPct };
+  };
+
+  // Multi-stage parabolic falling trajectory straight into the shark's open mouth!
+  const leftCoords = leftFell
+    ? fallingPhase === 'diving'
+      ? { xPct: 48.5, bottomPct: 42 }
+      : { xPct: 50, bottomPct: 26 }
+    : getStepCoords('left', leftStep);
+
+  const rightCoords = rightFell
+    ? fallingPhase === 'diving'
+      ? { xPct: 51.5, bottomPct: 42 }
+      : { xPct: 50, bottomPct: 26 }
+    : getStepCoords('right', rightStep);
+
+  // Quadratic Bezier point helper so teeth sit 100% flush along the curved gumline
+  const bezierY = (t: number, y0: number, y1: number, y2: number) => {
+    const mt = 1 - t;
+    return mt * mt * y0 + 2 * mt * t * y1 + t * t * y2;
+  };
+
+  return (
+    <div
+      className={`relative w-full h-full flex-1 min-h-[220px] sm:min-h-[275px] md:min-h-[310px] max-w-[1380px] mx-auto rounded-3xl overflow-hidden border-4 border-sky-300/70 shadow-2xl select-none ${
+        isRumbling ? 'animate-[bounce_0.22s_ease-in-out_infinite]' : ''
+      }`}
+      style={{
+        background:
+          'linear-gradient(180deg, #38bdf8 0%, #7dd3fc 32%, #0284c7 62%, #0369a1 82%, #0c4a6e 100%)',
+      }}
+    >
+      {/* SUNNY TROPICAL SKY, SUN & CLOUDS */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-yellow-200/80 blur-md pointer-events-none" />
+      <div className="absolute top-4 left-[18%] w-24 h-8 bg-white/75 rounded-full blur-[1px] pointer-events-none" />
+      <div className="absolute top-6 right-[18%] w-28 h-9 bg-white/75 rounded-full blur-[1px] pointer-events-none" />
+
+      {/* DRAMATIC MATCH VICTORY / SHARK CHOMP BANNER IN ARENA */}
+      {winner && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-bounce">
+          <div className="px-6 py-2 rounded-full bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 text-slate-950 font-black text-sm sm:text-xl md:text-2xl uppercase italic tracking-wider shadow-2xl border-4 border-white flex items-center gap-2 whitespace-nowrap">
+            <span>🦈 CHOMP!!</span>
+            <span className={winner === 'Blue Team' ? 'text-blue-700' : 'text-red-700'}>
+              {winner} WINS!
+            </span>
+            <span>🏆</span>
+          </div>
+        </div>
+      )}
+
+      {/* STAIRCASE TOWERS & OCEAN HORIZON */}
+      <svg
+        viewBox="0 0 1200 360"
+        preserveAspectRatio="none"
+        className="absolute inset-0 w-full h-full pointer-events-none"
+      >
+        <rect x="0" y="165" width="1200" height="195" fill="#0369a1" opacity="0.45" />
+        <path d="M 0 170 Q 140 125 290 170 Z" fill="#0d9488" opacity="0.55" />
+        <path d="M 910 170 Q 1060 125 1200 170 Z" fill="#0d9488" opacity="0.55" />
+
+        <path
+          d={`M 0 250 Q 150 ${238 + Math.sin(tick * 2) * 8} 300 250 T 600 250 T 900 250 T 1200 250 L 1200 360 L 0 360 Z`}
+          fill="#0284c7"
+          opacity="0.7"
+        />
+
+        {/* Falling Dashed Arc Trail When Hamster Plunges Off Edge */}
+        {leftFell && (
+          <path
+            d="M 408 104 Q 515 24 585 188"
+            fill="none"
+            stroke="#fde047"
+            strokeWidth="4"
+            strokeDasharray="10 8"
+            strokeLinecap="round"
+            opacity="0.85"
+          />
+        )}
+        {rightFell && (
+          <path
+            d="M 792 104 Q 685 24 615 188"
+            fill="none"
+            stroke="#fde047"
+            strokeWidth="4"
+            strokeDasharray="10 8"
+            strokeLinecap="round"
+            opacity="0.85"
+          />
+        )}
+
+        {/* LEFT STAIRCASE STRUCTURE (BLUE TEAM) */}
+        <g>
+          {[0, 1, 2, 3, 4, 5].map((s) => {
+            const sx = 88 + s * 64;
+            const sy = 294 - s * 38;
+            return (
+              <g key={`left-step-svg-${s}`}>
+                <rect
+                  x={sx - 10}
+                  y={sy}
+                  width="20"
+                  height={360 - sy}
+                  fill="#1e293b"
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                />
+                <path
+                  d={`M ${sx - 38} ${sy} L ${sx + 38} ${sy} L ${sx + 34} ${sy + 18} L ${sx - 34} ${sy + 18} Z`}
+                  fill={s === MAX_STAIR_STEPS ? '#dc2626' : s <= leftStep ? '#2563eb' : '#334155'}
+                  stroke="#0f172a"
+                  strokeWidth="2.5"
+                />
+                <rect
+                  x={sx - 40}
+                  y={sy - 6}
+                  width="80"
+                  height="10"
+                  rx="4"
+                  fill={
+                    s === MAX_STAIR_STEPS
+                      ? '#fbbf24'
+                      : s === leftStep
+                        ? '#60a5fa'
+                        : s < leftStep
+                          ? '#3b82f6'
+                          : '#94a3b8'
+                  }
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                />
+                <text
+                  x={sx}
+                  y={sy + 14}
+                  textAnchor="middle"
+                  fill="#ffffff"
+                  fontSize="11"
+                  fontWeight="900"
+                >
+                  {s === 0 ? 'SAFE' : s === MAX_STAIR_STEPS ? '⚠️ EDGE' : `STEP ${s}`}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+
+        {/* RIGHT STAIRCASE STRUCTURE (RED TEAM) */}
+        <g>
+          {[0, 1, 2, 3, 4, 5].map((s) => {
+            const sx = 1200 - (88 + s * 64);
+            const sy = 294 - s * 38;
+            return (
+              <g key={`right-step-svg-${s}`}>
+                <rect
+                  x={sx - 10}
+                  y={sy}
+                  width="20"
+                  height={360 - sy}
+                  fill="#1e293b"
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                />
+                <path
+                  d={`M ${sx - 38} ${sy} L ${sx + 38} ${sy} L ${sx + 34} ${sy + 18} L ${sx - 34} ${sy + 18} Z`}
+                  fill={s === MAX_STAIR_STEPS ? '#dc2626' : s <= rightStep ? '#dc2626' : '#334155'}
+                  stroke="#0f172a"
+                  strokeWidth="2.5"
+                />
+                <rect
+                  x={sx - 40}
+                  y={sy - 6}
+                  width="80"
+                  height="10"
+                  rx="4"
+                  fill={
+                    s === MAX_STAIR_STEPS
+                      ? '#fbbf24'
+                      : s === rightStep
+                        ? '#f87171'
+                        : s < rightStep
+                          ? '#ef4444'
+                          : '#94a3b8'
+                  }
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                />
+                <text
+                  x={sx}
+                  y={sy + 14}
+                  textAnchor="middle"
+                  fill="#ffffff"
+                  fontSize="11"
+                  fontWeight="900"
+                >
+                  {s === 0 ? 'SAFE' : s === MAX_STAIR_STEPS ? '⚠️ EDGE' : `STEP ${s}`}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+
+      {/* ==================================================================== */}
+      {/* CENTER GIANT GREAT WHITE MEGALODON SHARK (IMPROVED MOUTH & JAWS)     */}
+      {/* ==================================================================== */}
+      <div
+        className="absolute left-1/2 bottom-[-12px] z-20 pointer-events-none transition-transform duration-200 ease-out"
+        style={{
+          transform: `translateX(calc(-50% + ${sharkTranslateX}px)) translateY(${sharkTranslateY}px) rotate(${
+            isDiving || isChomped ? 0 : swimTilt
+          }deg) scale(${isDiving ? 1.12 : isChomped ? 1.16 : 1})`,
+        }}
+      >
+        <div className="w-[215px] h-[200px] sm:w-[270px] sm:h-[245px] md:w-[308px] md:h-[275px] relative">
+          <svg viewBox="0 0 280 250" className="w-full h-full overflow-visible">
+            <defs>
+              <linearGradient id="sharkDorsalGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#1e3a8a" />
+                <stop offset="48%" stopColor="#1d4ed8" />
+                <stop offset="100%" stopColor="#0f172a" />
+              </linearGradient>
+              <linearGradient id="sharkBellyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="68%" stopColor="#e2e8f0" />
+                <stop offset="100%" stopColor="#94a3b8" />
+              </linearGradient>
+              <radialGradient id="sharkThroatGrad" cx="50%" cy="45%" r="55%">
+                <stop offset="0%" stopColor="#2e0210" />
+                <stop offset="65%" stopColor="#6b0923" />
+                <stop offset="100%" stopColor="#9f1239" />
+              </radialGradient>
+              <linearGradient id="sharkTongueGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#e11d48" />
+                <stop offset="100%" stopColor="#fb7185" />
+              </linearGradient>
+            </defs>
+
+            {/* Water Foam Ring Around Shark Base */}
+            <ellipse
+              cx="140"
+              cy="222"
+              rx={100 + Math.sin(tick * 4) * 8}
+              ry="18"
+              fill="rgba(224, 242, 254, 0.55)"
+            />
+            <ellipse
+              cx="140"
+              cy="222"
+              rx={80 - Math.sin(tick * 4) * 6}
+              ry="11"
+              fill="rgba(255, 255, 255, 0.78)"
+            />
+
+            {/* Top Dorsal Fin */}
+            <path
+              d={`M ${140 + finWave * 1.4} 34 C ${155 + finWave} 10, ${172 + finWave} 18, 162 58 Z`}
+              fill="#1e3a8a"
+              stroke="#0f172a"
+              strokeWidth="3"
+            />
+
+            {/* Left & Right Pectoral Fins */}
+            <path
+              d={`M 55 156 C 12 ${162 + finWave}, 4 ${202 + finWave}, 36 206 C 54 206, 66 192, 72 182 Z`}
+              fill="url(#sharkDorsalGrad)"
+              stroke="#0f172a"
+              strokeWidth="3"
+              strokeLinejoin="round"
+            />
+            <path
+              d={`M 225 156 C 268 ${162 - finWave}, 276 ${202 - finWave}, 244 206 C 226 206, 214 192, 208 182 Z`}
+              fill="url(#sharkDorsalGrad)"
+              stroke="#0f172a"
+              strokeWidth="3"
+              strokeLinejoin="round"
+            />
+
+            {/* Main Torpedo Snout & Body */}
+            <path
+              d="M 140 18 C 90 22, 52 84, 50 156 C 48 205, 76 232, 140 232 C 204 232, 232 205, 230 156 C 228 84, 190 22, 140 18 Z"
+              fill="url(#sharkDorsalGrad)"
+              stroke="#0f172a"
+              strokeWidth="3.5"
+              strokeLinejoin="round"
+            />
+
+            {/* White Counter-Shaded Belly */}
+            <path
+              d="M 58 136 Q 94 86 140 86 Q 186 86 222 136 C 226 188, 202 230, 140 230 C 78 230, 54 188, 58 136 Z"
+              fill="url(#sharkBellyGrad)"
+            />
+
+            {/* Gill Slits */}
+            <g stroke="#1e293b" strokeWidth="2.8" strokeLinecap="round" opacity="0.75">
+              <path d="M 62 146 Q 56 158 60 170" fill="none" />
+              <path d="M 69 150 Q 63 162 67 174" fill="none" />
+              <path d="M 76 154 Q 70 166 74 178" fill="none" />
+
+              <path d="M 218 146 Q 224 158 220 170" fill="none" />
+              <path d="M 211 150 Q 217 162 213 174" fill="none" />
+              <path d="M 204 154 Q 210 166 206 178" fill="none" />
+            </g>
+
+            {/* Snout Nostrils */}
+            <ellipse cx="112" cy="50" rx="4.5" ry="2.5" transform="rotate(-25 112 50)" fill="#0f172a" />
+            <ellipse cx="168" cy="50" rx="4.5" ry="2.5" transform="rotate(25 168 50)" fill="#0f172a" />
+
+            {/* Fierce Predator Eyes Tracking the Higher Hamster */}
+            {([-1, 1] as const).map((dir) => {
+              const ex = 140 + dir * 48;
+              const ey = 72;
+              const pupilShiftX = targetLookBias * 3.5;
+              const pupilShiftY = -dangerRatio * 2;
+              return (
+                <g key={`shark-eye-${dir}`}>
+                  <circle cx={ex} cy={ey} r="10.5" fill="#facc15" stroke="#0f172a" strokeWidth="2.8" />
+                  <circle cx={ex + pupilShiftX} cy={ey + pupilShiftY} r="5.5" fill="#dc2626" />
+                  <circle cx={ex + pupilShiftX} cy={ey + pupilShiftY} r="3" fill="#090d16" />
+                  <circle cx={ex + pupilShiftX - 2} cy={ey + pupilShiftY - 2} r="2" fill="#ffffff" />
+                  <path
+                    d={`M ${ex - dir * 13} ${ey - 4} L ${ex + dir * 11} ${ey - 11}`}
+                    stroke="#0f172a"
+                    strokeWidth="4.5"
+                    strokeLinecap="round"
+                  />
+                </g>
+              );
+            })}
+
+            {/* ============================================================== */}
+            {/* REDESIGNED GREAT WHITE SHARK MOUTH (CLEAN CLIPPED CAVITY,      */}
+            {/* FLUSH BEZIER GUM ARCHES, RAZOR TEETH & NO CROSSING LINES)      */}
+            {/* ============================================================== */}
+            {(() => {
+              const cornerLeftX = 76;
+              const cornerRightX = 204;
+              const cornerY = 144;
+              const upperCtrlY = 82 - jawOpen * 22;
+              const lowerCtrlY = 166 + jawOpen * 46;
+
+              const mouthPath = `M ${cornerLeftX} ${cornerY} Q 140 ${upperCtrlY} ${cornerRightX} ${cornerY} Q 140 ${lowerCtrlY} ${cornerLeftX} ${cornerY} Z`;
+
+              const upperTeethT = [0.13, 0.24, 0.35, 0.45, 0.55, 0.65, 0.76, 0.87];
+              const lowerTeethT = [0.16, 0.27, 0.38, 0.5, 0.62, 0.73, 0.84];
+
+              return (
+                <g>
+                  <clipPath id="sharkMouthInteriorClip">
+                    <path d={mouthPath} />
+                  </clipPath>
+
+                  {/* Deep Throat Cavity */}
+                  <path d={mouthPath} fill="url(#sharkThroatGrad)" />
+
+                  {/* Clipped Interior: Tongue, Gums, and Interlocking Razor Teeth */}
+                  <g clipPath="url(#sharkMouthInteriorClip)">
+                    {/* Inner Dark Throat Depth Oval */}
+                    <ellipse
+                      cx="140"
+                      cy={(upperCtrlY + lowerCtrlY) * 0.5 + 10}
+                      rx="42"
+                      ry={14 + jawOpen * 16}
+                      fill="#1f020b"
+                    />
+
+                    {/* Thick Fleshy Shark Tongue */}
+                    <path
+                      d={`M 90 ${cornerY + 26} Q 118 ${cornerY - 6 + jawOpen * 10} 140 ${
+                        cornerY + 2 + jawOpen * 10
+                      } Q 162 ${cornerY - 6 + jawOpen * 10} 190 ${cornerY + 26} L 195 230 L 85 230 Z`}
+                      fill="url(#sharkTongueGrad)"
+                      stroke="#9f1239"
+                      strokeWidth="2.2"
+                    />
+                    <path
+                      d={`M 140 ${cornerY + 2 + jawOpen * 10} Q 140 ${cornerY + 22 + jawOpen * 14} 140 ${
+                        cornerY + 42 + jawOpen * 14
+                      }`}
+                      stroke="#be123c"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      opacity="0.7"
+                    />
+
+                    {/* Upper Pink Gum Arch */}
+                    <path
+                      d={`M ${cornerLeftX - 6} ${cornerY + 4} Q 140 ${upperCtrlY - 12} ${
+                        cornerRightX + 6
+                      } ${cornerY + 4} Q 140 ${upperCtrlY + 14} ${cornerLeftX - 6} ${cornerY + 4} Z`}
+                      fill="#f43f5e"
+                    />
+
+                    {/* Lower Pink Gum Arch */}
+                    <path
+                      d={`M ${cornerLeftX - 6} ${cornerY - 4} Q 140 ${lowerCtrlY - 14} ${
+                        cornerRightX + 6
+                      } ${cornerY - 4} Q 140 ${lowerCtrlY + 14} ${cornerLeftX - 6} ${cornerY - 4} Z`}
+                      fill="#f43f5e"
+                    />
+
+                    {/* Upper Row of Serrated White Triangles (Pointing Downward) */}
+                    {upperTeethT.map((t, idx) => {
+                      const tx = cornerLeftX + (cornerRightX - cornerLeftX) * t;
+                      const gumY = bezierY(t, cornerY, upperCtrlY + 4, cornerY);
+                      const centerFactor = 1 - Math.abs(t - 0.5) * 1.15;
+                      const toothHalfW = 5.5 + centerFactor * 2.5;
+                      const toothLen = (14 + centerFactor * 9) * (0.55 + jawOpen * 0.45);
+                      const tiltX = (0.5 - t) * 4;
+                      return (
+                        <g key={`u-tooth-${idx}`}>
+                          <polygon
+                            points={`${tx - toothHalfW},${gumY - 2} ${tx + toothHalfW},${gumY - 2} ${
+                              tx + tiltX
+                            },${gumY + toothLen}`}
+                            fill="#ffffff"
+                            stroke="#cbd5e1"
+                            strokeWidth="1.2"
+                            strokeLinejoin="round"
+                          />
+                          <polygon
+                            points={`${tx},${gumY - 1} ${tx + toothHalfW},${gumY - 2} ${tx + tiltX},${
+                              gumY + toothLen
+                            }`}
+                            fill="#e2e8f0"
+                            opacity="0.55"
+                          />
+                        </g>
+                      );
+                    })}
+
+                    {/* Lower Row of Serrated White Triangles (Pointing Upward) */}
+                    {lowerTeethT.map((t, idx) => {
+                      const tx = cornerLeftX + (cornerRightX - cornerLeftX) * t;
+                      const gumY = bezierY(t, cornerY, lowerCtrlY - 4, cornerY);
+                      const centerFactor = 1 - Math.abs(t - 0.5) * 1.15;
+                      const toothHalfW = 5 + centerFactor * 2;
+                      const toothLen = (12 + centerFactor * 7) * (0.55 + jawOpen * 0.45);
+                      const tiltX = (0.5 - t) * 3;
+                      return (
+                        <g key={`l-tooth-${idx}`}>
+                          <polygon
+                            points={`${tx - toothHalfW},${gumY + 2} ${tx + toothHalfW},${gumY + 2} ${
+                              tx + tiltX
+                            },${gumY - toothLen}`}
+                            fill="#ffffff"
+                            stroke="#cbd5e1"
+                            strokeWidth="1.2"
+                            strokeLinejoin="round"
+                          />
+                          <polygon
+                            points={`${tx},${gumY + 1} ${tx + toothHalfW},${gumY + 2} ${tx + tiltX},${
+                              gumY - toothLen
+                            }`}
+                            fill="#e2e8f0"
+                            opacity="0.55"
+                          />
+                        </g>
+                      );
+                    })}
+                  </g>
+
+                  {/* Crisp Outer Jaw Lip Outline (No lines crossing the teeth!) */}
+                  <path
+                    d={mouthPath}
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="4"
+                    strokeLinejoin="round"
+                  />
+                  {/* Cheek Crease Lines at Mouth Corners */}
+                  <path
+                    d={`M ${cornerLeftX - 7} ${cornerY - 7} Q ${cornerLeftX - 2} ${cornerY} ${
+                      cornerLeftX - 5
+                    } ${cornerY + 8}`}
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d={`M ${cornerRightX + 7} ${cornerY - 7} Q ${cornerRightX + 2} ${cornerY} ${
+                      cornerRightX + 5
+                    } ${cornerY + 8}`}
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </g>
+              );
+            })()}
+
+            {/* HUGE WATER SPLASH FOUNTAIN WHEN HAMSTER PLUNGES & GETS CHOMPED */}
+            {(isLunging || isDiving || isChomped) && (
+              <g>
+                <circle cx="42" cy="110" r="8" fill="#e0f2fe" />
+                <circle cx="24" cy="80" r="6" fill="#ffffff" />
+                <circle cx="238" cy="110" r="8" fill="#e0f2fe" />
+                <circle cx="256" cy="80" r="6" fill="#ffffff" />
+                {isChomped && (
+                  <g>
+                    <path
+                      d="M 85 130 Q 45 45 20 85"
+                      fill="none"
+                      stroke="#bae6fd"
+                      strokeWidth="6"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M 195 130 Q 235 45 260 85"
+                      fill="none"
+                      stroke="#bae6fd"
+                      strokeWidth="6"
+                      strokeLinecap="round"
+                    />
+                    <circle cx="58" cy="48" r="10" fill="#ffffff" />
+                    <circle cx="222" cy="48" r="10" fill="#ffffff" />
+                    <circle cx="105" cy="24" r="8" fill="#e0f2fe" />
+                    <circle cx="175" cy="24" r="8" fill="#e0f2fe" />
+                    {/* Comic CHOMP Starburst */}
+                    <g transform="translate(140, 122)">
+                      <polygon
+                        points="0,-42 12,-16 40,-24 22,-2 44,18 14,18 0,42 -14,18 -44,18 -22,-2 -40,-24 -12,-16"
+                        fill="#facc15"
+                        stroke="#dc2626"
+                        strokeWidth="3"
+                      />
+                      <text
+                        x="0"
+                        y="6"
+                        textAnchor="middle"
+                        fill="#991b1b"
+                        fontSize="16"
+                        fontWeight="900"
+                        fontStyle="italic"
+                      >
+                        CHOMP!
+                      </text>
+                    </g>
+                  </g>
+                )}
+              </g>
+            )}
+          </svg>
+        </div>
+      </div>
+
+      {/* ==================================================================== */}
+      {/* LEFT BLUE HAMSTER CLIMBER                                            */}
+      {/* ==================================================================== */}
+      <div
+        className={`absolute z-30 pointer-events-none ${
+          leftFell
+            ? fallingPhase === 'diving'
+              ? 'transition-all duration-500 ease-in rotate-[320deg] scale-90'
+              : 'transition-all duration-300 ease-in rotate-[540deg] scale-0 opacity-0'
+            : 'transition-all duration-300 ease-out'
+        }`}
+        style={{
+          left: `${leftCoords.xPct}%`,
+          bottom: `${leftCoords.bottomPct}%`,
+          transform: 'translateX(-50%)',
+        }}
+      >
+        <div className="flex flex-col items-center relative">
+          {/* Floating Action Feedback Popup */}
+          {leftFloatingFeedback && (
+            <div
+              key={leftFloatingFeedback.id}
+              className={`mb-1 px-3 py-0.5 rounded-full font-black text-[11px] sm:text-xs shadow-lg border-2 border-white animate-bounce whitespace-nowrap ${leftFloatingFeedback.color}`}
+            >
+              {leftFloatingFeedback.text}
+            </div>
+          )}
+
+          <div className="mb-0.5 px-2.5 py-0.5 rounded-full bg-[#0055fe] text-white font-black text-[10px] sm:text-xs shadow-md border border-white/60 whitespace-nowrap">
+            {leftFell
+              ? '😱 AHHH!!'
+              : leftStep === 0
+                ? 'BLUE · SAFE'
+                : leftStep >= MAX_STAIR_STEPS
+                  ? '⚠️ DANGER EDGE!'
+                  : `BLUE · STEP ${leftStep}/${MAX_STAIR_STEPS}`}
+          </div>
+          <CuteHamsterCharacter
+            team="left"
+            character={leftCharacter}
+            isPushing={leftPushing}
+            isClimbing={sharkLungeSide === 'left'}
+            isDangerEdge={leftStep >= MAX_STAIR_STEPS - 1}
+            isStunned={leftStunned}
+            isFrozen={leftFrozen}
+            hasLost={leftFell}
+            isWinner={winner === 'Blue Team'}
+          />
+        </div>
+      </div>
+
+      {/* ==================================================================== */}
+      {/* RIGHT RED HAMSTER CLIMBER                                            */}
+      {/* ==================================================================== */}
+      <div
+        className={`absolute z-30 pointer-events-none ${
+          rightFell
+            ? fallingPhase === 'diving'
+              ? 'transition-all duration-500 ease-in -rotate-[320deg] scale-90'
+              : 'transition-all duration-300 ease-in -rotate-[540deg] scale-0 opacity-0'
+            : 'transition-all duration-300 ease-out'
+        }`}
+        style={{
+          left: `${rightCoords.xPct}%`,
+          bottom: `${rightCoords.bottomPct}%`,
+          transform: 'translateX(-50%)',
+        }}
+      >
+        <div className="flex flex-col items-center relative">
+          {/* Floating Action Feedback Popup */}
+          {rightFloatingFeedback && (
+            <div
+              key={rightFloatingFeedback.id}
+              className={`mb-1 px-3 py-0.5 rounded-full font-black text-[11px] sm:text-xs shadow-lg border-2 border-white animate-bounce whitespace-nowrap ${rightFloatingFeedback.color}`}
+            >
+              {rightFloatingFeedback.text}
+            </div>
+          )}
+
+          <div className="mb-0.5 px-2.5 py-0.5 rounded-full bg-[#cc0000] text-white font-black text-[10px] sm:text-xs shadow-md border border-white/60 whitespace-nowrap">
+            {rightFell
+              ? '😱 AHHH!!'
+              : rightStep === 0
+                ? 'RED · SAFE'
+                : rightStep >= MAX_STAIR_STEPS
+                  ? '⚠️ DANGER EDGE!'
+                  : `RED · STEP ${rightStep}/${MAX_STAIR_STEPS}`}
+          </div>
+          <CuteHamsterCharacter
+            team="right"
+            character={rightCharacter}
+            isPushing={rightPushing}
+            isClimbing={sharkLungeSide === 'right'}
+            isDangerEdge={rightStep >= MAX_STAIR_STEPS - 1}
+            isStunned={rightStunned}
+            isFrozen={rightFrozen}
+            hasLost={rightFell}
+            isWinner={winner === 'Red Team'}
+          />
+        </div>
+      </div>
+
+      {/* FOREGROUND ROLLING OCEAN WAVES */}
+      <svg
+        viewBox="0 0 1200 90"
+        preserveAspectRatio="none"
+        className="absolute bottom-0 left-0 w-full h-9 sm:h-12 z-30 pointer-events-none"
+      >
+        <path
+          d={`M 0 38 Q 100 ${18 + Math.sin(tick * 3.2) * 10} 200 38 T 400 38 T 600 38 T 800 38 T 1000 38 T 1200 38 L 1200 90 L 0 90 Z`}
+          fill="rgba(14, 165, 233, 0.82)"
+        />
+        <path
+          d={`M 0 54 Q 120 ${36 + Math.cos(tick * 2.6) * 9} 240 54 T 480 54 T 720 54 T 960 54 T 1200 54 L 1200 90 L 0 90 Z`}
+          fill="rgba(2, 132, 199, 0.94)"
+        />
+      </svg>
+    </div>
+  );
+};
+
+// ============================================================================
+// DEFAULT QUESTIONS & QUIZ PARSER
+// ============================================================================
 interface Question {
   id: number | string;
   text: string;
   options: string[];
   answerIndex: number;
-  cat?: string;
 }
 
-interface Quiz {
+interface GameData {
   id: number | string;
-  title: string;
+  title?: string;
   folderId?: string;
   topic?: string;
   classLevel?: string;
@@ -55,285 +1621,20 @@ interface Quiz {
   isPublic?: boolean;
 }
 
-type ScreenState = 'editor' | 'setup' | 'game' | 'study';
-
-interface AvatarCharacter {
-  id: string;
-  name: string;
-  title: string;
-  primary: string;
-  secondary: string;
-  hatColor: string;
-  skin: string;
-  blush: string;
-  svg: string;
-}
-
-const CHARACTERS: AvatarCharacter[] = [
-  {
-    id: 'hamster',
-    name: 'Captain Hamster',
-    title: 'Temp Avatar',
-    primary: '#f59e0b',
-    secondary: '#fde68a',
-    hatColor: '#06b6d4',
-    skin: '#fef3c7',
-    blush: '#fb7185',
-    svg: `<svg viewBox="0 0 64 64" class="w-full h-full">
-      <circle cx="18" cy="20" r="7" fill="#f59e0b" stroke="#b45309" stroke-width="2"/>
-      <circle cx="18" cy="20" r="4" fill="#fde68a"/>
-      <circle cx="46" cy="20" r="7" fill="#f59e0b" stroke="#b45309" stroke-width="2"/>
-      <circle cx="46" cy="20" r="4" fill="#fde68a"/>
-      <circle cx="32" cy="37" r="18" fill="#fbbf24" stroke="#b45309" stroke-width="2"/>
-      <ellipse cx="32" cy="41" rx="13" ry="11" fill="#fffbeb"/>
-      <ellipse cx="19" cy="39" rx="4" ry="2.4" fill="#fb7185" opacity="0.7"/>
-      <ellipse cx="45" cy="39" rx="4" ry="2.4" fill="#fb7185" opacity="0.7"/>
-      <rect x="17" y="25" width="30" height="11" rx="5.5" fill="#38bdf8" opacity="0.45" stroke="#0284c7" stroke-width="2"/>
-      <circle cx="25" cy="31" r="3.4" fill="#1e1b4b"/>
-      <circle cx="23.8" cy="29.8" r="1.2" fill="#ffffff"/>
-      <circle cx="39" cy="31" r="3.4" fill="#1e1b4b"/>
-      <circle cx="37.8" cy="29.8" r="1.2" fill="#ffffff"/>
-      <ellipse cx="32" cy="37" rx="2.5" ry="1.8" fill="#fb7185"/>
-      <path d="M28 41 Q32 45 36 41" stroke="#92400e" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-      <rect x="30.5" y="42.5" width="3" height="3.2" rx="0.8" fill="#ffffff" stroke="#92400e" stroke-width="0.8"/>
-    </svg>`,
-  },
-  {
-    id: 'bunny',
-    name: 'Mochi Bunny',
-    title: 'Berry Hop',
-    primary: '#fb7185',
-    secondary: '#fda4af',
-    hatColor: '#f43f5e',
-    skin: '#fff1f2',
-    blush: '#fb7185',
-    svg: `<svg viewBox="0 0 64 64" class="w-full h-full">
-      <ellipse cx="22" cy="18" rx="6" ry="15" transform="rotate(-10 22 18)" fill="#fff1f2" stroke="#fda4af" stroke-width="2"/>
-      <ellipse cx="22" cy="19" rx="3" ry="10" transform="rotate(-10 22 19)" fill="#fecdd3"/>
-      <ellipse cx="42" cy="18" rx="6" ry="15" transform="rotate(10 42 18)" fill="#fff1f2" stroke="#fda4af" stroke-width="2"/>
-      <ellipse cx="42" cy="19" rx="3" ry="10" transform="rotate(10 42 19)" fill="#fecdd3"/>
-      <circle cx="32" cy="39" r="17" fill="#fff1f2" stroke="#fda4af" stroke-width="2"/>
-      <ellipse cx="20" cy="42" rx="3.5" ry="2" fill="#fb7185" opacity="0.65"/>
-      <ellipse cx="44" cy="42" rx="3.5" ry="2" fill="#fb7185" opacity="0.65"/>
-      <circle cx="25" cy="37" r="3.5" fill="#1e1b4b"/>
-      <circle cx="23.8" cy="35.6" r="1.3" fill="#ffffff"/>
-      <circle cx="39" cy="37" r="3.5" fill="#1e1b4b"/>
-      <circle cx="37.8" cy="35.6" r="1.3" fill="#ffffff"/>
-      <path d="M29 42 Q32 45 35 42" stroke="#be123c" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-      <circle cx="32" cy="24" r="4.5" fill="#f43f5e"/>
-      <path d="M29 20 L32 23 L35 20" stroke="#4ade80" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-    </svg>`,
-  },
-  {
-    id: 'axolotl',
-    name: 'Boba Lotl',
-    title: 'Pink Gill',
-    primary: '#ec4899',
-    secondary: '#f472b6',
-    hatColor: '#38bdf8',
-    skin: '#fce7f3',
-    blush: '#f43f5e',
-    svg: `<svg viewBox="0 0 64 64" class="w-full h-full">
-      <path d="M16 28 L6 22 M14 35 L4 34 M16 42 L7 45" stroke="#ec4899" stroke-width="4.5" stroke-linecap="round"/>
-      <path d="M48 28 L58 22 M50 35 L60 34 M48 42 L57 45" stroke="#ec4899" stroke-width="4.5" stroke-linecap="round"/>
-      <ellipse cx="32" cy="37" rx="18" ry="15" fill="#fce7f3" stroke="#f9a8d4" stroke-width="2"/>
-      <ellipse cx="20" cy="40" rx="3.5" ry="2" fill="#f43f5e" opacity="0.55"/>
-      <ellipse cx="44" cy="40" rx="3.5" ry="2" fill="#f43f5e" opacity="0.55"/>
-      <circle cx="24" cy="35" r="3.6" fill="#0f172a"/>
-      <circle cx="22.8" cy="33.5" r="1.4" fill="#ffffff"/>
-      <circle cx="40" cy="35" r="3.6" fill="#0f172a"/>
-      <circle cx="38.8" cy="33.5" r="1.4" fill="#ffffff"/>
-      <path d="M28 40 Q32 44 36 40" stroke="#be185d" stroke-width="2.3" fill="none" stroke-linecap="round"/>
-    </svg>`,
-  },
-  {
-    id: 'shiba',
-    name: 'Pudding Shiba',
-    title: 'Good Boy',
-    primary: '#f59e0b',
-    secondary: '#fef3c7',
-    hatColor: '#ef4444',
-    skin: '#fbbf24',
-    blush: '#fb7185',
-    svg: `<svg viewBox="0 0 64 64" class="w-full h-full">
-      <polygon points="15,30 12,12 28,21" fill="#f59e0b" stroke="#d97706" stroke-width="2"/>
-      <polygon points="49,30 52,12 36,21" fill="#f59e0b" stroke="#d97706" stroke-width="2"/>
-      <circle cx="32" cy="37" r="17" fill="#fbbf24" stroke="#d97706" stroke-width="2"/>
-      <path d="M17 40 Q32 28 47 40 Q44 53 32 53 Q20 53 17 40 Z" fill="#fffbeb"/>
-      <ellipse cx="25" cy="29" rx="2.5" ry="1.5" fill="#fffbeb"/>
-      <ellipse cx="39" cy="29" rx="2.5" ry="1.5" fill="#fffbeb"/>
-      <circle cx="24.5" cy="35" r="3.4" fill="#1e1b4b"/>
-      <circle cx="23.5" cy="33.8" r="1.2" fill="#ffffff"/>
-      <circle cx="39.5" cy="35" r="3.4" fill="#1e1b4b"/>
-      <circle cx="38.5" cy="33.8" r="1.2" fill="#ffffff"/>
-      <ellipse cx="32" cy="39" rx="2.8" ry="2" fill="#1e1b4b"/>
-      <path d="M28 43 Q32 46 36 43" stroke="#92400e" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-    </svg>`,
-  },
-  {
-    id: 'penguin',
-    name: 'Pip Penguin',
-    title: 'Chilly Puff',
-    primary: '#38bdf8',
-    secondary: '#fde047',
-    hatColor: '#0284c7',
-    skin: '#e0f2fe',
-    blush: '#fb7185',
-    svg: `<svg viewBox="0 0 64 64" class="w-full h-full">
-      <circle cx="32" cy="37" r="17" fill="#0284c7" stroke="#38bdf8" stroke-width="2"/>
-      <path d="M18 36 Q24 25 32 33 Q40 25 46 36 Q46 52 32 52 Q18 52 18 36 Z" fill="#ffffff"/>
-      <ellipse cx="20" cy="41" rx="3.2" ry="1.8" fill="#fb7185" opacity="0.65"/>
-      <ellipse cx="44" cy="41" rx="3.2" ry="1.8" fill="#fb7185" opacity="0.65"/>
-      <circle cx="25" cy="35" r="3.3" fill="#0f172a"/>
-      <circle cx="24" cy="33.7" r="1.2" fill="#ffffff"/>
-      <circle cx="39" cy="35" r="3.3" fill="#0f172a"/>
-      <circle cx="38" cy="33.7" r="1.2" fill="#ffffff"/>
-      <ellipse cx="32" cy="39" rx="4.5" ry="2.8" fill="#fb923c"/>
-      <ellipse cx="32" cy="19" rx="10" ry="4" fill="#fde047"/>
-    </svg>`,
-  },
-  {
-    id: 'cat',
-    name: 'Neko Star',
-    title: 'Cosmic Kitty',
-    primary: '#a855f7',
-    secondary: '#facc15',
-    hatColor: '#9333ea',
-    skin: '#f3e8ff',
-    blush: '#f472b6',
-    svg: `<svg viewBox="0 0 64 64" class="w-full h-full">
-      <polygon points="15,31 13,12 29,22" fill="#f3e8ff" stroke="#c084fc" stroke-width="2"/>
-      <polygon points="17,28 16,16 26,23" fill="#f472b6"/>
-      <polygon points="49,31 51,12 35,22" fill="#f3e8ff" stroke="#c084fc" stroke-width="2"/>
-      <polygon points="47,28 48,16 38,23" fill="#f472b6"/>
-      <circle cx="32" cy="37" r="17" fill="#f3e8ff" stroke="#c084fc" stroke-width="2"/>
-      <circle cx="32" cy="26" r="3" fill="#facc15"/>
-      <circle cx="24.5" cy="36" r="3.6" fill="#3b0764"/>
-      <circle cx="23.3" cy="34.6" r="1.3" fill="#ffffff"/>
-      <circle cx="39.5" cy="36" r="3.6" fill="#3b0764"/>
-      <circle cx="38.3" cy="34.6" r="1.3" fill="#ffffff"/>
-      <path d="M28 42 Q30 45 32 42 Q34 45 36 42" stroke="#6b21a8" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-    </svg>`,
-  },
-  {
-    id: 'dino',
-    name: 'Chomp Dino',
-    title: 'Tiny Rex',
-    primary: '#10b981',
-    secondary: '#fde047',
-    hatColor: '#facc15',
-    skin: '#a7f3d0',
-    blush: '#fb7185',
-    svg: `<svg viewBox="0 0 64 64" class="w-full h-full">
-      <polygon points="26,20 32,10 38,20" fill="#fde047" stroke="#eab308" stroke-width="1.5"/>
-      <circle cx="32" cy="37" r="17" fill="#6ee7b7" stroke="#10b981" stroke-width="2"/>
-      <ellipse cx="20" cy="41" rx="3.5" ry="2" fill="#fb7185" opacity="0.6"/>
-      <ellipse cx="44" cy="41" rx="3.5" ry="2" fill="#fb7185" opacity="0.6"/>
-      <circle cx="24.5" cy="35" r="3.5" fill="#064e3b"/>
-      <circle cx="23.3" cy="33.6" r="1.3" fill="#ffffff"/>
-      <circle cx="39.5" cy="35" r="3.5" fill="#064e3b"/>
-      <circle cx="38.3" cy="33.6" r="1.3" fill="#ffffff"/>
-      <path d="M26 42 Q32 47 38 42" stroke="#065f46" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-      <polygon points="29,43 30.5,46 32,43" fill="#ffffff"/>
-      <polygon points="33,43 34.5,46 36,43" fill="#ffffff"/>
-    </svg>`,
-  },
+const DEFAULT_QUESTIONS: Question[] = [
+  { id: 1, text: 'If I ____ the exams, I will go to England.', options: ['pass', 'passes', 'will pass', 'is passing'], answerIndex: 0 },
+  { id: 2, text: 'She ____ to school every morning.', options: ['walks', 'walk', 'walking', 'walked'], answerIndex: 0 },
+  { id: 3, text: 'They ____ playing football right now.', options: ['are', 'is', 'am', 'be'], answerIndex: 0 },
+  { id: 4, text: 'How many bones does a shark have?', options: ['Zero (cartilage)', '206', '100', '54'], answerIndex: 0 },
+  { id: 5, text: 'We ____ a movie last night.', options: ['watched', 'watch', 'watches', 'watching'], answerIndex: 0 },
+  { id: 6, text: 'Which is the largest fish in the ocean?', options: ['Whale Shark', 'Great White', 'Dolphin', 'Tuna'], answerIndex: 0 },
+  { id: 7, text: 'He has lived here ____ five years.', options: ['for', 'since', 'from', 'ago'], answerIndex: 0 },
+  { id: 8, text: 'You are happy today, ____?', options: ['aren’t you?', 'are you?', 'don’t you?', 'do you?'], answerIndex: 0 },
 ];
 
-const BUILTIN_QUESTIONS: Question[] = [
-  { id: 101, cat: 'ocean', text: 'How many bones does a shark have in its entire body?', options: ['Zero (Cartilage only)', '206 bones', '128 bones', '54 bones'], answerIndex: 0 },
-  { id: 102, cat: 'ocean', text: 'Which species is the largest fish in the ocean?', options: ['Great White Shark', 'Whale Shark', 'Basking Shark', 'Tiger Shark'], answerIndex: 1 },
-  { id: 103, cat: 'ocean', text: 'What is the deepest known trench in Earth’s oceans?', options: ['Java Trench', 'Tonga Trench', 'Mariana Trench', 'Puerto Rico Trench'], answerIndex: 2 },
-  { id: 104, cat: 'ocean', text: 'How many hearts does a giant Pacific octopus have?', options: ['1 Heart', '2 Hearts', '3 Hearts', '4 Hearts'], answerIndex: 2 },
-  { id: 105, cat: 'ocean', text: 'Which ancient prehistoric shark could grow over 50 feet long?', options: ['Helicoprion', 'Megalodon', 'Dunkleosteus', 'Mosasaurus'], answerIndex: 1 },
-  { id: 106, cat: 'ocean', text: 'What special sense lets sharks detect electrical fields of prey?', options: ['Sonar Echo', 'Ampullae of Lorenzini', 'Infrared Eyes', 'Thermal Scales'], answerIndex: 1 },
-  { id: 107, cat: 'science', text: 'Which planet in our solar system has the most moons?', options: ['Jupiter', 'Saturn', 'Uranus', 'Neptune'], answerIndex: 1 },
-  { id: 108, cat: 'science', text: 'What is the chemical symbol for Gold on the periodic table?', options: ['Gd', 'Go', 'Ag', 'Au'], answerIndex: 3 },
-  { id: 109, cat: 'science', text: 'Which gas makes up about 78% of Earth’s atmosphere?', options: ['Oxygen', 'Carbon Dioxide', 'Nitrogen', 'Argon'], answerIndex: 2 },
-  { id: 110, cat: 'science', text: 'What part of the cell is famously known as its "powerhouse"?', options: ['Nucleus', 'Ribosome', 'Mitochondria', 'Golgi Body'], answerIndex: 2 },
-  { id: 111, cat: 'gaming', text: 'In Minecraft, what material is required to mine Obsidian?', options: ['Iron Pickaxe', 'Gold Pickaxe', 'Diamond or Netherite Pickaxe', 'Stone Pickaxe'], answerIndex: 2 },
-  { id: 112, cat: 'gaming', text: 'What is the name of Mario’s dinosaur companion?', options: ['Birdo', 'Yoshi', 'Bowser', 'Toad'], answerIndex: 1 },
-  { id: 113, cat: 'math', text: 'What is 15 × 6 − 10?', options: ['70', '80', '85', '90'], answerIndex: 1 },
-  { id: 114, cat: 'math', text: 'What is the square root of 144?', options: ['11', '12', '13', '14'], answerIndex: 1 },
-  { id: 115, cat: 'geography', text: 'Which country has the most natural lakes in the world?', options: ['USA', 'Russia', 'Canada', 'Brazil'], answerIndex: 2 },
-  { id: 116, cat: 'geography', text: 'What is the capital city of Australia?', options: ['Sydney', 'Melbourne', 'Canberra', 'Brisbane'], answerIndex: 2 },
-];
-
-function parsePastedQuiz(rawText: string): Partial<Question>[] {
-  if (!rawText || !rawText.trim()) return [];
-  const items: Partial<Question>[] = [];
-
-  if (rawText.includes('\t')) {
-    const lines = rawText.split(/\r?\n/).filter((line) => line.trim());
-    lines.forEach((line) => {
-      const parts = line.split('\t').map((p) => p.trim());
-      if (parts.length > 0 && parts[0]) {
-        const opts = [parts[1] || '', parts[2] || '', parts[3] || '', parts[4] || ''].filter(Boolean);
-        while (opts.length < 4) opts.push('');
-        let ansIdx = 0;
-        if (parts[5]) {
-          const ansUpper = parts[5].toUpperCase().trim();
-          if (ansUpper === 'B' || ansUpper === '2') ansIdx = 1;
-          else if (ansUpper === 'C' || ansUpper === '3') ansIdx = 2;
-          else if (ansUpper === 'D' || ansUpper === '4') ansIdx = 3;
-        }
-        items.push({
-          text: parts[0],
-          options: opts,
-          answerIndex: ansIdx,
-        });
-      }
-    });
-    if (items.length > 0) return items;
-  }
-
-  const blocks = rawText.split(/\n\s*\n/).filter((b) => b.trim());
-  for (const block of blocks) {
-    const lines = block
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) continue;
-
-    const qText = lines[0].replace(/^\d+[\.\)\-]\s*/, '').trim();
-    const opts: string[] = [];
-    let ansIdx = 0;
-
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      const ansMatch = line.match(/^(?:answer|correct|ans)\s*[:\-]?\s*([A-Da-d1-4])/i);
-      if (ansMatch) {
-        const val = ansMatch[1].toUpperCase();
-        if (val === 'A' || val === '1') ansIdx = 0;
-        else if (val === 'B' || val === '2') ansIdx = 1;
-        else if (val === 'C' || val === '3') ansIdx = 2;
-        else if (val === 'D' || val === '4') ansIdx = 3;
-        continue;
-      }
-      const isMarkedCorrect = line.startsWith('*') || line.endsWith('*') || line.includes('(correct)');
-      const cleanOpt = line
-        .replace(/^\*/, '')
-        .replace(/\*$/, '')
-        .replace(/\(correct\)/gi, '')
-        .replace(/^[A-Fa-f][\.\)\-]\s*/, '')
-        .trim();
-      if (cleanOpt) {
-        if (isMarkedCorrect) ansIdx = opts.length;
-        opts.push(cleanOpt);
-      }
-    }
-
-    while (opts.length < 4) opts.push('');
-    items.push({
-      text: qText,
-      options: opts.slice(0, 6),
-      answerIndex: Math.min(ansIdx, Math.max(0, opts.length - 1)),
-    });
-  }
-
-  return items;
-}
-
+// ============================================================================
+// MAIN SHARK ATTACK VIEW
+// ============================================================================
 export function SharkAttack({
   onViewChange,
   initialGame,
@@ -343,64 +1644,48 @@ export function SharkAttack({
 }) {
   const { user } = useAuth();
 
-  const normalizeLoadedQuestions = (rawList: any[]): Question[] => {
-    if (!Array.isArray(rawList) || rawList.length === 0) return [];
-    return rawList
-      .map((q: any, idx: number) => {
-        const text = (q.text || q.question || q.q || '').toString().trim();
-        const rawOpts = Array.isArray(q.options)
-          ? q.options
-          : Array.isArray(q.o)
-          ? q.o
-          : Array.isArray(q.answers)
-          ? q.answers.map((a: any) => (typeof a === 'string' ? a : a?.text || ''))
-          : [];
-        const opts = rawOpts.map((o: any) => (typeof o === 'string' ? o : o?.text || '')).slice(0, 6);
-        while (opts.length < 4) opts.push(`Option ${opts.length + 1}`);
-        const ansIdx =
-          typeof q.answerIndex === 'number'
-            ? q.answerIndex
-            : typeof q.correct === 'number'
-            ? q.correct
-            : typeof q.correctOptionIndex === 'number'
-            ? q.correctOptionIndex
-            : typeof q.a === 'number'
-            ? q.a
-            : 0;
-        return {
-          id: q.id || idx + 1,
-          text,
-          options: opts,
-          answerIndex: Math.max(0, Math.min(opts.length - 1, ansIdx)),
-          cat: q.cat || 'Custom Quiz',
-        };
-      })
-      .filter((q) => q.text.length > 0);
-  };
-
-  const initialLoadedQuestions = initialGame
-    ? normalizeLoadedQuestions(initialGame.customQuestions || initialGame.questions || [])
-    : [];
-  const hasLoadedQuestions = initialLoadedQuestions.length > 0;
-
-  const [screen, setScreen] = useState<ScreenState>(
-    initialGame && !initialGame.editMode && hasLoadedQuestions ? 'setup' : 'editor'
+  const hasLoadedQuestions = Boolean(
+    initialGame &&
+      ((initialGame.customQuestions && initialGame.customQuestions.length > 0) ||
+        (initialGame.questions && initialGame.questions.length > 0))
   );
-  const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
-  const [showModeModal, setShowModeModal] = useState(false);
 
-  const [activeQuiz, setActiveQuiz] = useState<Quiz>(() => {
+  const [screen, setScreen] = useState<'menu' | 'playing' | 'end' | 'setup' | 'study'>(
+    initialGame && !initialGame.editMode && hasLoadedQuestions ? 'menu' : 'setup'
+  );
+  const [showModeModal, setShowModeModal] = useState(false);
+  const [showCharacterModal, setShowCharacterModal] = useState(false);
+  const [leftCharacter, setLeftCharacter] = useState<HamsterCharacterType>('mochi');
+  const [rightCharacter, setRightCharacter] = useState<HamsterCharacterType>('ichigo');
+  const [fontSizeScale, setFontSizeScale] = useState<'small' | 'medium' | 'large'>('medium');
+  const [showFontSizePopup, setShowFontSizePopup] = useState(false);
+
+  const [studyIndex, setStudyIndex] = useState(0);
+  const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
+  const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
+
+  const sanitizeQuestionsList = (rawList: Question[]): Question[] =>
+    rawList.map((q) => ({
+      ...q,
+      options: Array.isArray(q.options) ? q.options.map((opt) => stripOptionPrefix(opt)) : [],
+    }));
+
+  const [activeGame, setActiveGame] = useState<GameData | null>(() => {
     if (initialGame) {
+      const qList =
+        initialGame.customQuestions && initialGame.customQuestions.length > 0
+          ? initialGame.customQuestions
+          : initialGame.questions && initialGame.questions.length > 0
+            ? initialGame.questions
+            : DEFAULT_QUESTIONS;
       return {
         id: initialGame.id || Date.now(),
-        title: initialGame.name || initialGame.title || initialGame.topic || 'Shark Attack Quiz',
+        title: initialGame.name || initialGame.title || initialGame.topic || 'Shark Attack',
         folderId: initialGame.folderId || '',
         topic: initialGame.topic || initialGame.name || '',
         classLevel: initialGame.className || initialGame.classLevel || '',
-        questions:
-          initialLoadedQuestions.length > 0
-            ? initialLoadedQuestions
-            : [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }],
+        questions: sanitizeQuestionsList(qList),
+        isPublic: initialGame.isPublic || false,
       };
     }
     return {
@@ -414,2425 +1699,1699 @@ export function SharkAttack({
   });
 
   useEffect(() => {
+    if (initialGame) {
+      const qList =
+        initialGame.customQuestions && initialGame.customQuestions.length > 0
+          ? initialGame.customQuestions
+          : initialGame.questions && initialGame.questions.length > 0
+            ? initialGame.questions
+            : DEFAULT_QUESTIONS;
+
+      setActiveGame({
+        id: initialGame.id || Date.now(),
+        title: initialGame.name || initialGame.title || initialGame.topic || 'Shark Attack',
+        folderId: initialGame.folderId || '',
+        topic: initialGame.topic || initialGame.name || '',
+        classLevel: initialGame.className || initialGame.classLevel || '',
+        questions: sanitizeQuestionsList(qList),
+        isPublic: initialGame.isPublic || false,
+      });
+
+      if (!initialGame.editMode && hasLoadedQuestions) {
+        setScreen('menu');
+      } else {
+        setScreen('setup');
+      }
+    }
+  }, [initialGame]);
+
+  useEffect(() => {
     if (user) {
       const fetchFolders = async () => {
         try {
           const qFolders = query(collection(db, 'gameFolders'), where('userId', '==', user.uid));
           const snap = await getDocs(qFolders);
-          const list: { id: string; name: string }[] = [];
-          snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
-          setFolders(list);
-        } catch (e) {
-          console.warn('Folders fetch error:', e);
+          const fData: { id: string; name: string }[] = [];
+          snap.forEach((d) => fData.push({ id: d.id, name: d.data().name }));
+          setFolders(fData);
+        } catch (err) {
+          console.error('Error loading folders', err);
         }
       };
       fetchFolders();
     }
   }, [user]);
 
-  useEffect(() => {
-    if (initialGame) {
-      const loaded = normalizeLoadedQuestions(initialGame.customQuestions || initialGame.questions || []);
-      setActiveQuiz({
-        id: initialGame.id || Date.now(),
-        title: initialGame.name || initialGame.title || initialGame.topic || 'Shark Attack Quiz',
-        folderId: initialGame.folderId || '',
-        topic: initialGame.topic || initialGame.name || '',
-        classLevel: initialGame.className || initialGame.classLevel || '',
-        questions:
-          loaded.length > 0
-            ? loaded
-            : [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }],
-      });
-      if (!initialGame.editMode && loaded.length > 0) {
-        setScreen('setup');
-      } else {
-        setScreen('editor');
-      }
-    }
-  }, [initialGame]);
-
-  const saveQuiz = async (quizToSave: Quiz) => {
-    setActiveQuiz(quizToSave);
+  const saveGame = async (gameData: GameData) => {
+    const cleanedGame: GameData = {
+      ...gameData,
+      questions: sanitizeQuestionsList(gameData.questions),
+    };
+    setActiveGame(cleanedGame);
     if (!user) {
-      setScreen('setup');
+      setScreen('menu');
       return;
     }
 
     onViewChange('games');
 
     try {
-      const payload = JSON.parse(
+      const gameToSave = JSON.parse(
         JSON.stringify({
-          name: quizToSave.topic || quizToSave.title || 'Shark Attack Game',
-          folderId: quizToSave.folderId || '',
-          topic: quizToSave.topic || '',
-          className: quizToSave.classLevel || '',
+          name: cleanedGame.title || cleanedGame.topic || 'Shark Attack',
+          folderId: cleanedGame.folderId || '',
+          topic: cleanedGame.topic || '',
+          className: cleanedGame.classLevel || '',
           gameType: 'shark-attack',
           originalGameType: 'shark-attack',
-          customQuestions: quizToSave.questions,
+          customQuestions: cleanedGame.questions,
+          isPublic: cleanedGame.isPublic ?? false,
           userId: user.uid,
           updatedAt: new Date().toISOString(),
-          isPublic: quizToSave.isPublic ?? false,
         })
       );
 
       if (initialGame?.id && typeof initialGame.id === 'string') {
-        await updateDoc(doc(db, 'mysteryBoxGames', initialGame.id), payload);
+        await updateDoc(doc(db, 'mysteryBoxGames', initialGame.id), gameToSave);
       } else {
         await addDoc(collection(db, 'mysteryBoxGames'), {
-          ...payload,
+          ...gameToSave,
           createdAt: new Date().toISOString(),
         });
       }
-    } catch (err) {
-      console.error('Error saving Shark Attack game:', err);
+    } catch (e) {
+      console.error('Error saving game', e);
     }
   };
 
-  // --- Sound Engine ---
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const soundEnabledRef = useRef(true);
+  const questionsDB =
+    activeGame?.questions && activeGame.questions.filter((q) => q.text.trim()).length > 0
+      ? activeGame.questions.filter((q) => q.text.trim())
+      : DEFAULT_QUESTIONS;
+
+  const [questionMode, setQuestionMode] = useState<'single' | 'split'>('single');
+  const [showStartBattleModal, setShowStartBattleModal] = useState(false);
+  const questionModeRef = useRef<'single' | 'split'>('single');
+  const leftQuestionsRef = useRef<any[]>([]);
+  const rightQuestionsRef = useRef<any[]>([]);
+
   useEffect(() => {
-    soundEnabledRef.current = soundEnabled;
-  }, [soundEnabled]);
+    questionModeRef.current = questionMode;
+  }, [questionMode]);
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const playTone = (freq: number, type: OscillatorType, duration: number, vol = 0.15, slideTo?: number) => {
-    if (!soundEnabledRef.current) return;
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, now);
-      if (slideTo) {
-        osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
-      }
-      gain.gain.setValueAtTime(vol, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + duration);
-    } catch (e) {}
-  };
-
-  const sfx = {
-    lockIn: () => playTone(520, 'sine', 0.1, 0.12, 740),
-    correct: () => {
-      playTone(523.25, 'triangle', 0.12, 0.18);
-      setTimeout(() => playTone(659.25, 'triangle', 0.12, 0.18), 90);
-      setTimeout(() => playTone(783.99, 'triangle', 0.25, 0.2), 180);
-    },
-    stepUpDanger: () => {
-      playTone(190, 'sawtooth', 0.22, 0.2, 95);
-      setTimeout(() => playTone(145, 'sawtooth', 0.28, 0.22, 70), 180);
-    },
-    sharkChomp: () => {
-      playTone(120, 'sawtooth', 0.35, 0.3, 42);
-      setTimeout(() => playTone(260, 'square', 0.25, 0.25, 55), 150);
-      setTimeout(() => playTone(90, 'sawtooth', 0.45, 0.35, 35), 300);
-    },
-    ropeSafe: () => playTone(400, 'sine', 0.15, 0.18, 800),
-  };
-
-  // --- Match Setup & Live Game State ---
-  const [p1Name, setP1Name] = useState('Player 1');
-  const [p2Name, setP2Name] = useState('Player 2');
-  const [p1CharIndex, setP1CharIndex] = useState(0); // Default Captain Hamster temp avatar
-  const [p2CharIndex, setP2CharIndex] = useState(1); // Default Mochi Bunny temp avatar
-  const [p2Mode, setP2Mode] = useState<'human' | 'ai_normal' | 'ai_hard'>('human');
-  const [ruleMode, setRuleMode] = useState<'classic' | 'speed'>('classic');
-  const [maxSteps, setMaxSteps] = useState<number>(5);
-  const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('custom');
-
-  // Font size scaling (Small / Medium / Large popup)
-  const [fontScale, setFontScale] = useState<'small' | 'medium' | 'large'>('medium');
-  const [showFontMenu, setShowFontMenu] = useState(false);
-
-  // Study mode state
-  const [studyIndex, setStudyIndex] = useState(0);
-  const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
-
-  // React state mirrors for UI HUD
-  const [round, setRound] = useState(1);
-  const [phase, setPhase] = useState<'setup' | 'question' | 'reveal' | 'animating' | 'gameover'>('setup');
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
-  const [timerLeft, setTimerLeft] = useState(15);
-  const [arenaBannerText, setArenaBannerText] = useState("DON'T CLIMB TO THE TOP!");
-  const [shakeScreen, setShakeScreen] = useState(false);
-
-  const [p1Hud, setP1Hud] = useState({
-    step: 0,
-    selectedOption: null as number | null,
-    lockTime: null as number | null,
-    streak: 0,
-    hasRope: false,
-  });
-  const [p2Hud, setP2Hud] = useState({
-    step: 0,
-    selectedOption: null as number | null,
-    lockTime: null as number | null,
-    streak: 0,
-    hasRope: false,
-  });
-
-  const [gameOverInfo, setGameOverInfo] = useState<{
-    p1Fell: boolean;
-    p2Fell: boolean;
-    rounds: number;
-    accuracy: number;
-  } | null>(null);
-
-  // Mutable ref state for 60fps Canvas & Timer loop
-  const engineRef = useRef({
-    round: 1,
-    maxSteps: 5,
-    ruleMode: 'classic' as 'classic' | 'speed',
-    phase: 'setup' as 'setup' | 'question' | 'reveal' | 'animating' | 'gameover',
-    timerMax: 15,
-    timerLeft: 15,
-    lastTick: performance.now(),
-    questionPool: [] as Question[],
-    currentQuestion: null as Question | null,
-    totalQuestionsAsked: 0,
-    totalCorrectAnswers: 0,
-    players: {
-      1: {
-        name: 'Player 1',
-        charIndex: 0,
-        step: 0,
-        visualStep: 0,
-        selectedOption: null as number | null,
-        lockTime: null as number | null,
-        streak: 0,
-        hasRope: false,
-        falling: false,
-        fallProgress: 0,
-        emotion: 'idle' as 'idle' | 'happy' | 'scared' | 'eaten',
-      },
-      2: {
-        name: 'Player 2',
-        charIndex: 1,
-        mode: 'human' as 'human' | 'ai_normal' | 'ai_hard',
-        step: 0,
-        visualStep: 0,
-        selectedOption: null as number | null,
-        lockTime: null as number | null,
-        streak: 0,
-        hasRope: false,
-        falling: false,
-        fallProgress: 0,
-        emotion: 'idle' as 'idle' | 'happy' | 'scared' | 'eaten',
-      },
-    },
-    shark: {
-      mouthAngle: 0.35,
-      targetMouthAngle: 0.35,
-      lungeY: 0,
-      targetLungeY: 0,
-      lookDir: 0,
-    },
-    particles: [] as Array<{
-      normX: number;
-      normY: number;
-      vx: number;
-      vy: number;
-      r: number;
-      color: string;
-      alpha: number;
-    }>,
-    floatingTexts: [] as Array<{
-      normX: number;
-      normY: number;
-      text: string;
-      color: string;
-      alpha: number;
-      vy: number;
-    }>,
-  });
-
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const aiTimerRef = useRef<any>(null);
-  const roundTimeoutRef = useRef<any>(null);
-
-  const syncHudFromEngine = () => {
-    const eng = engineRef.current;
-    setRound(eng.round);
-    setPhase(eng.phase);
-    setCurrentQuestion(eng.currentQuestion);
-    setP1Hud({
-      step: eng.players[1].step,
-      selectedOption: eng.players[1].selectedOption,
-      lockTime: eng.players[1].lockTime,
-      streak: eng.players[1].streak,
-      hasRope: eng.players[1].hasRope,
-    });
-    setP2Hud({
-      step: eng.players[2].step,
-      selectedOption: eng.players[2].selectedOption,
-      lockTime: eng.players[2].lockTime,
-      streak: eng.players[2].streak,
-      hasRope: eng.players[2].hasRope,
-    });
-  };
-
-  const spawnFloatingText = (normX: number, normY: number, text: string, color: string) => {
-    engineRef.current.floatingTexts.push({
-      normX,
-      normY,
-      text,
-      color,
-      alpha: 1,
-      vy: -0.0008,
-    });
-  };
-
-  const spawnSplashParticles = (normX: number, normY: number, count = 24) => {
-    for (let i = 0; i < count; i++) {
-      const angle = -Math.PI * 0.15 - Math.random() * Math.PI * 0.7;
-      const speed = 2 + Math.random() * 6;
-      engineRef.current.particles.push({
-        normX,
-        normY,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 2,
-        r: 3 + Math.random() * 5,
-        color: Math.random() > 0.3 ? '#38bdf8' : '#e0f2fe',
-        alpha: 1,
-      });
+  const generateQuestionObj = (q: any) => {
+    if (!q) {
+      return { text: 'Question', options: ['Option A', 'Option B'], correctIndex: 0 };
     }
+    const rawOptions = Array.isArray(q.options)
+      ? q.options.map((o: any) => (typeof o === 'string' ? stripOptionPrefix(o) : ''))
+      : [];
+
+    let validOptions = rawOptions.filter((o: string) => o !== '');
+    const correctOpt = rawOptions[q.answerIndex] || validOptions[0] || 'Correct Answer';
+
+    if (!validOptions.includes(correctOpt)) {
+      validOptions.unshift(correctOpt);
+    }
+    if (validOptions.length < 2) {
+      validOptions.push('Option B');
+    } else if (validOptions.length > 4) {
+      const wrongOpts = validOptions
+        .filter((o: string) => o !== correctOpt)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3);
+      validOptions = [correctOpt, ...wrongOpts];
+    }
+
+    const shuffledOpts = [...validOptions].sort(() => Math.random() - 0.5);
+    return {
+      text: q.text || 'Question',
+      options: shuffledOpts,
+      correctIndex: Math.max(0, shuffledOpts.indexOf(correctOpt)),
+    };
   };
 
-  const buildQuestionPool = () => {
-    const validCustom = activeQuiz.questions.filter(
-      (q) => q.text.trim() && q.options.filter((o) => o.trim()).length >= 2
-    );
+  const generateQuestion = (index: number) => {
+    const q = questionsDB[index % questionsDB.length];
+    return generateQuestionObj(q);
+  };
 
-    let source: Question[] = [];
-    if (selectedTopicFilter === 'custom' && validCustom.length > 0) {
-      source = validCustom.map((q) => {
-        const opts = [...q.options];
-        while (opts.length < 4) opts.push('—');
-        return {
-          ...q,
-          options: opts.slice(0, 4),
-          answerIndex: Math.min(3, Math.max(0, q.answerIndex)),
-          cat: activeQuiz.topic || activeQuiz.title || 'Custom Quiz',
-        };
-      });
-    } else if (selectedTopicFilter === 'all' || validCustom.length === 0) {
-      source = [...BUILTIN_QUESTIONS];
+  const generateQuestionFromList = (list: any[], index: number) => {
+    if (!list || list.length === 0) return generateQuestion(index);
+    const q = list[index % list.length];
+    return generateQuestionObj(q);
+  };
+
+  const [leftTeam, setLeftTeam] = useState<any>({
+    score: 0,
+    wins: 0,
+    step: 0,
+    qIndex: 0,
+    q: null,
+    stunned: false,
+    pushing: false,
+    mistakes: 0,
+    frozen: false,
+    wrongOnCurrentQ: false,
+  });
+  const [rightTeam, setRightTeam] = useState<any>({
+    score: 0,
+    wins: 0,
+    step: 0,
+    qIndex: 0,
+    q: null,
+    stunned: false,
+    pushing: false,
+    mistakes: 0,
+    frozen: false,
+    wrongOnCurrentQ: false,
+  });
+
+  const [leftFeedback, setLeftFeedback] = useState<{ text: string; color: string; id: number } | null>(null);
+  const [rightFeedback, setRightFeedback] = useState<{ text: string; color: string; id: number } | null>(null);
+
+  const showTeamFeedback = useCallback((team: 'left' | 'right', text: string, color: string) => {
+    const payload = { text, color, id: Date.now() + Math.random() };
+    if (team === 'left') {
+      setLeftFeedback(payload);
+      setTimeout(() => {
+        setLeftFeedback((prev) => (prev?.id === payload.id ? null : prev));
+      }, 1250);
     } else {
-      source = BUILTIN_QUESTIONS.filter((q) => q.cat === selectedTopicFilter);
-      if (source.length === 0) source = [...BUILTIN_QUESTIONS];
+      setRightFeedback(payload);
+      setTimeout(() => {
+        setRightFeedback((prev) => (prev?.id === payload.id ? null : prev));
+      }, 1250);
+    }
+  }, []);
+
+  const [winner, setWinner] = useState<string | null>(null);
+  const [fallingPhase, setFallingPhase] = useState<'none' | 'diving' | 'chomped'>('none');
+  const [activeKey, setActiveKey] = useState<{ team: 'left' | 'right'; index: number } | null>(null);
+  const [isRumbling, setIsRumbling] = useState(false);
+  const [sharkLungeSide, setSharkLungeSide] = useState<'left' | 'right' | 'center' | null>(null);
+  const [soundMuted, setSoundMuted] = useState(false);
+
+  useEffect(() => {
+    soundMutedGlobal = soundMuted;
+  }, [soundMuted]);
+
+  const matchOverRef = useRef(false);
+  const lastTouchTimeRef = useRef<number>(0);
+  const stateRef = useRef({ screen, leftTeam, rightTeam });
+  useEffect(() => {
+    stateRef.current = { screen, leftTeam, rightTeam };
+  }, [screen, leftTeam, rightTeam]);
+
+  const startGame = (continueMatch = false, chosenMode?: 'single' | 'split') => {
+    const activeMode = chosenMode || questionMode;
+    if (chosenMode) {
+      setQuestionMode(chosenMode);
+      questionModeRef.current = chosenMode;
     }
 
-    for (let i = source.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [source[i], source[j]] = [source[j], source[i]];
-    }
-    engineRef.current.questionPool = source;
+    const shuffledLeft = [...questionsDB].sort(() => Math.random() - 0.5);
+    const shuffledRight = [...questionsDB].sort(() => Math.random() - 0.5);
+    leftQuestionsRef.current = shuffledLeft;
+    rightQuestionsRef.current = shuffledRight;
+
+    const initialSingleQ = generateQuestion(continueMatch ? leftTeam.qIndex : 0);
+
+    setLeftTeam((prev: any) => {
+      const nextIndex = continueMatch ? prev.qIndex : 0;
+      return {
+        ...prev,
+        score: 0,
+        step: 0,
+        qIndex: nextIndex,
+        q: activeMode === 'split' ? generateQuestionFromList(shuffledLeft, nextIndex) : initialSingleQ,
+        stunned: false,
+        pushing: false,
+        mistakes: 0,
+        frozen: false,
+        wrongOnCurrentQ: false,
+      };
+    });
+    setRightTeam((prev: any) => {
+      const nextIndex = continueMatch ? prev.qIndex : 0;
+      return {
+        ...prev,
+        score: 0,
+        step: 0,
+        qIndex: nextIndex,
+        q: activeMode === 'split' ? generateQuestionFromList(shuffledRight, nextIndex) : initialSingleQ,
+        stunned: false,
+        pushing: false,
+        mistakes: 0,
+        frozen: false,
+        wrongOnCurrentQ: false,
+      };
+    });
+
+    setLeftFeedback(null);
+    setRightFeedback(null);
+    setWinner(null);
+    setFallingPhase('none');
+    setSharkLungeSide(null);
+    matchOverRef.current = false;
+    setShowStartBattleModal(false);
+    setScreen('playing');
+    playSFX('splash');
+    setTimeout(() => playSFX('clack'), 200);
   };
 
-  const useRopePowerup = (pid: 1 | 2) => {
-    const eng = engineRef.current;
-    const p = eng.players[pid];
-    if (!p.hasRope || p.step <= 0 || eng.phase !== 'question') return;
-    p.hasRope = false;
-    p.step = Math.max(0, p.step - 1);
-    sfx.ropeSafe();
-    spawnFloatingText(pid === 1 ? 0.22 : 0.78, 0.35, '⚓ ROPE SAVED -1 STEP!', '#34d399');
-    syncHudFromEngine();
-  };
-
-  const triggerFallIntoShark = (p1Fell: boolean, p2Fell: boolean) => {
-    const eng = engineRef.current;
-    sfx.sharkChomp();
-    eng.shark.targetLungeY = -48;
-    eng.shark.targetMouthAngle = 0.95;
-
-    if (p1Fell) {
-      eng.players[1].falling = true;
-      eng.players[1].emotion = 'eaten';
+  const triggerSharkVictory = useCallback((winningTeam: 'Blue Team' | 'Red Team') => {
+    if (matchOverRef.current) return;
+    matchOverRef.current = true;
+    setWinner(winningTeam);
+    setFallingPhase('diving');
+    if (winningTeam === 'Blue Team') {
+      setLeftTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
+    } else {
+      setRightTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
     }
-    if (p2Fell) {
-      eng.players[2].falling = true;
-      eng.players[2].emotion = 'eaten';
-    }
-
-    setArenaBannerText('🦈 CHOMP!! EATEN BY THE MEGALODON!');
-    syncHudFromEngine();
-
+    // Stage 1: Hamster plunges off the top edge with cartoon falling whistle
+    playSFX('fallWhistle');
+    // Stage 2: Hamster lands in shark jaws -> CHOMP + big splash!
     setTimeout(() => {
-      eng.shark.targetMouthAngle = 0.05;
-      eng.shark.targetLungeY = 10;
-      sfx.sharkChomp();
-      spawnSplashParticles(0.5, 0.78, 35);
-    }, 700);
-
+      setFallingPhase('chomped');
+      setIsRumbling(true);
+      playSFX('chomp');
+      setTimeout(() => setIsRumbling(false), 500);
+    }, 520);
+    // Stage 3: Championship fanfare
     setTimeout(() => {
-      eng.phase = 'gameover';
-      const acc =
-        eng.totalQuestionsAsked > 0
-          ? Math.round((eng.totalCorrectAnswers / eng.totalQuestionsAsked) * 100)
-          : 100;
-      setGameOverInfo({
-        p1Fell,
-        p2Fell,
-        rounds: eng.round,
-        accuracy: acc,
-      });
-      syncHudFromEngine();
-    }, 2100);
-  };
+      playSFX('win');
+    }, 950);
+    // Transition to celebration screen
+    setTimeout(() => {
+      setScreen('end');
+    }, 2600);
+  }, []);
 
-  const resolveQuestionRound = () => {
-    const eng = engineRef.current;
-    if (eng.phase !== 'question' || !eng.currentQuestion) return;
-    eng.phase = 'reveal';
-    eng.totalQuestionsAsked += 2;
+  const handleAnswer = useCallback(
+    (teamStr: 'left' | 'right', selectedIndex: number) => {
+      const state = stateRef.current;
+      if (state.screen !== 'playing' || matchOverRef.current) return;
 
-    const correctIdx = eng.currentQuestion.answerIndex;
-    const p1 = eng.players[1];
-    const p2 = eng.players[2];
-    const p1Right = p1.selectedOption === correctIdx;
-    const p2Right = p2.selectedOption === correctIdx;
+      const isLeft = teamStr === 'left';
+      const teamState = isLeft ? state.leftTeam : state.rightTeam;
+      const opponentState = isLeft ? state.rightTeam : state.leftTeam;
+      const setTeamState = isLeft ? setLeftTeam : setRightTeam;
+      const setOpponentState = isLeft ? setRightTeam : setLeftTeam;
+      const winnerSide: 'left' | 'right' = isLeft ? 'left' : 'right';
+      const loserSide: 'left' | 'right' = isLeft ? 'right' : 'left';
 
-    if (p1Right) eng.totalCorrectAnswers++;
-    if (p2Right) eng.totalCorrectAnswers++;
+      if (teamState.stunned || teamState.pushing || teamState.frozen) return;
 
-    let p1Climbs = !p1Right;
-    let p2Climbs = !p2Right;
-    let speedPushMsg = '';
+      if (selectedIndex === teamState.q?.correctIndex) {
+        // ====================================================================
+        // TEAM ANSWERED CORRECTLY FIRST!
+        // 1. Winner steps down 1 step toward Safe Zone (or stays on Safe Zone)
+        // 2. Loser climbs UP 1 step toward the Shark until they fall off the
+        //    top edge and get eaten by the Shark!
+        // ====================================================================
+        const winnerStepBefore = teamState.step;
+        const nextWinnerStep = winnerStepBefore > 0 ? winnerStepBefore - 1 : 0;
 
-    if (eng.ruleMode === 'speed' && p1Right && p2Right && p1.lockTime !== null && p2.lockTime !== null) {
-      if (p1.lockTime > p2.lockTime + 0.25) {
-        p1Climbs = true;
-        speedPushMsg = `⚡ ${p2.name} was faster! ${p1.name} climbs!`;
-      } else if (p2.lockTime > p1.lockTime + 0.25) {
-        p2Climbs = true;
-        speedPushMsg = `⚡ ${p1.name} was faster! ${p2.name} climbs!`;
-      }
-    }
+        playSFX('roundWin');
+        if (winnerStepBefore > 0) {
+          showTeamFeedback(winnerSide, '✨ -1 STEP (SAFE!)', 'bg-emerald-500 text-white');
+        } else {
+          showTeamFeedback(winnerSide, '✨ CORRECT! SAFE!', 'bg-emerald-500 text-white');
+        }
 
-    [
-      { pid: 1 as const, right: p1Right, climbs: p1Climbs },
-      { pid: 2 as const, right: p2Right, climbs: p2Climbs },
-    ].forEach(({ pid, right, climbs }) => {
-      const p = eng.players[pid];
-      if (right && !climbs) {
-        p.streak++;
-        p.emotion = 'happy';
-        if (p.streak >= 3) {
-          p.streak = 0;
-          if (p.step > 0 && !p.hasRope) {
-            p.hasRope = true;
-            spawnFloatingText(pid === 1 ? 0.2 : 0.8, 0.28, '⚓ EARNED ROPE LIFELINE!', '#38bdf8');
-          }
+        const loserStepBefore = opponentState.step;
+        const nextLoserStep = loserStepBefore + 1;
+
+        if (nextLoserStep <= MAX_STAIR_STEPS) {
+          playSFX('stepDanger');
+        }
+        showTeamFeedback(
+          loserSide,
+          nextLoserStep > MAX_STAIR_STEPS ? '🦈 EATEN BY SHARK!' : '⬆️ +1 STEP!',
+          'bg-red-600 text-white'
+        );
+
+        setTeamState((prev: any) => ({
+          ...prev,
+          pushing: true,
+          score: prev.score + 1,
+          step: nextWinnerStep,
+          mistakes: 0,
+          wrongOnCurrentQ: false,
+        }));
+
+        setOpponentState((prev: any) => ({
+          ...prev,
+          step: nextLoserStep,
+          wrongOnCurrentQ: false,
+        }));
+
+        setIsRumbling(true);
+        setSharkLungeSide(loserSide);
+        setTimeout(() => {
+          setIsRumbling(false);
+          setSharkLungeSide(null);
+        }, 420);
+
+        if (nextLoserStep > MAX_STAIR_STEPS) {
+          triggerSharkVictory(isLeft ? 'Blue Team' : 'Red Team');
+          return;
+        }
+
+        if (questionModeRef.current === 'split') {
+          setTimeout(() => {
+            const nextIndex = teamState.qIndex + 1;
+            const qList = isLeft ? leftQuestionsRef.current : rightQuestionsRef.current;
+            setTeamState((prev: any) => ({
+              ...prev,
+              pushing: false,
+              qIndex: nextIndex,
+              q: generateQuestionFromList(qList, nextIndex),
+              wrongOnCurrentQ: false,
+            }));
+          }, 340);
+        } else {
+          setTimeout(() => {
+            const nextIndex = teamState.qIndex + 1;
+            const newQ = generateQuestion(nextIndex);
+            setLeftTeam((prev: any) => ({
+              ...prev,
+              pushing: false,
+              stunned: false,
+              qIndex: nextIndex,
+              q: newQ,
+              wrongOnCurrentQ: false,
+            }));
+            setRightTeam((prev: any) => ({
+              ...prev,
+              pushing: false,
+              stunned: false,
+              qIndex: nextIndex,
+              q: newQ,
+              wrongOnCurrentQ: false,
+            }));
+          }, 380);
         }
       } else {
-        p.streak = 0;
-        p.emotion = 'scared';
+        // ====================================================================
+        // TEAM ANSWERED INCORRECTLY:
+        // Neither team steps up on a wrong answer!
+        // ====================================================================
+        const bothWrongInSingleMode =
+          questionModeRef.current === 'single' && opponentState.wrongOnCurrentQ;
+
+        showTeamFeedback(winnerSide, '✕ WRONG!', 'bg-slate-800 text-rose-300');
+        playSFX('stun');
+
+        if (bothWrongInSingleMode) {
+          setTeamState((prev: any) => ({ ...prev, stunned: true, wrongOnCurrentQ: true }));
+          setTimeout(() => {
+            if (matchOverRef.current) return;
+            const nextIndex = teamState.qIndex + 1;
+            const newQ = generateQuestion(nextIndex);
+            setLeftTeam((prev: any) => ({
+              ...prev,
+              stunned: false,
+              frozen: false,
+              mistakes: 0,
+              qIndex: nextIndex,
+              q: newQ,
+              wrongOnCurrentQ: false,
+            }));
+            setRightTeam((prev: any) => ({
+              ...prev,
+              stunned: false,
+              frozen: false,
+              mistakes: 0,
+              qIndex: nextIndex,
+              q: newQ,
+              wrongOnCurrentQ: false,
+            }));
+          }, 650);
+          return;
+        }
+
+        setTeamState((prev: any) => {
+          const nextMistakes = prev.mistakes + 1;
+          if (nextMistakes >= 2) {
+            playSFX('freeze');
+            setTimeout(
+              () => setTeamState((p: any) => ({ ...p, frozen: false, mistakes: 0 })),
+              2200
+            );
+            return { ...prev, frozen: true, mistakes: 0, wrongOnCurrentQ: true };
+          }
+          setTimeout(() => setTeamState((p: any) => ({ ...p, stunned: false })), 900);
+          return { ...prev, stunned: true, mistakes: nextMistakes, wrongOnCurrentQ: true };
+        });
       }
-    });
+    },
+    [showTeamFeedback, triggerSharkVictory]
+  );
 
-    if (p1Climbs || p2Climbs) {
-      sfx.stepUpDanger();
-      setShakeScreen(true);
-      setTimeout(() => setShakeScreen(false), 500);
-    } else {
-      sfx.correct();
-    }
-
-    if (p1Climbs) {
-      p1.step++;
-      spawnFloatingText(0.24, 0.42, '⬆️ CLIMB +1 STEP!', '#fb7185');
-    } else {
-      spawnFloatingText(0.24, 0.42, '🛡️ STAY SAFE!', '#34d399');
-    }
-
-    if (p2Climbs) {
-      p2.step++;
-      spawnFloatingText(0.76, 0.42, '⬆️ CLIMB +1 STEP!', '#fbbf24');
-    } else {
-      spawnFloatingText(0.76, 0.42, '🛡️ STAY SAFE!', '#34d399');
-    }
-
-    const highestStep = Math.max(p1.step, p2.step);
-    eng.shark.targetMouthAngle = 0.35 + (highestStep / (eng.maxSteps + 1)) * 0.55;
-    eng.shark.lookDir = p1.step > p2.step ? -1 : p2.step > p1.step ? 1 : 0;
-
-    if (speedPushMsg) {
-      setArenaBannerText(speedPushMsg);
-    } else if (p1Climbs && p2Climbs) {
-      setArenaBannerText('BOTH CLIMBED UP TOWARD THE SHARK!');
-    } else if (p1Climbs) {
-      setArenaBannerText(`${p1.name.toUpperCase()} CLIMBS UP A STEP!`);
-    } else if (p2Climbs) {
-      setArenaBannerText(`${p2.name.toUpperCase()} CLIMBS UP A STEP!`);
-    } else {
-      setArenaBannerText('BOTH PLAYERS ANSWERED CORRECTLY & HELD GROUND!');
-    }
-
-    syncHudFromEngine();
-
-    const p1Fell = p1.step > eng.maxSteps;
-    const p2Fell = p2.step > eng.maxSteps;
-
-    if (p1Fell || p2Fell) {
-      eng.phase = 'animating';
-      syncHudFromEngine();
-      roundTimeoutRef.current = setTimeout(() => {
-        triggerFallIntoShark(p1Fell, p2Fell);
-      }, 900);
-    } else {
-      roundTimeoutRef.current = setTimeout(() => {
-        eng.round++;
-        startNewQuestionRound();
-      }, 2400);
-    }
+  const triggerOptionPress = (team: 'left' | 'right', idx: number) => {
+    setActiveKey({ team, index: idx });
+    setTimeout(() => setActiveKey(null), 160);
+    handleAnswer(team, idx);
   };
 
-  const handlePlayerInput = (pid: 1 | 2, optionIndex: number, fromAI = false) => {
-    const eng = engineRef.current;
-    if (eng.phase !== 'question') return;
-    const p = eng.players[pid];
-    if (pid === 2 && eng.players[2].mode !== 'human' && !fromAI) return;
-    if (p.selectedOption !== null) return;
-
-    p.selectedOption = optionIndex;
-    p.lockTime = Math.max(0.1, eng.timerMax - eng.timerLeft);
-    sfx.lockIn();
-    syncHudFromEngine();
-
-    if (eng.players[1].selectedOption !== null && eng.players[2].selectedOption !== null) {
-      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
-      resolveQuestionRound();
-    }
+  const getBlueKeyHints = (count: number): string[] => {
+    if (count === 2) return ['A', 'D'];
+    if (count === 3) return ['A', 'S', 'D'];
+    return ['W', 'A', 'S', 'D'];
   };
 
-  const startNewQuestionRound = () => {
-    const eng = engineRef.current;
-    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
-    if (roundTimeoutRef.current) clearTimeout(roundTimeoutRef.current);
-
-    if (eng.questionPool.length === 0) {
-      buildQuestionPool();
-    }
-    const nextQ = eng.questionPool.pop() || BUILTIN_QUESTIONS[0];
-    eng.currentQuestion = nextQ;
-    eng.phase = 'question';
-    eng.timerMax = 15;
-    eng.timerLeft = 15;
-    eng.lastTick = performance.now();
-
-    ([1, 2] as const).forEach((pid) => {
-      const p = eng.players[pid];
-      p.selectedOption = null;
-      p.lockTime = null;
-      p.emotion = p.step >= eng.maxSteps ? 'scared' : 'idle';
-    });
-
-    setTimerLeft(15);
-    setArenaBannerText(`ROUND ${eng.round}: P1 [WASD] vs P2 [ARROW KEYS]!`);
-    syncHudFromEngine();
-
-    if (eng.players[2].mode !== 'human') {
-      const isHard = eng.players[2].mode === 'ai_hard';
-      const delayMs = isHard ? 1800 + Math.random() * 2500 : 3000 + Math.random() * 4000;
-      aiTimerRef.current = setTimeout(() => {
-        if (engineRef.current.phase !== 'question' || !engineRef.current.currentQuestion) return;
-        const acc = isHard ? 0.84 : 0.62;
-        const ans = engineRef.current.currentQuestion.answerIndex;
-        let choice = ans;
-        if (Math.random() > acc) {
-          const wrongOpts = [0, 1, 2, 3].filter((x) => x !== ans);
-          choice = wrongOpts[Math.floor(Math.random() * wrongOpts.length)];
-        }
-        if (engineRef.current.players[2].hasRope && engineRef.current.players[2].step >= 2) {
-          useRopePowerup(2);
-        }
-        handlePlayerInput(2, choice, true);
-      }, delayMs);
-    }
+  const getRedKeyHints = (count: number): string[] => {
+    if (count === 2) return ['←', '→'];
+    if (count === 3) return ['←', '↓', '→'];
+    return ['↑', '←', '↓', '→'];
   };
 
-  const startMatch = () => {
-    const eng = engineRef.current;
-    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
-    if (roundTimeoutRef.current) clearTimeout(roundTimeoutRef.current);
-
-    const resolvedP1Name = p1Name.trim() || 'Player 1';
-    let resolvedP2Name = p2Name.trim() || 'Player 2';
-    if (p2Mode !== 'human' && resolvedP2Name === 'Player 2') {
-      resolvedP2Name = p2Mode === 'ai_hard' ? 'Robo-Shark AI' : 'Bot Finny';
-    }
-
-    eng.round = 1;
-    eng.maxSteps = maxSteps;
-    eng.ruleMode = ruleMode;
-    eng.totalQuestionsAsked = 0;
-    eng.totalCorrectAnswers = 0;
-
-    eng.players[1] = {
-      name: resolvedP1Name,
-      charIndex: p1CharIndex,
-      step: 0,
-      visualStep: 0,
-      selectedOption: null,
-      lockTime: null,
-      streak: 0,
-      hasRope: false,
-      falling: false,
-      fallProgress: 0,
-      emotion: 'idle',
-    };
-    eng.players[2] = {
-      name: resolvedP2Name,
-      charIndex: p2CharIndex,
-      mode: p2Mode,
-      step: 0,
-      visualStep: 0,
-      selectedOption: null,
-      lockTime: null,
-      streak: 0,
-      hasRope: false,
-      falling: false,
-      fallProgress: 0,
-      emotion: 'idle',
-    };
-
-    eng.shark.lungeY = 0;
-    eng.shark.targetLungeY = 0;
-    eng.shark.mouthAngle = 0.35;
-    eng.shark.targetMouthAngle = 0.35;
-    eng.particles = [];
-    eng.floatingTexts = [];
-
-    setGameOverInfo(null);
-    buildQuestionPool();
-    setScreen('game');
-    startNewQuestionRound();
-  };
-
-  // Keyboard listener for WASD (Player 1) and Arrow Keys (Player 2)
   useEffect(() => {
-    if (screen !== 'game') return;
-    const onKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (stateRef.current.screen !== 'playing') return;
       const tag = (document.activeElement?.tagName || '').toUpperCase();
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
-      if (engineRef.current.phase !== 'question') return;
 
-      const upper = e.key.toUpperCase();
-      const p1Map: Record<string, number> = { W: 0, A: 1, S: 2, D: 3 };
-      if (upper in p1Map) {
-        e.preventDefault();
-        handlePlayerInput(1, p1Map[upper]);
-        return;
-      }
+      const key = e.key.toLowerCase();
+      const leftOptsCount = stateRef.current.leftTeam?.q?.options?.length || 4;
+      const rightOptsCount = stateRef.current.rightTeam?.q?.options?.length || 4;
 
-      const p2Map: Record<string, number> = {
-        ArrowUp: 0,
-        ArrowLeft: 1,
-        ArrowDown: 2,
-        ArrowRight: 3,
-      };
-      if (e.key in p2Map) {
-        e.preventDefault();
-        handlePlayerInput(2, p2Map[e.key]);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [screen]);
-
-  // 60FPS HTML5 Canvas Loop for Shark Attack Arena
-  useEffect(() => {
-    if (screen !== 'game') return;
-    let animId: number;
-
-    const getStairPosition = (
-      side: 'left' | 'right',
-      stepFloat: number,
-      width: number,
-      height: number,
-      maxS: number
-    ) => {
-      const clampedStep = Math.min(maxS, Math.max(0, stepFloat));
-      const progress = clampedStep / maxS;
-
-      const baseGroundY = height * 0.8;
-      const topLedgeY = height * 0.24;
-      const outerMarginX = width * 0.08;
-      const innerAbyssX = width * 0.37;
-
-      const y = baseGroundY - progress * (baseGroundY - topLedgeY);
-      const x =
-        side === 'left'
-          ? outerMarginX + progress * (innerAbyssX - outerMarginX)
-          : width - outerMarginX - progress * (innerAbyssX - outerMarginX);
-
-      const frac = stepFloat % 1;
-      const hopOffset = Math.sin(frac * Math.PI) * 26;
-      return { x, y: y - hopOffset };
-    };
-
-    const drawGiantShark = (
-      ctx: CanvasRenderingContext2D,
-      cx: number,
-      cy: number,
-      width: number,
-      time: number
-    ) => {
-      const eng = engineRef.current;
-      ctx.save();
-      const bob = Math.sin(time * 0.0045) * 6;
-      const sway = Math.cos(time * 0.0025) * 0.03;
-      ctx.translate(cx, cy + bob);
-      ctx.rotate(sway);
-
-      const scale = Math.min(1.18, Math.max(0.74, width / 880));
-      ctx.scale(scale, scale);
-
-      const jawSpread = 44 + eng.shark.mouthAngle * 46;
-
-      // Swirling water vortex ring
-      ctx.save();
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
-      ctx.beginPath();
-      ctx.ellipse(0, 48, jawSpread + 55, 16, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // Pectoral fins
-      ctx.fillStyle = '#0f294a';
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-jawSpread - 10, 15);
-      ctx.quadraticCurveTo(-jawSpread - 68, 22, -jawSpread - 52, 52);
-      ctx.quadraticCurveTo(-jawSpread - 20, 44, -jawSpread, 34);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(jawSpread + 10, 15);
-      ctx.quadraticCurveTo(jawSpread + 68, 22, jawSpread + 52, 52);
-      ctx.quadraticCurveTo(jawSpread + 20, 44, jawSpread, 34);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      // Shark head & V-jaws
-      const bodyGrad = ctx.createLinearGradient(0, -108, 0, 62);
-      bodyGrad.addColorStop(0, '#38bdf8');
-      bodyGrad.addColorStop(0.35, '#0284c7');
-      bodyGrad.addColorStop(0.75, '#1e3a8a');
-      bodyGrad.addColorStop(1, '#09152b');
-
-      ctx.fillStyle = bodyGrad;
-      ctx.strokeStyle = '#bae6fd';
-      ctx.lineWidth = 3;
-
-      ctx.beginPath();
-      ctx.moveTo(0, 62);
-      ctx.bezierCurveTo(-jawSpread - 45, 25, -jawSpread - 42, -35, -jawSpread - 18, -104);
-      ctx.quadraticCurveTo(-jawSpread * 0.45, -35, -10, -6);
-      ctx.quadraticCurveTo(0, 8, 10, -6);
-      ctx.quadraticCurveTo(jawSpread * 0.45, -35, jawSpread + 18, -104);
-      ctx.bezierCurveTo(jawSpread + 42, -35, jawSpread + 45, 25, 0, 62);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.strokeStyle = 'rgba(224, 242, 254, 0.55)';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(-jawSpread - 12, -92);
-      ctx.quadraticCurveTo(-jawSpread * 0.5, -25, 0, 4);
-      ctx.quadraticCurveTo(jawSpread * 0.5, -25, jawSpread + 12, -92);
-      ctx.stroke();
-
-      // Deep cavernous mouth
-      const mouthGrad = ctx.createLinearGradient(0, -88, 0, 10);
-      mouthGrad.addColorStop(0, '#4c0519');
-      mouthGrad.addColorStop(0.6, '#881337');
-      mouthGrad.addColorStop(1, '#be123c');
-
-      ctx.fillStyle = mouthGrad;
-      ctx.beginPath();
-      ctx.moveTo(-jawSpread - 12, -90);
-      ctx.quadraticCurveTo(-jawSpread * 0.42, -26, 0, 2);
-      ctx.quadraticCurveTo(jawSpread * 0.42, -26, jawSpread + 12, -90);
-      ctx.quadraticCurveTo(0, -52, -jawSpread - 12, -90);
-      ctx.closePath();
-      ctx.fill();
-
-      // Tongue
-      const tongueWave = Math.sin(time * 0.008) * 5;
-      ctx.fillStyle = '#fb7185';
-      ctx.beginPath();
-      ctx.moveTo(-24, -18);
-      ctx.quadraticCurveTo(tongueWave, -44, 24, -18);
-      ctx.quadraticCurveTo(0, 4, -24, -18);
-      ctx.fill();
-
-      // Razor teeth
-      const numTeeth = 6;
-      for (const side of [-1, 1]) {
-        for (let t = 0; t < numTeeth; t++) {
-          const frac1 = (t + 0.1) / numTeeth;
-          const frac2 = (t + 0.88) / numTeeth;
-          const x1 = side * (8 + frac1 * (jawSpread + 6));
-          const y1 = -4 - frac1 * 84;
-          const x2 = side * (8 + frac2 * (jawSpread + 6));
-          const y2 = -4 - frac2 * 84;
-          const tipX = (x1 + x2) * 0.5 - side * 18;
-          const tipY = (y1 + y2) * 0.5 + 7;
-
-          ctx.fillStyle = '#ffffff';
-          ctx.strokeStyle = '#94a3b8';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(tipX, tipY);
-          ctx.lineTo(x2, y2);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-
-      // Fierce glowing eyes
-      ([-1, 1] as const).forEach((side) => {
-        const ex = side * (jawSpread * 0.65 + 16);
-        const ey = -24;
-
-        ctx.fillStyle = '#fef08a';
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(ex, ey, 8.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        const lookOffset = eng.shark.lookDir * 2.5;
-        ctx.fillStyle = '#dc2626';
-        ctx.beginPath();
-        ctx.arc(ex + lookOffset, ey - 1, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#090d16';
-        ctx.beginPath();
-        ctx.arc(ex + lookOffset, ey - 1, 2.2, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(ex + lookOffset - 1.5, ey - 2.8, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      ctx.restore();
-    };
-
-    const drawPlayerCharacter = (
-      ctx: CanvasRenderingContext2D,
-      pid: 1 | 2,
-      side: 'left' | 'right',
-      width: number,
-      height: number,
-      time: number
-    ) => {
-      const eng = engineRef.current;
-      const p = eng.players[pid];
-      const charDef = CHARACTERS[p.charIndex] || CHARACTERS[0];
-
-      let x = 0;
-      let y = 0;
-      let rotation = 0;
-
-      if (p.falling) {
-        p.fallProgress = Math.min(1, p.fallProgress + 0.026);
-        const startPos = getStairPosition(side, eng.maxSteps, width, height, eng.maxSteps);
-        const targetX = width * 0.5 + (pid === 1 ? -10 : 10);
-        const targetY = height * 0.72;
-
-        x = startPos.x + (targetX - startPos.x) * p.fallProgress;
-        const arc = -Math.sin(p.fallProgress * Math.PI) * 98;
-        y = startPos.y + (targetY - startPos.y) * (p.fallProgress * p.fallProgress) + arc;
-        rotation = p.fallProgress * (pid === 1 ? 9 : -9);
-
-        if (p.fallProgress >= 0.95) return;
+      let leftMap: Record<string, number> = {};
+      if (leftOptsCount === 2) {
+        leftMap = { a: 0, d: 1, 1: 0, 2: 1, q: 0, e: 1 };
+      } else if (leftOptsCount === 3) {
+        leftMap = { a: 0, s: 1, d: 2, 1: 0, 2: 1, 3: 2, q: 0, w: 1, e: 2 };
       } else {
-        const pos = getStairPosition(side, p.visualStep, width, height, eng.maxSteps);
-        x = pos.x;
-        y = pos.y;
+        leftMap = { w: 0, a: 1, s: 2, d: 3, 1: 0, 2: 1, 3: 2, 4: 3 };
       }
 
-      ctx.save();
-      const isPanic = p.emotion === 'scared' || p.step >= eng.maxSteps || p.falling;
-      const bounceSpeed = isPanic ? 0.018 : 0.006;
-      const idleBounce = Math.sin(time * bounceSpeed + pid * 2) * (isPanic ? 4.5 : 3);
-      const squash = 1 + Math.sin(time * bounceSpeed + pid * 2) * 0.04;
-
-      ctx.translate(x, y - 24 + idleBounce);
-      ctx.rotate(rotation);
-
-      if (p.step >= eng.maxSteps && !p.falling) {
-        ctx.translate((Math.random() - 0.5) * 3.5, 0);
-      }
-
-      if (!p.falling) {
-        ctx.fillStyle = 'rgba(0,0,0,0.38)';
-        ctx.beginPath();
-        ctx.ellipse(0, 24 - idleBounce, 15, 5, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.scale(squash, 2 - squash);
-
-      // Feet
-      const footKick = Math.sin(time * 0.015 + pid) * (isPanic ? 5 : 1.5);
-      ctx.fillStyle = charDef.secondary;
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(-6, 20 + footKick, 4.5, 3.2, 0, 0, Math.PI * 2);
-      ctx.ellipse(6, 20 - footKick, 4.5, 3.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // Torso
-      ctx.fillStyle = charDef.primary;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(-11, 2, 22, 17, 9);
-      ctx.fill();
-      ctx.stroke();
-
-      // Tummy patch
-      ctx.fillStyle = 'rgba(255,255,255,0.45)';
-      ctx.beginPath();
-      ctx.ellipse(0, 11, 6, 5.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Arms
-      const armWave = isPanic ? Math.sin(time * 0.03) * 14 - 12 : Math.sin(time * 0.007) * 4;
-      ctx.fillStyle = charDef.skin;
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(-14, 8 + armWave * 0.4, 4.5, 3.5, -0.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.ellipse(14, 8 - armWave * 0.4, 4.5, 3.5, 0.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // Ears / Frills
-      ctx.save();
-      if (charDef.id === 'hamster') {
-        ([-1, 1] as const).forEach((dir) => {
-          ctx.fillStyle = '#f59e0b';
-          ctx.strokeStyle = '#78350f';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(dir * 11, -21, 5.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = '#fde68a';
-          ctx.beginPath();
-          ctx.arc(dir * 11, -21, 2.8, 0, Math.PI * 2);
-          ctx.fill();
-        });
-      } else if (charDef.id === 'bunny') {
-        const earWiggle = Math.sin(time * 0.008 + pid) * 0.12;
-        ([-1, 1] as const).forEach((dir) => {
-          ctx.save();
-          ctx.translate(dir * 7, -20);
-          ctx.rotate(dir * 0.22 + earWiggle * dir);
-          ctx.fillStyle = charDef.skin;
-          ctx.strokeStyle = '#fda4af';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.ellipse(0, -8, 4.5, 11, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
-        });
-      } else if (charDef.id === 'axolotl') {
-        ctx.strokeStyle = '#ec4899';
-        ctx.lineWidth = 3.5;
-        ctx.lineCap = 'round';
-        ([-1, 1] as const).forEach((dir) => {
-          for (let f = -1; f <= 1; f++) {
-            ctx.beginPath();
-            ctx.moveTo(dir * 13, -10 + f * 4.5);
-            ctx.lineTo(dir * 20, -12 + f * 6 + Math.sin(time * 0.01 + f) * 1.5);
-            ctx.stroke();
-          }
-        });
-      } else if (charDef.id === 'shiba' || charDef.id === 'cat') {
-        ([-1, 1] as const).forEach((dir) => {
-          ctx.fillStyle = charDef.skin;
-          ctx.strokeStyle = '#0f172a';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(dir * 4, -21);
-          ctx.lineTo(dir * 14, -30);
-          ctx.lineTo(dir * 15, -15);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        });
-      } else if (charDef.id === 'dino') {
-        ctx.fillStyle = '#fde047';
-        ctx.strokeStyle = '#ca8a04';
-        ctx.lineWidth = 1.5;
-        for (let sp = -1; sp <= 1; sp++) {
-          ctx.beginPath();
-          ctx.moveTo(sp * 6 - 3.5, -21);
-          ctx.lineTo(sp * 6, -29);
-          ctx.lineTo(sp * 6 + 3.5, -21);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-      ctx.restore();
-
-      // Chibi Head
-      ctx.fillStyle = charDef.skin;
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.ellipse(0, -10, 15.5, 13.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // Blush
-      ctx.fillStyle = charDef.blush || '#fb7185';
-      ctx.globalAlpha = 0.65;
-      ctx.beginPath();
-      ctx.ellipse(-9, -7, 3.2, 1.8, 0, 0, Math.PI * 2);
-      ctx.ellipse(9, -7, 3.2, 1.8, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      // Eyes & Mouth
-      if (isPanic) {
-        ([-1, 1] as const).forEach((dir) => {
-          const ex = dir * 5.5;
-          const ey = -11;
-          ctx.fillStyle = '#ffffff';
-          ctx.strokeStyle = '#0f172a';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(ex, ey, 4.2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#0f172a';
-          ctx.beginPath();
-          ctx.arc(ex, ey, 1.7, 0, Math.PI * 2);
-          ctx.fill();
-        });
-        ctx.fillStyle = '#be123c';
-        ctx.beginPath();
-        ctx.ellipse(0, -4.5, 4, 4.5, 0, 0, Math.PI * 2);
-        ctx.fill();
+      let rightMap: Record<string, number> = {};
+      if (rightOptsCount === 2) {
+        rightMap = { arrowleft: 0, arrowright: 1, j: 0, l: 1, 7: 0, 8: 1 };
+      } else if (rightOptsCount === 3) {
+        rightMap = { arrowleft: 0, arrowdown: 1, arrowright: 2, j: 0, k: 1, l: 2, 7: 0, 8: 1, 9: 2 };
       } else {
-        ([-1, 1] as const).forEach((dir) => {
-          const ex = dir * 5.5;
-          const ey = -11;
-          ctx.fillStyle = '#1e1b4b';
-          ctx.beginPath();
-          ctx.arc(ex, ey, 3.6, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.arc(ex - 1.2, ey - 1.3, 1.5, 0, Math.PI * 2);
-          ctx.fill();
-        });
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 1.8;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(-3.5, -5.5);
-        ctx.quadraticCurveTo(-1.7, -3.5, 0, -5.5);
-        ctx.quadraticCurveTo(1.7, -3.5, 3.5, -5.5);
-        ctx.stroke();
+        rightMap = {
+          arrowup: 0,
+          arrowleft: 1,
+          arrowdown: 2,
+          arrowright: 3,
+          i: 0,
+          j: 1,
+          k: 2,
+          l: 3,
+          7: 0,
+          8: 1,
+          9: 2,
+          0: 3,
+        };
       }
 
-      // Floating Player Name Tag
-      ctx.font = '800 11px sans-serif';
-      ctx.textAlign = 'center';
-      const tagText = pid === 1 ? `P1: ${p.name}` : `P2: ${p.name}`;
-      const tagW = ctx.measureText(tagText).width + 14;
-      ctx.fillStyle = pid === 1 ? 'rgba(225, 29, 72, 0.92)' : 'rgba(217, 119, 6, 0.92)';
-      ctx.beginPath();
-      ctx.roundRect(-tagW / 2, -45, tagW, 17, 8);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(tagText, 0, -33);
-
-      ctx.restore();
+      if (key in leftMap) {
+        e.preventDefault();
+        const idx = leftMap[key];
+        setActiveKey({ team: 'left', index: idx });
+        setTimeout(() => setActiveKey(null), 160);
+        handleAnswer('left', idx);
+      } else if (key in rightMap) {
+        e.preventDefault();
+        const idx = rightMap[key];
+        setActiveKey({ team: 'right', index: idx });
+        setTimeout(() => setActiveKey(null), 160);
+        handleAnswer('right', idx);
+      }
     };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleAnswer]);
 
-    const renderFrame = (now: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        animId = requestAnimationFrame(renderFrame);
-        return;
-      }
-      const rect = canvas.parentElement?.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      if (rect && (canvas.width !== Math.floor(rect.width * dpr) || canvas.height !== Math.floor(rect.height * dpr))) {
-        canvas.width = Math.floor(rect.width * dpr);
-        canvas.height = Math.floor(rect.height * dpr);
-      }
+  const scaleShift = fontSizeScale === 'large' ? -1 : fontSizeScale === 'small' ? 1 : 0;
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const getQuestionFontSize = (text: string, isSplit = false) => {
+    const len = (text || '').trim().length;
+    if (isSplit) {
+      let tier = 0;
+      if (len <= 32) tier = 0;
+      else if (len <= 60) tier = 1;
+      else if (len <= 95) tier = 2;
+      else if (len <= 135) tier = 3;
+      else tier = 4;
 
-      const width = canvas.width / dpr;
-      const height = canvas.height / dpr;
-      const eng = engineRef.current;
-
-      const dt = Math.min(0.1, (now - eng.lastTick) / 1000);
-      eng.lastTick = now;
-
-      if (eng.phase === 'question') {
-        eng.timerLeft = Math.max(0, eng.timerLeft - dt);
-        setTimerLeft(eng.timerLeft);
-        if (eng.timerLeft <= 0) {
-          if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
-          resolveQuestionRound();
-        }
-      }
-
-      ([1, 2] as const).forEach((pid) => {
-        const p = eng.players[pid];
-        const target = Math.min(eng.maxSteps, p.step);
-        p.visualStep += (target - p.visualStep) * 0.12;
-      });
-      eng.shark.mouthAngle += (eng.shark.targetMouthAngle - eng.shark.mouthAngle) * 0.12;
-      eng.shark.lungeY += (eng.shark.targetLungeY - eng.shark.lungeY) * 0.14;
-
-      ctx.clearRect(0, 0, width, height);
-
-      // Abyss glow
-      const bgGrad = ctx.createRadialGradient(
-        width * 0.5,
-        height * 0.68,
-        15,
-        width * 0.5,
-        height * 0.45,
-        width * 0.65
-      );
-      bgGrad.addColorStop(0, 'rgba(56, 189, 248, 0.28)');
-      bgGrad.addColorStop(0.5, 'rgba(14, 116, 144, 0.12)');
-      bgGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, width, height);
-
-      // Bubbles
-      ctx.fillStyle = 'rgba(186, 230, 253, 0.18)';
-      for (let b = 0; b < 12; b++) {
-        const bx = (b * 97 + Math.sin(now * 0.001 + b) * 25) % width;
-        const by = height - ((now * 0.03 + b * 45) % height);
-        const br = 2 + (b % 4) * 1.5;
-        ctx.beginPath();
-        ctx.arc(bx, by, br, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // 3D Stone Staircases
-      const maxS = eng.maxSteps;
-      const baseGroundY = height * 0.8;
-      const topLedgeY = height * 0.24;
-      const outerX = width * 0.05;
-      const innerX = width * 0.375;
-      const stepW = (innerX - outerX) / maxS;
-      const stepH = (baseGroundY - topLedgeY) / maxS;
-
-      (['left', 'right'] as const).forEach((side) => {
-        ctx.save();
-        ctx.beginPath();
-        if (side === 'left') {
-          ctx.moveTo(0, height);
-          ctx.lineTo(0, baseGroundY);
-          ctx.lineTo(outerX + stepW * 0.4, baseGroundY);
-          for (let s = 1; s <= maxS; s++) {
-            const sx = outerX + (s - 0.6) * stepW;
-            const sy = baseGroundY - s * stepH;
-            ctx.lineTo(sx, sy);
-            ctx.lineTo(sx + stepW, sy);
-          }
-          const topInnerX = outerX + (maxS + 0.4) * stepW;
-          ctx.lineTo(topInnerX, height);
-        } else {
-          ctx.moveTo(width, height);
-          ctx.lineTo(width, baseGroundY);
-          ctx.lineTo(width - (outerX + stepW * 0.4), baseGroundY);
-          for (let s = 1; s <= maxS; s++) {
-            const sx = width - (outerX + (s - 0.6) * stepW);
-            const sy = baseGroundY - s * stepH;
-            ctx.lineTo(sx, sy);
-            ctx.lineTo(sx - stepW, sy);
-          }
-          const topInnerX = width - (outerX + (maxS + 0.4) * stepW);
-          ctx.lineTo(topInnerX, height);
-        }
-        ctx.closePath();
-
-        const stoneGrad = ctx.createLinearGradient(0, topLedgeY, 0, height);
-        stoneGrad.addColorStop(0, '#334155');
-        stoneGrad.addColorStop(0.55, '#1e293b');
-        stoneGrad.addColorStop(1, '#09101d');
-        ctx.fillStyle = stoneGrad;
-        ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = side === 'left' ? '#fb7185' : '#fbbf24';
-        ctx.stroke();
-        ctx.restore();
-
-        for (let s = 0; s <= maxS; s++) {
-          const pos = getStairPosition(side, s, width, height, maxS);
-          ctx.save();
-          const isTop = s === maxS;
-          ctx.fillStyle = isTop ? '#ef4444' : side === 'left' ? '#fb7185' : '#fbbf24';
-          ctx.beginPath();
-          ctx.roundRect(pos.x - 20, pos.y - 2, 40, 6, 3);
-          ctx.fill();
-
-          ctx.font = '800 10px sans-serif';
-          ctx.fillStyle = isTop ? '#fca5a5' : 'rgba(255,255,255,0.55)';
-          ctx.textAlign = 'center';
-          ctx.fillText(s === 0 ? 'SAFE' : isTop ? '⚠️ EDGE' : `STEP ${s}`, pos.x, pos.y + 15);
-          ctx.restore();
-        }
-      });
-
-      // Giant Shark in Center Pit
-      drawGiantShark(ctx, width * 0.5, height * 0.78 + eng.shark.lungeY, width, now);
-
-      // Players
-      drawPlayerCharacter(ctx, 1, 'left', width, height, now);
-      drawPlayerCharacter(ctx, 2, 'right', width, height, now);
-
-      // Foreground Waves
-      const waveBaseY = height * 0.85;
-      for (let layer = 0; layer < 2; layer++) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(0, height);
-        for (let x = 0; x <= width; x += 20) {
-          const waveY =
-            waveBaseY +
-            layer * 12 +
-            Math.sin(x * 0.02 + now * 0.004 + layer * 2) * 7 +
-            Math.cos(x * 0.035 - now * 0.003) * 4;
-          ctx.lineTo(x, waveY);
-        }
-        ctx.lineTo(width, height);
-        ctx.closePath();
-        ctx.fillStyle = layer === 0 ? 'rgba(2, 132, 199, 0.55)' : 'rgba(14, 165, 233, 0.82)';
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // Particles & Floating Text
-      for (let i = eng.particles.length - 1; i >= 0; i--) {
-        const pt = eng.particles[i];
-        pt.normX += pt.vx / width;
-        pt.normY += pt.vy / height;
-        pt.vy += 0.28;
-        pt.alpha -= 0.02;
-        if (pt.alpha <= 0) {
-          eng.particles.splice(i, 1);
-          continue;
-        }
-        ctx.save();
-        ctx.globalAlpha = pt.alpha;
-        ctx.fillStyle = pt.color;
-        ctx.beginPath();
-        ctx.arc(pt.normX * width, pt.normY * height, pt.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      for (let i = eng.floatingTexts.length - 1; i >= 0; i--) {
-        const ft = eng.floatingTexts[i];
-        ft.normY += ft.vy * 16;
-        ft.alpha -= 0.014;
-        if (ft.alpha <= 0) {
-          eng.floatingTexts.splice(i, 1);
-          continue;
-        }
-        ctx.save();
-        ctx.globalAlpha = ft.alpha;
-        ctx.font = '800 14px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 4;
-        ctx.strokeText(ft.text, ft.normX * width, ft.normY * height);
-        ctx.fillStyle = ft.color;
-        ctx.fillText(ft.text, ft.normX * width, ft.normY * height);
-        ctx.restore();
-      }
-
-      animId = requestAnimationFrame(renderFrame);
-    };
-
-    animId = requestAnimationFrame(renderFrame);
-    return () => cancelAnimationFrame(animId);
-  }, [screen]);
-
-  // Question font size auto-adjust helper
-  const getQuestionFontClass = (text: string) => {
-    const len = (text || '').length;
-    if (fontScale === 'small') {
-      if (len > 110) return 'text-sm sm:text-base';
-      if (len > 65) return 'text-base sm:text-lg';
-      return 'text-lg sm:text-xl';
+      const idx = Math.max(-1, Math.min(4, tier + scaleShift));
+      if (idx <= -1) return 'text-lg sm:text-2xl md:text-3xl lg:text-4xl';
+      if (idx === 0) return 'text-base sm:text-xl md:text-2xl lg:text-3xl';
+      if (idx === 1) return 'text-sm sm:text-lg md:text-xl lg:text-2xl';
+      if (idx === 2) return 'text-xs sm:text-base md:text-lg lg:text-xl';
+      if (idx === 3) return 'text-xs sm:text-sm md:text-base lg:text-lg';
+      return 'text-[11px] sm:text-xs md:text-sm lg:text-base';
     }
-    if (fontScale === 'large') {
-      if (len > 110) return 'text-xl sm:text-2xl';
-      if (len > 65) return 'text-2xl sm:text-3xl';
-      return 'text-2xl sm:text-4xl';
-    }
-    // medium
-    if (len > 110) return 'text-base sm:text-lg';
-    if (len > 65) return 'text-lg sm:text-xl lg:text-2xl';
-    return 'text-xl sm:text-2xl lg:text-3xl';
+
+    let tier = 0;
+    if (len <= 36) tier = 0;
+    else if (len <= 68) tier = 1;
+    else if (len <= 105) tier = 2;
+    else if (len <= 145) tier = 3;
+    else tier = 4;
+
+    const idx = Math.max(-1, Math.min(4, tier + scaleShift));
+    if (idx <= -1) return 'text-2xl sm:text-4xl md:text-5xl lg:text-[3.25rem]';
+    if (idx === 0) return 'text-xl sm:text-3xl md:text-4xl lg:text-[2.75rem]';
+    if (idx === 1) return 'text-lg sm:text-2xl md:text-3xl lg:text-4xl';
+    if (idx === 2) return 'text-base sm:text-xl md:text-2xl lg:text-3xl';
+    if (idx === 3) return 'text-sm sm:text-lg md:text-xl lg:text-2xl';
+    return 'text-xs sm:text-base md:text-lg lg:text-xl';
   };
 
-  const getOptionFontClass = (text: string) => {
-    const len = (text || '').length;
-    if (fontScale === 'small') return len > 45 ? 'text-xs' : 'text-xs sm:text-sm';
-    if (fontScale === 'large') return len > 45 ? 'text-base sm:text-lg' : 'text-lg sm:text-xl';
-    return len > 45 ? 'text-xs sm:text-sm' : 'text-sm sm:text-base';
+  const getOptionFontSize = (text: string, count = 4) => {
+    const len = (text || '').trim().length;
+    let tier = 0;
+    if (len <= 8) tier = 0;
+    else if (len <= 15) tier = 1;
+    else if (len <= 24) tier = 2;
+    else if (len <= 36) tier = 3;
+    else tier = 4;
+
+    if (count <= 2) tier -= 1;
+
+    const idx = Math.max(-1, Math.min(4, tier + scaleShift));
+    if (idx <= -1) return 'text-lg sm:text-2xl md:text-3xl lg:text-4xl';
+    if (idx === 0) return 'text-base sm:text-xl md:text-2xl lg:text-3xl';
+    if (idx === 1) return 'text-sm sm:text-lg md:text-xl lg:text-2xl';
+    if (idx === 2) return 'text-xs sm:text-base md:text-lg lg:text-xl';
+    if (idx === 3) return 'text-[11px] sm:text-sm md:text-base lg:text-lg';
+    return 'text-[10px] sm:text-xs md:text-sm lg:text-base';
   };
 
-  return (
-    <div className="relative w-full h-full min-h-[calc(100vh-4rem)] overflow-hidden bg-slate-950 font-sans select-none">
-      {/* SCREEN 1: GAME SETUP EDITOR (Exact Bubble Pop Setup Design) */}
-      {screen === 'editor' && (
-        <SharkQuizEditor
-          quiz={activeQuiz}
-          folders={folders}
-          onSave={saveQuiz}
-          onPlayNow={(updatedQuiz) => {
-            setActiveQuiz(updatedQuiz);
-            setScreen('setup');
+  const renderQuestionText = (text: string) => {
+    if (!text) return '';
+    const parts = text.split(/_{2,}/);
+    if (parts.length === 1) {
+      return text;
+    }
+    return (
+      <span>
+        {parts.map((part, i) => (
+          <React.Fragment key={i}>
+            <span>{part}</span>
+            {i < parts.length - 1 && (
+              <span className="inline-block border-b-4 md:border-b-[5px] border-[#0284c7] min-w-[2.5rem] sm:min-w-[4rem] md:min-w-[5rem] mx-1.5 align-baseline translate-y-[-2px]" />
+            )}
+          </React.Fragment>
+        ))}
+      </span>
+    );
+  };
+
+  // ==========================================================================
+  // SCREEN 1: GAME SETUP EDITOR
+  // ==========================================================================
+  if (screen === 'setup') {
+    return (
+      <GameEditor
+        game={activeGame!}
+        onSave={saveGame}
+        onPlayNow={(updatedGame) => {
+          setActiveGame({
+            ...updatedGame,
+            questions: sanitizeQuestionsList(updatedGame.questions),
+          });
+          setScreen('menu');
+        }}
+        onCancel={() => {
+          if (hasLoadedQuestions) {
+            setScreen('menu');
+          } else {
+            onViewChange('games');
+          }
+        }}
+        folders={folders}
+      />
+    );
+  }
+
+  // ==========================================================================
+  // SCREEN 2: STUDY MODE
+  // ==========================================================================
+  if (screen === 'study') {
+    const studyQuestions = questionsDB;
+    const currentQ = studyQuestions[studyIndex] || studyQuestions[0];
+
+    return (
+      <div
+        id="game-container"
+        className="w-full min-h-full flex-1 bg-white text-black flex flex-col font-sans p-4 sm:p-6 md:p-8 relative select-none"
+      >
+        <div className="flex items-center justify-between p-4 bg-white rounded-2xl mb-8 border-2 border-slate-200 shadow-xs">
+          <button
+            onClick={() => setScreen('menu')}
+            className="flex items-center gap-2 py-2 px-4 rounded-full transition-all bg-white hover:bg-slate-100 border-2 border-slate-300 text-black font-bold cursor-pointer"
+          >
+            <ArrowLeft size={20} className="text-black" /> Back to Menu
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="text-lg sm:text-xl font-black text-black">
+              Question {studyIndex + 1} of {studyQuestions.length}
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowFontSizePopup((prev) => !prev)}
+                className="px-3.5 py-2 rounded-full bg-white hover:bg-slate-100 border-2 border-slate-300 text-black font-black text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer"
+                title="Change Font Size (Small, Medium, Large)"
+              >
+                <Type size={16} className="text-black" />
+                <span className="capitalize">{fontSizeScale}</span>
+              </button>
+              {showFontSizePopup && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowFontSizePopup(false)} />
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border-2 border-slate-300 p-2 z-50">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 px-2.5 py-1">
+                      Font Size
+                    </div>
+                    {(
+                      [
+                        { id: 'small', label: 'Small', badge: 'A' },
+                        { id: 'medium', label: 'Medium', badge: 'A+' },
+                        { id: 'large', label: 'Large', badge: 'A++' },
+                      ] as const
+                    ).map((item) => {
+                      const active = fontSizeScale === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setFontSizeScale(item.id);
+                            setShowFontSizePopup(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-black text-xs sm:text-sm transition-all cursor-pointer mb-1 last:mb-0 ${
+                            active ? 'bg-black text-white' : 'text-black hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{item.label}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-xs font-black ${
+                              active ? 'bg-white/20 text-white' : 'bg-slate-100 text-black'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-5xl mx-auto w-full">
+          {studyQuestions.length > 0 ? (
+            <>
+              <h1
+                className={`${getQuestionFontSize(
+                  currentQ?.text || '',
+                  false
+                )} font-black text-black tracking-tight leading-snug text-center max-w-full break-words mb-12`}
+              >
+                {renderQuestionText(currentQ?.text || '')}
+              </h1>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                {currentQ?.options.map((rawOpt, i) => {
+                  const opt = stripOptionPrefix(rawOpt);
+                  if (!opt) return null;
+                  const isSelected = studySelectedOption === i;
+                  const isCorrect = i === currentQ.answerIndex;
+                  const showAsCorrect = studySelectedOption !== null && isCorrect;
+                  const showAsIncorrect = studySelectedOption !== null && isSelected && !isCorrect;
+
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        if (studySelectedOption === null) {
+                          setStudySelectedOption(i);
+                        }
+                      }}
+                      disabled={studySelectedOption !== null}
+                      className={`relative p-6 rounded-2xl ${getOptionFontSize(
+                        opt,
+                        2
+                      )} font-bold transition-all duration-200 border-2 cursor-pointer touch-manipulation ${
+                        showAsCorrect
+                          ? 'bg-green-500 text-white border-green-600 shadow-[0_6px_0_#15803d] scale-[1.02] z-10'
+                          : showAsIncorrect
+                            ? 'bg-red-500 text-white border-red-600 shadow-[0_4px_0_#991b1b]'
+                            : studySelectedOption !== null
+                              ? 'bg-white text-black/40 border-slate-200 shadow-none'
+                              : 'bg-white text-black border-slate-300 hover:border-black hover:bg-slate-50 shadow-[0_5px_0_#cbd5e1]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center gap-4">
+                        <span>{opt}</span>
+                        {showAsCorrect && <span className="text-2xl font-black">✓</span>}
+                        {showAsIncorrect && <span className="text-2xl font-black">✕</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                className={`mt-12 h-20 transition-all duration-300 ${
+                  studySelectedOption !== null
+                    ? 'opacity-100 translate-y-0'
+                    : 'opacity-0 translate-y-4 pointer-events-none'
+                }`}
+              >
+                <button
+                  onClick={() => {
+                    if (studyIndex < studyQuestions.length - 1) {
+                      setStudyIndex(studyIndex + 1);
+                      setStudySelectedOption(null);
+                    } else {
+                      setScreen('menu');
+                      setStudyIndex(0);
+                      setStudySelectedOption(null);
+                    }
+                  }}
+                  className="px-10 py-4 bg-black hover:bg-slate-800 text-white font-black text-xl rounded-full shadow-[0_6px_0_#334155] active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+                >
+                  {studyIndex < studyQuestions.length - 1 ? 'Next Question →' : 'Finish Study'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-black text-3xl font-bold">No questions available!</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // SCREEN 3: CHOOSE CUTE HAMSTER MENU
+  // ==========================================================================
+  if (screen === 'menu') {
+    const leftInfo = HAMSTER_CHARACTER_OPTIONS.find((c) => c.id === leftCharacter);
+    const rightInfo = HAMSTER_CHARACTER_OPTIONS.find((c) => c.id === rightCharacter);
+
+    return (
+      <div
+        id="game-container"
+        className="w-full min-h-full flex-1 bg-gradient-to-b from-slate-900 via-sky-950 to-slate-950 text-white flex flex-col justify-between font-sans p-4 sm:p-6 md:p-8 overflow-y-auto relative select-none"
+      >
+        {/* TOP HEADER BAR */}
+        <div className="w-full max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/15 z-20 shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onViewChange('home')}
+              className="flex items-center gap-2 p-2.5 rounded-full transition-colors bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
+              title="Back to Home"
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <FullscreenButton targetId="game-container" />
+            <button
+              onClick={() => setShowModeModal(true)}
+              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="Switch Game Mode"
+            >
+              <Shuffle size={15} className="text-amber-400" />
+              <span>Switch Mode</span>
+            </button>
+            <button
+              onClick={() => setScreen('setup')}
+              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="Edit Questions"
+            >
+              <Edit3 size={15} className="text-sky-400" />
+              <span>Edit Quiz</span>
+            </button>
+          </div>
+
+          <div className="text-center flex-1 min-w-[200px]">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white italic uppercase tracking-tight leading-none drop-shadow">
+              {activeGame?.title || 'SHARK ATTACK'}
+            </h1>
+            <p className="text-amber-300 font-bold text-xs sm:text-sm uppercase tracking-widest mt-1">
+              {activeGame?.topic || 'Choose Your Cute Hamsters & Start Battle'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setStudyIndex(0);
+                setStudySelectedOption(null);
+                setScreen('study');
+              }}
+              className="px-4 sm:px-5 py-2.5 rounded-full bg-white hover:bg-slate-100 text-slate-900 font-black text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all hover:scale-105 cursor-pointer"
+            >
+              <span>📖</span>
+              <span>STUDY MODE</span>
+            </button>
+          </div>
+        </div>
+
+        {/* FULL-SCREEN CHOOSE CUTE HAMSTER ARENA */}
+        <div className="w-full max-w-[1440px] mx-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch my-4 z-20">
+          {/* BLUE TEAM HAMSTER ROSTER (5 cols) */}
+          <div className="lg:col-span-5 bg-blue-950/65 border-2 border-blue-500/50 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full bg-blue-500 inline-block shadow-[0_0_10px_#3b82f6]" />
+                <span className="font-black text-base sm:text-lg md:text-xl text-blue-300 uppercase tracking-wider">
+                  Choose Blue Hamster
+                </span>
+              </div>
+              <span className="bg-blue-600 text-white font-black text-xs px-3 py-1 rounded-full shadow">
+                {leftInfo?.name}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
+              {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
+                const selected = leftCharacter === opt.id;
+                return (
+                  <button
+                    key={`menu-left-${opt.id}`}
+                    onClick={() => setLeftCharacter(opt.id)}
+                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
+                      selected
+                        ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white border-amber-300 shadow-[0_0_20px_rgba(59,130,246,0.65)] scale-[1.03]'
+                        : 'bg-slate-900/80 hover:bg-blue-900/50 text-slate-200 border-blue-500/30 hover:border-blue-400'
+                    }`}
+                  >
+                    <div className="py-1 flex items-center justify-center">
+                      <CuteHamsterCharacter team="left" character={opt.id} size="card" />
+                    </div>
+                    <div className="mt-1">
+                      <div className="font-black text-xs sm:text-sm leading-tight">{opt.name}</div>
+                      <div
+                        className={`text-[10px] font-semibold mt-0.5 ${
+                          selected ? 'text-blue-100' : 'text-slate-400'
+                        }`}
+                      >
+                        {opt.title}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* CENTER LIVE MATCHUP SHOWCASE (2 cols) */}
+          <div className="lg:col-span-2 bg-gradient-to-b from-sky-200 via-cyan-100 to-blue-300 text-slate-900 rounded-3xl p-4 sm:p-5 border-4 border-amber-400 shadow-2xl flex flex-col items-center justify-between gap-3">
+            <div className="flex flex-col items-center text-center w-full">
+              <span className="text-[11px] font-black uppercase tracking-wider text-white bg-blue-600 px-3 py-0.5 rounded-full shadow mb-1">
+                Blue: {leftInfo?.name}
+              </span>
+              <CuteHamsterCharacter team="left" character={leftCharacter} compact />
+            </div>
+
+            <div className="w-12 h-12 rounded-full bg-amber-400 border-4 border-white shadow-lg flex items-center justify-center font-black italic text-xl text-slate-950 shrink-0">
+              VS
+            </div>
+
+            <div className="flex flex-col items-center text-center w-full">
+              <CuteHamsterCharacter team="right" character={rightCharacter} compact />
+              <span className="text-[11px] font-black uppercase tracking-wider text-white bg-red-600 px-3 py-0.5 rounded-full shadow mt-1">
+                Red: {rightInfo?.name}
+              </span>
+            </div>
+          </div>
+
+          {/* RED TEAM HAMSTER ROSTER (5 cols) */}
+          <div className="lg:col-span-5 bg-red-950/65 border-2 border-red-500/50 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full bg-red-500 inline-block shadow-[0_0_10px_#ef4444]" />
+                <span className="font-black text-base sm:text-lg md:text-xl text-red-300 uppercase tracking-wider">
+                  Choose Red Hamster
+                </span>
+              </div>
+              <span className="bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow">
+                {rightInfo?.name}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
+              {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
+                const selected = rightCharacter === opt.id;
+                return (
+                  <button
+                    key={`menu-right-${opt.id}`}
+                    onClick={() => setRightCharacter(opt.id)}
+                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
+                      selected
+                        ? 'bg-gradient-to-b from-red-500 to-red-700 text-white border-amber-300 shadow-[0_0_20px_rgba(239,68,68,0.65)] scale-[1.03]'
+                        : 'bg-slate-900/80 hover:bg-red-900/50 text-slate-200 border-red-500/30 hover:border-red-400'
+                    }`}
+                  >
+                    <div className="py-1 flex items-center justify-center">
+                      <CuteHamsterCharacter team="right" character={opt.id} size="card" />
+                    </div>
+                    <div className="mt-1">
+                      <div className="font-black text-xs sm:text-sm leading-tight">{opt.name}</div>
+                      <div
+                        className={`text-[10px] font-semibold mt-0.5 ${
+                          selected ? 'text-red-100' : 'text-slate-400'
+                        }`}
+                      >
+                        {opt.title}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* BOTTOM ACTION BAR */}
+        <div className="w-full max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-center gap-4 pt-2 z-20 shrink-0">
+          <button
+            onClick={() => setShowStartBattleModal(true)}
+            className="bg-yellow-400 hover:bg-yellow-300 text-slate-950 text-xl sm:text-2xl md:text-3xl font-black px-14 py-4 sm:py-5 rounded-full shadow-[0_8px_0_#ca8a04] active:translate-y-1 active:shadow-none transition-all w-full sm:w-auto cursor-pointer hover:scale-105"
+          >
+            🦈 START BATTLE
+          </button>
+          <button
+            onClick={() => {
+              setStudyIndex(0);
+              setStudySelectedOption(null);
+              setScreen('study');
+            }}
+            className="bg-white hover:bg-slate-100 text-slate-900 text-lg sm:text-xl font-black px-10 py-4 sm:py-5 rounded-full shadow-[0_6px_0_#94a3b8] active:translate-y-1 active:shadow-none transition-all w-full sm:w-auto flex items-center justify-center gap-2.5 cursor-pointer"
+          >
+            <span>📖</span> STUDY MODE
+          </button>
+        </div>
+
+        {/* Battle Mode Selection Modal */}
+        {showStartBattleModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 md:p-10 max-w-xl w-full text-center shadow-2xl border-4 border-amber-400 relative">
+              <button
+                onClick={() => setShowStartBattleModal(false)}
+                className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+                title="Close"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="flex justify-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-md" />
+                <div className="w-8 h-8 rounded-full bg-red-600 border-2 border-white shadow-md" />
+              </div>
+
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 uppercase tracking-tight mb-2">
+                Choose Battle Mode
+              </h2>
+              <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-6">
+                Choose how questions will appear in this Shark Attack battle:
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
+                <button
+                  onClick={() => startGame(false, 'single')}
+                  className="group p-5 rounded-3xl border-3 border-amber-300 hover:border-amber-500 bg-amber-50/70 hover:bg-amber-100/90 transition-all shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-3xl">🎯</span>
+                      <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
+                        Single Question
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                      Both Blue and Red race to answer{' '}
+                      <strong className="text-slate-900">1 shared question</strong> centered in the
+                      middle of the arena.
+                    </p>
+                  </div>
+                  <div className="mt-4 inline-flex items-center text-xs font-black text-amber-800 uppercase tracking-wider group-hover:translate-x-1 transition-transform">
+                    Start Single Battle →
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => startGame(false, 'split')}
+                  className="group p-5 rounded-3xl border-3 border-indigo-300 hover:border-indigo-500 bg-indigo-50/70 hover:bg-indigo-100/90 transition-all shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-3xl">⚡</span>
+                      <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
+                        Split Questions
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                      Each team has their own{' '}
+                      <strong className="text-slate-900">randomized question order</strong>{' '}
+                      appearing directly on Blue side and Red side.
+                    </p>
+                  </div>
+                  <div className="mt-4 inline-flex items-center text-xs font-black text-indigo-800 uppercase tracking-wider group-hover:translate-x-1 transition-transform">
+                    Start Split Battle →
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowStartBattleModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <GameModeModal
+          isOpen={showModeModal}
+          gameData={{
+            id: activeGame?.id,
+            name: activeGame?.title,
+            topic: activeGame?.topic,
+            className: activeGame?.classLevel,
+            gameType: 'shark-attack',
+            customQuestions: activeGame?.questions || DEFAULT_QUESTIONS,
           }}
-          onCancel={() => {
-            if (hasLoadedQuestions) {
-              setScreen('setup');
-            } else {
-              onViewChange('games');
-            }
+          onClose={() => setShowModeModal(false)}
+          onSelectMode={(mode, adaptedData) => {
+            onViewChange(mode as ViewState, adaptedData);
           }}
         />
-      )}
+      </div>
+    );
+  }
 
-      {/* SCREEN 2: SHARK ATTACK LOBBY / AVATAR & RULES SETUP */}
-      {screen === 'setup' && (
-        <div className="absolute inset-0 z-30 bg-gradient-to-b from-[#06101e] via-[#0b213a] to-[#071324] overflow-y-auto custom-scrollbar p-4 sm:p-6 flex flex-col items-center justify-center">
-          <div className="bg-slate-900/95 border-2 border-cyan-500/40 rounded-3xl max-w-5xl w-full p-5 sm:p-7 shadow-2xl my-auto">
-            {/* Top Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-5">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white text-2xl shadow-lg shadow-cyan-500/25">
-                  🦈
-                </div>
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    SHARK ATTACK SETUP
-                  </h2>
-                  <p className="text-xs sm:text-sm text-cyan-300/80 font-medium">
-                    Choose temporary climber avatars, opponent mode, and staircase rules!
-                  </p>
-                </div>
-              </div>
+  // ==========================================================================
+  // SCREEN 4: MATCH END CELEBRATION
+  // ==========================================================================
+  if (screen === 'end') {
+    return (
+      <div
+        id="game-container"
+        className="w-full min-h-full flex-1 bg-slate-100 dark:bg-black/95 flex items-center justify-center font-sans p-2 sm:p-4 overflow-y-auto relative select-none"
+      >
+        <div className="absolute top-4 left-4 z-[60] flex items-center gap-2">
+          <button
+            onClick={() => onViewChange('home')}
+            className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border text-slate-600 dark:text-white/80 hover:text-slate-900 dark:hover:text-white bg-slate-200/50 dark:bg-black/20 hover:bg-slate-300/50 dark:hover:bg-black/50 border-slate-300/50 dark:border-white/20 cursor-pointer"
+          >
+            <ArrowLeft size={24} />
+          </button>
+          <FullscreenButton targetId="game-container" />
+          <button
+            onClick={() => setShowModeModal(true)}
+            className="px-3.5 py-1.5 rounded-full bg-slate-900/60 hover:bg-slate-900/80 dark:bg-white/10 dark:hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <Shuffle size={14} className="text-amber-400" />
+            <span>Switch Mode</span>
+          </button>
+          <button
+            onClick={() => {
+              setLeftTeam((prev: any) => ({ ...prev, wins: 0 }));
+              setRightTeam((prev: any) => ({ ...prev, wins: 0 }));
+              setScreen('menu');
+            }}
+            className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 bg-red-100/80 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-900/60 border-red-300/50 dark:border-red-500/20 shadow-sm cursor-pointer"
+            title="Quit to Menu"
+          >
+            <X size={24} />
+          </button>
+        </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setScreen('editor')}
-                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
-                >
-                  <Edit3 size={15} />
-                  <span>Game Setup (Questions)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStudyIndex(0);
-                    setStudySelectedOption(null);
-                    setScreen('study');
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-bold text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer transition-all"
-                >
-                  <BookOpen size={15} />
-                  <span>Study Mode</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowModeModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer transition-all"
-                >
-                  <Gamepad2 size={15} />
-                  <span>Other Games</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onViewChange('games')}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer transition-all"
-                >
-                  <ArrowLeft size={15} />
-                  <span>Back</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Players Temporary Avatar Picker Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-              {/* Player 1 */}
-              <div className="bg-slate-800/70 border border-rose-500/40 rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3 gap-2">
-                  <label className="font-black text-rose-400 text-sm uppercase tracking-wider">
-                    Left Stairs: Player 1
-                  </label>
-                  <input
-                    type="text"
-                    value={p1Name}
-                    maxLength={14}
-                    onChange={(e) => setP1Name(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold text-white w-40 focus:outline-none focus:border-rose-400"
-                    placeholder="Player 1"
-                  />
-                </div>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {CHARACTERS.map((char, idx) => {
-                    const selected = p1CharIndex === idx;
-                    return (
-                      <button
-                        key={char.id}
-                        type="button"
-                        onClick={() => setP1CharIndex(idx)}
-                        className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
-                          selected
-                            ? 'bg-rose-500/25 border-rose-400 shadow-lg scale-[1.03]'
-                            : 'bg-slate-900/70 border-slate-700 hover:border-slate-500 opacity-80'
-                        }`}
-                      >
-                        <div
-                          className="w-11 h-11"
-                          dangerouslySetInnerHTML={{ __html: char.svg }}
-                        />
-                        <span className="text-[11px] font-bold text-white leading-tight truncate w-full">
-                          {char.name}
-                        </span>
-                        <span className="text-[9px] text-rose-300/80 font-semibold">
-                          {char.title}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Player 2 */}
-              <div className="bg-slate-800/70 border border-amber-500/40 rounded-2xl p-4">
-                <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
-                  <div className="flex items-center gap-2">
-                    <label className="font-black text-amber-400 text-sm uppercase tracking-wider">
-                      Right Stairs:
-                    </label>
-                    <select
-                      value={p2Mode}
-                      onChange={(e) => setP2Mode(e.target.value as any)}
-                      className="bg-slate-900 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs font-bold text-amber-300 focus:outline-none cursor-pointer"
-                    >
-                      <option value="human">2P Human</option>
-                      <option value="ai_normal">AI Bot (Normal)</option>
-                      <option value="ai_hard">AI Bot (Smart)</option>
-                    </select>
-                  </div>
-                  <input
-                    type="text"
-                    value={p2Name}
-                    maxLength={14}
-                    onChange={(e) => setP2Name(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold text-white w-36 focus:outline-none focus:border-amber-400"
-                    placeholder="Player 2"
-                  />
-                </div>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {CHARACTERS.map((char, idx) => {
-                    const selected = p2CharIndex === idx;
-                    return (
-                      <button
-                        key={char.id}
-                        type="button"
-                        onClick={() => setP2CharIndex(idx)}
-                        className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
-                          selected
-                            ? 'bg-amber-500/25 border-amber-400 shadow-lg scale-[1.03]'
-                            : 'bg-slate-900/70 border-slate-700 hover:border-slate-500 opacity-80'
-                        }`}
-                      >
-                        <div
-                          className="w-11 h-11"
-                          dangerouslySetInnerHTML={{ __html: char.svg }}
-                        />
-                        <span className="text-[11px] font-bold text-white leading-tight truncate w-full">
-                          {char.name}
-                        </span>
-                        <span className="text-[9px] text-amber-300/80 font-semibold">
-                          {char.title}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Rules & Deck Selection */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-slate-800/70 border border-cyan-500/30 rounded-2xl p-4 flex flex-col justify-between">
-                <div>
-                  <label className="font-black text-cyan-300 text-sm uppercase tracking-wider block mb-2">
-                    📚 Question Deck Source
-                  </label>
-                  <select
-                    value={selectedTopicFilter}
-                    onChange={(e) => setSelectedTopicFilter(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-bold text-white mb-3 focus:outline-none focus:border-cyan-400 cursor-pointer"
-                  >
-                    <option value="custom">
-                      🎯 Custom Setup Questions ({activeQuiz.questions.filter((q) => q.text.trim()).length} Qs)
-                    </option>
-                    <option value="all">🌟 Built-in All-Rounder Mix (All Categories)</option>
-                    <option value="ocean">🦈 Built-in: Ocean, Sharks & Marine Life</option>
-                    <option value="science">🧪 Built-in: Science, Space & Nature</option>
-                    <option value="gaming">🎮 Built-in: Gaming & Pop Culture</option>
-                    <option value="math">🧮 Built-in: Quick Math & Logic</option>
-                    <option value="geography">🌍 Built-in: World Geography</option>
-                  </select>
-                </div>
-
-                <div className="bg-slate-900/90 border border-cyan-500/20 rounded-xl p-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-white">
-                      Active Topic: {activeQuiz.topic || activeQuiz.title || 'Shark Attack Trivia'}
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      {activeQuiz.questions.filter((q) => q.text.trim()).length} custom questions configured
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setScreen('editor')}
-                    className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-400/40 text-blue-300 hover:bg-blue-500 hover:text-white text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    Edit Questions
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-slate-800/70 border border-cyan-500/30 rounded-2xl p-4 flex flex-col justify-between">
-                <div>
-                  <label className="font-black text-cyan-300 text-sm uppercase tracking-wider block mb-2">
-                    ⚙️ Staircase Rules
-                  </label>
-                  <div className="space-y-2 text-xs text-slate-300">
-                    <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-900/80 border border-slate-700 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="sharkRuleMode"
-                        checked={ruleMode === 'classic'}
-                        onChange={() => setRuleMode('classic')}
-                        className="mt-0.5 accent-cyan-400"
-                      />
-                      <div>
-                        <span className="font-bold text-white block">Classic Rule (Default)</span>
-                        <span className="text-slate-400 text-[11px]">
-                          Correct answer = Stay Safe! Wrong answer or Timeout = Climb 1 step toward the shark!
-                        </span>
-                      </div>
-                    </label>
-                    <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-900/80 border border-slate-700 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="sharkRuleMode"
-                        checked={ruleMode === 'speed'}
-                        onChange={() => setRuleMode('speed')}
-                        className="mt-0.5 accent-cyan-400"
-                      />
-                      <div>
-                        <span className="font-bold text-amber-300 block">Speed Pressure Twist</span>
-                        <span className="text-slate-400 text-[11px]">
-                          Wrong = Climb 1 step. PLUS if both players answer correctly, the slower player still climbs 1 step!
-                        </span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="mt-3 pt-2.5 border-t border-slate-700/70 flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-semibold">Steps to Fall in Shark Jaws:</span>
-                  <select
-                    value={maxSteps}
-                    onChange={(e) => setMaxSteps(Number(e.target.value))}
-                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 font-bold text-cyan-300 cursor-pointer"
-                  >
-                    <option value={3}>3 Steps (Quick Blitz)</option>
-                    <option value={5}>5 Steps (Standard)</option>
-                    <option value={7}>7 Steps (Marathon)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Start Button */}
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={startMatch}
-                className="w-full sm:w-auto px-9 py-4 rounded-2xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 hover:from-emerald-300 hover:to-blue-400 text-slate-950 font-black text-lg tracking-wide shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-2.5 cursor-pointer active:scale-95 transition-all"
-              >
-                <Play size={22} fill="currentColor" />
-                <span>START SHARK ATTACK!</span>
-              </button>
-            </div>
+        <div className="bg-white p-10 md:p-16 rounded-[2.5rem] text-center shadow-2xl border-8 border-yellow-400 max-w-xl w-full">
+          <div className="flex justify-center mb-4">
+            <CuteHamsterCharacter
+              team={winner === 'Blue Team' ? 'left' : 'right'}
+              character={winner === 'Blue Team' ? leftCharacter : rightCharacter}
+              isWinner
+              compact
+            />
+          </div>
+          <h2
+            className={`text-5xl md:text-7xl font-black mb-3 uppercase italic ${
+              winner === 'Blue Team' ? 'text-blue-600' : 'text-red-600'
+            }`}
+          >
+            {winner}
+          </h2>
+          <p className="text-2xl font-black text-slate-800 mb-10 uppercase tracking-widest">
+            Wins the Match! 🦈
+          </p>
+          <div className="flex flex-col md:flex-row gap-4 justify-center">
+            <button
+              onClick={() => startGame(true)}
+              className="bg-yellow-400 hover:bg-yellow-300 text-slate-900 text-2xl font-black px-8 py-5 rounded-full shadow-[0_6px_0_#ca8a04] active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+            >
+              Continue
+            </button>
+            <button
+              onClick={() => {
+                setLeftTeam((prev: any) => ({ ...prev, wins: 0 }));
+                setRightTeam((prev: any) => ({ ...prev, wins: 0 }));
+                startGame(false);
+              }}
+              className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xl font-bold px-8 py-5 rounded-full shadow-[0_6px_0_#94a3b8] active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+            >
+              Restart
+            </button>
           </div>
         </div>
-      )}
 
-      {/* SCREEN 3: STUDY MODE (Pure White Background, Black Text, Green Correct, Red Incorrect, Font Size Pop-Up) */}
-      {screen === 'study' && (
-        <div className="absolute inset-0 z-40 bg-white text-black flex flex-col overflow-hidden select-none">
-          {/* Pure White Header */}
-          <div className="h-16 px-4 sm:px-8 border-b border-slate-200 flex items-center justify-between shrink-0 bg-white">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setScreen('setup')}
-                className="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-black font-bold text-sm flex items-center gap-2 cursor-pointer"
-              >
-                <ArrowLeft size={16} />
-                <span>Back to Setup</span>
-              </button>
-              <span className="font-black text-lg tracking-tight text-black">
-                🦈 Shark Attack · Study Mode
-              </span>
+        <GameModeModal
+          isOpen={showModeModal}
+          gameData={{
+            id: activeGame?.id,
+            name: activeGame?.title,
+            topic: activeGame?.topic,
+            className: activeGame?.classLevel,
+            gameType: 'shark-attack',
+            customQuestions: activeGame?.questions || DEFAULT_QUESTIONS,
+          }}
+          onClose={() => setShowModeModal(false)}
+          onSelectMode={(mode, adaptedData) => {
+            onViewChange(mode as ViewState, adaptedData);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // SCREEN 5: IN-GAME BATTLE ARENA
+  // ==========================================================================
+  const currentQText = leftTeam.q?.text || rightTeam.q?.text || DEFAULT_QUESTIONS[0].text;
+
+  return (
+    <div
+      id="game-container"
+      className="w-full min-h-full flex-1 select-none overflow-hidden font-sans relative flex flex-col justify-between p-2 sm:p-3 md:p-4 bg-gradient-to-b from-sky-200 via-cyan-100 to-sky-300"
+    >
+      {/* TOP ROW */}
+      <div className="w-full flex items-center justify-between shrink-0 z-50 relative gap-2 sm:gap-4 px-1 sm:px-2 mb-1.5 sm:mb-2">
+        <button
+          onClick={() => setScreen('menu')}
+          className="p-2 sm:p-2.5 rounded-full bg-white/90 hover:bg-white text-slate-700 shadow-md border border-slate-300 transition-all cursor-pointer hover:scale-105 active:scale-95"
+          title="Back to Hamster Menu"
+        >
+          <ArrowLeft size={22} className="stroke-[2.5]" />
+        </button>
+
+        {/* Blue Team & Red Team Scoreboard Banners */}
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
+          <div className="bg-[#0055fe] rounded-2xl md:rounded-3xl px-2.5 sm:px-4 md:px-5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 shadow-lg shadow-blue-500/25 border-b-4 border-[#0038b3]">
+            <button
+              onClick={() => setShowCharacterModal(true)}
+              className="bg-white/95 hover:bg-white rounded-full p-0.5 shadow-sm flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+              title="Change Blue Team Hamster"
+            >
+              <CuteHamsterCharacter team="left" character={leftCharacter} size="icon" />
+            </button>
+            <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
+              BLUE TEAM
+            </span>
+            <div className="bg-white text-blue-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
+              {leftTeam.wins} WINS
             </div>
+          </div>
 
-            <div className="flex items-center gap-3 relative">
-              <span className="text-xs font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-full border border-slate-300 text-black">
-                Question {studyIndex + 1} / {Math.max(1, activeQuiz.questions.filter((q) => q.text.trim()).length || BUILTIN_QUESTIONS.length)}
-              </span>
+          <div className="bg-[#cc0000] rounded-2xl md:rounded-3xl px-2.5 sm:px-4 md:px-5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 shadow-lg shadow-red-500/25 border-b-4 border-[#990000]">
+            <div className="bg-white text-red-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
+              {rightTeam.wins} WINS
+            </div>
+            <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
+              RED TEAM
+            </span>
+            <button
+              onClick={() => setShowCharacterModal(true)}
+              className="bg-white/95 hover:bg-white rounded-full p-0.5 shadow-sm flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+              title="Change Red Team Hamster"
+            >
+              <CuteHamsterCharacter team="right" character={rightCharacter} size="icon" />
+            </button>
+          </div>
+        </div>
 
-              {/* Top-Right Font Size Pop-Up Button */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowFontMenu((prev) => !prev)}
-                  className="p-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-black flex items-center gap-1.5 font-bold text-xs cursor-pointer"
-                  title="Change Font Size"
-                >
-                  <Type size={16} />
-                  <span className="hidden sm:inline capitalize">{fontScale}</span>
-                </button>
-                {showFontMenu && (
-                  <div className="absolute right-0 mt-2 w-36 bg-white border border-slate-300 rounded-2xl shadow-xl p-1.5 z-50">
-                    {(['small', 'medium', 'large'] as const).map((sz) => (
+        {/* TOP RIGHT CONTROLS */}
+        <div className="relative flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-md px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full shadow-md border border-slate-200">
+          <button
+            onClick={() => setShowCharacterModal(true)}
+            className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-[11px] sm:text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Choose Cute Hamsters"
+          >
+            <Users size={15} className="text-amber-700" />
+            <span className="hidden sm:inline">Hamsters</span>
+          </button>
+
+          <button
+            onClick={() => setShowStartBattleModal(true)}
+            className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-sky-100 hover:bg-sky-200 text-sky-900 font-black text-[11px] sm:text-xs flex items-center gap-1 transition-all cursor-pointer"
+            title="Switch Single or Split Question Mode"
+          >
+            <span>{questionMode === 'single' ? '🎯 Single' : '⚡ Split'}</span>
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowFontSizePopup((prev) => !prev)}
+              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full font-black text-[11px] sm:text-xs flex items-center gap-1 transition-all cursor-pointer ${
+                showFontSizePopup
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-900'
+              }`}
+              title="Adjust Font Size"
+            >
+              <Type size={15} />
+              <span className="hidden md:inline capitalize">{fontSizeScale}</span>
+            </button>
+
+            {showFontSizePopup && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowFontSizePopup(false)} />
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border-2 border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2.5 py-1">
+                    Font Size
+                  </div>
+                  {(
+                    [
+                      { id: 'small', label: 'Small', badge: 'A' },
+                      { id: 'medium', label: 'Medium', badge: 'A+' },
+                      { id: 'large', label: 'Large', badge: 'A++' },
+                    ] as const
+                  ).map((item) => {
+                    const active = fontSizeScale === item.id;
+                    return (
                       <button
-                        key={sz}
-                        type="button"
+                        key={item.id}
                         onClick={() => {
-                          setFontScale(sz);
-                          setShowFontMenu(false);
+                          setFontSizeScale(item.id);
+                          setShowFontSizePopup(false);
                         }}
-                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold capitalize cursor-pointer ${
-                          fontScale === sz ? 'bg-slate-900 text-white' : 'text-black hover:bg-slate-100'
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-black text-xs sm:text-sm transition-all cursor-pointer mb-1 last:mb-0 ${
+                          active ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        {sz}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Study Content Body */}
-          {(() => {
-            const validList = activeQuiz.questions.filter((q) => q.text.trim());
-            const studyQuestions = validList.length > 0 ? validList : BUILTIN_QUESTIONS;
-            const currentQ = studyQuestions[studyIndex] || studyQuestions[0];
-
-            return (
-              <div className="flex-1 overflow-y-auto p-6 sm:p-10 flex flex-col items-center justify-center max-w-4xl mx-auto w-full gap-8 bg-white">
-                <div className="w-full text-center p-6 sm:p-8 rounded-3xl border-2 border-slate-200 bg-white shadow-sm">
-                  <h3 className={`font-black text-black leading-snug ${getQuestionFontClass(currentQ.text)}`}>
-                    {currentQ.text}
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-                  {currentQ.options.map((opt, idx) => {
-                    const isPicked = studySelectedOption === idx;
-                    const isCorrect = idx === currentQ.answerIndex;
-                    let cardStyle = 'bg-white border-slate-300 text-black hover:border-slate-500';
-                    if (studySelectedOption !== null) {
-                      if (isCorrect) {
-                        cardStyle = 'bg-emerald-600 border-emerald-700 text-white';
-                      } else if (isPicked && !isCorrect) {
-                        cardStyle = 'bg-red-600 border-red-700 text-white';
-                      }
-                    }
-
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setStudySelectedOption(idx)}
-                        className={`p-5 rounded-2xl border-2 font-bold text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${cardStyle}`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="w-8 h-8 rounded-xl border border-current flex items-center justify-center font-black text-sm shrink-0">
-                            {String.fromCharCode(65 + idx)}
-                          </span>
-                          {opt.startsWith('http') || opt.startsWith('data:image') ? (
-                            <img src={opt} alt="Option" className="h-20 w-20 object-cover rounded-xl" />
-                          ) : (
-                            <span className={`font-bold break-words ${getOptionFontClass(opt)}`}>{opt}</span>
-                          )}
-                        </div>
-                        {studySelectedOption !== null && isCorrect && <CheckCircle2 size={22} className="shrink-0" />}
-                        {studySelectedOption !== null && isPicked && !isCorrect && <XCircle size={22} className="shrink-0" />}
+                        <span>{item.label}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-xs font-black ${
+                            active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
+              </>
+            )}
+          </div>
 
-                <div className="flex items-center justify-between w-full pt-4 border-t border-slate-200">
-                  <button
-                    type="button"
-                    disabled={studyIndex === 0}
-                    onClick={() => {
-                      setStudyIndex((i) => Math.max(0, i - 1));
-                      setStudySelectedOption(null);
-                    }}
-                    className="px-6 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 text-black font-bold text-sm cursor-pointer"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (studyIndex < studyQuestions.length - 1) {
-                        setStudyIndex((i) => i + 1);
-                        setStudySelectedOption(null);
-                      } else {
-                        setScreen('setup');
-                      }
-                    }}
-                    className="px-6 py-3 rounded-xl bg-black text-white font-bold text-sm cursor-pointer hover:bg-slate-800"
-                  >
-                    {studyIndex < studyQuestions.length - 1 ? 'Next Question' : 'Finish Study'}
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
+          <FullscreenButton
+            targetId="game-container"
+            className="!p-1.5 sm:!p-2 !rounded-full !bg-blue-100 hover:!bg-blue-200 !text-blue-700 !border-0 !shadow-none cursor-pointer"
+          />
+          <button
+            onClick={() => setSoundMuted(!soundMuted)}
+            className="p-1.5 sm:p-2 rounded-full hover:bg-slate-100 text-slate-700 transition-all cursor-pointer"
+            title={soundMuted ? 'Unmute Sound' : 'Mute Sound'}
+          >
+            {soundMuted ? (
+              <VolumeX size={20} className="text-red-500" />
+            ) : (
+              <Volume2 size={20} className="text-emerald-600" />
+            )}
+          </button>
+          <button
+            onClick={() => setShowModeModal(true)}
+            className="p-1.5 sm:p-2 rounded-full hover:bg-slate-100 text-slate-700 transition-all cursor-pointer"
+            title="Switch Game Mode"
+          >
+            <Shuffle size={20} />
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* SCREEN 4: ACTIVE SHARK ATTACK ARENA */}
-      {screen === 'game' && (
+      {/* CENTER SHARK LAGOON & STAIRCASE ARENA + SINGLE QUESTION BANNER */}
+      <div className="flex-1 w-full max-w-[1440px] mx-auto flex flex-col items-center justify-center relative pb-1.5 overflow-visible">
+        <SharkLagoonArena
+          leftStep={leftTeam.step}
+          rightStep={rightTeam.step}
+          leftFloatingFeedback={leftFeedback}
+          rightFloatingFeedback={rightFeedback}
+          leftCharacter={leftCharacter}
+          rightCharacter={rightCharacter}
+          leftPushing={leftTeam.pushing}
+          rightPushing={rightTeam.pushing}
+          leftStunned={leftTeam.stunned}
+          rightStunned={rightTeam.stunned}
+          leftFrozen={leftTeam.frozen}
+          rightFrozen={rightTeam.frozen}
+          sharkLungeSide={sharkLungeSide}
+          fallingPhase={fallingPhase}
+          winner={winner}
+          isRumbling={isRumbling}
+        />
+
+        {questionMode === 'single' && (
+          <div className="w-full max-w-5xl mx-auto pt-2 pb-1 px-4 text-center z-20 shrink-0 pointer-events-none">
+            <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl py-3 sm:py-4 px-6 sm:px-10 shadow-xl border-2 border-sky-900/15">
+              <div
+                className={`${getQuestionFontSize(
+                  currentQText,
+                  false
+                )} font-black text-[#0f172a] leading-snug tracking-tight drop-shadow-xs break-words`}
+              >
+                {renderQuestionText(currentQText)}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* BOTTOM ANSWER AREA (CLEAN OPTION TEXT WITH NO A/B/C/D PREFIX + TABLET MULTI-TOUCH SUPPORT) */}
+      <div className="w-full max-w-[1440px] mx-auto flex flex-col md:flex-row gap-2 sm:gap-3 md:gap-5 shrink-0 z-20">
+        {/* BLUE TEAM ANSWER CONTAINER (LEFT) */}
         <div
-          className={`min-h-[calc(100vh-4rem)] h-full flex flex-col justify-between bg-gradient-to-b from-[#06101e] via-[#0b213a] to-[#071324] text-slate-100 overflow-y-auto ${
-            shakeScreen ? 'animate-bounce' : ''
+          className={`flex-1 bg-[#0055fe] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#0038b3] flex flex-col justify-between transition-all duration-200 ${
+            leftTeam.pushing
+              ? 'ring-4 ring-emerald-400 shadow-[0_0_28px_rgba(52,211,153,0.65)] scale-[1.01]'
+              : sharkLungeSide === 'left'
+                ? 'ring-4 ring-rose-500 animate-pulse'
+                : ''
           }`}
         >
-          {/* Top Game Header */}
-          <header className="w-full px-3 py-2 bg-slate-900/85 backdrop-blur-md border-b border-cyan-500/20 flex items-center justify-between z-30 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-700 flex items-center justify-center shadow-lg shadow-cyan-500/20 border border-cyan-300/40 text-lg">
-                🦈
-              </div>
-              <div>
-                <h1 className="text-base sm:text-lg font-black tracking-wide bg-gradient-to-r from-cyan-300 via-white to-amber-300 bg-clip-text text-transparent leading-none">
-                  SHARK ATTACK
-                </h1>
-                <p className="text-[10px] text-cyan-300/70 font-bold tracking-wider uppercase">
-                  Wrong Answer = Climb to the Jaws!
-                </p>
-              </div>
-            </div>
-
-            {/* Center Info */}
-            <div className="hidden md:flex items-center gap-3 bg-slate-800/90 px-4 py-1.5 rounded-full border border-slate-700">
-              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Zap size={13} />
-                <span>{activeQuiz.topic || activeQuiz.title || 'Shark Trivia'}</span>
-              </span>
-              <span className="text-slate-600">|</span>
-              <span className="text-xs font-extrabold text-cyan-300">ROUND {round}</span>
-              <span className="text-slate-600">|</span>
-              <span className="text-xs text-emerald-400 font-semibold">
-                {ruleMode === 'speed' ? '⚡ Speed Push Rule' : '🛡️ Classic Rule'}
-              </span>
-            </div>
-
-            {/* Right Controls */}
-            <div className="flex items-center gap-1.5 sm:gap-2 relative">
-              {/* Font size popup */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowFontMenu((prev) => !prev)}
-                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-600 font-bold text-xs flex items-center gap-1 cursor-pointer"
-                  title="Question Font Size"
-                >
-                  <Type size={14} />
-                  <span className="hidden sm:inline capitalize">{fontScale}</span>
-                </button>
-                {showFontMenu && (
-                  <div className="absolute right-0 mt-2 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1 z-50">
-                    {(['small', 'medium', 'large'] as const).map((sz) => (
-                      <button
-                        key={sz}
-                        type="button"
-                        onClick={() => {
-                          setFontScale(sz);
-                          setShowFontMenu(false);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold capitalize cursor-pointer ${
-                          fontScale === sz ? 'bg-cyan-500 text-slate-950' : 'text-slate-200 hover:bg-slate-800'
-                        }`}
-                      >
-                        {sz}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setScreen('setup')}
-                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+          {questionMode === 'split' && (
+            <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
+              <div
+                className={`${getQuestionFontSize(
+                  leftTeam.q?.text || '',
+                  true
+                )} font-black text-[#0f172a] leading-snug px-1.5 break-words`}
               >
-                <Users size={14} />
-                <span className="hidden sm:inline">Setup / Avatars</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setScreen('editor')}
-                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Edit3 size={14} />
-                <span className="hidden sm:inline">Edit Quiz</span>
-              </button>
-              <button
-                type="button"
-                onClick={startMatch}
-                className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-                title="Restart Match"
-              >
-                <RotateCcw size={14} />
-                <span className="hidden sm:inline">Restart</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSoundEnabled((prev) => !prev)}
-                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 flex items-center justify-center border border-slate-600 cursor-pointer"
-                title="Toggle Sound"
-              >
-                {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} className="text-rose-400" />}
-              </button>
-              <FullscreenButton className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 flex items-center justify-center border border-slate-600" />
-            </div>
-          </header>
-
-          {/* Main Arena Container */}
-          <main className="flex-1 flex flex-col justify-between max-w-7xl w-full mx-auto px-2 sm:px-4 py-2 gap-2 relative overflow-hidden">
-            {/* UPPER VISUAL ARENA: STAIRS + TEMPORARY AVATARS + MEGALODON SHARK */}
-            <section className="relative w-full h-[270px] sm:h-[330px] lg:h-[370px] bg-gradient-to-b from-[#0c192c] via-[#112c4a] to-[#08304b] rounded-2xl border-2 border-cyan-500/30 shadow-2xl overflow-hidden shrink-0">
-              {/* Player 1 HUD Card */}
-              <div className="absolute top-2.5 left-2.5 z-20 bg-slate-900/85 backdrop-blur-md border border-rose-500/40 rounded-2xl p-2 sm:px-3.5 sm:py-2 flex items-center gap-2.5 shadow-lg">
-                <div
-                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-500/20 border border-rose-400/50 flex items-center justify-center overflow-hidden shrink-0"
-                  dangerouslySetInnerHTML={{
-                    __html: (CHARACTERS[p1CharIndex] || CHARACTERS[0]).svg,
-                  }}
-                />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-500" />
-                    <h2 className="font-bold text-xs sm:text-sm text-rose-300">{p1Name}</h2>
-                  </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    {Array.from({ length: maxSteps }).map((_, idx) => {
-                      const s = idx + 1;
-                      const filled = s <= p1Hud.step;
-                      const isDanger = s === maxSteps;
-                      return (
-                        <span
-                          key={s}
-                          className={`w-3 h-2 rounded-xs border transition-all ${
-                            filled
-                              ? isDanger
-                                ? 'bg-red-500 border-red-300 animate-pulse'
-                                : 'bg-rose-400 border-rose-200'
-                              : 'bg-slate-800 border-slate-600'
-                          }`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span
-                      className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                        p1Hud.step === 0
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : p1Hud.step >= maxSteps
-                          ? 'bg-red-600 text-white animate-pulse'
-                          : 'bg-amber-500/20 text-amber-200'
-                      }`}
-                    >
-                      {p1Hud.step === 0
-                        ? 'Ground (Safe)'
-                        : p1Hud.step >= maxSteps
-                        ? '⚠️ TOP LEDGE!'
-                        : `Stair ${p1Hud.step}/${maxSteps}`}
-                    </span>
-                    {p1Hud.hasRope && p1Hud.step > 0 && phase === 'question' && (
-                      <button
-                        type="button"
-                        onClick={() => useRopePowerup(1)}
-                        className="text-[10px] bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-1.5 py-0.5 rounded animate-bounce flex items-center gap-1 cursor-pointer"
-                      >
-                        <Anchor size={10} /> -1 STEP
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Center Banner */}
-              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
-                <div className="px-4 py-1 rounded-full bg-slate-950/80 border border-cyan-400/30 text-cyan-200 text-xs sm:text-sm font-bold tracking-wide shadow-lg flex items-center gap-2">
-                  <Skull size={14} className="text-amber-400" />
-                  <span>{arenaBannerText}</span>
-                </div>
-              </div>
-
-              {/* Player 2 HUD Card */}
-              <div className="absolute top-2.5 right-2.5 z-20 bg-slate-900/85 backdrop-blur-md border border-amber-500/40 rounded-2xl p-2 sm:px-3.5 sm:py-2 flex items-center gap-2.5 shadow-lg text-right">
-                <div>
-                  <div className="flex items-center justify-end gap-1.5">
-                    <h2 className="font-bold text-xs sm:text-sm text-amber-300">{p2Name}</h2>
-                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  </div>
-                  <div className="flex items-center justify-end gap-1 mt-0.5">
-                    {Array.from({ length: maxSteps }).map((_, idx) => {
-                      const s = idx + 1;
-                      const filled = s <= p2Hud.step;
-                      const isDanger = s === maxSteps;
-                      return (
-                        <span
-                          key={s}
-                          className={`w-3 h-2 rounded-xs border transition-all ${
-                            filled
-                              ? isDanger
-                                ? 'bg-red-500 border-red-300 animate-pulse'
-                                : 'bg-amber-400 border-amber-200'
-                              : 'bg-slate-800 border-slate-600'
-                          }`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex items-center justify-end gap-2 mt-1">
-                    {p2Hud.hasRope && p2Hud.step > 0 && phase === 'question' && (
-                      <button
-                        type="button"
-                        onClick={() => useRopePowerup(2)}
-                        className="text-[10px] bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-1.5 py-0.5 rounded animate-bounce flex items-center gap-1 cursor-pointer"
-                      >
-                        <Anchor size={10} /> -1 STEP
-                      </button>
-                    )}
-                    <span
-                      className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                        p2Hud.step === 0
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : p2Hud.step >= maxSteps
-                          ? 'bg-red-600 text-white animate-pulse'
-                          : 'bg-amber-500/20 text-amber-200'
-                      }`}
-                    >
-                      {p2Hud.step === 0
-                        ? 'Ground (Safe)'
-                        : p2Hud.step >= maxSteps
-                        ? '⚠️ TOP LEDGE!'
-                        : `Stair ${p2Hud.step}/${maxSteps}`}
-                    </span>
-                  </div>
-                </div>
-                <div
-                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center overflow-hidden shrink-0"
-                  dangerouslySetInnerHTML={{
-                    __html: (CHARACTERS[p2CharIndex] || CHARACTERS[1]).svg,
-                  }}
-                />
-              </div>
-
-              <canvas ref={canvasRef} className="w-full h-full block" />
-            </section>
-
-            {/* LOWER 3-COLUMN DECK: P1 CONTROLS | QUESTION & CHOICES | P2 CONTROLS */}
-            <section className="w-full grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-stretch flex-1 min-h-[225px]">
-              {/* Left: Player 1 Controls (WASD) */}
-              <div className="lg:col-span-3 order-2 lg:order-1 bg-slate-900/90 border-2 border-rose-500/40 rounded-2xl p-3 flex flex-col justify-between shadow-xl">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 rounded-md bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-xs">
-                      P1 (LEFT)
-                    </span>
-                    <span className="text-[11px] text-rose-200/90 font-bold bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                      Keys: W A S D
-                    </span>
-                  </div>
-                  <span
-                    className={`text-xs font-extrabold px-2 py-0.5 rounded-full ${
-                      phase === 'reveal'
-                        ? p1Hud.selectedOption === currentQuestion?.answerIndex
-                          ? 'bg-emerald-500 text-slate-950'
-                          : 'bg-red-600 text-white'
-                        : p1Hud.selectedOption !== null
-                        ? 'bg-rose-500 text-white'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {phase === 'reveal'
-                      ? p1Hud.selectedOption === null
-                        ? '⏰ TIME OUT!'
-                        : p1Hud.selectedOption === currentQuestion?.answerIndex
-                        ? `✅ Picked ${['A', 'B', 'C', 'D'][p1Hud.selectedOption]}`
-                        : `❌ Picked ${['A', 'B', 'C', 'D'][p1Hud.selectedOption]}`
-                      : p1Hud.selectedOption !== null
-                      ? '🔒 LOCKED IN!'
-                      : 'Choosing...'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 flex-1 items-stretch">
-                  <div className="hidden sm:flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                    WASD
-                  </div>
-                  {[
-                    { idx: 0, label: 'A', keyHint: '▲ W', colClass: '' },
-                    { idx: -1, label: '', keyHint: '', colClass: 'hidden sm:block' },
-                    { idx: 1, label: 'B', keyHint: '◀ A', colClass: '' },
-                    { idx: 2, label: 'C', keyHint: '▼ S', colClass: '' },
-                    { idx: 3, label: 'D', keyHint: 'D ▶', colClass: '' },
-                  ].map((item, i) => {
-                    if (item.idx === -1) return <div key={i} className="hidden sm:block" />;
-                    const optIdx = item.idx;
-                    const isLocked = p1Hud.selectedOption !== null || phase !== 'question';
-                    const isPicked = p1Hud.selectedOption === optIdx;
-                    const isRight = currentQuestion?.answerIndex === optIdx;
-                    let ringClass = '';
-                    if (phase === 'reveal' && isPicked) {
-                      ringClass = isRight ? 'ring-4 ring-emerald-300' : 'ring-4 ring-red-400';
-                    } else if (p2Mode !== 'human' && isPicked) {
-                      ringClass = 'ring-4 ring-white';
-                    }
-
-                    return (
-                      <button
-                        key={i}
-                        type="button"
-                        disabled={isLocked}
-                        onClick={() => handlePlayerInput(1, optIdx)}
-                        className={`min-h-[54px] rounded-xl bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 disabled:opacity-60 text-white font-black flex flex-col items-center justify-center border-2 border-rose-200/40 py-1 cursor-pointer active:translate-y-0.5 transition-all ${ringClass}`}
-                      >
-                        <span className="text-lg leading-none">{item.label}</span>
-                        <span className="mt-0.5 px-1.5 py-0.5 rounded bg-slate-950/45 text-[10px] font-black text-rose-100">
-                          {item.keyHint}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-2 pt-1.5 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                  <span>
-                    Streak: <strong className="text-rose-300">{p1Hud.streak}</strong>/3 for Lifeline
-                  </span>
-                  {p1Hud.lockTime !== null && (
-                    <span className="text-[11px] text-cyan-400 font-semibold">
-                      ⏱️ {p1Hud.lockTime.toFixed(1)}s
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Center: Question & 4 Answer Choices */}
-              <div className="lg:col-span-6 order-1 lg:order-2 bg-slate-900/95 border-2 border-cyan-400/50 rounded-2xl p-3 sm:p-4 flex flex-col justify-between shadow-2xl">
-                {/* Timer Bar */}
-                <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden mb-2 border border-slate-700">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-amber-400 transition-all duration-100"
-                    style={{ width: `${Math.max(0, Math.min(100, (timerLeft / 15) * 100))}%` }}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between text-xs font-bold text-cyan-300/90 mb-1">
-                  <span className="uppercase tracking-wider bg-cyan-950/80 border border-cyan-500/30 px-2.5 py-0.5 rounded-full">
-                    {currentQuestion?.cat || activeQuiz.topic || 'Shark Trivia'}
-                  </span>
-                  <span className="text-sm sm:text-base font-black text-amber-300">
-                    {timerLeft.toFixed(1)}s
-                  </span>
-                </div>
-
-                <div className="my-auto py-1.5 text-center">
-                  <h3
-                    className={`font-black text-white leading-snug ${getQuestionFontClass(
-                      currentQuestion?.text || ''
-                    )}`}
-                  >
-                    {currentQuestion?.text || 'Loading question...'}
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                  {[0, 1, 2, 3].map((idx) => {
-                    const optText = currentQuestion?.options[idx] || `Option ${idx + 1}`;
-                    const keyBadges = ['W / ↑', 'A / ←', 'S / ↓', 'D / →'];
-                    const isReveal = phase === 'reveal' || phase === 'animating' || phase === 'gameover';
-                    const isCorrect = currentQuestion?.answerIndex === idx;
-                    const isImage = optText.startsWith('http') || optText.startsWith('data:image');
-
-                    return (
-                      <div
-                        key={idx}
-                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border transition-all ${
-                          isReveal
-                            ? isCorrect
-                              ? 'bg-emerald-500/30 border-2 border-emerald-400 scale-[1.02] shadow-lg'
-                              : 'bg-slate-900/60 border-slate-800 opacity-50'
-                            : 'bg-slate-800/90 border-slate-600/80'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="w-7 h-7 rounded-lg bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-black flex items-center justify-center text-sm shrink-0">
-                            {String.fromCharCode(65 + idx)}
-                          </span>
-                          {isImage ? (
-                            <img
-                              src={optText}
-                              alt={`Option ${idx + 1}`}
-                              className="h-11 w-14 object-cover rounded-lg border border-white/20"
-                            />
-                          ) : (
-                            <span
-                              className={`font-semibold text-slate-100 leading-tight break-words ${getOptionFontClass(
-                                optText
-                              )}`}
-                            >
-                              {optText}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] font-black text-slate-400 bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700 shrink-0">
-                          {keyBadges[idx]}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Right: Player 2 Controls (Arrows or AI) */}
-              <div className="lg:col-span-3 order-3 bg-slate-900/90 border-2 border-amber-500/40 rounded-2xl p-3 flex flex-col justify-between shadow-xl">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
-                  <span
-                    className={`text-xs font-extrabold px-2 py-0.5 rounded-full ${
-                      phase === 'reveal'
-                        ? p2Hud.selectedOption === currentQuestion?.answerIndex
-                          ? 'bg-emerald-500 text-slate-950'
-                          : 'bg-red-600 text-white'
-                        : p2Hud.selectedOption !== null
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {phase === 'reveal'
-                      ? p2Hud.selectedOption === null
-                        ? '⏰ TIME OUT!'
-                        : p2Hud.selectedOption === currentQuestion?.answerIndex
-                        ? `✅ Picked ${['A', 'B', 'C', 'D'][p2Hud.selectedOption]}`
-                        : `❌ Picked ${['A', 'B', 'C', 'D'][p2Hud.selectedOption]}`
-                      : p2Hud.selectedOption !== null
-                      ? '🔒 LOCKED IN!'
-                      : 'Choosing...'}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-amber-200/90 font-bold bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                      {p2Mode === 'human' ? 'Keys: ↑ ← ↓ →' : '🤖 AI Controlled'}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs">
-                      P2 (RIGHT)
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 flex-1 items-stretch">
-                  <div className="hidden sm:block" />
-                  {[
-                    { idx: 0, label: 'A', keyHint: '▲ UP' },
-                    { idx: -1, label: 'ARROWS', keyHint: '' },
-                    { idx: 1, label: 'B', keyHint: '◀ LEFT' },
-                    { idx: 2, label: 'C', keyHint: '▼ DOWN' },
-                    { idx: 3, label: 'D', keyHint: 'RIGHT ▶' },
-                  ].map((item, i) => {
-                    if (item.idx === -1) {
-                      return (
-                        <div
-                          key={i}
-                          className="hidden sm:flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase tracking-wider"
-                        >
-                          ARROWS
-                        </div>
-                      );
-                    }
-                    const optIdx = item.idx;
-                    const isLocked =
-                      p2Mode !== 'human' || p2Hud.selectedOption !== null || phase !== 'question';
-                    const isPicked = p2Hud.selectedOption === optIdx;
-                    const isRight = currentQuestion?.answerIndex === optIdx;
-                    let ringClass = '';
-                    if (phase === 'reveal' && isPicked) {
-                      ringClass = isRight ? 'ring-4 ring-emerald-300' : 'ring-4 ring-red-400';
-                    }
-
-                    return (
-                      <button
-                        key={i}
-                        type="button"
-                        disabled={isLocked}
-                        onClick={() => handlePlayerInput(2, optIdx)}
-                        className={`min-h-[54px] rounded-xl bg-gradient-to-b from-amber-400 to-amber-600 hover:from-amber-300 hover:to-amber-500 disabled:opacity-60 text-slate-950 font-black flex flex-col items-center justify-center border-2 border-amber-100/60 py-1 cursor-pointer active:translate-y-0.5 transition-all ${ringClass}`}
-                      >
-                        <span className="text-lg leading-none">{item.label}</span>
-                        <span className="mt-0.5 px-1.5 py-0.5 rounded bg-slate-950/25 text-[10px] font-black text-slate-950">
-                          {item.keyHint}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-2 pt-1.5 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                  {p2Hud.lockTime !== null ? (
-                    <span className="text-[11px] text-cyan-400 font-semibold">
-                      ⏱️ {p2Hud.lockTime.toFixed(1)}s
-                    </span>
-                  ) : (
-                    <span />
-                  )}
-                  <span>
-                    Streak: <strong className="text-amber-300">{p2Hud.streak}</strong>/3 for Lifeline
-                  </span>
-                </div>
-              </div>
-            </section>
-          </main>
-
-          {/* Game Over Modal */}
-          {gameOverInfo && (
-            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-slate-900 border-2 border-amber-400/60 rounded-3xl max-w-md w-full p-6 text-center shadow-2xl">
-                <div className="w-20 h-20 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center text-slate-950 text-4xl shadow-lg">
-                  <Trophy size={40} />
-                </div>
-                <h2 className="text-3xl font-black text-white mb-1">
-                  {gameOverInfo.p1Fell && gameOverInfo.p2Fell
-                    ? 'DOUBLE SHARK SNACK!'
-                    : gameOverInfo.p1Fell
-                    ? `${p2Name.toUpperCase()} WINS!`
-                    : `${p1Name.toUpperCase()} WINS!`}
-                </h2>
-                <p className="text-sm text-rose-300 font-semibold mb-4">
-                  {gameOverInfo.p1Fell && gameOverInfo.p2Fell
-                    ? `Both ${p1Name} and ${p2Name} tumbled off the top stairs into the shark's jaws!`
-                    : gameOverInfo.p1Fell
-                    ? `${p1Name} climbed too high, fell into the abyss, and got eaten by the shark!`
-                    : `${p2Name} climbed too high, fell into the abyss, and got eaten by the shark!`}
-                </p>
-
-                <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3 mb-5 grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 rounded-xl bg-slate-900">
-                    <span className="text-slate-400 block">Total Rounds</span>
-                    <strong className="text-lg text-cyan-300 font-black">{gameOverInfo.rounds}</strong>
-                  </div>
-                  <div className="p-2 rounded-xl bg-slate-900">
-                    <span className="text-slate-400 block">Match Accuracy</span>
-                    <strong className="text-lg text-emerald-400 font-black">
-                      {gameOverInfo.accuracy}%
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGameOverInfo(null);
-                      setScreen('setup');
-                    }}
-                    className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm border border-slate-600 cursor-pointer"
-                  >
-                    Change Setup
-                  </button>
-                  <button
-                    type="button"
-                    onClick={startMatch}
-                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-base flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <RotateCcw size={16} />
-                    <span>Play Again</span>
-                  </button>
-                </div>
+                {renderQuestionText(leftTeam.q?.text || '')}
               </div>
             </div>
           )}
+
+          <div
+            className={`grid gap-1.5 sm:gap-3 md:gap-4 ${
+              (leftTeam.q?.options?.length || 4) === 2
+                ? 'grid-cols-2'
+                : (leftTeam.q?.options?.length || 4) === 3
+                  ? 'grid-cols-3'
+                  : 'grid-cols-4'
+            }`}
+          >
+            {leftTeam.q?.options.map((rawOpt: string, idx: number) => {
+              const opt = stripOptionPrefix(rawOpt);
+              const keyHints = getBlueKeyHints(leftTeam.q?.options?.length || 4);
+              const isKeyActive = activeKey?.team === 'left' && activeKey?.index === idx;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onPointerDown={(e) => {
+                    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                      e.preventDefault();
+                      lastTouchTimeRef.current = Date.now();
+                      triggerOptionPress('left', idx);
+                    }
+                  }}
+                  onClick={() => {
+                    if (Date.now() - lastTouchTimeRef.current < 450) return;
+                    triggerOptionPress('left', idx);
+                  }}
+                  disabled={leftTeam.stunned || leftTeam.frozen}
+                  className={`touch-manipulation select-none bg-white hover:bg-blue-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[56px] sm:min-h-[80px] md:min-h-[104px] lg:min-h-[118px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                    isKeyActive
+                      ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-blue-100 ring-4 ring-white'
+                      : ''
+                  } ${leftTeam.stunned || leftTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#dbeafe] flex items-center justify-center font-black text-[#0055fe] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
+                    {keyHints[idx] || idx + 1}
+                  </div>
+                  <div className="flex-1 w-full flex items-center justify-center px-1 overflow-hidden">
+                    {typeof opt === 'string' &&
+                    (opt.startsWith('http') || opt.startsWith('data:image')) ? (
+                      <img
+                        src={opt}
+                        alt={`Option ${idx + 1}`}
+                        className="max-h-14 sm:max-h-20 w-full object-contain rounded-lg pointer-events-none"
+                      />
+                    ) : (
+                      <span
+                        className={`${getOptionFontSize(
+                          opt,
+                          leftTeam.q?.options?.length || 4
+                        )} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2 pointer-events-none`}
+                      >
+                        {opt}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RED TEAM ANSWER CONTAINER (RIGHT) */}
+        <div
+          className={`flex-1 bg-[#cc0000] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#990000] flex flex-col justify-between transition-all duration-200 ${
+            rightTeam.pushing
+              ? 'ring-4 ring-emerald-400 shadow-[0_0_28px_rgba(52,211,153,0.65)] scale-[1.01]'
+              : sharkLungeSide === 'right'
+                ? 'ring-4 ring-amber-400 animate-pulse'
+                : ''
+          }`}
+        >
+          {questionMode === 'split' && (
+            <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
+              <div
+                className={`${getQuestionFontSize(
+                  rightTeam.q?.text || '',
+                  true
+                )} font-black text-[#0f172a] leading-snug px-1.5 break-words`}
+              >
+                {renderQuestionText(rightTeam.q?.text || '')}
+              </div>
+            </div>
+          )}
+
+          <div
+            className={`grid gap-1.5 sm:gap-3 md:gap-4 ${
+              (rightTeam.q?.options?.length || 4) === 2
+                ? 'grid-cols-2'
+                : (rightTeam.q?.options?.length || 4) === 3
+                  ? 'grid-cols-3'
+                  : 'grid-cols-4'
+            }`}
+          >
+            {rightTeam.q?.options.map((rawOpt: string, idx: number) => {
+              const opt = stripOptionPrefix(rawOpt);
+              const keyHints = getRedKeyHints(rightTeam.q?.options?.length || 4);
+              const isKeyActive = activeKey?.team === 'right' && activeKey?.index === idx;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onPointerDown={(e) => {
+                    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                      e.preventDefault();
+                      lastTouchTimeRef.current = Date.now();
+                      triggerOptionPress('right', idx);
+                    }
+                  }}
+                  onClick={() => {
+                    if (Date.now() - lastTouchTimeRef.current < 450) return;
+                    triggerOptionPress('right', idx);
+                  }}
+                  disabled={rightTeam.stunned || rightTeam.frozen}
+                  className={`touch-manipulation select-none bg-white hover:bg-red-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[56px] sm:min-h-[80px] md:min-h-[104px] lg:min-h-[118px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                    isKeyActive
+                      ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-red-100 ring-4 ring-white'
+                      : ''
+                  } ${rightTeam.stunned || rightTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#fee2e2] flex items-center justify-center font-black text-[#cc0000] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
+                    {keyHints[idx] || idx + 1}
+                  </div>
+                  <div className="flex-1 w-full flex items-center justify-center px-1 overflow-hidden">
+                    {typeof opt === 'string' &&
+                    (opt.startsWith('http') || opt.startsWith('data:image')) ? (
+                      <img
+                        src={opt}
+                        alt={`Option ${idx + 1}`}
+                        className="max-h-14 sm:max-h-20 w-full object-contain rounded-lg pointer-events-none"
+                      />
+                    ) : (
+                      <span
+                        className={`${getOptionFontSize(
+                          opt,
+                          rightTeam.q?.options?.length || 4
+                        )} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2 pointer-events-none`}
+                      >
+                        {opt}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Cute Hamster Picker Modal */}
+      <HamsterCharacterPickerModal
+        isOpen={showCharacterModal}
+        leftCharacter={leftCharacter}
+        rightCharacter={rightCharacter}
+        onSelectLeft={setLeftCharacter}
+        onSelectRight={setRightCharacter}
+        onClose={() => setShowCharacterModal(false)}
+      />
+
+      {/* In-Game Question Mode Switcher Modal */}
+      {showStartBattleModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 md:p-10 max-w-xl w-full text-center shadow-2xl border-4 border-amber-400 relative">
+            <button
+              onClick={() => setShowStartBattleModal(false)}
+              className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+              title="Close"
+            >
+              <X size={24} />
+            </button>
+
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase tracking-tight mb-2">
+              Choose Question Mode
+            </h2>
+            <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-6">
+              Switch between Single Shared Question and Split Questions:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
+              <button
+                onClick={() => startGame(false, 'single')}
+                className="group p-5 rounded-3xl border-3 border-amber-300 hover:border-amber-500 bg-amber-50/70 hover:bg-amber-100/90 transition-all shadow-md hover:shadow-xl cursor-pointer flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-3xl">🎯</span>
+                    <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
+                      Single Question
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                    Both Blue and Red race to answer 1 shared question centered under the arena.
+                  </p>
+                </div>
+                <div className="mt-4 text-xs font-black text-amber-800 uppercase">
+                  Play Single Mode →
+                </div>
+              </button>
+
+              <button
+                onClick={() => startGame(false, 'split')}
+                className="group p-5 rounded-3xl border-3 border-indigo-300 hover:border-indigo-500 bg-indigo-50/70 hover:bg-indigo-100/90 transition-all shadow-md hover:shadow-xl cursor-pointer flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-3xl">⚡</span>
+                    <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
+                      Split Questions
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                    Each team gets their own randomized question order on Blue side and Red side.
+                  </p>
+                </div>
+                <div className="mt-4 text-xs font-black text-indigo-800 uppercase">
+                  Play Split Mode →
+                </div>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Interchangeable Game Mode Selector Modal */}
+      {/* Interchangeable Game Mode Modal */}
       <GameModeModal
         isOpen={showModeModal}
-        onClose={() => setShowModeModal(false)}
         gameData={{
-          id: activeQuiz.id,
-          name: activeQuiz.topic || activeQuiz.title || 'Shark Attack Quiz',
-          topic: activeQuiz.topic || activeQuiz.title || 'Shark Attack Quiz',
-          classLevel: activeQuiz.classLevel || '',
+          id: activeGame?.id,
+          name: activeGame?.title,
+          topic: activeGame?.topic,
+          className: activeGame?.classLevel,
           gameType: 'shark-attack',
-          originalGameType: 'shark-attack',
-          customQuestions: activeQuiz.questions,
+          customQuestions: activeGame?.questions || DEFAULT_QUESTIONS,
         }}
+        onClose={() => setShowModeModal(false)}
         onSelectMode={(mode, adaptedData) => {
-          setShowModeModal(false);
-          if (mode === 'shark-attack') {
-            setScreen('setup');
-          } else {
-            onViewChange(mode as ViewState, adaptedData);
-          }
+          onViewChange(mode as ViewState, adaptedData);
         }}
       />
     </div>
   );
 }
 
-// --- EXACT BUBBLE POP STYLE GAME SETUP EDITOR ---
-function SharkQuizEditor({
-  quiz,
-  folders,
+// ============================================================================
+// GAME EDITOR
+// ============================================================================
+function GameEditor({
+  game,
   onSave,
   onPlayNow,
   onCancel,
+  folders,
 }: {
-  quiz: Quiz;
-  folders: { id: string; name: string }[];
-  onSave: (q: Quiz) => void;
-  onPlayNow: (q: Quiz) => void;
+  game: GameData;
+  onSave: (q: GameData) => void;
+  onPlayNow: (q: GameData) => void;
   onCancel: () => void;
+  folders: { id: string; name: string }[];
 }) {
-  const [folderId, setFolderId] = useState(quiz.folderId || '');
-  const [topic, setTopic] = useState(quiz.topic || '');
-  const [classLevel, setClassLevel] = useState(quiz.classLevel || '');
-  const [questions, setQuestions] = useState<Question[]>(
-    quiz.questions.length > 0
-      ? quiz.questions
-      : [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }]
-  );
+  const [folderId, setFolderId] = useState(game.folderId || '');
+  const [topic, setTopic] = useState(game.topic || '');
+  const [classLevel, setClassLevel] = useState(game.classLevel || '');
+  const [questions, setQuestions] = useState<Question[]>(() => {
+    return game.questions.map((q) => {
+      if (!q.options || q.options.length < 2) return { ...q, options: ['', ''], answerIndex: 0 };
+      return { ...q, options: q.options.map((opt) => stripOptionPrefix(opt)) };
+    });
+  });
   const [errorMsg, setErrorMsg] = useState('');
-  const [toastMsg, setToastMsg] = useState('');
-  const [showPublishModal, setShowPublishModal] = useState(false);
-  const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
-  const [showVideoGuide, setShowVideoGuide] = useState(false);
-  const [bulkText, setBulkText] = useState('');
   const [activeGiphyInput, setActiveGiphyInput] = useState<{
     qId: number | string;
     optIndex: number;
   } | null>(null);
-
-  const handleApplyBulkPaste = (mode: 'replace' | 'append') => {
-    const parsed = parsePastedQuiz(bulkText);
-    if (parsed.length === 0) {
-      setErrorMsg('Could not detect valid questions in your pasted text.');
-      setTimeout(() => setErrorMsg(''), 3000);
-      return;
-    }
-
-    const formatted: Question[] = parsed.map((item, idx) => ({
-      id: Date.now() + idx + Math.random(),
-      text: item.text || '',
-      options: item.options && item.options.length >= 2 ? item.options : ['', '', '', ''],
-      answerIndex: item.answerIndex || 0,
-    }));
-
-    if (mode === 'replace') {
-      setQuestions(formatted);
-    } else {
-      const existingNonEmpty = questions.filter(
-        (q) => q.text.trim() !== '' || q.options.some((o) => o.trim() !== '')
-      );
-      setQuestions([...existingNonEmpty, ...formatted]);
-    }
-
-    setShowBulkPasteModal(false);
-    setBulkText('');
-    setToastMsg(`✨ Successfully imported ${formatted.length} questions!`);
-    setTimeout(() => setToastMsg(''), 4000);
-  };
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [toastMsg, setToastMsg] = useState('');
 
   const addQuestion = () => {
     setQuestions([
       ...questions,
-      { id: Date.now() + Math.random(), text: '', options: ['', '', '', ''], answerIndex: 0 },
+      { id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 },
     ]);
   };
 
-  const updateQuestion = (id: number | string, field: string, value: any) => {
+  const updateQuestion = (id: number | string, field: keyof Question, value: any) => {
     setQuestions(questions.map((q) => (q.id === id ? { ...q, [field]: value } : q)));
   };
 
@@ -2840,9 +3399,9 @@ function SharkQuizEditor({
     setQuestions(
       questions.map((q) => {
         if (q.id === qId) {
-          const newOpts = [...q.options];
-          newOpts[optIndex] = value;
-          return { ...q, options: newOpts };
+          const newOptions = [...q.options];
+          newOptions[optIndex] = value;
+          return { ...q, options: newOptions };
         }
         return q;
       })
@@ -2882,11 +3441,11 @@ function SharkQuizEditor({
   const duplicateQuestion = (index: number) => {
     setQuestions((prev) => {
       const next = [...prev];
-      const src = prev[index];
+      const qToCopy = prev[index];
       next.splice(index + 1, 0, {
-        ...src,
+        ...qToCopy,
         id: Date.now() + Math.random(),
-        options: [...src.options],
+        options: [...qToCopy.options],
       });
       return next;
     });
@@ -2898,15 +3457,77 @@ function SharkQuizEditor({
       if (index === questions.length - 1) {
         addQuestion();
         setTimeout(() => {
-          document.getElementById(`shark-question-input-${index + 1}`)?.focus();
+          document.getElementById(`question-input-${index + 1}`)?.focus();
         }, 50);
       } else {
-        document.getElementById(`shark-question-input-${index + 1}`)?.focus();
+        document.getElementById(`question-input-${index + 1}`)?.focus();
       }
     }
   };
 
-  const handleSave = () => {
+  const handleApplyBulkPaste = (action: 'replace' | 'append') => {
+    const parsed = parsePastedQuiz(bulkText);
+    if (parsed.length === 0) {
+      setErrorMsg('Please enter or paste at least one item.');
+      setTimeout(() => setErrorMsg(''), 3000);
+      return;
+    }
+
+    const newItems: Question[] = parsed.map((item, i) => ({
+      id: Date.now() + i + Math.random(),
+      text: item.text || '',
+      options: (item.options || ['', '']).map((o) => stripOptionPrefix(o)),
+      answerIndex: item.answerIndex || 0,
+    }));
+
+    if (action === 'replace') {
+      setQuestions(newItems);
+    } else {
+      setQuestions((prev) => {
+        if (prev.length === 1 && !prev[0].text.trim()) {
+          return newItems;
+        }
+        return [...prev, ...newItems];
+      });
+    }
+
+    setShowBulkPasteModal(false);
+    setBulkText('');
+    setToastMsg(`Successfully added ${newItems.length} items!`);
+    setTimeout(() => setToastMsg(''), 3000);
+  };
+
+  const handleBulkPaste = (e: React.ClipboardEvent) => {
+    const pastedText = e.clipboardData.getData('text');
+    if (!pastedText) return;
+    const parsedItems = parsePastedQuiz(pastedText);
+    if (
+      parsedItems.length === 1 &&
+      parsedItems[0].text === pastedText &&
+      parsedItems[0].options?.every((o) => !o)
+    ) {
+      return;
+    }
+    if (parsedItems.length > 0) {
+      e.preventDefault();
+      const newItems: Question[] = parsedItems.map((item, i) => ({
+        id: Date.now() + i + Math.random(),
+        text: item.text || '',
+        options: (item.options || ['', '']).map((o) => stripOptionPrefix(o)),
+        answerIndex: item.answerIndex || 0,
+      }));
+      setQuestions((prev) => {
+        if (prev.length === 1 && !prev[0].text.trim()) {
+          return newItems;
+        }
+        return [...prev, ...newItems];
+      });
+      setToastMsg(`Smart Paste: Added ${newItems.length} items`);
+      setTimeout(() => setToastMsg(''), 3000);
+    }
+  };
+
+  const initiateSave = () => {
     const validQuestions = questions.filter((q) => q.text.trim());
     if (validQuestions.length === 0) {
       setErrorMsg('Please add at least one complete question.');
@@ -2916,24 +3537,139 @@ function SharkQuizEditor({
     setShowPublishModal(true);
   };
 
-  const confirmSave = (isPublic: boolean) => {
-    const validQuestions = questions.filter((q) => q.text.trim());
+  const handleSave = (isPublic: boolean) => {
+    const validQuestions = questions
+      .filter((q) => q.text.trim())
+      .map((q) => ({
+        ...q,
+        options: q.options.map((opt) => stripOptionPrefix(opt)),
+      }));
     onSave({
-      ...quiz,
-      title: topic.trim() || 'Shark Attack Game',
+      ...game,
+      title: topic.trim() || 'Shark Attack',
       folderId,
       topic,
       classLevel,
       questions: validQuestions,
       isPublic,
     });
-    setShowPublishModal(false);
   };
 
   return (
     <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
       <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
         <div className="w-full max-w-4xl glass-panel rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8">
+          {toastMsg && (
+            <div className="fixed bottom-6 right-6 bg-slate-800 text-white px-6 py-4 rounded-2xl shadow-2xl font-bold flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 z-50">
+              <Sparkles size={18} /> {toastMsg}
+            </div>
+          )}
+
+          {showBulkPasteModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
+                      <ClipboardList size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-800 dark:text-white">
+                        Bulk Add Q&As
+                      </h3>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+                        Paste text to automatically generate questions
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowBulkPasteModal(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  placeholder={
+                    'Example:\n1. What is the capital of France?\nA. London\nB. Paris\nC. Berlin\nD. Madrid\nAnswer: B\n\nOr paste tabular data directly from Excel!'
+                  }
+                  className="w-full h-64 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-xl focus:border-cyan-500 resize-none font-medium text-sm leading-relaxed"
+                />
+
+                {bulkText.trim() && (
+                  <div className="flex items-center gap-2 bg-green-500/10 text-green-600 dark:text-green-400 px-4 py-2 rounded-lg text-sm font-bold">
+                    <Sparkles size={16} />
+                    <p>
+                      Found{' '}
+                      <span className="font-bold text-slate-800 dark:text-white">
+                        {parsePastedQuiz(bulkText).length}
+                      </span>{' '}
+                      items.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    onClick={() => handleApplyBulkPaste('replace')}
+                    className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
+                  >
+                    Replace All
+                  </button>
+                  <button
+                    onClick={() => handleApplyBulkPaste('append')}
+                    className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer"
+                  >
+                    Append to End
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showPublishModal &&
+            typeof document !== 'undefined' &&
+            createPortal(
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                <div
+                  className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl flex flex-col gap-6 border border-slate-100 dark:border-slate-700"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-2xl font-black text-slate-800 dark:text-white text-center">
+                    Publish Game?
+                  </h3>
+                  <p className="text-slate-600 dark:text-slate-300 text-center font-medium">
+                    Would you like to publish this game to the Community so other teachers can use
+                    it?
+                  </p>
+                  <div className="flex flex-col gap-3 mt-4">
+                    <button
+                      onClick={() => handleSave(true)}
+                      className="w-full py-4 rounded-xl font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-lg shadow-lg transition-all cursor-pointer"
+                    >
+                      Yes, Publish (Public)
+                    </button>
+                    <button
+                      onClick={() => handleSave(false)}
+                      className="w-full py-4 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-lg transition-colors cursor-pointer"
+                    >
+                      No, Keep Private
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowPublishModal(false)}
+                    className="mt-2 text-sm font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-center"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>,
+              document.body
+            )}
+
           <div className="bg-white dark:bg-slate-800/80 p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
             <div className="flex justify-between items-center flex-wrap gap-3">
               <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">
@@ -2941,23 +3677,26 @@ function SharkQuizEditor({
               </h2>
               <div className="flex gap-3 items-center">
                 <button
-                  type="button"
                   onClick={onCancel}
                   className="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  type="button"
                   onClick={() => {
-                    const validQuestions = questions.filter((q) => q.text.trim());
+                    const validQuestions = questions
+                      .filter((q) => q.text.trim())
+                      .map((q) => ({
+                        ...q,
+                        options: q.options.map((opt) => stripOptionPrefix(opt)),
+                      }));
                     onPlayNow({
-                      ...quiz,
-                      title: topic.trim() || 'Shark Attack Game',
+                      ...game,
+                      title: topic.trim() || 'Shark Attack',
                       folderId,
                       topic,
                       classLevel,
-                      questions: validQuestions.length > 0 ? validQuestions : BUILTIN_QUESTIONS,
+                      questions: validQuestions.length > 0 ? validQuestions : DEFAULT_QUESTIONS,
                     });
                   }}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/30 cursor-pointer"
@@ -2965,11 +3704,10 @@ function SharkQuizEditor({
                   <Play size={18} /> Play Now
                 </button>
                 <button
-                  type="button"
-                  onClick={handleSave}
+                  onClick={initiateSave}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer"
                 >
-                  <Save size={18} /> Save Quiz
+                  <Save size={18} /> Save GameData
                 </button>
               </div>
             </div>
@@ -3025,28 +3763,27 @@ function SharkQuizEditor({
             </div>
           )}
 
-          {toastMsg && (
-            <div className="bg-cyan-500/20 text-cyan-500 dark:text-cyan-300 p-3 mx-6 mt-6 rounded-xl font-bold text-center border border-cyan-500/30 flex items-center justify-center gap-2 shadow-sm">
-              <Sparkles size={18} /> {toastMsg}
-            </div>
-          )}
-
-          <div className="p-6 flex flex-col gap-6 bg-slate-100 dark:bg-slate-900/50">
-            {/* Bulk Paste Action Bar */}
-            <div className="bg-blue-500/10 dark:bg-blue-950/30 border border-blue-500/20 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <span className="font-bold text-sm text-blue-900 dark:text-blue-200 uppercase tracking-wider">
-                Questions ({questions.length})
-              </span>
-              <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
-                <button
-                  type="button"
-                  onClick={() => setShowBulkPasteModal(true)}
-                  className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-blue-500/25 flex items-center gap-2.5 cursor-pointer"
-                >
-                  <ClipboardList size={22} className="stroke-[2.5]" />
-                  <span>Bulk Paste</span>
-                </button>
+          <div
+            className="p-6 flex flex-col gap-6 bg-slate-100 dark:bg-slate-900/50"
+            onPaste={handleBulkPaste}
+          >
+            <div className="bg-blue-500/10 dark:bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 font-bold">
+                  <Info size={18} />
+                </div>
+                <p className="text-xs sm:text-sm font-medium">
+                  <span className="font-bold">Smart Paste:</span> Paste multiple lines, numbered
+                  Q&As, or Excel rows directly into any box below — they will automatically
+                  populate!
+                </p>
               </div>
+              <button
+                onClick={() => setShowBulkPasteModal(true)}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer self-end sm:self-auto"
+              >
+                <ClipboardList size={14} /> Bulk Paste Modal
+              </button>
             </div>
 
             {questions.map((q, index) => (
@@ -3055,7 +3792,6 @@ function SharkQuizEditor({
                 className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-300 dark:border-slate-700 shadow-sm relative group"
               >
                 <button
-                  type="button"
                   onClick={() => duplicateQuestion(index)}
                   title="Duplicate Question"
                   className="absolute right-6 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10"
@@ -3063,20 +3799,18 @@ function SharkQuizEditor({
                   <Copy size={14} />
                 </button>
                 <button
-                  type="button"
                   onClick={() => removeQuestion(q.id)}
-                  title="Delete Question"
-                  className="absolute -right-3 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10"
+                  className="absolute -right-3 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer"
                 >
                   <Trash2 size={14} />
                 </button>
 
                 <div className="flex gap-4 mb-4 items-start">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-500 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
                     {index + 1}
                   </div>
                   <input
-                    id={`shark-question-input-${index}`}
+                    id={`question-input-${index}`}
                     type="text"
                     value={q.text}
                     onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
@@ -3091,7 +3825,7 @@ function SharkQuizEditor({
                     <div key={optIndex} className="flex items-center gap-2">
                       <input
                         type="radio"
-                        name={`shark-answer-${q.id}`}
+                        name={`answer-${q.id}`}
                         checked={q.answerIndex === optIndex}
                         onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
                         className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600"
@@ -3101,7 +3835,6 @@ function SharkQuizEditor({
                           <img src={opt} alt="Option" className="w-8 h-8 rounded object-cover" />
                           <span className="text-xs text-slate-400 flex-1 truncate">Image/GIF</span>
                           <button
-                            type="button"
                             onClick={() => updateOption(q.id, optIndex, '')}
                             className="text-red-400 hover:text-red-300 cursor-pointer p-1"
                           >
@@ -3114,6 +3847,7 @@ function SharkQuizEditor({
                             type="text"
                             value={opt}
                             onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
+                            onBlur={(e) => updateOption(q.id, optIndex, stripOptionPrefix(e.target.value))}
                             placeholder={`Option ${optIndex + 1}`}
                             className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${
                               q.answerIndex === optIndex
@@ -3122,10 +3856,9 @@ function SharkQuizEditor({
                             } rounded-lg px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium`}
                           />
                           <button
-                            type="button"
                             onClick={() => setActiveGiphyInput({ qId: q.id, optIndex })}
                             className="bg-purple-500/20 text-purple-400 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
-                            title="Search Media / Giphy"
+                            title="Search Media"
                           >
                             <ImageIcon size={16} />
                           </button>
@@ -3134,10 +3867,8 @@ function SharkQuizEditor({
                     </div>
                   ))}
                 </div>
-
                 <div className="ml-12 mt-3 flex gap-2">
                   <button
-                    type="button"
                     onClick={() => addOption(q.id)}
                     disabled={q.options.length >= 6}
                     className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer"
@@ -3145,7 +3876,6 @@ function SharkQuizEditor({
                     + Option
                   </button>
                   <button
-                    type="button"
                     onClick={() => removeOption(q.id)}
                     disabled={q.options.length <= 2}
                     className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer"
@@ -3157,7 +3887,6 @@ function SharkQuizEditor({
             ))}
 
             <button
-              type="button"
               onClick={addQuestion}
               className="w-full py-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
@@ -3177,142 +3906,123 @@ function SharkQuizEditor({
           }
         }}
       />
-
-      {showPublishModal &&
-        typeof document !== 'undefined' &&
-        createPortal(
-          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div
-              className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md p-8 shadow-2xl border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">
-                Publish Game?
-              </h3>
-              <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">
-                Would you like to publish this Shark Attack game to the Community so other teachers can use it?
-              </p>
-              <div className="flex flex-col gap-3 w-full">
-                <button
-                  type="button"
-                  onClick={() => confirmSave(true)}
-                  className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer text-lg"
-                >
-                  Yes, Publish (Public)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => confirmSave(false)}
-                  className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer text-lg"
-                >
-                  No, Keep Private
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPublishModal(false)}
-                  className="w-full py-2 mt-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold text-sm transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
-
-      {showBulkPasteModal &&
-        typeof document !== 'undefined' &&
-        createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
-            <div
-              className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto custom-scrollbar"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
-                    <ClipboardList size={22} />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">
-                      Bulk Paste & Auto-Divide
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Paste multiple questions, numbered lists with options & answer (e.g. Answer: B), or tabular TSV data.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBulkPasteModal(false);
-                    setBulkText('');
-                  }}
-                  className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Paste Text Below (Supports multi-line Q&A format or Excel copy)
-                </label>
-                <textarea
-                  rows={7}
-                  value={bulkText}
-                  onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={
-                    'Example:\n1. What is the capital of France?\na) London\nb) Paris\nc) Berlin\nd) Madrid\nAnswer: B\n\nOr paste tabular data directly from Excel!'
-                  }
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-cyan-500 transition-colors custom-scrollbar"
-                />
-              </div>
-
-              {bulkText.trim() && (
-                <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <div className="text-cyan-500 mt-0.5">
-                    <Info size={16} />
-                  </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">
-                    Found{' '}
-                    <span className="font-bold text-slate-800 dark:text-white">
-                      {parsePastedQuiz(bulkText).length}
-                    </span>{' '}
-                    items.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleApplyBulkPaste('replace')}
-                  className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
-                >
-                  Replace All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyBulkPaste('append')}
-                  className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer"
-                >
-                  Append to End
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
-
-      <BulkPasteVideoModal
-        isOpen={showVideoGuide}
-        onClose={() => setShowVideoGuide(false)}
-        onOpenBulkPasteWithSample={(sample) => {
-          setBulkText(sample);
-          setShowBulkPasteModal(true);
-        }}
-      />
     </div>
   );
+}
+
+function parsePastedQuiz(rawText: string): Partial<Question>[] {
+  if (!rawText || !rawText.trim()) return [];
+  const items: Partial<Question>[] = [];
+
+  if (rawText.includes('\t')) {
+    const lines = rawText.split(/\r?\n/).filter((line) => line.trim());
+    lines.forEach((line) => {
+      const parts = line.split('\t').map((p) => p.trim());
+      if (parts.length > 0) {
+        items.push({
+          text: parts[0],
+          options: [
+            stripOptionPrefix(parts[1] || ''),
+            stripOptionPrefix(parts[2] || ''),
+            stripOptionPrefix(parts[3] || ''),
+            stripOptionPrefix(parts[4] || ''),
+          ],
+          answerIndex: 0,
+        });
+      }
+    });
+    if (items.length > 0) {
+      items.forEach((q) => {
+        if (q.options) {
+          while (q.options.length > 2 && q.options[q.options.length - 1] === '') {
+            q.options.pop();
+          }
+        }
+      });
+      return items;
+    }
+  }
+
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  let currentQ: Partial<Question> | null = null;
+  const optionRegex = /^([a-eA-E1-4])[\.\)\:\-]\s+(.*)/;
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    const ansMatch = line.match(/^answer\s*[:=]?\s*([a-eA-E1-4])/i);
+    if (ansMatch) {
+      if (currentQ) {
+        const val = ansMatch[1].toUpperCase();
+        if (/[A-E]/.test(val)) currentQ.answerIndex = val.charCodeAt(0) - 65;
+        else if (/[1-4]/.test(val)) currentQ.answerIndex = parseInt(val) - 1;
+      }
+      continue;
+    }
+
+    const inlineAnswerMatch = line.match(/\banswer\s*[:=]?\s*([a-eA-E1-4])\b/i);
+    let inlineAnswerIndex = -1;
+    if (inlineAnswerMatch) {
+      const val = inlineAnswerMatch[1].toUpperCase();
+      if (/[A-E]/.test(val)) inlineAnswerIndex = val.charCodeAt(0) - 65;
+      else if (/[1-4]/.test(val)) inlineAnswerIndex = parseInt(val) - 1;
+      line = line.replace(inlineAnswerMatch[0], '').trim();
+    }
+
+    if (line === '') continue;
+
+    const optMatch = line.match(optionRegex);
+    if (optMatch) {
+      if (!currentQ) {
+        currentQ = { text: 'Question', options: ['', '', '', ''], answerIndex: 0 };
+        items.push(currentQ);
+      }
+
+      const optText = stripOptionPrefix(optMatch[2].trim());
+      const prefix = optMatch[1].toUpperCase();
+      let expectedIndex = -1;
+      if (/[A-E]/.test(prefix)) expectedIndex = prefix.charCodeAt(0) - 65;
+      else if (/[1-4]/.test(prefix)) expectedIndex = parseInt(prefix) - 1;
+
+      if (expectedIndex >= 0 && expectedIndex < 4) {
+        currentQ.options![expectedIndex] = optText;
+      } else {
+        const emptyIdx = currentQ.options!.findIndex((o) => o === '');
+        if (emptyIdx !== -1) currentQ.options![emptyIdx] = optText;
+      }
+
+      if (inlineAnswerIndex !== -1) {
+        currentQ.answerIndex = inlineAnswerIndex;
+      }
+    } else {
+      const hasOptions = currentQ && currentQ.options!.some((o) => o !== '');
+      const qText = line.replace(/^(?:\d+[\.\)\:\-]|\[\d+\])\s+/, '');
+
+      if (!currentQ || hasOptions) {
+        currentQ = { text: qText, options: ['', '', '', ''], answerIndex: 0 };
+        items.push(currentQ);
+        if (inlineAnswerIndex !== -1) {
+          currentQ.answerIndex = inlineAnswerIndex;
+        }
+      } else {
+        currentQ.text += ' ' + qText;
+        if (inlineAnswerIndex !== -1) {
+          currentQ.answerIndex = inlineAnswerIndex;
+        }
+      }
+    }
+  }
+
+  items.forEach((q) => {
+    if (q.options) {
+      while (q.options.length < 4) {
+        q.options.push('');
+      }
+    }
+  });
+
+  return items;
 }
