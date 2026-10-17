@@ -1,114 +1,315 @@
-import React from 'react';
-import { ViewState } from '../types';
-import { useAuth } from '../contexts/AuthContext';
-import { Home, Compass, FolderHeart, User, LogOut, LogIn } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { cn } from "../lib/utils";
+import { ViewState } from "../types";
+import {
+  Gamepad2,
+  Home,
+  Bell,
+  Search,
+  Moon,
+  Sun,
+  LogOut,
+  Menu,
+  X,
+  Shield,
+  Users,
+  BookOpen,
+  Loader2,
+  FileSpreadsheet,
+  Award
+} from "lucide-react";
+
+import { useAuth } from "../contexts/AuthContext";
 
 interface NavigationProps {
   currentView: ViewState;
   onViewChange: (view: ViewState) => void;
-  openAuthModal: () => void;
+  isMobileMenuOpen: boolean;
+  setIsMobileMenuOpen: (open: boolean) => void;
+  openAuthModal?: () => void;
+  openGoogleAuthModal?: (feature?: string) => void;
 }
 
-export function Navigation({ currentView, onViewChange, openAuthModal }: NavigationProps) {
-  const { user, signOut } = useAuth();
+export function Navigation({ 
+  currentView, 
+  onViewChange, 
+  isMobileMenuOpen, 
+  setIsMobileMenuOpen, 
+  openAuthModal,
+  openGoogleAuthModal 
+}: NavigationProps) {
+  const { user } = useAuth();
+  const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
+
+  const navItems = [
+    { id: "home", label: "Home", icon: Home, view: "home" as ViewState },
+    { id: "public-dashboard", label: "Community", icon: Users, view: "public-dashboard" as ViewState },
+    { id: "games", label: "My Games", icon: Gamepad2, view: "games" as ViewState },
+    { id: "homework", label: "Homework", icon: BookOpen, view: "homework" as ViewState },
+    { id: "class-rewards", label: "Class rewards", icon: Award, view: "class-rewards" as ViewState },
+    ...(isAdmin ? [{ id: "admin-dashboard", label: "Admin Dashboard", icon: Shield, view: "admin-dashboard" as ViewState }] : []),
+  ];
 
   return (
-    <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        {/* Brand */}
+    <>
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
         <div 
-          onClick={() => onViewChange("home")}
-          className="flex items-center gap-2.5 cursor-pointer group"
-        >
-          <span className="text-2xl group-hover:scale-110 transition-transform">🐹</span>
-          <div>
-            <h1 className="text-lg font-black tracking-tight text-slate-800 dark:text-white leading-none">
-              Hamster<span className="text-teal-600">English</span>
-            </h1>
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Classroom Studio</span>
+          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+      
+      <aside className={cn(
+        "bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col p-5 shadow-sm shrink-0 h-full",
+        "fixed md:static inset-y-0 left-0 z-50 w-[240px] md:w-[220px] transition-transform duration-300 ease-in-out",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
+        <div className="flex items-center justify-between mb-8">
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => {
+              onViewChange("home");
+              setIsMobileMenuOpen(false);
+            }}
+          >
+            <img 
+              src="https://drive.google.com/thumbnail?id=1IrQAzr2JXZjfhDxPhP-MZkFlbF8GfW9n&sz=w1000" 
+              alt="Hamster English Logo"
+              className="w-10 h-10 rounded-xl object-cover shadow-lg shadow-purple-200/50 shrink-0"
+              referrerPolicy="no-referrer"
+            />
+            <span className="font-bold text-lg leading-tight tracking-tight">
+              Hamster English
+              <br />
+              <span className="text-brand-purple">- ESL Studio</span>
+            </span>
           </div>
+          <button 
+            className="md:hidden text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            <X size={24} />
+          </button>
         </div>
 
-        {/* Center Links */}
-        <nav className="hidden md:flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-700/50">
-          <button
-            type="button"
-            onClick={() => onViewChange("home")}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              currentView === "home"
-                ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            <Home size={15} />
-            <span>Home</span>
-          </button>
+        <nav className="space-y-1">
+          {navItems.map((item) => {
+            const isActive =
+              currentView === item.view ||
+              (item.id === "class-rewards" && (currentView === "class-rewards" || currentView === "class-record")) ||
+              (item.id === "admin-dashboard" && currentView === "admin-dashboard");
 
-          <button
-            type="button"
-            onClick={() => onViewChange("public-dashboard")}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              currentView === "public-dashboard"
-                ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            <Compass size={15} />
-            <span>Community</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onViewChange("games")}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              currentView === "games"
-                ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            <FolderHeart size={15} />
-            <span>My Games</span>
-          </button>
-        </nav>
-
-        {/* Auth status & actions */}
-        <div className="flex items-center gap-3">
-          {user ? (
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700">
-                <div className="w-6 h-6 rounded-full bg-teal-500 text-white font-black text-xs flex items-center justify-center">
-                  {user.displayName ? user.displayName.charAt(0).toUpperCase() : "U"}
-                </div>
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[120px]">
-                  {user.displayName || (user.isAnonymous ? "Guest" : "Teacher")}
-                </span>
-                {user.isAnonymous && (
-                  <span className="text-[9px] bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-extrabold px-1.5 py-0.5 rounded-full">
-                    Guest
-                  </span>
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  if (!user) {
+                    if (item.view === "home") {
+                      onViewChange("home");
+                    } else {
+                      if (openAuthModal) {
+                        openAuthModal();
+                      }
+                      onViewChange(item.view);
+                    }
+                  } else {
+                    const googleProtectedViews = ["games", "homework", "class-rewards", "class-record", "admin-dashboard"];
+                    if (user.isAnonymous && googleProtectedViews.includes(item.view)) {
+                      if (openGoogleAuthModal) {
+                        openGoogleAuthModal(item.label);
+                      }
+                      onViewChange(item.view);
+                    } else {
+                      onViewChange(item.view);
+                    }
+                  }
+                  setIsMobileMenuOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-semibold transition-all text-sm text-left cursor-pointer",
+                  isActive
+                    ? "bg-slate-100 dark:bg-slate-700 text-brand-purple dark:text-purple-300"
+                    : "text-[#64748b] hover:bg-[#f8fafc] dark:hover:bg-slate-800/50",
                 )}
-              </div>
+              >
+                <item.icon size={20} className="shrink-0" />
+                <span className="whitespace-nowrap truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+    </>
+  );
+}
+
+export function Header({
+  onViewChange,
+  setIsMobileMenuOpen,
+  openAuthModal,
+}: {
+  onViewChange?: (view: ViewState) => void;
+  setIsMobileMenuOpen: (open: boolean) => void;
+  openAuthModal?: () => void;
+}) {
+  const { user, linkWithGoogle, logout, loading, isAuthenticating } = useAuth();
+  const [showDropdown, setShowDropdown] = React.useState(false);
+  const [isDarkMode, setIsDarkMode] = React.useState(() => {
+    const saved = localStorage.getItem('hamster_theme');
+    if (saved === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.body?.classList.add('dark');
+      return true;
+    }
+    if (saved === 'light') {
+      document.documentElement.classList.remove('dark');
+      document.body?.classList.remove('dark');
+      return false;
+    }
+    return document.documentElement.classList.contains('dark');
+  });
+  
+  const toggleDarkMode = () => {
+    const nextDark = !isDarkMode;
+    setIsDarkMode(nextDark);
+    if (nextDark) {
+      document.documentElement.classList.add('dark');
+      document.body?.classList.add('dark');
+      localStorage.setItem('hamster_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.body?.classList.remove('dark');
+      localStorage.setItem('hamster_theme', 'light');
+    }
+  };
+
+  const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
+
+  const handleDropdownItemClick = (view: ViewState) => {
+    if (onViewChange) {
+      onViewChange(view);
+    }
+    setShowDropdown(false);
+  };
+
+  return (
+    <header className="h-16 flex items-center justify-between px-4 md:px-8 bg-white dark:bg-slate-800/50 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 shrink-0 relative z-50">
+      <div className="flex items-center gap-2 md:gap-4 w-1/2 md:w-1/3">
+        <button 
+          className="md:hidden text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 p-2"
+          onClick={() => setIsMobileMenuOpen(true)}
+        >
+          <Menu size={24} />
+        </button>
+        <div className="relative w-full hidden sm:block">
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 opacity-60"
+            size={18}
+          />
+          <input
+            type="text"
+            placeholder="Search games..."
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple transition-all"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 md:gap-6">
+        <button 
+          onClick={toggleDarkMode}
+          className="text-slate-400 hover:text-brand-purple transition-colors bg-slate-100 hover:bg-slate-200 p-2 rounded-full dark:bg-slate-800 dark:hover:bg-slate-700"
+        >
+          {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+
+        {!loading &&
+          (user ? (
+            <div className="relative">
               <button
                 type="button"
-                onClick={signOut}
-                title="Sign Out"
-                className="p-2 text-slate-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                className="flex items-center gap-2 p-1 rounded-full hover:ring-2 hover:ring-brand-purple/20 transition-all focus:outline-none"
+                onClick={() => setShowDropdown(!showDropdown)}
               >
-                <LogOut size={16} />
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || "User"}
+                    className="w-9 h-9 rounded-full border-2 border-white dark:border-slate-700 shadow-sm object-cover"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-brand-yellow flex items-center justify-center border-2 border-white shadow-sm font-bold text-white">
+                    {user.displayName?.charAt(0) ||
+                      user.email?.charAt(0) ||
+                      "U"}
+                  </div>
+                )}
               </button>
+
+              {showDropdown && (
+                <>
+                  {/* Backdrop overlay to close dropdown on click outside */}
+                  <div 
+                    className="fixed inset-0 z-40 bg-transparent" 
+                    onClick={() => setShowDropdown(false)} 
+                  />
+                  <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/60 dark:bg-slate-800/80">
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                        {user.displayName || "User"}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {user.email || (user.isAnonymous ? "Guest Account" : "")}
+                      </p>
+                    </div>
+                    <div className="py-1.5">
+                      {user.isAnonymous && (
+                        <button
+                          onClick={() => {
+                            if (openAuthModal) openAuthModal();
+                            setShowDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-brand-purple transition-colors flex items-center justify-between"
+                        >
+                          Sign In / Register
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDropdownItemClick("admin-dashboard")}
+                          className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-slate-700 hover:text-brand-purple transition-colors flex items-center gap-2.5"
+                        >
+                          <Shield size={16} className="text-brand-purple" />
+                          <span>Admin Dashboard</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          logout();
+                          setShowDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-red-50 dark:hover:bg-slate-700 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center justify-between"
+                      >
+                        <span>Sign Out</span>
+                        <LogOut size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <button
-              type="button"
               onClick={openAuthModal}
-              className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-600 active:scale-95 text-white text-xs font-bold rounded-2xl shadow-md shadow-teal-500/20 transition-all cursor-pointer"
+              disabled={isAuthenticating}
+              className="bg-brand-purple hover:bg-brand-purple/90 text-white font-semibold py-1.5 px-3 md:px-4 rounded-full text-sm transition-colors shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
-              <LogIn size={15} />
-              <span>Sign In / Guest</span>
+              {isAuthenticating && <Loader2 className="animate-spin" size={14} />}
+              <span>{isAuthenticating ? "Signing In..." : "Sign In"}</span>
             </button>
-          )}
-        </div>
+          ))}
       </div>
     </header>
   );
 }
+

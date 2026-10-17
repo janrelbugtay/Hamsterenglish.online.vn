@@ -575,6 +575,57 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     );
   }
 
+  // 2B. SHARK ATTACK (shark-attack)
+  if (normalizedType === 'shark-attack' || normalizedType === 'sharkattack') {
+    return (
+      <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-slate-950 via-blue-950 to-cyan-900 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
+        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-36 h-16 bg-cyan-500/25 rounded-full blur-xl" />
+        <div className="relative z-10 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 bg-cyan-500/20 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-cyan-400/40">
+            <span className="text-sm leading-none">🦈</span>
+            <span className="text-[10px] font-black text-cyan-200 uppercase tracking-wider">Shark Attack</span>
+          </div>
+          <span className="text-[10px] font-extrabold text-amber-300 bg-black/40 px-2 py-0.5 rounded-full border border-amber-400/30">
+            {totalCount} Qs
+          </span>
+        </div>
+
+        <div className="relative z-10 bg-slate-900/90 border border-cyan-500/40 rounded-xl p-2 shadow-lg flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-base shrink-0">
+            🐹
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-cyan-300 truncate">
+              {cleanTitle}
+            </div>
+            <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
+              {firstQuestion}
+            </p>
+          </div>
+        </div>
+
+        <div className="relative z-10 grid grid-cols-2 gap-1.5 pt-0.5">
+          {options.slice(0, 4).map((opt, idx) => {
+            const isCorrect = idx === answerIndex;
+            return (
+              <div
+                key={idx}
+                className={`px-2 py-1 rounded-lg border flex items-center justify-between gap-1 ${
+                  isCorrect
+                    ? 'bg-emerald-500/30 border-emerald-400/60 text-emerald-100'
+                    : 'bg-slate-800/80 border-slate-700 text-slate-200'
+                }`}
+              >
+                <span className="text-[10px] font-black truncate">{opt}</span>
+                {isCorrect && <span className="text-[9px] shrink-0">🦈</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   // 3. SUMO (sumo)
   if (normalizedType === 'sumo' || normalizedType === 'sumo-tags') {
     const leftOpt = options[0] || 'Option A';

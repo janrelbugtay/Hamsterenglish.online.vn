@@ -24,7 +24,8 @@ export type ViewState =
   | "class-record"
   | "class-rewards"
   | "phonemic-master"
-  | "squid-game-picker";
+  | "squid-game-picker"
+  | "shark-attack";
 
 export interface Game {
   id: string;

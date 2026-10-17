@@ -4,6 +4,7 @@ import { ViewState } from '../types';
 
 export type PlayableGameMode =
   | 'bubble-pop'
+  | 'shark-attack'
   | 'yoga-quiz'
   | 'sumo'
   | 'bubble-sentence-pro'
@@ -57,6 +58,23 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     btnBg: 'bg-blue-600 hover:bg-blue-700',
     btnShadow: 'shadow-[0_4px_0_#1e3a8a]',
     accentText: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    id: 'shark-attack',
+    title: 'Shark Attack',
+    shortAction: 'Play in Shark Attack',
+    tagline: 'Staircase Showdown vs Megalodon',
+    description: '2-player or vs AI battle on twin staircases! Wrong answers make you climb closer to the shark jaws!',
+    players: '1–2 Players · WASD vs Arrows / AI',
+    category: 'battle',
+    emoji: '🦈',
+    image: 'https://images.unsplash.com/photo-1560275619-4662e36fa65c?q=80&w=1000&auto=format&fit=crop',
+    gradient: 'from-cyan-500 via-blue-600 to-slate-900',
+    cardBg: 'bg-cyan-50/70 dark:bg-cyan-950/25 hover:bg-cyan-100/80 dark:hover:bg-cyan-900/35',
+    cardBorder: 'border-cyan-200 dark:border-cyan-800/70',
+    btnBg: 'bg-cyan-600 hover:bg-cyan-700',
+    btnShadow: 'shadow-[0_4px_0_#0e7490]',
+    accentText: 'text-cyan-600 dark:text-cyan-400',
   },
   {
     id: 'sumo',
@@ -203,6 +221,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   const normalized = rawType.replace(/[-_ ]+/g, '');
 
   if (normalized === 'bubblepop') return 'bubble-pop';
+  if (normalized === 'sharkattack' || normalized === 'sharkstairs') return 'shark-attack';
   if (normalized === 'sumo' || normalized === 'sumotags' || normalized === 'sumoshowdown') return 'sumo';
   if (normalized === 'yoga' || normalized === 'yogaquiz') return 'yoga-quiz';
   if (normalized === 'mysterybox') return 'mystery-box';
@@ -215,6 +234,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   // Fallback check on title/name if gameType was generic
   const title = (gameData.name || gameData.title || gameData.topic || '').toLowerCase();
   if (title.includes('bubble pop')) return 'bubble-pop';
+  if (title.includes('shark')) return 'shark-attack';
   if (title.includes('sumo')) return 'sumo';
   if (title.includes('yoga')) return 'yoga-quiz';
   if (title.includes('bubble island')) return 'bubble-sentence-pro';

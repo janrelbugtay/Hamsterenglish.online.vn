@@ -17,6 +17,7 @@ import { MysteryBox } from "./views/MysteryBox";
 import { MediaStudio } from "./views/MediaStudio";
 import { NeonChain } from "./views/NeonChain";
 import { BubblePop } from "./views/BubblePop";
+import { SharkAttack } from "./views/SharkAttack";
 import { FlashcardsMatch } from "./views/FlashcardsMatch";
 import { YogaQuiz } from "./views/YogaQuiz";
 import { BubbleSentencePro } from "./views/BubbleSentencePro";
@@ -299,6 +300,8 @@ export default function App() {
         return <NeonChain onViewChange={handleViewChange} />;
       case "bubble-pop":
         return <BubblePop onViewChange={handleViewChange} initialGame={selectedGame} />;
+      case "shark-attack":
+        return <SharkAttack onViewChange={handleViewChange} initialGame={selectedGame} />;
       case "flashcards-match":
         return <FlashcardsMatch onViewChange={handleViewChange} initialGame={selectedGame} />;
       case "yoga-quiz":
@@ -356,7 +359,7 @@ export default function App() {
   };
 
   const isGame = [
-    "mystery-box", "bubble-pop", "yoga-quiz", "bubble-sentence-pro",
+    "mystery-box", "bubble-pop", "shark-attack", "yoga-quiz", "bubble-sentence-pro",
     "family-feud", "sumo", "hamster-pop-quiz", "student-race",
     "squid-game-picker", "letter-lock", "tic-tac-toe", "neon-chain",
     "flashcards-match", "phonemic-master"

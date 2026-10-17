@@ -1,4 +1,5 @@
 {
-  "name": "Hamster English",
-  "description": "Interactive classroom games studio for ESL teachers and students featuring Yoga Quiz, Name Picker, and active learning games."
+  "name": "Hamster English - ESL Studio",
+  "description": "Premium AI-Powered ESL Games Platform for Teachers and Students.",
+  "requestFramePermissions": ["camera", "microphone"]
 }

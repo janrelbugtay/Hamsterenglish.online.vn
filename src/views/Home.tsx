@@ -129,6 +129,21 @@ function FeaturedGamesSection({
       icon: "🫧",
     },
     {
+      id: "shark-attack",
+      title: "Shark Attack",
+      description:
+        "2-player or vs AI staircase showdown! Answer right to stay safe or climb closer to the Megalodon jaws!",
+      difficulty: "Medium",
+      players: "1-2 Players",
+      time: "10m",
+      subject: "Trivia & ESL",
+      grade: "All",
+      imageUrl: "https://images.unsplash.com/photo-1560275619-4662e36fa65c?q=80&w=1000&auto=format&fit=crop",
+      isAI: false,
+      color: "from-cyan-500 to-blue-900",
+      icon: "🦈",
+    },
+    {
       id: "flashcards-match",
       title: "Flashcards Match",
       description:

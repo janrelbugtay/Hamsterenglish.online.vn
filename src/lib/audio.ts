@@ -1,4 +1,15 @@
+let isMuted = false;
+
+export function setMuted(muted: boolean) {
+  isMuted = muted;
+}
+
+export function getMuted() {
+  return isMuted;
+}
+
 export function playSound(type: 'correct' | 'incorrect' | 'win' | 'click' | 'pop' | 'bell' | 'eliminated') {
+  if (isMuted) return;
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
@@ -13,7 +24,7 @@ export function playSound(type: 'correct' | 'incorrect' | 'win' | 'click' | 'pop
       osc.frequency.setValueAtTime(523.25, ctx.currentTime);
       osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
       osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
       osc.start();
       osc.stop(ctx.currentTime + 0.4);
@@ -21,7 +32,7 @@ export function playSound(type: 'correct' | 'incorrect' | 'win' | 'click' | 'pop
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(220, ctx.currentTime);
       osc.frequency.setValueAtTime(160, ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
       osc.start();
       osc.stop(ctx.currentTime + 0.35);
@@ -31,7 +42,7 @@ export function playSound(type: 'correct' | 'incorrect' | 'win' | 'click' | 'pop
       osc.frequency.setValueAtTime(554.37, ctx.currentTime + 0.1);
       osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.2);
       osc.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.setValueAtTime(0.35, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
       osc.start();
       osc.stop(ctx.currentTime + 0.6);
@@ -43,5 +54,7 @@ export function playSound(type: 'correct' | 'incorrect' | 'win' | 'click' | 'pop
       osc.start();
       osc.stop(ctx.currentTime + 0.1);
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error(e);
+  }
 }
