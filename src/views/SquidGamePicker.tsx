@@ -5466,6 +5466,7 @@ class ThreeManager {
 
         const safePlayers = new Set<string>();
         const dynamicallyEliminated = new Set<string>();
+        const targetVictims = new Set<string>(isPicker ? (roundData.eliminated || []) : []);
 
         const updateDynamicRedLightCamera = (isRedLightScan: boolean = false) => {
             const container = document.getElementById(this.containerId);
@@ -5511,6 +5512,9 @@ class ThreeManager {
         // Helper to move a player who crossed Z <= -18 into the Left/Right Safe Wings
         const markRunnerSafeInWing = (name: string, char: any) => {
             if (!char || char.userData.isSafe || !char.userData.isAlive) return;
+            if (isPicker && targetVictims.has(name)) {
+                return; // Designated picker target must stay on court to be eliminated by the doll
+            }
             char.userData.isSafe = true;
             char.userData.isMoving = false;
             char.userData.isFallen = false;
@@ -5838,7 +5842,10 @@ class ThreeManager {
                     // Once down to the final `minPhotoFinishPack` runners, they jostle, trip, and battle right at the yellow line (Z = -16.4 to -17.6)
                     // until the final climax so nobody knows which runner in the pack will be eliminated!
                     const stillOnCourtCount = activeParticipants.length - safePlayers.size - dynamicallyEliminated.size;
-                    if (char.position.z <= -16.3 && stillOnCourtCount <= minPhotoFinishPack && eliminationsRemaining > 0) {
+                    if (isPicker && targetVictims.has(name) && char.position.z <= -16.2) {
+                        // Designated victim in picker mode battles right at the yellow finish line
+                        char.position.z = Math.max(-17.45 - cryptoRandom() * 0.25, char.position.z);
+                    } else if (char.position.z <= -16.3 && stillOnCourtCount <= minPhotoFinishPack && eliminationsRemaining > 0) {
                         // Trigger dramatic finish-line trip/scramble in the final pack!
                         if (!char.userData.isFallen && cryptoRandom() < 0.18) {
                             this.triggerPlayerTrip(char, false);
@@ -5936,7 +5943,10 @@ class ThreeManager {
             ) {
                 await waitInterruptible(420);
                 if (!this.isRedLightCancelled && roundSecondsLeft > 0) {
-                    const midVictim = selectUnpredictableTargets(currentOnCourt, 1)[0];
+                    const availableTargets = currentOnCourt.filter(n => isPicker && targetVictims.has(n));
+                    const midVictim = availableTargets.length > 0
+                        ? availableTargets[0]
+                        : selectUnpredictableTargets(currentOnCourt, 1)[0];
                     const midChar = midVictim ? this.characters[midVictim] : null;
                     if (midVictim && midChar) {
                         // Victim visibly wobbles/slips forward during Red Light!
@@ -6005,10 +6015,23 @@ class ThreeManager {
         });
         const stillNeededCount = Math.max(0, totalToEliminate - dynamicallyEliminated.size);
 
-        // Dynamically pick the final victim(s) right now using cryptographic randomness from the runners still on the court!
+        // Pick the final victim(s) right now from the runners still on the court, prioritizing designated target(s) in picker mode!
         let endVictims: string[] = [];
         if (stillNeededCount > 0 && remainingOnCourtAtEnd.length > 0) {
-            endVictims = selectUnpredictableTargets(remainingOnCourtAtEnd, stillNeededCount);
+            if (isPicker) {
+                const priorityVictims = remainingOnCourtAtEnd.filter(n => targetVictims.has(n));
+                const nonPriority = remainingOnCourtAtEnd.filter(n => !targetVictims.has(n));
+                endVictims = [...priorityVictims];
+                if (endVictims.length < stillNeededCount) {
+                    const extraNeeded = stillNeededCount - endVictims.length;
+                    const extraVictims = selectUnpredictableTargets(nonPriority, extraNeeded);
+                    endVictims.push(...extraVictims);
+                } else if (endVictims.length > stillNeededCount) {
+                    endVictims = endVictims.slice(0, stillNeededCount);
+                }
+            } else {
+                endVictims = selectUnpredictableTargets(remainingOnCourtAtEnd, stillNeededCount);
+            }
         }
         const endVictimSet = new Set(endVictims);
 
@@ -7562,7 +7585,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 chosenOnes.forEach((name, idx) => {
                     timeouts.push(setTimeout(() => {
                         const pNum = getPlayerNumber(name);
-                        announce(`Player ${pNum}, eliminated.`);
+                        announce(`Player ${pNum}, ${name}, eliminated.`);
                     }, idx * 1500));
                 });
             }
@@ -7571,7 +7594,16 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 gameState.eliminatedThisRound.forEach((name: string, idx: number) => {
                     timeouts.push(setTimeout(() => {
                         const pNum = getPlayerNumber(name);
-                        announce(`Player ${pNum}, eliminated.`);
+                        announce(`Player ${pNum}, ${name}, eliminated.`);
+                    }, idx * 1500));
+                });
+            }
+        } else if (gameState.phase === 'WINNER' && gameMode === 'survival') {
+            if (chosenOnes.length <= 3) {
+                chosenOnes.forEach((name, idx) => {
+                    timeouts.push(setTimeout(() => {
+                        const pNum = getPlayerNumber(name);
+                        announce(`Player ${pNum}, ${name}, sole survivor.`);
                     }, idx * 1500));
                 });
             }
@@ -7693,15 +7725,20 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             }
         }
 
-        setChosenOnes(engine.chosenOnes);
-        await tm.playWinnerSequence(engine.chosenOnes, engine.mode);
+        // Synchronize the actual chosen ones from the played rounds with 100% precision
+        const actualEliminated = engine.rounds.flatMap(r => r.eliminated || []);
+        const finalSurvivors = engine.rounds[engine.rounds.length - 1]?.survivors || [];
+        const actualChosenOnes = (currentMode === 'picker' || activeGame === 'mingle')
+            ? (actualEliminated.length > 0 ? actualEliminated : engine.chosenOnes)
+            : (finalSurvivors.length > 0 ? finalSurvivors : engine.chosenOnes);
+
+        engine.chosenOnes = actualChosenOnes;
+        setChosenOnes(actualChosenOnes);
+        await tm.playWinnerSequence(actualChosenOnes, engine.mode);
     };
 
     const startGame = async () => {
-        let rosterToUse = cryptoShuffle(students);
-        if (activeGame === 'redlight' && contestantCount < students.length) {
-            rosterToUse = rosterToUse.slice(0, contestantCount);
-        }
+        const rosterToUse = cryptoShuffle(students);
         return startGameWith(rosterToUse);
     };
 
@@ -7752,35 +7789,37 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
 
     const renderHome = () => (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm pointer-events-auto z-20 p-3 sm:p-6 overflow-y-auto">
-            <div className="text-center bg-slate-900/95 p-5 sm:p-10 rounded-3xl sm:rounded-[3rem] border-2 sm:border-4 border-rose-600 shadow-[0_0_60px_rgba(244,63,94,0.4)] relative overflow-hidden w-full max-w-xl my-auto">
+            <div className="text-center bg-slate-900/95 p-4 sm:p-7 rounded-3xl border-2 sm:border-4 border-rose-600 shadow-[0_0_60px_rgba(244,63,94,0.4)] relative overflow-hidden w-full max-w-lg my-auto max-h-[92vh] flex flex-col justify-between">
                 
-                <div className="text-3xl sm:text-5xl mb-2 sm:mb-4 text-rose-500 flex justify-center gap-4 sm:gap-6 relative z-10 items-center">
-                    <Circle className="w-8 h-8 sm:w-12 sm:h-12 animate-pulse" />
-                    <Triangle className="w-8 h-8 sm:w-12 sm:h-12 animate-pulse" style={{animationDelay: '0.3s'}} />
-                    <Square className="w-8 h-8 sm:w-12 sm:h-12 animate-pulse" style={{animationDelay: '0.6s'}} />
+                <div className="shrink-0">
+                    <div className="text-2xl sm:text-4xl mb-1.5 sm:mb-2 text-rose-500 flex justify-center gap-3 sm:gap-5 relative z-10 items-center">
+                        <Circle className="w-6 h-6 sm:w-9 sm:h-9 animate-pulse" />
+                        <Triangle className="w-6 h-6 sm:w-9 sm:h-9 animate-pulse" style={{animationDelay: '0.3s'}} />
+                        <Square className="w-6 h-6 sm:w-9 sm:h-9 animate-pulse" style={{animationDelay: '0.6s'}} />
+                    </div>
+                    <h1 className="text-2xl sm:text-4xl text-white font-bold mb-1 tracking-wide text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 relative z-10" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                        {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}{' '}
+                        <span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>
+                            {activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}
+                        </span>
+                    </h1>
+                    <p className="text-xs sm:text-sm text-emerald-400 mb-3 sm:mb-4 font-medium tracking-wider uppercase relative z-10">
+                        {activeGame === 'tag' 
+                            ? 'Tag • Will your number be called?' 
+                            : activeGame === 'redlight'
+                            ? 'Red Light, Green Light • Will you survive the doll?'
+                            : 'Mingle Game • Will your number be called?'}
+                    </p>
                 </div>
-                <h1 className="text-3xl sm:text-5xl text-white font-bold mb-1.5 sm:mb-2 tracking-wide text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 relative z-10" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                    {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}{' '}
-                    <span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>
-                        {activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}
-                    </span>
-                </h1>
-                <p className="text-xs sm:text-lg text-emerald-400 mb-4 sm:mb-8 font-medium tracking-widest uppercase relative z-10">
-                    {activeGame === 'tag' 
-                        ? 'Tag • Will your number be called?' 
-                        : activeGame === 'redlight'
-                        ? 'Red Light, Green Light • Will you survive the doll?'
-                        : 'Mingle Game • Will your number be called?'}
-                </p>
                 
-                <div className="bg-slate-800/80 rounded-2xl p-3 sm:p-4 mb-4 sm:mb-8 border border-slate-700">
+                <div className="bg-slate-800/80 rounded-2xl p-3 sm:p-4 mb-3 sm:mb-4 border border-slate-700 overflow-y-auto max-h-[46vh]">
                     {(activeGame === 'tag' || activeGame === 'redlight') && (
-                        <div className="flex gap-4 justify-center mb-4">
+                        <div className="flex gap-3 justify-center mb-3">
                             <Button 
                                 variant={gameMode === 'picker' ? 'primary' : 'secondary'} 
                                 onClick={() => setGameMode('picker')} 
                                 active={gameMode === 'picker'}
-                                className="flex-1 text-sm py-2"
+                                className="flex-1 text-xs sm:text-sm py-2"
                             >
                                 <MousePointerClick className="w-4 h-4" /> {activeGame === 'redlight' ? 'Doll Picker' : 'Tag Picker'}
                             </Button>
@@ -7788,7 +7827,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 variant={gameMode === 'survival' ? 'success' : 'secondary'} 
                                 onClick={() => setGameMode('survival')} 
                                 active={gameMode === 'survival'}
-                                className="flex-1 text-sm py-2"
+                                className="flex-1 text-xs sm:text-sm py-2"
                             >
                                 {activeGame === 'redlight' ? <Eye className="w-4 h-4" /> : <Tag className="w-4 h-4" />} {activeGame === 'redlight' ? 'Red Light Survival' : 'Tag Survival'}
                             </Button>
@@ -7796,10 +7835,10 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                     )}
                     
                     {(activeGame === 'mingle' || gameMode === 'picker') && (
-                        <div className="flex flex-col gap-2 bg-slate-900 p-4 rounded-xl border border-slate-700/50">
+                        <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50 mb-2">
                             <div className="flex justify-between items-center">
-                                <span className="text-slate-300 font-bold text-sm uppercase tracking-wider">Targets:</span>
-                                <span className="text-rose-500 font-bold text-xl bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 shadow-inner">{pickCount}</span>
+                                <span className="text-slate-300 font-bold text-xs uppercase tracking-wider">Targets:</span>
+                                <span className="text-rose-500 font-bold text-lg bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">{pickCount}</span>
                             </div>
                             <input 
                                 type="range" 
@@ -7807,66 +7846,41 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 max="10" 
                                 value={pickCount} 
                                 onChange={(e) => setPickCount(parseInt(e.target.value))}
-                                className="w-full mt-2 accent-rose-600 cursor-pointer"
+                                className="w-full mt-1.5 accent-rose-600 cursor-pointer"
                             />
-                            <div className="flex justify-between text-xs text-slate-500 font-bold px-1 mt-1">
+                            <div className="flex justify-between text-[10px] text-slate-500 font-bold px-1 mt-0.5">
                                 <span>1</span>
                                 <span>10</span>
                             </div>
                         </div>
                     )}
-                    {activeGame === 'redlight' && (
-                        <div className="flex flex-col gap-2 bg-slate-900 p-4 rounded-xl border border-slate-700/50">
-                            <div className="flex justify-between items-center">
-                                <span className="text-slate-300 font-bold text-sm uppercase tracking-wider flex items-center gap-1.5">
-                                    <Users className="w-4 h-4 text-emerald-400" />
-                                    Total Contestants:
-                                </span>
-                                <span className="text-emerald-400 font-bold text-lg bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 shadow-inner">
-                                    {Math.min(contestantCount, students.length)} / {students.length}
-                                </span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min={Math.min(students.length, 2)} 
-                                max={students.length} 
-                                value={Math.min(contestantCount, students.length)} 
-                                onChange={(e) => setContestantCount(parseInt(e.target.value))}
-                                className="w-full mt-2 accent-emerald-500 cursor-pointer"
-                            />
-                            <div className="flex justify-between text-xs text-slate-500 font-bold px-1 mt-1">
-                                <span>2 Min</span>
-                                <span>{Math.round(students.length / 2)} Half</span>
-                                <span>{students.length} All</span>
-                            </div>
-                        </div>
-                    )}
+
                     {activeGame === 'redlight' ? (
-                        <div className="flex flex-col gap-2 bg-slate-900 p-4 rounded-xl border border-slate-700/50">
+                        <div className="flex flex-col gap-2 bg-slate-900 p-3 sm:p-3.5 rounded-xl border border-slate-700/50">
                             <div className="flex justify-between items-center">
-                                <span className="text-slate-300 font-bold text-sm uppercase tracking-wider flex items-center gap-1.5">
-                                    <Clock className="w-4 h-4 text-amber-400" />
+                                <span className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                    <Clock className="w-3.5 h-3.5 text-amber-400" />
                                     Match Duration:
                                 </span>
-                                <span className="text-amber-400 font-bold text-lg bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 shadow-inner">
+                                <span className="text-amber-400 font-bold text-sm sm:text-base bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">
                                     {tagTimer === 60 ? '1 Minute (60s)' : '30 Seconds'}
                                 </span>
                             </div>
-                            <div className="grid grid-cols-2 gap-2.5 mt-2">
+                            <div className="grid grid-cols-2 gap-2 mt-1.5">
                                 <button
                                     type="button"
                                     onClick={() => {
                                         setTagTimer(30);
                                         threeManagerRef.current?.setTagTimer(30);
                                     }}
-                                    className={`py-3 px-4 rounded-xl font-bold border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                                    className={`py-2 px-3 rounded-xl font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
                                         tagTimer === 30 
-                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.02]' 
+                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.01]' 
                                             : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
                                     }`}
                                 >
-                                    <span className="text-sm font-black">⚡ 30 Seconds</span>
-                                    <span className={`text-[11px] ${tagTimer === 30 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Fast Match</span>
+                                    <span className="text-xs sm:text-sm font-black">⚡ 30 Seconds</span>
+                                    <span className={`text-[10px] ${tagTimer === 30 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Fast Match</span>
                                 </button>
                                 <button
                                     type="button"
@@ -7874,25 +7888,25 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                         setTagTimer(60);
                                         threeManagerRef.current?.setTagTimer(60);
                                     }}
-                                    className={`py-3 px-4 rounded-xl font-bold border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                                    className={`py-2 px-3 rounded-xl font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
                                         tagTimer === 60 
-                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.02]' 
+                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.01]' 
                                             : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
                                     }`}
                                 >
-                                    <span className="text-sm font-black">⏱️ 1 Minute (60s)</span>
-                                    <span className={`text-[11px] ${tagTimer === 60 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Standard Match</span>
+                                    <span className="text-xs sm:text-sm font-black">⏱️ 1 Minute (60s)</span>
+                                    <span className={`text-[10px] ${tagTimer === 60 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Standard Match</span>
                                 </button>
                             </div>
                         </div>
                     ) : activeGame === 'tag' ? (
-                        <div className="flex flex-col gap-2 bg-slate-900 p-4 rounded-xl border border-slate-700/50">
+                        <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50">
                             <div className="flex justify-between items-center">
-                                <span className="text-slate-300 font-bold text-sm uppercase tracking-wider flex items-center gap-1.5">
-                                    <Clock className="w-4 h-4 text-amber-400" />
+                                <span className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                    <Clock className="w-3.5 h-3.5 text-amber-400" />
                                     Chase Timer:
                                 </span>
-                                <span className="text-amber-400 font-bold text-lg bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 shadow-inner">
+                                <span className="text-amber-400 font-bold text-base bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">
                                     {tagTimer}s
                                 </span>
                             </div>
@@ -7907,9 +7921,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     setTagTimer(val);
                                     threeManagerRef.current?.setTagTimer(val);
                                 }}
-                                className="w-full mt-2 accent-amber-500 cursor-pointer"
+                                className="w-full mt-1.5 accent-amber-500 cursor-pointer"
                             />
-                            <div className="flex justify-between text-xs text-slate-500 font-bold px-1 mt-1">
+                            <div className="flex justify-between text-[10px] text-slate-500 font-bold px-1 mt-0.5">
                                 <span>5s</span>
                                 <span>30s</span>
                                 <span>60s</span>
@@ -7917,18 +7931,18 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         </div>
                     ) : null}
                     {(activeGame === 'tag' || activeGame === 'redlight') && gameMode === 'survival' && (
-                        <div className="text-emerald-400 text-sm font-bold tracking-widest py-2">
+                        <div className="text-emerald-400 text-xs font-bold tracking-wider pt-2 text-center">
                             {activeGame === 'redlight' ? 'CROSS THE FINISH LINE • MULTIPLE ROUNDS' : 'MULTIPLE ROUNDS • ONE SOLE SURVIVOR'}
                         </div>
                     )}
                 </div>
 
-                <div className="flex flex-col gap-4 items-center relative z-10">
-                    <Button size="lg" onClick={startGame} className="w-full">
-                        <Play className="w-6 h-6" /> START
+                <div className="flex flex-col gap-2.5 items-center relative z-10 shrink-0 w-full mt-1">
+                    <Button size="md" onClick={startGame} className="w-full py-3 sm:py-3.5 text-base sm:text-lg font-black tracking-wide shadow-lg shadow-rose-600/30">
+                        <Play className="w-5 h-5 fill-current" /> START GAME
                     </Button>
-                    <Button variant="secondary" onClick={() => setView('students')} className="w-full">
-                        <UserRound className="w-5 h-5" /> MANAGE ROSTER ({students.length})
+                    <Button variant="secondary" onClick={() => setView('students')} className="w-full py-2 sm:py-2.5 text-xs sm:text-sm">
+                        <UserRound className="w-4 h-4" /> MANAGE ROSTER ({students.length})
                     </Button>
                 </div>
             </div>
