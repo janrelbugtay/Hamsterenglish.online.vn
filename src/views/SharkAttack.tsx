@@ -1897,21 +1897,40 @@ export function SharkAttack({
   const [sharkLungeSide, setSharkLungeSide] = useState<'left' | 'right' | 'center' | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
 
-  // In-Game Shark Attack Timer Slide State
+  // In-Game Shark Attack Timer Slide State (1 to 10 minutes)
   const [timerEnabled, setTimerEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('sharkAttack_timerEnabled');
     return saved !== null ? saved === 'true' : true;
   });
   const [timerDuration, setTimerDuration] = useState<number>(() => {
     const saved = localStorage.getItem('sharkAttack_timerDuration');
-    return saved ? Math.max(5, Math.min(60, Number(saved))) : 20;
+    const val = Number(saved);
+    // 1 to 10 minutes (60s to 600s), default to 180s (3 minutes)
+    return saved && !isNaN(val) ? Math.max(60, Math.min(600, val)) : 180;
   });
   const [timeLeft, setTimeLeft] = useState<number>(() => {
     const saved = localStorage.getItem('sharkAttack_timerDuration');
-    return saved ? Math.max(5, Math.min(60, Number(saved))) : 20;
+    const val = Number(saved);
+    return saved && !isNaN(val) ? Math.max(60, Math.min(600, val)) : 180;
+  });
+  const [timerResetPerQuestion, setTimerResetPerQuestion] = useState<boolean>(() => {
+    const saved = localStorage.getItem('sharkAttack_timerResetPerQ');
+    return saved === 'true'; // default to false (match/round countdown)
   });
   const [isTimerPaused, setIsTimerPaused] = useState(false);
   const [showTimerSlideMenu, setShowTimerSlideMenu] = useState(false);
+
+  // Format seconds into MM:SS (and tenths when critical)
+  const formatTimerDisplay = (seconds: number) => {
+    const totalSec = Math.max(0, Math.ceil(seconds));
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    const formatted = `${m}:${s.toString().padStart(2, '0')}`;
+    if (seconds <= 10 && seconds > 0) {
+      return `${formatted} (${seconds.toFixed(1)}s)`;
+    }
+    return formatted;
+  };
 
   useEffect(() => {
     localStorage.setItem('sharkAttack_timerEnabled', String(timerEnabled));
@@ -1920,6 +1939,10 @@ export function SharkAttack({
   useEffect(() => {
     localStorage.setItem('sharkAttack_timerDuration', String(timerDuration));
   }, [timerDuration]);
+
+  useEffect(() => {
+    localStorage.setItem('sharkAttack_timerResetPerQ', String(timerResetPerQuestion));
+  }, [timerResetPerQuestion]);
 
   useEffect(() => {
     soundMutedGlobal = soundMuted;
@@ -2216,7 +2239,9 @@ export function SharkAttack({
               q: generateQuestionFromList(qList, nextIndex),
               wrongOnCurrentQ: false,
             }));
-            setTimeLeft(timerDuration);
+            if (timerResetPerQuestion) {
+              setTimeLeft(timerDuration);
+            }
           }, 340);
         } else {
           setTimeout(() => {
@@ -2238,7 +2263,9 @@ export function SharkAttack({
               q: newQ,
               wrongOnCurrentQ: false,
             }));
-            setTimeLeft(timerDuration);
+            if (timerResetPerQuestion) {
+              setTimeLeft(timerDuration);
+            }
           }, 380);
         }
       } else {
@@ -2276,7 +2303,9 @@ export function SharkAttack({
               q: newQ,
               wrongOnCurrentQ: false,
             }));
-            setTimeLeft(timerDuration);
+            if (timerResetPerQuestion) {
+              setTimeLeft(timerDuration);
+            }
           }, 650);
           return;
         }
@@ -3113,34 +3142,37 @@ export function SharkAttack({
               onClick={() => setShowTimerSlideMenu((prev) => !prev)}
               className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full font-black text-[11px] sm:text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
                 timerEnabled
-                  ? timeLeft <= 5
+                  ? timeLeft <= 10
                     ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/30'
                     : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
                   : 'bg-slate-200 text-slate-600'
               }`}
-              title="Shark Timer Slide Settings"
+              title="Shark Timer Slide Settings (1 to 10 Minutes)"
             >
               <Timer
                 size={15}
                 className={timerEnabled && !isTimerPaused ? 'text-emerald-700 animate-spin' : 'text-slate-500'}
                 style={{ animationDuration: '4s' }}
               />
-              <span>{timerEnabled ? `${Math.ceil(timeLeft)}s` : 'OFF'}</span>
+              <span>{timerEnabled ? formatTimerDisplay(timeLeft) : 'OFF'}</span>
             </button>
 
             {showTimerSlideMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowTimerSlideMenu(false)} />
-                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-3xl shadow-2xl border-2 border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95 duration-150 text-slate-800">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl shadow-2xl border-2 border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95 duration-150 text-slate-800">
                   <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <span className="text-xl">⏱️</span>
-                      <span className="font-black text-sm uppercase tracking-wide">Shark Timer Slide</span>
+                      <div>
+                        <div className="font-black text-sm uppercase tracking-wide">Shark Timer Slide</div>
+                        <div className="text-[10px] text-slate-400 font-bold">1 to 10 Minutes Range</div>
+                      </div>
                     </div>
                     <button
                       onClick={() => setTimerEnabled(!timerEnabled)}
-                      className={`px-2.5 py-1 rounded-full text-xs font-black transition-all cursor-pointer ${
-                        timerEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600'
+                      className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer ${
+                        timerEnabled ? 'bg-emerald-500 text-white shadow-xs' : 'bg-slate-200 text-slate-600'
                       }`}
                     >
                       {timerEnabled ? 'ENABLED' : 'DISABLED'}
@@ -3148,48 +3180,101 @@ export function SharkAttack({
                   </div>
 
                   {timerEnabled && (
-                    <div className="space-y-3">
+                    <div className="space-y-3.5">
+                      {/* 1 to 10 Minutes Slider */}
                       <div>
                         <div className="flex justify-between items-center text-xs font-bold text-slate-600 mb-1">
-                          <span>Slide Duration:</span>
-                          <span className="font-black text-emerald-600 text-sm">{timerDuration}s</span>
+                          <span className="flex items-center gap-1">
+                            <SlidersHorizontal size={13} className="text-emerald-600" />
+                            <span>Timer Slider (1 to 10 mins):</span>
+                          </span>
+                          <span className="font-black text-emerald-600 text-sm bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                            {Math.floor(timerDuration / 60)}m{timerDuration % 60 ? ` ${timerDuration % 60}s` : ''} ({timerDuration}s)
+                          </span>
                         </div>
-                        {/* Real interactive slide input */}
+                        {/* Real interactive slide input: 1 to 10 minutes (60 to 600 seconds) */}
                         <input
                           type="range"
-                          min="5"
-                          max="60"
-                          step="5"
+                          min="60"
+                          max="600"
+                          step="30"
                           value={timerDuration}
                           onChange={(e) => {
                             const val = Number(e.target.value);
                             setTimerDuration(val);
                             setTimeLeft(val);
                           }}
-                          className="w-full accent-emerald-500 h-2 bg-slate-200 rounded-lg cursor-pointer"
+                          className="w-full accent-emerald-500 h-2.5 bg-slate-200 rounded-lg cursor-pointer"
                         />
+                        <div className="flex justify-between text-[10px] text-slate-400 font-bold px-0.5 mt-0.5">
+                          <span>1m</span>
+                          <span>2.5m</span>
+                          <span>5m</span>
+                          <span>7.5m</span>
+                          <span>10m</span>
+                        </div>
                       </div>
 
-                      {/* Quick presets */}
+                      {/* Quick presets 1 to 10 minutes */}
                       <div>
-                        <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5">Presets</div>
-                        <div className="grid grid-cols-5 gap-1">
-                          {[10, 15, 20, 30, 45].map((sec) => (
-                            <button
-                              key={sec}
-                              onClick={() => {
-                                setTimerDuration(sec);
-                                setTimeLeft(sec);
-                              }}
-                              className={`py-1 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                                timerDuration === sec
-                                  ? 'bg-emerald-500 text-white shadow-xs'
-                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                              }`}
-                            >
-                              {sec}s
-                            </button>
-                          ))}
+                        <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5 flex items-center justify-between">
+                          <span>Quick Presets</span>
+                          <span className="text-[9px] text-slate-400">1m – 10m</span>
+                        </div>
+                        <div className="grid grid-cols-6 gap-1.5">
+                          {[1, 2, 3, 5, 7, 10].map((mins) => {
+                            const sec = mins * 60;
+                            return (
+                              <button
+                                key={mins}
+                                onClick={() => {
+                                  setTimerDuration(sec);
+                                  setTimeLeft(sec);
+                                }}
+                                className={`py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                                  timerDuration === sec
+                                    ? 'bg-emerald-500 text-white shadow-xs ring-2 ring-emerald-300'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {mins}m
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Timer Behavior Mode: Round Countdown vs Per-Question */}
+                      <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
+                        <div className="text-[10px] font-black uppercase text-slate-500 mb-1">Timer Mode</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setTimerResetPerQuestion(false)}
+                            className={`py-1.5 px-2 rounded-xl text-[11px] font-bold cursor-pointer transition-all ${
+                              !timerResetPerQuestion
+                                ? 'bg-emerald-500 text-white shadow-xs'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}
+                          >
+                            ⏱️ Match Round
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTimerResetPerQuestion(true)}
+                            className={`py-1.5 px-2 rounded-xl text-[11px] font-bold cursor-pointer transition-all ${
+                              timerResetPerQuestion
+                                ? 'bg-emerald-500 text-white shadow-xs'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}
+                          >
+                            🔄 Reset Each Q
+                          </button>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-1.5 leading-tight">
+                          {!timerResetPerQuestion
+                            ? 'Continuous round timer: shark attacks when total match time reaches 0:00!'
+                            : 'Timer resets back to full time on each question answered.'}
                         </div>
                       </div>
 
@@ -3203,7 +3288,7 @@ export function SharkAttack({
                         </button>
                         <button
                           onClick={() => setTimeLeft(timerDuration)}
-                          className="px-3 py-1.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-800 text-xs font-bold transition-all cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-800 text-xs font-bold transition-all cursor-pointer"
                         >
                           Reset
                         </button>
@@ -3211,11 +3296,11 @@ export function SharkAttack({
 
                       {/* Shark Attack Rule explanation */}
                       <div className="p-2.5 rounded-2xl bg-sky-50 border border-sky-200 text-[11px] text-sky-900 leading-snug">
-                        <div className="font-black mb-0.5 flex items-center gap-1">
-                          <span>🦈 Shark Timer Rule:</span>
+                        <div className="font-black mb-1 flex items-center gap-1 text-sky-800">
+                          <span>🦈 Shark Attack Timer Rule:</span>
                         </div>
                         <div>• When timer ends, player with <b>higher steps</b> jumps & gets eaten!</div>
-                        <div>• If tie with steps &gt; 0, <b>both</b> get eaten!</div>
+                        <div>• If tie with steps &gt; 0, <b>both</b> get eaten by the shark!</div>
                         <div>• If on <b>SAFE (step 0)</b>, protected & not eaten!</div>
                       </div>
                     </div>
@@ -3336,15 +3421,15 @@ export function SharkAttack({
                   <span className="sm:hidden">TIMER:</span>
                 </span>
                 <span
-                  className={`px-2 py-0.5 rounded-full font-mono text-xs sm:text-sm font-black tracking-wider transition-colors ${
+                  className={`px-2.5 py-0.5 rounded-full font-mono text-xs sm:text-sm font-black tracking-wider transition-colors ${
                     timeLeft <= 5
                       ? 'bg-red-600 text-white animate-pulse shadow-md shadow-red-500/50'
-                      : timeLeft <= 10
+                      : timeLeft <= 15
                         ? 'bg-amber-500 text-white'
                         : 'bg-sky-500 text-white'
                   }`}
                 >
-                  {timeLeft.toFixed(1)}s
+                  {formatTimerDisplay(timeLeft)}
                 </span>
                 {isTimerPaused && (
                   <span className="px-2 py-0.5 rounded-full bg-yellow-500/30 text-yellow-300 text-[10px] uppercase font-black">
@@ -3362,7 +3447,7 @@ export function SharkAttack({
                 <span className="text-emerald-300 font-extrabold">Safe = Not eaten</span>
               </div>
 
-              {/* Right controls: Play/Pause, -5s, +5s, Slide Settings */}
+              {/* Right controls: Play/Pause, -30s, +30s, 1-10m Slider Settings */}
               <div className="flex items-center gap-1 sm:gap-1.5">
                 <button
                   type="button"
@@ -3374,28 +3459,28 @@ export function SharkAttack({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTimeLeft((prev) => Math.max(1, Number((prev - 5).toFixed(1))))}
+                  onClick={() => setTimeLeft((prev) => Math.max(1, Number((prev - 30).toFixed(1))))}
                   className="px-1.5 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold cursor-pointer"
-                  title="Minus 5 Seconds"
+                  title="Minus 30 Seconds"
                 >
-                  -5s
+                  -30s
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTimeLeft((prev) => Math.min(timerDuration, Number((prev + 5).toFixed(1))))}
+                  onClick={() => setTimeLeft((prev) => Math.min(timerDuration, Number((prev + 30).toFixed(1))))}
                   className="px-1.5 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold cursor-pointer"
-                  title="Plus 5 Seconds"
+                  title="Plus 30 Seconds"
                 >
-                  +5s
+                  +30s
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowTimerSlideMenu((prev) => !prev)}
                   className="px-2 py-0.5 rounded-lg bg-sky-500/30 hover:bg-sky-500/50 text-sky-200 text-[10px] sm:text-xs font-bold cursor-pointer flex items-center gap-1"
-                  title="Configure Timer Slider"
+                  title="Configure 1 to 10 Minutes Timer Slider"
                 >
                   <SlidersHorizontal size={12} />
-                  <span className="hidden sm:inline">Slide Settings</span>
+                  <span className="hidden sm:inline">1–10m Slider</span>
                 </button>
               </div>
             </div>
