@@ -25,11 +25,7 @@ import {
   Type,
   Users,
   CheckCircle2,
-  RefreshCw,
-  SlidersHorizontal,
-  Crown,
-  RotateCcw,
-  Trophy
+  RefreshCw
 } from 'lucide-react';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
@@ -105,7 +101,7 @@ export const CLASSIC_YOGA_POSES: StandingPoseConfig[] = [
 export const CAMERA_HAND_POSES: StandingPoseConfig[] = [
   { id: '1-finger', type: 'emoji', value: '☝️', name: '1 Finger', shortHint: 'Hold up 1 index finger', category: 'hand', family: 'finger-1' },
   { id: '2-finger', type: 'emoji', value: '✌️', name: '2 Fingers', shortHint: 'Hold up 2 fingers (peace sign)', category: 'hand', family: 'finger-2' },
-  { id: '3-finger', type: 'emoji', value: '3️⃣', name: '3 Fingers', shortHint: 'Hold up 3 fingers (Index + Middle + Ring)', category: 'hand', family: 'finger-3' },
+  { id: '3-finger', type: 'emoji', value: '🤟', name: '3 Fingers', shortHint: 'Hold up 3 fingers', category: 'hand', family: 'finger-3' },
   { id: 'fist', type: 'emoji', value: '✊', name: 'Fist', shortHint: 'Make a closed fist', category: 'hand', family: 'fist' },
   { id: 'rock', type: 'emoji', value: '🤘', name: 'Rock On', shortHint: 'Index & pinky fingers up', category: 'hand', family: 'rock' },
   { id: '5-finger', type: 'emoji', value: '🖐️', name: '5 Fingers', shortHint: 'Open all 5 fingers wide', category: 'hand', family: 'finger-5' },
@@ -126,16 +122,15 @@ export const DEFAULT_CAMERA_COMBINATION_VALUES = DEFAULT_CAMERA_HAND_VALUES;
 
 export const getPoseName = (poseId?: string | null, poseValue?: string | null): string => {
   if (poseId) {
-    if (poseId === '3-finger') return '3 Fingers';
     const found = AVAILABLE_POSES.find(p => p.id === poseId);
     if (found) return found.name;
   }
   if (poseValue) {
-    if (poseValue === '3️⃣' || poseValue === '3-finger' || poseValue === '🤟') return '3 Fingers';
     const found = AVAILABLE_POSES.find(p => p.value === poseValue);
     if (found) return found.name;
     if (poseValue === '☝️') return '1 Finger';
     if (poseValue === '✌️') return '2 Fingers';
+    if (poseValue === '🤟') return '3 Fingers';
     if (poseValue === '✊') return 'Fist';
     if (poseValue === '🤘') return 'Rock On';
     if (poseValue === '🖐️') return '5 Fingers';
@@ -148,111 +143,8 @@ export const getPoseName = (poseId?: string | null, poseValue?: string | null): 
 };
 
 /**
- * High-clarity 3-Finger Hand SVG icon.
- * Explicitly displays 3 upright fingers (Index, Middle, Ring) with thumb folded over curled pinky,
- * perfectly solving the absence of a native 3-finger hand gesture in standard Unicode.
- */
-export function ThreeFingersHandIcon({ className = "w-7 h-7 inline-block" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 36 36" className={`${className} shrink-0 select-none`} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="fingerGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FCD34D" />
-          <stop offset="100%" stopColor="#F59E0B" />
-        </linearGradient>
-      </defs>
-      {/* Palm base */}
-      <path
-        d="M10 21 C10 29 14 34 21 34 C28 34 31 29 31 23 C31 20 29.5 19 28 19 L28 14 C28 12.3 25.5 12.3 25.5 14 L25.5 19 L25.5 10 C25.5 8.3 23 8.3 23 10 L23 19 L23 8 C23 6.3 20.5 6.3 20.5 8 L20.5 19 L18 19 C14 19 10 20 10 21 Z"
-        fill="url(#fingerGrad3)"
-      />
-      {/* Index Finger (1st extended) */}
-      <rect x="11" y="6" width="4.2" height="15" rx="2.1" fill="url(#fingerGrad3)" stroke="#D97706" strokeWidth="1.2" />
-      {/* Middle Finger (2nd extended - tallest) */}
-      <rect x="16" y="4" width="4.2" height="17" rx="2.1" fill="url(#fingerGrad3)" stroke="#D97706" strokeWidth="1.2" />
-      {/* Ring Finger (3rd extended) */}
-      <rect x="21" y="6.8" width="4.2" height="14.2" rx="2.1" fill="url(#fingerGrad3)" stroke="#D97706" strokeWidth="1.2" />
-      {/* Pinky folded across right edge */}
-      <path
-        d="M25.5 18 C25.5 15.5 29.5 15.5 29.5 18 C29.5 21 27.5 23.5 25.5 23.5"
-        fill="url(#fingerGrad3)"
-        stroke="#D97706"
-        strokeWidth="1.2"
-      />
-      {/* Thumb folded inwards over the pinky/palm */}
-      <path
-        d="M10 22 C10 18 16 18 20 22 C21 23 18 26 14 25 C11.5 24.5 10 23.5 10 22 Z"
-        fill="url(#fingerGrad3)"
-        stroke="#D97706"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-      {/* Palm bottom contour */}
-      <path
-        d="M10 22 C10 29 14 34 21 34 C28 34 30.5 29 30.5 23 C30.5 20 28.5 18 28.5 18"
-        stroke="#D97706"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-/**
- * Uniform Pose & Hand Icon renderer.
- * Automatically renders our custom 3-Fingers hand icon for 3-finger poses,
- * image thumbnails for custom images, and vibrant emojis for standard hand gestures.
- */
-export function PoseHandIcon({
-  poseId,
-  value,
-  size = 'md',
-  className = ''
-}: {
-  poseId?: string | null;
-  value?: string | null;
-  size?: 'xs' | 'sm' | 'md' | 'lg';
-  className?: string;
-}) {
-  if (poseId === '3-finger' || value === '3️⃣' || value === '3-finger' || value === '🤟') {
-    const iconDim =
-      size === 'xs' ? 'w-5 h-5' :
-      size === 'sm' ? 'w-7 h-7 sm:w-8 sm:h-8' :
-      size === 'lg' ? 'w-12 h-12' : 'w-9 h-9';
-    return (
-      <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
-        <ThreeFingersHandIcon className={iconDim} />
-      </span>
-    );
-  }
-
-  if (value && isImageUrl(value)) {
-    const dim =
-      size === 'xs' ? 'w-5 h-5' :
-      size === 'sm' ? 'w-7 h-7' :
-      size === 'lg' ? 'w-14 h-14' : 'w-9 h-9';
-    return (
-      <span className={`inline-flex items-center justify-center shrink-0 ${dim} ${className}`}>
-        <img src={value} alt={poseId || 'pose'} className="w-full h-full object-contain rounded-md" />
-      </span>
-    );
-  }
-
-  const textClass =
-    size === 'xs' ? 'text-lg leading-none' :
-    size === 'sm' ? 'text-xl sm:text-2xl leading-none' :
-    size === 'lg' ? 'text-4xl sm:text-5xl leading-none' : 'text-2xl sm:text-3xl leading-none';
-
-  return (
-    <span className={`inline-flex items-center justify-center shrink-0 select-none ${textClass} ${className}`}>
-      {value || '✋'}
-    </span>
-  );
-}
-
-/**
  * Clean Pose & Hand Emoji Display (No person cartoon images).
- * Displays pure vibrant emojis, custom 3-finger hand icon, or custom image assets.
+ * Displays pure vibrant emojis or custom image assets.
  */
 function StandingPoseFigure({
   poseId,
@@ -263,15 +155,6 @@ function StandingPoseFigure({
   emoji: string;
   size?: 'sm' | 'md' | 'lg';
 }) {
-  if (poseId === '3-finger' || emoji === '3️⃣' || emoji === '3-finger' || emoji === '🤟') {
-    const dimClass = size === 'sm' ? 'w-8 h-8' : size === 'lg' ? 'w-16 h-16' : 'w-12 h-12';
-    return (
-      <div className="relative flex items-center justify-center select-none p-1">
-        <ThreeFingersHandIcon className={dimClass} />
-      </div>
-    );
-  }
-
   if (isImageUrl(emoji)) {
     const dimClass = size === 'sm' ? 'w-8 h-8' : size === 'lg' ? 'w-16 h-16' : 'w-11 h-11';
     return (
@@ -411,14 +294,15 @@ function detectStandingPoseFromHands(
       scores['peace'] = Math.max(scores['peace'] || 0, 0.98);
     }
 
-    // 4. 3 Fingers - exactly 3 fingers extended
-    // Supports Index+Middle+Ring, OR European Thumb+Index+Middle
+    // 4. 3 Fingers (🤟) - exactly 3 fingers extended
+    // Supports Index+Middle+Ring, OR European Thumb+Index+Middle, OR Love-You (Thumb+Index+Pinky)
     if (
       (h.indexExtended && h.middleExtended && h.ringExtended && !h.pinkyExtended) ||
-      (h.fourFingersCount === 3 && !h.thumbSpread) ||
-      (h.thumbSpread && h.indexExtended && h.middleExtended && !h.ringExtended && !h.pinkyExtended)
+      (h.fourFingersCount === 3) ||
+      (h.thumbSpread && h.indexExtended && h.middleExtended && !h.ringExtended && !h.pinkyExtended) ||
+      (h.thumbSpread && h.indexExtended && h.pinkyExtended && !h.middleExtended && !h.ringExtended)
     ) {
-      scores['3-finger'] = Math.max(scores['3-finger'] || 0, 0.98);
+      scores['3-finger'] = Math.max(scores['3-finger'] || 0, 0.97);
     }
 
     // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb curled
@@ -1471,12 +1355,11 @@ function getInitialClassicPoses(): string[] {
 
 function getInitialCameraHandPoses(): string[] {
   try {
-    const raw = localStorage.getItem('yogaCameraHandPoses_v8') || localStorage.getItem('yogaCameraHandPoses_v7');
+    const raw = localStorage.getItem('yogaCameraHandPoses_v7');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const cleaned = parsed.map((p: any) => (p === '🤟' ? '3️⃣' : p));
-        const valid = cleaned.filter((p: any) => CAMERA_HAND_POSES.some(ap => ap.value === p));
+        const valid = parsed.filter((p: any) => CAMERA_HAND_POSES.some(ap => ap.value === p));
         if (valid.length >= 4) return valid;
       }
     }
@@ -1503,7 +1386,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
 
   useEffect(() => {
     try {
-      localStorage.setItem('yogaCameraHandPoses_v8', JSON.stringify(cameraHandPoses));
+      localStorage.setItem('yogaCameraHandPoses_v7', JSON.stringify(cameraHandPoses));
     } catch (e) {}
   }, [cameraHandPoses]);
 
@@ -1531,7 +1414,6 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
   };
 
   const [showSettings, setShowSettings] = useState(false);
-  const [showControlsMenu, setShowControlsMenu] = useState(false);
   const [uiScale, setUiScale] = useState<'small' | 'medium' | 'big'>('medium');
   const [showFontPopover, setShowFontPopover] = useState(false);
   const [autoAdvanceDelay, setAutoAdvanceDelay] = useState<'manual' | 3 | 5 | 10>(3);
@@ -1541,10 +1423,6 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
     { id: '1', name: 'Player 1', score: 0, colorIdx: 0 },
     { id: '2', name: 'Player 2', score: 0, colorIdx: 1 },
   ]);
-
-  const resetScores = () => {
-    setTeams(prev => prev.map(t => ({ ...t, score: 0 })));
-  };
 
   const teamColors = [
     { bg: 'bg-blue-500', border: 'border-blue-600', borderLight: 'border-blue-200', text: 'text-blue-600', hex: '#3b82f6' },
@@ -2251,193 +2129,6 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
     <div className={`flex-1 flex items-center justify-center p-1.5 md:p-3 mx-auto animate-fade-in ${isFullscreen ? 'fixed inset-0 z-50 bg-teal-50 w-full h-full max-w-none' : 'w-full max-w-[1480px]'}`}>
       {showConfetti && <Confetti width={width} height={height} numberOfPieces={280} recycle={false} style={{ position: 'fixed', zIndex: 100, top: 0, left: 0 }} />}
 
-      {/* Game Controls & Tools Pop-up Modal (Keeps the screen uncrowded) */}
-      {showControlsMenu && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/60 backdrop-blur-md p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-8 max-w-lg w-full shadow-2xl relative border-4 border-teal-300 max-h-[92vh] overflow-y-auto custom-scrollbar space-y-5 animate-scale-up text-slate-800">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-teal-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center font-black">
-                  <SlidersHorizontal size={22} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-teal-950">Game Controls & Tools</h3>
-                  <p className="text-xs font-semibold text-slate-500">Quick settings without crowding gameplay</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowControlsMenu(false)}
-                className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors flex items-center justify-center cursor-pointer"
-                title="Close Controls"
-              >
-                <X size={20} strokeWidth={2.5} />
-              </button>
-            </div>
-
-            {/* 1. Text Size Adjuster: Small / Medium / Large */}
-            <div className="bg-teal-50/80 rounded-2xl p-4 border border-teal-200/90 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs sm:text-sm font-black text-teal-950 flex items-center gap-1.5 uppercase tracking-wider">
-                  <Type size={16} className="text-teal-700" />
-                  Text Size (Questions & Options)
-                </span>
-                <span className="text-xs font-extrabold text-teal-800 capitalize bg-white px-2 py-0.5 rounded-full border border-teal-200">
-                  {uiScale === 'big' ? 'Large' : uiScale}
-                </span>
-              </div>
-              <p className="text-[11px] text-teal-700 font-semibold mb-2.5">
-                Scale text size for projectors, big displays, or mobile screens.
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {(['small', 'medium', 'big'] as const).map(scale => (
-                  <button
-                    key={scale}
-                    onClick={() => setUiScale(scale)}
-                    className={`py-2 px-3 rounded-xl font-black text-xs sm:text-sm transition-all cursor-pointer border-2 ${
-                      uiScale === scale
-                        ? 'bg-teal-600 text-white border-teal-700 shadow-md scale-102'
-                        : 'bg-white text-slate-700 border-teal-200 hover:bg-teal-100/60'
-                    }`}
-                  >
-                    {scale === 'small' ? 'Small' : scale === 'medium' ? 'Medium' : 'Large'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 2. Gameplay Mode: AI Camera Hands vs Classic Studio */}
-            <div className="space-y-2">
-              <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Game Mode</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => setPlayMode('camera')}
-                  className={`p-3.5 rounded-2xl text-left border-2 transition-all cursor-pointer flex flex-col justify-between ${
-                    playMode === 'camera'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-950 shadow-md ring-2 ring-emerald-300'
-                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Camera size={18} className={playMode === 'camera' ? 'text-emerald-600' : 'text-slate-400'} />
-                    <span className="font-black text-sm">AI Camera Mode</span>
-                  </div>
-                  <p className="text-xs text-slate-500">Pure hand gestures: 1, 2, 3 fingers, fist, rock on</p>
-                </button>
-
-                <button
-                  onClick={() => setPlayMode('studio')}
-                  className={`p-3.5 rounded-2xl text-left border-2 transition-all cursor-pointer flex flex-col justify-between ${
-                    playMode === 'studio'
-                      ? 'bg-teal-50 border-teal-500 text-teal-950 shadow-md ring-2 ring-teal-300'
-                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <CameraOff size={18} className={playMode === 'studio' ? 'text-teal-600' : 'text-slate-400'} />
-                    <span className="font-black text-sm">Classic Studio</span>
-                  </div>
-                  <p className="text-xs text-slate-500">Classic full-body yoga poses (Tree, Warrior, Star)</p>
-                </button>
-              </div>
-            </div>
-
-            {/* 3. Players Setup & Scoreboard Management */}
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Users size={16} className="text-indigo-600" />
-                  Players & Duel Setup ({teams.length} Player{teams.length > 1 ? 's' : ''})
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPlayerPreset(1)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black cursor-pointer transition-all ${
-                      teams.length === 1 ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200'
-                    }`}
-                  >
-                    1 Player
-                  </button>
-                  <button
-                    onClick={() => setPlayerPreset(2)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black cursor-pointer transition-all ${
-                      teams.length === 2 ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200'
-                    }`}
-                  >
-                    2 Players (Split)
-                  </button>
-                </div>
-              </div>
-
-              {/* Player Names & Scores */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {teams.map((t, idx) => (
-                  <div key={t.id} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
-                    <span className={`w-7 h-7 rounded-lg text-white font-black text-xs flex items-center justify-center shrink-0 ${idx === 0 ? 'bg-blue-600' : 'bg-rose-500'}`}>
-                      {idx === 0 ? 'P1' : 'P2'}
-                    </span>
-                    <input
-                      defaultValue={t.name}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) setTeams(prev => prev.map(item => item.id === t.id ? { ...item, name: val } : item));
-                      }}
-                      className="font-bold text-xs text-slate-800 focus:outline-none flex-1 min-w-0"
-                      placeholder={`Player ${idx + 1}`}
-                    />
-                    <span className="font-mono font-black text-xs text-slate-600 shrink-0">{t.score} pts</span>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                onClick={resetScores}
-                className="w-full py-2 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-xl text-xs font-bold border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <RotateCcw size={13} /> Reset Scores to 0
-              </button>
-            </div>
-
-            {/* 4. Secondary Action Buttons: Prev Pose, Poses Catalog, Switch Mini-Game */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              {currentIdx > 0 && (
-                <button
-                  onClick={() => {
-                    goToPreviousQuestion();
-                    setShowControlsMenu(false);
-                  }}
-                  className="py-2.5 px-3 bg-white hover:bg-teal-50 text-teal-900 rounded-xl text-xs font-black border border-teal-200 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>⬅️ Prev Question</span>
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setShowSettings(true);
-                  setShowControlsMenu(false);
-                }}
-                className={`py-2.5 px-3 bg-teal-50 hover:bg-teal-100 text-teal-900 rounded-xl text-xs font-black border border-teal-200 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
-                  currentIdx === 0 ? 'col-span-2' : 'col-span-1'
-                }`}
-              >
-                <Settings size={15} /> Customize Poses
-              </button>
-              {onSwitchMode && (
-                <button
-                  onClick={() => {
-                    onSwitchMode();
-                    setShowControlsMenu(false);
-                  }}
-                  className="py-2.5 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black shadow-md flex items-center justify-center gap-1.5 cursor-pointer col-span-2"
-                >
-                  <Shuffle size={15} className="text-amber-300" /> Switch Mini-Game Mode
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center bg-teal-950/50 backdrop-blur-md p-4 animate-fade-in">
@@ -2664,7 +2355,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                   <>
                     <StandingPoseFigure poseId="1-finger" emoji="☝️" size="sm" />
                     <StandingPoseFigure poseId="2-finger" emoji="✌️" size="sm" />
-                    <StandingPoseFigure poseId="3-finger" emoji="3️⃣" size="sm" />
+                    <StandingPoseFigure poseId="3-finger" emoji="🤟" size="sm" />
                     <StandingPoseFigure poseId="fist" emoji="✊" size="sm" />
                     <StandingPoseFigure poseId="rock" emoji="🤘" size="sm" />
                   </>
@@ -2847,198 +2538,122 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         {/* PLAYING SCREEN */}
         {gameState === 'playing' && (
           <div className="flex flex-col h-full flex-grow relative animate-fade-in min-h-0 overflow-hidden z-10 justify-between">
-            {/* Top Navigation & Controls Bar (Uncluttered, Hero Player 1 & Player 2 Scoreboard) */}
+            {/* Top Navigation & Controls Bar */}
             <div className="w-full px-3 md:px-5 pt-2 pb-1 flex flex-wrap justify-between items-center gap-2 z-30 shrink-0">
-              {/* Left Side: Exit & Question Badge */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={onBack}
-                  className="px-3.5 py-2 text-teal-900 hover:bg-white rounded-2xl transition-colors font-black cursor-pointer bg-white/95 backdrop-blur-md shadow-md border-2 border-teal-200 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5 hover:scale-105 active:scale-95"
+                  className="px-3 py-1.5 text-teal-900 hover:bg-white rounded-2xl transition-colors font-black cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
                 >
                   <ArrowLeft size={16} /> Exit
                 </button>
-                <div className="font-bold text-teal-950 bg-white/95 backdrop-blur-md px-3 py-2 rounded-2xl shadow-sm border-2 border-teal-200 text-center flex items-center gap-1.5 select-none">
-                  <span className="text-xs font-black text-teal-700">Q</span>
-                  <span className="text-sm font-black">{currentIdx + 1}</span>
-                  <span className="text-xs opacity-60">/{quiz.questions.length}</span>
-                </div>
-              </div>
-
-              {/* Center: BIG & PROMINENT PLAYER 1 & PLAYER 2 SCOREBOARD */}
-              {teams.length >= 2 ? (
-                <div className="flex items-center gap-2 sm:gap-3.5 my-0.5">
-                  {/* Player 1 Card (Blue Theme) */}
-                  <div
-                    className={`relative flex items-center bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 text-white rounded-2xl shadow-lg border-2 border-blue-300 px-3 py-1.5 sm:px-4 sm:py-2 transition-all ${
-                      teams[0].score > teams[1].score ? 'ring-3 ring-amber-400 shadow-blue-500/30 scale-102' : ''
-                    }`}
-                  >
-                    {teams[0].score > teams[1].score && (
-                      <span className="absolute -top-2.5 left-3 text-[10px] sm:text-xs bg-amber-400 text-amber-950 font-black px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 animate-bounce">
-                        <Crown size={12} className="fill-amber-950" /> Leading
-                      </span>
-                    )}
-                    <div className="flex items-center gap-2 mr-2 sm:mr-3">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-black text-xs sm:text-sm border border-white/40 shadow-xs">
-                        P1
-                      </div>
-                      <div className="text-left">
-                        <span className="block text-xs sm:text-sm md:text-base font-black tracking-wide leading-tight text-white uppercase drop-shadow-xs">
-                          {teams[0].name}
-                        </span>
-                        <span className="text-[10px] sm:text-xs text-blue-200 font-bold hidden sm:block">
-                          Left Side
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Big Score Counter */}
-                    <div className="bg-black/40 backdrop-blur-xs px-3 sm:px-4 py-0.5 sm:py-1 rounded-xl border border-white/25 mr-2 shadow-inner">
-                      <span className="text-2xl sm:text-3xl md:text-4xl font-black font-mono tracking-tight text-white drop-shadow-md">
-                        {teams[0].score}
-                      </span>
-                    </div>
-
-                    {/* Touch +/- Score Adjusters */}
-                    <div className="flex flex-col gap-1">
-                      <button
-                        onClick={() => updateTeamScore(teams[0].id, 1)}
-                        className="w-5 h-5 sm:w-6 sm:h-6 bg-white/25 hover:bg-white/45 active:scale-90 rounded-md flex items-center justify-center font-black text-xs sm:text-sm cursor-pointer transition-all shadow-xs"
-                        title="Add 1 point"
-                      >
-                        +
-                      </button>
-                      <button
-                        onClick={() => updateTeamScore(teams[0].id, -1)}
-                        className="w-5 h-5 sm:w-6 sm:h-6 bg-white/25 hover:bg-white/45 active:scale-90 rounded-md flex items-center justify-center font-black text-xs sm:text-sm cursor-pointer transition-all shadow-xs"
-                        title="Subtract 1 point"
-                      >
-                        -
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* VS Badge */}
-                  <div className="flex flex-col items-center justify-center shrink-0">
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-amber-400 via-orange-500 to-amber-500 text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-lg border-2 border-white animate-pulse">
-                      VS
-                    </div>
-                  </div>
-
-                  {/* Player 2 Card (Rose/Pink Theme) */}
-                  <div
-                    className={`relative flex items-center bg-gradient-to-r from-rose-500 via-pink-600 to-rose-600 text-white rounded-2xl shadow-lg border-2 border-rose-300 px-3 py-1.5 sm:px-4 sm:py-2 transition-all ${
-                      teams[1].score > teams[0].score ? 'ring-3 ring-amber-400 shadow-rose-500/30 scale-102' : ''
-                    }`}
-                  >
-                    {teams[1].score > teams[0].score && (
-                      <span className="absolute -top-2.5 right-3 text-[10px] sm:text-xs bg-amber-400 text-amber-950 font-black px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 animate-bounce">
-                        <Crown size={12} className="fill-amber-950" /> Leading
-                      </span>
-                    )}
-
-                    {/* Touch +/- Score Adjusters */}
-                    <div className="flex flex-col gap-1 mr-2">
-                      <button
-                        onClick={() => updateTeamScore(teams[1].id, 1)}
-                        className="w-5 h-5 sm:w-6 sm:h-6 bg-white/25 hover:bg-white/45 active:scale-90 rounded-md flex items-center justify-center font-black text-xs sm:text-sm cursor-pointer transition-all shadow-xs"
-                        title="Add 1 point"
-                      >
-                        +
-                      </button>
-                      <button
-                        onClick={() => updateTeamScore(teams[1].id, -1)}
-                        className="w-5 h-5 sm:w-6 sm:h-6 bg-white/25 hover:bg-white/45 active:scale-90 rounded-md flex items-center justify-center font-black text-xs sm:text-sm cursor-pointer transition-all shadow-xs"
-                        title="Subtract 1 point"
-                      >
-                        -
-                      </button>
-                    </div>
-
-                    {/* Big Score Counter */}
-                    <div className="bg-black/40 backdrop-blur-xs px-3 sm:px-4 py-0.5 sm:py-1 rounded-xl border border-white/25 mr-2 sm:mr-3 shadow-inner">
-                      <span className="text-2xl sm:text-3xl md:text-4xl font-black font-mono tracking-tight text-white drop-shadow-md">
-                        {teams[1].score}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <span className="block text-xs sm:text-sm md:text-base font-black tracking-wide leading-tight text-white uppercase drop-shadow-xs">
-                          {teams[1].name}
-                        </span>
-                        <span className="text-[10px] sm:text-xs text-rose-200 font-bold hidden sm:block">
-                          Right Side
-                        </span>
-                      </div>
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-black text-xs sm:text-sm border border-white/40 shadow-xs">
-                        P2
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* 1-Player Solo Scoreboard */
-                <div className="flex items-center gap-2.5 my-0.5">
-                  <div className="flex items-center bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-500 text-white rounded-2xl shadow-lg border-2 border-teal-300 px-3.5 py-1.5 sm:px-4 sm:py-2">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-black text-sm sm:text-base border border-white/30 mr-2.5">
-                      👤
-                    </div>
-                    <div className="mr-3">
-                      <span className="block text-xs sm:text-sm md:text-base font-black text-white uppercase drop-shadow-xs">
-                        {teams[0].name}
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-teal-200 font-bold">Solo Player</span>
-                    </div>
-                    <div className="bg-black/40 px-3 sm:px-4 py-0.5 sm:py-1 rounded-xl border border-white/25 mr-2.5">
-                      <span className="text-2xl sm:text-3xl md:text-4xl font-black font-mono text-white">
-                        {teams[0].score}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <button
-                        onClick={() => updateTeamScore(teams[0].id, 1)}
-                        className="w-5 h-5 sm:w-6 sm:h-6 bg-white/25 hover:bg-white/40 rounded flex items-center justify-center font-black text-xs cursor-pointer"
-                      >
-                        +
-                      </button>
-                      <button
-                        onClick={() => updateTeamScore(teams[0].id, -1)}
-                        className="w-5 h-5 sm:w-6 sm:h-6 bg-white/25 hover:bg-white/40 rounded flex items-center justify-center font-black text-xs cursor-pointer"
-                      >
-                        -
-                      </button>
-                    </div>
-                  </div>
-
+                {onSwitchMode && (
                   <button
-                    onClick={() => setPlayerPreset(2)}
-                    className="px-3 py-2 bg-white/95 hover:bg-white text-teal-900 rounded-2xl font-black text-xs sm:text-sm border-2 border-teal-200 shadow-md flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105"
-                    title="Switch to 2-Player Split Screen"
+                    onClick={onSwitchMode}
+                    className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-sm text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
+                    title="Switch Game Mode"
                   >
-                    <Users size={16} className="text-teal-600" />
-                    <span className="hidden sm:inline">+ 2 Players (Split Screen)</span>
+                    <Shuffle size={14} className="text-amber-300" />
+                    <span className="hidden sm:inline">Switch Mode</span>
                   </button>
-                </div>
-              )}
+                )}
 
-              {/* Right Side: Clean Controls & Tools Pop-up Trigger + Fullscreen */}
-              <div className="flex items-center gap-2">
+                {/* Quick Toggle: Camera Mode vs Classic Studio Mode */}
                 <button
-                  onClick={() => setShowControlsMenu(true)}
-                  className="px-3.5 py-2 bg-white/95 hover:bg-white text-slate-800 hover:text-teal-950 rounded-2xl font-black text-xs sm:text-sm border-2 border-teal-300 shadow-md flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95"
-                  title="Open Game Controls, Text Size & Mode Settings"
+                  onClick={() => setPlayMode(prev => prev === 'camera' ? 'studio' : 'camera')}
+                  className={`px-3 py-1.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5 shadow-sm border transition-all cursor-pointer ${
+                    playMode === 'camera'
+                      ? 'bg-emerald-600 text-white border-emerald-700'
+                      : 'bg-white/90 text-teal-900 border-teal-200 hover:bg-white'
+                  }`}
+                  title="Toggle between AI Camera Mode and Classic Studio Mode"
                 >
-                  <SlidersHorizontal size={17} className="text-teal-600" />
-                  <span className="hidden sm:inline">Controls & Tools</span>
-                  <span className="bg-teal-100 text-teal-800 text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider">
-                    {playMode === 'camera' ? '📷 Hands' : '🧘 Classic'}
-                  </span>
+                  {playMode === 'camera' ? <Camera size={15} /> : <CameraOff size={15} />}
+                  <span>{playMode === 'camera' ? 'Camera Mode' : 'Classic Mode'}</span>
                 </button>
 
+                {/* Retrieve Previous Question / Pose button */}
+                {currentIdx > 0 && (
+                  <button
+                    onClick={goToPreviousQuestion}
+                    className="px-3 py-1.5 bg-white/90 hover:bg-white text-teal-900 rounded-2xl font-black text-xs sm:text-sm border border-teal-200 shadow-sm cursor-pointer flex items-center gap-1"
+                    title="Retrieve previous question and pose"
+                  >
+                    <span>⬅️ Prev Pose</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Players / Teams Scoreboard */}
+              <div className="flex flex-nowrap items-center gap-2 overflow-x-auto max-w-[48vw] px-1">
+                {teams.map((team) => {
+                  const theme = teamColors[team.colorIdx];
+                  return (
+                    <div
+                      key={team.id}
+                      className={`flex items-stretch rounded-2xl shadow-sm border-3 ${theme.border} overflow-hidden shrink-0`}
+                    >
+                      <button
+                        onClick={() => updateTeamScore(team.id, -1)}
+                        className={`px-2 py-0.5 bg-white hover:bg-slate-100 text-slate-700 transition-colors border-r-2 ${theme.borderLight} flex items-center justify-center cursor-pointer`}
+                        title="Subtract 1 point"
+                      >
+                        <span className="font-black text-base leading-none">-</span>
+                      </button>
+                      <button
+                        onClick={() => updateTeamScore(team.id, 1)}
+                        className={`px-2.5 py-0.5 font-black text-white ${theme.bg} hover:brightness-110 transition-all flex items-center gap-1.5 cursor-pointer`}
+                        title="Add 1 point"
+                      >
+                        <span className="text-xs sm:text-sm">{team.name}</span>
+                        <span className="bg-white/25 px-1.5 py-0.5 rounded-lg text-xs sm:text-sm leading-none">
+                          {team.score}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Right Controls: Progress, Font Size Popover (Small / Medium / Large), Settings, Fullscreen */}
+              <div className="flex items-center gap-1.5 relative">
+                <div className="font-bold text-teal-950 bg-white/90 backdrop-blur-md px-3 py-1 rounded-2xl shadow-sm border border-teal-200 text-center flex items-center gap-1">
+                  <span className="text-sm sm:text-base font-black">{currentIdx + 1}</span>
+                  <span className="text-xs opacity-70">/ {quiz.questions.length}</span>
+                </div>
+
+                {/* Directly visible Text Size Adjuster: Small / Medium / Large */}
+                <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl border-2 border-teal-200 p-0.5 shadow-sm">
+                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-teal-900 px-2 flex items-center gap-1 select-none">
+                    <Type size={13} className="text-teal-700" />
+                    <span className="hidden md:inline">Text:</span>
+                  </span>
+                  {(['small', 'medium', 'big'] as const).map(scale => (
+                    <button
+                      key={scale}
+                      onClick={() => setUiScale(scale)}
+                      className={`px-2 sm:px-2.5 py-1 rounded-xl font-black text-xs transition-all cursor-pointer ${
+                        uiScale === scale
+                          ? 'bg-teal-600 text-white shadow-xs scale-105'
+                          : 'text-slate-600 hover:text-teal-950 hover:bg-teal-50'
+                      }`}
+                      title={`Change font size to ${scale === 'big' ? 'Large' : scale}`}
+                    >
+                      {scale === 'small' ? 'Small' : scale === 'medium' ? 'Medium' : 'Large'}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="w-9 h-9 text-teal-900 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 flex items-center justify-center"
+                  title="Settings & Pose Selection"
+                >
+                  <Settings size={17} />
+                </button>
                 <button
                   onClick={toggleFullscreen}
-                  className="w-9 h-9 text-teal-900 hover:bg-white rounded-2xl transition-all font-bold cursor-pointer bg-white/95 backdrop-blur-md shadow-md border-2 border-teal-200 flex items-center justify-center hover:scale-105 active:scale-95"
+                  className="w-9 h-9 text-teal-900 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 flex items-center justify-center"
                   title="Fullscreen"
                 >
                   {isFullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
@@ -3113,28 +2728,15 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                   {/* 2-Player Split Screen Divider & Zone Overlays */}
                   {isTwoPlayerCamera ? (
                     <div className="absolute inset-0 grid grid-cols-2 pointer-events-none">
-                      {/* Center Floating VS Emblem */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white font-black text-xs flex items-center justify-center shadow-2xl border-2 border-white animate-pulse">
-                        VS
-                      </div>
-
                       {/* Player 1 Zone (Left Side) */}
-                      <div className="relative border-r-3 border-dashed border-white/60 p-3 sm:p-4 flex flex-col justify-between">
-                        <div className="flex flex-wrap items-center justify-between gap-2 pr-2">
-                          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 backdrop-blur-md text-white font-black text-sm sm:text-lg px-4 py-1.5 rounded-2xl shadow-xl border-2 border-blue-300 flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-lg bg-white/25 flex items-center justify-center text-xs font-mono">P1</span>
-                            <span>{teams[0]?.name || 'Player 1'}</span>
-                            <span className="text-[10px] bg-black/25 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-blue-200 hidden sm:inline">
-                              Left Side
-                            </span>
+                      <div className="relative border-r-2 border-dashed border-white/75 p-3 sm:p-4 flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-2 pr-2">
+                          <span className="bg-blue-600/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-blue-300">
+                            👤 {teams[0]?.name || 'Player 1'}
                           </span>
                           {playerDetections[0].matchedOptionIdx !== null && (
-                            <span className="bg-white/95 text-blue-950 font-black text-xs sm:text-base px-3.5 py-1.5 rounded-2xl shadow-2xl flex items-center gap-2 border-2 border-blue-400 animate-pulse">
-                              <PoseHandIcon
-                                poseId={shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId}
-                                value={shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}
-                                size="sm"
-                              />
+                            <span className="bg-white/95 text-blue-900 font-black text-xs sm:text-sm px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-blue-400 animate-pulse">
+                              <span className="text-base sm:text-lg leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
                               <span>Choice {String.fromCharCode(65 + playerDetections[0].matchedOptionIdx)}</span>
                             </span>
                           )}
@@ -3147,36 +2749,28 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                         )}
 
                         {/* Hold Progress Bar for Player 1 */}
-                        <div className="w-full bg-black/65 backdrop-blur-md rounded-2xl h-7 sm:h-8 p-1 border-2 border-blue-400/80 overflow-hidden relative flex items-center shadow-lg">
+                        <div className="w-full bg-black/55 backdrop-blur-xs rounded-full h-5 sm:h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                           <div
-                            className="bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-300 h-full rounded-xl transition-all duration-75 shadow-sm"
+                            className="bg-gradient-to-r from-blue-500 to-cyan-300 h-full rounded-full transition-all duration-75"
                             style={{ width: `${playerDetections[0].holdProgress}%` }}
                           />
-                          <span className="absolute inset-x-0 text-center text-xs sm:text-sm font-black text-white drop-shadow-md">
+                          <span className="absolute inset-x-0 text-center text-[11px] sm:text-xs font-black text-white drop-shadow">
                             {playerDetections[0].holdProgress > 0
                               ? `Locking Choice ${playerDetections[0].matchedOptionIdx !== null ? String.fromCharCode(65 + playerDetections[0].matchedOptionIdx) : ''}... ${playerDetections[0].holdProgress}%`
-                              : 'P1: Stand on Left & Hold Hand Pose'}
+                              : 'Stand on Left & Copy Pose'}
                           </span>
                         </div>
                       </div>
 
                       {/* Player 2 Zone (Right Side) */}
-                      <div className="relative border-l-3 border-dashed border-white/60 p-3 sm:p-4 flex flex-col justify-between">
-                        <div className="flex flex-wrap items-center justify-between gap-2 pr-28">
-                          <span className="bg-gradient-to-r from-rose-600 via-pink-600 to-rose-700 backdrop-blur-md text-white font-black text-sm sm:text-lg px-4 py-1.5 rounded-2xl shadow-xl border-2 border-rose-300 flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-lg bg-white/25 flex items-center justify-center text-xs font-mono">P2</span>
-                            <span>{teams[1]?.name || 'Player 2'}</span>
-                            <span className="text-[10px] bg-black/25 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-rose-200 hidden sm:inline">
-                              Right Side
-                            </span>
+                      <div className="relative border-l-2 border-dashed border-white/75 p-3 sm:p-4 flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-2 pr-28">
+                          <span className="bg-rose-600/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-rose-300">
+                            👤 {teams[1]?.name || 'Player 2'}
                           </span>
                           {playerDetections[1].matchedOptionIdx !== null && (
-                            <span className="bg-white/95 text-rose-950 font-black text-xs sm:text-base px-3.5 py-1.5 rounded-2xl shadow-2xl flex items-center gap-2 border-2 border-rose-400 animate-pulse">
-                              <PoseHandIcon
-                                poseId={shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseId}
-                                value={shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}
-                                size="sm"
-                              />
+                            <span className="bg-white/95 text-rose-900 font-black text-xs sm:text-sm px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-rose-400 animate-pulse">
+                              <span className="text-base sm:text-lg leading-none">{shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}</span>
                               <span>Choice {String.fromCharCode(65 + playerDetections[1].matchedOptionIdx)}</span>
                             </span>
                           )}
@@ -3189,15 +2783,15 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                         )}
 
                         {/* Hold Progress Bar for Player 2 */}
-                        <div className="w-full bg-black/65 backdrop-blur-md rounded-2xl h-7 sm:h-8 p-1 border-2 border-rose-400/80 overflow-hidden relative flex items-center shadow-lg">
+                        <div className="w-full bg-black/55 backdrop-blur-xs rounded-full h-5 sm:h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                           <div
-                            className="bg-gradient-to-r from-rose-500 via-pink-400 to-amber-300 h-full rounded-xl transition-all duration-75 shadow-sm"
+                            className="bg-gradient-to-r from-rose-500 to-amber-300 h-full rounded-full transition-all duration-75"
                             style={{ width: `${playerDetections[1].holdProgress}%` }}
                           />
-                          <span className="absolute inset-x-0 text-center text-xs sm:text-sm font-black text-white drop-shadow-md">
+                          <span className="absolute inset-x-0 text-center text-[11px] sm:text-xs font-black text-white drop-shadow">
                             {playerDetections[1].holdProgress > 0
                               ? `Locking Choice ${playerDetections[1].matchedOptionIdx !== null ? String.fromCharCode(65 + playerDetections[1].matchedOptionIdx) : ''}... ${playerDetections[1].holdProgress}%`
-                              : 'P2: Stand on Right & Hold Hand Pose'}
+                              : 'Stand on Right & Copy Pose'}
                           </span>
                         </div>
                       </div>
@@ -3206,33 +2800,26 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                     /* 1-Player Camera Overlay */
                     <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between pointer-events-none">
                       <div className="flex items-center justify-between pr-28">
-                        <span className="bg-gradient-to-r from-teal-600 to-emerald-600 backdrop-blur-md text-white font-black text-sm sm:text-lg px-4 py-1.5 rounded-2xl shadow-xl border-2 border-teal-300 flex items-center gap-2">
-                          <span>📷 {teams[0]?.name || 'Player 1'}</span>
-                          <span className="text-xs bg-black/25 px-2 py-0.5 rounded-full font-bold text-teal-100 hidden sm:inline">
-                            Hold Correct Pose
-                          </span>
+                        <span className="bg-teal-600/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-4 py-1 rounded-full shadow-md border border-teal-300">
+                          📷 {teams[0]?.name || 'Player 1'} — Copy the Correct Pose!
                         </span>
                         {playerDetections[0].matchedOptionIdx !== null && (
-                          <span className="bg-white/95 text-teal-900 font-black text-xs sm:text-base px-3.5 py-1.5 rounded-2xl shadow-lg flex items-center gap-2 border-2 border-teal-400 animate-pulse">
-                            <PoseHandIcon
-                              poseId={shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId}
-                              value={shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}
-                              size="sm"
-                            />
+                          <span className="bg-white/95 text-teal-900 font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-teal-400 animate-pulse">
+                            <span className="text-lg sm:text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
                             <span>Choice {String.fromCharCode(65 + playerDetections[0].matchedOptionIdx)}</span>
                           </span>
                         )}
                       </div>
 
-                      <div className="w-full max-w-lg mx-auto bg-black/65 backdrop-blur-md rounded-2xl h-7 sm:h-8 p-1 border-2 border-teal-300/80 overflow-hidden relative flex items-center shadow-lg">
+                      <div className="w-full max-w-lg mx-auto bg-black/55 backdrop-blur-xs rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                         <div
-                          className="bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-300 h-full rounded-xl transition-all duration-75 shadow-sm"
+                          className="bg-gradient-to-r from-teal-400 to-emerald-300 h-full rounded-full transition-all duration-75"
                           style={{ width: `${playerDetections[0].holdProgress}%` }}
                         />
-                        <span className="absolute inset-x-0 text-center text-xs sm:text-sm font-black text-white drop-shadow-md">
+                        <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
                           {playerDetections[0].holdProgress > 0
                             ? `Hold Pose to Lock Answer... ${playerDetections[0].holdProgress}%`
-                            : 'Stand in front of camera & hold the hand pose of the right answer!'}
+                            : 'Stand in front of camera & copy the pose of the right answer!'}
                         </span>
                       </div>
                     </div>
@@ -3384,7 +2971,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
 
                       {/* Hand Emoji: SMALLER UNDER THE OPTION */}
                       <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-teal-50 hover:bg-teal-100/70 border border-teal-200/90 rounded-full shadow-xs shrink-0 select-none">
-                        <PoseHandIcon poseId={opt.poseId} value={opt.poseValue} size="sm" />
+                        <span className="text-xl sm:text-2xl leading-none">{opt.poseValue}</span>
                         <span className="text-xs sm:text-sm font-extrabold text-teal-900 tracking-tight">
                           {getPoseName(opt.poseId, opt.poseValue)}
                         </span>

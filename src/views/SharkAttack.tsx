@@ -18,8 +18,6 @@ import {
   Shuffle,
   Type,
   Edit3,
-  Timer,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { db } from '../lib/firebase';
@@ -861,7 +859,6 @@ const SharkLagoonArena: React.FC<{
   fallingPhase: 'none' | 'diving' | 'chomped';
   winner: string | null;
   isRumbling: boolean;
-  eatenSide?: 'none' | 'left' | 'right' | 'both';
 }> = ({
   leftStep,
   rightStep,
@@ -879,7 +876,6 @@ const SharkLagoonArena: React.FC<{
   fallingPhase,
   winner,
   isRumbling,
-  eatenSide = 'none',
 }) => {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -928,8 +924,8 @@ const SharkLagoonArena: React.FC<{
           ? 38
           : swimSwayX;
 
-  const leftFell = leftStep > MAX_STAIR_STEPS || eatenSide === 'left' || eatenSide === 'both';
-  const rightFell = rightStep > MAX_STAIR_STEPS || eatenSide === 'right' || eatenSide === 'both';
+  const leftFell = leftStep > MAX_STAIR_STEPS;
+  const rightFell = rightStep > MAX_STAIR_STEPS;
 
   // Exact percentage alignment with SVG staircase planks (viewBox 1200x360)
   const getStepCoords = (side: 'left' | 'right', stepIdx: number) => {
@@ -1891,58 +1887,10 @@ export function SharkAttack({
 
   const [winner, setWinner] = useState<string | null>(null);
   const [fallingPhase, setFallingPhase] = useState<'none' | 'diving' | 'chomped'>('none');
-  const [eatenSide, setEatenSide] = useState<'none' | 'left' | 'right' | 'both'>('none');
   const [activeKey, setActiveKey] = useState<{ team: 'left' | 'right'; index: number } | null>(null);
   const [isRumbling, setIsRumbling] = useState(false);
   const [sharkLungeSide, setSharkLungeSide] = useState<'left' | 'right' | 'center' | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
-
-  // In-Game Shark Attack Timer Slide State (1 to 10 minutes)
-  const [timerEnabled, setTimerEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('sharkAttack_timerEnabled');
-    return saved !== null ? saved === 'true' : true;
-  });
-  const [timerDuration, setTimerDuration] = useState<number>(() => {
-    const saved = localStorage.getItem('sharkAttack_timerDuration');
-    const val = Number(saved);
-    // 1 to 10 minutes (60s to 600s), default to 180s (3 minutes)
-    return saved && !isNaN(val) ? Math.max(60, Math.min(600, val)) : 180;
-  });
-  const [timeLeft, setTimeLeft] = useState<number>(() => {
-    const saved = localStorage.getItem('sharkAttack_timerDuration');
-    const val = Number(saved);
-    return saved && !isNaN(val) ? Math.max(60, Math.min(600, val)) : 180;
-  });
-  const [timerResetPerQuestion, setTimerResetPerQuestion] = useState<boolean>(() => {
-    const saved = localStorage.getItem('sharkAttack_timerResetPerQ');
-    return saved === 'true'; // default to false (match/round countdown)
-  });
-  const [isTimerPaused, setIsTimerPaused] = useState(false);
-  const [showTimerSlideMenu, setShowTimerSlideMenu] = useState(false);
-
-  // Format seconds into MM:SS (and tenths when critical)
-  const formatTimerDisplay = (seconds: number) => {
-    const totalSec = Math.max(0, Math.ceil(seconds));
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    const formatted = `${m}:${s.toString().padStart(2, '0')}`;
-    if (seconds <= 10 && seconds > 0) {
-      return `${formatted} (${seconds.toFixed(1)}s)`;
-    }
-    return formatted;
-  };
-
-  useEffect(() => {
-    localStorage.setItem('sharkAttack_timerEnabled', String(timerEnabled));
-  }, [timerEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem('sharkAttack_timerDuration', String(timerDuration));
-  }, [timerDuration]);
-
-  useEffect(() => {
-    localStorage.setItem('sharkAttack_timerResetPerQ', String(timerResetPerQuestion));
-  }, [timerResetPerQuestion]);
 
   useEffect(() => {
     soundMutedGlobal = soundMuted;
@@ -2004,10 +1952,7 @@ export function SharkAttack({
     setRightFeedback(null);
     setWinner(null);
     setFallingPhase('none');
-    setEatenSide('none');
     setSharkLungeSide(null);
-    setTimeLeft(timerDuration);
-    setIsTimerPaused(false);
     matchOverRef.current = false;
     setShowStartBattleModal(false);
     setScreen('playing');
@@ -2015,147 +1960,34 @@ export function SharkAttack({
     setTimeout(() => playSFX('clack'), 200);
   };
 
-  const triggerSharkVictory = useCallback(
-    (
-      winningTeam: 'Blue Team' | 'Red Team' | 'Tie (Both Eaten)',
-      eaten: 'left' | 'right' | 'both' = winningTeam === 'Blue Team' ? 'right' : 'left'
-    ) => {
-      if (matchOverRef.current) return;
-      matchOverRef.current = true;
-      setWinner(winningTeam);
-      setEatenSide(eaten);
-      setFallingPhase('diving');
-      if (winningTeam === 'Blue Team') {
-        setLeftTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
-      } else if (winningTeam === 'Red Team') {
-        setRightTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
-      }
-      // Stage 1: Hamster plunges off the top edge/step with cartoon falling whistle
-      playSFX('fallWhistle');
-      // Stage 2: Hamster lands in shark jaws -> CHOMP + big splash!
-      setTimeout(() => {
-        setFallingPhase('chomped');
-        setIsRumbling(true);
-        playSFX('chomp');
-        setTimeout(() => setIsRumbling(false), 500);
-      }, 520);
-      // Stage 3: Championship fanfare
-      setTimeout(() => {
-        playSFX('win');
-      }, 950);
-      // Transition to celebration screen
-      setTimeout(() => {
-        setScreen('end');
-      }, 2600);
-    },
-    []
-  );
-
-  // ============================================================================
-  // TIMER EXPIRED LOGIC:
-  // - If both on SAFE (step 0): neither is eaten ("except if safe., not eaten")
-  // - If Blue has higher steps: Blue jumps and is eaten by the shark!
-  // - If Red has higher steps: Red jumps and is eaten by the shark!
-  // - If Tie with step > 0 (e.g. Blue step 1 & Red step 1): BOTH are eaten by the shark!
-  // ============================================================================
-  const handleTimerExpired = useCallback(() => {
-    const state = stateRef.current;
-    if (matchOverRef.current || state.screen !== 'playing') return;
-
-    const blueStep = state.leftTeam.step;
-    const redStep = state.rightTeam.step;
-
-    // CASE 1: Both on SAFE (step 0) -> "except if safe., not eaten"
-    if (blueStep === 0 && redStep === 0) {
-      playSFX('splash');
-      showTeamFeedback('left', '🛡️ SAFE! NOT EATEN', 'bg-blue-600 text-white');
-      showTeamFeedback('right', '🛡️ SAFE! NOT EATEN', 'bg-red-600 text-white');
+  const triggerSharkVictory = useCallback((winningTeam: 'Blue Team' | 'Red Team') => {
+    if (matchOverRef.current) return;
+    matchOverRef.current = true;
+    setWinner(winningTeam);
+    setFallingPhase('diving');
+    if (winningTeam === 'Blue Team') {
+      setLeftTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
+    } else {
+      setRightTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
+    }
+    // Stage 1: Hamster plunges off the top edge with cartoon falling whistle
+    playSFX('fallWhistle');
+    // Stage 2: Hamster lands in shark jaws -> CHOMP + big splash!
+    setTimeout(() => {
+      setFallingPhase('chomped');
       setIsRumbling(true);
-      setTimeout(() => setIsRumbling(false), 400);
-
-      // Advance to next question after brief feedback and reset timer slide
-      setTimeout(() => {
-        if (matchOverRef.current) return;
-        const nextIndex = state.leftTeam.qIndex + 1;
-        const qListLeft = leftQuestionsRef.current;
-        const qListRight = rightQuestionsRef.current;
-        setLeftTeam((prev: any) => ({
-          ...prev,
-          pushing: false,
-          stunned: false,
-          qIndex: nextIndex,
-          q:
-            questionModeRef.current === 'split'
-              ? generateQuestionFromList(qListLeft, nextIndex)
-              : generateQuestion(nextIndex),
-          wrongOnCurrentQ: false,
-        }));
-        setRightTeam((prev: any) => ({
-          ...prev,
-          pushing: false,
-          stunned: false,
-          qIndex: nextIndex,
-          q:
-            questionModeRef.current === 'split'
-              ? generateQuestionFromList(qListRight, nextIndex)
-              : generateQuestion(nextIndex),
-          wrongOnCurrentQ: false,
-        }));
-        setTimeLeft(timerDuration);
-      }, 1200);
-      return;
-    }
-
-    // CASE 2: Blue step > Red step -> Blue has higher steps, Blue jumps into shark! Red wins!
-    if (blueStep > redStep) {
-      showTeamFeedback('left', `🦈 STEP ${blueStep} > ${redStep}! EATEN!`, 'bg-red-600 text-white');
-      showTeamFeedback('right', '🏆 LOWER STEP SURVIVED!', 'bg-emerald-500 text-white');
-      triggerSharkVictory('Red Team', 'left');
-      return;
-    }
-
-    // CASE 3: Red step > Blue step -> Red has higher steps, Red jumps into shark! Blue wins!
-    if (redStep > blueStep) {
-      showTeamFeedback('right', `🦈 STEP ${redStep} > ${blueStep}! EATEN!`, 'bg-red-600 text-white');
-      showTeamFeedback('left', '🏆 LOWER STEP SURVIVED!', 'bg-emerald-500 text-white');
-      triggerSharkVictory('Blue Team', 'right');
-      return;
-    }
-
-    // CASE 4: Tie with step > 0 -> "if blue step 1 and red step 1, if tie all of them will be eaten"
-    if (blueStep === redStep && blueStep > 0) {
-      showTeamFeedback('left', `🦈 TIE STEP ${blueStep}! BOTH EATEN!`, 'bg-red-600 text-white');
-      showTeamFeedback('right', `🦈 TIE STEP ${redStep}! BOTH EATEN!`, 'bg-red-600 text-white');
-      triggerSharkVictory('Tie (Both Eaten)', 'both');
-      return;
-    }
-  }, [timerDuration, triggerSharkVictory, showTeamFeedback]);
-
-  // Active Timer Slide Countdown (Smooth 100ms interval)
-  useEffect(() => {
-    if (screen !== 'playing' || !timerEnabled || isTimerPaused || matchOverRef.current) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 0.1) {
-          clearInterval(interval);
-          handleTimerExpired();
-          return 0;
-        }
-        const nextVal = Math.max(0, Number((prev - 0.1).toFixed(1)));
-        const prevInt = Math.ceil(prev);
-        const nextInt = Math.ceil(nextVal);
-        if (nextInt < prevInt && nextInt <= 5 && nextInt > 0) {
-          playSFX('clack');
-        }
-        return nextVal;
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [screen, timerEnabled, isTimerPaused, handleTimerExpired]);
+      playSFX('chomp');
+      setTimeout(() => setIsRumbling(false), 500);
+    }, 520);
+    // Stage 3: Championship fanfare
+    setTimeout(() => {
+      playSFX('win');
+    }, 950);
+    // Transition to celebration screen
+    setTimeout(() => {
+      setScreen('end');
+    }, 2600);
+  }, []);
 
   const handleAnswer = useCallback(
     (teamStr: 'left' | 'right', selectedIndex: number) => {
@@ -2224,7 +2056,7 @@ export function SharkAttack({
         }, 420);
 
         if (nextLoserStep > MAX_STAIR_STEPS) {
-          triggerSharkVictory(isLeft ? 'Blue Team' : 'Red Team', isLeft ? 'right' : 'left');
+          triggerSharkVictory(isLeft ? 'Blue Team' : 'Red Team');
           return;
         }
 
@@ -2239,9 +2071,6 @@ export function SharkAttack({
               q: generateQuestionFromList(qList, nextIndex),
               wrongOnCurrentQ: false,
             }));
-            if (timerResetPerQuestion) {
-              setTimeLeft(timerDuration);
-            }
           }, 340);
         } else {
           setTimeout(() => {
@@ -2263,9 +2092,6 @@ export function SharkAttack({
               q: newQ,
               wrongOnCurrentQ: false,
             }));
-            if (timerResetPerQuestion) {
-              setTimeLeft(timerDuration);
-            }
           }, 380);
         }
       } else {
@@ -2303,9 +2129,6 @@ export function SharkAttack({
               q: newQ,
               wrongOnCurrentQ: false,
             }));
-            if (timerResetPerQuestion) {
-              setTimeLeft(timerDuration);
-            }
           }, 650);
           return;
         }
@@ -3009,36 +2832,22 @@ export function SharkAttack({
 
         <div className="bg-white p-10 md:p-16 rounded-[2.5rem] text-center shadow-2xl border-8 border-yellow-400 max-w-xl w-full">
           <div className="flex justify-center mb-4">
-            {winner === 'Tie (Both Eaten)' ? (
-              <div className="flex items-center gap-4">
-                <CuteHamsterCharacter team="left" character={leftCharacter} hasLost compact />
-                <span className="text-5xl animate-bounce">🦈</span>
-                <CuteHamsterCharacter team="right" character={rightCharacter} hasLost compact />
-              </div>
-            ) : (
-              <CuteHamsterCharacter
-                team={winner === 'Blue Team' ? 'left' : 'right'}
-                character={winner === 'Blue Team' ? leftCharacter : rightCharacter}
-                isWinner
-                compact
-              />
-            )}
+            <CuteHamsterCharacter
+              team={winner === 'Blue Team' ? 'left' : 'right'}
+              character={winner === 'Blue Team' ? leftCharacter : rightCharacter}
+              isWinner
+              compact
+            />
           </div>
           <h2
             className={`text-5xl md:text-7xl font-black mb-3 uppercase italic ${
-              winner === 'Blue Team'
-                ? 'text-blue-600'
-                : winner === 'Red Team'
-                  ? 'text-red-600'
-                  : 'text-amber-500'
+              winner === 'Blue Team' ? 'text-blue-600' : 'text-red-600'
             }`}
           >
-            {winner === 'Tie (Both Eaten)' ? 'DOUBLE CHOMP!' : winner}
+            {winner}
           </h2>
           <p className="text-2xl font-black text-slate-800 mb-10 uppercase tracking-widest">
-            {winner === 'Tie (Both Eaten)'
-              ? 'Both Teams Were Eaten By The Shark! 🦈💀'
-              : 'Wins the Match! 🦈'}
+            Wins the Match! 🦈
           </p>
           <div className="flex flex-col md:flex-row gap-4 justify-center">
             <button
@@ -3136,180 +2945,6 @@ export function SharkAttack({
 
         {/* TOP RIGHT CONTROLS */}
         <div className="relative flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-md px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full shadow-md border border-slate-200">
-          {/* In-Game Timer Slide Trigger Button */}
-          <div className="relative">
-            <button
-              onClick={() => setShowTimerSlideMenu((prev) => !prev)}
-              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full font-black text-[11px] sm:text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                timerEnabled
-                  ? timeLeft <= 10
-                    ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/30'
-                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
-                  : 'bg-slate-200 text-slate-600'
-              }`}
-              title="Shark Timer Slide Settings (1 to 10 Minutes)"
-            >
-              <Timer
-                size={15}
-                className={timerEnabled && !isTimerPaused ? 'text-emerald-700 animate-spin' : 'text-slate-500'}
-                style={{ animationDuration: '4s' }}
-              />
-              <span>{timerEnabled ? formatTimerDisplay(timeLeft) : 'OFF'}</span>
-            </button>
-
-            {showTimerSlideMenu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowTimerSlideMenu(false)} />
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl shadow-2xl border-2 border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95 duration-150 text-slate-800">
-                  <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">⏱️</span>
-                      <div>
-                        <div className="font-black text-sm uppercase tracking-wide">Shark Timer Slide</div>
-                        <div className="text-[10px] text-slate-400 font-bold">1 to 10 Minutes Range</div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setTimerEnabled(!timerEnabled)}
-                      className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer ${
-                        timerEnabled ? 'bg-emerald-500 text-white shadow-xs' : 'bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {timerEnabled ? 'ENABLED' : 'DISABLED'}
-                    </button>
-                  </div>
-
-                  {timerEnabled && (
-                    <div className="space-y-3.5">
-                      {/* 1 to 10 Minutes Slider */}
-                      <div>
-                        <div className="flex justify-between items-center text-xs font-bold text-slate-600 mb-1">
-                          <span className="flex items-center gap-1">
-                            <SlidersHorizontal size={13} className="text-emerald-600" />
-                            <span>Timer Slider (1 to 10 mins):</span>
-                          </span>
-                          <span className="font-black text-emerald-600 text-sm bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                            {Math.floor(timerDuration / 60)}m{timerDuration % 60 ? ` ${timerDuration % 60}s` : ''} ({timerDuration}s)
-                          </span>
-                        </div>
-                        {/* Real interactive slide input: 1 to 10 minutes (60 to 600 seconds) */}
-                        <input
-                          type="range"
-                          min="60"
-                          max="600"
-                          step="30"
-                          value={timerDuration}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setTimerDuration(val);
-                            setTimeLeft(val);
-                          }}
-                          className="w-full accent-emerald-500 h-2.5 bg-slate-200 rounded-lg cursor-pointer"
-                        />
-                        <div className="flex justify-between text-[10px] text-slate-400 font-bold px-0.5 mt-0.5">
-                          <span>1m</span>
-                          <span>2.5m</span>
-                          <span>5m</span>
-                          <span>7.5m</span>
-                          <span>10m</span>
-                        </div>
-                      </div>
-
-                      {/* Quick presets 1 to 10 minutes */}
-                      <div>
-                        <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5 flex items-center justify-between">
-                          <span>Quick Presets</span>
-                          <span className="text-[9px] text-slate-400">1m – 10m</span>
-                        </div>
-                        <div className="grid grid-cols-6 gap-1.5">
-                          {[1, 2, 3, 5, 7, 10].map((mins) => {
-                            const sec = mins * 60;
-                            return (
-                              <button
-                                key={mins}
-                                onClick={() => {
-                                  setTimerDuration(sec);
-                                  setTimeLeft(sec);
-                                }}
-                                className={`py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                                  timerDuration === sec
-                                    ? 'bg-emerald-500 text-white shadow-xs ring-2 ring-emerald-300'
-                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                }`}
-                              >
-                                {mins}m
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Timer Behavior Mode: Round Countdown vs Per-Question */}
-                      <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
-                        <div className="text-[10px] font-black uppercase text-slate-500 mb-1">Timer Mode</div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setTimerResetPerQuestion(false)}
-                            className={`py-1.5 px-2 rounded-xl text-[11px] font-bold cursor-pointer transition-all ${
-                              !timerResetPerQuestion
-                                ? 'bg-emerald-500 text-white shadow-xs'
-                                : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                            }`}
-                          >
-                            ⏱️ Match Round
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setTimerResetPerQuestion(true)}
-                            className={`py-1.5 px-2 rounded-xl text-[11px] font-bold cursor-pointer transition-all ${
-                              timerResetPerQuestion
-                                ? 'bg-emerald-500 text-white shadow-xs'
-                                : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                            }`}
-                          >
-                            🔄 Reset Each Q
-                          </button>
-                        </div>
-                        <div className="text-[10px] text-slate-500 mt-1.5 leading-tight">
-                          {!timerResetPerQuestion
-                            ? 'Continuous round timer: shark attacks when total match time reaches 0:00!'
-                            : 'Timer resets back to full time on each question answered.'}
-                        </div>
-                      </div>
-
-                      {/* Pause / Resume & Reset controls */}
-                      <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                        <button
-                          onClick={() => setIsTimerPaused(!isTimerPaused)}
-                          className="flex-1 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer text-center"
-                        >
-                          {isTimerPaused ? '▶️ Resume Timer' : '⏸️ Pause Timer'}
-                        </button>
-                        <button
-                          onClick={() => setTimeLeft(timerDuration)}
-                          className="px-3.5 py-1.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-800 text-xs font-bold transition-all cursor-pointer"
-                        >
-                          Reset
-                        </button>
-                      </div>
-
-                      {/* Shark Attack Rule explanation */}
-                      <div className="p-2.5 rounded-2xl bg-sky-50 border border-sky-200 text-[11px] text-sky-900 leading-snug">
-                        <div className="font-black mb-1 flex items-center gap-1 text-sky-800">
-                          <span>🦈 Shark Attack Timer Rule:</span>
-                        </div>
-                        <div>• When timer ends, player with <b>higher steps</b> jumps & gets eaten!</div>
-                        <div>• If tie with steps &gt; 0, <b>both</b> get eaten by the shark!</div>
-                        <div>• If on <b>SAFE (step 0)</b>, protected & not eaten!</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-
           <button
             onClick={() => setShowCharacterModal(true)}
             className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-[11px] sm:text-xs flex items-center gap-1.5 transition-all cursor-pointer"
@@ -3408,111 +3043,6 @@ export function SharkAttack({
         </div>
       </div>
 
-      {/* IN-GAME ANIMATED TIMER SLIDE BAR */}
-      {timerEnabled && (
-        <div className="w-full max-w-[1440px] mx-auto px-1 sm:px-2 mb-1.5 z-30 shrink-0">
-          <div className="bg-slate-900/85 backdrop-blur-md rounded-2xl p-1.5 sm:p-2 border-2 border-sky-400/40 shadow-xl flex flex-col gap-1">
-            {/* Top row of slider: Label, status, quick controls */}
-            <div className="flex items-center justify-between text-xs font-black text-white px-1 sm:px-2">
-              <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1 text-sky-300">
-                  <Timer size={14} className={!isTimerPaused ? 'animate-spin' : ''} style={{ animationDuration: '3s' }} />
-                  <span className="hidden sm:inline">SHARK TIMER SLIDE:</span>
-                  <span className="sm:hidden">TIMER:</span>
-                </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full font-mono text-xs sm:text-sm font-black tracking-wider transition-colors ${
-                    timeLeft <= 5
-                      ? 'bg-red-600 text-white animate-pulse shadow-md shadow-red-500/50'
-                      : timeLeft <= 15
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-sky-500 text-white'
-                  }`}
-                >
-                  {formatTimerDisplay(timeLeft)}
-                </span>
-                {isTimerPaused && (
-                  <span className="px-2 py-0.5 rounded-full bg-yellow-500/30 text-yellow-300 text-[10px] uppercase font-black">
-                    PAUSED
-                  </span>
-                )}
-              </div>
-
-              {/* Center rule reminder */}
-              <div className="hidden md:flex items-center gap-1.5 text-[11px] text-sky-200/90 font-bold">
-                <span>⚠️ Higher step jumps to shark when timer ends!</span>
-                <span className="text-white/40">•</span>
-                <span>Tie = Both eaten</span>
-                <span className="text-white/40">•</span>
-                <span className="text-emerald-300 font-extrabold">Safe = Not eaten</span>
-              </div>
-
-              {/* Right controls: Play/Pause, -30s, +30s, 1-10m Slider Settings */}
-              <div className="flex items-center gap-1 sm:gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setIsTimerPaused(!isTimerPaused)}
-                  className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[10px] sm:text-xs font-bold transition-all cursor-pointer"
-                  title={isTimerPaused ? 'Resume Timer' : 'Pause Timer'}
-                >
-                  {isTimerPaused ? '▶️ Resume' : '⏸️ Pause'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTimeLeft((prev) => Math.max(1, Number((prev - 30).toFixed(1))))}
-                  className="px-1.5 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold cursor-pointer"
-                  title="Minus 30 Seconds"
-                >
-                  -30s
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTimeLeft((prev) => Math.min(timerDuration, Number((prev + 30).toFixed(1))))}
-                  className="px-1.5 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold cursor-pointer"
-                  title="Plus 30 Seconds"
-                >
-                  +30s
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowTimerSlideMenu((prev) => !prev)}
-                  className="px-2 py-0.5 rounded-lg bg-sky-500/30 hover:bg-sky-500/50 text-sky-200 text-[10px] sm:text-xs font-bold cursor-pointer flex items-center gap-1"
-                  title="Configure 1 to 10 Minutes Timer Slider"
-                >
-                  <SlidersHorizontal size={12} />
-                  <span className="hidden sm:inline">1–10m Slider</span>
-                </button>
-              </div>
-            </div>
-
-            {/* The Animated Slide Bar Track */}
-            <div className="relative w-full h-3 sm:h-4 bg-slate-950/90 rounded-full overflow-hidden border border-white/25 shadow-inner">
-              {/* Sliding Fill */}
-              <div
-                className={`h-full transition-all duration-100 ease-linear rounded-full ${
-                  timeLeft <= 5
-                    ? 'bg-gradient-to-r from-red-600 via-rose-500 to-amber-500 animate-pulse'
-                    : timeLeft <= 10
-                      ? 'bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-400'
-                      : 'bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500'
-                }`}
-                style={{ width: `${Math.max(0, Math.min(100, (timeLeft / timerDuration) * 100))}%` }}
-              />
-
-              {/* Sliding Shark Fin / Shark Marker */}
-              <div
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-none transition-all duration-100 text-xs sm:text-sm drop-shadow-md select-none"
-                style={{
-                  left: `${Math.max(2, Math.min(98, (timeLeft / timerDuration) * 100))}%`,
-                }}
-              >
-                🦈
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* CENTER SHARK LAGOON & STAIRCASE ARENA + SINGLE QUESTION BANNER */}
       <div className="flex-1 w-full max-w-[1440px] mx-auto flex flex-col items-center justify-center relative pb-1.5 overflow-visible">
         <SharkLagoonArena
@@ -3532,7 +3062,6 @@ export function SharkAttack({
           fallingPhase={fallingPhase}
           winner={winner}
           isRumbling={isRumbling}
-          eatenSide={eatenSide}
         />
 
         {questionMode === 'single' && (

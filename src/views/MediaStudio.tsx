@@ -1,194 +1,330 @@
-import React, { useState } from "react";
-import { Search, Image, Film, Sparkles, Copy, Check, ExternalLink, Loader2 } from "lucide-react";
+import React, { useState, useRef } from 'react';
+import { Sparkles, Image as ImageIcon, Video, Camera, Upload, AlertCircle, Loader2 } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 export function MediaStudio() {
-  const [activeTab, setActiveTab] = useState<"photos" | "gifs">("photos");
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'image' | 'video' | 'analyze'>('image');
+
+  return (
+    <div className="min-h-screen py-10 max-w-7xl mx-auto px-6">
+      <div className="mb-10 text-center max-w-2xl mx-auto">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-purple/10 text-brand-purple mb-6">
+          <Sparkles size={32} />
+        </div>
+        <h1 className="text-4xl font-display font-bold text-slate-900 mb-4">AI Media Studio</h1>
+        <p className="text-slate-600 text-lg">Generate hyper-realistic images, animate photos into videos, or analyze any image using Gemini 3.1 Pro.</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex justify-center mb-8">
+        <div className="bg-white p-2 rounded-2xl shadow-sm flex gap-2">
+          <button
+            onClick={() => setActiveTab('image')}
+            className={cn("flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all", activeTab === 'image' ? "bg-brand-purple text-white shadow-md" : "text-slate-500 hover:bg-slate-50")}
+          >
+            <ImageIcon size={18} /> Generate Image
+          </button>
+          <button
+            onClick={() => setActiveTab('video')}
+            className={cn("flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all", activeTab === 'video' ? "bg-brand-purple text-white shadow-md" : "text-slate-500 hover:bg-slate-50")}
+          >
+            <Video size={18} /> Animate Photo (Veo)
+          </button>
+          <button
+            onClick={() => setActiveTab('analyze')}
+            className={cn("flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all", activeTab === 'analyze' ? "bg-brand-purple text-white shadow-md" : "text-slate-500 hover:bg-slate-50")}
+          >
+            <Camera size={18} /> Analyze Image
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-[24px] p-8 premium-shadow max-w-4xl mx-auto min-h-[400px]">
+        {activeTab === 'image' && <ImageGeneration />}
+        {activeTab === 'video' && <VideoGeneration />}
+        {activeTab === 'analyze' && <ImageAnalysis />}
+      </div>
+    </div>
+  );
+}
+
+function ImageGeneration() {
+  const [prompt, setPrompt] = useState("");
+  const [size, setSize] = useState("1K");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!query.trim()) return;
-
+  const generate = async () => {
+    if (!prompt) return;
     setLoading(true);
-    setError("");
-
+    setError(null);
+    setResultUrl(null);
     try {
-      const endpoint =
-        activeTab === "photos"
-          ? `/api/photo-search?q=${encodeURIComponent(query)}`
-          : `/api/giphy-search?q=${encodeURIComponent(query)}`;
-
-      const res = await fetch(endpoint);
-      const data = await res.json().catch(() => ({}));
+      const res = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, size })
+      });
+      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch media assets");
+        let errStr = data.error || "Failed to generate image";
+        if (typeof errStr === 'string' && errStr.includes('exceeded your current quota')) {
+          errStr = "Image generation free tier quota exceeded. Please wait a minute and try again.";
+        }
+        throw new Error(errStr);
       }
-      setResults(data.results || []);
+      setResultUrl(data.imageUrl);
     } catch (err: any) {
-      setError(err.message || "Failed to search media");
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const copyToClipboard = (url: string) => {
-    navigator.clipboard.writeText(url);
-    setCopiedUrl(url);
-    setTimeout(() => setCopiedUrl(null), 2000);
+  return (
+    <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+      <h2 className="text-2xl font-bold text-slate-900">Generate Image (Gemini 3 Pro)</h2>
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">Image Prompt</label>
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-brand-purple focus:bg-white transition-all resize-none h-24"
+          placeholder="A hyper-realistic cute puppy playing with a ball of yarn in a sunlit room..."
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">Resolution</label>
+        <div className="flex gap-4">
+          {["1K", "2K", "4K"].map(s => (
+            <button
+              key={s}
+              onClick={() => setSize(s)}
+              className={cn("px-6 py-2 rounded-xl font-bold border-2 transition-all", size === s ? "border-brand-purple bg-brand-purple/10 text-brand-purple" : "border-slate-200 text-slate-500 hover:border-slate-300")}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+      <button
+        onClick={generate}
+        disabled={loading || !prompt}
+        className="px-8 py-3 bg-brand-purple text-white rounded-xl font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+      >
+        {loading ? <Loader2 className="animate-spin" /> : <Sparkles size={18} />}
+        {loading ? "Generating..." : "Generate Image"}
+      </button>
+
+      {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-center gap-2"><AlertCircle size={18} /> {error}</div>}
+      {resultUrl && (
+        <div className="mt-8 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex justify-center p-4">
+          <img src={resultUrl} alt="Generated" className="max-w-full rounded-xl shadow-lg" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VideoGeneration() {
+  const [image, setImage] = useState<File | null>(null);
+  const [aspectRatio, setAspectRatio] = useState("16:9");
+  const [loading, setLoading] = useState(false);
+  const [operationName, setOperationName] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImage(e.target.files[0]);
+    }
+  };
+
+  const generate = async () => {
+    if (!image) return;
+    setLoading(true);
+    setError(null);
+    setOperationName(null);
+    setVideoUrl(null);
+    
+    const formData = new FormData();
+    formData.append("image", image);
+    formData.append("aspectRatio", aspectRatio);
+    
+    try {
+      const res = await fetch("/api/generate-video", {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start video generation");
+      setOperationName(data.operationName);
+      pollOperation(data.operationName);
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const pollOperation = async (opName: string) => {
+    try {
+      const res = await fetch("/api/video-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationName: opName })
+      });
+      const data = await res.json();
+      if (data.done) {
+        setVideoUrl(`/api/video-download?operationName=${encodeURIComponent(opName)}`);
+        setLoading(false);
+      } else {
+        setTimeout(() => pollOperation(opName), 5000);
+      }
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-purple/10 text-brand-purple text-xs font-bold mb-2">
-            <Sparkles size={14} />
-            <span>Classroom Media Studio</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-800 dark:text-white">
-            Media Studio
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">
-            Search royalty-free images and animated GIFs for your classroom quizzes and game cards.
-          </p>
+    <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+      <h2 className="text-2xl font-bold text-slate-900">Animate Photo (Veo 3.1 Fast Generate)</h2>
+      
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">Upload Starting Photo</label>
+        <div 
+          onClick={() => fileInputRef.current?.click()}
+          className="border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center cursor-pointer hover:bg-slate-50 transition-colors flex flex-col items-center justify-center gap-3"
+        >
+          {image ? (
+            <div className="font-medium text-brand-purple flex items-center gap-2"><ImageIcon size={20} /> {image.name} (Click to change)</div>
+          ) : (
+            <>
+              <Upload size={32} className="text-slate-400" />
+              <div className="font-medium text-slate-600">Click to upload photo</div>
+            </>
+          )}
         </div>
+        <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleUpload} />
+      </div>
 
-        {/* Tab switch */}
-        <div className="flex bg-slate-100 dark:bg-slate-700/50 p-1.5 rounded-2xl shrink-0 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("photos");
-              setResults([]);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-              activeTab === "photos"
-                ? "bg-white dark:bg-slate-800 text-brand-purple shadow-sm"
-                : "text-slate-600 dark:text-slate-300 hover:text-slate-900"
-            }`}
-          >
-            <Image size={16} />
-            Photos
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("gifs");
-              setResults([]);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-              activeTab === "gifs"
-                ? "bg-white dark:bg-slate-800 text-brand-purple shadow-sm"
-                : "text-slate-600 dark:text-slate-300 hover:text-slate-900"
-            }`}
-          >
-            <Film size={16} />
-            GIFs
-          </button>
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">Aspect Ratio</label>
+        <div className="flex gap-4">
+          {["16:9", "9:16"].map(s => (
+            <button
+              key={s}
+              onClick={() => setAspectRatio(s)}
+              className={cn("px-6 py-2 rounded-xl font-bold border-2 transition-all", aspectRatio === s ? "border-brand-purple bg-brand-purple/10 text-brand-purple" : "border-slate-200 text-slate-500 hover:border-slate-300")}
+            >
+              {s === "16:9" ? "16:9 (Landscape)" : "9:16 (Portrait)"}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Search Input */}
-      <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
-        <form onSubmit={handleSearch} className="flex gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search high-quality ${activeTab === "photos" ? "photos (e.g., animals, sports, food)" : "GIFs (e.g., happy, celebration, dancing)"}...`}
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-slate-100 placeholder-slate-400 font-medium focus:outline-none focus:ring-2 focus:ring-brand-purple"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading || !query.trim()}
-            className="px-6 py-3.5 bg-brand-purple hover:bg-brand-purple/90 active:scale-95 text-white rounded-2xl font-bold flex items-center gap-2 disabled:opacity-50 transition-all cursor-pointer shrink-0"
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
-            <span>Search</span>
-          </button>
-        </form>
-      </div>
+      <button
+        onClick={generate}
+        disabled={loading || !image}
+        className="px-8 py-3 bg-brand-purple text-white rounded-xl font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+      >
+        {loading ? <Loader2 className="animate-spin" /> : <Video size={18} />}
+        {loading ? (operationName ? "Generating Video (this may take a few minutes)..." : "Uploading...") : "Animate Photo"}
+      </button>
 
-      {/* Results / Empty state */}
-      {error && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 rounded-2xl border border-rose-200 dark:border-rose-800 text-sm font-semibold">
-          {error}
+      {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-center gap-2"><AlertCircle size={18} /> {error}</div>}
+      {videoUrl && (
+        <div className="mt-8 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-4">
+          <video src={videoUrl} controls autoPlay loop className="w-full rounded-xl shadow-lg max-h-[500px]" />
         </div>
       )}
+    </div>
+  );
+}
 
-      {results.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {results.map((item, idx) => {
-            const url = item.url || item.images?.fixed_height?.url || item.urls?.regular;
-            const thumb = item.thumb || item.images?.fixed_height_small?.url || item.urls?.small || url;
-            const title = item.title || item.alt_description || `Media ${idx + 1}`;
+function ImageAnalysis() {
+  const [image, setImage] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [resultText, setResultText] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImage(e.target.files[0]);
+    }
+  };
 
-            if (!url) return null;
+  const analyze = async () => {
+    if (!image) return;
+    setLoading(true);
+    setError(null);
+    setResultText(null);
+    
+    const formData = new FormData();
+    formData.append("image", image);
+    
+    try {
+      const res = await fetch("/api/analyze-image", {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        let errStr = data.error || "Failed to analyze image";
+        if (typeof errStr === 'string' && errStr.includes('exceeded your current quota')) {
+          errStr = "Image analysis free tier quota exceeded. Please wait a minute and try again.";
+        }
+        throw new Error(errStr);
+      }
+      setResultText(data.text);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            return (
-              <div
-                key={idx}
-                className="group relative aspect-video sm:aspect-square bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center"
-              >
-                <img
-                  src={thumb}
-                  alt={title}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
-                  <span className="text-[11px] font-bold text-white/90 truncate">{title}</span>
-                  <div className="flex items-center gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(url)}
-                      className="px-2.5 py-1.5 bg-white/90 hover:bg-white text-slate-800 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition-transform active:scale-95"
-                    >
-                      {copiedUrl === url ? (
-                        <>
-                          <Check size={13} className="text-emerald-600" />
-                          <span>Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={13} />
-                          <span>Copy URL</span>
-                        </>
-                      )}
-                    </button>
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 bg-white/90 hover:bg-white text-slate-800 rounded-xl shadow-sm transition-transform active:scale-95"
-                    >
-                      <ExternalLink size={13} />
-                    </a>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+  return (
+    <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+      <h2 className="text-2xl font-bold text-slate-900">Analyze Image (Gemini 3.1 Pro)</h2>
+      
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">Upload Photo for Analysis</label>
+        <div 
+          onClick={() => fileInputRef.current?.click()}
+          className="border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center cursor-pointer hover:bg-slate-50 transition-colors flex flex-col items-center justify-center gap-3"
+        >
+          {image ? (
+            <div className="font-medium text-brand-blue flex items-center gap-2"><ImageIcon size={20} /> {image.name} (Click to change)</div>
+          ) : (
+            <>
+              <Camera size={32} className="text-slate-400" />
+              <div className="font-medium text-slate-600">Click to upload photo</div>
+            </>
+          )}
         </div>
-      ) : !loading ? (
-        <div className="p-12 text-center bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm text-slate-400">
-          <Image className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <h3 className="font-bold text-slate-700 dark:text-slate-300 text-base">
-            No media searched yet
-          </h3>
-          <p className="text-sm mt-1 max-w-sm mx-auto">
-            Type keywords above to find photos or animated GIFs for your custom quiz cards.
-          </p>
+        <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleUpload} />
+      </div>
+
+      <button
+        onClick={analyze}
+        disabled={loading || !image}
+        className="px-8 py-3 bg-brand-blue text-white rounded-xl font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+      >
+        {loading ? <Loader2 className="animate-spin" /> : <Sparkles size={18} />}
+        {loading ? "Analyzing..." : "Analyze Image"}
+      </button>
+
+      {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-center gap-2"><AlertCircle size={18} /> {error}</div>}
+      {resultText && (
+        <div className="mt-8 rounded-2xl bg-slate-50 border border-slate-200 p-6 whitespace-pre-wrap text-slate-700 leading-relaxed">
+          <div className="font-bold text-slate-900 mb-3 flex items-center gap-2"><Camera size={18} /> Analysis Result:</div>
+          {resultText}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

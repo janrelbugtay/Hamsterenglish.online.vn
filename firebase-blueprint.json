@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Game Room",
+      "description": "A multiplayer game room for Bubble Sentence",
+      "type": "object",
+      "properties": {
+        "hostId": {
+          "type": "string",
+          "description": "UID of the teacher/host"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["lobby", "playing", "finished"],
+          "description": "Current status of the game"
+        },
+        "gameData": {
+          "type": "object",
+          "description": "The current sentence data being played"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp"
+        }
+      },
+      "required": ["hostId", "status", "createdAt"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A student in the game room",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Student's name",
+          "maxLength": 20
+        },
+        "score": {
+          "type": "number"
+        },
+        "joinedAt": {
+          "type": "number"
+        }
+      },
+      "required": ["name", "score", "joinedAt"]
+    },
+    "UserClassData": {
+      "title": "User Class Data",
+      "description": "User classes and student data for classroom economy",
+      "type": "object",
+      "properties": {
+        "classes": {
+          "type": "array",
+          "description": "List of user classes"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["classes", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "rooms/{roomId}": {
+      "schema": {
+        "$ref": "#/entities/Room"
+      },
+      "description": "Multiplayer game rooms"
+    },
+    "rooms/{roomId}/players/{playerId}": {
+      "schema": {
+        "$ref": "#/entities/Player"
+      },
+      "description": "Players in a room"
+    },
+    "userClassData/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserClassData"
+      },
+      "description": "User classroom data"
+    }
+  }
+}
