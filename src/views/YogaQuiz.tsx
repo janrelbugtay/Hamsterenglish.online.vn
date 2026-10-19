@@ -420,32 +420,56 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
   }, [user]);
 
   const handleSaveQuiz = async (quiz: Quiz) => {
-    if (!user) return;
+    if (!user) {
+      alert("You must be logged in to save games.");
+      return;
+    }
     
     try {
+      const isPublicBool = Boolean(quiz.isPublic);
+      const now = new Date().toISOString();
+
+      const isOwnExistingGame = Boolean(
+        initialGame?.id &&
+        !String(initialGame.id).startsWith('sample-') &&
+        (!initialGame.userId || initialGame.userId === user.uid)
+      );
+
       const gameToSave = {
-        name: quiz.title || "Yoga Studio Quiz",
+        name: quiz.title || quiz.topic || "Yoga Studio Quiz",
+        title: quiz.title || quiz.topic || "Yoga Studio Quiz",
         folderId: quiz.folderId || "",
         topic: quiz.topic || "",
         className: quiz.classLevel || "",
         gameType: "yoga-quiz",
         customQuestions: quiz.questions,
         userId: user.uid,
-        updatedAt: new Date().toISOString(),
-        isPublic: quiz.isPublic ?? false,
+        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
+        creatorEmail: user.email || "",
+        updatedAt: now,
+        publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
+        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+        isPublic: isPublicBool,
       };
 
-      if (initialGame?.id) {
-        await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+      if (isOwnExistingGame) {
+        try {
+          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+        } catch (err: any) {
+          if (err?.code === 'not-found') {
+            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          } else {
+            throw err;
+          }
+        }
       } else {
-        await addDoc(collection(db, "mysteryBoxGames"), {
-          ...gameToSave,
-          createdAt: new Date().toISOString(),
-        });
+        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
       }
       onViewChange("games");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving game:", error);
+      alert("Failed to save game: " + (error?.message || String(error)));
+      onViewChange("games");
     }
   };
 

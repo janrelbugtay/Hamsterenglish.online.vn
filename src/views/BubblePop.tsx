@@ -134,33 +134,51 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
       return;
     }
 
-    // Go to games view instantly for a snappy feel
-    onViewChange("games");
-
     try {
+      const isPublicBool = Boolean(quiz.isPublic);
+      const now = new Date().toISOString();
+
+      const isOwnExistingGame = Boolean(
+        initialGame?.id &&
+        !String(initialGame.id).startsWith('sample-') &&
+        (!initialGame.userId || initialGame.userId === user.uid)
+      );
+
       const gameToSave = JSON.parse(JSON.stringify({
-        name: quiz.title || "",
+        name: quiz.title || quiz.topic || "Bubble Pop Game",
+        title: quiz.title || quiz.topic || "Bubble Pop Game",
         folderId: quiz.folderId || "",
         topic: quiz.topic || "",
         className: quiz.classLevel || "",
         gameType: "bubble-pop",
         customQuestions: quiz.questions,
         userId: user.uid,
-        updatedAt: new Date().toISOString(),
-        isPublic: quiz.isPublic ?? false,
+        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
+        creatorEmail: user.email || "",
+        updatedAt: now,
+        publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
+        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+        isPublic: isPublicBool,
       }));
 
-      if (initialGame?.id) {
-        await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+      if (isOwnExistingGame) {
+        try {
+          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+        } catch (err: any) {
+          if (err?.code === 'not-found') {
+            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          } else {
+            throw err;
+          }
+        }
       } else {
-        await addDoc(collection(db, "mysteryBoxGames"), {
-          ...gameToSave,
-          createdAt: new Date().toISOString(),
-        });
+        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
       }
-    } catch (error) {
+      onViewChange("games");
+    } catch (error: any) {
       console.error("Error saving game:", error);
-      // alert("Error saving game.");
+      alert("Failed to save game: " + (error?.message || String(error)));
+      onViewChange("games");
     }
   };
 

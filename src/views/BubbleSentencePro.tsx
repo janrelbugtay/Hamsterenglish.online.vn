@@ -125,13 +125,20 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
       return;
     }
 
-    // Go to games view instantly for a snappy feel
-    onViewChange("games");
-
     try {
       const isMcq = gameData.mode === 'multiple-choice';
+      const isPublicBool = Boolean(gameData.isPublic);
+      const now = new Date().toISOString();
+
+      const isOwnExistingGame = Boolean(
+        initialGame?.id &&
+        !String(initialGame.id).startsWith('sample-') &&
+        (!initialGame.userId || initialGame.userId === user.uid)
+      );
+
       const gameToSave = JSON.parse(JSON.stringify({
-        name: gameData.title || "",
+        name: gameData.topic || gameData.title || "Bubble Island Game",
+        title: gameData.title || gameData.topic || "Bubble Island Game",
         folderId: gameData.folderId || "",
         topic: gameData.topic || "",
         className: gameData.classLevel || "",
@@ -139,21 +146,33 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
         customSentences: isMcq ? [] : gameData.sentences,
         customQuestions: isMcq ? (gameData.questions || []) : [],
         mode: gameData.mode || "word",
-        isPublic: gameData.isPublic ?? false,
         userId: user.uid,
-        updatedAt: new Date().toISOString(),
+        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
+        creatorEmail: user.email || "",
+        updatedAt: now,
+        publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
+        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+        isPublic: isPublicBool,
       }));
 
-      if (initialGame?.id) {
-        await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+      if (isOwnExistingGame) {
+        try {
+          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+        } catch (err: any) {
+          if (err?.code === 'not-found') {
+            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          } else {
+            throw err;
+          }
+        }
       } else {
-        await addDoc(collection(db, "mysteryBoxGames"), {
-          ...gameToSave,
-          createdAt: new Date().toISOString(),
-        });
+        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
       }
-    } catch (error) {
+      onViewChange("games");
+    } catch (error: any) {
       console.error("Error saving game:", error);
+      alert("Failed to save game: " + (error?.message || String(error)));
+      onViewChange("games");
     }
   };
 
@@ -943,7 +962,8 @@ function GameEditor({
   };
 
   const handleSave = (isPublic: boolean) => {
-    const generatedTitle = "Bubble Island Game";
+    setShowPublishModal(false);
+    const generatedTitle = topic.trim() ? topic.trim() : "Bubble Island Game";
     
     if (mode === 'multiple-choice') {
       const validQuestions = questions.filter(q => q.text.trim());

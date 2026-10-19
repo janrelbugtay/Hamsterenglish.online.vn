@@ -29,6 +29,7 @@ export const GamesLibrary = ({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [gameToMove, setGameToMove] = useState<string | null>(null);
   const [interchangeableGameModal, setInterchangeableGameModal] = useState<any | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const isInterchangeableGame = (game: any) => {
     if (!game) return false;
@@ -285,12 +286,34 @@ export const GamesLibrary = ({
 
   const handleTogglePublic = async (game: any) => {
     try {
+      const currentPublic = game.isPublic === true || game.isPublic === 'true';
+      const nextPublic = !currentPublic;
+      const now = new Date().toISOString();
       const gameRef = doc(db, "mysteryBoxGames", game.id);
-      await updateDoc(gameRef, { isPublic: !game.isPublic });
-      setGames(games.map(g => g.id === game.id ? { ...g, isPublic: !game.isPublic } : g));
+      
+      const updateData: any = {
+        isPublic: nextPublic,
+        updatedAt: now,
+      };
+      
+      if (nextPublic) {
+        updateData.publishedAt = now;
+        if (user) {
+          updateData.creatorName = user.displayName || user.email?.split('@')[0] || "Teacher";
+          updateData.creatorEmail = user.email || "";
+        }
+      }
+      if (!game.createdAt) {
+        updateData.createdAt = now;
+      }
+
+      await updateDoc(gameRef, updateData);
+      setGames(games.map(g => g.id === game.id ? { ...g, ...updateData } : g));
+      setToastMsg(nextPublic ? `"${game.topic || game.name || game.title || 'Game'}" published to Community! 🌟` : `"${game.topic || game.name || game.title || 'Game'}" unpublished from Community 🔒`);
+      setTimeout(() => setToastMsg(null), 3500);
     } catch (error) {
       console.error("Error toggling public status:", error);
-      alert("Failed to update status");
+      alert("Failed to update status: " + ((error as any)?.message || String(error)));
     }
   };
 
@@ -300,13 +323,24 @@ export const GamesLibrary = ({
 
   const handleDuplicateGame = async (game: any) => {
     try {
-       const newGame = { ...game, name: `${game.name || game.topic} (Copy)`, createdAt: new Date().toISOString() };
-       delete newGame.id;
-       const docRef = await addDoc(collection(db, "mysteryBoxGames"), newGame);
-       setGames([...games, { id: docRef.id, ...newGame }]);
+      const now = new Date().toISOString();
+      const newGame: any = {
+        ...game,
+        name: `${game.name || game.topic || game.title || 'Game'} (Copy)`,
+        title: `${game.title || game.name || game.topic || 'Game'} (Copy)`,
+        userId: user?.uid,
+        isPublic: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      delete newGame.id;
+      const docRef = await addDoc(collection(db, "mysteryBoxGames"), newGame);
+      setGames([...games, { id: docRef.id, ...newGame }]);
+      setToastMsg("Game duplicated successfully as private copy! 📋");
+      setTimeout(() => setToastMsg(null), 3000);
     } catch (error) {
-       console.error("Error duplicating game:", error);
-       alert("Failed to duplicate game");
+      console.error("Error duplicating game:", error);
+      alert("Failed to duplicate game: " + ((error as any)?.message || String(error)));
     }
   };
 
@@ -496,6 +530,17 @@ export const GamesLibrary = ({
                     <h3 className="font-black text-lg text-slate-800 dark:text-slate-200 line-clamp-2">
                       {game.topic || game.name || game.title || "No Topic"}
                     </h3>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {game.isPublic ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-300/40">
+                          <Globe size={11} className="text-emerald-600 dark:text-emerald-400" /> Public in Community
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 dark:bg-slate-700/60 dark:text-slate-400">
+                          <Lock size={11} /> Private
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="w-16 h-16 bg-white dark:bg-slate-800 shadow-sm border-2 border-slate-100 dark:border-slate-700 rounded-2xl flex items-center justify-center font-bold text-4xl group-hover:scale-[1.10] transition-transform shrink-0 z-20 relative overflow-hidden">
                     <GameThumbnail gameType={game.gameType} info={gameTemplates.find(t => t.id === game.gameType) || {}} game={game} compact={true} />
