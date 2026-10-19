@@ -209,6 +209,16 @@ export const isDefaultMockClasses = (list: DojoClass[]): boolean => {
   return true;
 };
 
+// Helper to sort classes automatically based on names (natural alphanumeric order, e.g. 6A1, 7A1, 8C1, 8C2, 9D2, 9D3)
+export const sortClassesByName = <T extends { name?: string }>(list: T[]): T[] => {
+  if (!Array.isArray(list)) return [];
+  return [...list].sort((a, b) => {
+    const nameA = (a.name || '').trim();
+    const nameB = (b.name || '').trim();
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+  });
+};
+
 // Scan localStorage versions to recover the user's actual inputted classes
 export const getBestSavedClasses = (): DojoClass[] => {
   if (typeof window === 'undefined') return [];
@@ -232,7 +242,7 @@ export const getBestSavedClasses = (): DojoClass[] => {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0 && !isDefaultMockClasses(parsed)) {
-          return parsed;
+          return sortClassesByName(parsed);
         }
       }
     } catch (e) {}
@@ -244,7 +254,7 @@ export const getBestSavedClasses = (): DojoClass[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return sortClassesByName(parsed);
       }
     }
   } catch (e) {}
@@ -423,16 +433,17 @@ export function ClassRecord({
           }
 
           // Update local state and storage with latest cloud classes!
-          setClasses(data.classes);
+          const sortedCloud = sortClassesByName(data.classes);
+          setClasses(sortedCloud);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.classes));
-            localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(data.classes));
-            localStorage.setItem('squid_user_classes', JSON.stringify(data.classes));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedCloud));
+            localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sortedCloud));
+            localStorage.setItem('squid_user_classes', JSON.stringify(sortedCloud));
           } catch (e) {}
 
           setActiveClassId((prev) => {
-            if (prev && data.classes.some((c: any) => c.id === prev)) return prev;
-            return data.classes[0].id;
+            if (prev && sortedCloud.some((c: any) => c.id === prev)) return prev;
+            return sortedCloud[0].id;
           });
           return;
         }
@@ -444,13 +455,14 @@ export function ClassRecord({
         if (backupSnap.exists()) {
           const bData = backupSnap.data();
           if (Array.isArray(bData?.classes) && bData.classes.length > 0) {
-            setClasses(bData.classes);
+            const sortedBackup = sortClassesByName(bData.classes);
+            setClasses(sortedBackup);
             try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(bData.classes));
-              localStorage.setItem('squid_user_classes', JSON.stringify(bData.classes));
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedBackup));
+              localStorage.setItem('squid_user_classes', JSON.stringify(sortedBackup));
             } catch (e) {}
-            setActiveClassId((prev) => (prev && bData.classes.some((c: any) => c.id === prev) ? prev : bData.classes[0].id));
-            setDoc(userDocRef, bData, { merge: true }).catch(() => {});
+            setActiveClassId((prev) => (prev && sortedBackup.some((c: any) => c.id === prev) ? prev : sortedBackup[0].id));
+            setDoc(userDocRef, { ...bData, classes: sortedBackup, updatedAt: Date.now() }, { merge: true }).catch(() => {});
             return;
           }
         }
@@ -540,7 +552,7 @@ export function ClassRecord({
     try {
       const saved = getBestSavedClasses();
       if (saved.length > 0) {
-        return saved.map((cls: DojoClass) => ({
+        return sortClassesByName(saved.map((cls: DojoClass) => ({
           ...cls,
           groups: Array.isArray(cls.groups) ? cls.groups : [],
           students: (cls.students || []).map((st: any, idx: number) => ({
@@ -549,7 +561,7 @@ export function ClassRecord({
               ? st.number 
               : OFFICIAL_CHARACTER_NUMBERS[idx % OFFICIAL_CHARACTER_NUMBERS.length]
           }))
-        }));
+        })));
       }
     } catch (e) {
       console.error('Error loading classes', e);
@@ -677,17 +689,18 @@ export function ClassRecord({
 
   // Save changes to localStorage and Firestore
   const saveClasses = (updated: DojoClass[]) => {
-    setClasses(updated);
+    const sorted = sortClassesByName(updated);
+    setClasses(sorted);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(updated));
-      localStorage.setItem('squid_user_classes', JSON.stringify(updated));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
+      localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sorted));
+      localStorage.setItem('squid_user_classes', JSON.stringify(sorted));
     } catch (e) {
       console.error('Failed to save classes to localStorage', e);
     }
 
     if (user && !user.isAnonymous) {
-      const payload = { classes: updated, updatedAt: Date.now() };
+      const payload = { classes: sorted, updatedAt: Date.now() };
       setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true })
         .then(() => {
           console.log('Class data successfully synced to Firestore!');
@@ -1048,9 +1061,14 @@ export function ClassRecord({
     });
   };
 
+  // Automatically sort classes by name for display (natural alphanumeric order, e.g. 6A1, 7A1, 8C1, 8C2, 9D2)
+  const sortedClasses = useMemo(() => {
+    return sortClassesByName(classes);
+  }, [classes]);
+
   const activeClass = useMemo(() => {
-    return classes.find(c => c.id === activeClassId) || classes[0] || EMPTY_CLASS;
-  }, [classes, activeClassId]);
+    return sortedClasses.find(c => c.id === activeClassId) || sortedClasses[0] || EMPTY_CLASS;
+  }, [sortedClasses, activeClassId]);
 
   // Total Class Vault Dollars
   const totalClassDollars = useMemo(() => {
@@ -1641,7 +1659,7 @@ export function ClassRecord({
 
           {/* LIST OF CLASSES */}
           <div className="pt-2 space-y-1">
-            {classes.length === 0 ? (
+            {sortedClasses.length === 0 ? (
               <div className="p-3 text-center rounded-2xl bg-slate-50 border border-dashed border-slate-200">
                 <p className="text-[11px] font-semibold text-slate-400 mb-2">No classes yet</p>
                 <button
@@ -1654,7 +1672,7 @@ export function ClassRecord({
                 </button>
               </div>
             ) : (
-              classes.map(cls => {
+              sortedClasses.map(cls => {
               const isSelected = !isAllClassesView && !isBinView && cls.id === activeClass.id;
               const totalClassBal = cls.students.reduce((sum, s) => sum + s.dollars, 0);
 
@@ -2059,7 +2077,7 @@ export function ClassRecord({
                 <h2 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-3">
                   <span>Class Vaults</span>
                   <span className="text-xs font-black px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full">
-                    {classes.length} Classes
+                    {sortedClasses.length} Classes
                   </span>
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-500 mt-1">Select a class to give dollars and manage student accounts.</p>
@@ -2074,7 +2092,7 @@ export function ClassRecord({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {classes.map(c => {
+              {sortedClasses.map(c => {
                 const totalDollars = c.students.reduce((sum, s) => sum + s.dollars, 0);
                 return (
                   <div

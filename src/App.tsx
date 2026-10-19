@@ -28,7 +28,7 @@ import { StudentRace } from "./views/StudentRace";
 import { LetterLock } from "./views/LetterLock";
 import { TicTacToe } from "./views/TicTacToe";
 import { Homework } from "./views/Homework";
-import { ClassRecord, getBestSavedClasses, isDefaultMockClasses, STORAGE_KEY } from "./views/ClassRecord";
+import { ClassRecord, getBestSavedClasses, isDefaultMockClasses, STORAGE_KEY, sortClassesByName } from "./views/ClassRecord";
 import { PhonemicMaster } from "./views/PhonemicMaster";
 import SquidGamePicker from "./views/SquidGamePicker";
 import { useAuth } from "./contexts/AuthContext";
@@ -82,8 +82,9 @@ export default function App() {
         const backupDocRef = doc(db, 'users', user.uid, 'classesData', 'current');
 
         if (hasCustomLocal) {
-          // Device has classes: ensure cloud has them
-          const payload = { classes: localClasses, updatedAt: Date.now() };
+          // Device has classes: ensure cloud has them in sorted order
+          const sorted = sortClassesByName(localClasses);
+          const payload = { classes: sorted, updatedAt: Date.now() };
           await setDoc(userDocRef, payload, { merge: true });
           await setDoc(backupDocRef, payload, { merge: true });
         } else {
@@ -92,9 +93,10 @@ export default function App() {
           if (snap.exists()) {
             const data = snap.data();
             if (Array.isArray(data?.classes) && data.classes.length > 0) {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.classes));
-              localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(data.classes));
-              localStorage.setItem('squid_user_classes', JSON.stringify(data.classes));
+              const sorted = sortClassesByName(data.classes);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
+              localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sorted));
+              localStorage.setItem('squid_user_classes', JSON.stringify(sorted));
             }
           }
         }
