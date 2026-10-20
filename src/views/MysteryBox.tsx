@@ -8,8 +8,8 @@ import { GameModeModal } from "../components/GameModeModal";
 import { 
   ArrowLeft, Edit3, Trash2, Plus, Sparkles, Save, X, Play, 
   Image as ImageIcon, ClipboardList, Info, Copy, 
-  Volume2, VolumeX, Eye, Check, RefreshCw, Trophy, Gift, ArrowRightLeft, Star, AlertTriangle, CloudRain, Skull, Percent, Bomb, Shuffle,
-  Users, User, Minus
+  Volume2, VolumeX, Eye, Check, RefreshCw, Trophy, Gift, ArrowRightLeft, Star, AlertTriangle, Skull, Bomb, Shuffle,
+  Users, User, Minus, Flame, Zap, Crown, ShieldAlert, Coins
 } from "lucide-react";
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -36,18 +36,29 @@ interface Quiz {
   isPublic?: boolean;
 }
 
+interface OutcomeResult {
+  teams: Team[];
+  deltas: Record<number, { amount: number; label: string; isPositive: boolean }>;
+  summaryText: string;
+}
+
 interface Outcome {
   id: string;
   text: string;
+  subtitle: string;
+  icon: string;
+  category: 'treasure' | 'jackpot' | 'multiplier' | 'trap' | 'bomb' | 'heist';
   color: string;
-  requiresTarget?: string;
-  action: (t: Team[], idx: number, target?: number) => Team[];
+  badgeText: string;
+  requiresTarget?: 'swap' | 'steal';
+  execute: (teams: Team[], receiverIdx: number, targetIdx?: number) => OutcomeResult;
 }
 
 interface Team {
   id: number;
   name: string;
   score: number;
+  streak?: number;
   color?: string;
   icon?: string;
   bg?: string;
@@ -55,15 +66,38 @@ interface Team {
   ring?: string;
 }
 
+interface ScoreDeltaPopup {
+  id: number;
+  teamId: number;
+  text: string;
+  isPositive: boolean;
+}
+
+interface OpenedBoxRecord {
+  icon: string;
+  label: string;
+  isPositive: boolean;
+  teamName?: string;
+}
+
 const DEFAULT_TEAM_CONFIGS = [
   { id: 0, defaultName: "Team 1", color: "blue", bg: "bg-blue-500", border: "border-blue-400", light: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", ring: "ring-blue-400", icon: "🦁" },
-  { id: 1, defaultName: "Team 2", color: "red", bg: "bg-red-500", border: "border-red-400", light: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300", ring: "ring-red-400", icon: "🐉" },
+  { id: 1, defaultName: "Team 2", color: "red", bg: "bg-rose-500", border: "border-rose-400", light: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300", ring: "ring-rose-400", icon: "🐉" },
   { id: 2, defaultName: "Team 3", color: "emerald", bg: "bg-emerald-500", border: "border-emerald-400", light: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", ring: "ring-emerald-400", icon: "🦅" },
   { id: 3, defaultName: "Team 4", color: "amber", bg: "bg-amber-500", border: "border-amber-400", light: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300", ring: "ring-amber-400", icon: "⚡" },
   { id: 4, defaultName: "Team 5", color: "purple", bg: "bg-purple-500", border: "border-purple-400", light: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", ring: "ring-purple-400", icon: "🔮" },
   { id: 5, defaultName: "Team 6", color: "pink", bg: "bg-pink-500", border: "border-pink-400", light: "bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300", ring: "ring-pink-400", icon: "🦄" },
   { id: 6, defaultName: "Team 7", color: "teal", bg: "bg-teal-500", border: "border-teal-400", light: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300", ring: "ring-teal-400", icon: "🌊" },
   { id: 7, defaultName: "Team 8", color: "orange", bg: "bg-orange-500", border: "border-orange-400", light: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", ring: "ring-orange-400", icon: "🔥" },
+];
+
+const MYSTERY_VIBE_HINTS = [
+  "Sparks of golden treasure and ticking danger echo from inside...",
+  "It feels unusually heavy... could it be a Mega Jackpot or a Bomb?",
+  "A mysterious glow radiates through the keyhole! Keep it or bluff?",
+  "You hear coins clinking... or is that a fuse burning?",
+  "High risk, high reward! Will you trust your luck or pass the fate?",
+  "Strange energy hums inside this crate. Choose wisely!"
 ];
 
 const BLANK_MYSTERY_QUESTION: Question = {
@@ -73,6 +107,57 @@ const BLANK_MYSTERY_QUESTION: Question = {
   answerIndex: 0,
   optionImages: [null, null, null, null],
 };
+
+// Smooth Animated Rolling Score Component for Live Point Adding & Deduction
+function AnimatedScore({ value, className = "" }: { value: number; className?: string }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const [bump, setBump] = useState<'up' | 'down' | null>(null);
+  const prevRef = useRef(value);
+
+  useEffect(() => {
+    const startVal = prevRef.current;
+    const endVal = value;
+    if (startVal === endVal) return;
+
+    setBump(endVal > startVal ? 'up' : 'down');
+    const duration = 550;
+    const startTime = performance.now();
+    let rafId: number;
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(startVal + (endVal - startVal) * eased);
+      setDisplayValue(current);
+      if (progress < 1) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        prevRef.current = endVal;
+        setTimeout(() => setBump(null), 250);
+      }
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [value]);
+
+  const formatted = displayValue > 0 ? `+${displayValue}` : `${displayValue}`;
+
+  return (
+    <span
+      className={`inline-block tabular-nums transition-transform duration-200 ${
+        bump === 'up'
+          ? 'scale-125 text-emerald-500 drop-shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+          : bump === 'down'
+          ? 'scale-125 text-rose-500 drop-shadow-[0_0_12px_rgba(244,63,94,0.5)]'
+          : ''
+      } ${className}`}
+    >
+      {formatted}
+    </span>
+  );
+}
 
 export function MysteryBox({
   onViewChange,
@@ -90,13 +175,10 @@ export function MysteryBox({
     )
   );
 
-  // When mystery box is clicked, the GAME SETUP ('editor') screen appears.
-  // Only when an existing game with questions is launched to play (!editMode && hasLoadedQuestions), start in 'setup'.
   const [screen, setScreen] = useState<GameScreen>(
     initialGame && !initialGame.editMode && hasLoadedQuestions ? 'setup' : 'editor'
   );
   const [showModeModal, setShowModeModal] = useState(false);
-
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -118,7 +200,6 @@ export function MysteryBox({
         ? initialGame.customQuestions
         : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_MYSTERY_QUESTION]);
 
-      // Capped to at most 30 questions
       const sanitized = raw.slice(0, 30).map((q: any, i: number) => ({
         id: q.id || (i + 1),
         text: q.text || q.question || "",
@@ -194,7 +275,6 @@ export function MysteryBox({
     }
 
     try {
-      // Limit strictly to 30 questions
       const sanitizedQuestions = quiz.questions.slice(0, 30);
       const isPublicBool = Boolean(quiz.isPublic);
       const now = new Date().toISOString();
@@ -251,33 +331,56 @@ export function MysteryBox({
   const [playerNames, setPlayerNames] = useState<string[]>([
     "Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8"
   ]);
-  const [difficulty, setDifficulty] = useState<'normal' | 'medium' | 'difficult'>('normal');
+  const [difficulty, setDifficulty] = useState<'normal' | 'medium' | 'difficult'>('medium');
   const [selectedTheme, setSelectedTheme] = useState('theme-royal');
   const [isMuted, setIsMuted] = useState(false);
+  const [wrongAnswerPenalty, setWrongAnswerPenalty] = useState(true);
+  const [answerBonusPoints, setAnswerBonusPoints] = useState(true);
 
   // In-Game state
   const [teams, setTeams] = useState<Team[]>([
-    { id: 0, name: "Team 1", score: 0 }
+    { id: 0, name: "Team 1", score: 0, streak: 0 }
   ]);
   const [currentTeamIdx, setCurrentTeamIdx] = useState(0);
   const [openedBoxes, setOpenedBoxes] = useState<number[]>([]);
+  const [boxRecords, setBoxRecords] = useState<Record<number, OpenedBoxRecord>>({});
   const [selectedBoxAnimation, setSelectedBoxAnimation] = useState<number | null>(null);
+  const [scoreDeltas, setScoreDeltas] = useState<ScoreDeltaPopup[]>([]);
+  const [liveScoreFeed, setLiveScoreFeed] = useState<{ text: string; isPositive: boolean; id: number } | null>(null);
 
-  // Active question modal
+  // Active question & mystery box modal state
   const [activeBoxNum, setActiveBoxNum] = useState<number | null>(null);
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
-  const [modalStep, setModalStep] = useState<'question' | 'correct_transition' | 'incorrect_transition' | 'decision' | 'give_away_selection' | 'target_selection' | 'reveal'>('question');
-  const [currentOutcome, setCurrentOutcome] = useState<any>(null);
+  const [answerResult, setAnswerResult] = useState<'correct' | 'incorrect' | null>(null);
+  const [lastAnswerPointChange, setLastAnswerPointChange] = useState<number>(0);
+  const [modalStep, setModalStep] = useState<'question' | 'decision' | 'give_away_selection' | 'unboxing' | 'target_selection' | 'reveal'>('question');
+  const [currentOutcome, setCurrentOutcome] = useState<Outcome | null>(null);
+  const [outcomeSummary, setOutcomeSummary] = useState<string>("");
+  const [outcomeBeforeAfter, setOutcomeBeforeAfter] = useState<{ teamName: string; before: number; after: number; delta: number } | null>(null);
   const [targetTeamIdx, setTargetTeamIdx] = useState<number | null>(null);
-  const [celebration, setCelebration] = useState<'win' | 'lose' | null>(null);
+  const [celebration, setCelebration] = useState<'win' | 'lose' | 'jackpot' | null>(null);
+  const [unboxPreviewItem, setUnboxPreviewItem] = useState<{ icon: string; text: string; color: string }>({
+    icon: "🎁",
+    text: "+300 PTS",
+    color: "from-amber-400 to-orange-500"
+  });
+  const [mysteryHint, setMysteryHint] = useState<string>(MYSTERY_VIBE_HINTS[0]);
+
+  const autoAdvanceTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    };
+  }, []);
 
   // Study Mode state (Interactive Full-Screen)
   const [studyIndex, setStudyIndex] = useState(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
   const [studyHistory, setStudyHistory] = useState<Record<number, { selected: number; isCorrect: boolean }>>({});
 
-  // Audio synthesizer
+  // Rich Multi-Layered Web Audio Synthesizer
   const audioCtxRef = useRef<AudioContext | null>(null);
   const playSound = (type: string) => {
     if (isMuted) return;
@@ -298,121 +401,159 @@ export function MysteryBox({
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(600, now);
-        osc.frequency.exponentialRampToValueAtTime(850, now + 0.05);
+        osc.frequency.setValueAtTime(650, now);
+        osc.frequency.exponentialRampToValueAtTime(920, now + 0.055);
         gain.gain.setValueAtTime(0.12, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
         osc.start(now);
-        osc.stop(now + 0.05);
-      } else if (type === 'hover') {
+        osc.stop(now + 0.055);
+      } else if (type === 'roulette_tick') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(450, now);
-        gain.gain.setValueAtTime(0.02, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(980, now);
+        osc.frequency.exponentialRampToValueAtTime(420, now + 0.035);
+        gain.gain.setValueAtTime(0.11, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
         osc.start(now);
-        osc.stop(now + 0.03);
-      } else if (type === 'box_open') {
-        // Magical upward arpeggio + whoosh
-        [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+        osc.stop(now + 0.035);
+      } else if (type === 'coin_add') {
+        // Bright arcade coin ding-ding!
+        [987.77, 1318.51].forEach((freq, i) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, now + i * 0.06);
-          gain.gain.setValueAtTime(0.1, now + i * 0.06);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.25);
+          osc.frequency.setValueAtTime(freq, now + i * 0.065);
+          gain.gain.setValueAtTime(0.14, now + i * 0.065);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.065 + 0.28);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now + i * 0.06);
-          osc.stop(now + i * 0.06 + 0.25);
+          osc.start(now + i * 0.065);
+          osc.stop(now + i * 0.065 + 0.28);
+        });
+      } else if (type === 'point_deduct') {
+        // Quick descending thud-zap for point deduction
+        [340, 210].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, now + i * 0.08);
+          osc.frequency.exponentialRampToValueAtTime(freq * 0.65, now + i * 0.08 + 0.16);
+          gain.gain.setValueAtTime(0.11, now + i * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.16);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + i * 0.08);
+          osc.stop(now + i * 0.08 + 0.16);
+        });
+      } else if (type === 'box_open') {
+        // Magical chest creak + shimmering crystalline arpeggio
+        [523.25, 659.25, 783.99, 1046.5, 1318.51].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.055);
+          gain.gain.setValueAtTime(0.13, now + i * 0.055);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.32);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + i * 0.055);
+          osc.stop(now + i * 0.055 + 0.32);
         });
       } else if (type === 'correct') {
-        // Bright dual bell chime
-        [523.25, 783.99].forEach((freq, i) => {
+        // Rich game-show major chord chime + high sparkle
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((freq, i) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, now + i * 0.1);
-          gain.gain.setValueAtTime(0.15, now + i * 0.1);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.4);
+          osc.frequency.setValueAtTime(freq, now + i * 0.07);
+          gain.gain.setValueAtTime(0.16, now + i * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.45);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now + i * 0.1);
-          osc.stop(now + i * 0.1 + 0.4);
+          osc.start(now + i * 0.07);
+          osc.stop(now + i * 0.07 + 0.45);
         });
       } else if (type === 'incorrect') {
-        // Low descending retro buzzer
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(320, now);
-        osc.frequency.linearRampToValueAtTime(140, now + 0.35);
-        gain.gain.setValueAtTime(0.14, now);
-        gain.gain.linearRampToValueAtTime(0.001, now + 0.35);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.35);
+        // Dramatic dual-oscillator game show wrong buzzer
+        [195, 207].forEach((freq) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, now);
+          osc.frequency.linearRampToValueAtTime(freq * 0.72, now + 0.45);
+          gain.gain.setValueAtTime(0.11, now);
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.45);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.45);
+        });
       } else if (type === 'suspense') {
-        // Dramatic rising tension sweep
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(220, now);
-        osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.75);
-        gain.gain.setValueAtTime(0.09, now);
-        gain.gain.linearRampToValueAtTime(0.001, now + 0.75);
+        osc.frequency.setValueAtTime(260, now);
+        osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.45);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.linearRampToValueAtTime(0.001, now + 0.45);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(now);
-        osc.stop(now + 0.75);
-      } else if (type === 'win') {
-        // Triumphant 4-note brassy fanfare
-        [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+        osc.stop(now + 0.45);
+      } else if (type === 'win' || type === 'jackpot') {
+        // Triumphant brassy fanfare + coin cascade
+        const notes = type === 'jackpot'
+          ? [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98]
+          : [440, 554.37, 659.25, 880];
+        notes.forEach((freq, idx) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, now + idx * 0.1);
-          gain.gain.setValueAtTime(0.15, now + idx * 0.1);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.5);
+          osc.frequency.setValueAtTime(freq, now + idx * 0.085);
+          gain.gain.setValueAtTime(0.16, now + idx * 0.085);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.085 + 0.55);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now + idx * 0.1);
-          osc.stop(now + idx * 0.1 + 0.5);
+          osc.start(now + idx * 0.085);
+          osc.stop(now + idx * 0.085 + 0.55);
         });
       } else if (type === 'lose') {
-        // Descending minor slide with low bass
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(300, now);
-        osc.frequency.linearRampToValueAtTime(110, now + 0.55);
-        gain.gain.setValueAtTime(0.14, now);
-        gain.gain.linearRampToValueAtTime(0.001, now + 0.55);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.55);
+        // Sad trombone / descending minor slide
+        [392, 369.99, 349.23, 311.13].forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          const start = now + idx * 0.14;
+          const dur = idx === 3 ? 0.4 : 0.13;
+          osc.frequency.setValueAtTime(freq, start);
+          if (idx === 3) osc.frequency.linearRampToValueAtTime(260, start + dur);
+          gain.gain.setValueAtTime(0.12, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(start);
+          osc.stop(start + dur);
+        });
       } else if (type === 'bomb') {
-        // Deep sub-bass explosion impact with noise
+        // Deep sub-bass explosion impact + filtered noise burst
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(150, now);
-        osc.frequency.exponentialRampToValueAtTime(35, now + 0.6);
-        gain.gain.setValueAtTime(0.25, now);
-        gain.gain.linearRampToValueAtTime(0.001, now + 0.6);
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(32, now + 0.65);
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.linearRampToValueAtTime(0.001, now + 0.65);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(now);
-        osc.stop(now + 0.6);
+        osc.stop(now + 0.65);
 
-        // Filtered noise burst
         try {
-          const bufferSize = ctx.sampleRate * 0.4;
+          const bufferSize = Math.floor(ctx.sampleRate * 0.5);
           const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
           const data = buffer.getChannelData(0);
           for (let i = 0; i < bufferSize; i++) {
@@ -422,28 +563,28 @@ export function MysteryBox({
           noise.buffer = buffer;
           const filter = ctx.createBiquadFilter();
           filter.type = 'lowpass';
-          filter.frequency.setValueAtTime(800, now);
-          filter.frequency.exponentialRampToValueAtTime(100, now + 0.4);
+          filter.frequency.setValueAtTime(950, now);
+          filter.frequency.exponentialRampToValueAtTime(85, now + 0.5);
           const noiseGain = ctx.createGain();
-          noiseGain.gain.setValueAtTime(0.18, now);
-          noiseGain.gain.linearRampToValueAtTime(0.001, now + 0.4);
+          noiseGain.gain.setValueAtTime(0.22, now);
+          noiseGain.gain.linearRampToValueAtTime(0.001, now + 0.5);
           noise.connect(filter);
           filter.connect(noiseGain);
           noiseGain.connect(ctx.destination);
           noise.start(now);
-          noise.stop(now + 0.4);
+          noise.stop(now + 0.5);
         } catch (err) {
-          // fallback
+          // ignore
         }
       } else if (type === 'steal_swap') {
-        // Sci-fi warp whoosh
+        // Sci-fi heist warp whoosh + chime
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(300, now);
-        osc.frequency.exponentialRampToValueAtTime(800, now + 0.2);
-        osc.frequency.exponentialRampToValueAtTime(250, now + 0.45);
-        gain.gain.setValueAtTime(0.12, now);
+        osc.frequency.setValueAtTime(280, now);
+        osc.frequency.exponentialRampToValueAtTime(920, now + 0.22);
+        osc.frequency.exponentialRampToValueAtTime(360, now + 0.45);
+        gain.gain.setValueAtTime(0.14, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -453,6 +594,30 @@ export function MysteryBox({
     } catch (e) {
       // Audio fallback
     }
+  };
+
+  // Trigger floating score delta badge on scoreboard + live banner
+  const triggerScoreDeltaPopup = (teamId: number, text: string, isPositive: boolean) => {
+    const popupId = Date.now() + Math.random();
+    setScoreDeltas(prev => [...prev, { id: popupId, teamId, text, isPositive }]);
+    setLiveScoreFeed({ id: popupId, text, isPositive });
+    setTimeout(() => {
+      setScoreDeltas(prev => prev.filter(p => p.id !== popupId));
+    }, 1600);
+    setTimeout(() => {
+      setLiveScoreFeed(prev => (prev?.id === popupId ? null : prev));
+    }, 2400);
+  };
+
+  // Manual Live Point Adjuster for Teacher on Scoreboard
+  const handleManualScoreAdjust = (teamIdx: number, amount: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    playSound(amount > 0 ? 'coin_add' : 'point_deduct');
+    const team = teams[teamIdx];
+    if (!team) return;
+    setTeams(prev => prev.map((t, idx) => idx === teamIdx ? { ...t, score: t.score + amount } : t));
+    const sign = amount > 0 ? `+${amount}` : `${amount}`;
+    triggerScoreDeltaPopup(team.id, `${sign} PTS`, amount > 0);
   };
 
   // Start Playing
@@ -467,6 +632,7 @@ export function MysteryBox({
         id: i,
         name: rawName || fallbackName,
         score: 0,
+        streak: 0,
         color: cfg.color,
         icon: cfg.icon,
         bg: cfg.bg,
@@ -477,9 +643,11 @@ export function MysteryBox({
     setTeams(configuredTeams);
     setCurrentTeamIdx(0);
     setOpenedBoxes([]);
+    setBoxRecords({});
     setActiveBoxNum(null);
     setCelebration(null);
     setSelectedBoxAnimation(null);
+    setScoreDeltas([]);
     setScreen('game');
   };
 
@@ -545,96 +713,410 @@ export function MysteryBox({
 
     playSound('box_open');
     setSelectedBoxAnimation(num);
+    setMysteryHint(MYSTERY_VIBE_HINTS[(num * 7 + openedBoxes.length) % MYSTERY_VIBE_HINTS.length]);
 
     setTimeout(() => {
       playSound('suspense');
       setActiveBoxNum(num);
       setIsAnswerRevealed(false);
       setSelectedOptionIndex(null);
+      setAnswerResult(null);
+      setLastAnswerPointChange(0);
       setCurrentOutcome(null);
+      setOutcomeBeforeAfter(null);
       setModalStep('question');
       setTargetTeamIdx(null);
       setSelectedBoxAnimation(null);
-    }, 750);
+    }, 550);
   };
 
-  const handleOptionSelect = (idx: number) => {
-    if (!isAnswerRevealed) {
-      playSound('click');
-      setSelectedOptionIndex(idx);
+  // Proceed after Correct Answer -> Decision (or direct unbox for Solo)
+  const proceedAfterCorrect = () => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    playSound('click');
+    if (teams.length > 1) {
+      setModalStep('decision');
+    } else {
+      handleExecuteDecision(0);
     }
   };
 
-  const handleRevealAnswer = () => {
+  // Proceed after Incorrect Answer -> Close modal & advance turn
+  const proceedAfterIncorrect = () => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    playSound('click');
+    if (activeBoxNum !== null && !openedBoxes.includes(activeBoxNum)) {
+      setOpenedBoxes(prev => [...prev, activeBoxNum]);
+      setBoxRecords(prev => ({
+        ...prev,
+        [activeBoxNum]: {
+          icon: "✗",
+          label: wrongAnswerPenalty ? "-50 pts" : "Missed",
+          isPositive: false,
+          teamName: teams[currentTeamIdx]?.name
+        }
+      }));
+    }
+    setActiveBoxNum(null);
+    setAnswerResult(null);
+    if (teams.length > 1) {
+      setCurrentTeamIdx((currentTeamIdx + 1) % teams.length);
+    }
+  };
+
+  // AUTO-REVEAL ON OPTION CLICK: Immediately reveals whether chosen answer is right or wrong + Live Point Addition/Deduction!
+  const handleOptionSelect = (idx: number) => {
+    if (isAnswerRevealed || activeBoxNum === null) return;
+    const currentQ = activeQuiz.questions[activeBoxNum - 1];
+    if (!currentQ) return;
+
+    setSelectedOptionIndex(idx);
+    setIsAnswerRevealed(true);
+
+    const isCorrect = idx === currentQ.answerIndex;
+    setAnswerResult(isCorrect ? 'correct' : 'incorrect');
+
+    const activeTeam = teams[currentTeamIdx];
+
+    if (isCorrect) {
+      playSound('correct');
+      const newStreak = (activeTeam?.streak || 0) + 1;
+      const streakBonus = newStreak >= 2 ? (newStreak - 1) * 25 : 0;
+      const basePoints = answerBonusPoints ? 50 + streakBonus : 0;
+      setLastAnswerPointChange(basePoints);
+
+      setTeams(prev => prev.map((t, i) => i === currentTeamIdx ? {
+        ...t,
+        score: t.score + basePoints,
+        streak: newStreak
+      } : t));
+
+      if (basePoints > 0 && activeTeam) {
+        const label = newStreak >= 2
+          ? `+${basePoints} PTS (🔥${newStreak}x)`
+          : `+${basePoints} PTS`;
+        setTimeout(() => playSound('coin_add'), 180);
+        triggerScoreDeltaPopup(activeTeam.id, label, true);
+      }
+
+      // Auto-advance to Mystery Box Decision after 1.7s so students see the green reveal first
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        if (teams.length > 1) {
+          setModalStep('decision');
+        } else {
+          handleExecuteDecision(0);
+        }
+      }, 1750);
+    } else {
+      playSound('incorrect');
+      const penalty = wrongAnswerPenalty ? -50 : 0;
+      setLastAnswerPointChange(penalty);
+
+      setTeams(prev => prev.map((t, i) => i === currentTeamIdx ? {
+        ...t,
+        score: t.score + penalty,
+        streak: 0
+      } : t));
+
+      if (penalty < 0 && activeTeam) {
+        setTimeout(() => playSound('point_deduct'), 180);
+        triggerScoreDeltaPopup(activeTeam.id, `${penalty} PTS`, false);
+      }
+
+      // Auto-advance to next team after 2.4s so students clearly see the right answer highlighted in green
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        setOpenedBoxes(prev => (activeBoxNum !== null && !prev.includes(activeBoxNum) ? [...prev, activeBoxNum] : prev));
+        setBoxRecords(prev => activeBoxNum !== null ? ({
+          ...prev,
+          [activeBoxNum]: {
+            icon: "✗",
+            label: penalty < 0 ? `${penalty} pts` : "Missed",
+            isPositive: false,
+            teamName: activeTeam?.name
+          }
+        }) : prev);
+        setActiveBoxNum(null);
+        setAnswerResult(null);
+        if (teams.length > 1) {
+          setCurrentTeamIdx(prevIdx => (prevIdx + 1) % teams.length);
+        }
+      }, 2400);
+    }
+  };
+
+  // Teacher manual reveal (when no student option was clicked yet)
+  const handleTeacherRevealOnly = () => {
+    if (isAnswerRevealed) return;
     playSound('suspense');
     setIsAnswerRevealed(true);
+    setAnswerResult(null);
   };
 
-  const handleIncorrect = () => {
-    playSound('incorrect');
-    setModalStep('incorrect_transition');
-    setTimeout(() => {
-      if (activeBoxNum !== null && !openedBoxes.includes(activeBoxNum)) {
-        setOpenedBoxes(prev => [...prev, activeBoxNum]);
-      }
-      setActiveBoxNum(null);
-      if (teams.length > 1) {
-        setCurrentTeamIdx((currentTeamIdx + 1) % teams.length);
-      }
-    }, 1300);
-  };
-
-  const handleCorrect = () => {
-    playSound('correct');
-    setModalStep('correct_transition');
-    setTimeout(() => {
-      if (teams.length > 1) {
-        setModalStep('decision');
-      } else {
-        handleExecuteDecision(0);
-      }
-    }, 1300);
-  };
-
+  // Rich, Exciting Mystery Box Outcomes Pool
   const getOutcomesList = (): Outcome[] => {
+    const makeSimpleOutcome = (
+      id: string,
+      text: string,
+      subtitle: string,
+      icon: string,
+      category: Outcome['category'],
+      color: string,
+      badgeText: string,
+      deltaAmount: number
+    ): Outcome => ({
+      id,
+      text,
+      subtitle,
+      icon,
+      category,
+      color,
+      badgeText,
+      execute: (t, idx) => {
+        const updated = t.map((team, i) => i === idx ? { ...team, score: team.score + deltaAmount } : { ...team });
+        const sign = deltaAmount > 0 ? `+${deltaAmount}` : `${deltaAmount}`;
+        return {
+          teams: updated,
+          deltas: {
+            [t[idx].id]: { amount: deltaAmount, label: `${sign} PTS`, isPositive: deltaAmount >= 0 }
+          },
+          summaryText: `${t[idx].name} ${deltaAmount >= 0 ? 'gained' : 'lost'} ${Math.abs(deltaAmount)} points!`
+        };
+      }
+    });
+
     const normal: Outcome[] = [
-      { id: "add100", text: "+100 points", color: "bg-teal-500", action: (t: Team[], idx: number) => { t[idx].score += 100; return t; } },
-      { id: "add200", text: "+200 points", color: "bg-green-500", action: (t: Team[], idx: number) => { t[idx].score += 200; return t; } },
-      { id: "add300", text: "+300 points", color: "bg-emerald-500", action: (t: Team[], idx: number) => { t[idx].score += 300; return t; } },
-      { id: "sub50", text: "-50 points", color: "bg-red-400", action: (t: Team[], idx: number) => { t[idx].score -= 50; return t; } },
-      { id: "sub100", text: "-100 points", color: "bg-red-500", action: (t: Team[], idx: number) => { t[idx].score -= 100; return t; } },
-      { id: "add50", text: "+50 points", color: "bg-cyan-500", action: (t: Team[], idx: number) => { t[idx].score += 50; return t; } },
+      makeSimpleOutcome("add100", "+100 POINTS", "Lucky Bronze Coin Chest!", "🪙", "treasure", "from-teal-500 to-emerald-600", "+100", 100),
+      makeSimpleOutcome("add200", "+200 POINTS", "Silver Treasure Stash!", "💰", "treasure", "from-emerald-500 to-green-600", "+200", 200),
+      makeSimpleOutcome("add300", "+300 POINTS", "Golden Gem Vault!", "💎", "treasure", "from-amber-400 to-orange-500", "+300", 300),
+      makeSimpleOutcome("add150", "+150 POINTS", "Super Star Boost!", "⭐", "treasure", "from-cyan-500 to-blue-600", "+150", 150),
+      {
+        id: "double_score",
+        text: "DOUBLE POINTS (2X)!",
+        subtitle: "Doubles your positive score (or +250 pts boost)!",
+        icon: "⚡",
+        category: "multiplier",
+        color: "from-yellow-400 via-amber-500 to-orange-600",
+        badgeText: "2X PTS",
+        execute: (t, idx) => {
+          const currentScore = t[idx].score;
+          const gain = currentScore > 100 ? currentScore : 250;
+          const updated = t.map((team, i) => i === idx ? { ...team, score: team.score + gain } : { ...team });
+          return {
+            teams: updated,
+            deltas: {
+              [t[idx].id]: { amount: gain, label: `+${gain} (2X!)`, isPositive: true }
+            },
+            summaryText: `${t[idx].name} triggered a Power Multiplier for +${gain} points!`
+          };
+        }
+      },
+      makeSimpleOutcome("sub100", "-100 POINTS", "Booby-Trapped Crate!", "💣", "trap", "from-rose-500 to-red-600", "-100", -100),
+      makeSimpleOutcome("sub150", "-150 POINTS", "Hidden Trapdoor!", "🕳️", "trap", "from-red-500 to-rose-700", "-150", -150),
+      {
+        id: "steal_150",
+        text: "STEAL 150 POINTS!",
+        subtitle: "Heist up to 150 points from another team!",
+        icon: "🦊",
+        category: "heist",
+        color: "from-indigo-500 to-violet-600",
+        badgeText: "STEAL 150",
+        requiresTarget: "steal",
+        execute: (t, idx, target) => {
+          const victimIdx = target !== undefined ? target : (idx + 1) % t.length;
+          if (victimIdx === idx || !t[victimIdx]) {
+            const updated = t.map((team, i) => i === idx ? { ...team, score: team.score + 150 } : { ...team });
+            return {
+              teams: updated,
+              deltas: { [t[idx].id]: { amount: 150, label: "+150 PTS", isPositive: true } },
+              summaryText: `${t[idx].name} claimed +150 bonus points!`
+            };
+          }
+          const updated = t.map((team, i) => {
+            if (i === idx) return { ...team, score: team.score + 150 };
+            if (i === victimIdx) return { ...team, score: team.score - 150 };
+            return { ...team };
+          });
+          return {
+            teams: updated,
+            deltas: {
+              [t[idx].id]: { amount: 150, label: "+150 STOLEN!", isPositive: true },
+              [t[victimIdx].id]: { amount: -150, label: "-150 ROBBED!", isPositive: false }
+            },
+            summaryText: `${t[idx].name} stole 150 points from ${t[victimIdx].name}!`
+          };
+        }
+      }
     ];
+
     const medium: Outcome[] = [
       ...normal,
-      { id: "add500", text: "+500 points", color: "bg-green-600", action: (t: Team[], idx: number) => { t[idx].score += 500; return t; } },
-      { id: "sub200", text: "-200 points", color: "bg-rose-600", action: (t: Team[], idx: number) => { t[idx].score -= 200; return t; } },
-      { id: "swap_team", text: "Swap Points", color: "bg-purple-500", requiresTarget: "swap", action: (t: Team[], idx: number, target?: number) => {
-        if (target !== undefined) {
-          const temp = t[idx].score;
-          t[idx].score = t[target].score;
-          t[target].score = temp;
-        }
-        return t;
-      }},
-      { id: "steal_100", text: "Steal 100", color: "bg-indigo-500", requiresTarget: "steal", action: (t: Team[], idx: number, target?: number) => {
-        if (target !== undefined) {
-          if (t[target].score >= 100) {
-            t[target].score -= 100;
-            t[idx].score += 100;
-          } else {
-            t[idx].score += Math.max(0, t[target].score);
-            t[target].score = 0;
+      makeSimpleOutcome("add500", "+500 ROYAL JACKPOT!", "Legendary Crown Treasure!", "👑", "jackpot", "from-amber-400 via-yellow-500 to-orange-600", "+500", 500),
+      makeSimpleOutcome("sub250", "-250 DYNAMITE!", "Explosive TNT Barrel!", "💥", "bomb", "from-red-600 to-rose-800", "-250", -250),
+      {
+        id: "swap_team",
+        text: "SWAP TOTAL SCORES!",
+        subtitle: "Switch your entire score with another team!",
+        icon: "🔄",
+        category: "heist",
+        color: "from-purple-500 via-fuchsia-500 to-indigo-600",
+        badgeText: "SWAP",
+        requiresTarget: "swap",
+        execute: (t, idx, target) => {
+          const otherIdx = target !== undefined ? target : (idx + 1) % t.length;
+          if (otherIdx === idx || !t[otherIdx]) {
+            const updated = t.map((team, i) => i === idx ? { ...team, score: team.score + 200 } : { ...team });
+            return {
+              teams: updated,
+              deltas: { [t[idx].id]: { amount: 200, label: "+200 PTS", isPositive: true } },
+              summaryText: `${t[idx].name} gained +200 bonus points!`
+            };
           }
+          const scoreA = t[idx].score;
+          const scoreB = t[otherIdx].score;
+          const diffA = scoreB - scoreA;
+          const diffB = scoreA - scoreB;
+          const updated = t.map((team, i) => {
+            if (i === idx) return { ...team, score: scoreB };
+            if (i === otherIdx) return { ...team, score: scoreA };
+            return { ...team };
+          });
+          return {
+            teams: updated,
+            deltas: {
+              [t[idx].id]: { amount: diffA, label: `SWAPPED (${diffA >= 0 ? '+' : ''}${diffA})`, isPositive: diffA >= 0 },
+              [t[otherIdx].id]: { amount: diffB, label: `SWAPPED (${diffB >= 0 ? '+' : ''}${diffB})`, isPositive: diffB >= 0 }
+            },
+            summaryText: `${t[idx].name} (${scoreA}→${scoreB}) swapped scores with ${t[otherIdx].name} (${scoreB}→${scoreA})!`
+          };
         }
-        return t;
-      }},
+      },
+      {
+        id: "steal_250",
+        text: "PIRATE HEIST: STEAL 250!",
+        subtitle: "Plunder 250 points from any rival team!",
+        icon: "🏴‍☠️",
+        category: "heist",
+        color: "from-blue-600 via-indigo-600 to-purple-700",
+        badgeText: "STEAL 250",
+        requiresTarget: "steal",
+        execute: (t, idx, target) => {
+          const victimIdx = target !== undefined ? target : (idx + 1) % t.length;
+          if (victimIdx === idx || !t[victimIdx]) {
+            const updated = t.map((team, i) => i === idx ? { ...team, score: team.score + 250 } : { ...team });
+            return {
+              teams: updated,
+              deltas: { [t[idx].id]: { amount: 250, label: "+250 PTS", isPositive: true } },
+              summaryText: `${t[idx].name} plundered +250 points!`
+            };
+          }
+          const updated = t.map((team, i) => {
+            if (i === idx) return { ...team, score: team.score + 250 };
+            if (i === victimIdx) return { ...team, score: team.score - 250 };
+            return { ...team };
+          });
+          return {
+            teams: updated,
+            deltas: {
+              [t[idx].id]: { amount: 250, label: "+250 PLUNDERED!", isPositive: true },
+              [t[victimIdx].id]: { amount: -250, label: "-250 LOOTED!", isPositive: false }
+            },
+            summaryText: `${t[idx].name} plundered 250 points from ${t[victimIdx].name}!`
+          };
+        }
+      },
+      {
+        id: "gift_rain",
+        text: "GOLDEN GIFT RAIN!",
+        subtitle: "+350 PTS to receiver, +100 PTS to everyone else!",
+        icon: "🎁",
+        category: "treasure",
+        color: "from-emerald-400 via-teal-500 to-cyan-600",
+        badgeText: "+350 ALL",
+        execute: (t, idx) => {
+          const deltas: OutcomeResult['deltas'] = {};
+          const updated = t.map((team, i) => {
+            const gain = i === idx ? 350 : 100;
+            deltas[team.id] = { amount: gain, label: `+${gain} GIFT!`, isPositive: true };
+            return { ...team, score: team.score + gain };
+          });
+          return {
+            teams: updated,
+            deltas,
+            summaryText: `${t[idx].name} got +350 PTS and every other team got +100 PTS!`
+          };
+        }
+      }
     ];
+
     const difficult: Outcome[] = [
       ...medium,
-      { id: "sub500", text: "-500 points", color: "bg-red-700", action: (t: Team[], idx: number) => { t[idx].score -= 500; return t; } },
-      { id: "minus_all_team", text: "Bomb All Teams -100", color: "bg-slate-800", action: (t: Team[]) => { t.forEach(item => item.score -= 100); return t; } },
-      { id: "minus_10_percent", text: "-10% Points", color: "bg-orange-500", action: (t: Team[], idx: number) => { t[idx].score -= Math.floor(Math.max(0, t[idx].score) * 0.10); return t; } },
+      makeSimpleOutcome("add1000", "+1,000 MEGA JACKPOT!!", "Ultimate Diamond Vault Unlocked!", "🎰", "jackpot", "from-yellow-400 via-amber-500 to-red-500", "+1000", 1000),
+      makeSimpleOutcome("sub500", "-500 CURSED SKULL!", "Ancient Curse Drains Your Vault!", "💀", "bomb", "from-slate-800 via-rose-900 to-black", "-500", -500),
+      {
+        id: "nuke_all",
+        text: "METEOR STRIKE: ALL -200!",
+        subtitle: "Every team on the board loses 200 points!",
+        icon: "☄️",
+        category: "bomb",
+        color: "from-orange-600 via-red-700 to-slate-900",
+        badgeText: "ALL -200",
+        execute: (t) => {
+          const deltas: OutcomeResult['deltas'] = {};
+          const updated = t.map((team) => {
+            deltas[team.id] = { amount: -200, label: "-200 METEOR!", isPositive: false };
+            return { ...team, score: team.score - 200 };
+          });
+          return {
+            teams: updated,
+            deltas,
+            summaryText: `Meteor Strike hit the arena! All teams lost 200 points!`
+          };
+        }
+      },
+      {
+        id: "robin_hood",
+        text: "ROBIN HOOD: DRAIN LEADER!",
+        subtitle: "Takes 300 PTS from 1st Place and gives to you!",
+        icon: "🏹",
+        category: "heist",
+        color: "from-emerald-600 via-green-600 to-teal-700",
+        badgeText: "ROBIN HOOD",
+        execute: (t, idx) => {
+          let leaderIdx = 0;
+          t.forEach((team, i) => {
+            if (team.score > t[leaderIdx].score) leaderIdx = i;
+          });
+          if (leaderIdx === idx || t.length === 1) {
+            const updated = t.map((team, i) => i === idx ? { ...team, score: team.score + 300 } : { ...team });
+            return {
+              teams: updated,
+              deltas: { [t[idx].id]: { amount: 300, label: "+300 HERO!", isPositive: true } },
+              summaryText: `${t[idx].name} is already in the lead and claimed +300 Hero Points!`
+            };
+          }
+          const updated = t.map((team, i) => {
+            if (i === idx) return { ...team, score: team.score + 300 };
+            if (i === leaderIdx) return { ...team, score: team.score - 300 };
+            return { ...team };
+          });
+          return {
+            teams: updated,
+            deltas: {
+              [t[idx].id]: { amount: 300, label: "+300 ROBIN HOOD!", isPositive: true },
+              [t[leaderIdx].id]: { amount: -300, label: "-300 DRAINED!", isPositive: false }
+            },
+            summaryText: `${t[idx].name} drained 300 points from 1st-place leader ${t[leaderIdx].name}!`
+          };
+        }
+      }
     ];
 
     if (difficulty === 'normal') return normal;
@@ -642,52 +1124,123 @@ export function MysteryBox({
     return difficult;
   };
 
-  const handleExecuteDecision = (targetIdx: number) => {
-    setTargetTeamIdx(targetIdx);
-    const outcomes = getOutcomesList();
-    const outcome = outcomes[Math.floor(Math.random() * outcomes.length)];
-    setCurrentOutcome(outcome);
+  // Apply Outcome & Trigger Live Scoreboard Popups + Audio
+  const applyOutcomeToTeams = (outcome: Outcome, receiverIdx: number, chosenTargetIdx?: number) => {
+    const beforeScore = teams[receiverIdx]?.score ?? 0;
+    const result = outcome.execute(teams, receiverIdx, chosenTargetIdx);
+    const afterScore = result.teams[receiverIdx]?.score ?? beforeScore;
 
-    const isPositive = !outcome.id.startsWith("sub") && !outcome.id.startsWith("minus");
-    if (outcome.id.includes("bomb") || outcome.id.startsWith("sub500")) {
+    setTeams(result.teams);
+    setOutcomeSummary(result.summaryText);
+    setOutcomeBeforeAfter({
+      teamName: teams[receiverIdx]?.name || "Team",
+      before: beforeScore,
+      after: afterScore,
+      delta: afterScore - beforeScore
+    });
+
+    // Trigger floating live deltas for all affected teams
+    Object.entries(result.deltas).forEach(([teamIdStr, d]) => {
+      triggerScoreDeltaPopup(Number(teamIdStr), d.label, d.isPositive);
+    });
+
+    // Play appropriate dramatic outcome sound
+    const mainDelta = afterScore - beforeScore;
+    if (outcome.category === 'bomb' || outcome.id.startsWith('sub500')) {
       playSound('bomb');
-    } else if (outcome.id.startsWith("swap") || outcome.id.startsWith("steal")) {
+      setCelebration('lose');
+    } else if (outcome.category === 'trap' || mainDelta < 0) {
+      playSound('lose');
+      setTimeout(() => playSound('point_deduct'), 200);
+      setCelebration('lose');
+    } else if (outcome.category === 'heist') {
       playSound('steal_swap');
+      setTimeout(() => playSound('coin_add'), 240);
+      setCelebration('win');
+    } else if (outcome.category === 'jackpot' || mainDelta >= 500) {
+      playSound('jackpot');
+      setTimeout(() => playSound('coin_add'), 250);
+      setCelebration('jackpot');
     } else {
-      playSound(isPositive ? 'win' : 'lose');
+      playSound('win');
+      setTimeout(() => playSound('coin_add'), 200);
+      setCelebration('win');
     }
-    setCelebration(isPositive ? 'win' : 'lose');
-    setTimeout(() => setCelebration(null), 3000);
 
-    if (outcome.requiresTarget && teams.length > 1) {
-      setModalStep('target_selection');
-    } else {
-      setTeams(prev => {
-        const updated = [...prev];
-        return outcome.action(updated, targetIdx);
-      });
-      if (activeBoxNum !== null && !openedBoxes.includes(activeBoxNum)) {
+    setTimeout(() => setCelebration(null), 3200);
+
+    if (activeBoxNum !== null) {
+      if (!openedBoxes.includes(activeBoxNum)) {
         setOpenedBoxes(prev => [...prev, activeBoxNum]);
       }
-      setModalStep('reveal');
+      setBoxRecords(prev => ({
+        ...prev,
+        [activeBoxNum]: {
+          icon: outcome.icon,
+          label: outcome.badgeText,
+          isPositive: mainDelta >= 0,
+          teamName: teams[receiverIdx]?.name
+        }
+      }));
     }
-  };
 
-  const handleTargetSelection = (targetIdx: number) => {
-    if (currentOutcome && targetTeamIdx !== null) {
-      setTeams(prev => {
-        const updated = [...prev];
-        return currentOutcome.action(updated, targetTeamIdx, targetIdx);
-      });
-    }
-    if (activeBoxNum !== null && !openedBoxes.includes(activeBoxNum)) {
-      setOpenedBoxes(prev => [...prev, activeBoxNum]);
-    }
     setModalStep('reveal');
   };
 
+  // Exciting Mystery Unboxing Spin before landing on Outcome
+  const handleExecuteDecision = (receiverIdx: number) => {
+    setTargetTeamIdx(receiverIdx);
+    const outcomes = getOutcomesList();
+    const chosenOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
+    setCurrentOutcome(chosenOutcome);
+
+    // Start 0.95s unboxing reel spin
+    setModalStep('unboxing');
+    let ticks = 0;
+    const maxTicks = 9;
+    const spinInterval = setInterval(() => {
+      ticks++;
+      playSound('roulette_tick');
+      const randomPreview = outcomes[(ticks * 3 + Math.floor(Math.random() * outcomes.length)) % outcomes.length];
+      setUnboxPreviewItem({
+        icon: randomPreview.icon,
+        text: randomPreview.text,
+        color: randomPreview.color
+      });
+
+      if (ticks >= maxTicks) {
+        clearInterval(spinInterval);
+        setUnboxPreviewItem({
+          icon: chosenOutcome.icon,
+          text: chosenOutcome.text,
+          color: chosenOutcome.color
+        });
+
+        setTimeout(() => {
+          if (chosenOutcome.requiresTarget && teams.length > 2) {
+            playSound('suspense');
+            setModalStep('target_selection');
+          } else if (chosenOutcome.requiresTarget && teams.length === 2) {
+            const autoOtherTeam = (receiverIdx + 1) % 2;
+            applyOutcomeToTeams(chosenOutcome, receiverIdx, autoOtherTeam);
+          } else {
+            applyOutcomeToTeams(chosenOutcome, receiverIdx);
+          }
+        }, 220);
+      }
+    }, 95);
+  };
+
+  const handleTargetSelection = (chosenTargetIdx: number) => {
+    if (currentOutcome && targetTeamIdx !== null) {
+      applyOutcomeToTeams(currentOutcome, targetTeamIdx, chosenTargetIdx);
+    }
+  };
+
   const handleCloseReveal = () => {
+    playSound('click');
     setActiveBoxNum(null);
+    setAnswerResult(null);
     if (teams.length > 1) {
       setCurrentTeamIdx((currentTeamIdx + 1) % teams.length);
     }
@@ -695,32 +1248,35 @@ export function MysteryBox({
 
   const isGameOver = openedBoxes.length >= activeQuiz.questions.length && activeBoxNum === null && screen === 'game';
 
+  // Find current 1st place team ID for crown indicator
+  const highestScore = teams.length > 0 ? Math.max(...teams.map(t => t.score)) : 0;
+
   // --- THEME ATTRIBUTES ---
   const getThemeSetupBg = () => {
-    if (selectedTheme === 'theme-ocean') return 'from-sky-600/90 to-cyan-600/90 dark:from-sky-800/90 dark:to-cyan-900/90';
-    if (selectedTheme === 'theme-space') return 'from-slate-900/90 to-indigo-950/90';
-    if (selectedTheme === 'theme-jungle') return 'from-green-600/90 to-emerald-400/90 dark:from-green-900/90 dark:to-emerald-800/90';
-    if (selectedTheme === 'theme-sunset') return 'from-orange-400/90 to-yellow-300/90 dark:from-orange-800/90 dark:to-yellow-700/90';
-    if (selectedTheme === 'theme-royal') return 'from-purple-900/90 to-indigo-950/90';
-    return 'from-sky-400/90 to-blue-200/90 dark:from-sky-900/90 dark:to-blue-950/90';
+    if (selectedTheme === 'theme-ocean') return 'from-sky-700 via-cyan-800 to-slate-950';
+    if (selectedTheme === 'theme-space') return 'from-slate-900 via-indigo-950 to-black';
+    if (selectedTheme === 'theme-jungle') return 'from-emerald-800 via-green-900 to-slate-950';
+    if (selectedTheme === 'theme-sunset') return 'from-orange-600 via-rose-800 to-slate-950';
+    if (selectedTheme === 'theme-royal') return 'from-purple-900 via-indigo-950 to-slate-950';
+    return 'from-blue-600 via-indigo-800 to-slate-950';
   };
 
   const getThemeGameBg = () => {
     if (selectedTheme === 'theme-ocean') return 'bg-gradient-to-b from-sky-900 via-cyan-950 to-slate-950';
-    if (selectedTheme === 'theme-space') return 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900 via-slate-900 to-black';
-    if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-green-950 via-emerald-900 to-green-950';
-    if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-b from-amber-950 via-orange-950 to-slate-950';
+    if (selectedTheme === 'theme-space') return 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-black';
+    if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-green-950 via-emerald-900 to-slate-950';
+    if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-b from-amber-950 via-rose-950 to-slate-950';
     if (selectedTheme === 'theme-royal') return 'bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-950';
     return 'bg-gradient-to-b from-sky-900 via-blue-950 to-slate-950';
   };
 
   const getThemeBoxClass = () => {
-    if (selectedTheme === 'theme-ocean') return 'bg-gradient-to-br from-cyan-500 to-blue-600 border-cyan-200';
-    if (selectedTheme === 'theme-space') return 'bg-gradient-to-br from-indigo-500 to-purple-600 border-indigo-300';
-    if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-emerald-500 to-green-600 border-green-300';
-    if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-br from-amber-500 to-orange-600 border-yellow-200';
-    if (selectedTheme === 'theme-royal') return 'bg-gradient-to-br from-purple-500 via-indigo-500 to-pink-600 border-amber-300';
-    return 'bg-gradient-to-br from-amber-500 via-orange-500 to-yellow-500 border-amber-200';
+    if (selectedTheme === 'theme-ocean') return 'bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-700 border-cyan-200/80';
+    if (selectedTheme === 'theme-space') return 'bg-gradient-to-br from-indigo-500 via-purple-600 to-slate-900 border-indigo-300/80';
+    if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-emerald-400 via-green-500 to-teal-700 border-emerald-200/80';
+    if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 border-yellow-200/80';
+    if (selectedTheme === 'theme-royal') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-purple-700 border-amber-200/90';
+    return 'bg-gradient-to-br from-amber-400 via-orange-500 to-yellow-600 border-amber-200/80';
   };
 
   return (
@@ -735,212 +1291,265 @@ export function MysteryBox({
         />
       )}
 
-      {/* 2. SETUP SCREEN (EXACT BUBBLE POP SETUP SCREEN DESIGN) */}
+      {/* 2. SETUP SCREEN (REDESIGNED, COMPACT & NO CLIPPING) */}
       {screen === 'setup' && (
-        <div className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-6 md:p-8 overflow-y-auto backdrop-blur-sm transition-colors duration-1000 bg-gradient-to-b ${getThemeSetupBg()}`}>
-          {/* Immersive Background Elements from Bubble Pop */}
-          <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-            <div className="absolute top-10 left-10 w-32 h-32 bg-white/20 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-20 right-20 w-48 h-48 bg-blue-300/30 rounded-full blur-3xl"></div>
-            {/* Clouds */}
-            <div className="absolute top-20 left-[10%] opacity-80 animate-float" style={{ animationDelay: '0s' }}>
-              <div className="w-24 h-8 bg-white rounded-full absolute top-4 left-4"></div>
-              <div className="w-16 h-16 bg-white rounded-full absolute top-0 left-8"></div>
-              <div className="w-12 h-12 bg-white rounded-full absolute top-2 left-2"></div>
-            </div>
-            <div className="absolute top-40 right-[15%] opacity-60 animate-float" style={{ animationDelay: '2s' }}>
-              <div className="w-32 h-10 bg-white rounded-full absolute top-6 left-6"></div>
-              <div className="w-20 h-20 bg-white rounded-full absolute top-0 left-10"></div>
-            </div>
-            {/* Floating Bubbles */}
-            {Array.from({ length: 15 }).map((_, i) => (
-              <div 
-                key={i} 
-                className="absolute rounded-full border border-white/40 bg-gradient-to-tr from-white/10 to-white/30 backdrop-blur-[2px] shadow-[inset_0_0_10px_rgba(255,255,255,0.5)] animate-float-up"
-                style={{
-                  width: `${Math.random() * 40 + 20}px`,
-                  height: `${Math.random() * 40 + 20}px`,
-                  left: `${Math.random() * 100}%`,
-                  bottom: `-${Math.random() * 20 + 10}%`,
-                  animationDuration: `${Math.random() * 10 + 10}s`,
-                  animationDelay: `${Math.random() * 5}s`
-                }}
-              >
-                <div className="absolute top-[15%] left-[20%] w-1/4 h-1/4 bg-white/60 rounded-full blur-[1px]"></div>
-              </div>
-            ))}
+        <div className={`min-h-screen w-full flex flex-col justify-between p-4 sm:p-6 md:p-8 overflow-y-auto transition-colors duration-700 bg-gradient-to-br ${getThemeSetupBg()}`}>
+          {/* Ambient Glows */}
+          <div className="fixed inset-0 pointer-events-none overflow-hidden">
+            <div className="absolute -top-20 -left-20 w-96 h-96 bg-amber-400/15 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"></div>
           </div>
 
-          <div className="relative z-10 flex flex-col items-center w-full max-w-7xl my-auto py-6">
-            <h2 className="text-6xl sm:text-7xl font-black mb-12 text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-100 drop-shadow-[0_4px_4px_rgba(0,0,0,0.1)] text-center tracking-tight" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.5)' }}>
-              Mystery Box
-            </h2>
+          <div className="relative z-10 flex flex-col items-center w-full max-w-6xl mx-auto my-auto py-2">
+            {/* Top Bar Navigation + Title */}
+            <div className="w-full flex flex-wrap items-center justify-between gap-4 mb-6">
+              <button 
+                onClick={() => onViewChange('games')} 
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md text-sm font-bold text-white border border-white/20 cursor-pointer transition-all flex items-center gap-2"
+              >
+                <ArrowLeft size={18} /> Back to Games
+              </button>
 
-            <div className="flex flex-col xl:flex-row gap-6 w-full justify-center items-stretch relative z-10">
-              {/* Left / Main Card: Players & Settings */}
-              <div className="flex-1 w-full max-w-2xl bg-white/10 dark:bg-black/20 backdrop-blur-md rounded-[2rem] border border-white/20 p-6 sm:p-8 shadow-2xl flex flex-col items-center">
-                {/* Solo vs Teams Mode Toggle */}
-                <div className="flex gap-4 mb-6 w-full justify-center">
-                  <button
-                    onClick={() => {
-                      playSound('click');
-                      setNumPlayers(1);
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-2xl border border-white/20 transition-all duration-300 cursor-pointer ${numPlayers === 1 ? 'bg-blue-500/40 border-blue-400 scale-[1.02] shadow-[0_0_25px_rgba(59,130,246,0.4)]' : 'bg-black/20 hover:bg-white/10'}`}
-                  >
-                    <User className="w-7 h-7 text-white" />
-                    <span className="text-white font-black text-xl">Solo (1 Player)</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      playSound('click');
-                      setNumPlayers(prev => prev === 1 ? 2 : prev);
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-2xl border border-white/20 transition-all duration-300 cursor-pointer ${numPlayers > 1 ? 'bg-gradient-to-r from-red-500/40 to-purple-500/40 border-amber-400 scale-[1.02] shadow-[0_0_25px_rgba(239,68,68,0.4)]' : 'bg-black/20 hover:bg-white/10'}`}
-                  >
-                    <Users className="w-7 h-7 text-white" />
-                    <span className="text-white font-black text-xl">Teams ({Math.max(2, numPlayers)})</span>
-                  </button>
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30 border border-white/40 text-2xl">
+                  🎁
                 </div>
+                <div>
+                  <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-none">
+                    Mystery Box
+                  </h2>
+                  <p className="text-xs text-amber-200/80 font-semibold mt-0.5">
+                    {activeQuiz.title || activeQuiz.topic || "Interactive Classroom Game Show"} · {activeQuiz.questions.length} Boxes
+                  </p>
+                </div>
+              </div>
 
-                {/* Team Count Selector & Presets (when Teams selected) */}
-                {numPlayers > 1 && (
-                  <div className="w-full mb-6 bg-black/20 p-4 rounded-2xl border border-white/20 flex flex-col gap-3">
-                    <div className="flex justify-between items-center text-white">
-                      <span className="font-extrabold text-sm uppercase tracking-wider text-amber-300">Teams Count:</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            playSound('click');
-                            setNumPlayers(Math.max(2, numPlayers - 1));
-                          }}
-                          disabled={numPlayers <= 2}
-                          className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-30 text-white font-bold flex items-center justify-center transition-all cursor-pointer"
-                          title="Decrease teams"
-                        >
-                          <Minus size={16} />
-                        </button>
-                        <span className="font-black text-xl text-white px-2">{numPlayers} Teams</span>
-                        <button
-                          onClick={() => {
-                            playSound('click');
-                            setNumPlayers(Math.min(8, numPlayers + 1));
-                          }}
-                          disabled={numPlayers >= 8}
-                          className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-30 text-white font-bold flex items-center justify-center transition-all cursor-pointer"
-                          title="Increase teams"
-                        >
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Quick Count Presets 2 to 8 */}
-                    <div className="grid grid-cols-7 gap-1.5">
-                      {[2, 3, 4, 5, 6, 7, 8].map(count => (
-                        <button
-                          key={count}
-                          onClick={() => {
-                            playSound('click');
-                            setNumPlayers(count);
-                          }}
-                          className={`py-2 rounded-xl font-black text-sm transition-all cursor-pointer ${numPlayers === count ? 'bg-amber-400 text-slate-900 shadow-md scale-105' : 'bg-white/15 text-white hover:bg-white/25'}`}
-                        >
-                          {count}
-                        </button>
-                      ))}
-                    </div>
+              <button 
+                onClick={() => setScreen('editor')} 
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md text-sm font-bold text-white border border-white/20 cursor-pointer transition-all flex items-center gap-2"
+              >
+                <Edit3 size={18} /> Edit Questions ({activeQuiz.questions.length})
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-stretch">
+              {/* Left / Main Card: Players & Game Mechanics (7 Cols) */}
+              <div className="lg:col-span-7 bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 p-5 sm:p-7 shadow-2xl flex flex-col justify-between">
+                <div>
+                  {/* Solo vs Teams Mode Toggle */}
+                  <div className="grid grid-cols-2 gap-3 mb-5">
+                    <button
+                      onClick={() => {
+                        playSound('click');
+                        setNumPlayers(1);
+                      }}
+                      className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                        numPlayers === 1
+                          ? 'bg-gradient-to-r from-blue-500 to-cyan-500 border-white/60 text-white shadow-lg shadow-blue-500/30 scale-[1.01]'
+                          : 'bg-black/25 border-white/15 text-white/80 hover:bg-white/10'
+                      }`}
+                    >
+                      <User className="w-5 h-5" />
+                      <span className="font-black text-base sm:text-lg">Solo (1 Player)</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        playSound('click');
+                        setNumPlayers(prev => prev === 1 ? 2 : prev);
+                      }}
+                      className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                        numPlayers > 1
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-500 border-white/60 text-slate-950 shadow-lg shadow-amber-500/30 scale-[1.01]'
+                          : 'bg-black/25 border-white/15 text-white/80 hover:bg-white/10'
+                      }`}
+                    >
+                      <Users className="w-5 h-5" />
+                      <span className="font-black text-base sm:text-lg">Teams ({Math.max(2, numPlayers)})</span>
+                    </button>
                   </div>
-                )}
 
-                {/* Editable Team Names List */}
-                <div className="w-full flex flex-col gap-3 max-h-56 overflow-y-auto pr-1 mb-6 custom-scrollbar">
-                  {Array.from({ length: numPlayers }).map((_, i) => {
-                    const cfg = DEFAULT_TEAM_CONFIGS[i % DEFAULT_TEAM_CONFIGS.length];
-                    return (
-                      <div key={i} className="flex gap-3 items-center bg-black/20 p-2.5 rounded-2xl border border-white/15">
-                        <div className={`w-11 h-11 rounded-xl ${cfg.bg} text-white flex items-center justify-center font-black text-lg shadow-md shrink-0`}>
-                          {cfg.icon || (i + 1)}
-                        </div>
-                        <input 
-                          type="text" 
-                          value={playerNames[i] ?? ""} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setPlayerNames(prev => {
-                              const updated = [...prev];
-                              updated[i] = val;
-                              return updated;
-                            });
-                          }} 
-                          className="flex-1 bg-transparent text-white font-bold placeholder-white/50 border-none outline-none text-base px-2" 
-                          placeholder={numPlayers === 1 ? "Player 1 Name" : `Team ${i + 1} Name`} 
-                        />
-                        {numPlayers > 2 && (
+                  {/* Team Count Selector & Presets */}
+                  {numPlayers > 1 && (
+                    <div className="w-full mb-4 bg-black/25 p-3.5 rounded-2xl border border-white/15 flex flex-col gap-2.5">
+                      <div className="flex justify-between items-center text-white">
+                        <span className="font-extrabold text-xs uppercase tracking-wider text-amber-300">Number of Teams</span>
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
                               playSound('click');
-                              setPlayerNames(prev => prev.filter((_, idx) => idx !== i));
-                              setNumPlayers(prev => Math.max(2, prev - 1));
+                              setNumPlayers(Math.max(2, numPlayers - 1));
                             }}
-                            className="p-2 text-white/50 hover:text-red-400 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-                            title="Remove team"
+                            disabled={numPlayers <= 2}
+                            className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-30 text-white font-bold flex items-center justify-center transition-all cursor-pointer"
                           >
-                            <Trash2 size={16} />
+                            <Minus size={14} />
                           </button>
-                        )}
+                          <span className="font-black text-base text-white px-1.5 tabular-nums">{numPlayers} Teams</span>
+                          <button
+                            onClick={() => {
+                              playSound('click');
+                              setNumPlayers(Math.min(8, numPlayers + 1));
+                            }}
+                            disabled={numPlayers >= 8}
+                            className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-30 text-white font-bold flex items-center justify-center transition-all cursor-pointer"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-
-                {numPlayers < 8 && (
-                  <button
-                    onClick={() => {
-                      playSound('click');
-                      setNumPlayers(prev => Math.min(8, prev + 1));
-                    }}
-                    className="mb-6 flex items-center justify-center gap-2 py-2 px-5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-sm border border-white/20 transition-all cursor-pointer hover:scale-105 active:scale-95"
-                  >
-                    <Plus size={16} /> Add Team ({numPlayers + 1})
-                  </button>
-                )}
-
-                <div className="w-full max-w-md flex flex-col gap-4 mb-8">
-                  <div className="bg-black/20 p-4 rounded-2xl border border-white/20 flex flex-col gap-4">
-                    <div className="flex justify-between items-center text-white">
-                      <span className="font-bold">Difficulty</span>
-                      <div className="flex gap-2">
-                        <button onClick={() => setDifficulty('normal')} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors cursor-pointer ${difficulty === 'normal' ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Normal</button>
-                        <button onClick={() => setDifficulty('medium')} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors cursor-pointer ${difficulty === 'medium' ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Medium</button>
-                        <button onClick={() => setDifficulty('difficult')} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors cursor-pointer ${difficulty === 'difficult' ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Difficult</button>
+                      <div className="grid grid-cols-7 gap-1.5">
+                        {[2, 3, 4, 5, 6, 7, 8].map(count => (
+                          <button
+                            key={count}
+                            onClick={() => {
+                              playSound('click');
+                              setNumPlayers(count);
+                            }}
+                            className={`py-1.5 rounded-xl font-black text-sm transition-all cursor-pointer ${
+                              numPlayers === count
+                                ? 'bg-amber-400 text-slate-950 shadow-md scale-105'
+                                : 'bg-white/10 text-white hover:bg-white/20'
+                            }`}
+                          >
+                            {count}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex justify-between items-center text-white">
-                      <span className="font-bold">Sound Effects</span>
-                      <button onClick={() => setIsMuted(!isMuted)} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${!isMuted ? 'bg-blue-500' : 'bg-white/30'}`}>
-                        <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${!isMuted ? 'left-7' : 'left-1'}`}></div>
+                  )}
+
+                  {/* Editable Team Names Grid */}
+                  <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto pr-1 mb-4 custom-scrollbar">
+                    {Array.from({ length: numPlayers }).map((_, i) => {
+                      const cfg = DEFAULT_TEAM_CONFIGS[i % DEFAULT_TEAM_CONFIGS.length];
+                      return (
+                        <div key={i} className="flex gap-2.5 items-center bg-black/25 p-2 rounded-xl border border-white/15 focus-within:border-amber-400/70 transition-colors">
+                          <div className={`w-9 h-9 rounded-lg ${cfg.bg} text-white flex items-center justify-center font-black text-base shadow-sm shrink-0`}>
+                            {cfg.icon || (i + 1)}
+                          </div>
+                          <input 
+                            type="text" 
+                            value={playerNames[i] ?? ""} 
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPlayerNames(prev => {
+                                const updated = [...prev];
+                                updated[i] = val;
+                                return updated;
+                              });
+                            }} 
+                            className="flex-1 min-w-0 bg-transparent text-white font-bold placeholder-white/40 border-none outline-none text-sm px-1" 
+                            placeholder={numPlayers === 1 ? "Player Name" : `Team ${i + 1}`} 
+                          />
+                          {numPlayers > 2 && (
+                            <button
+                              onClick={() => {
+                                playSound('click');
+                                setPlayerNames(prev => prev.filter((_, idx) => idx !== i));
+                                setNumPlayers(prev => Math.max(2, prev - 1));
+                              }}
+                              className="p-1.5 text-white/40 hover:text-rose-400 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                              title="Remove team"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Game Rules & Excitement Settings */}
+                  <div className="bg-black/25 p-4 rounded-2xl border border-white/15 flex flex-col gap-3 mb-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-white">
+                      <div>
+                        <span className="font-bold text-sm block">Mystery Box Mode</span>
+                        <span className="text-xs text-white/60">
+                          {difficulty === 'normal' && 'Treasures, 2x Multiplier, Minor Traps & Steal 150'}
+                          {difficulty === 'medium' && 'Adds +500 Jackpot, Score Swap, Pirate Heist & Gift Rain'}
+                          {difficulty === 'difficult' && 'Chaos! +1,000 Mega Jackpot, Robin Hood, Meteor Nuke & Skulls'}
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5 bg-black/30 p-1 rounded-xl border border-white/10 shrink-0">
+                        {[
+                          { id: 'normal', label: 'Normal' },
+                          { id: 'medium', label: 'Exciting' },
+                          { id: 'difficult', label: 'Chaos 🔥' }
+                        ].map((d) => (
+                          <button
+                            key={d.id}
+                            onClick={() => { playSound('click'); setDifficulty(d.id as any); }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                              difficulty === d.id
+                                ? 'bg-amber-400 text-slate-950 shadow'
+                                : 'text-white/75 hover:text-white hover:bg-white/10'
+                            }`}
+                          >
+                            {d.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-white/10 text-white text-xs">
+                      <button
+                        type="button"
+                        onClick={() => { playSound('click'); setAnswerBonusPoints(!answerBonusPoints); }}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                          answerBonusPoints ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100' : 'bg-white/5 border-white/10 text-white/60'
+                        }`}
+                      >
+                        <span className="font-bold">Correct +50 & Streak</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${answerBonusPoints ? 'bg-emerald-400 text-slate-950' : 'bg-white/10'}`}>
+                          {answerBonusPoints ? 'ON' : 'OFF'}
+                        </span>
                       </button>
-                    </div>
-                    <div className="flex justify-between items-center text-white text-sm border-t border-white/10 pt-3">
-                      <span className="font-bold">Boxes (1 to 30)</span>
-                      <span className="bg-white/20 px-3 py-1 rounded-full font-bold">{activeQuiz.questions.length} Questions</span>
+
+                      <button
+                        type="button"
+                        onClick={() => { playSound('click'); setWrongAnswerPenalty(!wrongAnswerPenalty); }}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                          wrongAnswerPenalty ? 'bg-rose-500/20 border-rose-400/50 text-rose-100' : 'bg-white/5 border-white/10 text-white/60'
+                        }`}
+                      >
+                        <span className="font-bold">Wrong -50 Penalty</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${wrongAnswerPenalty ? 'bg-rose-400 text-slate-950' : 'bg-white/10'}`}>
+                          {wrongAnswerPenalty ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsMuted(!isMuted)}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                          !isMuted ? 'bg-blue-500/20 border-blue-400/50 text-blue-100' : 'bg-white/5 border-white/10 text-white/60'
+                        }`}
+                      >
+                        <span className="font-bold">Sound & FX</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${!isMuted ? 'bg-blue-400 text-slate-950' : 'bg-white/10'}`}>
+                          {!isMuted ? 'ON' : 'MUTED'}
+                        </span>
+                      </button>
                     </div>
                   </div>
                 </div>
 
                 <button
                   onClick={handleStartGame}
-                  className="px-12 py-5 bg-gradient-to-r from-blue-500 via-sky-400 to-amber-400 text-white font-black text-2xl rounded-full shadow-[0_0_30px_rgba(59,130,246,0.5)] hover:scale-105 active:scale-95 transition-all w-full max-w-md cursor-pointer tracking-wide"
+                  className="w-full py-4 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-300 hover:via-orange-400 hover:to-rose-400 text-slate-950 font-black text-xl sm:text-2xl rounded-2xl shadow-[0_10px_30px_rgba(245,158,11,0.4)] hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer tracking-wide flex items-center justify-center gap-3"
                 >
-                  START GAME
+                  <Play className="w-6 h-6 fill-slate-950" /> START MYSTERY BOX GAME
                 </button>
               </div>
 
-              {/* Right Column Card: Theme & Study Mode */}
-              <div className="w-full xl:w-96 flex flex-col gap-6">
-                <div className="w-full rounded-[2rem] bg-white/10 dark:bg-black/20 backdrop-blur-md border border-white/20 shadow-2xl p-6 flex flex-col justify-center flex-1">
-                  <h3 className="text-2xl font-black text-white mb-4 text-center drop-shadow-md">Choose Theme</h3>
-                  <div className="grid grid-cols-2 gap-3">
+              {/* Right Column Card: Theme & Study Mode (5 Cols) */}
+              <div className="lg:col-span-5 flex flex-col gap-5">
+                <div className="w-full rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl p-5 sm:p-6 flex flex-col justify-between flex-1">
+                  <div>
+                    <h3 className="text-xl font-black text-white mb-1 text-center">Choose Arena Theme</h3>
+                    <p className="text-xs text-white/60 text-center mb-4">Customize your classroom game board atmosphere</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2.5 my-auto">
                     {[
                       { id: 'theme-sky', name: 'Sky', icon: '☁️' },
                       { id: 'theme-ocean', name: 'Ocean', icon: '🌊' },
@@ -951,8 +1560,12 @@ export function MysteryBox({
                     ].map(t => (
                       <button
                         key={t.id}
-                        onClick={() => setSelectedTheme(t.id)}
-                        className={`py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-all shadow-sm font-bold text-sm cursor-pointer ${selectedTheme === t.id ? 'bg-white text-blue-600 border-2 border-blue-400 scale-105' : 'bg-white/20 text-white border-2 border-transparent hover:bg-white/30'}`}
+                        onClick={() => { playSound('click'); setSelectedTheme(t.id); }}
+                        className={`py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+                          selectedTheme === t.id
+                            ? 'bg-white text-slate-900 border-2 border-amber-400 shadow-lg scale-105'
+                            : 'bg-black/25 text-white border border-white/15 hover:bg-white/15'
+                        }`}
                       >
                         <span className="text-2xl">{t.icon}</span>
                         {t.name}
@@ -961,36 +1574,33 @@ export function MysteryBox({
                   </div>
                 </div>
 
+                {/* Possible Mystery Rewards Preview */}
+                <div className="w-full rounded-3xl bg-black/25 backdrop-blur-xl border border-white/15 p-4 text-white">
+                  <div className="text-xs font-black uppercase tracking-wider text-amber-300 mb-2 flex items-center gap-1.5">
+                    <Sparkles size={14} /> Inside the Mystery Boxes:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-xs font-bold">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/25 border border-emerald-400/40 text-emerald-200">💎 +100 to +1,000 PTS</span>
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/25 border border-amber-400/40 text-amber-200">⚡ 2x Multiplier</span>
+                    <span className="px-2.5 py-1 rounded-lg bg-purple-500/25 border border-purple-400/40 text-purple-200">🔄 Swap Scores</span>
+                    <span className="px-2.5 py-1 rounded-lg bg-indigo-500/25 border border-indigo-400/40 text-indigo-200">🏴‍☠️ Steal Points</span>
+                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/25 border border-rose-400/40 text-rose-200">💣 Mystery Bombs</span>
+                  </div>
+                </div>
+
                 <button 
                   onClick={handleOpenStudy}
-                  className="group relative w-full h-48 rounded-[2rem] bg-white/10 dark:bg-black/20 backdrop-blur-md border border-white/20 shadow-2xl overflow-hidden transition-all duration-500 hover:scale-105 hover:bg-white/30 hover:-translate-y-1 cursor-pointer flex items-center justify-center p-6 gap-6"
+                  className="group relative w-full rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl overflow-hidden transition-all duration-300 hover:bg-white/20 cursor-pointer flex items-center p-5 gap-4"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5 dark:to-black/20 pointer-events-none"></div>
-                  <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-400/30 rounded-full blur-2xl group-hover:bg-purple-400/50 transition-colors"></div>
-                  <div className="relative z-10 text-7xl transform group-hover:scale-110 group-hover:rotate-12 transition-transform duration-500 drop-shadow-xl">
+                  <div className="text-5xl transform group-hover:scale-110 transition-transform duration-300 drop-shadow-md">
                     📖
                   </div>
-                  <div className="flex flex-col items-start relative z-10 text-left">
-                    <h3 className="text-3xl font-black text-white mb-1 drop-shadow-md">Study Mode</h3>
-                    <p className="text-purple-100 font-medium text-sm">Interactive Quiz & Review!</p>
+                  <div className="flex flex-col items-start text-left">
+                    <h3 className="text-2xl font-black text-white leading-tight">Study & Review Mode</h3>
+                    <p className="text-white/70 font-medium text-xs sm:text-sm">Practice all {activeQuiz.questions.length} questions with instant auto-check</p>
                   </div>
                 </button>
               </div>
-            </div>
-
-            <div className="flex flex-wrap justify-center gap-4 relative z-10 mt-8">
-              <button 
-                onClick={() => onViewChange('games')} 
-                className="px-8 py-4 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-xl font-bold text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-              >
-                <ArrowLeft size={24} /> Back to Games
-              </button>
-              <button 
-                onClick={() => setScreen('editor')} 
-                className="px-8 py-4 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-xl font-bold text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-              >
-                <Edit3 size={24} /> Edit Questions (1-30)
-              </button>
             </div>
           </div>
         </div>
@@ -1002,13 +1612,6 @@ export function MysteryBox({
           id="study-fullscreen-container"
           className={`fixed inset-0 z-50 flex flex-col ${getThemeGameBg()} text-white select-none overflow-hidden`}
         >
-          {/* Animated Ambient Background Elements */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-30">
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
-          </div>
-
-          {/* Top Progress Bar */}
           <div className="w-full h-2 bg-white/10 relative z-20">
             <div 
               className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-400 transition-all duration-500"
@@ -1016,35 +1619,30 @@ export function MysteryBox({
             />
           </div>
 
-          {/* Full Screen Header */}
           <header className="px-6 py-4 bg-white/10 backdrop-blur-md border-b border-white/10 flex justify-between items-center z-20 relative shrink-0">
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => setScreen('setup')} 
-                className="flex items-center gap-2 px-5 py-2.5 bg-white/15 hover:bg-white/25 rounded-2xl font-bold text-white transition-all cursor-pointer hover:scale-105 active:scale-95"
+                className="flex items-center gap-2 px-4 py-2 bg-white/15 hover:bg-white/25 rounded-xl font-bold text-white transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-5 h-5" /> Back to Setup
               </button>
-              <div className="bg-amber-400/20 border border-amber-400/40 px-4 py-2 rounded-2xl text-amber-300 font-extrabold text-sm hidden sm:flex items-center gap-2">
+              <span className="text-amber-300 font-extrabold text-sm hidden sm:inline">
                 📖 Study Mode
-              </div>
+              </span>
             </div>
 
-            {/* Question Counter Pill */}
-            <div className="bg-white/15 px-6 py-2 rounded-full border border-white/20 font-black text-lg text-white shadow-md">
-              Question <span className="text-amber-300 font-black text-xl">{studyIndex + 1}</span> of {activeQuiz.questions.length}
+            <div className="font-black text-lg text-white">
+              Question <span className="text-amber-300 font-black text-xl">{studyIndex + 1}</span> / {activeQuiz.questions.length}
             </div>
 
-            {/* Right Controls */}
             <div className="flex items-center gap-3">
-              {/* Accuracy / Score */}
-              <div className="hidden md:flex items-center gap-2 bg-emerald-500/20 border border-emerald-400/40 px-4 py-2 rounded-2xl text-emerald-300 font-bold text-sm">
+              <div className="hidden md:flex items-center gap-2 text-emerald-300 font-bold text-sm">
                 Score: <span className="font-black text-white">{studyCorrectCount}/{studyTotalAnswered}</span> ({studyAccuracy}%)
               </div>
               <button 
                 onClick={() => setIsMuted(!isMuted)} 
-                className="p-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition-colors cursor-pointer"
-                title="Toggle Sound"
+                className="p-2.5 bg-white/15 hover:bg-white/25 text-white rounded-xl transition-colors cursor-pointer"
               >
                 {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
@@ -1052,40 +1650,34 @@ export function MysteryBox({
             </div>
           </header>
 
-          {/* Main Question & Interactive Options Section (Full Viewport) */}
-          <main className="flex-1 flex flex-col justify-center items-center p-6 md:p-12 max-w-5xl mx-auto w-full z-10 overflow-y-auto custom-scrollbar">
+          <main className="flex-1 flex flex-col justify-center items-center p-6 md:p-10 max-w-5xl mx-auto w-full z-10 overflow-y-auto custom-scrollbar">
             {activeQuiz.questions.length > 0 ? (
               <div className="w-full flex flex-col items-center my-auto">
-                {/* Question Badge */}
-                <div className="mb-4">
-                  <span className="px-5 py-2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 font-black text-sm uppercase tracking-widest shadow-lg">
-                    Question {studyIndex + 1}
-                  </span>
-                </div>
+                <span className="text-amber-400 font-black text-sm uppercase tracking-widest mb-3">
+                  Question {studyIndex + 1}
+                </span>
 
-                {/* Big Question Text */}
-                <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white text-center leading-tight mb-10 max-w-4xl drop-shadow-md break-words">
+                <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white text-center leading-tight mb-8 max-w-4xl break-words">
                   {activeQuiz.questions[studyIndex]?.text}
                 </h2>
 
-                {/* Options Grid (A, B, C, D) Clickable & Answer Checked */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 w-full max-w-4xl mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-4xl mb-8">
                   {activeQuiz.questions[studyIndex]?.options.map((opt, i) => {
                     if (!opt || opt.trim() === '') return null;
-                    const letter = ['A', 'B', 'C', 'D'][i] || (i + 1);
+                    const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
                     const isSelected = studySelectedOption === i;
                     const isCorrectAnswer = i === activeQuiz.questions[studyIndex].answerIndex;
                     const hasAnswered = studySelectedOption !== null;
 
-                    let btnStyle = "bg-white/10 hover:bg-white/20 border-white/20 text-white hover:scale-[1.02] shadow-lg hover:border-amber-400";
+                    let btnStyle = "bg-white/10 hover:bg-white/20 border-white/20 text-white hover:border-amber-400";
 
                     if (hasAnswered) {
                       if (isCorrectAnswer) {
-                        btnStyle = "bg-emerald-500 border-emerald-300 text-white shadow-[0_0_35px_rgba(16,185,129,0.6)] scale-[1.03] z-10";
+                        btnStyle = "bg-emerald-500 border-emerald-300 text-white shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-[1.02] z-10";
                       } else if (isSelected && !isCorrectAnswer) {
-                        btnStyle = "bg-rose-500 border-rose-300 text-white shadow-[0_0_25px_rgba(244,63,94,0.5)] scale-[0.98]";
+                        btnStyle = "bg-rose-500 border-rose-300 text-white animate-shake";
                       } else {
-                        btnStyle = "bg-white/5 border-white/10 text-white/40 opacity-40 cursor-not-allowed";
+                        btnStyle = "bg-white/5 border-white/10 text-white/40 opacity-40";
                       }
                     }
 
@@ -1094,40 +1686,45 @@ export function MysteryBox({
                         key={i}
                         onClick={() => handleStudyOptionClick(i)}
                         disabled={hasAnswered}
-                        className={`p-6 sm:p-7 rounded-[2rem] text-xl sm:text-2xl font-bold border-4 transition-all duration-300 flex items-center justify-between text-left gap-4 cursor-pointer active:scale-95 ${btnStyle}`}
+                        className={`p-5 sm:p-6 rounded-2xl text-lg sm:text-2xl font-bold border-2 transition-all duration-300 flex items-center justify-between text-left gap-4 cursor-pointer ${btnStyle}`}
                       >
-                        <div className="flex items-center gap-4 flex-1">
-                          <span className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shrink-0 ${hasAnswered && isCorrectAnswer ? 'bg-white text-emerald-600' : hasAnswered && isSelected && !isCorrectAnswer ? 'bg-white text-rose-600' : 'bg-white/20 text-white'}`}>
+                        <div className="flex items-center gap-3.5 flex-1">
+                          <span className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shrink-0 ${
+                            hasAnswered && isCorrectAnswer
+                              ? 'bg-white text-emerald-600'
+                              : hasAnswered && isSelected && !isCorrectAnswer
+                              ? 'bg-white text-rose-600'
+                              : 'bg-white/15 text-white'
+                          }`}>
                             {letter}
                           </span>
                           <span className="flex-1 break-words">{opt}</span>
                         </div>
                         {hasAnswered && isCorrectAnswer && (
-                          <div className="flex items-center gap-1.5 bg-white text-emerald-600 px-3 py-1.5 rounded-full font-black text-sm shrink-0 animate-bounce">
-                            <Check size={18} strokeWidth={3} /> CORRECT
-                          </div>
+                          <span className="flex items-center gap-1 bg-white text-emerald-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
+                            <Check size={16} strokeWidth={3} /> CORRECT
+                          </span>
                         )}
                         {hasAnswered && isSelected && !isCorrectAnswer && (
-                          <div className="flex items-center gap-1.5 bg-white text-rose-600 px-3 py-1.5 rounded-full font-black text-sm shrink-0">
-                            <X size={18} strokeWidth={3} /> INCORRECT
-                          </div>
+                          <span className="flex items-center gap-1 bg-white text-rose-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
+                            <X size={16} strokeWidth={3} /> WRONG
+                          </span>
                         )}
                       </button>
                     );
                   })}
                 </div>
 
-                {/* Instant Feedback & Action Bar */}
                 {studySelectedOption !== null && (
-                  <div className="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 animate-pop-in">
-                    <div className="flex items-center gap-3">
+                  <div className="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 animate-pop-in">
+                    <div>
                       {studySelectedOption === activeQuiz.questions[studyIndex]?.answerIndex ? (
-                        <div className="flex items-center gap-2 text-emerald-300 font-black text-lg">
-                          <span className="text-2xl">🎉</span> Correct! Great job!
+                        <div className="text-emerald-300 font-black text-lg">
+                          🎉 Spot On! Correct Answer!
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 text-rose-300 font-bold text-base sm:text-lg">
-                          <span className="text-2xl">💡</span> Correct Answer: <span className="font-black text-emerald-300 underline">{activeQuiz.questions[studyIndex]?.options[activeQuiz.questions[studyIndex]?.answerIndex]}</span>
+                        <div className="text-rose-200 font-bold text-base">
+                          Correct Answer: <span className="font-black text-emerald-300 underline">{activeQuiz.questions[studyIndex]?.options[activeQuiz.questions[studyIndex]?.answerIndex]}</span>
                         </div>
                       )}
                     </div>
@@ -1135,14 +1732,14 @@ export function MysteryBox({
                       {studySelectedOption !== activeQuiz.questions[studyIndex]?.answerIndex && (
                         <button
                           onClick={handleStudyRetry}
-                          className="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl font-bold text-white transition-all cursor-pointer flex items-center gap-2"
+                          className="px-5 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl font-bold text-white transition-all cursor-pointer flex items-center gap-2"
                         >
-                          <RefreshCw size={18} /> Retry
+                          <RefreshCw size={16} /> Retry
                         </button>
                       )}
                       <button
                         onClick={handleStudyNext}
-                        className="px-8 py-3 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-900 rounded-xl font-black text-lg shadow-lg transition-all cursor-pointer flex items-center gap-2 hover:scale-105 active:scale-95"
+                        className="px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl font-black text-base shadow-lg transition-all cursor-pointer"
                       >
                         {studyIndex < activeQuiz.questions.length - 1 ? 'Next Question →' : 'Finish Study 🏆'}
                       </button>
@@ -1155,27 +1752,24 @@ export function MysteryBox({
             )}
           </main>
 
-          {/* Full Screen Bottom Navigation & Question Jumper */}
-          <footer className="px-6 py-4 bg-white/5 backdrop-blur-md border-t border-white/10 flex justify-between items-center z-20 relative shrink-0">
+          <footer className="px-6 py-3.5 bg-white/5 backdrop-blur-md border-t border-white/10 flex justify-between items-center z-20 relative shrink-0">
             <button
               onClick={handleStudyPrev}
               disabled={studyIndex === 0}
-              className="px-6 py-3 bg-white/15 hover:bg-white/25 disabled:opacity-20 rounded-xl font-bold text-white transition-all cursor-pointer flex items-center gap-2 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 bg-white/15 hover:bg-white/25 disabled:opacity-20 rounded-xl font-bold text-white transition-all cursor-pointer"
             >
               ← Previous
             </button>
 
-            {/* Question Quick Jump Dots */}
             <div className="flex items-center gap-1.5 overflow-x-auto max-w-[60vw] py-1 px-2 custom-scrollbar">
               {activeQuiz.questions.map((_, dotIdx) => {
                 const historyItem = studyHistory[dotIdx];
-                let dotClass = "bg-white/20 text-white/60";
+                let dotClass = "bg-white/15 text-white/60";
                 if (dotIdx === studyIndex) {
-                  dotClass = "bg-amber-400 text-slate-900 scale-110 font-black shadow-md";
+                  dotClass = "bg-amber-400 text-slate-900 scale-110 font-black";
                 } else if (historyItem) {
                   dotClass = historyItem.isCorrect ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
                 }
-
                 return (
                   <button
                     key={dotIdx}
@@ -1183,7 +1777,7 @@ export function MysteryBox({
                       setStudyIndex(dotIdx);
                       setStudySelectedOption(studyHistory[dotIdx]?.selected ?? null);
                     }}
-                    className={`w-8 h-8 rounded-lg font-bold text-xs flex items-center justify-center transition-all cursor-pointer hover:scale-110 shrink-0 ${dotClass}`}
+                    className={`w-8 h-8 rounded-lg font-bold text-xs flex items-center justify-center transition-all cursor-pointer shrink-0 ${dotClass}`}
                   >
                     {dotIdx + 1}
                   </button>
@@ -1193,7 +1787,7 @@ export function MysteryBox({
 
             <button
               onClick={handleStudyNext}
-              className="px-6 py-3 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-900 rounded-xl font-black transition-all cursor-pointer flex items-center gap-2 shadow-md hover:scale-105 active:scale-95"
+              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl font-black transition-all cursor-pointer"
             >
               {studyIndex < activeQuiz.questions.length - 1 ? 'Next →' : 'Finish 🏆'}
             </button>
@@ -1203,20 +1797,20 @@ export function MysteryBox({
 
       {/* 4. MAIN GAMEPLAY SCREEN (NUMBERED MYSTERY BOXES FROM 1 TO 30) */}
       {screen === 'game' && (
-        <div className={`min-h-screen ${getThemeGameBg()} pb-16 ${celebration === 'lose' ? 'animate-shake' : ''}`}>
+        <div className={`min-h-screen ${getThemeGameBg()} pb-16 relative overflow-x-hidden ${celebration === 'lose' ? 'animate-shake' : ''}`}>
           {/* Confetti Explosion Visual Effect */}
-          {celebration === 'win' && (
-            <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-              {Array.from({ length: 45 }).map((_, i) => (
+          {(celebration === 'win' || celebration === 'jackpot') && (
+            <div className="fixed inset-0 pointer-events-none z-[110] overflow-hidden">
+              {Array.from({ length: celebration === 'jackpot' ? 75 : 45 }).map((_, i) => (
                 <div
                   key={i}
-                  className="absolute w-3 h-3 rounded-sm animate-confetti-fall"
+                  className="absolute w-3.5 h-3.5 rounded-sm animate-confetti-fall"
                   style={{
-                    left: `${(i * 2.3) % 100}%`,
+                    left: `${(i * 1.9) % 100}%`,
                     top: `-20px`,
-                    backgroundColor: ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444'][i % 6],
-                    animationDuration: `${2 + (i % 3) * 0.7}s`,
-                    animationDelay: `${(i % 10) * 0.12}s`,
+                    backgroundColor: ['#fbbf24', '#10b981', '#38bdf8', '#f472b6', '#a855f7', '#fb7185'][i % 6],
+                    animationDuration: `${1.8 + (i % 4) * 0.55}s`,
+                    animationDelay: `${(i % 8) * 0.08}s`,
                     transform: `rotate(${i * 35}deg)`,
                   }}
                 />
@@ -1226,105 +1820,211 @@ export function MysteryBox({
 
           {/* Bomb / Negative Impact Visual Effect */}
           {celebration === 'lose' && (
-            <div className="fixed inset-0 pointer-events-none z-50 bg-red-600/20 animate-pulse border-8 border-red-500/50"></div>
+            <div className="fixed inset-0 pointer-events-none z-[110] bg-rose-600/20 animate-pulse border-8 border-rose-500/60"></div>
           )}
 
-          <header className="p-4 sm:p-6 bg-white/10 backdrop-blur-md shadow-lg border-b border-white/10 flex flex-col xl:flex-row justify-between items-center gap-4 z-10 relative">
-            <div className="flex items-center gap-3">
-              <button onClick={() => setScreen('setup')} className="p-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition-colors cursor-pointer" title="Return to Setup">
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <div className="bg-amber-400 p-2.5 rounded-2xl shadow-lg shadow-amber-400/40">
-                <Sparkles className="w-7 h-7 text-white" />
+          {/* Live Score Feed Toast Banner */}
+          {liveScoreFeed && (
+            <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[115] pointer-events-none animate-pop-in">
+              <div className={`px-6 py-2.5 rounded-2xl font-black text-lg sm:text-xl shadow-2xl border-2 flex items-center gap-2 ${
+                liveScoreFeed.isPositive
+                  ? 'bg-emerald-500 text-white border-emerald-200 shadow-emerald-500/40'
+                  : 'bg-rose-600 text-white border-rose-300 shadow-rose-600/40'
+              }`}>
+                <span>{liveScoreFeed.isPositive ? '⚡' : '💥'}</span>
+                <span>{liveScoreFeed.text}</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-white drop-shadow-sm">Mystery Box</h1>
+            </div>
+          )}
+
+          {/* Game Header & Live Interactive Scoreboard */}
+          <header className="px-4 py-3 sm:px-6 sm:py-4 bg-slate-950/50 backdrop-blur-xl shadow-2xl border-b border-white/10 flex flex-col xl:flex-row justify-between items-center gap-4 z-30 relative">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setScreen('setup')}
+                className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors cursor-pointer"
+                title="Return to Setup"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30 text-xl">
+                🎁
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-black text-white leading-none">Mystery Box</h1>
+                <p className="text-xs text-white/60 font-semibold mt-0.5">
+                  {activeQuiz.questions.length - openedBoxes.length} of {activeQuiz.questions.length} Boxes Left
+                </p>
+              </div>
             </div>
 
-            {/* Teams Header Scoreboard */}
-            <div className="flex items-center justify-center gap-1.5 sm:gap-3 bg-white/5 p-1.5 sm:p-2 rounded-2xl border border-white/10 flex-wrap max-w-4xl">
+            {/* LIVE TEAM SCOREBOARD WITH FLOATING DELTAS & LIVE +/- BUTTONS */}
+            <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap max-w-5xl">
               {teams.map((t, idx) => {
                 const isCurrent = currentTeamIdx === idx;
+                const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
                 const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
+                const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
+
                 return (
                   <div 
                     key={t.id}
-                    className={`px-2 sm:px-5 py-1 sm:py-2 rounded-2xl border-2 sm:border-4 transition-all duration-300 min-w-[76px] sm:min-w-[130px] text-center relative ${
+                    onClick={() => {
+                      playSound('click');
+                      setCurrentTeamIdx(idx);
+                    }}
+                    title="Click to set active turn, or use -/+ buttons for live points"
+                    className={`group relative px-3 sm:px-4 py-2 rounded-2xl border-2 transition-all duration-300 min-w-[125px] sm:min-w-[155px] cursor-pointer select-none ${
                       isCurrent 
-                        ? 'border-amber-400 bg-white text-slate-900 scale-105 shadow-[0_0_30px_rgba(251,191,36,0.6)] z-10' 
-                        : 'border-transparent bg-white/10 text-white'
+                        ? 'border-amber-400 bg-white text-slate-900 scale-105 shadow-[0_0_25px_rgba(251,191,36,0.5)] z-10' 
+                        : 'border-white/15 bg-white/10 hover:bg-white/15 text-white'
                     }`}
                   >
+                    {/* Floating Live Point Delta Popups (+300, -50, etc.) */}
+                    {teamPopups.map((popup) => (
+                      <div
+                        key={popup.id}
+                        className={`absolute -top-9 left-1/2 -translate-x-1/2 z-50 px-3 py-1 rounded-xl font-black text-xs sm:text-sm whitespace-nowrap shadow-xl pointer-events-none animate-live-pop border ${
+                          popup.isPositive
+                            ? 'bg-emerald-500 text-white border-emerald-200'
+                            : 'bg-rose-600 text-white border-rose-200'
+                        }`}
+                      >
+                        {popup.text}
+                      </div>
+                    ))}
+
+                    {/* Active Turn Indicator or Leader Crown */}
                     {isCurrent && (
-                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[9px] sm:text-[10px] font-black uppercase px-1.5 sm:px-2 py-0.5 rounded-full shadow-sm tracking-wider">
-                        TURN
+                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-md shadow-sm tracking-wider">
+                        ACTIVE TURN
                       </span>
                     )}
-                    <div className="flex items-center justify-center gap-1 mb-0.5">
-                      <span className="text-sm sm:text-lg">{t.icon || cfg.icon || '🦁'}</span>
-                      <p className={`text-[10px] sm:text-sm font-black uppercase truncate max-w-[65px] sm:max-w-[110px] ${isCurrent ? 'text-amber-600' : 'text-white/80'}`}>
-                        {t.name}
-                      </p>
+
+                    <div className="flex items-center justify-between gap-1.5 mb-0.5 mt-0.5">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="text-base sm:text-lg shrink-0">{t.icon || cfg.icon || '🦁'}</span>
+                        <p className={`text-xs font-black uppercase truncate max-w-[75px] sm:max-w-[95px] ${isCurrent ? 'text-slate-800' : 'text-white/90'}`}>
+                          {t.name}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isLeader && <span title="1st Place Leader" className="text-xs">👑</span>}
+                        {(t.streak || 0) >= 2 && (
+                          <span className="text-[10px] font-black bg-orange-500 text-white px-1.5 py-0.2 rounded flex items-center">
+                            🔥{t.streak}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className={`text-lg sm:text-3xl font-black drop-shadow-sm ${isCurrent ? 'text-slate-900' : 'text-white'}`}>
-                      {t.score > 0 ? `+${t.score}` : t.score}
-                    </p>
+
+                    {/* Score + Live Point Deduction / Addition Controls */}
+                    <div className="flex items-center justify-between gap-1.5 mt-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleManualScoreAdjust(idx, -50, e)}
+                        title="Deduct 50 points live"
+                        className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
+                          isCurrent
+                            ? 'bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white'
+                            : 'bg-white/10 hover:bg-rose-500 text-white/80 hover:text-white'
+                        }`}
+                      >
+                        -
+                      </button>
+
+                      <div className={`text-xl sm:text-2xl font-black tracking-tight ${isCurrent ? 'text-slate-950' : 'text-white'}`}>
+                        <AnimatedScore value={t.score} />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleManualScoreAdjust(idx, 50, e)}
+                        title="Add 50 points live"
+                        className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
+                          isCurrent
+                            ? 'bg-emerald-100 hover:bg-emerald-500 text-emerald-700 hover:text-white'
+                            : 'bg-white/10 hover:bg-emerald-500 text-white/80 hover:text-white'
+                        }`}
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Controls */}
-            <div className="flex items-center gap-3">
-              <button onClick={() => { setTeams(teams.map(t => ({ ...t, score: 0 }))); setOpenedBoxes([]); }} className="p-3 bg-white/10 text-white hover:bg-red-500 rounded-xl transition-colors cursor-pointer" title="Reset Scores">
+            {/* Right Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  playSound('click');
+                  setTeams(teams.map(t => ({ ...t, score: 0, streak: 0 })));
+                  setOpenedBoxes([]);
+                  setBoxRecords({});
+                }}
+                className="p-2.5 bg-white/10 text-white hover:bg-rose-500 rounded-xl transition-colors cursor-pointer"
+                title="Reset Board & Scores"
+              >
                 <RefreshCw className="w-5 h-5" />
               </button>
-              <button onClick={() => setIsMuted(!isMuted)} className="p-3 bg-white/10 text-white hover:bg-white/20 rounded-xl transition-colors cursor-pointer" title="Toggle Sound">
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className="p-2.5 bg-white/10 text-white hover:bg-white/20 rounded-xl transition-colors cursor-pointer"
+                title="Toggle Sound"
+              >
                 {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
               <FullscreenButton targetId="game-container" />
               <button
                 onClick={() => setShowModeModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 title="Switch to Bubble Pop, Sumo, or Yoga Quiz"
               >
                 <Shuffle size={14} className="text-amber-400" />
                 <span className="hidden sm:inline">Switch Mode</span>
               </button>
-              <button onClick={() => setScreen('setup')} className="px-5 py-2.5 bg-white text-slate-900 hover:bg-slate-200 rounded-xl font-bold transition-all cursor-pointer shadow-md">
-                Setup
-              </button>
             </div>
           </header>
 
-          <main className="max-w-7xl mx-auto px-4 mt-8">
-            <div className="text-center mb-8">
-              <div className="inline-block bg-white/15 backdrop-blur-md border border-white/20 rounded-full py-2 px-6 shadow-xl transform transition-all hover:scale-105">
-                <h2 className="text-lg sm:text-2xl font-bold text-white flex items-center gap-3">
-                  <span className={`px-5 py-1.5 rounded-full text-white font-black shadow-md ${DEFAULT_TEAM_CONFIGS[currentTeamIdx % DEFAULT_TEAM_CONFIGS.length].bg}`}>
-                    {teams[currentTeamIdx]?.name.toUpperCase()} TURN
-                  </span>
-                  Pick a Mystery Box! (1 - {activeQuiz.questions.length})
-                </h2>
+          {/* Main Mystery Box Grid */}
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-6 sm:mt-8">
+            {/* Turn Banner */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-5 py-3 max-w-4xl mx-auto">
+              <div className="flex items-center gap-3">
+                <span className={`px-4 py-1.5 rounded-xl text-white font-black text-sm sm:text-base shadow ${DEFAULT_TEAM_CONFIGS[currentTeamIdx % DEFAULT_TEAM_CONFIGS.length].bg}`}>
+                  {teams[currentTeamIdx]?.icon || '🦁'} {teams[currentTeamIdx]?.name}
+                </span>
+                <span className="text-white font-bold text-base sm:text-lg">
+                  Choose a Mystery Box to Unlock!
+                </span>
+              </div>
+              <div className="text-xs font-bold text-amber-300/90 flex items-center gap-1.5">
+                <Zap size={14} /> Click any answer to auto-reveal & trigger live points!
               </div>
             </div>
 
             {/* MYSTERY BOXES GRID (1 TO 30) */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-4 justify-center mx-auto max-w-6xl">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 justify-center mx-auto max-w-6xl">
               {activeQuiz.questions.map((q, idx) => {
-                const boxNum = idx + 1; // 1 to 30
+                const boxNum = idx + 1;
                 const isOpened = openedBoxes.includes(boxNum);
+                const record = boxRecords[boxNum];
                 const isAnimating = selectedBoxAnimation === boxNum;
                 const otherAnimating = selectedBoxAnimation !== null && selectedBoxAnimation !== boxNum;
 
                 let boxClass = "";
                 if (isOpened) {
-                  boxClass = "bg-white/30 text-slate-400/40 cursor-not-allowed border-2 border-white/40 shadow-inner scale-95";
+                  boxClass = record?.isPositive
+                    ? "bg-emerald-950/40 text-emerald-300/70 border-2 border-emerald-500/30 cursor-not-allowed scale-95"
+                    : "bg-slate-900/50 text-rose-300/60 border-2 border-rose-500/25 cursor-not-allowed scale-95";
                 } else if (isAnimating) {
-                  boxClass = `${getThemeBoxClass()} text-white border-4 scale-[1.4] z-50 shadow-[0_0_80px_rgba(255,255,255,0.9)] opacity-100 rotate-[360deg]`;
+                  boxClass = `${getThemeBoxClass()} text-white border-4 scale-125 z-50 shadow-[0_0_70px_rgba(251,191,36,0.95)] rotate-6`;
                 } else if (otherAnimating) {
-                  boxClass = `${getThemeBoxClass()} text-white opacity-20 blur-sm scale-90 border-4`;
+                  boxClass = `${getThemeBoxClass()} text-white opacity-25 blur-[1px] scale-95 border-2`;
                 } else {
-                  boxClass = `${getThemeBoxClass()} animate-box-glow text-white hover:-translate-y-2 hover:shadow-2xl border-2 sm:border-4 active:scale-95`;
+                  boxClass = `${getThemeBoxClass()} animate-box-glow text-white hover:-translate-y-2 hover:scale-[1.03] hover:shadow-2xl border-2 sm:border-[3px] active:scale-95`;
                 }
 
                 return (
@@ -1332,201 +2032,342 @@ export function MysteryBox({
                     key={q.id}
                     onClick={() => handleBoxClick(boxNum)}
                     disabled={isOpened || selectedBoxAnimation !== null}
-                    className={`relative overflow-hidden group aspect-square rounded-2xl sm:rounded-[2.2rem] flex flex-col items-center justify-center font-black shadow-xl transition-all duration-500 cursor-pointer ${boxClass}`}
+                    className={`relative overflow-hidden group aspect-square rounded-2xl sm:rounded-3xl flex flex-col items-center justify-center font-black transition-all duration-300 cursor-pointer ${boxClass}`}
                   >
+                    {/* Shiny Crate Ribbon & Corner Accents for Unopened Boxes */}
                     {!isOpened && (
-                      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+                      <>
+                        <div className="absolute inset-0 bg-gradient-to-tr from-black/15 via-transparent to-white/25 pointer-events-none" />
+                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-3 sm:h-4 bg-black/15 pointer-events-none" />
+                        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-3 sm:w-4 bg-black/15 pointer-events-none" />
+                        <span className="absolute top-2 right-2.5 text-xs sm:text-sm opacity-75 group-hover:scale-125 group-hover:rotate-12 transition-transform">
+                          🎁
+                        </span>
+                      </>
                     )}
-                    {/* DISPLAY NUMBER 1 TO 30 */}
-                    <span className={`z-10 font-black text-3xl sm:text-5xl md:text-6xl tracking-tight ${!isOpened ? 'drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)]' : 'relative text-slate-400/50 drop-shadow-none'}`}>
+
+                    {/* Box Number */}
+                    <span className={`z-10 font-black tabular-nums ${
+                      !isOpened
+                        ? 'text-3xl sm:text-5xl md:text-6xl drop-shadow-[0_3px_6px_rgba(0,0,0,0.65)]'
+                        : 'text-xl sm:text-2xl opacity-50 mb-1'
+                    }`}>
                       {boxNum}
                     </span>
+
+                    {/* Opened Box Outcome History Badge */}
+                    {isOpened && record && (
+                      <div className="z-10 flex flex-col items-center px-2 text-center">
+                        <span className="text-lg sm:text-xl leading-none mb-0.5">{record.icon}</span>
+                        <span className={`text-[10px] sm:text-xs font-black uppercase tracking-tight ${
+                          record.isPositive ? 'text-emerald-400' : 'text-rose-400'
+                        }`}>
+                          {record.label}
+                        </span>
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
           </main>
 
-          {/* ACTIVE BOX QUESTION MODAL & POPUPS */}
+          {/* ACTIVE BOX QUESTION & MYSTERY UNBOXING MODALS (NO TOP CLIPPING OR SCROLLBAR ARTIFACTS) */}
           {activeBoxNum !== null && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-              {/* 1. QUESTION POPUP */}
-              {modalStep === 'question' && (
-                <div className="bg-white border-4 sm:border-[6px] border-amber-400 rounded-2xl sm:rounded-[3rem] p-4 sm:p-10 max-w-5xl w-full shadow-2xl relative my-auto animate-pop-in text-center max-h-[92vh] overflow-y-auto">
-                  {/* Floating Number Badge */}
-                  <div className="absolute -top-8 sm:-top-12 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center text-3xl sm:text-5xl font-black shadow-xl border-4 sm:border-[6px] border-white">
-                      {activeBoxNum}
-                    </div>
-                  </div>
+            <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6">
+              
+              {/* 1. QUESTION POPUP WITH AUTO-REVEAL ON OPTION CLICK */}
+              {modalStep === 'question' && (() => {
+                const currentQ = activeQuiz.questions[activeBoxNum - 1];
+                const activeTeam = teams[currentTeamIdx];
+                return (
+                  <div className="w-full max-w-4xl my-auto animate-pop-in">
+                    <div className="bg-white rounded-3xl sm:rounded-[2.5rem] border-4 border-amber-400 shadow-[0_25px_70px_rgba(0,0,0,0.65)] overflow-hidden text-center">
+                      
+                      {/* Clean Non-Clipped Top Modal Header Bar */}
+                      <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-6 py-4 flex items-center justify-between text-white">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-white text-orange-600 font-black text-2xl flex items-center justify-center shadow-md tabular-nums">
+                            #{activeBoxNum}
+                          </div>
+                          <div className="text-left">
+                            <span className="text-[11px] font-black uppercase tracking-widest text-amber-100 block">
+                              Mystery Box Question
+                            </span>
+                            <span className="text-base sm:text-lg font-black text-white flex items-center gap-1.5">
+                              {activeTeam?.icon || '🦁'} {activeTeam?.name}&apos;s Turn
+                              <span className="text-xs bg-black/20 px-2.5 py-0.5 rounded-lg font-bold tabular-nums">
+                                Score: {activeTeam?.score ?? 0}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
 
-                  <div className="mt-6 sm:mt-8">
-                    <p className="text-xs sm:text-xl font-black text-orange-500 uppercase tracking-widest mb-2 sm:mb-4">QUESTION {activeBoxNum}</p>
-                    <div className="bg-slate-50 rounded-xl sm:rounded-[2.5rem] p-4 sm:p-8 md:p-12 mb-4 sm:mb-6 shadow-inner border border-slate-200">
-                      <h3 className="text-xl sm:text-3xl lg:text-5xl font-black text-slate-800 leading-tight">
-                        {activeQuiz.questions[activeBoxNum - 1]?.text}
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-4 md:gap-6 mt-4 sm:mt-8 max-w-5xl mx-auto">
-                        {activeQuiz.questions[activeBoxNum - 1]?.options.map((opt, i) => {
-                          const letter = ['A', 'B', 'C', 'D'][i] || (i + 1);
-                          let optStyle = "bg-white border-slate-200 text-slate-700";
-                          if (!isAnswerRevealed) {
-                            if (selectedOptionIndex === i) {
-                              optStyle = "bg-orange-100 border-orange-500 text-orange-900 shadow-lg scale-[1.02]";
-                            } else {
-                              optStyle += " hover:border-orange-300 hover:bg-orange-50/50 cursor-pointer";
-                            }
-                          } else {
-                            if (activeQuiz.questions[activeBoxNum - 1]?.answerIndex === i) {
-                              optStyle = "bg-green-100 border-green-500 text-green-800 scale-[1.03] shadow-2xl z-10 font-black";
-                            } else if (selectedOptionIndex === i) {
-                              optStyle = "bg-red-100 border-red-500 text-red-700 opacity-90";
-                            } else {
-                              optStyle = "bg-white border-slate-200 text-slate-400 opacity-40";
-                            }
-                          }
-                          return (
+                        <button
+                          onClick={() => {
+                            if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+                            setActiveBoxNum(null);
+                          }}
+                          className="w-9 h-9 rounded-xl bg-black/20 hover:bg-black/35 text-white flex items-center justify-center transition-colors cursor-pointer"
+                          title="Close Question"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Question & Options Body */}
+                      <div className="p-5 sm:p-8 md:p-10">
+                        <div className="bg-slate-50 rounded-2xl sm:rounded-3xl p-5 sm:p-8 mb-6 border border-slate-200/80 shadow-inner">
+                          <h3 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 leading-snug mb-6 sm:mb-8 break-words">
+                            {currentQ?.text}
+                          </h3>
+
+                          {/* Options Grid: Clicking ANY Option Immediately Auto-Reveals Correct or Incorrect! */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4 max-w-4xl mx-auto">
+                            {currentQ?.options.map((opt, i) => {
+                              if (!opt || opt.trim() === '') return null;
+                              const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
+                              const isSelected = selectedOptionIndex === i;
+                              const isCorrectOption = currentQ.answerIndex === i;
+                              const isImageOpt = opt.startsWith('data:image') || opt.startsWith('http');
+
+                              let optStyle = "bg-white border-slate-200 text-slate-800 hover:border-amber-400 hover:bg-amber-50/60 hover:scale-[1.01] shadow-sm cursor-pointer";
+                              let badgeColor = "bg-slate-100 text-slate-700 group-hover:bg-amber-400 group-hover:text-slate-950";
+
+                              if (isAnswerRevealed) {
+                                if (isCorrectOption) {
+                                  optStyle = "bg-emerald-500 border-emerald-400 text-white scale-[1.02] shadow-[0_10px_30px_rgba(16,185,129,0.45)] z-10 font-black";
+                                  badgeColor = "bg-white text-emerald-600";
+                                } else if (isSelected && !isCorrectOption) {
+                                  optStyle = "bg-rose-500 border-rose-400 text-white animate-shake shadow-[0_10px_25px_rgba(244,63,94,0.4)] font-black";
+                                  badgeColor = "bg-white text-rose-600";
+                                } else {
+                                  optStyle = "bg-slate-100 border-slate-200 text-slate-400 opacity-45 cursor-not-allowed";
+                                  badgeColor = "bg-slate-200 text-slate-400";
+                                }
+                              }
+
+                              return (
+                                <button
+                                  key={i}
+                                  onClick={() => handleOptionSelect(i)}
+                                  disabled={isAnswerRevealed}
+                                  className={`group p-4 sm:p-5 rounded-2xl text-lg sm:text-2xl font-bold border-2 sm:border-[3px] transition-all duration-200 flex items-center justify-between text-left w-full gap-3 ${optStyle}`}
+                                >
+                                  <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                                    <span className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-black text-base sm:text-lg shrink-0 transition-colors ${badgeColor}`}>
+                                      {letter}
+                                    </span>
+                                    {isImageOpt ? (
+                                      <img src={opt} alt={`Option ${letter}`} className="h-20 w-auto rounded-xl object-contain bg-white p-1" />
+                                    ) : (
+                                      <span className="flex-1 break-words leading-snug">{opt}</span>
+                                    )}
+                                  </div>
+
+                                  {/* Auto-Revealed Status Indicator on Option */}
+                                  {isAnswerRevealed && isCorrectOption && (
+                                    <span className="flex items-center gap-1 bg-white text-emerald-600 px-3 py-1.5 rounded-xl font-black text-xs sm:text-sm shrink-0 shadow">
+                                      <Check className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3]" />
+                                      {isSelected ? 'CORRECT!' : 'ANSWER'}
+                                    </span>
+                                  )}
+                                  {isAnswerRevealed && isSelected && !isCorrectOption && (
+                                    <span className="flex items-center gap-1 bg-white text-rose-600 px-3 py-1.5 rounded-xl font-black text-xs sm:text-sm shrink-0 shadow">
+                                      <X className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3]" />
+                                      WRONG
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Footer Status / Auto-Reveal Feedback Banner */}
+                        {!isAnswerRevealed ? (
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
+                            <p className="text-sm font-bold text-slate-500 flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-amber-500" />
+                              Click any option above to <span className="text-slate-800 font-black">auto-reveal</span> the answer!
+                            </p>
                             <button
-                              key={i}
-                              onClick={() => handleOptionSelect(i)}
-                              disabled={isAnswerRevealed}
-                              className={`p-3.5 sm:p-5 md:p-6 rounded-xl sm:rounded-3xl text-base sm:text-2xl md:text-3xl font-bold border-2 sm:border-[4px] transition-all flex items-center justify-between text-left w-full gap-3 ${optStyle}`}
+                              onClick={handleTeacherRevealOnly}
+                              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                             >
-                              <div className="flex items-center flex-1">
-                                <span className="mr-2 sm:mr-3 opacity-50 shrink-0 font-black">{letter}.</span>
-                                <span className="flex-1 break-words">{opt}</span>
-                              </div>
+                              <Eye className="w-4 h-4" /> Teacher Reveal Only
                             </button>
-                          );
-                        })}
+                          </div>
+                        ) : answerResult === 'correct' ? (
+                          <div className="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop-in">
+                            <div className="flex items-center gap-3 text-left">
+                              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
+                                <Check className="w-7 h-7 stroke-[3]" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="text-xl sm:text-2xl font-black text-emerald-800">
+                                    CORRECT ANSWER! 🎉
+                                  </h4>
+                                  {lastAnswerPointChange > 0 && (
+                                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500 text-white font-black text-xs sm:text-sm animate-bounce">
+                                      +{lastAnswerPointChange} PTS ADDED LIVE!
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs sm:text-sm font-bold text-emerald-700">
+                                  Unlocking Mystery Box #{activeBoxNum} Decision...
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={proceedAfterCorrect}
+                              className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl font-black text-base sm:text-lg shadow-lg transition-all cursor-pointer shrink-0 hover:scale-105"
+                            >
+                              Open Mystery Box 🎁 →
+                            </button>
+                          </div>
+                        ) : answerResult === 'incorrect' ? (
+                          <div className="bg-rose-50 border-2 border-rose-400 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop-in">
+                            <div className="flex items-center gap-3 text-left">
+                              <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-rose-500/30">
+                                <X className="w-7 h-7 stroke-[3]" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="text-xl sm:text-2xl font-black text-rose-800">
+                                    INCORRECT!
+                                  </h4>
+                                  {lastAnswerPointChange < 0 && (
+                                    <span className="px-2.5 py-0.5 rounded-lg bg-rose-600 text-white font-black text-xs sm:text-sm">
+                                      {lastAnswerPointChange} PTS DEDUCTED LIVE!
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs sm:text-sm font-bold text-rose-700">
+                                  Correct Answer: <span className="underline font-black text-emerald-700">{currentQ?.options[currentQ.answerIndex]}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={proceedAfterIncorrect}
+                              className="w-full sm:w-auto px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-base sm:text-lg shadow-lg transition-all cursor-pointer shrink-0"
+                            >
+                              Next Team&apos;s Turn →
+                            </button>
+                          </div>
+                        ) : (
+                          /* Teacher Manual Judgement Fallback (if Teacher Reveal Only was clicked) */
+                          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 animate-pop-in">
+                            <button
+                              onClick={proceedAfterIncorrect}
+                              className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border-2 border-rose-300 rounded-2xl font-black text-lg transition-all cursor-pointer"
+                            >
+                              <X className="w-6 h-6" /> Mark Incorrect
+                            </button>
+                            <button
+                              onClick={proceedAfterCorrect}
+                              className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-lg transition-all cursor-pointer"
+                            >
+                              <Check className="w-6 h-6" /> Mark Correct
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    {!isAnswerRevealed ? (
-                      <button onClick={handleRevealAnswer} className="mx-auto flex items-center gap-2 sm:gap-3 px-6 py-3 sm:px-10 sm:py-5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-2xl sm:rounded-3xl font-black text-lg sm:text-2xl shadow-xl transition-all hover:-translate-y-1 cursor-pointer">
-                        <Eye className="w-5 h-5 sm:w-7 sm:h-7" /> Reveal Answer
-                      </button>
-                    ) : (
-                      <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 animate-pop-in">
-                        <button onClick={handleIncorrect} className="flex-1 max-w-[280px] mx-auto sm:mx-0 flex items-center justify-center gap-2 sm:gap-3 px-6 py-3.5 sm:px-8 sm:py-5 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border-2 sm:border-[4px] border-slate-200 hover:border-red-300 rounded-2xl sm:rounded-3xl font-black text-lg sm:text-2xl transition-all cursor-pointer">
-                          <X className="w-6 h-6 sm:w-8 sm:h-8 text-red-500" /> INCORRECT
-                        </button>
-                        <button onClick={handleCorrect} className="flex-1 max-w-[280px] mx-auto sm:mx-0 flex items-center justify-center gap-2 sm:gap-3 px-6 py-3.5 sm:px-8 sm:py-5 bg-green-500 hover:bg-green-600 text-white rounded-2xl sm:rounded-3xl font-black text-lg sm:text-2xl shadow-xl transition-all hover:-translate-y-1 cursor-pointer">
-                          <Check className="w-6 h-6 sm:w-8 sm:h-8" /> CORRECT
-                        </button>
-                      </div>
-                    )}
                   </div>
+                );
+              })()}
 
-                  <button onClick={() => setActiveBoxNum(null)} className="absolute top-3 right-3 sm:top-5 sm:right-5 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer" title="Close">
-                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </button>
-                </div>
-              )}
-
-              {/* 2. CORRECT TRANSITION POPUP */}
-              {modalStep === 'correct_transition' && (
-                <div className="bg-white border-4 sm:border-[6px] border-emerald-400 rounded-2xl sm:rounded-[3rem] p-6 sm:p-14 max-w-lg w-full shadow-2xl relative my-auto animate-pop-in text-center">
-                  <div className="absolute -top-10 sm:-top-12 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-br from-emerald-400 to-green-600 text-white w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shadow-xl border-4 sm:border-[6px] border-white animate-bounce">
-                      <Check className="w-10 h-10 sm:w-14 sm:h-14 stroke-[3]" />
-                    </div>
-                  </div>
-                  <div className="mt-8 flex flex-col items-center">
-                    <h3 className="text-3xl sm:text-6xl font-black text-emerald-600 uppercase tracking-widest mb-2 sm:mb-3">CORRECT!</h3>
-                    <p className="text-base sm:text-xl font-bold text-slate-600">Great job! Opening the Mystery Box...</p>
-                  </div>
-                </div>
-              )}
-
-              {/* 3. INCORRECT TRANSITION POPUP */}
-              {modalStep === 'incorrect_transition' && (
-                <div className="bg-white border-4 sm:border-[6px] border-rose-400 rounded-2xl sm:rounded-[3rem] p-6 sm:p-14 max-w-lg w-full shadow-2xl relative my-auto animate-shake text-center">
-                  <div className="absolute -top-10 sm:-top-12 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-br from-rose-400 to-red-600 text-white w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shadow-xl border-4 sm:border-[6px] border-white">
-                      <X className="w-10 h-10 sm:w-14 sm:h-14 stroke-[3]" />
-                    </div>
-                  </div>
-                  <div className="mt-8 flex flex-col items-center">
-                    <h3 className="text-3xl sm:text-6xl font-black text-rose-600 uppercase tracking-widest mb-2 sm:mb-3">INCORRECT</h3>
-                    <p className="text-base sm:text-xl font-bold text-slate-600">Moving to the next team's turn...</p>
-                  </div>
-                </div>
-              )}
-
-              {/* 4. DECISION POPUP (KEEP OR GIVE) */}
+              {/* 2. DECISION POPUP (KEEP IT OR GIVE IT AWAY BLUFFING STAGE) */}
               {modalStep === 'decision' && (
-                <div className="bg-white border-4 sm:border-[6px] border-amber-400 rounded-2xl sm:rounded-[3rem] p-5 sm:p-12 max-w-3xl w-full shadow-2xl relative my-auto animate-pop-in text-center max-h-[92vh] overflow-y-auto">
-                  {/* Floating Mystery Box Badge */}
-                  <div className="absolute -top-10 sm:-top-12 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-br from-amber-400 to-orange-500 text-white w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center text-4xl sm:text-5xl shadow-xl border-4 sm:border-[6px] border-white animate-bounce">
-                      📦
+                <div className="w-full max-w-3xl my-auto animate-pop-in">
+                  <div className="bg-white border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] shadow-2xl overflow-hidden text-center">
+                    <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-purple-600 px-6 py-4 text-white flex items-center justify-between">
+                      <span className="font-black text-sm sm:text-base uppercase tracking-wider flex items-center gap-2">
+                        🎁 Mystery Box #{activeBoxNum} Unlocked!
+                      </span>
+                      <span className="text-xs font-bold bg-black/25 px-3 py-1 rounded-lg">
+                        {teams[currentTeamIdx]?.name}: {teams[currentTeamIdx]?.score} PTS
+                      </span>
+                    </div>
+
+                    <div className="p-6 sm:p-10">
+                      <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-5xl shadow-lg shadow-amber-500/30 animate-bounce">
+                        📦
+                      </div>
+
+                      <h3 className="text-2xl sm:text-4xl font-black text-slate-900 mb-2">
+                        Keep the Box or Give It Away?
+                      </h3>
+
+                      {/* Mystery Box Vibe / Hint */}
+                      <p className="text-sm sm:text-base font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2 px-4 inline-block mb-6">
+                        ✨ &ldquo;{mysteryHint}&rdquo;
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                        <button 
+                          onClick={() => handleExecuteDecision(currentTeamIdx)} 
+                          className="group flex flex-col items-center justify-center gap-2 p-6 sm:p-8 bg-gradient-to-br from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-orange-700 border-3 border-orange-400 rounded-3xl transition-all cursor-pointer shadow-lg hover:scale-[1.03] active:scale-95"
+                        >
+                          <span className="text-5xl sm:text-6xl group-hover:scale-110 transition-transform">📦</span>
+                          <span className="font-black text-2xl sm:text-3xl text-slate-900">KEEP IT!</span>
+                          <span className="text-xs sm:text-sm font-bold bg-orange-500 text-white px-4 py-1 rounded-xl">
+                            Open for {teams[currentTeamIdx]?.name}
+                          </span>
+                        </button>
+
+                        <button 
+                          onClick={() => {
+                            playSound('click');
+                            if (teams.length === 2) {
+                              handleExecuteDecision((currentTeamIdx + 1) % teams.length);
+                            } else {
+                              setModalStep('give_away_selection');
+                            }
+                          }} 
+                          className="group flex flex-col items-center justify-center gap-2 p-6 sm:p-8 bg-gradient-to-br from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border-3 border-purple-400 rounded-3xl transition-all cursor-pointer shadow-lg hover:scale-[1.03] active:scale-95"
+                        >
+                          <span className="text-5xl sm:text-6xl group-hover:rotate-12 transition-transform">🔄</span>
+                          <span className="font-black text-2xl sm:text-3xl text-slate-900">GIVE IT AWAY!</span>
+                          <span className="text-xs sm:text-sm font-bold bg-purple-600 text-white px-4 py-1 rounded-xl">
+                            {teams.length === 2 ? `Force ${teams[(currentTeamIdx + 1) % teams.length]?.name} to Open` : "Pass Box to Another Team"}
+                          </span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="mt-6 sm:mt-8">
-                    <p className="text-sm sm:text-xl font-black text-orange-500 uppercase tracking-widest mb-2">DECISION TIME!</p>
-                    <h3 className="text-xl sm:text-4xl font-black text-slate-900 mb-2 sm:mb-3">
-                      {teams[currentTeamIdx]?.name} Answered Correctly! 🎉
-                    </h3>
-                    <p className="text-sm sm:text-xl font-semibold text-slate-600 mb-6 sm:mb-8 max-w-xl mx-auto">
-                      Do you want to <span className="font-black text-orange-500">KEEP</span> the mystery box, or <span className="font-black text-purple-600">GIVE</span> it away?
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
-                      <button 
-                        onClick={() => handleExecuteDecision(currentTeamIdx)} 
-                        className="flex-1 flex flex-col items-center justify-center gap-2 sm:gap-3 p-4 sm:p-8 bg-gradient-to-br from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 text-orange-600 border-2 sm:border-[4px] border-orange-400 rounded-2xl sm:rounded-[2.5rem] transition-all cursor-pointer shadow-lg hover:scale-105 active:scale-95"
-                      >
-                        <span className="text-4xl sm:text-6xl">📦</span>
-                        <span className="font-black text-xl sm:text-3xl">KEEP IT</span>
-                        <span className="text-xs sm:text-sm font-bold bg-orange-500 text-white px-3 sm:px-4 py-0.5 sm:py-1 rounded-full">
-                          Applies to {teams[currentTeamIdx]?.name}
-                        </span>
-                      </button>
-
-                      <button 
-                        onClick={() => {
-                          if (teams.length === 2) {
-                            handleExecuteDecision((currentTeamIdx + 1) % teams.length);
-                          } else {
-                            setModalStep('give_away_selection');
-                          }
-                        }} 
-                        className="flex-1 flex flex-col items-center justify-center gap-2 sm:gap-3 p-4 sm:p-8 bg-gradient-to-br from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-600 border-2 sm:border-[4px] border-purple-400 rounded-2xl sm:rounded-[2.5rem] transition-all cursor-pointer shadow-lg hover:scale-105 active:scale-95"
-                      >
-                        <span className="text-4xl sm:text-6xl">🔄</span>
-                        <span className="font-black text-xl sm:text-3xl">GIVE IT AWAY</span>
-                        <span className="text-xs sm:text-sm font-bold bg-purple-600 text-white px-3 sm:px-4 py-0.5 sm:py-1 rounded-full">
-                          {teams.length === 2 ? `Give to ${teams[(currentTeamIdx + 1) % teams.length]?.name}` : "Pass to Another Team"}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <button onClick={() => setActiveBoxNum(null)} className="absolute top-3 right-3 sm:top-5 sm:right-5 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer">
-                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </button>
                 </div>
               )}
 
-              {/* 5. PASS THE BOX POPUP (WHEN 3+ TEAMS AND GIVE IT AWAY SELECTED) */}
+              {/* 3. PASS THE BOX POPUP (WHEN 3+ TEAMS AND GIVE IT AWAY SELECTED) */}
               {modalStep === 'give_away_selection' && (
-                <div className="bg-white border-[6px] border-purple-400 rounded-[3rem] p-8 sm:p-12 max-w-3xl w-full shadow-2xl relative my-auto animate-pop-in text-center">
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-br from-purple-500 to-indigo-600 text-white w-24 h-24 rounded-full flex items-center justify-center text-5xl shadow-xl border-[6px] border-white animate-bounce">
-                      🔄
+                <div className="w-full max-w-3xl my-auto animate-pop-in">
+                  <div className="bg-white border-4 border-purple-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl text-center">
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        onClick={() => setModalStep('decision')}
+                        className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 font-bold text-sm cursor-pointer"
+                      >
+                        <ArrowLeft size={16} /> Back
+                      </button>
+                      <span className="text-xs font-black uppercase tracking-widest text-purple-600">
+                        Pass The Mystery Box
+                      </span>
+                      <div className="w-16" />
                     </div>
-                  </div>
 
-                  <div className="mt-8">
-                    <p className="text-xl font-black text-purple-600 uppercase tracking-widest mb-2">PASS THE BOX!</p>
-                    <h3 className="text-3xl sm:text-4xl font-black text-slate-900 mb-2">Who receives the Mystery Box?</h3>
-                    <p className="text-lg font-bold text-slate-600 mb-8">
-                      {teams[currentTeamIdx]?.name} chose to give it away! Pick a recipient team:
+                    <h3 className="text-2xl sm:text-4xl font-black text-slate-900 mb-2">
+                      Who Must Open Box #{activeBoxNum}?
+                    </h3>
+                    <p className="text-sm sm:text-base font-bold text-slate-500 mb-6">
+                      {teams[currentTeamIdx]?.name} is giving the box away! Pick the team that receives its fate:
                     </p>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
                       {teams.map((t, idx) => {
                         if (idx === currentTeamIdx) return null;
                         const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
@@ -1534,45 +2375,58 @@ export function MysteryBox({
                           <button
                             key={t.id}
                             onClick={() => handleExecuteDecision(idx)}
-                            className="p-5 rounded-2xl border-4 border-slate-200 hover:border-purple-500 bg-slate-50 hover:bg-purple-50 flex flex-col items-center gap-2 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-md"
+                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-purple-500 bg-slate-50 hover:bg-purple-50 flex flex-col items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
                           >
-                            <span className="text-4xl">{t.icon || cfg.icon || '🦁'}</span>
-                            <span className="font-black text-xl text-slate-800">{t.name}</span>
-                            <span className="text-sm font-bold bg-white px-3 py-1 rounded-full text-slate-600 border border-slate-200">
-                              Score: {t.score}
+                            <span className="text-3xl sm:text-4xl">{t.icon || cfg.icon || '🦁'}</span>
+                            <span className="font-black text-lg text-slate-900">{t.name}</span>
+                            <span className="text-xs font-bold text-slate-500 tabular-nums">
+                              Current: {t.score > 0 ? `+${t.score}` : t.score} pts
                             </span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
-
-                  <button onClick={() => setModalStep('decision')} className="absolute top-5 left-5 text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold text-sm cursor-pointer">
-                    <ArrowLeft size={18} /> Back
-                  </button>
-                  <button onClick={() => setActiveBoxNum(null)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer">
-                    <X className="w-6 h-6" />
-                  </button>
                 </div>
               )}
 
-              {/* 6. TARGET SELECTION POPUP (FOR STEAL / SWAP) */}
-              {modalStep === 'target_selection' && currentOutcome && (
-                <div className="bg-white border-[6px] border-indigo-400 rounded-[3rem] p-8 sm:p-12 max-w-3xl w-full shadow-2xl relative my-auto animate-pop-in text-center">
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-br from-indigo-500 to-blue-600 text-white w-24 h-24 rounded-full flex items-center justify-center text-5xl shadow-xl border-[6px] border-white animate-bounce">
-                      🎯
+              {/* 4. UNBOXING REEL SPIN ANIMATION */}
+              {modalStep === 'unboxing' && (
+                <div className="w-full max-w-xl my-auto animate-pop-in">
+                  <div className="bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-8 sm:p-12 shadow-[0_0_80px_rgba(251,191,36,0.4)] text-center text-white">
+                    <p className="text-sm font-black uppercase tracking-widest text-amber-400 mb-4 animate-pulse">
+                      UNBOXING MYSTERY CRATE #{activeBoxNum}...
+                    </p>
+                    <div className={`my-4 mx-auto w-full rounded-3xl p-8 bg-gradient-to-br ${unboxPreviewItem.color} shadow-2xl flex flex-col items-center gap-3 border-4 border-white/80 transform scale-105 transition-all duration-75`}>
+                      <span className="text-6xl sm:text-7xl animate-bounce">{unboxPreviewItem.icon}</span>
+                      <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                        {unboxPreviewItem.text}
+                      </h3>
                     </div>
+                    <p className="text-sm font-bold text-white/70 mt-4">
+                      Fate locked for <span className="text-amber-300 font-black">{teams[targetTeamIdx ?? currentTeamIdx]?.name}</span>!
+                    </p>
                   </div>
+                </div>
+              )}
 
-                  <div className="mt-8">
-                    <p className="text-xl font-black text-indigo-600 uppercase tracking-widest mb-4">TARGET SELECTION</p>
-                    <div className={`mb-6 mx-auto w-full max-w-md ${currentOutcome.color} rounded-3xl p-6 shadow-xl flex flex-col items-center gap-2 border-[6px] border-white text-white`}>
-                      <h3 className="text-3xl sm:text-4xl font-black text-center">{currentOutcome.text}</h3>
+              {/* 5. TARGET SELECTION POPUP (FOR STEAL / SWAP WHEN 3+ TEAMS) */}
+              {modalStep === 'target_selection' && currentOutcome && (
+                <div className="w-full max-w-3xl my-auto animate-pop-in">
+                  <div className="bg-white border-4 border-indigo-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl text-center">
+                    <span className="text-xs font-black uppercase tracking-widest text-indigo-600 block mb-2">
+                      🎯 Choose Target Team
+                    </span>
+                    <div className={`mb-6 mx-auto w-full max-w-md bg-gradient-to-r ${currentOutcome.color} rounded-2xl p-5 shadow-xl flex flex-col items-center gap-1 border-2 border-white text-white`}>
+                      <span className="text-4xl">{currentOutcome.icon}</span>
+                      <h3 className="text-2xl sm:text-3xl font-black">{currentOutcome.text}</h3>
+                      <p className="text-xs text-white/90 font-semibold">{currentOutcome.subtitle}</p>
                     </div>
-                    <p className="text-xl font-black text-slate-800 mb-6">Choose which team to target:</p>
+                    <p className="text-base sm:text-lg font-black text-slate-800 mb-5">
+                      Which team will <span className="text-indigo-600">{teams[targetTeamIdx ?? 0]?.name}</span> target?
+                    </p>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
                       {teams.map((t, idx) => {
                         if (idx === targetTeamIdx) return null;
                         const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
@@ -1580,126 +2434,138 @@ export function MysteryBox({
                           <button
                             key={t.id}
                             onClick={() => handleTargetSelection(idx)}
-                            className="p-5 rounded-2xl border-4 border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 flex flex-col items-center gap-2 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-md"
+                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 flex flex-col items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
                           >
-                            <span className="text-4xl">{t.icon || cfg.icon || '🦁'}</span>
-                            <span className="font-black text-xl text-slate-800">{t.name}</span>
-                            <span className="text-sm font-bold bg-white px-3 py-1 rounded-full text-slate-600 border border-slate-200">
-                              Score: {t.score}
+                            <span className="text-3xl sm:text-4xl">{t.icon || cfg.icon || '🦁'}</span>
+                            <span className="font-black text-lg text-slate-900">{t.name}</span>
+                            <span className="text-xs font-bold text-slate-600 tabular-nums">
+                              Score: {t.score > 0 ? `+${t.score}` : t.score} pts
                             </span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
-
-                  <button onClick={() => setActiveBoxNum(null)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer">
-                    <X className="w-6 h-6" />
-                  </button>
                 </div>
               )}
 
-              {/* 7. REVEAL OUTCOME POPUP */}
+              {/* 6. REVEAL OUTCOME POPUP WITH LIVE POINT ADDITION / DEDUCTION COUNTER */}
               {modalStep === 'reveal' && currentOutcome && (
-                <div className="bg-white border-[6px] border-amber-400 rounded-[3rem] p-8 sm:p-12 max-w-2xl w-full shadow-2xl relative my-auto animate-pop-in text-center">
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-br from-amber-400 to-yellow-500 text-white w-24 h-24 rounded-full flex items-center justify-center text-5xl shadow-xl border-[6px] border-white animate-bounce">
-                      ✨
-                    </div>
-                  </div>
+                <div className="w-full max-w-2xl my-auto animate-pop-in">
+                  <div className="bg-white border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl text-center">
+                    <span className="text-xs sm:text-sm font-black text-orange-500 uppercase tracking-widest block mb-3">
+                      ✨ MYSTERY BOX #{activeBoxNum} REVEALED!
+                    </span>
 
-                  <div className="mt-8">
-                    <p className="text-xl font-black text-orange-500 uppercase tracking-widest mb-3">MYSTERY BOX UNBOXED!</p>
-                    <div className={`my-6 mx-auto w-full max-w-md ${currentOutcome.color} rounded-3xl p-8 shadow-2xl flex flex-col items-center gap-3 border-[6px] border-white text-white animate-bounce`}>
-                      <h3 className="text-4xl sm:text-5xl font-black text-center">{currentOutcome.text}</h3>
+                    <div className={`my-4 mx-auto w-full bg-gradient-to-br ${currentOutcome.color} rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col items-center gap-2 border-4 border-white text-white`}>
+                      <span className="text-6xl sm:text-7xl drop-shadow-md animate-bounce">{currentOutcome.icon}</span>
+                      <h3 className="text-3xl sm:text-5xl font-black text-center tracking-tight">{currentOutcome.text}</h3>
+                      <p className="text-sm sm:text-base font-bold text-white/90">{currentOutcome.subtitle}</p>
                     </div>
-                    <p className="text-xl font-bold text-slate-700 mb-8 flex items-center justify-center gap-2">
-                      Applied to: 
-                      <span className="px-5 py-2 rounded-2xl text-white font-black bg-gradient-to-r from-orange-500 to-amber-500 shadow-md text-xl">
-                        {teams[targetTeamIdx || 0]?.name}
-                      </span>
-                    </p>
+
+                    {/* Live Point Addition / Deduction Breakdown Card */}
+                    {outcomeBeforeAfter && (
+                      <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 sm:p-5 my-5 flex flex-col items-center gap-2">
+                        <p className="text-sm font-bold text-slate-600">{outcomeSummary}</p>
+                        <div className="flex items-center justify-center gap-3 sm:gap-4 flex-wrap mt-1">
+                          <span className="font-black text-base sm:text-lg text-slate-700">
+                            {outcomeBeforeAfter.teamName}:
+                          </span>
+                          <span className="px-3 py-1 rounded-xl bg-slate-200 text-slate-700 font-bold text-base tabular-nums">
+                            {outcomeBeforeAfter.before} PTS
+                          </span>
+                          <span className="text-slate-400 font-black">➔</span>
+                          <span className={`px-4 py-1.5 rounded-xl font-black text-xl sm:text-2xl tabular-nums shadow-sm ${
+                            outcomeBeforeAfter.delta >= 0
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-rose-600 text-white'
+                          }`}>
+                            <AnimatedScore value={outcomeBeforeAfter.after} /> PTS
+                          </span>
+                          <span className={`text-sm font-black px-2.5 py-1 rounded-lg tabular-nums ${
+                            outcomeBeforeAfter.delta >= 0
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            ({outcomeBeforeAfter.delta >= 0 ? `+${outcomeBeforeAfter.delta}` : outcomeBeforeAfter.delta})
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <button 
                       onClick={handleCloseReveal} 
-                      className="px-12 py-5 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 text-white rounded-2xl font-black text-2xl transition-all cursor-pointer shadow-xl hover:scale-105 active:scale-95"
+                      className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 text-white rounded-2xl font-black text-xl transition-all cursor-pointer shadow-xl hover:scale-105 active:scale-95"
                     >
                       Continue to Next Turn →
                     </button>
                   </div>
-
-                  <button onClick={handleCloseReveal} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer">
-                    <X className="w-6 h-6" />
-                  </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* GAME OVER MODAL (REDESIGNED WITH PODIUM LEADERBOARD & MEDALS) */}
+          {/* GAME OVER MODAL (PODIUM LEADERBOARD & MEDALS) */}
           {isGameOver && (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-              <div className="bg-white border-[6px] border-amber-400 rounded-[3rem] p-8 sm:p-12 max-w-3xl w-full shadow-2xl relative my-auto animate-pop-in text-center">
-                {/* Floating Trophy Badge */}
-                <div className="absolute -top-12 left-1/2 -translate-x-1/2">
-                  <div className="bg-gradient-to-br from-amber-400 to-yellow-500 text-white w-24 h-24 rounded-full flex items-center justify-center text-5xl shadow-xl border-[6px] border-white animate-bounce">
-                    🏆
-                  </div>
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+              <div className="bg-white border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 max-w-2xl w-full shadow-2xl my-auto animate-pop-in text-center">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-amber-400 to-yellow-500 text-white flex items-center justify-center text-5xl shadow-xl animate-bounce">
+                  🏆
                 </div>
 
-                <div className="mt-8">
-                  <p className="text-xl font-black text-amber-500 uppercase tracking-widest mb-2">GAME OVER!</p>
-                  <h2 className="text-4xl sm:text-6xl font-black text-slate-900 uppercase mb-3">
-                    {teams.length === 1 
-                      ? 'Congratulations!' 
-                      : `👑 ${[...teams].sort((a,b) => b.score - a.score)[0]?.name} WINS!`
-                    }
-                  </h2>
-                  <p className="text-lg font-bold text-slate-500 mb-8">All {activeQuiz.questions.length} Mystery Boxes opened!</p>
+                <p className="text-sm font-black text-amber-500 uppercase tracking-widest mb-1">ALL MYSTERY BOXES OPENED!</p>
+                <h2 className="text-3xl sm:text-5xl font-black text-slate-900 uppercase mb-6">
+                  {teams.length === 1 
+                    ? `Final Score: ${teams[0]?.score} PTS!` 
+                    : `👑 ${[...teams].sort((a,b) => b.score - a.score)[0]?.name} WINS!`
+                  }
+                </h2>
 
-                  {/* Leaderboard Rankings */}
-                  <div className="w-full flex flex-col gap-3 mb-8 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
-                    {[...teams].sort((a,b) => b.score - a.score).map((t, rank) => {
-                      const medals = ['🥇', '🥈', '🥉'];
-                      const medal = medals[rank] || `#${rank + 1}`;
-                      const isWinner = rank === 0;
-                      return (
-                        <div 
-                          key={t.id}
-                          className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                            isWinner 
-                              ? 'bg-amber-50 border-amber-400 text-amber-950 shadow-md font-black' 
-                              : 'bg-slate-50 border-slate-200 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-4">
-                            <span className="text-3xl">{medal}</span>
-                            <span className="text-2xl font-black">{t.name}</span>
-                          </div>
-                          <div className="text-2xl font-black text-amber-600">
-                            {t.score > 0 ? `+${t.score}` : t.score} pts
-                          </div>
+                {/* Leaderboard Rankings */}
+                <div className="w-full flex flex-col gap-2.5 mb-8 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                  {[...teams].sort((a,b) => b.score - a.score).map((t, rank) => {
+                    const medals = ['🥇', '🥈', '🥉'];
+                    const medal = medals[rank] || `#${rank + 1}`;
+                    const isWinner = rank === 0;
+                    return (
+                      <div 
+                        key={t.id}
+                        className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                          isWinner 
+                            ? 'bg-amber-50 border-amber-400 text-amber-950 shadow-md font-black' 
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl sm:text-3xl">{medal}</span>
+                          <span className="text-lg sm:text-xl font-black">{t.icon} {t.name}</span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="text-xl sm:text-2xl font-black text-amber-600 tabular-nums">
+                          {t.score > 0 ? `+${t.score}` : t.score} pts
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  <div className="flex flex-col sm:flex-row gap-4 w-full">
-                    <button 
-                      onClick={() => { 
-                        setTeams(teams.map(t => ({ ...t, score: 0 }))); 
-                        setOpenedBoxes([]); 
-                      }} 
-                      className="flex-1 py-5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-2xl rounded-2xl shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
-                    >
-                      Play Again 🔄
-                    </button>
-                    <button 
-                      onClick={() => setScreen('setup')} 
-                      className="flex-1 py-5 bg-slate-900 hover:bg-slate-800 text-white font-black text-2xl rounded-2xl shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
-                    >
-                      Game Setup ⚙️
-                    </button>
-                  </div>
+                <div className="flex flex-col sm:flex-row gap-3 w-full">
+                  <button 
+                    onClick={() => { 
+                      playSound('click');
+                      setTeams(teams.map(t => ({ ...t, score: 0, streak: 0 }))); 
+                      setOpenedBoxes([]); 
+                      setBoxRecords({});
+                    }} 
+                    className="flex-1 py-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
+                  >
+                    Play Again 🔄
+                  </button>
+                  <button 
+                    onClick={() => setScreen('setup')} 
+                    className="flex-1 py-4 bg-slate-900 hover:bg-slate-800 text-white font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
+                  >
+                    Game Setup ⚙️
+                  </button>
                 </div>
               </div>
             </div>
