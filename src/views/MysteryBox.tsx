@@ -81,14 +81,14 @@ interface OpenedBoxRecord {
 }
 
 const DEFAULT_TEAM_CONFIGS = [
-  { id: 0, defaultName: "Team 1", color: "blue", bg: "bg-blue-500", border: "border-blue-400", light: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", ring: "ring-blue-400", icon: "🦁" },
-  { id: 1, defaultName: "Team 2", color: "red", bg: "bg-rose-500", border: "border-rose-400", light: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300", ring: "ring-rose-400", icon: "🐉" },
-  { id: 2, defaultName: "Team 3", color: "emerald", bg: "bg-emerald-500", border: "border-emerald-400", light: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", ring: "ring-emerald-400", icon: "🦅" },
-  { id: 3, defaultName: "Team 4", color: "amber", bg: "bg-amber-500", border: "border-amber-400", light: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300", ring: "ring-amber-400", icon: "⚡" },
-  { id: 4, defaultName: "Team 5", color: "purple", bg: "bg-purple-500", border: "border-purple-400", light: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", ring: "ring-purple-400", icon: "🔮" },
-  { id: 5, defaultName: "Team 6", color: "pink", bg: "bg-pink-500", border: "border-pink-400", light: "bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300", ring: "ring-pink-400", icon: "🦄" },
-  { id: 6, defaultName: "Team 7", color: "teal", bg: "bg-teal-500", border: "border-teal-400", light: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300", ring: "ring-teal-400", icon: "🌊" },
-  { id: 7, defaultName: "Team 8", color: "orange", bg: "bg-orange-500", border: "border-orange-400", light: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", ring: "ring-orange-400", icon: "🔥" },
+  { id: 0, defaultName: "Team 1", color: "blue", bg: "bg-blue-600", gradient: "from-blue-600 to-cyan-500", border: "border-blue-400", light: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", ring: "ring-blue-400", icon: "1" },
+  { id: 1, defaultName: "Team 2", color: "red", bg: "bg-rose-600", gradient: "from-rose-600 to-pink-500", border: "border-rose-400", light: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300", ring: "ring-rose-400", icon: "2" },
+  { id: 2, defaultName: "Team 3", color: "emerald", bg: "bg-emerald-600", gradient: "from-emerald-600 to-teal-500", border: "border-emerald-400", light: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", ring: "ring-emerald-400", icon: "3" },
+  { id: 3, defaultName: "Team 4", color: "amber", bg: "bg-amber-600", gradient: "from-amber-600 to-orange-500", border: "border-amber-400", light: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300", ring: "ring-amber-400", icon: "4" },
+  { id: 4, defaultName: "Team 5", color: "purple", bg: "bg-purple-600", gradient: "from-purple-600 to-indigo-500", border: "border-purple-400", light: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", ring: "ring-purple-400", icon: "5" },
+  { id: 5, defaultName: "Team 6", color: "pink", bg: "bg-pink-600", gradient: "from-pink-600 to-rose-500", border: "border-pink-400", light: "bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300", ring: "ring-pink-400", icon: "6" },
+  { id: 6, defaultName: "Team 7", color: "teal", bg: "bg-teal-600", gradient: "from-teal-600 to-cyan-600", border: "border-teal-400", light: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300", ring: "ring-teal-400", icon: "7" },
+  { id: 7, defaultName: "Team 8", color: "orange", bg: "bg-orange-600", gradient: "from-orange-600 to-red-500", border: "border-orange-400", light: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", ring: "ring-orange-400", icon: "8" },
 ];
 
 const MYSTERY_VIBE_HINTS = [
@@ -168,6 +168,148 @@ function AnimatedScore({
     >
       {formatted}
     </span>
+  );
+}
+
+// Sleek, High-Contrast Main Scoreboard with Team Numbers & Live Glow
+interface MainScoreboardProps {
+  teams: Team[];
+  currentTeamIdx: number;
+  scoreDeltas?: ScoreDeltaPopup[];
+  highestScore: number;
+  onSelectTeam?: (idx: number) => void;
+  activeRevealTeamId?: number | null;
+  activeRevealDelta?: number | null;
+  className?: string;
+  isCompact?: boolean;
+}
+
+function MainScoreboard({
+  teams,
+  currentTeamIdx,
+  scoreDeltas = [],
+  highestScore,
+  onSelectTeam,
+  activeRevealTeamId,
+  activeRevealDelta,
+  className = "",
+  isCompact = false,
+}: MainScoreboardProps) {
+  return (
+    <div className={`w-full max-w-7xl mx-auto px-2 sm:px-4 ${className}`}>
+      <div className="flex items-stretch justify-center gap-3 sm:gap-4 md:gap-5 flex-wrap">
+        {teams.map((t, idx) => {
+          const isCurrent = currentTeamIdx === idx;
+          const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
+          const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
+          const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
+          const isAffectedReveal = activeRevealTeamId === t.id && activeRevealDelta !== undefined && activeRevealDelta !== null;
+          const isPositiveReveal = isAffectedReveal && (activeRevealDelta ?? 0) >= 0;
+
+          return (
+            <div
+              key={t.id}
+              onClick={() => onSelectTeam && onSelectTeam(idx)}
+              title={onSelectTeam ? "Click to set active turn" : undefined}
+              className={`group relative rounded-3xl border-3 transition-all duration-300 flex flex-col justify-between shadow-2xl overflow-visible select-none ${
+                onSelectTeam ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'
+              } ${
+                isCompact
+                  ? 'p-3 sm:p-4 min-w-[150px] sm:min-w-[190px]'
+                  : 'p-4 sm:p-5 md:p-6 min-w-[180px] sm:min-w-[220px] md:min-w-[250px]'
+              } ${
+                isAffectedReveal
+                  ? isPositiveReveal
+                    ? 'border-emerald-400 bg-gradient-to-b from-emerald-950/90 via-slate-900 to-slate-950 text-white ring-4 ring-emerald-400/60 shadow-[0_0_45px_rgba(16,185,129,0.5)] scale-105 z-20'
+                    : 'border-rose-400 bg-gradient-to-b from-rose-950/90 via-slate-900 to-slate-950 text-white ring-4 ring-rose-400/60 shadow-[0_0_45px_rgba(244,63,94,0.5)] scale-105 z-20 animate-shake'
+                  : isCurrent
+                  ? 'border-amber-400 bg-gradient-to-b from-slate-900 via-slate-900/95 to-slate-950 text-white scale-105 shadow-[0_12px_45px_rgba(251,191,36,0.4)] ring-4 ring-amber-400/50 z-10'
+                  : 'border-white/15 bg-slate-900/80 hover:bg-slate-800/90 text-white backdrop-blur-xl'
+              }`}
+            >
+              {/* Floating Live Point Delta Popups */}
+              {teamPopups.map((popup) => (
+                <div
+                  key={popup.id}
+                  className={`absolute -top-10 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 rounded-2xl font-black text-xs sm:text-sm whitespace-nowrap shadow-2xl pointer-events-none animate-live-pop border-2 ${
+                    popup.isPositive
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.7)]'
+                      : 'bg-rose-600 text-white border-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.7)]'
+                  }`}
+                >
+                  {popup.text.startsWith('+') ? `▲ ${popup.text}` : popup.text.startsWith('-') ? `▼ ${popup.text}` : popup.text}
+                </div>
+              ))}
+
+              {/* Active Turn Indicator or Affected Badge */}
+              {isAffectedReveal ? (
+                <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-slate-950 font-black text-[10px] sm:text-xs uppercase px-3.5 py-1 rounded-full shadow-lg tracking-wider flex items-center gap-1.5 whitespace-nowrap border ${
+                  isPositiveReveal
+                    ? 'bg-gradient-to-r from-emerald-400 to-teal-300 border-emerald-200'
+                    : 'bg-gradient-to-r from-rose-400 to-red-300 border-rose-200'
+                }`}>
+                  <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+                  {isPositiveReveal ? '▲ POINTS WON!' : '▼ PENALTY!'}
+                </div>
+              ) : isCurrent ? (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 text-[10px] sm:text-xs font-black uppercase px-3.5 py-1 rounded-full shadow-[0_4px_16px_rgba(251,191,36,0.6)] tracking-wider flex items-center gap-1.5 whitespace-nowrap border border-amber-200">
+                  <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+                  ⚡ ACTIVE TURN
+                </div>
+              ) : null}
+
+              {/* Team Header Info with Number Badge (No Animal Icons) */}
+              <div className="flex items-center justify-between gap-2.5 mb-2">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                  <div className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-br ${cfg.gradient} text-white font-black text-lg sm:text-xl flex items-center justify-center shadow-lg ring-2 ring-white/20 shrink-0`}>
+                    #{idx + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm sm:text-base md:text-lg font-black uppercase tracking-wide truncate max-w-[110px] sm:max-w-[140px] text-white">
+                      {t.name}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] font-bold text-slate-400">Team {idx + 1}</span>
+                      {isLeader && (
+                        <span title="1st Place Leader" className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-400/25 text-amber-300 border border-amber-400/40 flex items-center gap-0.5">
+                          👑 1ST
+                        </span>
+                      )}
+                      {(t.streak || 0) >= 2 && (
+                        <span className="text-[10px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm">
+                          🔥 {t.streak}x
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Giant Redesigned Score Display (NO +/- SIGNS) */}
+              <div className={`mt-2 pt-2.5 border-t border-white/10 flex items-baseline justify-between ${
+                isCurrent ? 'border-amber-400/30' : 'border-white/10'
+              }`}>
+                <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-slate-400">
+                  SCORE
+                </span>
+                <div className="flex items-baseline gap-1.5">
+                  <div className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight tabular-nums ${
+                    isCurrent
+                      ? 'text-amber-300 drop-shadow-[0_0_25px_rgba(251,191,36,0.55)]'
+                      : 'text-white'
+                  }`}>
+                    <AnimatedScore value={t.score} />
+                  </div>
+                  <span className="text-xs sm:text-sm font-black text-slate-400">
+                    PTS
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -393,6 +535,7 @@ export function MysteryBox({
 
   const autoAdvanceTimerRef = useRef<any>(null);
   const revealCountTimerRef = useRef<any>(null);
+  const pendingTeamsRef = useRef<Team[] | null>(null);
 
   useEffect(() => {
     return () => {
@@ -950,7 +1093,7 @@ export function MysteryBox({
         id: "steal_150",
         text: "STEAL 150 POINTS!",
         subtitle: "Heist up to 150 points from another team!",
-        icon: "🦊",
+        icon: "🥷",
         category: "heist",
         color: "from-indigo-500 to-violet-600",
         badgeText: "STEAL 150",
@@ -1166,7 +1309,7 @@ export function MysteryBox({
       return {
         id: t.id,
         name: t.name,
-        icon: t.icon || cfg.icon || '🦁',
+        icon: `#${i + 1}`,
         before,
         after,
         delta,
@@ -1178,7 +1321,7 @@ export function MysteryBox({
 
     setTeamScoreTransitions(transitions);
     setRevealScoreApplied(false);
-    setTeams(result.teams);
+    pendingTeamsRef.current = result.teams;
     setOutcomeSummary(result.summaryText);
     setOutcomeBeforeAfter({
       teamName: teams[receiverIdx]?.name || "Team",
@@ -1234,10 +1377,14 @@ export function MysteryBox({
 
     setModalStep('reveal');
 
-    // Trigger live score count-up / count-down animation across all teams after 280ms
+    // Trigger live score count-up / count-down animation on the main scoreboard after 280ms
     if (revealCountTimerRef.current) clearTimeout(revealCountTimerRef.current);
     revealCountTimerRef.current = setTimeout(() => {
       setRevealScoreApplied(true);
+      if (pendingTeamsRef.current) {
+        setTeams(pendingTeamsRef.current);
+        pendingTeamsRef.current = null;
+      }
       // Play rapid score-counting ticks during the live score update
       [0, 120, 240, 360, 480, 620, 760].forEach((delay, idx) => {
         setTimeout(() => {
@@ -1310,6 +1457,10 @@ export function MysteryBox({
   const handleCloseReveal = () => {
     if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
     if (revealCountTimerRef.current) clearTimeout(revealCountTimerRef.current);
+    if (pendingTeamsRef.current) {
+      setTeams(pendingTeamsRef.current);
+      pendingTeamsRef.current = null;
+    }
     playSound('click');
     setActiveBoxNum(null);
     setAnswerResult(null);
@@ -1496,8 +1647,8 @@ export function MysteryBox({
                       const cfg = DEFAULT_TEAM_CONFIGS[i % DEFAULT_TEAM_CONFIGS.length];
                       return (
                         <div key={i} className="flex gap-2.5 items-center bg-black/25 p-2 rounded-xl border border-white/15 focus-within:border-amber-400/70 transition-colors">
-                          <div className={`w-9 h-9 rounded-lg ${cfg.bg} text-white flex items-center justify-center font-black text-base shadow-sm shrink-0`}>
-                            {cfg.icon || (i + 1)}
+                          <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${cfg.gradient} text-white flex items-center justify-center font-black text-sm shadow-sm ring-1 ring-white/20 shrink-0`}>
+                            #{i + 1}
                           </div>
                           <input 
                             type="text" 
@@ -1963,111 +2114,18 @@ export function MysteryBox({
             </div>
           </header>
 
-          {/* NEW BIGGER REDESIGNED TEAM SCOREBOARD (NO +/- SIGNS) */}
+          {/* REDESIGNED BIGGER TEAM SCOREBOARD (NO ANIMAL ICONS, NO +/- SIGNS) */}
           <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-2 z-20 relative">
-            <div className="flex items-stretch justify-center gap-3 sm:gap-4 md:gap-5 flex-wrap">
-              {teams.map((t, idx) => {
-                const isCurrent = currentTeamIdx === idx;
-                const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
-                const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
-                const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
-
-                return (
-                  <div 
-                    key={t.id}
-                    onClick={() => {
-                      playSound('click');
-                      setCurrentTeamIdx(idx);
-                    }}
-                    title="Click to set active turn"
-                    className={`group relative p-4 sm:p-5 rounded-3xl border-3 transition-all duration-300 min-w-[170px] sm:min-w-[210px] md:min-w-[240px] cursor-pointer select-none flex flex-col justify-between shadow-xl ${
-                      isCurrent 
-                        ? 'border-amber-400 bg-white text-slate-900 scale-105 shadow-[0_12px_35px_rgba(251,191,36,0.45)] ring-4 ring-amber-400/40 z-10' 
-                        : 'border-white/15 bg-slate-900/80 hover:bg-slate-800/90 text-white backdrop-blur-md hover:scale-[1.02]'
-                    }`}
-                  >
-                    {/* Floating Live Point Delta Popups */}
-                    {teamPopups.map((popup) => (
-                      <div
-                        key={popup.id}
-                        className={`absolute -top-8 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1 rounded-xl font-black text-xs sm:text-sm whitespace-nowrap shadow-xl pointer-events-none animate-live-pop border ${
-                          popup.isPositive
-                            ? 'bg-emerald-500 text-white border-emerald-200'
-                            : 'bg-rose-600 text-white border-rose-200'
-                        }`}
-                      >
-                        {popup.text.replace('+', '')}
-                      </div>
-                    ))}
-
-                    {/* Active Turn Indicator or Leader Crown */}
-                    {isCurrent && (
-                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white text-[10px] sm:text-xs font-black uppercase px-3 py-0.5 rounded-full shadow-md tracking-wider flex items-center gap-1.5 whitespace-nowrap">
-                        <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                        ACTIVE TURN
-                      </span>
-                    )}
-
-                    {/* Team Header Info */}
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shrink-0 shadow-md ${
-                          isCurrent ? 'bg-amber-100 text-slate-900' : 'bg-white/10 text-white'
-                        }`}>
-                          {t.icon || cfg.icon || '🦁'}
-                        </div>
-                        <div className="min-w-0">
-                          <p className={`text-sm sm:text-base md:text-lg font-black uppercase truncate max-w-[100px] sm:max-w-[130px] ${
-                            isCurrent ? 'text-slate-900' : 'text-white'
-                          }`}>
-                            {t.name}
-                          </p>
-                          <span className={`text-[11px] font-bold block ${isCurrent ? 'text-amber-700' : 'text-slate-400'}`}>
-                            Team #{idx + 1}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        {isLeader && (
-                          <span title="1st Place Leader" className="text-xs font-black px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/40 flex items-center gap-1">
-                            👑 1ST
-                          </span>
-                        )}
-                        {(t.streak || 0) >= 2 && (
-                          <span className="text-[10px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-lg flex items-center shadow-sm">
-                            🔥 {t.streak}x
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Giant Clean Score Display (NO +/- SIGNS OR BUTTONS) */}
-                    <div className={`mt-1 pt-2 border-t flex items-baseline justify-between ${
-                      isCurrent ? 'border-slate-200' : 'border-white/10'
-                    }`}>
-                      <span className={`text-[10px] sm:text-xs font-black uppercase tracking-widest ${
-                        isCurrent ? 'text-slate-400' : 'text-slate-400'
-                      }`}>
-                        SCORE
-                      </span>
-                      <div className="flex items-baseline gap-1.5">
-                        <div className={`text-3xl sm:text-4xl md:text-5xl font-black tracking-tight tabular-nums ${
-                          isCurrent ? 'text-slate-950' : 'text-white'
-                        }`}>
-                          <AnimatedScore value={t.score} />
-                        </div>
-                        <span className={`text-xs sm:text-sm font-black ${
-                          isCurrent ? 'text-slate-500' : 'text-slate-400'
-                        }`}>
-                          PTS
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <MainScoreboard
+              teams={teams}
+              currentTeamIdx={currentTeamIdx}
+              scoreDeltas={scoreDeltas}
+              highestScore={highestScore}
+              onSelectTeam={(idx) => {
+                playSound('click');
+                setCurrentTeamIdx(idx);
+              }}
+            />
           </div>
 
           {/* Main Mystery Box Grid */}
@@ -2075,8 +2133,9 @@ export function MysteryBox({
             {/* Turn Banner */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-5 py-3 max-w-4xl mx-auto">
               <div className="flex items-center gap-3">
-                <span className={`px-4 py-1.5 rounded-xl text-white font-black text-sm sm:text-base shadow ${DEFAULT_TEAM_CONFIGS[currentTeamIdx % DEFAULT_TEAM_CONFIGS.length].bg}`}>
-                  {teams[currentTeamIdx]?.icon || '🦁'} {teams[currentTeamIdx]?.name}
+                <span className={`px-4 py-1.5 rounded-xl text-white font-black text-sm sm:text-base shadow flex items-center gap-2 ${DEFAULT_TEAM_CONFIGS[currentTeamIdx % DEFAULT_TEAM_CONFIGS.length].bg}`}>
+                  <span className="w-6 h-6 rounded-lg bg-black/25 flex items-center justify-center text-xs font-black">#{currentTeamIdx + 1}</span>
+                  {teams[currentTeamIdx]?.name}
                 </span>
                 <span className="text-white font-bold text-base sm:text-lg">
                   Choose a Mystery Box to Unlock!
@@ -2179,7 +2238,7 @@ export function MysteryBox({
                             Full-Screen Mystery Box Question
                           </span>
                           <div className="text-lg sm:text-2xl font-black text-white flex items-center gap-2 flex-wrap">
-                            <span>{activeTeam?.icon || '🦁'} {activeTeam?.name}&apos;s Turn</span>
+                            <span>Team #{currentTeamIdx + 1}: {activeTeam?.name}&apos;s Turn</span>
                             <span className="text-xs sm:text-sm bg-black/25 px-3 py-1 rounded-xl font-black tabular-nums border border-white/20">
                               <AnimatedScore value={activeTeam?.score ?? 0} /> PTS
                             </span>
@@ -2201,7 +2260,7 @@ export function MysteryBox({
                                   : 'bg-black/30 text-white/90 font-bold border border-white/20'
                               }`}
                             >
-                              <span className="text-xl">{t.icon || '🦁'}</span>
+                              <span className="px-2 py-0.5 rounded-lg bg-black/20 text-xs font-black">#{idx + 1}</span>
                               <div className="text-left">
                                 <span className="text-xs uppercase tracking-wider max-w-[100px] truncate block leading-none">{t.name}</span>
                               </div>
@@ -2518,9 +2577,11 @@ export function MysteryBox({
                           <button
                             key={t.id}
                             onClick={() => handleExecuteDecision(idx)}
-                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-purple-500 bg-slate-50 hover:bg-purple-50 flex flex-col items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-purple-500 bg-slate-50 hover:bg-purple-50 flex flex-col items-center gap-2 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
                           >
-                            <span className="text-3xl sm:text-4xl">{t.icon || cfg.icon || '🦁'}</span>
+                            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${cfg.gradient} text-white font-black text-xl flex items-center justify-center shadow-md ring-2 ring-white/20`}>
+                              #{idx + 1}
+                            </div>
                             <span className="font-black text-lg text-slate-900">{t.name}</span>
                             <span className="text-xs font-bold text-slate-500 tabular-nums">
                               Current: {t.score > 0 ? `+${t.score}` : t.score} pts
@@ -2577,9 +2638,11 @@ export function MysteryBox({
                           <button
                             key={t.id}
                             onClick={() => handleTargetSelection(idx)}
-                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 flex flex-col items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 flex flex-col items-center gap-2 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
                           >
-                            <span className="text-3xl sm:text-4xl">{t.icon || cfg.icon || '🦁'}</span>
+                            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${cfg.gradient} text-white font-black text-xl flex items-center justify-center shadow-md ring-2 ring-white/20`}>
+                              #{idx + 1}
+                            </div>
                             <span className="font-black text-lg text-slate-900">{t.name}</span>
                             <span className="text-xs font-bold text-slate-600 tabular-nums">
                               Score: {t.score > 0 ? `+${t.score}` : t.score} pts
@@ -2592,14 +2655,33 @@ export function MysteryBox({
                 </div>
               )}
 
-              {/* 6. LIVE SCOREBOARD UPDATE STAGE (REPLACES "CONTINUE TO NEXT TURN" WITH LIVE TEAM POINT UPDATING EFFECT) */}
+              {/* 6. REVEAL STAGE WITH LIVE SCOREBOARD AT TOP & MYSTERY BOX OUTCOME */}
               {modalStep === 'reveal' && currentOutcome && (
                 <div
                   onClick={handleCloseReveal}
-                  className="w-full max-w-5xl my-auto animate-pop-in cursor-pointer select-none"
+                  className="w-full max-w-5xl my-auto flex flex-col items-center gap-6 animate-pop-in cursor-pointer select-none px-2 sm:px-4"
                   title="Click anywhere to skip to next turn immediately"
                 >
-                  <div className="bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 lg:p-10 shadow-[0_25px_90px_rgba(0,0,0,0.85)] text-center text-white relative overflow-hidden">
+                  {/* MAIN SCOREBOARD AT TOP SHOWING LIVE SCORE UPDATING */}
+                  <div className="w-full">
+                    <div className="flex items-center justify-center gap-2 mb-2 text-center">
+                      <Trophy className="w-5 h-5 text-amber-400" />
+                      <h4 className="text-xs sm:text-sm font-black uppercase tracking-widest text-amber-300">
+                        Live Scoreboard
+                      </h4>
+                    </div>
+                    <MainScoreboard
+                      teams={teams}
+                      currentTeamIdx={targetTeamIdx !== null ? targetTeamIdx : currentTeamIdx}
+                      scoreDeltas={scoreDeltas}
+                      highestScore={highestScore}
+                      activeRevealTeamId={targetTeamIdx !== null ? teams[targetTeamIdx]?.id : teams[currentTeamIdx]?.id}
+                      activeRevealDelta={outcomeBeforeAfter?.delta}
+                    />
+                  </div>
+
+                  {/* REVEALED MYSTERY BOX OUTCOME CARD (WITHOUT DUPLICATE SCORE IN BOX) */}
+                  <div className="bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 lg:p-10 shadow-[0_25px_90px_rgba(0,0,0,0.85)] text-center text-white relative overflow-hidden w-full">
                     
                     {/* Top Outcome Header Banner */}
                     <div className="flex items-center justify-between gap-2 mb-4">
@@ -2613,132 +2695,15 @@ export function MysteryBox({
                     </div>
 
                     {/* Revealed Outcome Card */}
-                    <div className={`mx-auto w-full bg-gradient-to-r ${currentOutcome.color} rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col sm:flex-row items-center justify-center gap-4 border-4 border-white/90 text-white mb-6`}>
-                      <span className="text-5xl sm:text-7xl drop-shadow-md animate-bounce shrink-0">{currentOutcome.icon}</span>
+                    <div className={`mx-auto w-full bg-gradient-to-r ${currentOutcome.color} rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col sm:flex-row items-center justify-center gap-5 border-4 border-white/90 text-white mb-6`}>
+                      <span className="text-6xl sm:text-8xl drop-shadow-md animate-bounce shrink-0">{currentOutcome.icon}</span>
                       <div className="text-center sm:text-left">
-                        <h3 className="text-3xl sm:text-5xl font-black tracking-tight leading-none mb-1">{currentOutcome.text}</h3>
-                        <p className="text-sm sm:text-lg font-bold text-white/95">{outcomeSummary || currentOutcome.subtitle}</p>
+                        <h3 className="text-3xl sm:text-5xl font-black tracking-tight leading-none mb-2">{currentOutcome.text}</h3>
+                        <p className="text-base sm:text-xl font-bold text-white/95">{outcomeSummary || currentOutcome.subtitle}</p>
                       </div>
                     </div>
 
-                    {/* LIVE TEAM SCOREBOARD SHOWING ALL TEAMS & LIVE POINT UPDATING EFFECT */}
-                    <div className="mb-6">
-                      <div className="flex items-center justify-center gap-2 mb-4">
-                        <Trophy className="w-5 h-5 text-amber-400" />
-                        <h4 className="text-sm sm:text-base font-black uppercase tracking-widest text-amber-300">
-                          Live Team Standings &amp; Point Update
-                        </h4>
-                      </div>
-
-                      <div className={`grid gap-3.5 sm:gap-4 ${
-                        teamScoreTransitions.length <= 2
-                          ? 'grid-cols-1 sm:grid-cols-2'
-                          : teamScoreTransitions.length === 3
-                          ? 'grid-cols-1 sm:grid-cols-3'
-                          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
-                      }`}>
-                        {(teamScoreTransitions.length > 0
-                          ? teamScoreTransitions
-                          : teams.map((t, idx) => ({
-                              teamId: t.id,
-                              name: t.name,
-                              icon: t.icon || '🦁',
-                              color: t.color,
-                              before: t.score,
-                              after: t.score,
-                              delta: 0,
-                              isAffected: idx === (targetTeamIdx ?? currentTeamIdx),
-                            }))
-                        ).map((item, idx) => {
-                          const hasDelta = item.delta !== 0;
-                          const isPositive = item.delta > 0;
-                          const isNegative = item.delta < 0;
-
-                          return (
-                            <div
-                              key={item.teamId || idx}
-                              className={`relative rounded-2xl sm:rounded-3xl p-4 sm:p-5 border-2 transition-all duration-500 flex flex-col justify-between overflow-hidden ${
-                                hasDelta && revealScoreApplied
-                                  ? isPositive
-                                    ? 'bg-gradient-to-br from-emerald-950/90 via-emerald-900/60 to-slate-900 border-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.45)] scale-[1.04] z-10'
-                                    : 'bg-gradient-to-br from-rose-950/90 via-rose-900/60 to-slate-900 border-rose-400 shadow-[0_0_40px_rgba(244,63,94,0.45)] scale-[1.04] z-10 animate-shake'
-                                  : 'bg-slate-800/80 border-slate-700/80 opacity-85'
-                              }`}
-                            >
-                              {/* Floating Delta Pill Badge when score changes */}
-                              {hasDelta && (
-                                <div
-                                  className={`px-3 py-1 rounded-full font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg inline-flex items-center gap-1 self-end mb-2 transition-all duration-500 ${
-                                    revealScoreApplied ? 'scale-110 animate-bounce' : 'scale-95 opacity-80'
-                                  } ${
-                                    isPositive
-                                      ? 'bg-emerald-500 text-slate-950'
-                                      : 'bg-rose-500 text-white'
-                                  }`}
-                                >
-                                  <span>{isPositive ? `▲ +${item.delta} PTS` : `▼ ${item.delta} PTS`}</span>
-                                </div>
-                              )}
-
-                              {/* Team Info Row */}
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-3 min-w-0 text-left">
-                                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-3xl sm:text-4xl shrink-0 shadow-inner">
-                                    {item.icon}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="font-black text-base sm:text-xl text-white block truncate">
-                                      {item.name}
-                                    </span>
-                                    {hasDelta ? (
-                                      <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 tabular-nums">
-                                        <span className="line-through opacity-75">{item.before} PTS</span>
-                                        <span className="text-amber-400 font-black">➔</span>
-                                        <span className={isPositive ? 'text-emerald-300 font-black' : 'text-rose-300 font-black'}>
-                                          {item.after} PTS
-                                        </span>
-                                      </span>
-                                    ) : (
-                                      <span className="text-xs font-semibold text-slate-400">
-                                        Unchanged
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Giant Live Rolling Score Counter */}
-                                <div className="text-right shrink-0">
-                                  <div
-                                    className={`text-2xl sm:text-4xl font-black tabular-nums tracking-tight transition-transform duration-300 ${
-                                      hasDelta && revealScoreApplied
-                                        ? isPositive
-                                          ? 'text-emerald-400 scale-110'
-                                          : 'text-rose-400 scale-110'
-                                        : 'text-white'
-                                    }`}
-                                  >
-                                    {revealScoreApplied ? (
-                                      <AnimatedScore
-                                        value={item.after}
-                                        fromValue={item.before}
-                                        duration={1100}
-                                      />
-                                    ) : (
-                                      <span>{item.before}</span>
-                                    )}
-                                  </div>
-                                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-slate-400 block">
-                                    POINTS
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Live Auto-Advancing Status Bar (Replaces static "Continue to Next Turn" button) */}
+                    {/* Live Auto-Advancing Status Bar */}
                     <div className="max-w-md mx-auto flex flex-col items-center gap-2">
                       <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-white/10">
                         <div
@@ -2749,7 +2714,7 @@ export function MysteryBox({
                       </div>
                       <p className="text-xs sm:text-sm font-bold text-slate-300 flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                        Scores updated live! Auto-switching to <span className="text-amber-300 font-black">{teams[(currentTeamIdx + 1) % teams.length]?.name}&apos;s Turn</span>...
+                        Scores updated live on main board! Auto-switching to <span className="text-amber-300 font-black">{teams[(currentTeamIdx + 1) % teams.length]?.name}&apos;s Turn</span>...
                       </p>
                     </div>
                   </div>
@@ -2791,7 +2756,12 @@ export function MysteryBox({
                       >
                         <div className="flex items-center gap-3">
                           <span className="text-2xl sm:text-3xl">{medal}</span>
-                          <span className="text-lg sm:text-xl font-black">{t.icon} {t.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-lg bg-black/10 dark:bg-white/10 text-xs font-black">
+                              Team #{teams.findIndex(tm => tm.id === t.id) + 1}
+                            </span>
+                            <span className="text-lg sm:text-xl font-black">{t.name}</span>
+                          </div>
                         </div>
                         <div className="text-xl sm:text-2xl font-black text-amber-600 tabular-nums">
                           {t.score > 0 ? `+${t.score}` : t.score} pts
@@ -2871,6 +2841,13 @@ function QuizEditor({
   const [showVideoGuide, setShowVideoGuide] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [toastMsg, setToastMsg] = useState("");
+  const [copiedPromptInModal, setCopiedPromptInModal] = useState(false);
+
+  const handleCopyAiPrompt = () => {
+    navigator.clipboard.writeText(`Create 50 fill-in-the-blank questions on the topic of Passive Voice. Each question should have 4 multiple-choice options (A, B, C, and D) and include the correct answer.`);
+    setCopiedPromptInModal(true);
+    setTimeout(() => setCopiedPromptInModal(false), 2500);
+  };
 
   const handleApplyBulkPaste = (action: 'replace' | 'append') => {
     const parsed = parsePastedQuiz(bulkText);
@@ -2892,7 +2869,9 @@ function QuizEditor({
       setQuestions(newItems.slice(0, 30));
     } else {
       setQuestions(prev => {
-        const combined = [...prev, ...newItems].slice(0, 30);
+        const isOnlyInitialBlank = prev.length === 1 && !prev[0].text.trim() && prev[0].options.every(o => !o.trim());
+        const base = isOnlyInitialBlank ? [] : prev;
+        const combined = [...base, ...newItems].slice(0, 30);
         return combined;
       });
     }
@@ -3138,6 +3117,17 @@ function QuizEditor({
                   <ClipboardList size={22} className="stroke-[2.5]" />
                   <span>Bulk Paste</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowVideoGuide(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-2 cursor-pointer border border-purple-400/30"
+                  title="Watch Video Tutorial: How to Bulk Paste with AI"
+                >
+                  <div className="w-5 h-5 rounded-full bg-white text-purple-700 flex items-center justify-center shrink-0">
+                    <Play size={11} className="ml-0.5 fill-current" />
+                  </div>
+                  <span>How to Bulk Paste</span>
+                </button>
               </div>
             </div>
 
@@ -3300,12 +3290,84 @@ function QuizEditor({
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => { setShowBulkPasteModal(false); setBulkText(""); }}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVideoGuide(true)}
+                  className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Watch Video Tutorial"
+                >
+                  <Play size={13} className="fill-current text-purple-500" />
+                  <span>Video Guide</span>
+                </button>
+                <button 
+                  onClick={() => { setShowBulkPasteModal(false); setBulkText(""); }}
+                  className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Step-by-step instructions with Video walkthrough & prompt copy */}
+            <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-4 flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Play size={14} className="ml-0.5 fill-current" />
+                  </div>
+                  <div>
+                    <span className="font-black text-sm text-slate-800 dark:text-white block">
+                      How to Bulk Paste: 3 Simple Steps
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Generate 20-30 questions with AI and auto-populate in seconds
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowVideoGuide(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl transition-all shadow-md shadow-purple-500/25 flex items-center gap-1.5 cursor-pointer text-xs shrink-0 self-start sm:self-auto"
+                >
+                  <Play size={12} className="fill-current" />
+                  <span>Watch Video Guide</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-purple-600 dark:text-purple-400">1. Prompt AI</span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    Ask ChatGPT/Claude for multiple-choice questions with answers.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCopyAiPrompt}
+                    className="mt-1 px-2 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-700 dark:text-purple-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    {copiedPromptInModal ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                    <span>{copiedPromptInModal ? "Copied Prompt!" : "Copy AI Prompt"}</span>
+                  </button>
+                </div>
+
+                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-blue-600 dark:text-blue-400">2. Copy Output</span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    Highlight all questions generated by the AI and copy to clipboard.
+                  </p>
+                  <span className="text-[10px] text-slate-400 font-mono">Ctrl+C or ⌘+C</span>
+                </div>
+
+                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">3. Paste &amp; Click + Add</span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    Paste below. Questions, options &amp; answers are auto-divided!
+                  </p>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Ready in 1 click!</span>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -3339,9 +3401,10 @@ function QuizEditor({
               </button>
               <button 
                 onClick={() => handleApplyBulkPaste('append')}
-                className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30"
+                className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                Append to End (Up to 30)
+                <Plus size={18} />
+                + Add
               </button>
             </div>
           </div>
@@ -3365,24 +3428,53 @@ function QuizEditor({
 function parsePastedQuiz(rawText: string): Partial<Question>[] {
   if (!rawText || !rawText.trim()) return [];
   const items: Partial<Question>[] = [];
-  
+
+  // 1. TSV / Excel paste check
   if (rawText.includes('\t')) {
     const lines = rawText.split(/\r?\n/).filter(line => line.trim());
     lines.forEach(line => {
       const parts = line.split('\t').map(p => p.trim());
-      if (parts.length > 0) {
+      if (parts.length >= 2) {
+        // Skip header row if present
+        const p0Lower = parts[0].toLowerCase();
+        if (p0Lower.includes('question') && (parts[1].toLowerCase().includes('option') || parts[1].toLowerCase().includes('answer'))) {
+          return;
+        }
+
+        let qText = parts[0];
+        let opts = ["", "", "", ""];
+        let ansRaw = "";
+
+        if (/^\d+$/.test(parts[0]) && parts.length >= 6) {
+          // Format: ID \t Question \t Opt1 \t Opt2 \t Opt3 \t Opt4 \t Answer
+          qText = parts[1];
+          opts = [parts[2] || "", parts[3] || "", parts[4] || "", parts[5] || ""];
+          ansRaw = parts[6] || "";
+        } else {
+          opts = [parts[1] || "", parts[2] || "", parts[3] || "", parts[4] || ""];
+          ansRaw = parts[5] || "";
+        }
+
+        let ansIdx = 0;
+        const letterMatch = ansRaw.match(/^[A-Da-d]$/);
+        const numMatch = ansRaw.match(/^[1-4]$/);
+        if (letterMatch) {
+          ansIdx = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
+        } else if (numMatch) {
+          ansIdx = parseInt(numMatch[0]) - 1;
+        } else if (ansRaw) {
+          const found = opts.findIndex(o => o && o.toLowerCase() === ansRaw.toLowerCase());
+          if (found >= 0) ansIdx = found;
+        }
+
         items.push({
-          text: parts[0],
-          options: [
-            parts[1] || "",
-            parts[2] || "",
-            parts[3] || "",
-            parts[4] || ""
-          ],
-          answerIndex: 0
+          text: qText,
+          options: opts,
+          answerIndex: Math.max(0, Math.min(3, ansIdx))
         });
       }
     });
+
     if (items.length > 0) {
       items.forEach(q => {
         if (q.options) {
@@ -3394,59 +3486,154 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
       return items.slice(0, 30);
     }
   }
-  
+
+  // 2. Multi-line / Standard Text Parsing
   const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   let currentQ: Partial<Question> | null = null;
-  const optionRegex = /^([a-eA-E1-4])[\.\)\:\-]\s+(.*)/;
-  
+
+  const isQuestionStart = (line: string) => {
+    return /^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s+(.+)/i.test(line);
+  };
+
+  const getQuestionText = (line: string) => {
+    const m = line.match(/^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s+(.+)/i);
+    return m ? m[1].trim() : line;
+  };
+
+  const isAnswerLine = (line: string) => {
+    return /^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i.test(line);
+  };
+
+  const extractAnswerIndex = (line: string, opts: string[] = ["", "", "", ""]) => {
+    const m = line.match(/^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i);
+    if (!m) return -1;
+    const raw = m[1].trim();
+
+    const letter = raw.match(/[\(\[]?([A-Da-d])[\)\]\.\:]?/);
+    if (letter) {
+      return letter[1].toUpperCase().charCodeAt(0) - 65;
+    }
+    const num = raw.match(/^[1-4]$/);
+    if (num) {
+      return parseInt(num[0]) - 1;
+    }
+    const found = opts.findIndex(o => o && (o.toLowerCase() === raw.toLowerCase() || raw.toLowerCase().includes(o.toLowerCase())));
+    if (found >= 0) return found;
+
+    return 0;
+  };
+
+  const isOptionLine = (line: string) => {
+    // Explicit letter options: A., A), A:, A -, (A), [A], a., a), (a), [a]
+    if (/^(?:[\(\[]?[A-Da-d][\)\]\.\:\-]|[\(\[][A-Da-d][\)\]])\s*(.*)/.test(line)) {
+      return true;
+    }
+    // Numbered option: (1), [1], 1) - but NEVER 1. (which is a numbered question)
+    if (/^(?:[\(\[][1-4][\)\]]|[1-4]\))\s*(.*)/.test(line)) {
+      return true;
+    }
+    return false;
+  };
+
+  const extractOption = (line: string) => {
+    const mLetter = line.match(/^(?:[\(\[]?([A-Da-d])[\)\]\.\:\-]|[\(\[]([A-Da-d])[\)\]])\s*(.*)/);
+    if (mLetter) {
+      const char = (mLetter[1] || mLetter[2]).toUpperCase();
+      const idx = char.charCodeAt(0) - 65;
+      return { index: idx, text: mLetter[3].trim() };
+    }
+    const mNum = line.match(/^(?:[\(\[]([1-4])[\)\]]|([1-4])\))\s*(.*)/);
+    if (mNum) {
+      const num = parseInt(mNum[1] || mNum[2]) - 1;
+      return { index: num, text: mNum[3].trim() };
+    }
+    return null;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
-    
-    const ansMatch = line.match(/^answer\s*[:=]?\s*([a-eA-E1-4])/i);
-    if (ansMatch) {
+    if (!line) continue;
+
+    // 1. Check if the line is an Answer line (e.g. "Answer: B", "Ans: Paris", "Correct: A")
+    if (isAnswerLine(line)) {
       if (currentQ) {
-        const val = ansMatch[1].toUpperCase();
-        if (/[A-E]/.test(val)) currentQ.answerIndex = val.charCodeAt(0) - 65;
-        else if (/[1-4]/.test(val)) currentQ.answerIndex = parseInt(val) - 1;
+        const ansIdx = extractAnswerIndex(line, currentQ.options || []);
+        if (ansIdx >= 0) currentQ.answerIndex = ansIdx;
       }
       continue;
     }
 
-    let inlineAnswerMatch = line.match(/\banswer\s*[:=]?\s*([a-eA-E1-4])\b/i);
-    if (inlineAnswerMatch) {
-      const val = inlineAnswerMatch[1].toUpperCase();
-      let inlineAnswerIndex = -1;
-      if (/[A-E]/.test(val)) inlineAnswerIndex = val.charCodeAt(0) - 65;
+    // 2. Check for inline answer at the end of the line (e.g. "... (Answer: B)")
+    const inlineAnsMatch = line.match(/(?:\[|\(|\b)(?:ans(?:wer)?|correct)\s*[:=\-]?\s*([A-Da-d1-4])(?:\b|\)|\b)/i);
+    let inlineAnswerIndex = -1;
+    if (inlineAnsMatch) {
+      const val = inlineAnsMatch[1].toUpperCase();
+      if (/[A-D]/.test(val)) inlineAnswerIndex = val.charCodeAt(0) - 65;
       else if (/[1-4]/.test(val)) inlineAnswerIndex = parseInt(val) - 1;
-      if (currentQ && inlineAnswerIndex >= 0) currentQ.answerIndex = inlineAnswerIndex;
-      line = line.replace(inlineAnswerMatch[0], '').trim();
+      line = line.replace(inlineAnsMatch[0], "").trim();
     }
-    
-    if (line === '') continue;
-    
-    const optMatch = line.match(optionRegex);
-    if (optMatch) {
-      if (!currentQ) {
-        currentQ = { text: "Question", options: ["", "", "", ""], answerIndex: 0 };
+    if (!line) continue;
+
+    // 3. Check if line is an option (e.g. "A) London", "(B) Paris", "C. Berlin", "D - Madrid")
+    if (isOptionLine(line)) {
+      const opt = extractOption(line);
+      if (opt && opt.index >= 0 && opt.index < 4) {
+        if (!currentQ) {
+          currentQ = { text: "Question", options: ["", "", "", ""], answerIndex: 0 };
+          items.push(currentQ);
+        }
+        if (!currentQ.options) currentQ.options = ["", "", "", ""];
+        currentQ.options[opt.index] = opt.text;
+        if (inlineAnswerIndex >= 0) currentQ.answerIndex = inlineAnswerIndex;
+
+        // Support multiple inline options on the same line if present (e.g. "A) London  B) Paris")
+        let rest = opt.text;
+        const inlineOpts = [...rest.matchAll(/\s+([B-Db-d])[\.\)\:\-]\s+([^B-Db-d\.\)\:\-]+)/g)];
+        if (inlineOpts.length > 0) {
+          currentQ.options[opt.index] = rest.substring(0, inlineOpts[0].index).trim();
+          inlineOpts.forEach(m => {
+            const extraIdx = m[1].toUpperCase().charCodeAt(0) - 65;
+            if (extraIdx < 4 && currentQ && currentQ.options) currentQ.options[extraIdx] = m[2].trim();
+          });
+        }
+      }
+      continue;
+    }
+
+    // 4. Check if line is a numbered question start (e.g. "1. Question text", "2) Question text")
+    if (isQuestionStart(line)) {
+      const qText = getQuestionText(line);
+      currentQ = {
+        text: qText,
+        options: ["", "", "", ""],
+        answerIndex: inlineAnswerIndex >= 0 ? inlineAnswerIndex : 0
+      };
+      items.push(currentQ);
+      continue;
+    }
+
+    // 5. Line does not match option, answer, or question start
+    if (currentQ) {
+      const hasOptions = currentQ.options?.some(o => Boolean(o));
+      if (!hasOptions) {
+        currentQ.text += " " + line;
+      } else {
+        currentQ = {
+          text: line,
+          options: ["", "", "", ""],
+          answerIndex: inlineAnswerIndex >= 0 ? inlineAnswerIndex : 0
+        };
         items.push(currentQ);
       }
-      
-      const optText = optMatch[2].trim();
-      const prefix = optMatch[1].toUpperCase();
-      let expectedIndex = -1;
-      if (/[A-E]/.test(prefix)) expectedIndex = prefix.charCodeAt(0) - 65;
-      else if (/[1-4]/.test(prefix)) expectedIndex = parseInt(prefix) - 1;
-      
-      if (expectedIndex >= 0 && expectedIndex < 4 && currentQ.options) {
-        currentQ.options[expectedIndex] = optText;
-      }
     } else {
-      const qMatch = line.match(/^\d+[\.\)\:\-]\s+(.*)/);
-      const qText = qMatch ? qMatch[1].trim() : line;
-      currentQ = { text: qText, options: ["", "", "", ""], answerIndex: 0 };
+      currentQ = {
+        text: line,
+        options: ["", "", "", ""],
+        answerIndex: inlineAnswerIndex >= 0 ? inlineAnswerIndex : 0
+      };
       items.push(currentQ);
     }
   }
-  
+
   return items.slice(0, 30);
 }

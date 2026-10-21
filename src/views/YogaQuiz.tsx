@@ -34,6 +34,7 @@ import { collection, query, where, getDocs, doc, addDoc, updateDoc } from "fireb
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
+import { drawSuperheroHands } from "../utils/superheroHands";
 
 export interface Question {
   id: number | string;
@@ -211,16 +212,26 @@ function detectStandingPoseFromHands(
     const ringRatio = dRingTip / dRingPip;
     const pinkyRatio = dPinkyTip / dPinkyPip;
 
-    const indexExtended = indexRatio > 1.07 && dist(lm[8], lm[5]) > palmSize * 0.52;
-    const middleExtended = middleRatio > 1.07 && dist(lm[12], lm[9]) > palmSize * 0.52;
-    const ringExtended = ringRatio > 1.06 && dist(lm[16], lm[13]) > palmSize * 0.48;
-    const pinkyExtended = pinkyRatio > 1.06 && dist(lm[20], lm[17]) > palmSize * 0.45;
+    const indexTipToMcp = dist(lm[8], lm[5]);
+    const indexPipToMcp = Math.max(0.005, dist(lm[6], lm[5]));
+    const middleTipToMcp = dist(lm[12], lm[9]);
+    const middlePipToMcp = Math.max(0.005, dist(lm[10], lm[9]));
+    const ringTipToMcp = dist(lm[16], lm[13]);
+    const ringPipToMcp = Math.max(0.005, dist(lm[14], lm[13]));
+    const pinkyTipToMcp = dist(lm[20], lm[17]);
+    const pinkyPipToMcp = Math.max(0.005, dist(lm[18], lm[17]));
+
+    // Multi-criteria scale-invariant finger extension (ratio + knuckle geometry + wrist distance)
+    const indexExtended = (indexRatio > 1.05 && (indexTipToMcp > indexPipToMcp * 1.15 || dist(lm[8], lm[5]) > palmSize * 0.44)) || (dist(lm[8], wrist) > dist(lm[6], wrist) * 1.08);
+    const middleExtended = (middleRatio > 1.05 && (middleTipToMcp > middlePipToMcp * 1.15 || dist(lm[12], lm[9]) > palmSize * 0.44)) || (dist(lm[12], wrist) > dist(lm[10], wrist) * 1.08);
+    const ringExtended = (ringRatio > 1.04 && (ringTipToMcp > ringPipToMcp * 1.12 || dist(lm[16], lm[13]) > palmSize * 0.40)) || (dist(lm[16], wrist) > dist(lm[14], wrist) * 1.06);
+    const pinkyExtended = (pinkyRatio > 1.04 && (pinkyTipToMcp > pinkyPipToMcp * 1.10 || dist(lm[20], lm[17]) > palmSize * 0.36)) || (dist(lm[20], wrist) > dist(lm[18], wrist) * 1.06);
 
     // Thumb metrics
     const thumbTip = lm[4];
     const thumbMcp = lm[2];
     const thumbIp = lm[3];
-    const thumbSpread = dist(thumbTip, lm[5]) > palmSize * 0.52 && dist(thumbTip, lm[17]) > dist(thumbMcp, lm[17]) * 1.15;
+    const thumbSpread = dist(thumbTip, lm[5]) > palmSize * 0.48 && dist(thumbTip, lm[17]) > dist(thumbMcp, lm[17]) * 1.12;
     const thumbUpVertical = (thumbTip.y < thumbIp.y - palmSize * 0.05) && (thumbTip.y < lm[5].y - palmSize * 0.05);
 
     // Number of extended fingers (index, middle, ring, pinky)
@@ -232,12 +243,12 @@ function detectStandingPoseFromHands(
 
     const totalOpenCount = fourFingersCount + (thumbSpread ? 1 : 0);
 
-    // Closed fist: all fingers curled and not pointing thumb up
+    // Closed fist: all 4 fingers curled down tightly
     const fingersCurled = !indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
 
     // Pinch distance for OK sign
     const pinchDist = dist(thumbTip, lm[8]) / palmSize;
-    const isOkPinch = pinchDist < 0.58 && (middleExtended || ringExtended || pinkyExtended);
+    const isOkPinch = pinchDist < 0.55 && (middleExtended || ringExtended || pinkyExtended);
 
     // Relative extension dominances
     const peaceDominance = Math.min(indexRatio, middleRatio) - Math.max(ringRatio, pinkyRatio);
@@ -248,6 +259,10 @@ function detectStandingPoseFromHands(
       wrist,
       palmCenter,
       palmSize,
+      indexRatio,
+      middleRatio,
+      ringRatio,
+      pinkyRatio,
       indexExtended,
       middleExtended,
       ringExtended,
@@ -268,62 +283,66 @@ function detectStandingPoseFromHands(
   const scores: Record<string, number> = {};
 
   for (const h of analyzed) {
-    // 1. Closed Fist (✊) - 0 fingers extended
+    // 1. Closed Fist (✊) - all 4 fingers curled down
     if (h.fingersCurled && !h.thumbUpVertical && !h.isOkPinch) {
-      scores['fist'] = Math.max(scores['fist'] || 0, 0.98);
-      scores['power-fist'] = Math.max(scores['power-fist'] || 0, 0.92);
+      scores['fist'] = Math.max(scores['fist'] || 0, 0.99);
+      scores['power-fist'] = Math.max(scores['power-fist'] || 0, 0.95);
     }
 
-    // 2. 1 Finger / Point Up (☝️) - only index extended
+    // 2. 1 Finger / Point Up (☝️) - ONLY index extended, middle, ring, and pinky MUST be curled
+    const otherThreeCurled = !h.middleExtended && !h.ringExtended && !h.pinkyExtended && h.pinkyRatio < 1.08 && h.middleRatio < 1.08;
     if (
-      (h.indexExtended && !h.middleExtended && !h.ringExtended && !h.pinkyExtended && !h.isOkPinch) ||
-      (h.fourFingersCount === 1 && h.indexExtended && !h.isOkPinch) ||
-      (h.pointDominance > 0.18 && !h.isOkPinch)
+      h.indexExtended && otherThreeCurled && !h.isOkPinch &&
+      (h.fourFingersCount === 1 || h.pointDominance > 0.15)
     ) {
-      scores['1-finger'] = Math.max(scores['1-finger'] || 0, 0.97);
-      scores['point-up'] = Math.max(scores['point-up'] || 0, 0.97);
+      scores['1-finger'] = Math.max(scores['1-finger'] || 0, 0.99);
+      scores['point-up'] = Math.max(scores['point-up'] || 0, 0.99);
     }
 
     // 3. 2 Fingers / Peace (✌️) - index and middle extended, ring and pinky curled
     if (
       (h.indexExtended && h.middleExtended && !h.ringExtended && !h.pinkyExtended) ||
-      (h.fourFingersCount === 2 && h.indexExtended && h.middleExtended) ||
-      (h.peaceDominance > 0.14)
+      (h.fourFingersCount === 2 && h.indexExtended && h.middleExtended && !h.pinkyExtended) ||
+      (h.peaceDominance > 0.12 && !h.pinkyExtended)
     ) {
-      scores['2-finger'] = Math.max(scores['2-finger'] || 0, 0.98);
-      scores['peace'] = Math.max(scores['peace'] || 0, 0.98);
+      scores['2-finger'] = Math.max(scores['2-finger'] || 0, 0.99);
+      scores['peace'] = Math.max(scores['peace'] || 0, 0.99);
     }
 
-    // 4. 3 Fingers (🤟) - exactly 3 fingers extended
-    // Supports Index+Middle+Ring, OR European Thumb+Index+Middle, OR Love-You (Thumb+Index+Pinky)
-    if (
-      (h.indexExtended && h.middleExtended && h.ringExtended && !h.pinkyExtended) ||
-      (h.fourFingersCount === 3) ||
-      (h.thumbSpread && h.indexExtended && h.middleExtended && !h.ringExtended && !h.pinkyExtended) ||
-      (h.thumbSpread && h.indexExtended && h.pinkyExtended && !h.middleExtended && !h.ringExtended)
-    ) {
-      scores['3-finger'] = Math.max(scores['3-finger'] || 0, 0.97);
+    // 4. 3 Fingers / Sign (🤟) - accepts:
+    //    a) Index + Pinky extended (with thumb either extended or tucked, middle/ring curled) -> ASL 🤟 or 🤘
+    //    b) Index + Middle + Ring extended (classic 3 fingers)
+    //    c) Thumb + Index + Middle extended (European 3)
+    //    d) Exactly 3 fingers extended
+    const isRockOrIly = (h.indexExtended && h.pinkyExtended && !h.middleExtended && !h.ringExtended) || (h.rockDominance > 0.10);
+    const isClassic3 = (h.indexExtended && h.middleExtended && h.ringExtended && !h.pinkyExtended);
+    const isEuro3 = (h.thumbSpread && h.indexExtended && h.middleExtended && !h.ringExtended && !h.pinkyExtended);
+    const isAny3 = h.fourFingersCount === 3 || (h.totalOpenCount === 3 && h.indexExtended);
+
+    if (isRockOrIly || isClassic3 || isEuro3 || isAny3) {
+      scores['3-finger'] = Math.max(scores['3-finger'] || 0, 0.99);
+      if (isRockOrIly) {
+        scores['rock'] = Math.max(scores['rock'] || 0, 0.99);
+        scores['rock-on'] = Math.max(scores['rock-on'] || 0, 0.99);
+      }
     }
 
     // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb curled
     if (h.fourFingersCount === 4 && !h.thumbSpread) {
-      scores['4-finger'] = Math.max(scores['4-finger'] || 0, 0.96);
+      scores['4-finger'] = Math.max(scores['4-finger'] || 0, 0.97);
     }
 
     // 6. 5 Fingers / Open Palm (🖐️) - all fingers open wide
     if (h.fourFingersCount >= 4 && (h.thumbSpread || h.totalOpenCount >= 5)) {
-      scores['5-finger'] = Math.max(scores['5-finger'] || 0, 0.97);
-      scores['star-hands'] = Math.max(scores['star-hands'] || 0, 0.97);
-      scores['hands-up'] = Math.max(scores['hands-up'] || 0, 0.92);
+      scores['5-finger'] = Math.max(scores['5-finger'] || 0, 0.99);
+      scores['star-hands'] = Math.max(scores['star-hands'] || 0, 0.99);
+      scores['hands-up'] = Math.max(scores['hands-up'] || 0, 0.95);
     }
 
     // 7. Rock On (🤘) - index and pinky extended, middle and ring curled
-    if (
-      (h.indexExtended && h.pinkyExtended && !h.middleExtended && !h.ringExtended) ||
-      (h.rockDominance > 0.14)
-    ) {
-      scores['rock'] = Math.max(scores['rock'] || 0, 0.98);
-      scores['rock-on'] = Math.max(scores['rock-on'] || 0, 0.98);
+    if (isRockOrIly) {
+      scores['rock'] = Math.max(scores['rock'] || 0, 0.99);
+      scores['rock-on'] = Math.max(scores['rock-on'] || 0, 0.99);
     }
 
     // 8. Thumbs Up (👍) - thumb pointing up and fingers curled
@@ -333,17 +352,17 @@ function detectStandingPoseFromHands(
 
     // 9. OK Sign (👌) - thumb and index pinched into circle
     if (h.isOkPinch) {
-      scores['ok-sign'] = Math.max(scores['ok-sign'] || 0, 0.96);
-      scores['ok-pose'] = Math.max(scores['ok-pose'] || 0, 0.96);
+      scores['ok-sign'] = Math.max(scores['ok-sign'] || 0, 0.97);
+      scores['ok-pose'] = Math.max(scores['ok-pose'] || 0, 0.97);
     }
 
     // 10. Shaka / Call Me (🤙) - thumb and pinky extended, middle 3 curled
     if (h.thumbSpread && h.pinkyExtended && !h.indexExtended && !h.middleExtended && !h.ringExtended) {
-      scores['shaka'] = Math.max(scores['shaka'] || 0, 0.96);
+      scores['shaka'] = Math.max(scores['shaka'] || 0, 0.97);
     }
   }
 
-  // Match against candidate poses on screen with alias resolution
+  // Match against candidate poses on screen with robust alias resolution
   let bestCandidate: string | null = null;
   let bestCandidateScore = 0;
 
@@ -353,10 +372,11 @@ function detectStandingPoseFromHands(
       (cid === 'point-up' ? scores['1-finger'] : 0) ||
       (cid === '2-finger' ? scores['peace'] : 0) ||
       (cid === 'peace' ? scores['2-finger'] : 0) ||
+      (cid === '3-finger' ? Math.max(scores['3-finger'] || 0, scores['rock'] || 0, scores['rock-on'] || 0) : 0) ||
+      (cid === 'rock' ? Math.max(scores['rock'] || 0, scores['3-finger'] || 0) : 0) ||
+      (cid === 'rock-on' ? Math.max(scores['rock-on'] || 0, scores['3-finger'] || 0) : 0) ||
       (cid === '5-finger' ? (scores['star-hands'] || scores['hands-up']) : 0) ||
       (cid === 'star-hands' ? scores['5-finger'] : 0) ||
-      (cid === 'rock' ? scores['rock-on'] : 0) ||
-      (cid === 'rock-on' ? scores['rock'] : 0) ||
       (cid === 'fist' ? scores['power-fist'] : 0) ||
       (cid === 'power-fist' ? scores['fist'] : 0) ||
       (cid === 'ok-sign' ? scores['ok-pose'] : 0) ||
@@ -368,7 +388,7 @@ function detectStandingPoseFromHands(
     }
   }
 
-  if (bestCandidate && bestCandidateScore >= 0.74) {
+  if (bestCandidate && bestCandidateScore >= 0.70) {
     return { poseId: bestCandidate, confidence: bestCandidateScore };
   }
 
@@ -1816,12 +1836,12 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
       });
 
-      // Use modelComplexity: 0 for ultra-fast real-time 30fps tracking with zero lag
+      // Use modelComplexity: 0 and maxNumHands: 2 for lightning-fast tracking with minimal CPU load
       hands.setOptions({
-        maxNumHands: 4,
+        maxNumHands: 2,
         modelComplexity: 0,
-        minDetectionConfidence: 0.48,
-        minTrackingConfidence: 0.45
+        minDetectionConfidence: 0.40,
+        minTrackingConfidence: 0.40
       });
 
       hands.onResults((results: any) => {
@@ -1847,43 +1867,18 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
           }))
         );
 
-        // Draw hand skeletons on the overlay canvas
-        const connections = [
-          [0, 1], [1, 2], [2, 3], [3, 4],
-          [0, 5], [5, 6], [6, 7], [7, 8],
-          [0, 9], [9, 10], [10, 11], [11, 12],
-          [0, 13], [13, 14], [14, 15], [15, 16],
-          [0, 17], [17, 18], [18, 19], [19, 20],
-          [5, 9], [9, 13], [13, 17]
-        ];
-
-        mirroredHands.forEach(hand => {
-          const palmX = hand[9]?.x ?? hand[0]?.x ?? 0.5;
-          const isRightSidePlayer = isTwoPlayers && palmX >= 0.5;
-          const strokeColor = isRightSidePlayer ? '#f43f5e' : '#3b82f6';
-
-          ctx.save();
-          ctx.strokeStyle = strokeColor;
-          ctx.lineWidth = 4;
-          ctx.lineCap = 'round';
-          connections.forEach(([a, b]) => {
-            const p1 = hand[a];
-            const p2 = hand[b];
-            if (p1 && p2) {
-              ctx.beginPath();
-              ctx.moveTo(p1.x * cw, p1.y * ch);
-              ctx.lineTo(p2.x * cw, p2.y * ch);
-              ctx.stroke();
-            }
-          });
-
-          hand.forEach((pt, idx) => {
-            ctx.fillStyle = idx % 4 === 0 ? '#ffffff' : strokeColor;
-            ctx.beginPath();
-            ctx.arc(pt.x * cw, pt.y * ch, idx % 4 === 0 ? 5.5 : 4, 0, Math.PI * 2);
-            ctx.fill();
-          });
-          ctx.restore();
+        // Render Spider-Man's hand on the left side and Thanos's Infinity Gauntlet on the right side!
+        drawSuperheroHands({
+          ctx,
+          hands: mirroredHands,
+          cw,
+          ch,
+          isTwoPlayers,
+          playerDetections: holdStateRef.current.map(h => ({
+            holdProgress: h.progress,
+            matchedOptionIdx: h.optionIdx
+          })),
+          time: performance.now(),
         });
 
         if (gameStateRef.current !== 'playing' || playModeRef.current !== 'camera' || isAnsweringRef.current) {
@@ -1931,14 +1926,14 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
             candidatePoseIds
           );
 
-          // Push into 5-frame rolling smoothing buffer so 1-frame flickers never drop tracking
-          const validFramePose = poseId && confidence >= 0.78 ? poseId : null;
+          // Push into 3-frame rolling smoothing buffer for instantaneous response without lag
+          const validFramePose = poseId && confidence >= 0.68 ? poseId : null;
           pHold.recentPoses.push(validFramePose);
-          if (pHold.recentPoses.length > 5) {
+          if (pHold.recentPoses.length > 3) {
             pHold.recentPoses.shift();
           }
 
-          // Determine smoothed pose: prefer current valid pose, or majority pose in recent 5 frames
+          // Determine smoothed pose: prefer current valid pose immediately
           let smoothedPoseId: string | null = validFramePose;
           if (!smoothedPoseId) {
             const counts: Record<string, number> = {};
@@ -1965,17 +1960,17 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
           if (smoothedPoseId && matchedIdx !== -1) {
             pHold.lastMatchedTime = now;
             if (pHold.optionIdx === matchedIdx) {
-              // Fast ~0.52s lock-in (starts at 32% and adds ~135% per second)
-              pHold.progress = Math.min(100, Math.round(pHold.progress + (dtMs / 1000) * 135));
+              // Ultra-fast ~0.32s responsive lock-in (starts at 42% and adds ~190% per second)
+              pHold.progress = Math.min(100, Math.round(pHold.progress + (dtMs / 1000) * 190));
             } else {
               pHold.optionIdx = matchedIdx;
               pHold.poseId = smoothedPoseId;
-              pHold.progress = 32;
+              pHold.progress = 42;
             }
           } else {
-            // Brief 160ms grace period before gentle decay so minor hand adjustments don't reset progress
-            if (now - pHold.lastMatchedTime > 160) {
-              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 90));
+            // Generous 220ms grace period so rapid micro-movements don't drop progress
+            if (now - pHold.lastMatchedTime > 220) {
+              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 110));
               if (pHold.progress === 0) {
                 pHold.optionIdx = null;
                 pHold.poseId = null;
@@ -2020,8 +2015,8 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 960 },
+          height: { ideal: 540 },
           frameRate: { ideal: 30 }
         }
       });
@@ -2041,7 +2036,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         let isProcessing = false;
         let lastFrameTime = 0;
         let animId: number | null = null;
-        const TARGET_INTERVAL_MS = 28;
+        const TARGET_INTERVAL_MS = 16;
 
         const sendFrames = async (time: number) => {
           if (!active || !videoRef.current) return;
@@ -2685,21 +2680,27 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
               </div>
             </div>
 
-            {/* Question Prompt Banner (Placed cleanly above the big Camera Stage in Camera Mode) */}
+            {/* Question Prompt Banner (Prominent, Big Typography in Camera Mode) */}
             {playMode === 'camera' && (currentQuestionText || quiz.questions[currentIdx]?.image) && (
-              <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-5 my-1 shrink-0 flex items-center justify-center gap-3 z-20">
+              <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-5 my-2 shrink-0 flex items-center justify-center gap-3 z-20">
                 {quiz.questions[currentIdx]?.image && (
-                  <div className="h-14 sm:h-16 rounded-xl overflow-hidden border-2 border-teal-300 shadow-sm bg-white p-0.5 shrink-0">
+                  <div className="h-16 sm:h-20 md:h-24 rounded-2xl overflow-hidden border-3 border-teal-300 shadow-md bg-white p-1 shrink-0">
                     <img
                       src={quiz.questions[currentIdx]?.image}
                       alt="Question Clue"
-                      className="h-full w-auto object-contain rounded-lg"
+                      className="h-full w-auto object-contain rounded-xl"
                     />
                   </div>
                 )}
                 {currentQuestionText && (
                   <h2
-                    className={`font-black text-slate-900 bg-white/95 backdrop-blur-md py-1.5 sm:py-2 px-4 sm:px-7 rounded-2xl border-3 border-teal-400 shadow-md text-center leading-snug ${getQuestionFontSizeClass(currentQuestionText)}`}
+                    className={`w-full max-w-5xl font-black text-slate-950 bg-white/95 backdrop-blur-md py-3 sm:py-4 px-6 sm:px-10 rounded-2xl sm:rounded-3xl border-3 sm:border-4 border-teal-400 shadow-xl text-center leading-snug mx-auto ${
+                      uiScale === 'small'
+                        ? (currentQuestionText.length > 80 ? 'text-lg sm:text-xl md:text-2xl' : currentQuestionText.length > 40 ? 'text-xl sm:text-2xl md:text-3xl' : 'text-2xl sm:text-3xl md:text-4xl')
+                        : uiScale === 'big'
+                        ? (currentQuestionText.length > 80 ? 'text-2xl sm:text-3xl md:text-4xl lg:text-5xl' : currentQuestionText.length > 40 ? 'text-3xl sm:text-4xl md:text-5xl lg:text-6xl' : 'text-4xl sm:text-5xl md:text-6xl lg:text-7xl')
+                        : (currentQuestionText.length > 80 ? 'text-xl sm:text-2xl md:text-3xl lg:text-4xl' : currentQuestionText.length > 40 ? 'text-2xl sm:text-3xl md:text-4xl lg:text-5xl' : 'text-3xl sm:text-4xl md:text-5xl lg:text-6xl')
+                    }`}
                   >
                     {currentQuestionText}
                   </h2>
@@ -2714,14 +2715,14 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
               </div>
             )}
 
-            {/* LARGE CAMERA MODE STAGE (1-Player Wide Stage or 2-Player Split Screen) */}
+            {/* ADJUSTED CAMERA STAGE (Balanced height so big question & answer cards fit nicely) */}
             {playMode === 'camera' && (
-              <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-5 my-1 flex-1 flex flex-col min-h-0">
+              <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-5 my-1 shrink-0 flex flex-col min-h-0">
                 <div
-                  className={`relative w-full flex-1 ${
+                  className={`relative w-full ${
                     isCameraExpanded
-                      ? 'min-h-[380px] sm:min-h-[480px] md:min-h-[560px]'
-                      : 'min-h-[270px] sm:min-h-[340px] md:min-h-[410px] lg:min-h-[460px]'
+                      ? 'h-[360px] sm:h-[440px] md:h-[500px]'
+                      : 'h-[210px] sm:h-[260px] md:h-[300px] lg:h-[330px]'
                   } rounded-3xl overflow-hidden bg-slate-900 border-4 border-teal-500 shadow-2xl transition-all duration-200`}
                 >
                   {/* Mirrored Live HD Webcam Video */}
@@ -2752,16 +2753,16 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                   {/* 2-Player Split Screen Divider & Zone Overlays */}
                   {isTwoPlayerCamera ? (
                     <div className="absolute inset-0 grid grid-cols-2 pointer-events-none">
-                      {/* Player 1 Zone (Left Side) */}
+                      {/* Player 1 Zone (Left Side: Spider-Man) */}
                       <div className="relative border-r-2 border-dashed border-white/75 p-3 sm:p-4 flex flex-col justify-between">
                         <div className="flex items-center justify-between gap-2 pr-2">
-                          <span className="bg-blue-600/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-blue-300">
-                            👤 {teams[0]?.name || 'Player 1'}
+                          <span className="bg-rose-700/95 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-rose-300">
+                            🕷️ {teams[0]?.name || 'Player 1'} (Spider-Man)
                           </span>
                           {playerDetections[0].matchedOptionIdx !== null && (
-                            <span className="bg-white/95 text-blue-900 font-black text-xs sm:text-sm px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-blue-400 animate-pulse">
-                              <span className="text-base sm:text-lg leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
-                              <span>Choice {String.fromCharCode(65 + playerDetections[0].matchedOptionIdx)}</span>
+                            <span className="bg-white/95 text-rose-900 font-black text-xs sm:text-sm px-3.5 py-1 rounded-full shadow-lg flex items-center gap-2 border-2 border-rose-400 animate-pulse">
+                              <span className="text-xl sm:text-2xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
+                              <span>Locking Answer</span>
                             </span>
                           )}
                         </div>
@@ -2775,27 +2776,27 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                         {/* Hold Progress Bar for Player 1 */}
                         <div className="w-full bg-black/55 backdrop-blur-xs rounded-full h-5 sm:h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                           <div
-                            className="bg-gradient-to-r from-blue-500 to-cyan-300 h-full rounded-full transition-all duration-75"
+                            className="bg-gradient-to-r from-rose-500 to-red-400 h-full rounded-full transition-all duration-75"
                             style={{ width: `${playerDetections[0].holdProgress}%` }}
                           />
                           <span className="absolute inset-x-0 text-center text-[11px] sm:text-xs font-black text-white drop-shadow">
                             {playerDetections[0].holdProgress > 0
-                              ? `Locking Choice ${playerDetections[0].matchedOptionIdx !== null ? String.fromCharCode(65 + playerDetections[0].matchedOptionIdx) : ''}... ${playerDetections[0].holdProgress}%`
-                              : 'Stand on Left & Copy Pose'}
+                              ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
+                              : 'Stand on Left & Shoot Web Pose'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Player 2 Zone (Right Side) */}
+                      {/* Player 2 Zone (Right Side: Thanos) */}
                       <div className="relative border-l-2 border-dashed border-white/75 p-3 sm:p-4 flex flex-col justify-between">
                         <div className="flex items-center justify-between gap-2 pr-28">
-                          <span className="bg-rose-600/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-rose-300">
-                            👤 {teams[1]?.name || 'Player 2'}
+                          <span className="bg-amber-600/95 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-amber-300">
+                            🥊 {teams[1]?.name || 'Player 2'} (Thanos)
                           </span>
                           {playerDetections[1].matchedOptionIdx !== null && (
-                            <span className="bg-white/95 text-rose-900 font-black text-xs sm:text-sm px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-rose-400 animate-pulse">
-                              <span className="text-base sm:text-lg leading-none">{shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}</span>
-                              <span>Choice {String.fromCharCode(65 + playerDetections[1].matchedOptionIdx)}</span>
+                            <span className="bg-white/95 text-amber-900 font-black text-xs sm:text-sm px-3.5 py-1 rounded-full shadow-lg flex items-center gap-2 border-2 border-amber-400 animate-pulse">
+                              <span className="text-xl sm:text-2xl leading-none">{shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}</span>
+                              <span>Locking Answer</span>
                             </span>
                           )}
                         </div>
@@ -2809,13 +2810,13 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                         {/* Hold Progress Bar for Player 2 */}
                         <div className="w-full bg-black/55 backdrop-blur-xs rounded-full h-5 sm:h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                           <div
-                            className="bg-gradient-to-r from-rose-500 to-amber-300 h-full rounded-full transition-all duration-75"
+                            className="bg-gradient-to-r from-amber-500 to-yellow-300 h-full rounded-full transition-all duration-75"
                             style={{ width: `${playerDetections[1].holdProgress}%` }}
                           />
                           <span className="absolute inset-x-0 text-center text-[11px] sm:text-xs font-black text-white drop-shadow">
                             {playerDetections[1].holdProgress > 0
-                              ? `Locking Choice ${playerDetections[1].matchedOptionIdx !== null ? String.fromCharCode(65 + playerDetections[1].matchedOptionIdx) : ''}... ${playerDetections[1].holdProgress}%`
-                              : 'Stand on Right & Copy Pose'}
+                              ? `Locking ${shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[1].holdProgress}%`
+                              : 'Stand on Right & Use Infinity Gauntlet'}
                           </span>
                         </div>
                       </div>
@@ -2824,13 +2825,15 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                     /* 1-Player Camera Overlay */
                     <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between pointer-events-none">
                       <div className="flex items-center justify-between pr-28">
-                        <span className="bg-teal-600/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-4 py-1 rounded-full shadow-md border border-teal-300">
-                          📷 {teams[0]?.name || 'Player 1'} — Copy the Correct Pose!
+                        <span className="bg-slate-900/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-4 py-1 rounded-full shadow-md border border-teal-300 flex items-center gap-2">
+                          <span>🕷️ Left: Spider-Man</span>
+                          <span className="text-slate-400">|</span>
+                          <span>🥊 Right: Thanos Gauntlet</span>
                         </span>
                         {playerDetections[0].matchedOptionIdx !== null && (
-                          <span className="bg-white/95 text-teal-900 font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-teal-400 animate-pulse">
-                            <span className="text-lg sm:text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
-                            <span>Choice {String.fromCharCode(65 + playerDetections[0].matchedOptionIdx)}</span>
+                          <span className="bg-white/95 text-teal-900 font-black text-xs sm:text-base px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border-2 border-teal-400 animate-pulse">
+                            <span className="text-2xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
+                            <span>Locking Answer</span>
                           </span>
                         )}
                       </div>
@@ -2842,7 +2845,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                         />
                         <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
                           {playerDetections[0].holdProgress > 0
-                            ? `Hold Pose to Lock Answer... ${playerDetections[0].holdProgress}%`
+                            ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
                             : 'Stand in front of camera & copy the pose of the right answer!'}
                         </span>
                       </div>
@@ -2950,11 +2953,6 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                       onClick={() => handleAnswer(index, opt.isCorrect)}
                       className={btnClasses}
                     >
-                      {/* Option Letter Badge (A, B, C, D) */}
-                      <div className="absolute top-2 left-2 z-20 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-teal-600 text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-xs">
-                        {String.fromCharCode(65 + index)}
-                      </div>
-
                       {/* Correct / Incorrect Indicator */}
                       {isAnswering && (index === selectedOption || opt.isCorrect) && (
                         <div
@@ -2987,18 +2985,11 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                         >
                           {opt.text}
                         </span>
-                      ) : isImageOption ? (
-                        <span className="text-base sm:text-lg font-black text-teal-800 uppercase tracking-wider py-1">
-                          Choice {String.fromCharCode(65 + index)}
-                        </span>
                       ) : null}
 
-                      {/* Hand Emoji: SMALLER UNDER THE OPTION */}
-                      <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-teal-50 hover:bg-teal-100/70 border border-teal-200/90 rounded-full shadow-xs shrink-0 select-none">
-                        <span className="text-xl sm:text-2xl leading-none">{opt.poseValue}</span>
-                        <span className="text-xs sm:text-sm font-extrabold text-teal-900 tracking-tight">
-                          {getPoseName(opt.poseId, opt.poseValue)}
-                        </span>
+                      {/* Gesture Emoji: BIGGER & NO WORDS */}
+                      <div className="mt-1.5 inline-flex items-center justify-center p-2 sm:p-2.5 bg-gradient-to-b from-teal-50 to-teal-100/90 border-2 border-teal-200/90 rounded-2xl shadow-xs shrink-0 select-none group-hover:scale-110 transition-transform">
+                        <span className="text-3xl sm:text-4xl md:text-5xl leading-none">{opt.poseValue}</span>
                       </div>
 
                       {/* Live Camera Hold-to-Select Bar on the Card */}

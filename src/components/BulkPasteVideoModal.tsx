@@ -168,7 +168,7 @@ export function BulkPasteVideoModal({
       id: 3,
       title: "3. Bulk Paste & Divide",
       subtitle: "Paste directly into game",
-      desc: "Click Bulk Paste, paste the copied text, and Bubble Pop instantly detects questions, options, and answers.",
+      desc: "Click Bulk Paste, paste the copied text, and questions, options, and answers are instantly auto-divided.",
       badge: "Auto-Divide",
       icon: ClipboardList,
       color: "text-cyan-400",
@@ -177,9 +177,9 @@ export function BulkPasteVideoModal({
     },
     {
       id: 4,
-      title: "4. Append & Play",
+      title: "4. + Add & Play",
       subtitle: "Ready in 1 click",
-      desc: "Click 'Append to End'. All 50 question cards and choice bubbles are immediately populated!",
+      desc: "Click '+ Add'. All question cards and options are immediately populated and ready to save or play!",
       badge: "Ready to Play",
       icon: CheckCircle2,
       color: "text-emerald-400",
@@ -352,7 +352,7 @@ export function BulkPasteVideoModal({
                     Click to Play Video Tutorial
                   </h4>
                   <p className="text-xs sm:text-sm text-slate-300 max-w-md font-medium leading-relaxed mb-4">
-                    Watch step-by-step how to prompt ChatGPT for 50 questions and instantly auto-divide them in Bubble Pop.
+                    Watch step-by-step how to prompt ChatGPT for questions and instantly auto-divide them into your game.
                   </p>
 
                   <div className="flex items-center gap-2.5 flex-wrap justify-center">
