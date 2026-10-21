@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
+import { collection, query, where, getDocs, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { ViewState } from "../types";
 import { GameThumbnail } from "../components/GameThumbnail";
@@ -14,6 +14,7 @@ export function PublicDashboard({
 }) {
   const { user } = useAuth();
   const [games, setGames] = useState<any[]>([]);
+  const [pageVisits, setPageVisits] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -135,8 +136,28 @@ export function PublicDashboard({
     };
   }, [user]);
 
-  const handleManualRefresh = () => {
+  // Listen to platform users count (pageVisits in settings/general)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
+      if (docSnap.exists()) {
+        setPageVisits(docSnap.data().pageVisits || 0);
+      }
+    }, (err) => {
+      console.warn("Public dashboard pageVisits listener notice:", err);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleManualRefresh = async () => {
     setIsRefreshing(true);
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'general'));
+      if (snap.exists()) {
+        setPageVisits(snap.data().pageVisits || 0);
+      }
+    } catch (e) {
+      console.warn("Error refreshing users count:", e);
+    }
     fetchAllPublicGames();
   };
 
@@ -315,8 +336,20 @@ export function PublicDashboard({
             </p>
           </div>
           
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {/* Users Stat */}
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl flex items-center gap-4 shadow-sm">
+               <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                 <Users size={24} className="text-white" />
+               </div>
+               <div>
+                 <div className="text-3xl font-black">{pageVisits.toLocaleString()}</div>
+                 <div className="text-indigo-100 text-sm font-semibold uppercase tracking-wider">Users</div>
+               </div>
+            </div>
+
+            {/* Public Games Stat */}
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl flex items-center gap-4 shadow-sm">
                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
                  <Gamepad2 size={24} className="text-white" />
                </div>
@@ -328,7 +361,7 @@ export function PublicDashboard({
 
             <button
               onClick={handleManualRefresh}
-              title="Refresh Community Games"
+              title="Refresh Community Hub"
               disabled={isRefreshing}
               className="w-12 h-12 bg-white/10 hover:bg-white/20 border border-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white transition-all cursor-pointer disabled:opacity-50"
             >

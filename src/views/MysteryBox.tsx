@@ -109,18 +109,30 @@ const BLANK_MYSTERY_QUESTION: Question = {
 };
 
 // Smooth Animated Rolling Score Component for Live Point Adding & Deduction
-function AnimatedScore({ value, className = "" }: { value: number; className?: string }) {
-  const [displayValue, setDisplayValue] = useState(value);
+function AnimatedScore({
+  value,
+  fromValue,
+  duration = 750,
+  className = "",
+}: {
+  value: number;
+  fromValue?: number;
+  duration?: number;
+  className?: string;
+}) {
+  const [displayValue, setDisplayValue] = useState(fromValue !== undefined ? fromValue : value);
   const [bump, setBump] = useState<'up' | 'down' | null>(null);
-  const prevRef = useRef(value);
+  const prevRef = useRef(fromValue !== undefined ? fromValue : value);
 
   useEffect(() => {
     const startVal = prevRef.current;
     const endVal = value;
-    if (startVal === endVal) return;
+    if (startVal === endVal) {
+      setDisplayValue(endVal);
+      return;
+    }
 
     setBump(endVal > startVal ? 'up' : 'down');
-    const duration = 550;
     const startTime = performance.now();
     let rafId: number;
 
@@ -134,23 +146,23 @@ function AnimatedScore({ value, className = "" }: { value: number; className?: s
         rafId = requestAnimationFrame(tick);
       } else {
         prevRef.current = endVal;
-        setTimeout(() => setBump(null), 250);
+        setTimeout(() => setBump(null), 450);
       }
     };
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [value]);
+  }, [value, duration]);
 
-  const formatted = displayValue > 0 ? `+${displayValue}` : `${displayValue}`;
+  const formatted = `${displayValue}`;
 
   return (
     <span
-      className={`inline-block tabular-nums transition-transform duration-200 ${
+      className={`inline-block tabular-nums transition-all duration-200 ${
         bump === 'up'
-          ? 'scale-125 text-emerald-500 drop-shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+          ? 'scale-125 text-emerald-400 drop-shadow-[0_0_16px_rgba(16,185,129,0.75)]'
           : bump === 'down'
-          ? 'scale-125 text-rose-500 drop-shadow-[0_0_12px_rgba(244,63,94,0.5)]'
+          ? 'scale-125 text-rose-400 drop-shadow-[0_0_16px_rgba(244,63,94,0.75)]'
           : ''
       } ${className}`}
     >
@@ -358,6 +370,18 @@ export function MysteryBox({
   const [currentOutcome, setCurrentOutcome] = useState<Outcome | null>(null);
   const [outcomeSummary, setOutcomeSummary] = useState<string>("");
   const [outcomeBeforeAfter, setOutcomeBeforeAfter] = useState<{ teamName: string; before: number; after: number; delta: number } | null>(null);
+  const [teamScoreTransitions, setTeamScoreTransitions] = useState<Array<{
+    id: number;
+    name: string;
+    icon: string;
+    before: number;
+    after: number;
+    delta: number;
+    label?: string;
+    isPositive: boolean;
+    isReceiver: boolean;
+  }>>([]);
+  const [revealScoreApplied, setRevealScoreApplied] = useState(false);
   const [targetTeamIdx, setTargetTeamIdx] = useState<number | null>(null);
   const [celebration, setCelebration] = useState<'win' | 'lose' | 'jackpot' | null>(null);
   const [unboxPreviewItem, setUnboxPreviewItem] = useState<{ icon: string; text: string; color: string }>({
@@ -368,10 +392,12 @@ export function MysteryBox({
   const [mysteryHint, setMysteryHint] = useState<string>(MYSTERY_VIBE_HINTS[0]);
 
   const autoAdvanceTimerRef = useRef<any>(null);
+  const revealCountTimerRef = useRef<any>(null);
 
   useEffect(() => {
     return () => {
       if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      if (revealCountTimerRef.current) clearTimeout(revealCountTimerRef.current);
     };
   }, []);
 
@@ -1124,12 +1150,34 @@ export function MysteryBox({
     return difficult;
   };
 
-  // Apply Outcome & Trigger Live Scoreboard Popups + Audio
+  // Apply Outcome & Trigger Live Scoreboard Popups + Audio + Auto-Transition
   const applyOutcomeToTeams = (outcome: Outcome, receiverIdx: number, chosenTargetIdx?: number) => {
     const beforeScore = teams[receiverIdx]?.score ?? 0;
     const result = outcome.execute(teams, receiverIdx, chosenTargetIdx);
     const afterScore = result.teams[receiverIdx]?.score ?? beforeScore;
 
+    // Build per-team before/after transitions so the Reveal stage shows ALL teams updating live!
+    const transitions = teams.map((t, i) => {
+      const before = t.score;
+      const after = result.teams[i]?.score ?? before;
+      const delta = after - before;
+      const dInfo = result.deltas[t.id];
+      const cfg = DEFAULT_TEAM_CONFIGS[i % DEFAULT_TEAM_CONFIGS.length];
+      return {
+        id: t.id,
+        name: t.name,
+        icon: t.icon || cfg.icon || '🦁',
+        before,
+        after,
+        delta,
+        label: dInfo?.label || (delta !== 0 ? `${delta > 0 ? '+' : ''}${delta} PTS` : undefined),
+        isPositive: dInfo ? dInfo.isPositive : delta >= 0,
+        isReceiver: i === receiverIdx,
+      };
+    });
+
+    setTeamScoreTransitions(transitions);
+    setRevealScoreApplied(false);
     setTeams(result.teams);
     setOutcomeSummary(result.summaryText);
     setOutcomeBeforeAfter({
@@ -1185,6 +1233,28 @@ export function MysteryBox({
     }
 
     setModalStep('reveal');
+
+    // Trigger live score count-up / count-down animation across all teams after 280ms
+    if (revealCountTimerRef.current) clearTimeout(revealCountTimerRef.current);
+    revealCountTimerRef.current = setTimeout(() => {
+      setRevealScoreApplied(true);
+      // Play rapid score-counting ticks during the live score update
+      [0, 120, 240, 360, 480, 620, 760].forEach((delay, idx) => {
+        setTimeout(() => {
+          playSound(idx === 6 ? (mainDelta >= 0 ? 'coin_add' : 'point_deduct') : 'roulette_tick');
+        }, delay);
+      });
+    }, 280);
+
+    // Automatically advance to the next team's turn after live score update completes!
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    autoAdvanceTimerRef.current = setTimeout(() => {
+      setActiveBoxNum(null);
+      setAnswerResult(null);
+      if (teams.length > 1) {
+        setCurrentTeamIdx(prevIdx => (prevIdx + 1) % teams.length);
+      }
+    }, 3400);
   };
 
   // Exciting Mystery Unboxing Spin before landing on Outcome
@@ -1238,6 +1308,8 @@ export function MysteryBox({
   };
 
   const handleCloseReveal = () => {
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    if (revealCountTimerRef.current) clearTimeout(revealCountTimerRef.current);
     playSound('click');
     setActiveBoxNum(null);
     setAnswerResult(null);
@@ -1837,8 +1909,8 @@ export function MysteryBox({
             </div>
           )}
 
-          {/* Game Header & Live Interactive Scoreboard */}
-          <header className="px-4 py-3 sm:px-6 sm:py-4 bg-slate-950/50 backdrop-blur-xl shadow-2xl border-b border-white/10 flex flex-col xl:flex-row justify-between items-center gap-4 z-30 relative">
+          {/* Game Header: Clean Utility Navigation Bar */}
+          <header className="px-4 py-3 sm:px-6 sm:py-3.5 bg-slate-950/70 backdrop-blur-xl shadow-2xl border-b border-white/10 flex flex-wrap justify-between items-center gap-4 z-30 relative">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setScreen('setup')}
@@ -1847,7 +1919,7 @@ export function MysteryBox({
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30 text-xl">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30 text-xl shrink-0">
                 🎁
               </div>
               <div>
@@ -1856,103 +1928,6 @@ export function MysteryBox({
                   {activeQuiz.questions.length - openedBoxes.length} of {activeQuiz.questions.length} Boxes Left
                 </p>
               </div>
-            </div>
-
-            {/* LIVE TEAM SCOREBOARD WITH FLOATING DELTAS & LIVE +/- BUTTONS */}
-            <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap max-w-5xl">
-              {teams.map((t, idx) => {
-                const isCurrent = currentTeamIdx === idx;
-                const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
-                const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
-                const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
-
-                return (
-                  <div 
-                    key={t.id}
-                    onClick={() => {
-                      playSound('click');
-                      setCurrentTeamIdx(idx);
-                    }}
-                    title="Click to set active turn, or use -/+ buttons for live points"
-                    className={`group relative px-3 sm:px-4 py-2 rounded-2xl border-2 transition-all duration-300 min-w-[125px] sm:min-w-[155px] cursor-pointer select-none ${
-                      isCurrent 
-                        ? 'border-amber-400 bg-white text-slate-900 scale-105 shadow-[0_0_25px_rgba(251,191,36,0.5)] z-10' 
-                        : 'border-white/15 bg-white/10 hover:bg-white/15 text-white'
-                    }`}
-                  >
-                    {/* Floating Live Point Delta Popups (+300, -50, etc.) */}
-                    {teamPopups.map((popup) => (
-                      <div
-                        key={popup.id}
-                        className={`absolute -top-9 left-1/2 -translate-x-1/2 z-50 px-3 py-1 rounded-xl font-black text-xs sm:text-sm whitespace-nowrap shadow-xl pointer-events-none animate-live-pop border ${
-                          popup.isPositive
-                            ? 'bg-emerald-500 text-white border-emerald-200'
-                            : 'bg-rose-600 text-white border-rose-200'
-                        }`}
-                      >
-                        {popup.text}
-                      </div>
-                    ))}
-
-                    {/* Active Turn Indicator or Leader Crown */}
-                    {isCurrent && (
-                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-md shadow-sm tracking-wider">
-                        ACTIVE TURN
-                      </span>
-                    )}
-
-                    <div className="flex items-center justify-between gap-1.5 mb-0.5 mt-0.5">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span className="text-base sm:text-lg shrink-0">{t.icon || cfg.icon || '🦁'}</span>
-                        <p className={`text-xs font-black uppercase truncate max-w-[75px] sm:max-w-[95px] ${isCurrent ? 'text-slate-800' : 'text-white/90'}`}>
-                          {t.name}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {isLeader && <span title="1st Place Leader" className="text-xs">👑</span>}
-                        {(t.streak || 0) >= 2 && (
-                          <span className="text-[10px] font-black bg-orange-500 text-white px-1.5 py-0.2 rounded flex items-center">
-                            🔥{t.streak}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Score + Live Point Deduction / Addition Controls */}
-                    <div className="flex items-center justify-between gap-1.5 mt-1">
-                      <button
-                        type="button"
-                        onClick={(e) => handleManualScoreAdjust(idx, -50, e)}
-                        title="Deduct 50 points live"
-                        className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
-                          isCurrent
-                            ? 'bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white'
-                            : 'bg-white/10 hover:bg-rose-500 text-white/80 hover:text-white'
-                        }`}
-                      >
-                        -
-                      </button>
-
-                      <div className={`text-xl sm:text-2xl font-black tracking-tight ${isCurrent ? 'text-slate-950' : 'text-white'}`}>
-                        <AnimatedScore value={t.score} />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => handleManualScoreAdjust(idx, 50, e)}
-                        title="Add 50 points live"
-                        className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
-                          isCurrent
-                            ? 'bg-emerald-100 hover:bg-emerald-500 text-emerald-700 hover:text-white'
-                            : 'bg-white/10 hover:bg-emerald-500 text-white/80 hover:text-white'
-                        }`}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
 
             {/* Right Controls */}
@@ -1988,8 +1963,115 @@ export function MysteryBox({
             </div>
           </header>
 
+          {/* NEW BIGGER REDESIGNED TEAM SCOREBOARD (NO +/- SIGNS) */}
+          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-2 z-20 relative">
+            <div className="flex items-stretch justify-center gap-3 sm:gap-4 md:gap-5 flex-wrap">
+              {teams.map((t, idx) => {
+                const isCurrent = currentTeamIdx === idx;
+                const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
+                const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
+                const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
+
+                return (
+                  <div 
+                    key={t.id}
+                    onClick={() => {
+                      playSound('click');
+                      setCurrentTeamIdx(idx);
+                    }}
+                    title="Click to set active turn"
+                    className={`group relative p-4 sm:p-5 rounded-3xl border-3 transition-all duration-300 min-w-[170px] sm:min-w-[210px] md:min-w-[240px] cursor-pointer select-none flex flex-col justify-between shadow-xl ${
+                      isCurrent 
+                        ? 'border-amber-400 bg-white text-slate-900 scale-105 shadow-[0_12px_35px_rgba(251,191,36,0.45)] ring-4 ring-amber-400/40 z-10' 
+                        : 'border-white/15 bg-slate-900/80 hover:bg-slate-800/90 text-white backdrop-blur-md hover:scale-[1.02]'
+                    }`}
+                  >
+                    {/* Floating Live Point Delta Popups */}
+                    {teamPopups.map((popup) => (
+                      <div
+                        key={popup.id}
+                        className={`absolute -top-8 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1 rounded-xl font-black text-xs sm:text-sm whitespace-nowrap shadow-xl pointer-events-none animate-live-pop border ${
+                          popup.isPositive
+                            ? 'bg-emerald-500 text-white border-emerald-200'
+                            : 'bg-rose-600 text-white border-rose-200'
+                        }`}
+                      >
+                        {popup.text.replace('+', '')}
+                      </div>
+                    ))}
+
+                    {/* Active Turn Indicator or Leader Crown */}
+                    {isCurrent && (
+                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white text-[10px] sm:text-xs font-black uppercase px-3 py-0.5 rounded-full shadow-md tracking-wider flex items-center gap-1.5 whitespace-nowrap">
+                        <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                        ACTIVE TURN
+                      </span>
+                    )}
+
+                    {/* Team Header Info */}
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shrink-0 shadow-md ${
+                          isCurrent ? 'bg-amber-100 text-slate-900' : 'bg-white/10 text-white'
+                        }`}>
+                          {t.icon || cfg.icon || '🦁'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-sm sm:text-base md:text-lg font-black uppercase truncate max-w-[100px] sm:max-w-[130px] ${
+                            isCurrent ? 'text-slate-900' : 'text-white'
+                          }`}>
+                            {t.name}
+                          </p>
+                          <span className={`text-[11px] font-bold block ${isCurrent ? 'text-amber-700' : 'text-slate-400'}`}>
+                            Team #{idx + 1}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {isLeader && (
+                          <span title="1st Place Leader" className="text-xs font-black px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/40 flex items-center gap-1">
+                            👑 1ST
+                          </span>
+                        )}
+                        {(t.streak || 0) >= 2 && (
+                          <span className="text-[10px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-lg flex items-center shadow-sm">
+                            🔥 {t.streak}x
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Giant Clean Score Display (NO +/- SIGNS OR BUTTONS) */}
+                    <div className={`mt-1 pt-2 border-t flex items-baseline justify-between ${
+                      isCurrent ? 'border-slate-200' : 'border-white/10'
+                    }`}>
+                      <span className={`text-[10px] sm:text-xs font-black uppercase tracking-widest ${
+                        isCurrent ? 'text-slate-400' : 'text-slate-400'
+                      }`}>
+                        SCORE
+                      </span>
+                      <div className="flex items-baseline gap-1.5">
+                        <div className={`text-3xl sm:text-4xl md:text-5xl font-black tracking-tight tabular-nums ${
+                          isCurrent ? 'text-slate-950' : 'text-white'
+                        }`}>
+                          <AnimatedScore value={t.score} />
+                        </div>
+                        <span className={`text-xs sm:text-sm font-black ${
+                          isCurrent ? 'text-slate-500' : 'text-slate-400'
+                        }`}>
+                          PTS
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Main Mystery Box Grid */}
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-6 sm:mt-8">
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-4 sm:mt-6">
             {/* Turn Banner */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-5 py-3 max-w-4xl mx-auto">
               <div className="flex items-center gap-3">
@@ -2072,150 +2154,211 @@ export function MysteryBox({
             </div>
           </main>
 
-          {/* ACTIVE BOX QUESTION & MYSTERY UNBOXING MODALS (NO TOP CLIPPING OR SCROLLBAR ARTIFACTS) */}
+          {/* ACTIVE BOX FULL-SCREEN QUESTION & MYSTERY UNBOXING / LIVE SCORE UPDATE STAGE */}
           {activeBoxNum !== null && (
-            <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6">
-              
-              {/* 1. QUESTION POPUP WITH AUTO-REVEAL ON OPTION CLICK */}
+            <div
+              className={`fixed inset-0 z-[100] overflow-y-auto bg-slate-950/95 backdrop-blur-xl flex flex-col ${
+                modalStep === 'question' ? 'p-0' : 'items-center justify-center p-3 sm:p-6'
+              }`}
+            >
+              {/* 1. FULL-SCREEN QUESTION STAGE WITH AUTO-REVEAL & LIVE TEAM SCORES */}
               {modalStep === 'question' && (() => {
                 const currentQ = activeQuiz.questions[activeBoxNum - 1];
                 const activeTeam = teams[currentTeamIdx];
                 return (
-                  <div className="w-full max-w-4xl my-auto animate-pop-in">
-                    <div className="bg-white rounded-3xl sm:rounded-[2.5rem] border-4 border-amber-400 shadow-[0_25px_70px_rgba(0,0,0,0.65)] overflow-hidden text-center">
-                      
-                      {/* Clean Non-Clipped Top Modal Header Bar */}
-                      <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-6 py-4 flex items-center justify-between text-white">
-                        <div className="flex items-center gap-3">
-                          <div className="w-11 h-11 rounded-2xl bg-white text-orange-600 font-black text-2xl flex items-center justify-center shadow-md tabular-nums">
-                            #{activeBoxNum}
-                          </div>
-                          <div className="text-left">
-                            <span className="text-[11px] font-black uppercase tracking-widest text-amber-100 block">
-                              Mystery Box Question
-                            </span>
-                            <span className="text-base sm:text-lg font-black text-white flex items-center gap-1.5">
-                              {activeTeam?.icon || '🦁'} {activeTeam?.name}&apos;s Turn
-                              <span className="text-xs bg-black/20 px-2.5 py-0.5 rounded-lg font-bold tabular-nums">
-                                Score: {activeTeam?.score ?? 0}
-                              </span>
+                  <div className="w-full min-h-screen flex flex-col justify-between bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white animate-pop-in">
+                    
+                    {/* FULL-SCREEN TOP HEADER BAR WITH REDESIGNED LIVE TEAM SCOREBOARD */}
+                    <div className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-4 sm:px-8 py-3 sm:py-4 shadow-xl border-b-4 border-amber-300 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white text-orange-600 font-black text-2xl sm:text-3xl flex items-center justify-center shadow-lg tabular-nums shrink-0">
+                          #{activeBoxNum}
+                        </div>
+                        <div className="text-left">
+                          <span className="text-[11px] sm:text-xs font-black uppercase tracking-widest text-amber-100 block">
+                            Full-Screen Mystery Box Question
+                          </span>
+                          <div className="text-lg sm:text-2xl font-black text-white flex items-center gap-2 flex-wrap">
+                            <span>{activeTeam?.icon || '🦁'} {activeTeam?.name}&apos;s Turn</span>
+                            <span className="text-xs sm:text-sm bg-black/25 px-3 py-1 rounded-xl font-black tabular-nums border border-white/20">
+                              <AnimatedScore value={activeTeam?.score ?? 0} /> PTS
                             </span>
                           </div>
                         </div>
+                      </div>
 
+                      {/* Live Big Team Scoreboard in Full-Screen Question Header (NO +/- SIGNS) */}
+                      <div className="hidden lg:flex items-center gap-2.5 flex-wrap">
+                        {teams.map((t, idx) => {
+                          const isTurn = idx === currentTeamIdx;
+                          const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
+                          return (
+                            <div
+                              key={t.id}
+                              className={`relative px-4 py-2 rounded-2xl flex items-center gap-2.5 transition-all duration-300 ${
+                                isTurn
+                                  ? 'bg-white text-slate-900 font-black shadow-lg scale-105 ring-4 ring-amber-200'
+                                  : 'bg-black/30 text-white/90 font-bold border border-white/20'
+                              }`}
+                            >
+                              <span className="text-xl">{t.icon || '🦁'}</span>
+                              <div className="text-left">
+                                <span className="text-xs uppercase tracking-wider max-w-[100px] truncate block leading-none">{t.name}</span>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-xl text-sm sm:text-base font-black tabular-nums ${
+                                isTurn ? 'bg-amber-500 text-white' : 'bg-white/20 text-amber-300'
+                              }`}>
+                                <AnimatedScore value={t.score} /> PTS
+                              </span>
+                              {teamPopups.length > 0 && (
+                                <span
+                                  key={teamPopups[0].id}
+                                  className={`absolute -bottom-6 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[11px] font-black shadow-md animate-bounce whitespace-nowrap z-30 ${
+                                    teamPopups[0].isPositive ? 'bg-emerald-500 text-white' : 'bg-rose-600 text-white'
+                                  }`}
+                                >
+                                  {teamPopups[0].text.replace('+', '')}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <FullscreenButton targetId="game-container" className="!w-10 !h-10 sm:!w-11 sm:!h-11 !rounded-xl !bg-black/20 hover:!bg-black/35 !text-white !border-white/20 shadow-none" />
                         <button
                           onClick={() => {
                             if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
                             setActiveBoxNum(null);
                           }}
-                          className="w-9 h-9 rounded-xl bg-black/20 hover:bg-black/35 text-white flex items-center justify-center transition-colors cursor-pointer"
+                          className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-black/20 hover:bg-black/35 text-white flex items-center justify-center transition-colors cursor-pointer"
                           title="Close Question"
                         >
-                          <X className="w-5 h-5" />
+                          <X className="w-6 h-6" />
                         </button>
                       </div>
+                    </div>
 
-                      {/* Question & Options Body */}
-                      <div className="p-5 sm:p-8 md:p-10">
-                        <div className="bg-slate-50 rounded-2xl sm:rounded-3xl p-5 sm:p-8 mb-6 border border-slate-200/80 shadow-inner">
-                          <h3 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 leading-snug mb-6 sm:mb-8 break-words">
-                            {currentQ?.text}
-                          </h3>
+                    {/* FULL-SCREEN CENTER QUESTION & GIANT OPTIONS STAGE */}
+                    <div className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-10 py-6 sm:py-10 flex flex-col justify-center gap-6 sm:gap-8">
+                      {/* Giant Question Card */}
+                      <div className="w-full bg-white text-slate-900 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 lg:p-12 border-4 border-amber-400 shadow-[0_20px_60px_rgba(0,0,0,0.5)] text-center flex flex-col items-center justify-center min-h-[160px] sm:min-h-[220px]">
+                        <span className="px-4 py-1 rounded-full bg-amber-100 text-amber-800 font-black text-xs sm:text-sm uppercase tracking-widest mb-3">
+                          Question #{activeBoxNum} • 50 PTS Question
+                        </span>
+                        <h3 className="text-2xl sm:text-4xl lg:text-5xl xl:text-6xl font-black text-slate-900 leading-tight break-words max-w-6xl">
+                          {currentQ?.text}
+                        </h3>
+                      </div>
 
-                          {/* Options Grid: Clicking ANY Option Immediately Auto-Reveals Correct or Incorrect! */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4 max-w-4xl mx-auto">
-                            {currentQ?.options.map((opt, i) => {
-                              if (!opt || opt.trim() === '') return null;
-                              const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
-                              const isSelected = selectedOptionIndex === i;
-                              const isCorrectOption = currentQ.answerIndex === i;
-                              const isImageOpt = opt.startsWith('data:image') || opt.startsWith('http');
+                      {/* Giant Full-Screen Options Grid: Clicking ANY Option Immediately Auto-Reveals! */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 w-full">
+                        {currentQ?.options.map((opt, i) => {
+                          if (!opt || opt.trim() === '') return null;
+                          const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
+                          const isSelected = selectedOptionIndex === i;
+                          const isCorrectOption = currentQ.answerIndex === i;
+                          const isImageOpt = opt.startsWith('data:image') || opt.startsWith('http');
 
-                              let optStyle = "bg-white border-slate-200 text-slate-800 hover:border-amber-400 hover:bg-amber-50/60 hover:scale-[1.01] shadow-sm cursor-pointer";
-                              let badgeColor = "bg-slate-100 text-slate-700 group-hover:bg-amber-400 group-hover:text-slate-950";
+                          let optStyle =
+                            "bg-white border-slate-200 text-slate-900 hover:border-amber-400 hover:bg-amber-50 hover:scale-[1.01] shadow-xl cursor-pointer";
+                          let badgeColor =
+                            "bg-slate-900 text-amber-400 group-hover:bg-amber-500 group-hover:text-white";
 
-                              if (isAnswerRevealed) {
-                                if (isCorrectOption) {
-                                  optStyle = "bg-emerald-500 border-emerald-400 text-white scale-[1.02] shadow-[0_10px_30px_rgba(16,185,129,0.45)] z-10 font-black";
-                                  badgeColor = "bg-white text-emerald-600";
-                                } else if (isSelected && !isCorrectOption) {
-                                  optStyle = "bg-rose-500 border-rose-400 text-white animate-shake shadow-[0_10px_25px_rgba(244,63,94,0.4)] font-black";
-                                  badgeColor = "bg-white text-rose-600";
-                                } else {
-                                  optStyle = "bg-slate-100 border-slate-200 text-slate-400 opacity-45 cursor-not-allowed";
-                                  badgeColor = "bg-slate-200 text-slate-400";
-                                }
-                              }
+                          if (isAnswerRevealed) {
+                            if (isCorrectOption) {
+                              optStyle =
+                                "bg-emerald-500 border-emerald-300 text-white scale-[1.02] shadow-[0_15px_45px_rgba(16,185,129,0.55)] z-10 font-black ring-4 ring-emerald-300/60";
+                              badgeColor = "bg-white text-emerald-600";
+                            } else if (isSelected && !isCorrectOption) {
+                              optStyle =
+                                "bg-rose-600 border-rose-300 text-white animate-shake shadow-[0_15px_40px_rgba(244,63,94,0.5)] font-black ring-4 ring-rose-300/60";
+                              badgeColor = "bg-white text-rose-600";
+                            } else {
+                              optStyle =
+                                "bg-slate-800/60 border-slate-700 text-slate-400 opacity-45 cursor-not-allowed";
+                              badgeColor = "bg-slate-700 text-slate-400";
+                            }
+                          }
 
-                              return (
-                                <button
-                                  key={i}
-                                  onClick={() => handleOptionSelect(i)}
-                                  disabled={isAnswerRevealed}
-                                  className={`group p-4 sm:p-5 rounded-2xl text-lg sm:text-2xl font-bold border-2 sm:border-[3px] transition-all duration-200 flex items-center justify-between text-left w-full gap-3 ${optStyle}`}
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => handleOptionSelect(i)}
+                              disabled={isAnswerRevealed}
+                              className={`group p-5 sm:p-7 lg:p-8 rounded-3xl text-xl sm:text-3xl lg:text-4xl font-black border-4 transition-all duration-200 flex items-center justify-between text-left w-full gap-4 min-h-[96px] sm:min-h-[130px] ${optStyle}`}
+                            >
+                              <div className="flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
+                                <span
+                                  className={`w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center font-black text-xl sm:text-3xl shrink-0 transition-colors shadow-md ${badgeColor}`}
                                 >
-                                  <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                                    <span className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-black text-base sm:text-lg shrink-0 transition-colors ${badgeColor}`}>
-                                      {letter}
-                                    </span>
-                                    {isImageOpt ? (
-                                      <img src={opt} alt={`Option ${letter}`} className="h-20 w-auto rounded-xl object-contain bg-white p-1" />
-                                    ) : (
-                                      <span className="flex-1 break-words leading-snug">{opt}</span>
-                                    )}
-                                  </div>
+                                  {letter}
+                                </span>
+                                {isImageOpt ? (
+                                  <img
+                                    src={opt}
+                                    alt={`Option ${letter}`}
+                                    className="h-24 sm:h-28 w-auto rounded-2xl object-contain bg-white p-1.5"
+                                  />
+                                ) : (
+                                  <span className="flex-1 break-words leading-snug">{opt}</span>
+                                )}
+                              </div>
 
-                                  {/* Auto-Revealed Status Indicator on Option */}
-                                  {isAnswerRevealed && isCorrectOption && (
-                                    <span className="flex items-center gap-1 bg-white text-emerald-600 px-3 py-1.5 rounded-xl font-black text-xs sm:text-sm shrink-0 shadow">
-                                      <Check className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3]" />
-                                      {isSelected ? 'CORRECT!' : 'ANSWER'}
-                                    </span>
-                                  )}
-                                  {isAnswerRevealed && isSelected && !isCorrectOption && (
-                                    <span className="flex items-center gap-1 bg-white text-rose-600 px-3 py-1.5 rounded-xl font-black text-xs sm:text-sm shrink-0 shadow">
-                                      <X className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3]" />
-                                      WRONG
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                              {/* Auto-Revealed Status Indicator on Option */}
+                              {isAnswerRevealed && isCorrectOption && (
+                                <span className="flex items-center gap-1.5 bg-white text-emerald-600 px-4 py-2 rounded-2xl font-black text-sm sm:text-lg shrink-0 shadow-lg">
+                                  <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
+                                  {isSelected ? 'CORRECT!' : 'ANSWER'}
+                                </span>
+                              )}
+                              {isAnswerRevealed && isSelected && !isCorrectOption && (
+                                <span className="flex items-center gap-1.5 bg-white text-rose-600 px-4 py-2 rounded-2xl font-black text-sm sm:text-lg shrink-0 shadow-lg">
+                                  <X className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
+                                  WRONG
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                        {/* Footer Status / Auto-Reveal Feedback Banner */}
+                    {/* FULL-SCREEN BOTTOM ACTION & LIVE SCORE FEEDBACK BAR */}
+                    <div className="w-full bg-slate-950/90 border-t border-white/10 px-4 sm:px-10 py-4 sm:py-5 shrink-0">
+                      <div className="max-w-[1600px] mx-auto">
                         {!isAnswerRevealed ? (
-                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
-                            <p className="text-sm font-bold text-slate-500 flex items-center gap-2">
-                              <Sparkles className="w-4 h-4 text-amber-500" />
-                              Click any option above to <span className="text-slate-800 font-black">auto-reveal</span> the answer!
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <p className="text-sm sm:text-base font-bold text-slate-300 flex items-center gap-2">
+                              <Sparkles className="w-5 h-5 text-amber-400" />
+                              Click any answer choice above to <span className="text-amber-400 font-black">auto-reveal</span> and update live team points!
                             </p>
                             <button
                               onClick={handleTeacherRevealOnly}
-                              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm flex items-center gap-2 transition-colors cursor-pointer"
                             >
                               <Eye className="w-4 h-4" /> Teacher Reveal Only
                             </button>
                           </div>
                         ) : answerResult === 'correct' ? (
-                          <div className="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop-in">
-                            <div className="flex items-center gap-3 text-left">
-                              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
-                                <Check className="w-7 h-7 stroke-[3]" />
+                          <div className="bg-emerald-500/20 border-2 border-emerald-400 rounded-2xl p-4 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop-in">
+                            <div className="flex items-center gap-4 text-left">
+                              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
+                                <Check className="w-8 h-8 stroke-[3]" />
                               </div>
                               <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h4 className="text-xl sm:text-2xl font-black text-emerald-800">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  <h4 className="text-xl sm:text-2xl font-black text-white">
                                     CORRECT ANSWER! 🎉
                                   </h4>
                                   {lastAnswerPointChange > 0 && (
-                                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500 text-white font-black text-xs sm:text-sm animate-bounce">
-                                      +{lastAnswerPointChange} PTS ADDED LIVE!
+                                    <span className="px-3 py-1 rounded-xl bg-emerald-500 text-white font-black text-xs sm:text-sm animate-bounce shadow">
+                                      {lastAnswerPointChange} PTS ADDED LIVE!
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs sm:text-sm font-bold text-emerald-700">
+                                <p className="text-xs sm:text-sm font-bold text-emerald-200">
                                   Unlocking Mystery Box #{activeBoxNum} Decision...
                                 </p>
                               </div>
@@ -2223,53 +2366,53 @@ export function MysteryBox({
 
                             <button
                               onClick={proceedAfterCorrect}
-                              className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl font-black text-base sm:text-lg shadow-lg transition-all cursor-pointer shrink-0 hover:scale-105"
+                              className="w-full sm:w-auto px-7 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 rounded-xl font-black text-base sm:text-lg shadow-lg transition-all cursor-pointer shrink-0 hover:scale-105"
                             >
                               Open Mystery Box 🎁 →
                             </button>
                           </div>
                         ) : answerResult === 'incorrect' ? (
-                          <div className="bg-rose-50 border-2 border-rose-400 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop-in">
-                            <div className="flex items-center gap-3 text-left">
-                              <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-rose-500/30">
-                                <X className="w-7 h-7 stroke-[3]" />
+                          <div className="bg-rose-500/20 border-2 border-rose-400 rounded-2xl p-4 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop-in">
+                            <div className="flex items-center gap-4 text-left">
+                              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-rose-500/30">
+                                <X className="w-8 h-8 stroke-[3]" />
                               </div>
                               <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h4 className="text-xl sm:text-2xl font-black text-rose-800">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  <h4 className="text-xl sm:text-2xl font-black text-white">
                                     INCORRECT!
                                   </h4>
                                   {lastAnswerPointChange < 0 && (
-                                    <span className="px-2.5 py-0.5 rounded-lg bg-rose-600 text-white font-black text-xs sm:text-sm">
-                                      {lastAnswerPointChange} PTS DEDUCTED LIVE!
+                                    <span className="px-3 py-1 rounded-xl bg-rose-600 text-white font-black text-xs sm:text-sm animate-bounce shadow">
+                                      {Math.abs(lastAnswerPointChange)} PTS DEDUCTED LIVE!
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs sm:text-sm font-bold text-rose-700">
-                                  Correct Answer: <span className="underline font-black text-emerald-700">{currentQ?.options[currentQ.answerIndex]}</span>
+                                <p className="text-xs sm:text-sm font-bold text-rose-200">
+                                  Correct Answer: <span className="underline font-black text-emerald-300">{currentQ?.options[currentQ.answerIndex]}</span>
                                 </p>
                               </div>
                             </div>
 
                             <button
                               onClick={proceedAfterIncorrect}
-                              className="w-full sm:w-auto px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-base sm:text-lg shadow-lg transition-all cursor-pointer shrink-0"
+                              className="w-full sm:w-auto px-7 py-3.5 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-black text-base sm:text-lg shadow-lg transition-all cursor-pointer shrink-0"
                             >
                               Next Team&apos;s Turn →
                             </button>
                           </div>
                         ) : (
-                          /* Teacher Manual Judgement Fallback (if Teacher Reveal Only was clicked) */
+                          /* Teacher Manual Judgement Fallback */
                           <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 animate-pop-in">
                             <button
                               onClick={proceedAfterIncorrect}
-                              className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border-2 border-rose-300 rounded-2xl font-black text-lg transition-all cursor-pointer"
+                              className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border-2 border-rose-400 rounded-2xl font-black text-lg transition-all cursor-pointer"
                             >
                               <X className="w-6 h-6" /> Mark Incorrect
                             </button>
                             <button
                               onClick={proceedAfterCorrect}
-                              className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-lg transition-all cursor-pointer"
+                              className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-2xl font-black text-lg shadow-lg transition-all cursor-pointer"
                             >
                               <Check className="w-6 h-6" /> Mark Correct
                             </button>
@@ -2449,56 +2592,166 @@ export function MysteryBox({
                 </div>
               )}
 
-              {/* 6. REVEAL OUTCOME POPUP WITH LIVE POINT ADDITION / DEDUCTION COUNTER */}
+              {/* 6. LIVE SCOREBOARD UPDATE STAGE (REPLACES "CONTINUE TO NEXT TURN" WITH LIVE TEAM POINT UPDATING EFFECT) */}
               {modalStep === 'reveal' && currentOutcome && (
-                <div className="w-full max-w-2xl my-auto animate-pop-in">
-                  <div className="bg-white border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl text-center">
-                    <span className="text-xs sm:text-sm font-black text-orange-500 uppercase tracking-widest block mb-3">
-                      ✨ MYSTERY BOX #{activeBoxNum} REVEALED!
-                    </span>
-
-                    <div className={`my-4 mx-auto w-full bg-gradient-to-br ${currentOutcome.color} rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col items-center gap-2 border-4 border-white text-white`}>
-                      <span className="text-6xl sm:text-7xl drop-shadow-md animate-bounce">{currentOutcome.icon}</span>
-                      <h3 className="text-3xl sm:text-5xl font-black text-center tracking-tight">{currentOutcome.text}</h3>
-                      <p className="text-sm sm:text-base font-bold text-white/90">{currentOutcome.subtitle}</p>
+                <div
+                  onClick={handleCloseReveal}
+                  className="w-full max-w-5xl my-auto animate-pop-in cursor-pointer select-none"
+                  title="Click anywhere to skip to next turn immediately"
+                >
+                  <div className="bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 lg:p-10 shadow-[0_25px_90px_rgba(0,0,0,0.85)] text-center text-white relative overflow-hidden">
+                    
+                    {/* Top Outcome Header Banner */}
+                    <div className="flex items-center justify-between gap-2 mb-4">
+                      <span className="px-3.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs sm:text-sm font-black uppercase tracking-widest">
+                        ✨ MYSTERY BOX #{activeBoxNum} REVEALED
+                      </span>
+                      <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-400 animate-spin" />
+                        Live Scoreboard Updating...
+                      </span>
                     </div>
 
-                    {/* Live Point Addition / Deduction Breakdown Card */}
-                    {outcomeBeforeAfter && (
-                      <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 sm:p-5 my-5 flex flex-col items-center gap-2">
-                        <p className="text-sm font-bold text-slate-600">{outcomeSummary}</p>
-                        <div className="flex items-center justify-center gap-3 sm:gap-4 flex-wrap mt-1">
-                          <span className="font-black text-base sm:text-lg text-slate-700">
-                            {outcomeBeforeAfter.teamName}:
-                          </span>
-                          <span className="px-3 py-1 rounded-xl bg-slate-200 text-slate-700 font-bold text-base tabular-nums">
-                            {outcomeBeforeAfter.before} PTS
-                          </span>
-                          <span className="text-slate-400 font-black">➔</span>
-                          <span className={`px-4 py-1.5 rounded-xl font-black text-xl sm:text-2xl tabular-nums shadow-sm ${
-                            outcomeBeforeAfter.delta >= 0
-                              ? 'bg-emerald-500 text-white'
-                              : 'bg-rose-600 text-white'
-                          }`}>
-                            <AnimatedScore value={outcomeBeforeAfter.after} /> PTS
-                          </span>
-                          <span className={`text-sm font-black px-2.5 py-1 rounded-lg tabular-nums ${
-                            outcomeBeforeAfter.delta >= 0
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}>
-                            ({outcomeBeforeAfter.delta >= 0 ? `+${outcomeBeforeAfter.delta}` : outcomeBeforeAfter.delta})
-                          </span>
-                        </div>
+                    {/* Revealed Outcome Card */}
+                    <div className={`mx-auto w-full bg-gradient-to-r ${currentOutcome.color} rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col sm:flex-row items-center justify-center gap-4 border-4 border-white/90 text-white mb-6`}>
+                      <span className="text-5xl sm:text-7xl drop-shadow-md animate-bounce shrink-0">{currentOutcome.icon}</span>
+                      <div className="text-center sm:text-left">
+                        <h3 className="text-3xl sm:text-5xl font-black tracking-tight leading-none mb-1">{currentOutcome.text}</h3>
+                        <p className="text-sm sm:text-lg font-bold text-white/95">{outcomeSummary || currentOutcome.subtitle}</p>
                       </div>
-                    )}
+                    </div>
 
-                    <button 
-                      onClick={handleCloseReveal} 
-                      className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 text-white rounded-2xl font-black text-xl transition-all cursor-pointer shadow-xl hover:scale-105 active:scale-95"
-                    >
-                      Continue to Next Turn →
-                    </button>
+                    {/* LIVE TEAM SCOREBOARD SHOWING ALL TEAMS & LIVE POINT UPDATING EFFECT */}
+                    <div className="mb-6">
+                      <div className="flex items-center justify-center gap-2 mb-4">
+                        <Trophy className="w-5 h-5 text-amber-400" />
+                        <h4 className="text-sm sm:text-base font-black uppercase tracking-widest text-amber-300">
+                          Live Team Standings &amp; Point Update
+                        </h4>
+                      </div>
+
+                      <div className={`grid gap-3.5 sm:gap-4 ${
+                        teamScoreTransitions.length <= 2
+                          ? 'grid-cols-1 sm:grid-cols-2'
+                          : teamScoreTransitions.length === 3
+                          ? 'grid-cols-1 sm:grid-cols-3'
+                          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                      }`}>
+                        {(teamScoreTransitions.length > 0
+                          ? teamScoreTransitions
+                          : teams.map((t, idx) => ({
+                              teamId: t.id,
+                              name: t.name,
+                              icon: t.icon || '🦁',
+                              color: t.color,
+                              before: t.score,
+                              after: t.score,
+                              delta: 0,
+                              isAffected: idx === (targetTeamIdx ?? currentTeamIdx),
+                            }))
+                        ).map((item, idx) => {
+                          const hasDelta = item.delta !== 0;
+                          const isPositive = item.delta > 0;
+                          const isNegative = item.delta < 0;
+
+                          return (
+                            <div
+                              key={item.teamId || idx}
+                              className={`relative rounded-2xl sm:rounded-3xl p-4 sm:p-5 border-2 transition-all duration-500 flex flex-col justify-between overflow-hidden ${
+                                hasDelta && revealScoreApplied
+                                  ? isPositive
+                                    ? 'bg-gradient-to-br from-emerald-950/90 via-emerald-900/60 to-slate-900 border-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.45)] scale-[1.04] z-10'
+                                    : 'bg-gradient-to-br from-rose-950/90 via-rose-900/60 to-slate-900 border-rose-400 shadow-[0_0_40px_rgba(244,63,94,0.45)] scale-[1.04] z-10 animate-shake'
+                                  : 'bg-slate-800/80 border-slate-700/80 opacity-85'
+                              }`}
+                            >
+                              {/* Floating Delta Pill Badge when score changes */}
+                              {hasDelta && (
+                                <div
+                                  className={`px-3 py-1 rounded-full font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg inline-flex items-center gap-1 self-end mb-2 transition-all duration-500 ${
+                                    revealScoreApplied ? 'scale-110 animate-bounce' : 'scale-95 opacity-80'
+                                  } ${
+                                    isPositive
+                                      ? 'bg-emerald-500 text-slate-950'
+                                      : 'bg-rose-500 text-white'
+                                  }`}
+                                >
+                                  <span>{isPositive ? `▲ +${item.delta} PTS` : `▼ ${item.delta} PTS`}</span>
+                                </div>
+                              )}
+
+                              {/* Team Info Row */}
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 min-w-0 text-left">
+                                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-3xl sm:text-4xl shrink-0 shadow-inner">
+                                    {item.icon}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="font-black text-base sm:text-xl text-white block truncate">
+                                      {item.name}
+                                    </span>
+                                    {hasDelta ? (
+                                      <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 tabular-nums">
+                                        <span className="line-through opacity-75">{item.before} PTS</span>
+                                        <span className="text-amber-400 font-black">➔</span>
+                                        <span className={isPositive ? 'text-emerald-300 font-black' : 'text-rose-300 font-black'}>
+                                          {item.after} PTS
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs font-semibold text-slate-400">
+                                        Unchanged
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Giant Live Rolling Score Counter */}
+                                <div className="text-right shrink-0">
+                                  <div
+                                    className={`text-2xl sm:text-4xl font-black tabular-nums tracking-tight transition-transform duration-300 ${
+                                      hasDelta && revealScoreApplied
+                                        ? isPositive
+                                          ? 'text-emerald-400 scale-110'
+                                          : 'text-rose-400 scale-110'
+                                        : 'text-white'
+                                    }`}
+                                  >
+                                    {revealScoreApplied ? (
+                                      <AnimatedScore
+                                        value={item.after}
+                                        fromValue={item.before}
+                                        duration={1100}
+                                      />
+                                    ) : (
+                                      <span>{item.before}</span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-slate-400 block">
+                                    POINTS
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Live Auto-Advancing Status Bar (Replaces static "Continue to Next Turn" button) */}
+                    <div className="max-w-md mx-auto flex flex-col items-center gap-2">
+                      <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-white/10">
+                        <div
+                          className={`h-full rounded-full bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 transition-all ease-linear ${
+                            revealScoreApplied ? 'w-full duration-[2900ms]' : 'w-1/12 duration-300'
+                          }`}
+                        />
+                      </div>
+                      <p className="text-xs sm:text-sm font-bold text-slate-300 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        Scores updated live! Auto-switching to <span className="text-amber-300 font-black">{teams[(currentTeamIdx + 1) % teams.length]?.name}&apos;s Turn</span>...
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}

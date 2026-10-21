@@ -18,6 +18,9 @@ import {
   Shuffle,
   Type,
   Edit3,
+  Clock,
+  Pause,
+  RotateCcw,
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { db } from '../lib/firebase';
@@ -407,9 +410,9 @@ export const CuteHamsterCharacter: React.FC<CuteHamsterCharacterProps> = ({
       style={{
         transform: `${!isLeft ? 'scaleX(-1)' : 'scaleX(1)'} ${
           isPushing
-            ? 'translateY(-12px) scale(1.12)'
+            ? 'translateY(-14px) scale(1.1)'
             : isClimbing
-              ? 'translateY(-10px) rotate(-8deg) scale(1.05)'
+              ? 'translateY(-14px) scale(1.06)'
               : ''
         }`,
       }}
@@ -859,6 +862,7 @@ const SharkLagoonArena: React.FC<{
   fallingPhase: 'none' | 'diving' | 'chomped';
   winner: string | null;
   isRumbling: boolean;
+  timeUpBanner?: string | null;
 }> = ({
   leftStep,
   rightStep,
@@ -876,6 +880,7 @@ const SharkLagoonArena: React.FC<{
   fallingPhase,
   winner,
   isRumbling,
+  timeUpBanner,
 }) => {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -927,6 +932,25 @@ const SharkLagoonArena: React.FC<{
   const leftFell = leftStep > MAX_STAIR_STEPS;
   const rightFell = rightStep > MAX_STAIR_STEPS;
 
+  // Vertical jump-up-and-down offsets for ONLY the hamsters (never shaking the arena!)
+  const leftJumpY =
+    leftFell || leftFrozen
+      ? 0
+      : leftPushing || sharkLungeSide === 'left' || winner === 'Blue Team' || isRumbling
+        ? Math.abs(Math.sin(tick * 14)) * 22
+        : leftStep >= MAX_STAIR_STEPS - 1
+          ? Math.abs(Math.sin(tick * 9)) * 12
+          : Math.abs(Math.sin(tick * 4.5)) * 6;
+
+  const rightJumpY =
+    rightFell || rightFrozen
+      ? 0
+      : rightPushing || sharkLungeSide === 'right' || winner === 'Red Team' || isRumbling
+        ? Math.abs(Math.sin(tick * 14 + 0.8)) * 22
+        : rightStep >= MAX_STAIR_STEPS - 1
+          ? Math.abs(Math.sin(tick * 9 + 0.8)) * 12
+          : Math.abs(Math.sin(tick * 4.5 + 0.8)) * 6;
+
   // Exact percentage alignment with SVG staircase planks (viewBox 1200x360)
   const getStepCoords = (side: 'left' | 'right', stepIdx: number) => {
     const s = Math.max(0, Math.min(MAX_STAIR_STEPS, stepIdx));
@@ -958,9 +982,7 @@ const SharkLagoonArena: React.FC<{
 
   return (
     <div
-      className={`relative w-full h-full flex-1 min-h-[220px] sm:min-h-[275px] md:min-h-[310px] max-w-[1380px] mx-auto rounded-3xl overflow-hidden border-4 border-sky-300/70 shadow-2xl select-none ${
-        isRumbling ? 'animate-[bounce_0.22s_ease-in-out_infinite]' : ''
-      }`}
+      className="relative w-full h-full flex-1 min-h-[220px] sm:min-h-[275px] md:min-h-[310px] max-w-[1380px] mx-auto rounded-3xl overflow-hidden border-4 border-sky-300/70 shadow-2xl select-none"
       style={{
         background:
           'linear-gradient(180deg, #38bdf8 0%, #7dd3fc 32%, #0284c7 62%, #0369a1 82%, #0c4a6e 100%)',
@@ -973,7 +995,12 @@ const SharkLagoonArena: React.FC<{
 
       {/* DRAMATIC MATCH VICTORY / SHARK CHOMP BANNER IN ARENA */}
       {winner && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-bounce">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-none flex flex-col items-center gap-1 animate-bounce">
+          {timeUpBanner && (
+            <div className="px-4 py-1 rounded-full bg-rose-600 text-white font-black text-[11px] sm:text-xs uppercase tracking-wider shadow-lg border-2 border-white whitespace-nowrap">
+              {timeUpBanner}
+            </div>
+          )}
           <div className="px-6 py-2 rounded-full bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 text-slate-950 font-black text-sm sm:text-xl md:text-2xl uppercase italic tracking-wider shadow-2xl border-4 border-white flex items-center gap-2 whitespace-nowrap">
             <span>🦈 CHOMP!!</span>
             <span className={winner === 'Blue Team' ? 'text-blue-700' : 'text-red-700'}>
@@ -1489,12 +1516,12 @@ const SharkLagoonArena: React.FC<{
             ? fallingPhase === 'diving'
               ? 'transition-all duration-500 ease-in rotate-[320deg] scale-90'
               : 'transition-all duration-300 ease-in rotate-[540deg] scale-0 opacity-0'
-            : 'transition-all duration-300 ease-out'
+            : 'transition-[left,bottom] duration-300 ease-out'
         }`}
         style={{
           left: `${leftCoords.xPct}%`,
           bottom: `${leftCoords.bottomPct}%`,
-          transform: 'translateX(-50%)',
+          transform: `translateX(-50%) translateY(${-leftJumpY}px)`,
         }}
       >
         <div className="flex flex-col items-center relative">
@@ -1540,12 +1567,12 @@ const SharkLagoonArena: React.FC<{
             ? fallingPhase === 'diving'
               ? 'transition-all duration-500 ease-in -rotate-[320deg] scale-90'
               : 'transition-all duration-300 ease-in -rotate-[540deg] scale-0 opacity-0'
-            : 'transition-all duration-300 ease-out'
+            : 'transition-[left,bottom] duration-300 ease-out'
         }`}
         style={{
           left: `${rightCoords.xPct}%`,
           bottom: `${rightCoords.bottomPct}%`,
-          transform: 'translateX(-50%)',
+          transform: `translateX(-50%) translateY(${-rightJumpY}px)`,
         }}
       >
         <div className="flex flex-col items-center relative">
@@ -1913,6 +1940,26 @@ export function SharkAttack({
   const [sharkLungeSide, setSharkLungeSide] = useState<'left' | 'right' | 'center' | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
 
+  // 1 to 10 Minutes Match Timer Slider & Countdown State
+  const [timerMinutes, setTimerMinutes] = useState<number>(3);
+  const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(3 * 60);
+  const [timerPaused, setTimerPaused] = useState<boolean>(false);
+  const [timeUpBanner, setTimeUpBanner] = useState<string | null>(null);
+
+  const handleTimerSliderChange = useCallback((mins: number) => {
+    const clamped = Math.max(1, Math.min(10, mins));
+    setTimerMinutes(clamped);
+    setTimeLeftSeconds(clamped * 60);
+    setTimerPaused(false);
+  }, []);
+
+  const formatTimer = (totalSec: number) => {
+    const s = Math.max(0, Math.floor(totalSec));
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     soundMutedGlobal = soundMuted;
   }, [soundMuted]);
@@ -1972,8 +2019,11 @@ export function SharkAttack({
     setLeftFeedback(null);
     setRightFeedback(null);
     setWinner(null);
+    setTimeUpBanner(null);
     setFallingPhase('none');
     setSharkLungeSide(null);
+    setTimeLeftSeconds(timerMinutes * 60);
+    setTimerPaused(false);
     matchOverRef.current = false;
     setShowStartBattleModal(false);
     setScreen('playing');
@@ -2009,6 +2059,72 @@ export function SharkAttack({
       setScreen('end');
     }, 2600);
   }, []);
+
+  // When the 1-10 minute timer ends, the character with the highest steps (closest to the edge) is eaten by the shark!
+  const handleTimeExpired = useCallback(() => {
+    if (matchOverRef.current || stateRef.current.screen !== 'playing') return;
+    const lTeam = stateRef.current.leftTeam;
+    const rTeam = stateRef.current.rightTeam;
+
+    // Determine which hamster is closer to the edge (highest step); tie-break by lower score / more mistakes
+    let blueEaten = false;
+    if (lTeam.step > rTeam.step) {
+      blueEaten = true;
+    } else if (rTeam.step > lTeam.step) {
+      blueEaten = false;
+    } else if (lTeam.score < rTeam.score) {
+      blueEaten = true;
+    } else if (rTeam.score < lTeam.score) {
+      blueEaten = false;
+    } else {
+      blueEaten = lTeam.mistakes > rTeam.mistakes;
+    }
+
+    if (blueEaten) {
+      // Blue Hamster has highest step / closest to edge -> eaten by Shark! Red Team wins!
+      setLeftTeam((prev: any) => ({ ...prev, step: MAX_STAIR_STEPS + 1 }));
+      setSharkLungeSide('left');
+      showTeamFeedback('left', '⏰ TIME UP! EATEN BY SHARK!', 'bg-red-600 text-white');
+      showTeamFeedback('right', '🏆 SURVIVED! RED WINS!', 'bg-emerald-500 text-white');
+      setTimeUpBanner(
+        lTeam.step !== rTeam.step
+          ? `⏰ TIME'S UP! Blue Hamster (Step ${lTeam.step}) was closest to the edge & eaten!`
+          : `⏰ TIME'S UP! Blue Hamster was eaten by the Shark!`
+      );
+      triggerSharkVictory('Red Team');
+    } else {
+      // Red Hamster has highest step / closest to edge -> eaten by Shark! Blue Team wins!
+      setRightTeam((prev: any) => ({ ...prev, step: MAX_STAIR_STEPS + 1 }));
+      setSharkLungeSide('right');
+      showTeamFeedback('right', '⏰ TIME UP! EATEN BY SHARK!', 'bg-red-600 text-white');
+      showTeamFeedback('left', '🏆 SURVIVED! BLUE WINS!', 'bg-emerald-500 text-white');
+      setTimeUpBanner(
+        lTeam.step !== rTeam.step
+          ? `⏰ TIME'S UP! Red Hamster (Step ${rTeam.step}) was closest to the edge & eaten!`
+          : `⏰ TIME'S UP! Red Hamster was eaten by the Shark!`
+      );
+      triggerSharkVictory('Blue Team');
+    }
+  }, [showTeamFeedback, triggerSharkVictory]);
+
+  useEffect(() => {
+    if (screen !== 'playing' || timerPaused) return;
+    const interval = setInterval(() => {
+      if (matchOverRef.current) return;
+      setTimeLeftSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setTimeout(() => handleTimeExpired(), 0);
+          return 0;
+        }
+        if (prev <= 11) {
+          playSFX('clack');
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [screen, timerPaused, handleTimeExpired]);
 
   const handleAnswer = useCallback(
     (teamStr: 'left' | 'right', selectedIndex: number) => {
@@ -2695,8 +2811,33 @@ export function SharkAttack({
           </div>
         </div>
 
-        {/* BOTTOM ACTION BAR */}
-        <div className="w-full max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-center gap-4 pt-2 z-20 shrink-0">
+        {/* BOTTOM ACTION BAR + 1 TO 10 MINUTES TIMER SLIDER */}
+        <div className="w-full max-w-[1440px] mx-auto flex flex-col lg:flex-row items-center justify-center gap-4 pt-2 z-20 shrink-0">
+          {/* 1 to 10 Minutes Timer Slider Pill on Menu */}
+          <div className="bg-slate-900/90 border-2 border-amber-400/80 rounded-full px-5 py-2.5 flex items-center gap-3 shadow-xl">
+            <div className="flex items-center gap-1.5 text-amber-300 font-black text-xs sm:text-sm uppercase tracking-wider whitespace-nowrap">
+              <Clock size={16} className="text-amber-400" />
+              <span>Timer:</span>
+              <span className="bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full font-black text-xs sm:text-sm">
+                {timerMinutes} {timerMinutes === 1 ? 'Min' : 'Mins'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black text-slate-400">1m</span>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={timerMinutes}
+                onChange={(e) => handleTimerSliderChange(Number(e.target.value))}
+                className="w-28 sm:w-36 accent-amber-400 cursor-pointer h-2 bg-slate-700 rounded-lg"
+                title="Adjust Match Timer (1 to 10 Minutes)"
+              />
+              <span className="text-[11px] font-black text-slate-400">10m</span>
+            </div>
+          </div>
+
           <button
             onClick={() => setShowStartBattleModal(true)}
             className="bg-yellow-400 hover:bg-yellow-300 text-slate-950 text-xl sm:text-2xl md:text-3xl font-black px-14 py-4 sm:py-5 rounded-full shadow-[0_8px_0_#ca8a04] active:translate-y-1 active:shadow-none transition-all w-full sm:w-auto cursor-pointer hover:scale-105"
@@ -2735,9 +2876,38 @@ export function SharkAttack({
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 uppercase tracking-tight mb-2">
                 Choose Battle Mode
               </h2>
-              <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-6">
+              <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-4">
                 Choose how questions will appear in this Shark Attack battle:
               </p>
+
+              {/* 1 to 10 Minutes Match Timer Slider in Modal */}
+              <div className="bg-slate-100 border-2 border-slate-200 rounded-2xl p-3.5 mb-5 text-left">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Clock size={15} className="text-amber-600" />
+                    Match Timer (1 – 10 Minutes)
+                  </span>
+                  <span className="px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs">
+                    {timerMinutes} {timerMinutes === 1 ? 'Minute' : 'Minutes'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-slate-500">1m</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={timerMinutes}
+                    onChange={(e) => handleTimerSliderChange(Number(e.target.value))}
+                    className="flex-1 accent-amber-500 cursor-pointer h-2 bg-slate-300 rounded-lg"
+                  />
+                  <span className="text-xs font-bold text-slate-500">10m</span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                  When time ends, the hamster with the highest steps (closest to the edge) is eaten by the shark!
+                </p>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
                 <button
@@ -2860,6 +3030,11 @@ export function SharkAttack({
               compact
             />
           </div>
+          {timeUpBanner && (
+            <div className="mb-3 inline-block px-4 py-1.5 rounded-full bg-rose-100 border-2 border-rose-300 text-rose-700 font-black text-xs sm:text-sm uppercase tracking-wide">
+              {timeUpBanner}
+            </div>
+          )}
           <h2
             className={`text-5xl md:text-7xl font-black mb-3 uppercase italic ${
               winner === 'Blue Team' ? 'text-blue-600' : 'text-red-600'
@@ -2913,6 +3088,7 @@ export function SharkAttack({
   // SCREEN 5: IN-GAME BATTLE ARENA
   // ==========================================================================
   const currentQText = leftTeam.q?.text || rightTeam.q?.text || DEFAULT_QUESTIONS[0].text;
+  const isLowTime = timeLeftSeconds <= 30;
 
   return (
     <div
@@ -2920,7 +3096,7 @@ export function SharkAttack({
       className="w-full min-h-full flex-1 select-none overflow-hidden font-sans relative flex flex-col justify-between p-2 sm:p-3 md:p-4 bg-gradient-to-b from-sky-200 via-cyan-100 to-sky-300"
     >
       {/* TOP ROW */}
-      <div className="w-full flex items-center justify-between shrink-0 z-50 relative gap-2 sm:gap-4 px-1 sm:px-2 mb-1.5 sm:mb-2">
+      <div className="w-full flex flex-wrap items-center justify-between shrink-0 z-50 relative gap-2 sm:gap-3 px-1 sm:px-2 mb-1.5 sm:mb-2">
         <button
           onClick={() => setScreen('menu')}
           className="p-2 sm:p-2.5 rounded-full bg-white/90 hover:bg-white text-slate-700 shadow-md border border-slate-300 transition-all cursor-pointer hover:scale-105 active:scale-95"
@@ -2929,9 +3105,10 @@ export function SharkAttack({
           <ArrowLeft size={22} className="stroke-[2.5]" />
         </button>
 
-        {/* Blue Team & Red Team Scoreboard Banners */}
-        <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
-          <div className="bg-[#0055fe] rounded-2xl md:rounded-3xl px-2.5 sm:px-4 md:px-5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 shadow-lg shadow-blue-500/25 border-b-4 border-[#0038b3]">
+        {/* Blue Team Banner, IN-GAME 1-10 MINUTES TIMER SLIDER, and Red Team Banner */}
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 md:gap-4">
+          {/* Blue Team Scoreboard Banner */}
+          <div className="bg-[#0055fe] rounded-2xl md:rounded-3xl px-2.5 sm:px-3.5 md:px-4 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-blue-500/25 border-b-4 border-[#0038b3]">
             <button
               onClick={() => setShowCharacterModal(true)}
               className="bg-white/95 hover:bg-white rounded-full p-0.5 shadow-sm flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
@@ -2939,19 +3116,76 @@ export function SharkAttack({
             >
               <CuteHamsterCharacter team="left" character={leftCharacter} size="icon" />
             </button>
-            <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
+            <span className="font-black italic text-xs sm:text-sm md:text-base lg:text-lg text-white uppercase tracking-wider select-none">
               BLUE TEAM
             </span>
-            <div className="bg-white text-blue-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
+            <div className="bg-white text-blue-700 font-black text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 rounded-full shadow-sm tracking-wide">
               {leftTeam.wins} WINS
             </div>
           </div>
 
-          <div className="bg-[#cc0000] rounded-2xl md:rounded-3xl px-2.5 sm:px-4 md:px-5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 shadow-lg shadow-red-500/25 border-b-4 border-[#990000]">
-            <div className="bg-white text-red-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
+          {/* IN-GAME 1 TO 10 MINUTES TIMER SLIDER & COUNTDOWN HUD */}
+          <div
+            className={`rounded-2xl md:rounded-3xl px-3 sm:px-4 py-1 sm:py-1.5 flex items-center gap-2 sm:gap-3 shadow-lg border-2 transition-colors ${
+              isLowTime
+                ? 'bg-rose-600 text-white border-amber-300 animate-pulse'
+                : 'bg-slate-900/95 text-white border-amber-400'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <Clock
+                size={16}
+                className={isLowTime ? 'text-yellow-300 animate-spin' : 'text-amber-400'}
+              />
+              <span className="font-mono font-black text-sm sm:text-base md:text-lg tracking-wider tabular-nums">
+                {formatTimer(timeLeftSeconds)}
+              </span>
+            </div>
+
+            {/* Interactive 1 to 10 Minutes Slider directly In-Game */}
+            <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full border border-white/15">
+              <span className="text-[10px] font-black text-amber-300">1m</span>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={timerMinutes}
+                onChange={(e) => handleTimerSliderChange(Number(e.target.value))}
+                className="w-20 sm:w-28 md:w-32 accent-amber-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+                title="In-Game Timer Slider (1 to 10 Minutes)"
+              />
+              <span className="text-[10px] font-black text-amber-300">10m</span>
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] whitespace-nowrap">
+                {timerMinutes}m
+              </span>
+            </div>
+
+            <button
+              onClick={() => setTimerPaused((p) => !p)}
+              className="p-1 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer"
+              title={timerPaused ? 'Resume Timer' : 'Pause Timer'}
+            >
+              {timerPaused ? <Play size={13} /> : <Pause size={13} />}
+            </button>
+            <button
+              onClick={() => {
+                setTimeLeftSeconds(timerMinutes * 60);
+                setTimerPaused(false);
+              }}
+              className="p-1 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer"
+              title="Reset Timer"
+            >
+              <RotateCcw size={13} />
+            </button>
+          </div>
+
+          {/* Red Team Scoreboard Banner */}
+          <div className="bg-[#cc0000] rounded-2xl md:rounded-3xl px-2.5 sm:px-3.5 md:px-4 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-red-500/25 border-b-4 border-[#990000]">
+            <div className="bg-white text-red-700 font-black text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 rounded-full shadow-sm tracking-wide">
               {rightTeam.wins} WINS
             </div>
-            <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
+            <span className="font-black italic text-xs sm:text-sm md:text-base lg:text-lg text-white uppercase tracking-wider select-none">
               RED TEAM
             </span>
             <button
@@ -3083,6 +3317,7 @@ export function SharkAttack({
           fallingPhase={fallingPhase}
           winner={winner}
           isRumbling={isRumbling}
+          timeUpBanner={timeUpBanner}
         />
 
         {questionMode === 'single' && (
@@ -3177,7 +3412,7 @@ export function SharkAttack({
                         className={`${getOptionFontSize(
                           opt,
                           leftTeam.q?.options?.length || 4
-                        )} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2 pointer-events-none`}
+                        )} font-black text-[#0f172a] text-center leading-tight [overflow-wrap:normal] whitespace-normal line-clamp-2 pointer-events-none`}
                       >
                         {opt}
                       </span>
@@ -3263,7 +3498,7 @@ export function SharkAttack({
                         className={`${getOptionFontSize(
                           opt,
                           rightTeam.q?.options?.length || 4
-                        )} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2 pointer-events-none`}
+                        )} font-black text-[#0f172a] text-center leading-tight [overflow-wrap:normal] whitespace-normal line-clamp-2 pointer-events-none`}
                       >
                         {opt}
                       </span>
@@ -3301,9 +3536,35 @@ export function SharkAttack({
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase tracking-tight mb-2">
               Choose Question Mode
             </h2>
-            <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-6">
+            <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-4">
               Switch between Single Shared Question and Split Questions:
             </p>
+
+            {/* 1 to 10 Minutes Match Timer Slider in In-Game Modal */}
+            <div className="bg-slate-100 border-2 border-slate-200 rounded-2xl p-3.5 mb-5 text-left">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Clock size={15} className="text-amber-600" />
+                  Match Timer (1 – 10 Minutes)
+                </span>
+                <span className="px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs">
+                  {timerMinutes} {timerMinutes === 1 ? 'Minute' : 'Minutes'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-slate-500">1m</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={timerMinutes}
+                  onChange={(e) => handleTimerSliderChange(Number(e.target.value))}
+                  className="flex-1 accent-amber-500 cursor-pointer h-2 bg-slate-300 rounded-lg"
+                />
+                <span className="text-xs font-bold text-slate-500">10m</span>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
               <button

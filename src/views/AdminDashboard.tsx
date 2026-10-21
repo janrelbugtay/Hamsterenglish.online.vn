@@ -170,11 +170,11 @@ const DashboardOverview = ({
       )}
 
       {/* Top Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard 
-          title="Total Users" value={users.length.toLocaleString()} 
-          subtitle="All accounts synced"
-          icon={Users} colorClass="bg-indigo-500" 
+          title="Users" value={pageVisits.toLocaleString()} 
+          subtitle="Total platform users"
+          icon={Users} colorClass="bg-blue-500" 
         />
         <StatCard 
           title="Registered" value={registeredUsers.toLocaleString()} 
@@ -215,11 +215,6 @@ const DashboardOverview = ({
             </button>
           </div>
         </StatCard>
-        <StatCard 
-          title="Page Visits" value={pageVisits.toLocaleString()} 
-          subtitle="Total platform visits"
-          icon={Activity} colorClass="bg-blue-500" 
-        />
       </div>
       
       {/* App Toggles */}
