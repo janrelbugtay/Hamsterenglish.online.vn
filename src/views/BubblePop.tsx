@@ -4,7 +4,7 @@ import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
-import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, ClipboardList, Info, Settings, Copy, Flag, Volume2, VolumeX, Shuffle } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, ClipboardList, Info, Settings, Copy, Flag, Volume2, VolumeX, Shuffle, Check } from "lucide-react";
 import { collection, query, where, getDocs, deleteDoc, doc, addDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -46,13 +46,14 @@ interface Quiz {
   isPublic?: boolean;
 }
 
-const DEFAULT_BUBBLE_QUESTIONS: Question[] = [
-  { id: 1, text: "Which sentence is grammatically correct?", options: ["She doesn't like apples.", "She don't like apples.", "She not like apples.", "She isn't like apples."], answerIndex: 0 },
-  { id: 2, text: "What is the past tense of 'eat'?", options: ["Ate", "Eated", "Eating", "Eats"], answerIndex: 0 },
-  { id: 3, text: "Which of these is a fruit?", options: ["Apple", "Carrot", "Potato", "Broccoli"], answerIndex: 0 },
-  { id: 4, text: "They ____ to school by bus every day.", options: ["go", "goes", "gone", "going"], answerIndex: 0 },
-  { id: 5, text: "Choose the opposite of 'Difficult':", options: ["Easy", "Hard", "Tough", "Heavy"], answerIndex: 0 }
-];
+const BLANK_QUESTION = (): Question => ({
+  id: Date.now(),
+  text: "",
+  options: ["", "", "", ""],
+  answerIndex: 0
+});
+
+const DEFAULT_BUBBLE_QUESTIONS: Question[] = [];
 
 export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void, initialGame?: any }) {
   const { user } = useAuth();
@@ -86,11 +87,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     if (initialGame) {
       const qList = (initialGame.customQuestions && initialGame.customQuestions.length > 0)
         ? initialGame.customQuestions
-        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : DEFAULT_BUBBLE_QUESTIONS);
+        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_QUESTION()]);
 
       return {
         id: initialGame.id || Date.now(),
-        title: initialGame.name || initialGame.title || initialGame.topic || "Bubble Pop",
+        title: initialGame.name || initialGame.title || initialGame.topic || "",
         folderId: initialGame.folderId || "",
         topic: initialGame.topic || initialGame.name || "",
         classLevel: initialGame.className || initialGame.classLevel || "",
@@ -111,7 +112,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     if (initialGame) {
       const qList = (initialGame.customQuestions && initialGame.customQuestions.length > 0)
         ? initialGame.customQuestions
-        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : DEFAULT_BUBBLE_QUESTIONS);
+        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_QUESTION()]);
 
       setActiveQuiz({
         id: initialGame.id || Date.now(),
@@ -2404,8 +2405,15 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
   const [showVideoGuide, setShowVideoGuide] = useState(false);
+  const [copiedPromptInModal, setCopiedPromptInModal] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [toastMsg, setToastMsg] = useState("");
+
+  const handleCopyAiPrompt = () => {
+    navigator.clipboard.writeText(`Create 50 fill-in-the-blank questions on the topic of Passive Voice. Each question should have 4 multiple-choice options (A, B, C, and D) and include the correct answer.`);
+    setCopiedPromptInModal(true);
+    setTimeout(() => setCopiedPromptInModal(false), 2500);
+  };
 
   const handleApplyBulkPaste = (action: 'replace' | 'append') => {
     const parsed = parsePastedQuiz(bulkText);
@@ -2669,6 +2677,17 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                 <ClipboardList size={22} className="stroke-[2.5]" />
                 <span>Bulk Paste</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setShowVideoGuide(true)}
+                className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-2 cursor-pointer border border-purple-400/30"
+                title="Watch Video Tutorial: How to Bulk Paste with AI"
+              >
+                <div className="w-5 h-5 rounded-full bg-white text-purple-700 flex items-center justify-center shrink-0">
+                  <Play size={11} className="ml-0.5 fill-current" />
+                </div>
+                <span>How to Bulk Paste</span>
+              </button>
             </div>
           </div>
           {questions.map((q, index) => (
@@ -2818,20 +2837,93 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-2xl font-black text-slate-800 dark:text-white">
-                      Bulk Paste & Auto-Divide
+                      Bulk Paste &amp; Auto-Divide
                     </h3>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Paste multiple questions, numbered lists with options & answer (e.g. Answer: B), or tabular TSV data.
+                    Paste multiple questions, numbered lists with options &amp; answer (e.g. Answer: B), or tabular TSV data.
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => { setShowBulkPasteModal(false); setBulkText(""); }}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVideoGuide(true)}
+                  className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Watch Video Tutorial"
+                >
+                  <Play size={13} className="fill-current text-purple-500" />
+                  <span>Video Guide</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setShowBulkPasteModal(false); setBulkText(""); }}
+                  className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Step-by-step instructions with Video walkthrough & prompt copy */}
+            <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-4 flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Play size={14} className="ml-0.5 fill-current" />
+                  </div>
+                  <div>
+                    <span className="font-black text-sm text-slate-800 dark:text-white block">
+                      How to Bulk Paste: 3 Simple Steps
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Generate 20-30 questions with AI and auto-populate in seconds
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowVideoGuide(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl transition-all shadow-md shadow-purple-500/25 flex items-center gap-1.5 cursor-pointer text-xs shrink-0 self-start sm:self-auto"
+                >
+                  <Play size={12} className="fill-current" />
+                  <span>Watch Video Guide</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-purple-600 dark:text-purple-400">1. Prompt AI</span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    Ask ChatGPT/Claude for multiple-choice questions with answers.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCopyAiPrompt}
+                    className="mt-1 px-2 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-700 dark:text-purple-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    {copiedPromptInModal ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                    <span>{copiedPromptInModal ? "Copied Prompt!" : "Copy AI Prompt"}</span>
+                  </button>
+                </div>
+
+                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-blue-600 dark:text-blue-400">2. Copy Output</span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    Highlight all questions generated by the AI and copy to clipboard.
+                  </p>
+                  <span className="text-[10px] text-slate-400 font-mono">Ctrl+C or ⌘+C</span>
+                </div>
+
+                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">3. Paste &amp; Click + Add</span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    Paste below. Questions, options &amp; answers are auto-divided!
+                  </p>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Ready in 1 click!</span>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">

@@ -1,9 +1,10 @@
 import { MediaPickerModal } from "../components/MediaPickerModal";
+import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
-import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, Info, ClipboardList, Copy, Trophy, Shuffle, Volume2, VolumeX, Users, Camera, Type } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, Info, ClipboardList, Copy, Trophy, Shuffle, Volume2, VolumeX, Users, Camera, Type, Check } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import {
@@ -132,16 +133,14 @@ interface GameData {
   isPublic?: boolean;
 }
 
-const DEFAULT_QUESTIONS: Question[] = [
-  { id: 1, text: "He is happy, ____?", options: ["isn’t he?", "aren’t they?", "is he?", "aren’t you?"], answerIndex: 0 },
-  { id: 2, text: "She is your friend, ____?", options: ["isn’t she?", "is she?", "doesn’t she?", "does she?"], answerIndex: 0 },
-  { id: 3, text: "They can swim well, ____?", options: ["can’t they?", "can they?", "aren’t they?", "are they?"], answerIndex: 0 },
-  { id: 4, text: "Tom plays football, ____?", options: ["doesn’t he?", "does he?", "isn’t he?", "is he?"], answerIndex: 0 },
-  { id: 5, text: "You are happy today, ____?", options: ["aren’t you?", "are you?", "don’t you?", "do you?"], answerIndex: 0 },
-  { id: 6, text: "We haven't met before, ____?", options: ["have we?", "haven’t we?", "did we?", "do we?"], answerIndex: 0 },
-  { id: 7, text: "She will come tomorrow, ____?", options: ["won’t she?", "will she?", "doesn’t she?", "can’t she?"], answerIndex: 0 },
-  { id: 8, text: "You didn't see him, ____?", options: ["did you?", "didn’t you?", "do you?", "don’t you?"], answerIndex: 0 }
-];
+const BLANK_QUESTION = (): Question => ({
+  id: Date.now(),
+  text: "",
+  options: ["", "", "", ""],
+  answerIndex: 0
+});
+
+const DEFAULT_QUESTIONS: Question[] = [];
 
 
 export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void, initialGame?: any }) {
@@ -175,11 +174,11 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     if (initialGame) {
       const qList = (initialGame.customQuestions && initialGame.customQuestions.length > 0)
         ? initialGame.customQuestions
-        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : DEFAULT_QUESTIONS);
+        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_QUESTION()]);
 
       setActiveGame({
         id: initialGame.id || Date.now(),
-        title: initialGame.name || initialGame.title || initialGame.topic || "Question Tags Showdown",
+        title: initialGame.name || initialGame.title || initialGame.topic || "",
         folderId: initialGame.folderId || "",
         topic: initialGame.topic || initialGame.name || "",
         classLevel: initialGame.className || initialGame.classLevel || "",
@@ -216,10 +215,10 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     if (initialGame) {
       const qList = (initialGame.customQuestions && initialGame.customQuestions.length > 0)
         ? initialGame.customQuestions
-        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : DEFAULT_QUESTIONS);
+        : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_QUESTION()]);
       return {
         id: initialGame.id,
-        title: initialGame.name || initialGame.title || initialGame.topic || "Question Tags Showdown",
+        title: initialGame.name || initialGame.title || initialGame.topic || "",
         folderId: initialGame.folderId || "",
         topic: initialGame.topic || initialGame.name || "",
         classLevel: initialGame.className || initialGame.classLevel || "",
@@ -1536,8 +1535,17 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
+  const [showVideoGuide, setShowVideoGuide] = useState(false);
+  const [copiedPromptInModal, setCopiedPromptInModal] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [toastMsg, setToastMsg] = useState("");
+
+  const handleCopyAiPrompt = () => {
+    const promptText = `Create 50 fill-in-the-blank questions on the topic of Passive Voice. Each question should have 4 multiple-choice options (A, B, C, and D) and include the correct answer.`;
+    navigator.clipboard.writeText(promptText);
+    setCopiedPromptInModal(true);
+    setTimeout(() => setCopiedPromptInModal(false), 2500);
+  };
 
   const handleApplyBulkPaste = (action: 'replace' | 'append') => {
     const parsed = parsePastedQuiz(bulkText);
@@ -1668,9 +1676,60 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
                     <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Paste text to automatically generate questions</p>
                   </div>
                 </div>
-                <button onClick={() => setShowBulkPasteModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                  <X size={24} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoGuide(true)}
+                    className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Watch Video Tutorial"
+                  >
+                    <Play size={13} className="fill-current text-purple-500" />
+                    <span>Video Guide</span>
+                  </button>
+                  <button onClick={() => setShowBulkPasteModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Walkthrough Banner: 3 Simple Steps */}
+              <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                    <Sparkles size={14} /> 3 Simple Steps to Generate 50+ Questions
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyAiPrompt}
+                    className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                  >
+                    {copiedPromptInModal ? (
+                      <>
+                        <Check size={12} className="text-green-300" />
+                        <span>Copied Prompt!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} />
+                        <span>Copy AI Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                  <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-purple-500/20 flex flex-col gap-1">
+                    <span className="font-bold text-purple-600 dark:text-purple-400">1. Prompt ChatGPT / Claude</span>
+                    <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">Click &ldquo;Copy AI Prompt&rdquo; above and paste it into ChatGPT, Claude, or Gemini.</span>
+                  </div>
+                  <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-indigo-500/20 flex flex-col gap-1">
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400">2. Copy AI Output</span>
+                    <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">Copy the 50 numbered questions and answer choices directly from the AI.</span>
+                  </div>
+                  <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-blue-500/20 flex flex-col gap-1">
+                    <span className="font-bold text-blue-600 dark:text-blue-400">3. Paste Here &amp; Click Apply</span>
+                    <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">Paste in the box below and click &ldquo;Append&rdquo; or &ldquo;Replace All&rdquo; to auto-divide!</span>
+                  </div>
+                </div>
               </div>
               
               <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-100 dark:border-blue-800/30">
@@ -1817,12 +1876,25 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
                 <span className="font-bold">Smart Paste:</span> Paste multiple lines, numbered Q&As, or Excel rows directly into any box below — they will automatically populate!
               </p>
             </div>
-            <button
-              onClick={() => setShowBulkPasteModal(true)}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer self-end sm:self-auto"
-            >
-              <ClipboardList size={14} /> Bulk Paste Modal
-            </button>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowVideoGuide(true)}
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-1.5 cursor-pointer border border-purple-400/30"
+                title="Watch Video Tutorial: How to Bulk Paste with AI"
+              >
+                <div className="w-4 h-4 rounded-full bg-white text-purple-700 flex items-center justify-center shrink-0">
+                  <Play size={10} className="ml-0.5 fill-current" />
+                </div>
+                <span>How to Bulk Paste</span>
+              </button>
+              <button
+                onClick={() => setShowBulkPasteModal(true)}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <ClipboardList size={14} /> Bulk Paste Modal
+              </button>
+            </div>
           </div>
 
           {questions.map((q, index) => (
@@ -1920,6 +1992,15 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
             updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, url);
             setActiveGiphyInput(null);
           }
+        }}
+      />
+
+      <BulkPasteVideoModal
+        isOpen={showVideoGuide}
+        onClose={() => setShowVideoGuide(false)}
+        onOpenBulkPasteWithSample={(sample) => {
+          setBulkText(sample);
+          setShowBulkPasteModal(true);
         }}
       />
     </div>

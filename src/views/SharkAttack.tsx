@@ -21,12 +21,14 @@ import {
   Clock,
   Pause,
   RotateCcw,
+  Check,
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { db } from '../lib/firebase';
 import { collection, addDoc, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaPickerModal } from '../components/MediaPickerModal';
+import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { FullscreenButton } from '../components/FullscreenButton';
 import { GameModeModal } from '../components/GameModeModal';
 
@@ -1648,16 +1650,14 @@ interface GameData {
   isPublic?: boolean;
 }
 
-const DEFAULT_QUESTIONS: Question[] = [
-  { id: 1, text: 'If I ____ the exams, I will go to England.', options: ['pass', 'passes', 'will pass', 'is passing'], answerIndex: 0 },
-  { id: 2, text: 'She ____ to school every morning.', options: ['walks', 'walk', 'walking', 'walked'], answerIndex: 0 },
-  { id: 3, text: 'They ____ playing football right now.', options: ['are', 'is', 'am', 'be'], answerIndex: 0 },
-  { id: 4, text: 'How many bones does a shark have?', options: ['Zero (cartilage)', '206', '100', '54'], answerIndex: 0 },
-  { id: 5, text: 'We ____ a movie last night.', options: ['watched', 'watch', 'watches', 'watching'], answerIndex: 0 },
-  { id: 6, text: 'Which is the largest fish in the ocean?', options: ['Whale Shark', 'Great White', 'Dolphin', 'Tuna'], answerIndex: 0 },
-  { id: 7, text: 'He has lived here ____ five years.', options: ['for', 'since', 'from', 'ago'], answerIndex: 0 },
-  { id: 8, text: 'You are happy today, ____?', options: ['aren’t you?', 'are you?', 'don’t you?', 'do you?'], answerIndex: 0 },
-];
+const BLANK_QUESTION = (): Question => ({
+  id: Date.now(),
+  text: '',
+  options: ['', '', '', ''],
+  answerIndex: 0,
+});
+
+const DEFAULT_QUESTIONS: Question[] = [];
 
 // ============================================================================
 // MAIN SHARK ATTACK VIEW
@@ -1704,10 +1704,10 @@ export function SharkAttack({
           ? initialGame.customQuestions
           : initialGame.questions && initialGame.questions.length > 0
             ? initialGame.questions
-            : DEFAULT_QUESTIONS;
+            : [BLANK_QUESTION()];
       return {
         id: initialGame.id || Date.now(),
-        title: initialGame.name || initialGame.title || initialGame.topic || 'Shark Attack',
+        title: initialGame.name || initialGame.title || initialGame.topic || '',
         folderId: initialGame.folderId || '',
         topic: initialGame.topic || initialGame.name || '',
         classLevel: initialGame.className || initialGame.classLevel || '',
@@ -1721,7 +1721,7 @@ export function SharkAttack({
       folderId: '',
       topic: '',
       classLevel: '',
-      questions: [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }],
+      questions: [BLANK_QUESTION()],
     };
   });
 
@@ -1732,11 +1732,11 @@ export function SharkAttack({
           ? initialGame.customQuestions
           : initialGame.questions && initialGame.questions.length > 0
             ? initialGame.questions
-            : DEFAULT_QUESTIONS;
+            : [BLANK_QUESTION()];
 
       setActiveGame({
         id: initialGame.id || Date.now(),
-        title: initialGame.name || initialGame.title || initialGame.topic || 'Shark Attack',
+        title: initialGame.name || initialGame.title || initialGame.topic || '',
         folderId: initialGame.folderId || '',
         topic: initialGame.topic || initialGame.name || '',
         classLevel: initialGame.className || initialGame.classLevel || '',
@@ -3663,8 +3663,16 @@ function GameEditor({
   } | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
+  const [showVideoGuide, setShowVideoGuide] = useState(false);
+  const [copiedPromptInModal, setCopiedPromptInModal] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [toastMsg, setToastMsg] = useState('');
+
+  const handleCopyAiPrompt = () => {
+    navigator.clipboard.writeText(`Create 50 fill-in-the-blank questions on the topic of Passive Voice. Each question should have 4 multiple-choice options (A, B, C, and D) and include the correct answer.`);
+    setCopiedPromptInModal(true);
+    setTimeout(() => setCopiedPromptInModal(false), 2500);
+  };
 
   const addQuestion = () => {
     setQuestions([
@@ -3847,69 +3855,151 @@ function GameEditor({
             </div>
           )}
 
-          {showBulkPasteModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
+          {showBulkPasteModal && typeof document !== 'undefined' && createPortal(
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
+              <div
+                className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto custom-scrollbar"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
-                      <ClipboardList size={20} />
+                      <ClipboardList size={22} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-slate-800 dark:text-white">
-                        Bulk Add Q&As
+                      <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+                        Bulk Paste &amp; Auto-Divide
                       </h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                        Paste text to automatically generate questions
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Paste multiple questions, numbered lists with options &amp; answer (e.g. Answer: B), or tabular TSV data.
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setShowBulkPasteModal(false)}
-                    className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <X size={24} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowVideoGuide(true)}
+                      className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Watch Video Tutorial"
+                    >
+                      <Play size={13} className="fill-current text-purple-500" />
+                      <span>Video Guide</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowBulkPasteModal(false); setBulkText(''); }}
+                      className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
 
-                <textarea
-                  value={bulkText}
-                  onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={
-                    'Example:\n1. What is the capital of France?\nA. London\nB. Paris\nC. Berlin\nD. Madrid\nAnswer: B\n\nOr paste tabular data directly from Excel!'
-                  }
-                  className="w-full h-64 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-xl focus:border-cyan-500 resize-none font-medium text-sm leading-relaxed"
-                />
+                {/* Step-by-step instructions with Video walkthrough & prompt copy */}
+                <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-4 flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <Play size={14} className="ml-0.5 fill-current" />
+                      </div>
+                      <div>
+                        <span className="font-black text-sm text-slate-800 dark:text-white block">
+                          How to Bulk Paste: 3 Simple Steps
+                        </span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Generate 20-30 questions with AI and auto-populate in seconds
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowVideoGuide(true)}
+                      className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl transition-all shadow-md shadow-purple-500/25 flex items-center gap-1.5 cursor-pointer text-xs shrink-0 self-start sm:self-auto"
+                    >
+                      <Play size={12} className="fill-current" />
+                      <span>Watch Video Guide</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                    <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                      <span className="font-bold text-purple-600 dark:text-purple-400">1. Prompt AI</span>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                        Ask ChatGPT/Claude for multiple-choice questions with answers.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleCopyAiPrompt}
+                        className="mt-1 px-2 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-700 dark:text-purple-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      >
+                        {copiedPromptInModal ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                        <span>{copiedPromptInModal ? 'Copied Prompt!' : 'Copy AI Prompt'}</span>
+                      </button>
+                    </div>
+
+                    <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                      <span className="font-bold text-blue-600 dark:text-blue-400">2. Copy Output</span>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                        Highlight all questions generated by the AI and copy to clipboard.
+                      </p>
+                      <span className="text-[10px] text-slate-400 font-mono">Ctrl+C or ⌘+C</span>
+                    </div>
+
+                    <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">3. Paste &amp; Click + Add</span>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                        Paste below. Questions, options &amp; answers are auto-divided!
+                      </p>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Ready in 1 click!</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Paste Text Below (Supports multi-line Q&amp;A format or Excel copy)
+                  </label>
+                  <textarea
+                    rows={7}
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    placeholder={
+                      'Example:\n1. What is the capital of France?\nA. London\nB. Paris\nC. Berlin\nD. Madrid\nAnswer: B\n\nOr paste tabular data directly from Excel!'
+                    }
+                    className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-cyan-500 transition-colors custom-scrollbar"
+                  />
+                </div>
 
                 {bulkText.trim() && (
-                  <div className="flex items-center gap-2 bg-green-500/10 text-green-600 dark:text-green-400 px-4 py-2 rounded-lg text-sm font-bold">
-                    <Sparkles size={16} />
-                    <p>
-                      Found{' '}
-                      <span className="font-bold text-slate-800 dark:text-white">
-                        {parsePastedQuiz(bulkText).length}
-                      </span>{' '}
-                      items.
+                  <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="text-cyan-500 mt-0.5"><Info size={16} /></div>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      Found <span className="font-bold text-slate-800 dark:text-white">{parsePastedQuiz(bulkText).length}</span> items.
                     </p>
                   </div>
                 )}
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <button
+                    type="button"
                     onClick={() => handleApplyBulkPaste('replace')}
                     className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
                   >
                     Replace All
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleApplyBulkPaste('append')}
-                    className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer"
+                    className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    Append to End
+                    <Plus size={18} />
+                    + Add
                   </button>
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
 
           {showPublishModal &&
@@ -4060,12 +4150,25 @@ function GameEditor({
                   populate!
                 </p>
               </div>
-              <button
-                onClick={() => setShowBulkPasteModal(true)}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer self-end sm:self-auto"
-              >
-                <ClipboardList size={14} /> Bulk Paste Modal
-              </button>
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowVideoGuide(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-1.5 cursor-pointer border border-purple-400/30"
+                  title="Watch Video Tutorial: How to Bulk Paste with AI"
+                >
+                  <div className="w-4 h-4 rounded-full bg-white text-purple-700 flex items-center justify-center shrink-0">
+                    <Play size={10} className="ml-0.5 fill-current" />
+                  </div>
+                  <span>How to Bulk Paste</span>
+                </button>
+                <button
+                  onClick={() => setShowBulkPasteModal(true)}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ClipboardList size={14} /> Bulk Paste Modal
+                </button>
+              </div>
             </div>
 
             {questions.map((q, index) => (
@@ -4186,6 +4289,15 @@ function GameEditor({
             updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, url);
             setActiveGiphyInput(null);
           }
+        }}
+      />
+
+      <BulkPasteVideoModal
+        isOpen={showVideoGuide}
+        onClose={() => setShowVideoGuide(false)}
+        onOpenBulkPasteWithSample={(sample) => {
+          setBulkText(sample);
+          setShowBulkPasteModal(true);
         }}
       />
     </div>
