@@ -129,6 +129,21 @@ function FeaturedGamesSection({
       icon: "🫧",
     },
     {
+      id: "slap-and-chop",
+      title: "Slap & Chop",
+      description:
+        "3D Motion AR game! Slap buzzing mosquitoes with purple gloves or chop fruits with a fencing sword!",
+      difficulty: "Easy",
+      players: "1-2 Players",
+      time: "5-10m",
+      subject: "ESL & Science",
+      grade: "All",
+      imageUrl: "/images/slap-and-chop-icon.svg",
+      isAI: false,
+      color: "from-purple-500 to-indigo-600",
+      icon: "🦟",
+    },
+    {
       id: "shark-attack",
       title: "Shark Attack",
       description:

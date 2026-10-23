@@ -575,6 +575,72 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     );
   }
 
+  // 2A. SLAP & CHOP (slap-and-chop)
+  if (normalizedType === 'slap-and-chop' || normalizedType === 'slapandchop') {
+    return (
+      <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-purple-950 via-indigo-950 to-slate-950 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
+        {/* Glow & Sword Slash Arc */}
+        <div className="absolute -top-6 -left-6 w-28 h-28 bg-purple-500/25 rounded-full blur-xl" />
+        <div className="absolute -bottom-6 -right-6 w-28 h-28 bg-cyan-500/25 rounded-full blur-xl" />
+        <div className="absolute inset-0 opacity-20 pointer-events-none">
+          <svg viewBox="0 0 200 120" className="w-full h-full">
+            <path d="M 20 100 Q 100 40 180 20" fill="none" stroke="#38bdf8" strokeWidth="6" strokeLinecap="round" />
+          </svg>
+        </div>
+
+        {/* Header Row */}
+        <div className="relative z-10 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 bg-white/15 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20">
+            <span className="text-sm leading-none">🦟</span>
+            <span className="text-[10px] font-black text-white uppercase tracking-wider">Slap &amp; Chop</span>
+          </div>
+          <span className="text-[10px] font-extrabold text-purple-300 bg-black/40 px-2 py-0.5 rounded-full border border-purple-400/30">
+            {totalCount} Qs
+          </span>
+        </div>
+
+        {/* Question Banner */}
+        <div className="relative z-10 bg-white/15 backdrop-blur-md border border-white/25 rounded-xl p-2 shadow-lg flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-base shadow-sm shrink-0">
+            🤺
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-purple-300 truncate">
+              {cleanTitle}
+            </div>
+            <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
+              {firstQuestion}
+            </p>
+          </div>
+        </div>
+
+        {/* Floating Answer Options */}
+        <div className="relative z-10 grid grid-cols-2 gap-1.5 pt-0.5">
+          {options.slice(0, 4).map((opt, idx) => {
+            const isCorrect = idx === answerIndex;
+            return (
+              <div
+                key={idx}
+                className={`relative px-2.5 py-1.5 rounded-full border flex items-center justify-between gap-1 overflow-hidden ${
+                  isCorrect
+                    ? 'bg-gradient-to-r from-emerald-600/80 to-teal-600/80 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.4)]'
+                    : 'bg-slate-900/80 border-white/20'
+                }`}
+              >
+                <span className="text-[11px] font-black text-white truncate drop-shadow-sm">
+                  {opt}
+                </span>
+                <span className="text-[10px] bg-white/20 text-white font-black px-1.5 py-0.5 rounded-full leading-tight shrink-0">
+                  {idx === 0 ? '🍉' : idx === 1 ? '🥭' : idx === 2 ? '🫐' : '✨'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   // 2B. SHARK ATTACK (shark-attack)
   if (normalizedType === 'shark-attack' || normalizedType === 'sharkattack') {
     const leftOpt = options[0] || 'Option A';

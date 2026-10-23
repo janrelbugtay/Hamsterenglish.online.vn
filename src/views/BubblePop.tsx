@@ -9,6 +9,8 @@ import { collection, query, where, getDocs, deleteDoc, doc, addDoc, updateDoc } 
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
+import { drawCharacterHand, HandCharacterType, toPx, distPx } from "../utils/superheroHands";
+import { drawAnimatedNose, NoseStyle } from "../utils/animatedNose";
 
 type GameScreen = 'intro' | 'lobby' | 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
 
@@ -206,6 +208,52 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const animationRef = useRef<number | null>(null);
   const cameraRef = useRef<any>(null);
   const handsRef = useRef<any>(null);
+  const faceMeshRef = useRef<any>(null);
+  const detectedHandsRef = useRef<any[]>([]);
+  const detectedFacesRef = useRef<any[]>([]);
+  const lastNosePopTimeRef = useRef(0);
+
+  // Tracker mode & customization state
+  const [trackerMode, setTrackerMode] = useState<'finger' | 'hand' | 'nose'>(() => {
+    try {
+      const saved = localStorage.getItem('bubbleTrackerMode_v1');
+      if (saved === 'finger' || saved === 'hand' || saved === 'nose') return saved;
+    } catch (e) {}
+    return 'finger';
+  });
+  const [handCharacter, setHandCharacter] = useState<HandCharacterType>(() => {
+    try {
+      const saved = localStorage.getItem('bubbleHandCharacter_v1');
+      if (saved) return saved as HandCharacterType;
+    } catch (e) {}
+    return 'spiderman';
+  });
+  const [noseStyle, setNoseStyle] = useState<NoseStyle>(() => {
+    try {
+      const saved = localStorage.getItem('bubbleNoseStyle_v1');
+      if (saved) return saved as NoseStyle;
+    } catch (e) {}
+    return 'real';
+  });
+  const [showTrackerModal, setShowTrackerModal] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem('bubbleTrackerMode_v1', trackerMode); } catch (e) {}
+  }, [trackerMode]);
+  useEffect(() => {
+    try { localStorage.setItem('bubbleHandCharacter_v1', handCharacter); } catch (e) {}
+  }, [handCharacter]);
+  useEffect(() => {
+    try { localStorage.setItem('bubbleNoseStyle_v1', noseStyle); } catch (e) {}
+  }, [noseStyle]);
+
+  const trackerModeRef = useRef(trackerMode);
+  trackerModeRef.current = trackerMode;
+  const handCharacterRef = useRef(handCharacter);
+  handCharacterRef.current = handCharacter;
+  const noseStyleRef = useRef(noseStyle);
+  noseStyleRef.current = noseStyle;
+
   const [cameraError, setCameraError] = useState("");
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [p1Name, setP1Name] = useState("Team 1");
@@ -283,7 +331,10 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
           cameraRef.current.stop();
       }
       if (handsRef.current && handsRef.current.close) {
-          handsRef.current.close();
+          try { handsRef.current.close(); } catch(e) {}
+      }
+      if (faceMeshRef.current && faceMeshRef.current.close) {
+          try { faceMeshRef.current.close(); } catch(e) {}
       }
     };
   }, []);
@@ -971,8 +1022,15 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     });
     ctx.restore();
 
-    pointers.current.forEach((pointer, pIndex) => {
-        // Dynamic magical color styling
+    const vW = videoRef.current?.videoWidth || 640;
+    const vH = videoRef.current?.videoHeight || 480;
+    const currentMode = trackerModeRef.current;
+    const currentHandChar = handCharacterRef.current;
+    const currentNoseStyle = noseStyleRef.current;
+
+    // 1. FINGER TRACKER MODE: Keep magical glowing ball and starlight cursor
+    if (currentMode === 'finger') {
+      pointers.current.forEach((pointer, pIndex) => {
         if (gameState.current.numPlayers === 1) {
             pointer.color = pIndex === 0 
                 ? { main: '#3b82f6', glow: 'rgba(59, 130, 246, 0.6)' } 
@@ -993,16 +1051,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 const dy = pointer.targetY - pointer.y;
                 const dist = Math.hypot(dx, dy);
 
-                // Anti-jitter deadzone and adaptive responsive smoothing
                 if (dist > 1.5) {
                     let alpha = 0.45;
-                    if (dist < 12) {
-                        alpha = 0.22; // smooth micro-tremors when holding still
-                    } else if (dist > 70) {
-                        alpha = 0.65; // snappy response during fast sweeps
-                    }
+                    if (dist < 12) alpha = 0.22;
+                    else if (dist > 70) alpha = 0.65;
 
-                    // Clamp sudden glitch leaps per frame so cursor never flies out of control
                     const maxStep = 110;
                     let stepX = dx * alpha;
                     let stepY = dy * alpha;
@@ -1017,7 +1070,6 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 }
             }
             
-            // Constrain pointers to their respective halves in 2-player mode
             if (gameState.current.numPlayers === 2) {
                 if (pIndex === 0) {
                     pointer.x = Math.min(pointer.x, (width / 2) - 10);
@@ -1035,7 +1087,6 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 graphicsState.current.bubbles.forEach(b => {
                     if (poppedThisFrame || b.popped) return;
                     
-                    // Check direct hit + recent continuous swipe point (preventing distant teleport pops)
                     const prevPoint = pointer.history.length > 3 ? pointer.history[pointer.history.length - 3] : null;
                     const isContinuousSwipe = prevPoint && Math.hypot(pointer.x - prevPoint.x, pointer.y - prevPoint.y) < 120;
                     
@@ -1055,6 +1106,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             }
         }
 
+        // Draw Magical Ball / Star Trail
         if (pointer.history.length > 1) {
             ctx.save();
             ctx.globalCompositeOperation = 'lighter';
@@ -1086,7 +1138,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             ctx.shadowColor = pointer.color.main;
             ctx.shadowBlur = 25;
             
-            // Draw a more intricate magic star cursor
+            // Intricate magic star ball cursor
             ctx.beginPath();
             ctx.moveTo(0, -25); ctx.quadraticCurveTo(6, -6, 25, 0);
             ctx.quadraticCurveTo(6, 6, 0, 25); ctx.quadraticCurveTo(-6, 6, -25, 0);
@@ -1101,116 +1153,299 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             
             ctx.restore();
         }
-    });
+      });
+    }
+
+    // 2. HAND TRACKER MODE: Stylized Character Hands (Spider-Man, Thanos, Witch, Hulk, etc.)
+    else if (currentMode === 'hand') {
+      const hands = detectedHandsRef.current;
+      
+      if (hands.length > 0) {
+        hands.forEach((hand) => {
+          if (!hand || hand.length < 21) return;
+          const palmPx = toPx(hand[9] || hand[0], width, height, vW, vH);
+          const effectivePlayer = gameState.current.numPlayers === 1 ? 0 : (palmPx.x < width / 2 ? 0 : 1);
+
+          // Multi-point strike collision (palm center + all 5 fingertips)
+          const strikePoints = [
+            toPx(hand[9], width, height, vW, vH),   // Palm center
+            toPx(hand[4], width, height, vW, vH),   // Thumb tip
+            toPx(hand[8], width, height, vW, vH),   // Index tip
+            toPx(hand[12], width, height, vW, vH),  // Middle tip
+            toPx(hand[16], width, height, vW, vH),  // Ring tip
+            toPx(hand[20], width, height, vW, vH),  // Pinky tip
+          ];
+
+          if (graphicsState.current.isQuestionActive) {
+            let poppedThisHand = false;
+            graphicsState.current.bubbles.forEach(b => {
+              if (poppedThisHand || b.popped) return;
+              for (const pt of strikePoints) {
+                if (b.checkCollision(pt.x, pt.y, effectivePlayer)) {
+                  handlePop(b, effectivePlayer);
+                  poppedThisHand = true;
+                  break;
+                }
+              }
+            });
+          }
+
+          // Draw chosen Character Hand directly onto the canvas with real isotropic projection
+          drawCharacterHand(
+            ctx,
+            hand,
+            currentHandChar,
+            width,
+            height,
+            false,
+            0,
+            performance.now(),
+            vW,
+            vH
+          );
+        });
+      } else {
+        // Fallback for mouse / preview when no camera hand is detected
+        pointers.current.forEach((pointer, pIndex) => {
+          if (!pointer.detected) return;
+          const effectivePlayer = gameState.current.numPlayers === 1 ? 0 : pIndex;
+          if (graphicsState.current.isQuestionActive) {
+            graphicsState.current.bubbles.forEach(b => {
+              if (!b.popped && b.checkCollision(pointer.x, pointer.y, effectivePlayer)) {
+                handlePop(b, effectivePlayer);
+              }
+            });
+          }
+          ctx.save();
+          ctx.translate(pointer.x, pointer.y);
+          ctx.shadowColor = '#3b82f6';
+          ctx.shadowBlur = 15;
+          ctx.font = '48px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const icon = currentHandChar === 'spiderman' ? '🕷️' :
+                       currentHandChar === 'thanos' ? '🧤' :
+                       currentHandChar === 'witch' ? '🧙‍♀️' :
+                       currentHandChar === 'hulk' ? '💪' :
+                       currentHandChar === 'ironman' ? '🤖' :
+                       currentHandChar === 'frost' ? '❄️' : '⚡';
+          ctx.fillText(icon, 0, 0);
+          ctx.restore();
+        });
+      }
+    }
+
+    // 3. NOSE TRACKER MODE: Real Animated Sniffing Nose & Whimsical Styles
+    else if (currentMode === 'nose') {
+      const faces = detectedFacesRef.current;
+
+      if (faces.length > 0) {
+        faces.forEach((face) => {
+          if (!face || face.length < 5) return;
+          const tip = face[1];
+          if (!tip) return;
+          const tipPx = toPx(tip, width, height, vW, vH);
+          const bridgePx = face[168] ? toPx(face[168], width, height, vW, vH) : undefined;
+
+          // Dynamically compute nose size from eye distance
+          let noseSize = 38;
+          if (face[33] && face[263]) {
+            const eye1 = toPx(face[33], width, height, vW, vH);
+            const eye2 = toPx(face[263], width, height, vW, vH);
+            const eyeDist = Math.hypot(eye2.x - eye1.x, eye2.y - eye1.y);
+            noseSize = Math.max(22, Math.min(65, eyeDist * 0.38));
+          }
+
+          let angle = 0;
+          if (bridgePx) {
+            angle = Math.atan2(tipPx.x - bridgePx.x, tipPx.y - bridgePx.y);
+          }
+
+          const effectivePlayer = gameState.current.numPlayers === 1 ? 0 : (tipPx.x < width / 2 ? 0 : 1);
+
+          // Nose Bubble Collision Check
+          if (graphicsState.current.isQuestionActive) {
+            let poppedThisFace = false;
+            graphicsState.current.bubbles.forEach(b => {
+              if (poppedThisFace || b.popped) return;
+              const dx = b.x - tipPx.x;
+              const dy = b.y - tipPx.y;
+              const hitRadius = b.radius + (noseSize * 0.7);
+              if (dx * dx + dy * dy < hitRadius * hitRadius) {
+                if (b.playerId === undefined || b.playerId === effectivePlayer) {
+                  lastNosePopTimeRef.current = Date.now();
+                  handlePop(b, effectivePlayer);
+                  poppedThisFace = true;
+                }
+              }
+            });
+          }
+
+          const isPopping = (Date.now() - lastNosePopTimeRef.current) < 350;
+
+          // Render Real Animated Nose directly over player's nose
+          drawAnimatedNose({
+            ctx,
+            noseTip: tipPx,
+            noseBridge: bridgePx,
+            noseSize,
+            angle,
+            style: currentNoseStyle,
+            isPopping,
+            time: performance.now()
+          });
+        });
+      } else {
+        // Fallback for mouse / preview when no camera face is detected
+        pointers.current.forEach((pointer, pIndex) => {
+          if (!pointer.detected) return;
+          const effectivePlayer = gameState.current.numPlayers === 1 ? 0 : pIndex;
+          if (graphicsState.current.isQuestionActive) {
+            graphicsState.current.bubbles.forEach(b => {
+              if (!b.popped && b.checkCollision(pointer.x, pointer.y, effectivePlayer)) {
+                lastNosePopTimeRef.current = Date.now();
+                handlePop(b, effectivePlayer);
+              }
+            });
+          }
+          const isPopping = (Date.now() - lastNosePopTimeRef.current) < 350;
+          drawAnimatedNose({
+            ctx,
+            noseTip: { x: pointer.x, y: pointer.y },
+            noseSize: 38,
+            angle: 0,
+            style: currentNoseStyle,
+            isPopping,
+            time: performance.now()
+          });
+        });
+      }
+    }
   };
 
-  const onResults = (results: any) => {
+  const onHandsResults = (results: any) => {
     if (!gameState.current.isActive) return;
     const width = containerRef.current?.clientWidth || 800;
     const height = containerRef.current?.clientHeight || 600;
+    const vW = videoRef.current?.videoWidth || 640;
+    const vH = videoRef.current?.videoHeight || 480;
 
-    // Reset detected status
     pointers.current.forEach(p => p.detected = false);
 
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        detectedHandsRef.current = [];
         return;
     }
 
-    // Filter and sanitize detected hand landmarks
-    const detected: Array<{ x: number; y: number }> = [];
-    for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-        const landmarks = results.multiHandLandmarks[i];
-        if (!landmarks || landmarks.length < 9) continue;
-        
-        const tip = landmarks[8]; // Index finger tip
-        if (!tip || typeof tip.x !== 'number' || typeof tip.y !== 'number') continue;
-        if (isNaN(tip.x) || isNaN(tip.y)) continue;
-        if (tip.x < -0.15 || tip.x > 1.15 || tip.y < -0.15 || tip.y > 1.15) continue;
+    // Mirror horizontal coordinates to match CSS object-cover mirrored video
+    detectedHandsRef.current = results.multiHandLandmarks.map((hand: any[]) =>
+        hand.map((lm: any) => ({
+            x: 1.0 - lm.x,
+            y: lm.y,
+            z: lm.z
+        }))
+    );
 
-        // Convert mirrored video coordinate to canvas coordinate
-        const px = Math.max(0, Math.min(width, (1.0 - tip.x) * width));
-        const py = Math.max(0, Math.min(height, tip.y * height));
-        detected.push({ x: px, y: py });
+    // Extract index finger tips for finger tracker
+    const detected: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < detectedHandsRef.current.length; i++) {
+        const landmarks = detectedHandsRef.current[i];
+        if (!landmarks || landmarks.length < 9) continue;
+        const tip = landmarks[8];
+        if (!tip || isNaN(tip.x) || isNaN(tip.y)) continue;
+        const pt = toPx(tip, width, height, vW, vH);
+        detected.push(pt);
     }
 
     if (detected.length === 0) return;
 
     if (gameState.current.numPlayers === 1) {
-        // In 1-player mode: support up to 2 hands stably without cursor flipping or snapping
         if (detected.length === 1) {
             const hand = detected[0];
             const p0 = pointers.current[0];
             const p1 = pointers.current[1];
-            
-            // If pointer 1 was already tracking this hand closely, keep it on pointer 1
             const d0 = p0.x !== -100 ? Math.hypot(hand.x - p0.x, hand.y - p0.y) : Infinity;
             const d1 = p1.x !== -100 ? Math.hypot(hand.x - p1.x, hand.y - p1.y) : Infinity;
-            
             if (d1 < d0 && d1 < 220) {
-                p1.targetX = hand.x;
-                p1.targetY = hand.y;
-                p1.detected = true;
+                p1.targetX = hand.x; p1.targetY = hand.y; p1.detected = true;
             } else {
-                p0.targetX = hand.x;
-                p0.targetY = hand.y;
-                p0.detected = true;
+                p0.targetX = hand.x; p0.targetY = hand.y; p0.detected = true;
             }
         } else {
-            // Two hands detected: sort by X to keep Left hand -> pointer 0, Right hand -> pointer 1
             detected.sort((a, b) => a.x - b.x);
-            const p0 = pointers.current[0];
-            const p1 = pointers.current[1];
-
-            // If existing pointers are already active, check if cross assignment is closer
-            if (p0.x !== -100 && p1.x !== -100) {
-                const distNormal = Math.hypot(detected[0].x - p0.x, detected[0].y - p0.y) + Math.hypot(detected[1].x - p1.x, detected[1].y - p1.y);
-                const distCross = Math.hypot(detected[1].x - p0.x, detected[1].y - p0.y) + Math.hypot(detected[0].x - p1.x, detected[0].y - p1.y);
-                
-                if (distCross < distNormal) {
-                    p0.targetX = detected[1].x; p0.targetY = detected[1].y; p0.detected = true;
-                    p1.targetX = detected[0].x; p1.targetY = detected[0].y; p1.detected = true;
-                } else {
-                    p0.targetX = detected[0].x; p0.targetY = detected[0].y; p0.detected = true;
-                    p1.targetX = detected[1].x; p1.targetY = detected[1].y; p1.detected = true;
-                }
-            } else {
-                p0.targetX = detected[0].x; p0.targetY = detected[0].y; p0.detected = true;
-                p1.targetX = detected[1].x; p1.targetY = detected[1].y; p1.detected = true;
-            }
+            pointers.current[0].targetX = detected[0].x;
+            pointers.current[0].targetY = detected[0].y;
+            pointers.current[0].detected = true;
+            pointers.current[1].targetX = detected[1].x;
+            pointers.current[1].targetY = detected[1].y;
+            pointers.current[1].detected = true;
         }
     } else {
-        // 2-player mode: strictly partition by screen halves
         const leftHands = detected.filter(h => h.x < width / 2);
         const rightHands = detected.filter(h => h.x >= width / 2);
-
-        // Player 1 (Left Half)
         if (leftHands.length > 0) {
-            const p0 = pointers.current[0];
-            leftHands.sort((a, b) => {
-                if (p0.x !== -100) {
-                    return Math.hypot(a.x - p0.x, a.y - p0.y) - Math.hypot(b.x - p0.x, b.y - p0.y);
-                }
-                return a.y - b.y; // highest hand
-            });
-            const bestLeft = leftHands[0];
-            p0.targetX = Math.min(bestLeft.x, (width / 2) - 12);
-            p0.targetY = bestLeft.y;
-            p0.detected = true;
+            pointers.current[0].targetX = Math.min(leftHands[0].x, (width / 2) - 12);
+            pointers.current[0].targetY = leftHands[0].y;
+            pointers.current[0].detected = true;
         }
-
-        // Player 2 (Right Half)
         if (rightHands.length > 0) {
-            const p1 = pointers.current[1];
-            rightHands.sort((a, b) => {
-                if (p1.x !== -100) {
-                    return Math.hypot(a.x - p1.x, a.y - p1.y) - Math.hypot(b.x - p1.x, b.y - p1.y);
-                }
-                return a.y - b.y; // highest hand
-            });
-            const bestRight = rightHands[0];
-            p1.targetX = Math.max(bestRight.x, (width / 2) + 12);
-            p1.targetY = bestRight.y;
-            p1.detected = true;
+            pointers.current[1].targetX = Math.max(rightHands[0].x, (width / 2) + 12);
+            pointers.current[1].targetY = rightHands[0].y;
+            pointers.current[1].detected = true;
+        }
+    }
+  };
+
+  const onFaceResults = (results: any) => {
+    if (!gameState.current.isActive) return;
+    const width = containerRef.current?.clientWidth || 800;
+    const height = containerRef.current?.clientHeight || 600;
+    const vW = videoRef.current?.videoWidth || 640;
+    const vH = videoRef.current?.videoHeight || 480;
+
+    pointers.current.forEach(p => p.detected = false);
+
+    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        detectedFacesRef.current = [];
+        return;
+    }
+
+    // Mirror face landmarks to match mirrored video
+    detectedFacesRef.current = results.multiFaceLandmarks.map((face: any[]) =>
+        face.map((lm: any) => ({
+            x: 1.0 - lm.x,
+            y: lm.y,
+            z: lm.z
+        }))
+    );
+
+    const detected: Array<{ x: number; y: number }> = [];
+    detectedFacesRef.current.forEach(face => {
+        if (!face || face.length < 5) return;
+        const tip = face[1];
+        if (!tip || isNaN(tip.x) || isNaN(tip.y)) return;
+        const pt = toPx(tip, width, height, vW, vH);
+        detected.push(pt);
+    });
+
+    if (detected.length === 0) return;
+
+    if (gameState.current.numPlayers === 1) {
+        pointers.current[0].targetX = detected[0].x;
+        pointers.current[0].targetY = detected[0].y;
+        pointers.current[0].detected = true;
+    } else {
+        const leftFaces = detected.filter(f => f.x < width / 2);
+        const rightFaces = detected.filter(f => f.x >= width / 2);
+        if (leftFaces.length > 0) {
+            pointers.current[0].targetX = Math.min(leftFaces[0].x, (width / 2) - 12);
+            pointers.current[0].targetY = leftFaces[0].y;
+            pointers.current[0].detected = true;
+        }
+        if (rightFaces.length > 0) {
+            pointers.current[1].targetX = Math.max(rightFaces[0].x, (width / 2) + 12);
+            pointers.current[1].targetY = rightFaces[0].y;
+            pointers.current[1].detected = true;
         }
     }
   };
@@ -1219,92 +1454,121 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     try {
         setCameraError("");
         const win = window as any;
-        if (win.Hands) {
-            // Safely stop any previous camera stream or MediaPipe instance
-            if (cameraRef.current && cameraRef.current.stop) {
-                cameraRef.current.stop();
-                cameraRef.current = null;
-            }
-            if (handsRef.current && handsRef.current.close) {
-                try { handsRef.current.close(); } catch(e) {}
-                handsRef.current = null;
-            }
 
+        // Safely stop any previous camera stream or MediaPipe instances
+        if (cameraRef.current && cameraRef.current.stop) {
+            cameraRef.current.stop();
+            cameraRef.current = null;
+        }
+        if (handsRef.current && handsRef.current.close) {
+            try { handsRef.current.close(); } catch(e) {}
+            handsRef.current = null;
+        }
+        if (faceMeshRef.current && faceMeshRef.current.close) {
+            try { faceMeshRef.current.close(); } catch(e) {}
+            faceMeshRef.current = null;
+        }
+
+        // Initialize MediaPipe Hands
+        if (win.Hands) {
             const hands = new win.Hands({
                 locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
             });
-            // Confidence threshold at 0.6 prevents sudden tracking dropouts during fast late-game gestures
             hands.setOptions({ 
                 maxNumHands: 2, 
                 modelComplexity: 1, 
                 minDetectionConfidence: 0.6, 
                 minTrackingConfidence: 0.6 
             });
-            hands.onResults(onResults);
+            hands.onResults(onHandsResults);
             handsRef.current = hands;
-            
-            if (videoRef.current) {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'user',
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        frameRate: { ideal: 30 }
-                    } 
-                });
-                videoRef.current.srcObject = stream;
-                
-                await new Promise((resolve) => {
-                    if (videoRef.current) {
-                        videoRef.current.onloadedmetadata = () => resolve(null);
-                    } else {
-                        resolve(null);
-                    }
-                });
-                
-                await videoRef.current.play();
-                
-                let active = true;
-                let isProcessing = false;
-                let lastFrameTime = 0;
-                let animId: number | null = null;
-                const TARGET_INTERVAL_MS = 33; // ~30 FPS throttling keeps CPU/GPU cool and eliminates latency backlog
+        }
 
-                const sendFrames = async (time: number) => {
-                    if (!active || !videoRef.current) return;
-                    
-                    if (
-                        videoRef.current.readyState >= 2 && 
-                        !isProcessing && 
-                        (time - lastFrameTime >= TARGET_INTERVAL_MS)
-                    ) {
-                        isProcessing = true;
-                        lastFrameTime = time;
-                        try {
-                            await hands.send({ image: videoRef.current });
-                        } catch (err) {
-                            // ignore dropped frames
-                        } finally {
-                            isProcessing = false;
+        // Initialize MediaPipe FaceMesh
+        if (win.FaceMesh) {
+            const faceMesh = new win.FaceMesh({
+                locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+            });
+            faceMesh.setOptions({
+                maxNumFaces: 2,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            faceMesh.onResults(onFaceResults);
+            faceMeshRef.current = faceMesh;
+        }
+        
+        if (videoRef.current) {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'user',
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 30 }
+                } 
+            });
+            videoRef.current.srcObject = stream;
+            
+            await new Promise((resolve) => {
+                if (videoRef.current) {
+                    videoRef.current.onloadedmetadata = () => resolve(null);
+                } else {
+                    resolve(null);
+                }
+            });
+            
+            await videoRef.current.play();
+            
+            let active = true;
+            let isProcessing = false;
+            let lastFrameTime = 0;
+            let animId: number | null = null;
+            const TARGET_INTERVAL_MS = 33; // ~30 FPS throttling keeps CPU/GPU cool
+
+            const sendFrames = async (time: number) => {
+                if (!active || !videoRef.current) return;
+                
+                if (
+                    videoRef.current.readyState >= 2 && 
+                    !isProcessing && 
+                    (time - lastFrameTime >= TARGET_INTERVAL_MS)
+                ) {
+                    isProcessing = true;
+                    lastFrameTime = time;
+                    try {
+                        const currentMode = trackerModeRef.current;
+                        if (currentMode === 'nose') {
+                            if (faceMeshRef.current) {
+                                await faceMeshRef.current.send({ image: videoRef.current });
+                            }
+                        } else {
+                            if (handsRef.current) {
+                                await handsRef.current.send({ image: videoRef.current });
+                            }
                         }
+                    } catch (err) {
+                        // ignore dropped frames
+                    } finally {
+                        isProcessing = false;
                     }
-                    if (active) {
-                        animId = requestAnimationFrame(sendFrames);
-                    }
-                };
-                animId = requestAnimationFrame(sendFrames);
-                
-                cameraRef.current = {
-                    stop: () => {
-                        active = false;
-                        if (animId) cancelAnimationFrame(animId);
-                        stream.getTracks().forEach(t => t.stop());
-                        if (videoRef.current) videoRef.current.srcObject = null;
-                    }
-                };
-                
-                setIsCameraActive(true);
-            }
+                }
+                if (active) {
+                    animId = requestAnimationFrame(sendFrames);
+                }
+            };
+            animId = requestAnimationFrame(sendFrames);
+            
+            cameraRef.current = {
+                stop: () => {
+                    active = false;
+                    if (animId) cancelAnimationFrame(animId);
+                    stream.getTracks().forEach(t => t.stop());
+                    if (videoRef.current) videoRef.current.srcObject = null;
+                }
+            };
+            
+            setIsCameraActive(true);
         }
     } catch (e: any) {
         console.error("Camera setup failed:", e);
@@ -1402,8 +1666,47 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         <div className="absolute top-4 right-4 z-[70] flex gap-3 pointer-events-auto">
         {screen === 'game' && (
           <>
-            <button onClick={() => showResults()} className="w-12 h-12 flex justify-center items-center rounded-full bg-red-500/20 dark:bg-red-500/20 hover:bg-red-500/40 backdrop-blur-md border border-red-500/50 text-red-600 dark:text-red-400 transition-all shadow-lg cursor-pointer" title="End Game Now">
-                <Flag size={20} />
+            <button 
+              onClick={() => setShowTrackerModal(true)} 
+              className="h-12 px-3.5 sm:px-4 flex items-center gap-2 rounded-full bg-white/25 dark:bg-black/45 hover:bg-white/35 dark:hover:bg-black/65 backdrop-blur-md border border-white/30 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg hover:scale-105 active:scale-95 cursor-pointer font-bold" 
+              title="Tracker Options: Finger Ball, Character Hands, or Animated Nose"
+            >
+              <span className="text-xl">
+                {trackerMode === 'finger' && '☝️'}
+                {trackerMode === 'hand' && (
+                  handCharacter === 'spiderman' ? '🕷️' :
+                  handCharacter === 'thanos' ? '🧤' :
+                  handCharacter === 'witch' ? '🧙‍♀️' :
+                  handCharacter === 'hulk' ? '💪' :
+                  handCharacter === 'ironman' ? '🤖' :
+                  handCharacter === 'frost' ? '❄️' : '⚡'
+                )}
+                {trackerMode === 'nose' && (
+                  noseStyle === 'real' ? '👃' :
+                  noseStyle === 'clown' ? '🔴' :
+                  noseStyle === 'rudolph' ? '🦌' :
+                  noseStyle === 'pig' ? '🐷' :
+                  noseStyle === 'cat' ? '🐱' : '🤥'
+                )}
+              </span>
+              <span className="hidden sm:inline text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">
+                {trackerMode === 'finger' && 'Finger'}
+                {trackerMode === 'hand' && (
+                  handCharacter === 'spiderman' ? 'Spidey' :
+                  handCharacter === 'thanos' ? 'Thanos' :
+                  handCharacter === 'witch' ? 'Witch' :
+                  handCharacter === 'hulk' ? 'Hulk' :
+                  handCharacter === 'ironman' ? 'Iron Man' :
+                  handCharacter === 'frost' ? 'Frost' : 'Cyber'
+                )}
+                {trackerMode === 'nose' && (
+                  noseStyle === 'real' ? 'Real Nose' :
+                  noseStyle === 'clown' ? 'Clown' :
+                  noseStyle === 'rudolph' ? 'Rudolph' :
+                  noseStyle === 'pig' ? 'Pig' :
+                  noseStyle === 'cat' ? 'Cat' : 'Pinocchio'
+                )}
+              </span>
             </button>
             <button onClick={() => setShowInGameSettings(!showInGameSettings)} className="w-12 h-12 flex justify-center items-center rounded-full bg-white/20 dark:bg-black/40 hover:bg-white/30 backdrop-blur-md border border-white/30 text-slate-800 dark:text-white transition-all shadow-lg cursor-pointer">
                 <Settings size={20} />
@@ -1548,6 +1851,36 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                 <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${voiceEnabled ? 'left-7' : 'left-1'}`}></div>
                             </button>
                         </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 text-slate-800 dark:text-white font-bold pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <span>Tracker Mode</span>
+                      <button 
+                        onClick={() => {
+                          setShowInGameSettings(false);
+                          setShowTrackerModal(true);
+                        }}
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold text-sm shadow-md flex items-center justify-between cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span>{trackerMode === 'finger' ? '☝️' : trackerMode === 'hand' ? '🖐️' : '👃'}</span>
+                          <span className="capitalize">{trackerMode} Tracker</span>
+                        </span>
+                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-bold">Change</span>
+                      </button>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <button 
+                        onClick={() => {
+                          setShowInGameSettings(false);
+                          showResults();
+                        }}
+                        className="w-full py-2.5 px-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-600 dark:text-red-400 font-bold text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                      >
+                        <Flag size={16} />
+                        End Game & View Results
+                      </button>
                   </div>
               </div>
           </div>
@@ -1736,6 +2069,34 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                             <span className="font-bold">Voice Narration</span>
                             <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-12 h-6 rounded-full transition-colors relative ${voiceEnabled ? 'bg-blue-500' : 'bg-white/30'}`}>
                                 <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${voiceEnabled ? 'left-7' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                        <div className="flex justify-between items-center text-white pt-2 border-t border-white/10">
+                            <span className="font-bold">Tracker</span>
+                            <button
+                                onClick={() => setShowTrackerModal(true)}
+                                className="px-4 py-2 rounded-xl text-sm font-black bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white flex items-center gap-2 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                            >
+                                <span className="text-base">
+                                  {trackerMode === 'finger' && '☝️'}
+                                  {trackerMode === 'hand' && (
+                                    handCharacter === 'spiderman' ? '🕷️' :
+                                    handCharacter === 'thanos' ? '🧤' :
+                                    handCharacter === 'witch' ? '🧙‍♀️' :
+                                    handCharacter === 'hulk' ? '💪' :
+                                    handCharacter === 'ironman' ? '🤖' :
+                                    handCharacter === 'frost' ? '❄️' : '⚡'
+                                  )}
+                                  {trackerMode === 'nose' && (
+                                    noseStyle === 'real' ? '👃' :
+                                    noseStyle === 'clown' ? '🔴' :
+                                    noseStyle === 'rudolph' ? '🦌' :
+                                    noseStyle === 'pig' ? '🐷' :
+                                    noseStyle === 'cat' ? '🐱' : '🤥'
+                                  )}
+                                </span>
+                                <span className="capitalize">{trackerMode}</span>
+                                <span className="text-xs opacity-80 bg-white/20 px-1.5 py-0.5 rounded">Change</span>
                             </button>
                         </div>
                     </div>
@@ -2002,6 +2363,31 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
           onViewChange(mode as ViewState, adaptedData);
         }}
       />
+
+      {/* Tracker Mode Selection Modal */}
+      {showTrackerModal && typeof document !== 'undefined' && createPortal(
+        <TrackerModal
+          isOpen={showTrackerModal}
+          onClose={() => setShowTrackerModal(false)}
+          trackerMode={trackerMode}
+          onSelectMode={(mode) => {
+            setTrackerMode(mode);
+            pointers.current.forEach(p => {
+              p.x = -100; p.y = -100;
+              p.targetX = -100; p.targetY = -100;
+              p.detected = false;
+              p.history = [];
+            });
+            detectedHandsRef.current = [];
+            detectedFacesRef.current = [];
+          }}
+          handCharacter={handCharacter}
+          onSelectHand={setHandCharacter}
+          noseStyle={noseStyle}
+          onSelectNose={setNoseStyle}
+        />,
+        document.body
+      )}
     </div>
   );
 }
@@ -2479,9 +2865,10 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
               </button>
               <button 
                 onClick={() => handleApplyBulkPaste('append')}
-                className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30"
+                className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                Append to End
+                <Plus size={18} />
+                + Add
               </button>
             </div>
           </div>
@@ -2502,123 +2889,457 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   );
 }
 
+interface TrackerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  trackerMode: 'finger' | 'hand' | 'nose';
+  onSelectMode: (mode: 'finger' | 'hand' | 'nose') => void;
+  handCharacter: HandCharacterType;
+  onSelectHand: (char: HandCharacterType) => void;
+  noseStyle: NoseStyle;
+  onSelectNose: (style: NoseStyle) => void;
+}
+
+function TrackerModal({
+  isOpen,
+  onClose,
+  trackerMode,
+  onSelectMode,
+  handCharacter,
+  onSelectHand,
+  noseStyle,
+  onSelectNose
+}: TrackerModalProps) {
+  if (!isOpen) return null;
+
+  const characters: Array<{
+    id: HandCharacterType;
+    name: string;
+    icon: string;
+    badge: string;
+    color: string;
+    desc: string;
+  }> = [
+    { id: 'spiderman', name: 'Spider-Man', icon: '🕷️', badge: 'Web Shooter', color: 'from-red-500 to-blue-600', desc: 'Classic red & navy suit, web shooter with glowing web trails' },
+    { id: 'thanos', name: 'Thanos Gauntlet', icon: '🧤', badge: '6 Infinity Stones', color: 'from-amber-500 to-yellow-600', desc: 'Golden Titan armor with 6 glowing Infinity Stones' },
+    { id: 'witch', name: 'Wicked Witch', icon: '🧙‍♀️', badge: 'Arcane Claws', color: 'from-emerald-500 to-purple-700', desc: 'Emerald skin, obsidian claws & glowing purple spell runes' },
+    { id: 'hulk', name: 'Incredible Hulk', icon: '💪', badge: 'Gamma Power', color: 'from-green-600 to-emerald-500', desc: 'Massive gamma muscle fist with pulsing lime green veins' },
+    { id: 'ironman', name: 'Iron Man', icon: '🤖', badge: 'Repulsor Core', color: 'from-red-600 to-amber-500', desc: 'Stark hot-rod titanium armor with glowing palm repulsor' },
+    { id: 'frost', name: 'Frost Mage', icon: '❄️', badge: 'Glacial Ice', color: 'from-cyan-500 to-blue-500', desc: 'Translucent ice crystal palm with glowing snowflake runes' },
+    { id: 'cyberpunk', name: 'Cyberpunk Mecha', icon: '⚡', badge: 'Laser Circuits', color: 'from-fuchsia-500 to-cyan-500', desc: 'Graphite mecha chassis with neon laser circuits & emitter tips' },
+  ];
+
+  const noseStyles: Array<{
+    id: NoseStyle;
+    name: string;
+    icon: string;
+    badge: string;
+    color: string;
+    desc: string;
+  }> = [
+    { id: 'real', name: 'Real Sniffing Nose', icon: '👃', badge: 'Cute 3D Sniffer', color: 'from-amber-400 to-rose-400', desc: 'Cute 3D anatomical nose with breathing pulse & sniffing air puffs' },
+    { id: 'clown', name: 'Red Clown Nose', icon: '🔴', badge: 'Glossy & Squeaky', color: 'from-red-500 to-rose-600', desc: 'Bouncy, glossy red clown nose with squash-and-stretch on pop' },
+    { id: 'rudolph', name: 'Rudolph Beacon', icon: '🦌', badge: 'Glowing Ruby', color: 'from-red-600 to-amber-500', desc: 'Glowing ruby red beacon with sparkling fairy stardust' },
+    { id: 'pig', name: 'Cute Pig Snout', icon: '🐷', badge: 'Pink Snout', color: 'from-pink-400 to-rose-400', desc: 'Wiggling pink piggy snout with cartoon snort puffs' },
+    { id: 'cat', name: 'Cat Whiskers', icon: '🐱', badge: 'Whiskers & Button', color: 'from-slate-700 to-slate-900', desc: 'Wet black button nose with twitching whisker arrays' },
+    { id: 'pinocchio', name: 'Pinocchio Nose', icon: '🤥', badge: 'Wooden Cone', color: 'from-amber-600 to-yellow-700', desc: 'Wooden cone nose that funny extends on every bubble pop' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
+      <div 
+        className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-3xl w-full shadow-2xl flex flex-col gap-6 transform scale-100 animate-in fade-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-800 max-h-[92vh] overflow-y-auto custom-scrollbar"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-2xl shadow-lg shadow-blue-500/30">
+              {trackerMode === 'finger' && '☝️'}
+              {trackerMode === 'hand' && '🖐️'}
+              {trackerMode === 'nose' && '👃'}
+            </div>
+            <div>
+              <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+                Choose Your Tracker
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+                Play with your Finger Ball, Superhero Character Hands, or Animated Nose!
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Mode Selector Tabs */}
+        <div className="grid grid-cols-3 gap-2.5 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+          <button
+            onClick={() => onSelectMode('finger')}
+            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+              trackerMode === 'finger'
+                ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
+            }`}
+          >
+            <span className="text-xl">☝️</span>
+            <span>Finger Ball</span>
+          </button>
+          <button
+            onClick={() => onSelectMode('hand')}
+            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+              trackerMode === 'hand'
+                ? 'bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-lg shadow-red-500/30 scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
+            }`}
+          >
+            <span className="text-xl">🖐️</span>
+            <span>Hand Tracker</span>
+          </button>
+          <button
+            onClick={() => onSelectMode('nose')}
+            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+              trackerMode === 'nose'
+                ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/30 scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
+            }`}
+          >
+            <span className="text-xl">👃</span>
+            <span>Nose Tracker</span>
+          </button>
+        </div>
+
+        {/* Tab 1: Finger Mode Content */}
+        {trackerMode === 'finger' && (
+          <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+            <div className="p-6 rounded-3xl bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-purple-500/10 border-2 border-blue-500/30 flex flex-col sm:flex-row items-center gap-6">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center text-4xl shadow-[0_0_35px_rgba(59,130,246,0.6)] animate-pulse shrink-0">
+                ⭐
+              </div>
+              <div className="flex flex-col gap-2 text-center sm:text-left">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <h4 className="text-xl font-black text-slate-800 dark:text-white">
+                    Magical Starlight Pointer Ball
+                  </h4>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                    Classic
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Point your index finger toward the camera to control the glowing star ball with smooth starlight trails and pop bubbles with pinpoint precision!
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1 justify-center sm:justify-start">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                    ✨ Glowing Particle Trail
+                  </span>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                    🎯 Pinpoint Fingertip Precision
+                  </span>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                    👥 1 or 2 Players
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Hand Mode Character Grid */}
+        {trackerMode === 'hand' && (
+          <div className="flex flex-col gap-3 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Choose Superhero or Fantasy Hand ({characters.length} Available)
+              </span>
+              <span className="text-xs font-bold text-amber-500 flex items-center gap-1">
+                <span>Multi-point bubble popping (palm + all 5 fingers)</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto custom-scrollbar p-1">
+              {characters.map((c) => {
+                const isSelected = handCharacter === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => onSelectHand(c.id)}
+                    className={`p-4 rounded-2xl border-2 text-left flex items-start gap-3.5 transition-all cursor-pointer relative overflow-hidden ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 shadow-lg shadow-blue-500/20 scale-[1.01]'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
+                      {c.icon}
+                    </div>
+                    <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-black text-slate-800 dark:text-white text-base truncate">
+                          {c.name}
+                        </span>
+                        {isSelected && (
+                          <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black">
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                        {c.badge}
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                        {c.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Nose Mode Style Grid */}
+        {trackerMode === 'nose' && (
+          <div className="flex flex-col gap-3 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Choose Animated Nose Style ({noseStyles.length} Available)
+              </span>
+              <span className="text-xs font-bold text-pink-500 flex items-center gap-1">
+                <span>Renders animated nose on your face & pops with nose!</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto custom-scrollbar p-1">
+              {noseStyles.map((n) => {
+                const isSelected = noseStyle === n.id;
+                return (
+                  <button
+                    key={n.id}
+                    onClick={() => onSelectNose(n.id)}
+                    className={`p-4 rounded-2xl border-2 text-left flex items-start gap-3.5 transition-all cursor-pointer relative overflow-hidden ${
+                      isSelected
+                        ? 'border-pink-500 bg-pink-50/80 dark:bg-pink-950/40 shadow-lg shadow-pink-500/20 scale-[1.01]'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
+                      {n.icon}
+                    </div>
+                    <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-black text-slate-800 dark:text-white text-base truncate">
+                          {n.name}
+                        </span>
+                        {isSelected && (
+                          <span className="w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-black">
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-black uppercase tracking-wider text-pink-600 dark:text-pink-400">
+                        {n.badge}
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                        {n.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Footer / Done */}
+        <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-800">
+          <button
+            onClick={onClose}
+            className="w-full sm:w-auto px-8 py-3.5 rounded-2xl font-black text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg shadow-blue-500/30 hover:scale-105 active:scale-95 cursor-pointer text-base"
+          >
+            Apply & Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- ROBUST PARSER HELPER ---
 function parsePastedQuiz(rawText: string): Partial<Question>[] {
   if (!rawText || !rawText.trim()) return [];
   const items: Partial<Question>[] = [];
-  
+
+  // 1. TSV / Excel paste check
   if (rawText.includes('\t')) {
     const lines = rawText.split(/\r?\n/).filter(line => line.trim());
     lines.forEach(line => {
       const parts = line.split('\t').map(p => p.trim());
-      if (parts.length > 0) {
+      if (parts.length >= 2) {
+        // Skip header row if present
+        const p0Lower = parts[0].toLowerCase();
+        if (p0Lower.includes('question') && (parts[1].toLowerCase().includes('option') || parts[1].toLowerCase().includes('answer'))) {
+          return;
+        }
+
+        let qText = parts[0];
+        let opts = ["", "", "", ""];
+        let ansRaw = "";
+
+        if (/^\d+$/.test(parts[0]) && parts.length >= 6) {
+          // Format: ID \t Question \t Opt1 \t Opt2 \t Opt3 \t Opt4 \t Answer
+          qText = parts[1];
+          opts = [parts[2] || "", parts[3] || "", parts[4] || "", parts[5] || ""];
+          ansRaw = parts[6] || "";
+        } else {
+          opts = [parts[1] || "", parts[2] || "", parts[3] || "", parts[4] || ""];
+          ansRaw = parts[5] || "";
+        }
+
+        let ansIdx = 0;
+        const letterMatch = ansRaw.match(/^[A-Da-d]$/);
+        const numMatch = ansRaw.match(/^[1-4]$/);
+        if (letterMatch) {
+          ansIdx = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
+        } else if (numMatch) {
+          ansIdx = parseInt(numMatch[0]) - 1;
+        } else if (ansRaw) {
+          const found = opts.findIndex(o => o && o.toLowerCase() === ansRaw.toLowerCase());
+          if (found >= 0) ansIdx = found;
+        }
+
         items.push({
-          text: parts[0],
-          options: [
-            parts[1] || "",
-            parts[2] || "",
-            parts[3] || "",
-            parts[4] || ""
-          ],
-          answerIndex: 0
+          text: qText,
+          options: opts,
+          answerIndex: Math.max(0, Math.min(3, ansIdx))
         });
       }
     });
+
     if (items.length > 0) {
       items.forEach(q => {
-         if (q.options) {
-            while (q.options.length > 2 && q.options[q.options.length - 1] === "") {
-                q.options.pop();
-            }
-         }
+        if (q.options) {
+          while (q.options.length > 2 && q.options[q.options.length - 1] === "") {
+            q.options.pop();
+          }
+        }
       });
       return items;
     }
   }
-  
+
+  // 2. Multi-line / Standard Text Parsing
   const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   let currentQ: Partial<Question> | null = null;
-  const optionRegex = /^([a-eA-E1-4])[\.\)\:\-]\s+(.*)/;
-  
+
+  const isQuestionStart = (line: string) => {
+    return /^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s+(.+)/i.test(line);
+  };
+
+  const getQuestionText = (line: string) => {
+    const m = line.match(/^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s+(.+)/i);
+    return m ? m[1].trim() : line;
+  };
+
+  const isAnswerLine = (line: string) => {
+    return /^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i.test(line);
+  };
+
+  const extractAnswerIndex = (line: string, opts: string[] = ["", "", "", ""]) => {
+    const m = line.match(/^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i);
+    if (!m) return -1;
+    const raw = m[1].trim();
+
+    const letter = raw.match(/[\(\[]?([A-Da-d])[\)\]\.\:]?/);
+    if (letter) {
+      return letter[1].toUpperCase().charCodeAt(0) - 65;
+    }
+    const num = raw.match(/^[1-4]$/);
+    if (num) {
+      return parseInt(num[0]) - 1;
+    }
+    const found = opts.findIndex(o => o && (o.toLowerCase() === raw.toLowerCase() || raw.toLowerCase().includes(o.toLowerCase())));
+    if (found >= 0) return found;
+
+    return 0;
+  };
+
+  const isOptionLine = (line: string) => {
+    if (/^(?:[\(\[]?[A-Da-d][\)\]\.\:\-]|[\(\[][A-Da-d][\)\]])\s*(.*)/.test(line)) {
+      return true;
+    }
+    if (/^(?:[\(\[][1-4][\)\]]|[1-4]\))\s*(.*)/.test(line)) {
+      return true;
+    }
+    return false;
+  };
+
+  const extractOption = (line: string) => {
+    const mLetter = line.match(/^(?:[\(\[]?([A-Da-d])[\)\]\.\:\-]|[\(\[]([A-Da-d])[\)\]])\s*(.*)/);
+    if (mLetter) {
+      const char = (mLetter[1] || mLetter[2]).toUpperCase();
+      const idx = char.charCodeAt(0) - 65;
+      return { index: idx, text: mLetter[3].trim() };
+    }
+    const mNum = line.match(/^(?:[\(\[]([1-4])[\)\]]|([1-4])\))\s*(.*)/);
+    if (mNum) {
+      const num = parseInt(mNum[1] || mNum[2]) - 1;
+      return { index: num, text: mNum[3].trim() };
+    }
+    return null;
+  };
+
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    
-    const ansMatch = line.match(/^answer\s*[:=]?\s*([a-eA-E1-4])/i);
-    if (ansMatch) {
-       if (currentQ) {
-          const val = ansMatch[1].toUpperCase();
-          if (/[A-E]/.test(val)) currentQ.answerIndex = val.charCodeAt(0) - 65;
-          else if (/[1-4]/.test(val)) currentQ.answerIndex = parseInt(val) - 1;
-       }
-       continue;
+    const line = lines[i];
+
+    if (isAnswerLine(line)) {
+      if (currentQ) {
+        const ans = extractAnswerIndex(line, currentQ.options);
+        if (ans >= 0) currentQ.answerIndex = ans;
+      }
+      continue;
     }
 
-    let inlineAnswerMatch = line.match(/\banswer\s*[:=]?\s*([a-eA-E1-4])\b/i);
-    let inlineAnswerIndex = -1;
-    if (inlineAnswerMatch) {
-       const val = inlineAnswerMatch[1].toUpperCase();
-       if (/[A-E]/.test(val)) inlineAnswerIndex = val.charCodeAt(0) - 65;
-       else if (/[1-4]/.test(val)) inlineAnswerIndex = parseInt(val) - 1;
-       line = line.replace(inlineAnswerMatch[0], '').trim();
-    }
-    
-    if (line === '') continue;
-    
-    const optMatch = line.match(optionRegex);
-    if (optMatch) {
-       if (!currentQ) {
+    if (isOptionLine(line)) {
+      const opt = extractOption(line);
+      if (opt) {
+        if (!currentQ) {
           currentQ = { text: "Question", options: ["", "", "", ""], answerIndex: 0 };
           items.push(currentQ);
-       }
-       
-       const optText = optMatch[2].trim();
-       const prefix = optMatch[1].toUpperCase();
-       let expectedIndex = -1;
-       if (/[A-E]/.test(prefix)) expectedIndex = prefix.charCodeAt(0) - 65;
-       else if (/[1-4]/.test(prefix)) expectedIndex = parseInt(prefix) - 1;
-       
-       if (expectedIndex >= 0 && expectedIndex < 4) {
-           currentQ.options![expectedIndex] = optText;
-       } else {
-           const emptyIdx = currentQ.options!.findIndex(o => o === "");
-           if (emptyIdx !== -1) currentQ.options![emptyIdx] = optText;
-       }
-       
-       if (inlineAnswerIndex !== -1) {
-           currentQ.answerIndex = inlineAnswerIndex;
-       }
+        }
+        if (opt.index >= 0 && opt.index < 4) {
+          currentQ.options![opt.index] = opt.text;
+        } else {
+          const emptyIdx = currentQ.options!.findIndex(o => o === "");
+          if (emptyIdx !== -1) currentQ.options![emptyIdx] = opt.text;
+        }
+      }
+      continue;
+    }
+
+    if (isQuestionStart(line)) {
+      const qText = getQuestionText(line);
+      currentQ = { text: qText, options: ["", "", "", ""], answerIndex: 0 };
+      items.push(currentQ);
+      continue;
+    }
+
+    if (currentQ && currentQ.options && currentQ.options.every(o => o === "")) {
+      currentQ.text += " " + line;
     } else {
-       const hasOptions = currentQ && currentQ.options!.some(o => o !== "");
-       const qText = line.replace(/^(?:\d+[\.\)\:\-]|\[\d+\])\s+/, "");
-       
-       if (!currentQ || hasOptions) {
-           currentQ = { text: qText, options: ["", "", "", ""], answerIndex: 0 };
-           items.push(currentQ);
-           if (inlineAnswerIndex !== -1) {
-               currentQ.answerIndex = inlineAnswerIndex;
-           }
-       } else {
-           currentQ.text += " " + qText;
-           if (inlineAnswerIndex !== -1) {
-               currentQ.answerIndex = inlineAnswerIndex;
-           }
-       }
+      currentQ = { text: line, options: ["", "", "", ""], answerIndex: 0 };
+      items.push(currentQ);
     }
   }
 
-  const allEmptyOptions = items.every(q => q.options!.every(o => o === ""));
-  
-  // Clean up trailing empty options, keeping minimum 2 options
   items.forEach(q => {
-     if (q.options) {
-        while (q.options.length > 2 && q.options[q.options.length - 1] === "") {
-            q.options.pop();
-        }
-     }
+    if (q.options) {
+      while (q.options.length > 2 && q.options[q.options.length - 1] === "") {
+        q.options.pop();
+      }
+    }
   });
-
-  if (allEmptyOptions && items.length > 0) {
-     return items; 
-  }
 
   return items;
 }

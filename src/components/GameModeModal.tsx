@@ -4,6 +4,7 @@ import { ViewState } from '../types';
 
 export type PlayableGameMode =
   | 'bubble-pop'
+  | 'slap-and-chop'
   | 'shark-attack'
   | 'yoga-quiz'
   | 'sumo'
@@ -58,6 +59,23 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     btnBg: 'bg-blue-600 hover:bg-blue-700',
     btnShadow: 'shadow-[0_4px_0_#1e3a8a]',
     accentText: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    id: 'slap-and-chop',
+    title: 'Slap & Chop',
+    shortAction: 'Play in Slap & Chop',
+    tagline: 'Mosquito Slap & Fencing AR',
+    description: 'Slap buzzing mosquitoes with purple gloves or slice flying fruits with an extra-long fencing sword on camera!',
+    players: '1–2 Players · Camera / Mouse',
+    category: 'camera',
+    emoji: '🦟',
+    image: '/images/slap-and-chop-icon.svg',
+    gradient: 'from-purple-600 via-indigo-600 to-sky-500',
+    cardBg: 'bg-purple-50/70 dark:bg-purple-950/25 hover:bg-purple-100/80 dark:hover:bg-purple-900/35',
+    cardBorder: 'border-purple-200 dark:border-purple-800/70',
+    btnBg: 'bg-purple-600 hover:bg-purple-700',
+    btnShadow: 'shadow-[0_4px_0_#581c87]',
+    accentText: 'text-purple-600 dark:text-purple-400',
   },
   {
     id: 'shark-attack',

@@ -1,0 +1,3475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Mosquito Slap &amp; Chop Chop — 3D AR Motion Quiz Game</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/face_detection.js" crossorigin="anonymous"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&amp;family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --font-display: 'Fredoka', sans-serif;
+      --font-sans: 'Inter', sans-serif;
+    }
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-sans);
+      background: #060913;
+      color: #f8fafc;
+    }
+    .font-display {
+      font-family: var(--font-display);
+    }
+    .glass-hud {
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .setup-popup-shadow {
+      box-shadow: 0 28px 80px -12px rgba(2, 6, 23, 0.78), 0 0 0 1px rgba(148, 163, 184, 0.18);
+    }
+    .mode-card-active {
+      border-color: #2563eb !important;
+      background: #eff6ff !important;
+      color: #1d4ed8 !important;
+    }
+    .mode-card-chop-active {
+      border-color: #ea580c !important;
+      background: #fff7ed !important;
+      color: #c2410c !important;
+    }
+    .mode-card-combo-active {
+      border-color: #7c3aed !important;
+      background: #f5f3ff !important;
+      color: #6d28d9 !important;
+    }
+    .player-card-active {
+      border-color: #2563eb !important;
+      background: #eff6ff !important;
+      color: #1d4ed8 !important;
+    }
+    #gameCanvas {
+      touch-action: none;
+      cursor: none;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden bg-slate-950 select-none">
+
+  <!-- Hidden high-res webcam video & offscreen optical tracking canvas -->
+  <video id="webcamVideo" autoplay playsinline muted class="hidden"></video>
+  <canvas id="motionCanvas" width="160" height="120" class="hidden"></canvas>
+
+  <!-- Toast Notification -->
+  <div id="toastBanner" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-none">
+    <div class="glass-hud px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 border border-sky-400/40">
+      <span id="toastIcon" class="text-lg">✨</span>
+      <span id="toastText" class="text-xs sm:text-sm font-semibold text-white">Saved!</span>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- FULL-SCREEN 3D HIGH-RESOLUTION ARENA (Always rendered in background)      -->
+  <!-- ========================================================================= -->
+  <div id="gameScreen" class="fixed inset-0 z-10 flex flex-col select-none overflow-hidden">
+    
+    <!-- MINIMALIST FLOATING TOP HUD -->
+    <div class="relative z-20 w-full px-3 sm:px-5 pt-2.5 pb-1 pointer-events-auto">
+      <div class="max-w-6xl mx-auto flex flex-col gap-2">
+        
+        <!-- Row 1: Minimalist Player Score Pills & Quick Controls -->
+        <div class="flex items-center justify-between gap-2">
+          
+          <!-- Player 1 Minimalist Pill -->
+          <div class="glass-hud flex items-center gap-2.5 px-3.5 py-1.5 rounded-full shadow-lg">
+            <span class="text-lg" id="hudP1Icon">🧤</span>
+            <span id="hudP1Name" class="text-xs font-bold uppercase tracking-wider text-sky-300">Player 1</span>
+            <span id="hudP1Score" class="font-display text-base sm:text-lg font-bold text-white">0 pts</span>
+            <span id="hudP1Streak" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/25 text-amber-300 font-bold">🔥 x1</span>
+          </div>
+
+          <!-- Minimalist Center Control Bar -->
+          <div class="flex items-center gap-1.5 flex-wrap justify-center">
+            <span id="hudQuestionCounter" class="glass-hud px-3 py-1 rounded-full text-xs font-bold text-sky-300">
+              Q 1 / 8
+            </span>
+
+            <button id="btnToggleModeInGame" type="button" title="Switch between Mosquito Slap and Chop Chop Fencing!" class="glass-hud px-3.5 py-1 rounded-full font-display font-bold text-xs sm:text-sm transition flex items-center gap-1.5 text-white hover:border-sky-400">
+              <span id="hudModeEmoji">🦟</span>
+              <span id="hudModeText">MOSQUITO SLAP</span>
+            </button>
+
+            <button id="btnToggleCamInGame" type="button" class="glass-hud px-3 py-1 rounded-full hover:bg-slate-800/80 text-xs font-semibold text-sky-300 transition">
+              📷 Cam: Auto
+            </button>
+
+            <button id="btnToggleNetInGame" type="button" class="glass-hud px-3 py-1 rounded-full hover:bg-slate-800/80 text-xs font-semibold text-purple-200 transition">
+              🪖 Net Hat: ON
+            </button>
+
+            <button id="btnPauseOrSetup" type="button" class="glass-hud px-3.5 py-1 rounded-full bg-blue-600/80 hover:bg-blue-500 text-xs font-bold text-white border border-blue-400/40 transition shadow">
+              ⚙️ Setup / Questions
+            </button>
+          </div>
+
+          <!-- Player 2 Minimalist Pill -->
+          <div id="hudP2Card" class="glass-hud flex items-center gap-2.5 px-3.5 py-1.5 rounded-full shadow-lg">
+            <span id="hudP2Streak" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/25 text-amber-300 font-bold">🔥 x1</span>
+            <span id="hudP2Name" class="text-xs font-bold uppercase tracking-wider text-rose-300">Player 2</span>
+            <span id="hudP2Score" class="font-display text-base sm:text-lg font-bold text-white">0 pts</span>
+            <span class="text-lg" id="hudP2Icon">🧤</span>
+          </div>
+        </div>
+
+        <!-- Row 2: Minimalist High-Contrast Floating Question Pill on Top -->
+        <div class="glass-hud relative overflow-hidden rounded-2xl px-4 py-2 text-center shadow-2xl border border-white/20 max-w-4xl mx-auto w-full">
+          <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-800/80">
+            <div id="hudTimerBar" class="h-full bg-gradient-to-r from-sky-400 via-emerald-400 to-rose-500 transition-all duration-100" style="width: 100%;"></div>
+          </div>
+
+          <p id="hudQuestionPrompt" class="font-display text-base sm:text-xl md:text-2xl font-bold text-white tracking-wide drop-shadow">
+            Loading question...
+          </p>
+
+          <!-- Minimalist Option Pills -->
+          <div id="hudOptionsBar" class="mt-1.5 grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-left">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- HIGH-RESOLUTION 3D GAME CANVAS -->
+    <div class="relative flex-1 w-full h-full overflow-hidden">
+      <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+      <!-- Minimalist Bottom Hint Pill -->
+      <div class="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-4 py-1 rounded-full glass-hud text-[11px] sm:text-xs text-slate-200 whitespace-nowrap shadow-lg">
+        <span id="hudBottomHint">🦟 Clap your Purple Gloves on camera (or click/tap) to SLAP the mosquito with the right answer!</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MINIMALIST POP-UP MODAL: GAME SETUP (Matches `image_232f61.png`, No Scroll) -->
+  <!-- ========================================================================= -->
+  <div id="setupScreen" class="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-hidden">
+    
+    <!-- White Minimalist Modal Card (Fits viewport cleanly without scrolling) -->
+    <div class="bg-white text-slate-800 w-full max-w-4xl rounded-[26px] setup-popup-shadow flex flex-col justify-between p-5 sm:p-7 overflow-hidden max-h-[95vh]">
+      
+      <!-- 1. TOP HEADER ROW: "GAME SETUP" + Players/Mode Quick Bar + Cancel & Save Quiz -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3">
+        <div class="flex items-center gap-3">
+          <h1 class="text-xl sm:text-2xl font-black tracking-tight text-slate-900 uppercase">
+            GAME SETUP
+          </h1>
+          <!-- Compact Camera Connect Badge -->
+          <div class="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200 text-[11px] font-semibold text-slate-600">
+            <span id="camStatusDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span id="camStatusLabel" class="hidden sm:inline">HD Cam Ready</span>
+            <button id="btnTestCameraSetup" type="button" class="text-blue-600 hover:underline font-bold ml-1">
+              Enable Cam
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Actions: Cancel & Save Quiz (Exact match to `image_232f61.png`) -->
+        <div class="flex items-center gap-3">
+          <button id="btnCancelSetupModal" type="button" class="px-3 py-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition">
+            Cancel
+          </button>
+          <button id="btnSaveQuizModal" type="button" class="px-4 py-2.5 rounded-xl bg-[#1d7dfa] hover:bg-blue-600 text-white font-bold text-sm shadow-md shadow-blue-500/25 flex items-center gap-1.5 transition">
+            <span>💾 Save Quiz</span>
+          </button>
+          <button id="btnStartGameTop" type="button" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-500/25 flex items-center gap-1.5 transition">
+            <span>🎮 START GAME NOW</span>
+            <span id="startBtnCountBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-800/60 text-emerald-100">8 Qs</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. TOPIC / CLASS LEVEL / FOLDER + PLAYERS & MODE ROW (Matches `image_232f61.png`) -->
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 pb-3.5 border-b border-blue-100">
+        <div class="sm:col-span-3">
+          <label for="inputQuizTopic" class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">TOPIC</label>
+          <input id="inputQuizTopic" type="text" value="Science &amp; Nature" placeholder="e.g. Present Simple" class="w-full px-3 py-2 rounded-xl bg-[#f8fafc] border border-slate-200 text-xs sm:text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition" />
+        </div>
+
+        <div class="sm:col-span-3">
+          <label for="inputClassLevel" class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">CLASS LEVEL</label>
+          <input id="inputClassLevel" type="text" value="All Levels" placeholder="e.g. KET, Starters" class="w-full px-3 py-2 rounded-xl bg-[#f8fafc] border border-slate-200 text-xs sm:text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition" />
+        </div>
+
+        <div class="sm:col-span-3">
+          <label for="selectPresetPack" class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">FOLDER</label>
+          <select id="selectPresetPack" aria-label="Load Preset Question Pack" class="w-full px-3 py-2 rounded-xl bg-[#f8fafc] border border-slate-200 text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:border-blue-500 focus:bg-white transition">
+            <option value="">No Folder (Root)</option>
+            <option value="default">🌿 Starter Mix (Science &amp; Fun)</option>
+            <option value="math">🧮 Quick Math &amp; Logic</option>
+            <option value="world">🌍 World Geography</option>
+          </select>
+        </div>
+
+        <!-- Players (1P/2P) & Mode Selector Compact Pills -->
+        <div class="sm:col-span-3 flex flex-col justify-end gap-1.5">
+          <div class="grid grid-cols-2 gap-1.5">
+            <button id="btnSelect1P" type="button" class="player-card-active py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition flex items-center justify-center gap-1">
+              <span>👤 1P</span>
+              <span id="badge1P" class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+            </button>
+            <button id="btnSelect2P" type="button" class="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition flex items-center justify-center gap-1">
+              <span>👥 2P</span>
+              <span id="badge2P" class="hidden w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+            </button>
+          </div>
+          <div class="grid grid-cols-3 gap-1">
+            <button id="btnModeMosquito" type="button" class="mode-card-active py-1 px-1.5 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 transition truncate" title="Mosquito Slap Mode (Purple Net Hat + 2 Gloves)">
+              🦟 Slap
+            </button>
+            <button id="btnModeChop" type="button" class="py-1 px-1.5 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 transition truncate" title="Chop Chop Mode (3D Fencing Mask + Long Sword)">
+              🤺 Chop
+            </button>
+            <button id="btnModeCombo" type="button" class="py-1 px-1.5 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 transition truncate" title="Mix Both Modes">
+              🔥 Mix
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. BLUE QUESTIONS BANNER BAR (Matches `image_232f61.png`) -->
+      <div class="my-3 bg-[#eef4ff] border border-blue-100 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span id="questionListHeading" class="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+            QUESTIONS (1 / 8)
+          </span>
+          <!-- Non-scrolling Question Number Pager Pills -->
+          <div id="questionPagerBar" class="flex items-center gap-1 flex-wrap">
+            <!-- Populated dynamically by JS -->
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btnOpenBulkPaste" type="button" class="px-3.5 py-1.5 rounded-xl bg-[#1d7dfa] hover:bg-blue-600 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition">
+            <span>📋</span>
+            <span>Bulk Paste</span>
+          </button>
+          <button id="btnHowToBulkPaste" type="button" class="px-3.5 py-1.5 rounded-xl bg-[#6d28d9] hover:bg-purple-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition">
+            <span>▶️</span>
+            <span>How to Bulk Paste</span>
+          </button>
+          <button id="btnClearQuestions" type="button" title="Delete Current / Clear" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition">
+            Clear All
+          </button>
+        </div>
+      </div>
+
+      <!-- 4. SINGLE QUESTION EDITOR CARD (Matches `image_232f61.png` — Zero Scrolling!) -->
+      <form id="questionForm" class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+        <div class="flex items-start gap-3">
+          <!-- Blue Question Number Circle -->
+          <div id="activeQuestionNumCircle" class="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 text-blue-600 font-bold text-sm flex items-center justify-center shrink-0 mt-1">
+            1
+          </div>
+          <div class="flex-1">
+            <input id="inputQuestionText" type="text" required placeholder="Type your question here..." class="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm sm:text-base text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition" />
+          </div>
+        </div>
+
+        <!-- Options Grid (3 on Row 1, 1 on Row 2 — Exact layout from `image_232f61.png`) -->
+        <div class="pl-0 sm:pl-11 space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- Option 1 -->
+            <div class="flex items-center gap-2">
+              <input type="radio" name="correctOption" id="radioCorrect0" value="0" checked class="w-4 h-4 accent-blue-600 cursor-pointer shrink-0" title="Mark Option 1 as Correct" />
+              <input id="inputOpt0" type="text" required placeholder="Option 1" class="w-full px-3.5 py-2 rounded-xl bg-white border border-blue-300 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition" />
+              <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-500 flex items-center justify-center text-xs shrink-0" title="Option A">🖼️</span>
+            </div>
+
+            <!-- Option 2 -->
+            <div class="flex items-center gap-2">
+              <input type="radio" name="correctOption" id="radioCorrect1" value="1" class="w-4 h-4 accent-blue-600 cursor-pointer shrink-0" title="Mark Option 2 as Correct" />
+              <input id="inputOpt1" type="text" required placeholder="Option 2" class="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition" />
+              <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-500 flex items-center justify-center text-xs shrink-0" title="Option B">🖼️</span>
+            </div>
+
+            <!-- Option 3 -->
+            <div id="optBox2" class="flex items-center gap-2">
+              <input type="radio" name="correctOption" id="radioCorrect2" value="2" class="w-4 h-4 accent-blue-600 cursor-pointer shrink-0" title="Mark Option 3 as Correct" />
+              <input id="inputOpt2" type="text" required placeholder="Option 3" class="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition" />
+              <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-500 flex items-center justify-center text-xs shrink-0" title="Option C">🖼️</span>
+            </div>
+          </div>
+
+          <!-- Row 2: Option 4 -->
+          <div id="optBox3" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="flex items-center gap-2">
+              <input type="radio" name="correctOption" id="radioCorrect3" value="3" class="w-4 h-4 accent-blue-600 cursor-pointer shrink-0" title="Mark Option 4 as Correct" />
+              <input id="inputOpt3" type="text" required placeholder="Option 4" class="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition" />
+              <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-500 flex items-center justify-center text-xs shrink-0" title="Option D">🖼️</span>
+            </div>
+          </div>
+
+          <!-- + Option / - Option & Quick Save Row (Matches `image_232f61.png`) -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div class="flex items-center gap-2">
+              <button id="btnAddOptionField" type="button" class="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">
+                + Option
+              </button>
+              <button id="btnRemoveOptionField" type="button" class="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">
+                - Option
+              </button>
+              <span id="formTitleLabel" class="text-[11px] text-slate-400 ml-2">Select the radio circle for the correct answer</span>
+              <button id="btnCancelEdit" type="button" class="hidden text-xs text-slate-400 underline">Cancel Edit</button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button id="btnDeleteCurrentQuestion" type="button" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold transition">
+                🗑️ Delete Q
+              </button>
+              <button id="btnSubmitQuestion" type="submit" class="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-sm transition">
+                + Add Question to Game
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      <!-- 5. DASHED "+ Add Another Question" BUTTON + PLAY FOOTER (Matches `image_232f61.png`) -->
+      <div class="mt-3 flex flex-col sm:flex-row items-center gap-3">
+        <button id="btnAddAnotherQuestionCard" type="button" class="w-full sm:flex-1 py-2.5 px-4 rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/40 text-slate-600 hover:text-blue-600 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2">
+          <span class="text-base leading-none">＋</span>
+          <span>Add Another Question</span>
+        </button>
+
+        <button id="btnStartGameBottom" type="button" class="w-full sm:w-auto px-7 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-display font-bold text-sm sm:text-base shadow-lg shadow-blue-600/25 transition">
+          🚀 LAUNCH ARENA
+        </button>
+      </div>
+
+      <!-- Hidden compatibility elements for state sync -->
+      <div class="hidden">
+        <input id="inputP1Name" type="text" value="Player 1" />
+        <div id="p2NameContainer"><input id="inputP2Name" type="text" value="Player 2" /></div>
+        <input id="chkShowHeadgear" type="checkbox" checked />
+        <input id="chkShowHandGear" type="checkbox" checked />
+        <input id="chkSoundFx" type="checkbox" checked />
+        <select id="selectSpeed"><option value="1" selected>Normal</option></select>
+        <div id="questionListContainer"></div>
+      </div>
+
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- BULK PASTE POP-UP OVERLAY (Inside Setup Modal)                        -->
+    <!-- ===================================================================== -->
+    <div id="bulkPasteModal" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-white text-slate-800 max-w-lg w-full rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200">
+        <div class="flex items-center justify-between">
+          <h3 id="bulkModalTitle" class="text-lg font-extrabold text-slate-900">📋 Bulk Paste Questions</h3>
+          <button id="btnCloseBulkModal" type="button" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕ Close</button>
+        </div>
+        <p id="bulkModalHelp" class="text-xs text-slate-500 leading-relaxed">
+          Paste one question per line in the format: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-700">Question | Option 1 | Option 2 | Option 3 | Option 4 | CorrectNumber(1-4)</code>
+        </p>
+        <textarea id="textareaBulkPaste" rows="5" placeholder="What is 9 x 6? | 48 | 54 | 56 | 63 | 2&#10;Which insect buzzes? | Mosquito | Turtle | Snail | Crab | 1" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-800 focus:outline-none focus:border-blue-500"></textarea>
+        <div class="flex items-center justify-end gap-2">
+          <button id="btnFillBulkExample" type="button" class="px-3 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-bold transition">
+            Load Sample Lines
+          </button>
+          <button id="btnImportBulkQuestions" type="button" class="px-5 py-2 rounded-xl bg-[#1d7dfa] hover:bg-blue-600 text-white text-xs font-bold shadow transition">
+            Import Questions
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- END-OF-GAME VICTORY POP-UP MODAL                                      -->
+  <!-- ===================================================================== -->
+  <div id="gameOverModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-hud max-w-md w-full rounded-3xl p-6 sm:p-7 text-center border border-white/20 shadow-2xl space-y-5">
+      <div id="victoryEmoji" class="text-6xl animate-bounce">🏆</div>
+      <div>
+        <span class="text-xs font-bold uppercase tracking-widest text-sky-400">Arena Complete!</span>
+        <h2 id="victoryTitle" class="font-display text-3xl font-bold text-white mt-1">Player 1 Wins!</h2>
+        <p id="victorySubtitle" class="text-xs sm:text-sm text-slate-300 mt-1">Mosquitoes slapped &amp; fruits fenced like a true champion!</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 bg-slate-900/90 p-3.5 rounded-2xl border border-white/10">
+        <div class="p-3 rounded-xl bg-sky-500/10 border border-sky-400/30">
+          <div id="finalP1Name" class="text-xs font-bold text-sky-300 uppercase">Player 1</div>
+          <div id="finalP1Score" class="font-display text-2xl font-bold text-white mt-1">0</div>
+          <div id="finalP1Hits" class="text-[11px] text-slate-400 mt-0.5">0 Correct Hits</div>
+        </div>
+        <div id="finalP2Box" class="p-3 rounded-xl bg-rose-500/10 border border-rose-400/30">
+          <div id="finalP2Name" class="text-xs font-bold text-rose-300 uppercase">Player 2</div>
+          <div id="finalP2Score" class="font-display text-2xl font-bold text-white mt-1">0</div>
+          <div id="finalP2Hits" class="text-[11px] text-slate-400 mt-0.5">0 Correct Hits</div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-2.5 pt-1">
+        <button id="btnPlayAgain" type="button" class="flex-1 font-display text-base font-bold py-3 px-5 rounded-2xl bg-[#1d7dfa] hover:bg-blue-500 text-white shadow-lg transition">
+          🔄 Play Again
+        </button>
+        <button id="btnBackToSetup" type="button" class="flex-1 font-display text-base font-bold py-3 px-5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white border border-white/15 transition">
+          📝 Edit Questions / Setup
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 3D HIGH-RESOLUTION ENGINE, 1-EURO TRACKER, FENCING MASK & LONG SWORD      -->
+  <!-- ========================================================================= -->
+  <script>
+    (function () {
+      'use strict';
+
+      // -----------------------------------------------------------------------
+      // 1. PRESET QUESTION DECKS & STATE
+      // -----------------------------------------------------------------------
+      const PRESET_DECKS = {
+        default: [
+          {
+            id: 'q1',
+            q: 'Which mosquito gender bites humans to get protein for eggs?',
+            options: ['Female Mosquitoes', 'Male Mosquitoes', 'Baby Larvae', 'King Mosquitoes'],
+            correct: 0
+          },
+          {
+            id: 'q2',
+            q: 'What protective gear drapes mesh over your hat to keep bugs away?',
+            options: ['Scuba Diving Mask', 'Mosquito Net Headgear', 'Ski Goggles', 'Bicycle Helmet'],
+            correct: 1
+          },
+          {
+            id: 'q3',
+            q: 'In Chop Chop Fencing mode, what protective steel mesh headgear do you wear?',
+            options: ['A Straw Sunhat', 'A 3D Fencing Mask', 'A Chef Hat', 'Swimming Cap'],
+            correct: 1
+          },
+          {
+            id: 'q4',
+            q: 'Where do mosquitoes lay their eggs in nature?',
+            options: ['Dry Desert Sand', 'Standing Stagnant Water', 'Inside Volcanoes', 'On Clouds'],
+            correct: 1
+          },
+          {
+            id: 'q5',
+            q: 'Which planet in our solar system is known as the Red Planet?',
+            options: ['Venus', 'Jupiter', 'Mars', 'Saturn'],
+            correct: 2
+          },
+          {
+            id: 'q6',
+            q: 'What gas do humans exhale that attracts mosquitoes from far away?',
+            options: ['Helium', 'Carbon Dioxide (CO2)', 'Pure Neon', 'Argon'],
+            correct: 1
+          },
+          {
+            id: 'q7',
+            q: 'How many wings does a typical mosquito have for flying?',
+            options: ['Two Working Wings', 'Eight Wings', 'Twelve Wings', 'Zero Wings'],
+            correct: 0
+          },
+          {
+            id: 'q8',
+            q: 'Which fruit is famous for being green on the outside and bright red inside?',
+            options: ['Lemon', 'Watermelon', 'Blueberry', 'Coconut'],
+            correct: 1
+          }
+        ],
+        math: [
+          {
+            id: 'm1',
+            q: 'Quick Slap! What is 7 × 8?',
+            options: ['54', '56', '64', '48'],
+            correct: 1
+          },
+          {
+            id: 'm2',
+            q: 'Chop Chop! If you slice 9 watermelons in half, how many halves do you have?',
+            options: ['14 Halves', '16 Halves', '18 Halves', '20 Halves'],
+            correct: 2
+          },
+          {
+            id: 'm3',
+            q: 'What is the square root of 144?',
+            options: ['10', '11', '12', '14'],
+            correct: 2
+          },
+          {
+            id: 'm4',
+            q: 'What is 25% of 200?',
+            options: ['25', '40', '50', '75'],
+            correct: 2
+          },
+          {
+            id: 'm5',
+            q: 'How many degrees are inside the angles of a triangle?',
+            options: ['90°', '180°', '270°', '360°'],
+            correct: 1
+          }
+        ],
+        world: [
+          {
+            id: 'w1',
+            q: 'Which continent is home to the Amazon Rainforest?',
+            options: ['Africa', 'South America', 'Australia', 'Europe'],
+            correct: 1
+          },
+          {
+            id: 'w2',
+            q: 'Which natural predator loves eating hundreds of mosquitoes every night?',
+            options: ['Bats & Dragonflies', 'Koalas', 'Pandas', 'Sloths'],
+            correct: 0
+          },
+          {
+            id: 'w3',
+            q: 'Which country is the birthplace of Ninja warriors and Samurai?',
+            options: ['Brazil', 'Egypt', 'Japan', 'Canada'],
+            correct: 2
+          },
+          {
+            id: 'w4',
+            q: 'What is the largest ocean on Earth?',
+            options: ['Atlantic Ocean', 'Indian Ocean', 'Arctic Ocean', 'Pacific Ocean'],
+            correct: 3
+          },
+          {
+            id: 'w5',
+            q: 'Which of these countries has ZERO mosquitoes due to its climate?',
+            options: ['Iceland', 'Thailand', 'Brazil', 'India'],
+            correct: 0
+          }
+        ]
+      };
+
+      const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
+      const OPTION_COLORS = [
+        { main: '#ff2a5f', light: '#ff9eb5', dark: '#7a001e', rim: '#4ade80', fruit: 'Watermelon' }, // A - Vibrant 3D Watermelon
+        { main: '#ff9f1c', light: '#ffe599', dark: '#7c2d12', rim: '#fde047', fruit: 'Mango' },      // B - Vibrant 3D Golden Mango
+        { main: '#00d2ff', light: '#b8f2ff', dark: '#083344', rim: '#38bdf8', fruit: 'Blueberry' },  // C - Vibrant 3D Neon Berry
+        { main: '#b5179e', light: '#f7aef8', dark: '#3b0764', rim: '#f43f5e', fruit: 'Dragonfruit' } // D - Vibrant 3D Dragonfruit
+      ];
+
+      function createPlayerState(id, name, isP2) {
+        const baseX = isP2 ? 0.74 : 0.48;
+        return {
+          id: id,
+          name: name,
+          score: 0,
+          streak: 1,
+          hits: 0,
+          theme: isP2 ? {
+            hatMain: '#dc2626',
+            hatDark: '#991b1b',
+            hatLight: '#f87171',
+            outline: '#3b0714',
+            plume: '#450a0a',
+            band: '#4a1d24',
+            buckle: '#fbbf24',
+            badgeRing: '#93c5fd',
+            gloveMain: '#e11d48',
+            gloveLight: '#fb7185',
+            gloveDark: '#9f1239',
+            swordColor: '#ff7b00',
+            swordGlow: 'rgba(255, 123, 0, 0.75)',
+            maskTrim: '#fca5a5'
+          } : {
+            hatMain: '#5c38e0',
+            hatDark: '#4123b2',
+            hatLight: '#8364ff',
+            outline: '#1f1042',
+            plume: '#252159',
+            band: '#522c3c',
+            buckle: '#f59e0b',
+            badgeRing: '#82aaff',
+            gloveMain: '#6842ef',
+            gloveLight: '#8b6bff',
+            gloveDark: '#4825c2',
+            swordColor: '#00f0ff',
+            swordGlow: 'rgba(0, 240, 255, 0.75)',
+            maskTrim: '#cbd5e1'
+          },
+          headX: baseX,
+          headY: 0.40,
+          headVx: 0,
+          headVy: 0,
+          headScale: 1.0,
+          headTilt: -0.04,
+          lastFaceSeen: 0,
+
+          handX: baseX,
+          handY: 0.62,
+          prevHandX: baseX,
+          prevHandY: 0.62,
+          vx: 0,
+          vy: 0,
+          speed: 0,
+          slapAnim: 0,
+          clapCooldown: 0,
+          swordAngle: -0.65,
+          swordAngVel: 0,
+          swordLunge: 0,
+          trail: [], // [{x, y, tipX, tipY, life}]
+
+          leftHand: {
+            x: baseX - 0.10,
+            y: 0.64,
+            prevX: baseX - 0.10,
+            prevY: 0.64,
+            angle: -0.18,
+            scale: 1.0,
+            speed: 0,
+            tracked: false
+          },
+          rightHand: {
+            x: baseX + 0.08,
+            y: 0.56,
+            prevX: baseX + 0.08,
+            prevY: 0.56,
+            angle: -0.35,
+            scale: 1.0,
+            speed: 0,
+            tracked: false
+          }
+        };
+      }
+
+      const state = {
+        questions: JSON.parse(JSON.stringify(PRESET_DECKS.default)),
+        setupActiveIdx: 0,
+        visibleOptionsCount: 4,
+        editingQuestionId: null,
+        numPlayers: 1,
+        selectedMode: 'mosquito',
+        activeRoundMode: 'mosquito',
+        showHeadgear: true,
+        showHandGear: true,
+        soundEnabled: true,
+        speedMultiplier: 1.0,
+        playerNames: ['Player 1', 'Player 2'],
+
+        // High-FPS Camera & MediaPipe Tracking
+        cameraActive: false,
+        cameraStream: null,
+        prevFrameData: null,
+        mpHands: null,
+        mpHandsReady: false,
+        mpHandsBusy: false,
+        mpFace: null,
+        mpFaceReady: false,
+        mpFaceBusy: false,
+        lastHandsTimestamp: 0,
+
+        // Canvas HiDPI Logical Dimensions
+        viewW: 960,
+        viewH: 540,
+        dpr: 1,
+
+        // Gameplay runtime
+        inGame: true, // Runs live behind the setup popup!
+        currentQIndex: 0,
+        questionTimer: 18,
+        questionMaxTime: 18,
+        roundResolved: false,
+
+        players: [
+          createPlayerState(0, 'Player 1', false),
+          createPlayerState(1, 'Player 2', true)
+        ],
+
+        targets: [],
+        slicedHalves: [],
+        splats: [],
+        particles: [],
+        swordSparks: [],
+        floatingTexts: [],
+        ambientBugs: []
+      };
+
+      try {
+        const saved = localStorage.getItem('mosquito_chop_questions_v1');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            state.questions = parsed;
+          }
+        }
+      } catch (e) {}
+
+      function saveQuestionsToStorage() {
+        try {
+          localStorage.setItem('mosquito_chop_questions_v1', JSON.stringify(state.questions));
+        } catch (e) {}
+      }
+
+      // -----------------------------------------------------------------------
+      // 2. SYNTHESIZED WEB AUDIO API SOUND EFFECTS
+      // -----------------------------------------------------------------------
+      let audioCtx = null;
+
+      function ensureAudio() {
+        if (!state.soundEnabled) return null;
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+          }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        return audioCtx;
+      }
+
+      function playSlapSound(isCorrect) {
+        const ctx = ensureAudio();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        const bufferSize = ctx.sampleRate * 0.12;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.025));
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1150, now);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.7, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(now);
+
+        const osc = ctx.createOscillator();
+        const oscGain = ctx.createGain();
+        if (isCorrect) {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(523.25, now + 0.05);
+          osc.frequency.setValueAtTime(659.25, now + 0.13);
+          osc.frequency.setValueAtTime(783.99, now + 0.21);
+          oscGain.gain.setValueAtTime(0.28, now + 0.05);
+          oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+          osc.connect(oscGain);
+          oscGain.connect(ctx.destination);
+          osc.start(now + 0.05);
+          osc.stop(now + 0.42);
+        } else {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(190, now + 0.04);
+          osc.frequency.linearRampToValueAtTime(120, now + 0.28);
+          oscGain.gain.setValueAtTime(0.22, now + 0.04);
+          oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+          osc.connect(oscGain);
+          oscGain.connect(ctx.destination);
+          osc.start(now + 0.04);
+          osc.stop(now + 0.3);
+        }
+      }
+
+      function playSwordSlashSound(isCorrect) {
+        const ctx = ensureAudio();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1250, now);
+        osc.frequency.exponentialRampToValueAtTime(240, now + 0.18);
+        gain.gain.setValueAtTime(0.32, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.20);
+
+        const chordOsc = ctx.createOscillator();
+        const chordGain = ctx.createGain();
+        if (isCorrect) {
+          chordOsc.type = 'triangle';
+          chordOsc.frequency.setValueAtTime(587.33, now + 0.05);
+          chordOsc.frequency.setValueAtTime(880, now + 0.12);
+          chordOsc.frequency.setValueAtTime(1174.66, now + 0.20);
+          chordGain.gain.setValueAtTime(0.3, now + 0.05);
+          chordGain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        } else {
+          chordOsc.type = 'square';
+          chordOsc.frequency.setValueAtTime(160, now + 0.05);
+          chordOsc.frequency.linearRampToValueAtTime(95, now + 0.25);
+          chordGain.gain.setValueAtTime(0.18, now + 0.05);
+          chordGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        }
+        chordOsc.connect(chordGain);
+        chordGain.connect(ctx.destination);
+        chordOsc.start(now + 0.05);
+        chordOsc.stop(now + 0.45);
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. TOAST NOTIFICATIONS
+      // -----------------------------------------------------------------------
+      let toastTimeout = null;
+      function showToast(message, icon = '✨') {
+        const banner = document.getElementById('toastBanner');
+        const textEl = document.getElementById('toastText');
+        const iconEl = document.getElementById('toastIcon');
+        if (!banner || !textEl || !iconEl) return;
+
+        textEl.textContent = message;
+        iconEl.textContent = icon;
+        banner.classList.remove('hidden', 'translate-y-2', 'opacity-0');
+
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          banner.classList.add('translate-y-2', 'opacity-0');
+          setTimeout(() => banner.classList.add('hidden'), 300);
+        }, 2400);
+      }
+
+      // -----------------------------------------------------------------------
+      // 4. HIGH-DEFINITION CAMERA + 1-EURO VELOCITY-PREDICTED FACE & HAND TRACKER
+      // -----------------------------------------------------------------------
+      const webcamVideo = document.getElementById('webcamVideo');
+      const motionCanvas = document.getElementById('motionCanvas');
+      const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+      const gameCanvas = document.getElementById('gameCanvas');
+      const ctx = gameCanvas.getContext('2d');
+
+      function getCameraCoverTransform(cw, ch) {
+        const vw = webcamVideo.videoWidth || 1280;
+        const vh = webcamVideo.videoHeight || 720;
+        const scale = Math.max(cw / vw, ch / vh);
+        const drawW = vw * scale;
+        const drawH = vh * scale;
+        const offsetX = (cw - drawW) * 0.5;
+        const offsetY = (ch - drawH) * 0.5;
+        return { vw, vh, scale, drawW, drawH, offsetX, offsetY };
+      }
+
+      function mapCamToCanvasNorm(mirroredCamX, camY) {
+        const cw = state.viewW || window.innerWidth;
+        const ch = state.viewH || window.innerHeight;
+        const tr = getCameraCoverTransform(cw, ch);
+        const px = tr.offsetX + mirroredCamX * tr.drawW;
+        const py = tr.offsetY + camY * tr.drawH;
+        return {
+          x: Math.max(0.02, Math.min(0.98, px / cw)),
+          y: Math.max(0.04, Math.min(0.96, py / ch))
+        };
+      }
+
+      // 1-Euro Adaptive Smoothing Helper: low jitter at rest, near-zero lag during fast movement
+      function adaptiveSmooth(current, target, minAlpha, speedMultiplier) {
+        const delta = Math.abs(target - current);
+        const alpha = Math.min(0.94, Math.max(minAlpha, delta * speedMultiplier));
+        return current + (target - current) * alpha;
+      }
+
+      function initMediaPipeFace() {
+        if (state.mpFace || typeof window.FaceDetection === 'undefined') return;
+        try {
+          const faceDetection = new window.FaceDetection({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/${file}`
+          });
+          faceDetection.setOptions({
+            model: 'short',
+            minDetectionConfidence: 0.42
+          });
+          faceDetection.onResults((results) => {
+            state.mpFaceReady = true;
+            if (!results || !results.detections || results.detections.length === 0) return;
+
+            const now = performance.now();
+            const faces = results.detections.map((det) => {
+              const bb = det.boundingBox;
+              const mirroredX = 1.0 - bb.xCenter;
+              const mapped = mapCamToCanvasNorm(mirroredX, bb.yCenter);
+
+              let tilt = -0.03;
+              if (det.landmarks && det.landmarks.length >= 2) {
+                const eye0 = det.landmarks[0];
+                const eye1 = det.landmarks[1];
+                const ex0 = 1.0 - eye0.x;
+                const ex1 = 1.0 - eye1.x;
+                const leftEye = ex0 < ex1 ? { x: ex0, y: eye0.y } : { x: ex1, y: eye1.y };
+                const rightEye = ex0 < ex1 ? { x: ex1, y: eye1.y } : { x: ex0, y: eye0.y };
+                tilt = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+                tilt = Math.max(-0.45, Math.min(0.45, tilt));
+              }
+
+              const faceScale = Math.max(0.75, Math.min(1.55, (bb.width || 0.18) / 0.17));
+              return { x: mapped.x, y: mapped.y, scale: faceScale, tilt: tilt };
+            }).sort((a, b) => a.x - b.x);
+
+            if (state.numPlayers === 1) {
+              const f = faces[0];
+              const p0 = state.players[0];
+              p0.headVx = f.x - p0.headX;
+              p0.headVy = f.y - p0.headY;
+              p0.headX = adaptiveSmooth(p0.headX, f.x + p0.headVx * 0.25, 0.35, 9.0);
+              p0.headY = adaptiveSmooth(p0.headY, f.y + p0.headVy * 0.25, 0.35, 9.0);
+              p0.headScale = adaptiveSmooth(p0.headScale, f.scale, 0.30, 5.0);
+              p0.headTilt = adaptiveSmooth(p0.headTilt, f.tilt, 0.35, 6.0);
+              p0.lastFaceSeen = now;
+            } else {
+              faces.forEach((f) => {
+                const pIdx = f.x < 0.5 ? 0 : 1;
+                const p = state.players[pIdx];
+                p.headVx = f.x - p.headX;
+                p.headVy = f.y - p.headY;
+                p.headX = adaptiveSmooth(p.headX, f.x + p.headVx * 0.25, 0.35, 9.0);
+                p.headY = adaptiveSmooth(p.headY, f.y + p.headVy * 0.25, 0.35, 9.0);
+                p.headScale = adaptiveSmooth(p.headScale, f.scale, 0.30, 5.0);
+                p.headTilt = adaptiveSmooth(p.headTilt, f.tilt, 0.35, 6.0);
+                p.lastFaceSeen = now;
+              });
+            }
+          });
+          state.mpFace = faceDetection;
+        } catch (err) {
+          state.mpFace = null;
+        }
+      }
+
+      function initMediaPipeHands() {
+        if (state.mpHands || typeof window.Hands === 'undefined') return;
+        try {
+          const hands = new window.Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+          });
+          hands.setOptions({
+            maxNumHands: 4,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.42,
+            minTrackingConfidence: 0.42
+          });
+          hands.onResults((results) => {
+            state.mpHandsReady = true;
+            state.lastHandsTimestamp = performance.now();
+
+            if (!results || !results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+              state.players.forEach(p => {
+                p.leftHand.tracked = false;
+                p.rightHand.tracked = false;
+              });
+              return;
+            }
+
+            const detectedHands = results.multiHandLandmarks.map((landmarks) => {
+              const wrist = landmarks[0];
+              const indexMcp = landmarks[5] || wrist;
+              const midMcp = landmarks[9] || wrist;
+              const indexTip = landmarks[8] || midMcp;
+              const midTip = landmarks[12] || indexTip;
+
+              const rawMirroredX = 1.0 - (wrist.x * 0.30 + midMcp.x * 0.45 + midTip.x * 0.25);
+              const rawY = (wrist.y * 0.30 + midMcp.y * 0.45 + midTip.y * 0.25);
+              const mapped = mapCamToCanvasNorm(rawMirroredX, rawY);
+
+              // Exact wrist-to-finger direction vector in mirrored coordinates
+              const dx = (1.0 - (midTip.x * 0.6 + indexTip.x * 0.4)) - (1.0 - wrist.x);
+              const dy = (midTip.y * 0.6 + indexTip.y * 0.4) - wrist.y;
+              const pointingAngle = Math.atan2(dy, dx);
+              const gloveAngle = pointingAngle + Math.PI / 2;
+
+              const handLen = Math.hypot(dx, dy);
+              const handScale = Math.max(0.78, Math.min(1.5, handLen / 0.21));
+
+              return {
+                x: mapped.x,
+                y: mapped.y,
+                pointingAngle: pointingAngle,
+                angle: gloveAngle,
+                scale: handScale
+              };
+            }).sort((a, b) => a.x - b.x);
+
+            if (state.numPlayers === 1) {
+              applyDetectedHandsToPlayer(state.players[0], detectedHands);
+            } else {
+              const p1Hands = detectedHands.filter(h => h.x < 0.52);
+              const p2Hands = detectedHands.filter(h => h.x >= 0.52);
+              applyDetectedHandsToPlayer(state.players[0], p1Hands);
+              applyDetectedHandsToPlayer(state.players[1], p2Hands);
+            }
+          });
+          state.mpHands = hands;
+        } catch (err) {
+          state.mpHands = null;
+        }
+      }
+
+      function applyDetectedHandsToPlayer(p, handsList) {
+        if (!handsList || handsList.length === 0) {
+          p.leftHand.tracked = false;
+          p.rightHand.tracked = false;
+          return;
+        }
+
+        if (handsList.length === 1) {
+          const h = handsList[0];
+          updatePlayerHandPosition(p.id, h.x, h.y, true, h.pointingAngle, h.scale);
+          const distL = Math.hypot(h.x - p.leftHand.x, h.y - p.leftHand.y);
+          const distR = Math.hypot(h.x - p.rightHand.x, h.y - p.rightHand.y);
+          if (distL <= distR) {
+            updateSingleGlove(p, p.leftHand, h.x, h.y, h.angle, h.scale);
+            p.rightHand.tracked = false;
+          } else {
+            updateSingleGlove(p, p.rightHand, h.x, h.y, h.angle, h.scale);
+            p.leftHand.tracked = false;
+          }
+        } else {
+          const hLeft = handsList[0];
+          const hRight = handsList[handsList.length - 1];
+          updateSingleGlove(p, p.leftHand, hLeft.x, hLeft.y, hLeft.angle, hLeft.scale);
+          updateSingleGlove(p, p.rightHand, hRight.x, hRight.y, hRight.angle, hRight.scale);
+
+          const midX = (p.leftHand.x + p.rightHand.x) * 0.5;
+          const midY = (p.leftHand.y + p.rightHand.y) * 0.5;
+          // In Chop Chop mode, use the faster/dominant hand for the fencing sword
+          const activeSwordHand = (p.rightHand.speed >= p.leftHand.speed * 0.8) ? hRight : hLeft;
+          if (state.activeRoundMode === 'chop') {
+            updatePlayerHandPosition(p.id, activeSwordHand.x, activeSwordHand.y, true, activeSwordHand.pointingAngle, activeSwordHand.scale);
+          } else {
+            updatePlayerHandPosition(p.id, midX, midY, true, hRight.pointingAngle, hRight.scale);
+          }
+
+          // Two-Hand Clap Slap Detection in Mosquito Slap Mode
+          const handSeparation = Math.hypot(p.leftHand.x - p.rightHand.x, p.leftHand.y - p.rightHand.y);
+          const closingSpeed = (p.leftHand.speed + p.rightHand.speed);
+          if (state.inGame && !state.roundResolved && state.activeRoundMode === 'mosquito') {
+            if (handSeparation < 0.17 && (closingSpeed > 0.010 || p.clapCooldown <= 0)) {
+              p.slapAnim = 1.0;
+              p.clapCooldown = 16;
+              checkTargetInteractions(p.id, midX, midY, true);
+            }
+          }
+
+          if (performance.now() - p.lastFaceSeen > 550) {
+            const inferredHeadX = midX;
+            const inferredHeadY = Math.max(0.20, midY - 0.19);
+            p.headX = adaptiveSmooth(p.headX, inferredHeadX, 0.22, 6.0);
+            p.headY = adaptiveSmooth(p.headY, inferredHeadY, 0.22, 6.0);
+          }
+        }
+      }
+
+      function updateSingleGlove(p, glove, targetX, targetY, targetAngle, targetScale) {
+        glove.prevX = glove.x;
+        glove.prevY = glove.y;
+        // Velocity-predicted 1-Euro smoothing
+        const vx = targetX - glove.x;
+        const vy = targetY - glove.y;
+        glove.x = adaptiveSmooth(glove.x, targetX + vx * 0.3, 0.45, 9.5);
+        glove.y = adaptiveSmooth(glove.y, targetY + vy * 0.3, 0.45, 9.5);
+        glove.speed = Math.hypot(glove.x - glove.prevX, glove.y - glove.prevY);
+        glove.angle = adaptiveSmooth(glove.angle, targetAngle, 0.45, 6.0);
+        glove.scale = adaptiveSmooth(glove.scale, targetScale, 0.35, 5.0);
+        glove.tracked = true;
+
+        if (state.inGame && !state.roundResolved) {
+          if (state.activeRoundMode === 'mosquito' && glove.speed > 0.011) {
+            p.slapAnim = 1.0;
+            checkTargetInteractions(p.id, glove.x, glove.y, true);
+          }
+        }
+      }
+
+      async function startCamera(silent = false) {
+        const btnCamInGame = document.getElementById('btnToggleCamInGame');
+
+        if (state.cameraActive && state.cameraStream) {
+          stopCamera();
+          return;
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          if (!silent) showToast('Camera unavailable; using 3D AR Simulation + Mouse/Touch!', '🕹️');
+          updateCameraUI(false, '3D AR Simulation');
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 60 },
+              facingMode: 'user'
+            },
+            audio: false
+          });
+          webcamVideo.srcObject = stream;
+          await webcamVideo.play();
+          state.cameraStream = stream;
+          state.cameraActive = true;
+          state.prevFrameData = null;
+          initMediaPipeFace();
+          initMediaPipeHands();
+          updateCameraUI(true, 'HD Cam Live');
+          if (!silent) showToast('HD Camera connected! 3D AR Tracking active!', '📷');
+        } catch (err) {
+          state.cameraActive = false;
+          updateCameraUI(false, '3D Virtual AR');
+          if (!silent) showToast('Using 3D Virtual AR + Mouse/Touch Controls!', '🤺');
+        }
+
+        if (btnCamInGame) {
+          btnCamInGame.textContent = state.cameraActive ? '📷 Cam: HD ON' : '📷 Cam: Virtual 3D';
+        }
+      }
+
+      function stopCamera() {
+        if (state.cameraStream) {
+          state.cameraStream.getTracks().forEach(t => t.stop());
+          state.cameraStream = null;
+        }
+        state.cameraActive = false;
+        state.prevFrameData = null;
+        updateCameraUI(false, 'Cam Paused');
+        const btnCamInGame = document.getElementById('btnToggleCamInGame');
+        if (btnCamInGame) btnCamInGame.textContent = '📷 Cam: Virtual 3D';
+      }
+
+      function updateCameraUI(isLive, statusText) {
+        const dot = document.getElementById('camStatusDot');
+        const label = document.getElementById('camStatusLabel');
+        const btn = document.getElementById('btnTestCameraSetup');
+        if (dot) {
+          dot.className = isLive
+            ? 'w-2 h-2 rounded-full bg-emerald-500 shadow shadow-emerald-500'
+            : 'w-2 h-2 rounded-full bg-amber-400';
+        }
+        if (label) label.textContent = statusText;
+        if (btn) btn.textContent = isLive ? 'Disable Cam' : 'Enable Cam';
+      }
+
+      function processWebcamMotion() {
+        if (!state.cameraActive || webcamVideo.readyState < 2) return;
+
+        if (state.mpHands && !state.mpHandsBusy) {
+          state.mpHandsBusy = true;
+          state.mpHands.send({ image: webcamVideo }).then(() => {
+            state.mpHandsBusy = false;
+          }).catch(() => {
+            state.mpHandsBusy = false;
+          });
+        }
+
+        if (state.mpFace && !state.mpFaceBusy) {
+          state.mpFaceBusy = true;
+          state.mpFace.send({ image: webcamVideo }).then(() => {
+            state.mpFaceBusy = false;
+          }).catch(() => {
+            state.mpFaceBusy = false;
+          });
+        }
+
+        const mw = motionCanvas.width;
+        const mh = motionCanvas.height;
+
+        motionCtx.save();
+        motionCtx.scale(-1, 1);
+        motionCtx.drawImage(webcamVideo, -mw, 0, mw, mh);
+        motionCtx.restore();
+
+        let frame;
+        try {
+          frame = motionCtx.getImageData(0, 0, mw, mh);
+        } catch (e) {
+          return;
+        }
+        const data = frame.data;
+
+        if (!state.prevFrameData) {
+          state.prevFrameData = new Uint8ClampedArray(data);
+          return;
+        }
+
+        const prev = state.prevFrameData;
+        const threshold = 30;
+        const now = performance.now();
+        const mpHandsRecent = state.mpHandsReady && (now - state.lastHandsTimestamp < 320);
+
+        let skinX = 0, skinY = 0, skinCount = 0;
+        let leftMotionX = 0, leftMotionY = 0, leftMotionCount = 0;
+        let rightMotionX = 0, rightMotionY = 0, rightMotionCount = 0;
+
+        for (let y = 6; y < mh - 6; y += 2) {
+          for (let x = 6; x < mw - 6; x += 2) {
+            const i = (y * mw + x) * 4;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+
+            if (y < mh * 0.65 && r > 95 && g > 40 && b > 20 && (r - g) > 15 && r > b) {
+              skinX += x;
+              skinY += y;
+              skinCount++;
+            }
+
+            const diff = Math.abs(r - prev[i]) + Math.abs(g - prev[i + 1]) + Math.abs(b - prev[i + 2]);
+            if (diff > threshold * 3) {
+              if (x < mw * 0.5) {
+                leftMotionX += x;
+                leftMotionY += y;
+                leftMotionCount++;
+              } else {
+                rightMotionX += x;
+                rightMotionY += y;
+                rightMotionCount++;
+              }
+            }
+          }
+        }
+
+        if (skinCount > 45 && (now - state.players[0].lastFaceSeen > 550)) {
+          const mappedFace = mapCamToCanvasNorm((skinX / skinCount) / mw, (skinY / skinCount) / mh);
+          const p0 = state.players[0];
+          p0.headX = adaptiveSmooth(p0.headX, mappedFace.x, 0.25, 6.0);
+          p0.headY = adaptiveSmooth(p0.headY, Math.max(0.20, Math.min(0.55, mappedFace.y)), 0.25, 6.0);
+        }
+
+        if (!mpHandsRecent) {
+          if (state.numPlayers === 1) {
+            const p0 = state.players[0];
+            if (leftMotionCount > 9) {
+              const mL = mapCamToCanvasNorm((leftMotionX / leftMotionCount) / mw, (leftMotionY / leftMotionCount) / mh);
+              updateSingleGlove(p0, p0.leftHand, mL.x, mL.y, -0.18, 1.0);
+              updatePlayerHandPosition(0, mL.x, mL.y, true);
+            }
+            if (rightMotionCount > 9) {
+              const mR = mapCamToCanvasNorm((rightMotionX / rightMotionCount) / mw, (rightMotionY / rightMotionCount) / mh);
+              updateSingleGlove(p0, p0.rightHand, mR.x, mR.y, -0.32, 1.0);
+              updatePlayerHandPosition(0, mR.x, mR.y, true);
+            }
+          } else {
+            if (leftMotionCount > 9) {
+              const m1 = mapCamToCanvasNorm((leftMotionX / leftMotionCount) / mw, (leftMotionY / leftMotionCount) / mh);
+              updatePlayerHandPosition(0, m1.x, m1.y, true);
+            }
+            if (rightMotionCount > 9) {
+              const m2 = mapCamToCanvasNorm((rightMotionX / rightMotionCount) / mw, (rightMotionY / rightMotionCount) / mh);
+              updatePlayerHandPosition(1, m2.x, m2.y, true);
+            }
+          }
+        }
+
+        state.prevFrameData.set(data);
+      }
+
+      // Computes the exact blade length of the long 3D Fencing Sword in pixels
+      function getFencingSwordBladeLength(cw, p) {
+        const baseLen = Math.max(255, Math.min(350, cw * 0.29));
+        return baseLen * (1 + p.swordLunge * 0.22);
+      }
+
+      function updatePlayerHandPosition(playerIdx, normX, normY, isFromCamera, pointingAngle, customScale) {
+        const p = state.players[playerIdx];
+        if (!p) return;
+
+        p.prevHandX = p.handX;
+        p.prevHandY = p.handY;
+
+        const rawVx = normX - p.handX;
+        const rawVy = normY - p.handY;
+        p.handX = adaptiveSmooth(p.handX, normX + (isFromCamera ? rawVx * 0.32 : 0), isFromCamera ? 0.48 : 0.82, 10.0);
+        p.handY = adaptiveSmooth(p.handY, normY + (isFromCamera ? rawVy * 0.32 : 0), isFromCamera ? 0.48 : 0.82, 10.0);
+
+        p.vx = p.handX - p.prevHandX;
+        p.vy = p.handY - p.prevHandY;
+        p.speed = Math.hypot(p.vx, p.vy);
+
+        // Dynamic Fencing Sword rotation & lunge physics
+        let targetSwordAngle = p.swordAngle;
+        if (p.speed > 0.0035) {
+          // Blend hand velocity direction with natural upward-forward fencing poise
+          const velAngle = Math.atan2(p.vy, p.vx);
+          targetSwordAngle = typeof pointingAngle === 'number'
+            ? pointingAngle * 0.55 + velAngle * 0.45
+            : velAngle;
+          p.swordLunge = Math.min(1.0, p.swordLunge + p.speed * 11);
+        } else if (typeof pointingAngle === 'number') {
+          targetSwordAngle = pointingAngle;
+        }
+
+        // Smooth shortest-arc angle interpolation
+        let angleDiff = targetSwordAngle - p.swordAngle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        p.swordAngVel = angleDiff * 0.42;
+        p.swordAngle += p.swordAngVel;
+
+        const cw = state.viewW || 960;
+        const ch = state.viewH || 540;
+        const bladeLen = getFencingSwordBladeLength(cw, p);
+        const hx = p.handX * cw;
+        const hy = p.handY * ch;
+        const tipX = hx + Math.cos(p.swordAngle) * bladeLen;
+        const tipY = hy + Math.sin(p.swordAngle) * bladeLen;
+
+        p.trail.push({
+          x: p.handX,
+          y: p.handY,
+          tipX: tipX / cw,
+          tipY: tipY / ch,
+          life: 1.0
+        });
+        if (p.trail.length > 22) {
+          p.trail.shift();
+        }
+
+        // Emit gleaming metallic sword sparks when slashing fast in Chop Chop mode
+        if (state.activeRoundMode === 'chop' && (p.speed > 0.008 || Math.abs(p.swordAngVel) > 0.08)) {
+          for (let s = 0; s < 2; s++) {
+            const frac = 0.35 + Math.random() * 0.65;
+            state.swordSparks.push({
+              x: hx + Math.cos(p.swordAngle) * (bladeLen * frac),
+              y: hy + Math.sin(p.swordAngle) * (bladeLen * frac),
+              vx: (Math.random() - 0.5) * 4.5,
+              vy: (Math.random() - 0.5) * 4.5 - 1.0,
+              size: 2 + Math.random() * 3.5,
+              color: Math.random() < 0.5 ? '#ffffff' : p.theme.swordColor,
+              life: 1.0
+            });
+          }
+        }
+
+        if (!isFromCamera || (!p.leftHand.tracked && !p.rightHand.tracked)) {
+          const clapPinch = p.slapAnim * 0.048;
+          const spreadX = Math.max(0.018, 0.065 - clapPinch);
+          p.leftHand.x += ((p.handX - spreadX) - p.leftHand.x) * 0.68;
+          p.leftHand.y += ((p.handY + 0.04) - p.leftHand.y) * 0.68;
+          p.leftHand.angle = -0.15 + p.slapAnim * 0.22;
+
+          p.rightHand.x += ((p.handX + spreadX * 0.75) - p.rightHand.x) * 0.68;
+          p.rightHand.y += ((p.handY - 0.02) - p.rightHand.y) * 0.68;
+          p.rightHand.angle = -0.35 - p.slapAnim * 0.22;
+        }
+
+        if (!state.cameraActive) {
+          const baseHeadX = state.numPlayers === 1 ? 0.5 : (playerIdx === 0 ? 0.27 : 0.73);
+          p.headX = baseHeadX + (p.handX - baseHeadX) * 0.22;
+          p.headTilt = -0.04 + (p.handX - baseHeadX) * 0.16;
+        }
+
+        if (state.inGame && !state.roundResolved) {
+          if (state.activeRoundMode === 'chop' && (p.speed > 0.004 || Math.abs(p.swordAngVel) > 0.04)) {
+            checkSwordBladeCollisions(playerIdx, hx, hy, tipX, tipY);
+          } else if (state.activeRoundMode === 'mosquito' && isFromCamera && p.speed > 0.012) {
+            p.slapAnim = 1.0;
+            checkTargetInteractions(playerIdx, p.handX, p.handY, true);
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 5. MINIMALIST POP-UP SETUP UI & NON-SCROLLING QUESTION PAGER
+      // -----------------------------------------------------------------------
+      function renderQuestionList() {
+        const heading = document.getElementById('questionListHeading');
+        const badge = document.getElementById('startBtnCountBadge');
+        const pager = document.getElementById('questionPagerBar');
+        const circle = document.getElementById('activeQuestionNumCircle');
+        const container = document.getElementById('questionListContainer');
+
+        const total = state.questions.length;
+        if (state.setupActiveIdx >= total) {
+          state.setupActiveIdx = Math.max(0, total - 1);
+        }
+
+        if (heading) {
+          heading.textContent = `QUESTIONS (${total > 0 ? state.setupActiveIdx + 1 : 0} / ${Math.max(30, total)})`;
+        }
+        if (badge) {
+          badge.textContent = `${total} Qs`;
+        }
+        if (circle) {
+          circle.textContent = String(state.setupActiveIdx + 1);
+        }
+
+        // Render compact non-scrolling question number pills inside the blue bar
+        if (pager) {
+          pager.innerHTML = state.questions.map((item, idx) => {
+            const active = idx === state.setupActiveIdx;
+            const cls = active
+              ? 'bg-[#1d7dfa] text-white border-[#1d7dfa] shadow-sm'
+              : 'bg-white text-slate-600 border-blue-200 hover:border-blue-400';
+            return `<button type="button" data-page-idx="${idx}" class="w-6 h-6 rounded-full border text-[11px] font-bold transition flex items-center justify-center ${cls}">${idx + 1}</button>`;
+          }).join('');
+        }
+
+        // Populate the active question into the clean card inputs
+        const activeQ = state.questions[state.setupActiveIdx];
+        const qInput = document.getElementById('inputQuestionText');
+        if (activeQ && qInput) {
+          state.editingQuestionId = activeQ.id;
+          qInput.value = activeQ.q;
+          for (let i = 0; i < 4; i++) {
+            const optEl = document.getElementById('inputOpt' + i);
+            if (optEl) optEl.value = activeQ.options[i] || '';
+          }
+          const radio = document.getElementById('radioCorrect' + activeQ.correct);
+          if (radio) radio.checked = true;
+        } else if (qInput) {
+          state.editingQuestionId = null;
+          qInput.value = '';
+          for (let i = 0; i < 4; i++) {
+            const optEl = document.getElementById('inputOpt' + i);
+            if (optEl) optEl.value = '';
+          }
+          const radio0 = document.getElementById('radioCorrect0');
+          if (radio0) radio0.checked = true;
+        }
+
+        // Also keep hidden compatibility container updated
+        if (container) {
+          container.innerHTML = state.questions.map((item, idx) =>
+            `<div data-id="${item.id}">#${idx + 1} ${escapeHtml(item.q)}</div>`
+          ).join('');
+        }
+      }
+
+      function syncCurrentCardToState() {
+        const activeQ = state.questions[state.setupActiveIdx];
+        if (!activeQ) return;
+        const qText = document.getElementById('inputQuestionText').value.trim();
+        const opts = [
+          document.getElementById('inputOpt0').value.trim() || 'Option 1',
+          document.getElementById('inputOpt1').value.trim() || 'Option 2',
+          document.getElementById('inputOpt2').value.trim() || 'Option 3',
+          document.getElementById('inputOpt3').value.trim() || 'Option 4'
+        ];
+        const checkedRadio = document.querySelector('input[name="correctOption"]:checked');
+        const correctIdx = checkedRadio ? parseInt(checkedRadio.value, 10) : 0;
+
+        if (qText) {
+          activeQ.q = qText;
+          activeQ.options = opts;
+          activeQ.correct = correctIdx;
+          saveQuestionsToStorage();
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function setPlayersCount(count) {
+        state.numPlayers = count;
+        const btn1P = document.getElementById('btnSelect1P');
+        const btn2P = document.getElementById('btnSelect2P');
+        const badge1P = document.getElementById('badge1P');
+        const badge2P = document.getElementById('badge2P');
+
+        if (count === 1) {
+          btn1P.classList.add('player-card-active');
+          btn2P.classList.remove('player-card-active');
+          badge1P.classList.remove('hidden');
+          badge2P.classList.add('hidden');
+        } else {
+          btn2P.classList.add('player-card-active');
+          btn1P.classList.remove('player-card-active');
+          badge2P.classList.remove('hidden');
+          badge1P.classList.add('hidden');
+        }
+      }
+
+      function setGameMode(mode) {
+        state.selectedMode = mode;
+        const btnMosq = document.getElementById('btnModeMosquito');
+        const btnChop = document.getElementById('btnModeChop');
+        const btnCombo = document.getElementById('btnModeCombo');
+
+        btnMosq.classList.remove('mode-card-active');
+        btnChop.classList.remove('mode-card-chop-active');
+        btnCombo.classList.remove('mode-card-combo-active');
+
+        if (mode === 'mosquito') btnMosq.classList.add('mode-card-active');
+        else if (mode === 'chop') btnChop.classList.add('mode-card-chop-active');
+        else btnCombo.classList.add('mode-card-combo-active');
+      }
+
+      // -----------------------------------------------------------------------
+      // 6. HIGH-RESOLUTION HiDPI CANVAS & GAMEPLAY SPAWNING
+      // -----------------------------------------------------------------------
+      function resizeGameCanvas() {
+        const rect = gameCanvas.parentElement.getBoundingClientRect();
+        const cssW = Math.max(320, rect.width || window.innerWidth);
+        const cssH = Math.max(280, rect.height || window.innerHeight);
+        const dpr = Math.min(2.5, window.devicePixelRatio || 1);
+
+        state.viewW = cssW;
+        state.viewH = cssH;
+        state.dpr = dpr;
+
+        gameCanvas.width = Math.round(cssW * dpr);
+        gameCanvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+      }
+
+      function initAmbientNetBugs() {
+        state.ambientBugs = [];
+        for (let i = 0; i < 5; i++) {
+          state.ambientBugs.push({
+            angle: Math.random() * Math.PI * 2,
+            dist: 42 + Math.random() * 28,
+            speed: (Math.random() * 0.035 + 0.02) * (Math.random() < 0.5 ? 1 : -1),
+            phase: Math.random() * 10
+          });
+        }
+      }
+
+      function startGameSession() {
+        syncCurrentCardToState();
+
+        if (state.questions.length === 0) {
+          state.questions = JSON.parse(JSON.stringify(PRESET_DECKS.default));
+          state.setupActiveIdx = 0;
+          renderQuestionList();
+        }
+
+        ensureAudio();
+
+        const p1Input = document.getElementById('inputP1Name');
+        const p2Input = document.getElementById('inputP2Name');
+        const p1Name = (p1Input && p1Input.value.trim()) ? p1Input.value.trim() : 'Player 1';
+        const p2Name = (p2Input && p2Input.value.trim()) ? p2Input.value.trim() : 'Player 2';
+
+        state.players[0] = createPlayerState(0, p1Name, false);
+        state.players[1] = createPlayerState(1, p2Name, true);
+        if (state.numPlayers === 2) {
+          state.players[0].headX = 0.27;
+          state.players[0].handX = 0.27;
+          state.players[0].leftHand.x = 0.20;
+          state.players[0].rightHand.x = 0.33;
+        }
+
+        state.currentQIndex = 0;
+        state.inGame = true;
+        state.splats = [];
+        state.slicedHalves = [];
+        state.particles = [];
+        state.swordSparks = [];
+        state.floatingTexts = [];
+        initAmbientNetBugs();
+
+        // Hide the Game Setup Pop-Up Modal so the full-screen 3D arena is front and center
+        document.getElementById('setupScreen').classList.add('hidden');
+        document.getElementById('gameOverModal').classList.add('hidden');
+
+        resizeGameCanvas();
+
+        if (!state.cameraActive) {
+          startCamera(true);
+        }
+
+        loadCurrentQuestion();
+      }
+
+      function determineRoundMode() {
+        if (state.selectedMode === 'mosquito') return 'mosquito';
+        if (state.selectedMode === 'chop') return 'chop';
+        return (state.currentQIndex % 2 === 0) ? 'mosquito' : 'chop';
+      }
+
+      function loadCurrentQuestion() {
+        if (state.currentQIndex >= state.questions.length) {
+          finishGameSession();
+          return;
+        }
+
+        state.activeRoundMode = determineRoundMode();
+        state.roundResolved = false;
+        state.questionMaxTime = 18;
+        state.questionTimer = state.questionMaxTime;
+        state.targets = [];
+        state.slicedHalves = [];
+
+        updateInGameHUD();
+        spawnTargetsForCurrentQuestion();
+      }
+
+      function spawnTargetsForCurrentQuestion() {
+        const qObj = state.questions[state.currentQIndex];
+        if (!qObj) return;
+
+        const cw = state.viewW || 960;
+        const ch = state.viewH || 540;
+        const spd = state.speedMultiplier;
+
+        state.targets = [];
+
+        if (state.activeRoundMode === 'mosquito') {
+          for (let i = 0; i < 4; i++) {
+            const colX = (i % 2 === 0) ? cw * (0.18 + Math.random() * 0.20) : cw * (0.62 + Math.random() * 0.20);
+            const rowY = (i < 2) ? ch * (0.24 + Math.random() * 0.16) : ch * (0.56 + Math.random() * 0.18);
+            const angle = Math.random() * Math.PI * 2;
+            const baseSpeed = (2.1 + Math.random() * 1.1) * spd;
+
+            state.targets.push({
+              optionIndex: i,
+              letter: OPTION_LETTERS[i],
+              text: qObj.options[i] || `Option ${i + 1}`,
+              isCorrect: i === qObj.correct,
+              x: colX,
+              y: rowY,
+              vx: Math.cos(angle) * baseSpeed,
+              vy: Math.sin(angle) * baseSpeed,
+              radius: Math.max(48, Math.min(64, cw * 0.056)),
+              wingPhase: Math.random() * Math.PI * 2,
+              wobblePhase: Math.random() * Math.PI * 2,
+              alive: true,
+              cooldown: 0,
+              color: OPTION_COLORS[i]
+            });
+          }
+        } else {
+          launchFruitWave();
+        }
+      }
+
+      function launchFruitWave() {
+        const qObj = state.questions[state.currentQIndex];
+        if (!qObj) return;
+
+        const cw = state.viewW || 960;
+        const ch = state.viewH || 540;
+        const spd = state.speedMultiplier;
+
+        state.targets = [];
+        for (let i = 0; i < 4; i++) {
+          const laneX = cw * (0.16 + i * 0.22) + (Math.random() - 0.5) * 40;
+          const targetPeakY = ch * (0.18 + Math.random() * 0.18);
+          const gravity = 0.20 * spd;
+          const travelH = Math.max(180, (ch + 40) - targetPeakY);
+          const vy = -Math.sqrt(2 * gravity * travelH);
+          const centerPull = ((cw * 0.5) - laneX) * 0.0055 * spd;
+
+          state.targets.push({
+            optionIndex: i,
+            letter: OPTION_LETTERS[i],
+            text: qObj.options[i] || `Option ${i + 1}`,
+            isCorrect: i === qObj.correct,
+            x: laneX,
+            y: ch + 45 + (i % 2) * 28,
+            vx: centerPull + (Math.random() - 0.5) * 1.4,
+            vy: vy,
+            gravity: gravity,
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 0.065,
+            radius: Math.max(50, Math.min(66, cw * 0.058)),
+            alive: true,
+            cooldown: 0,
+            color: OPTION_COLORS[i]
+          });
+        }
+      }
+
+      function updateInGameHUD() {
+        const qObj = state.questions[state.currentQIndex];
+        if (!qObj) return;
+
+        document.getElementById('hudQuestionCounter').textContent =
+          `Q ${state.currentQIndex + 1} / ${state.questions.length}`;
+        document.getElementById('hudQuestionPrompt').textContent = qObj.q;
+
+        const modeEmoji = document.getElementById('hudModeEmoji');
+        const modeText = document.getElementById('hudModeText');
+        const bottomHint = document.getElementById('hudBottomHint');
+        const p1Icon = document.getElementById('hudP1Icon');
+        const p2Icon = document.getElementById('hudP2Icon');
+        const netBtn = document.getElementById('btnToggleNetInGame');
+
+        if (state.activeRoundMode === 'mosquito') {
+          modeEmoji.textContent = '🦟';
+          modeText.textContent = 'MOSQUITO SLAP';
+          bottomHint.textContent = '🦟 Purple Beekeeper Mosquito-Net Hat & 2 Gloves! Clap hands or swipe/click to SLAP the right mosquito!';
+          p1Icon.textContent = '🧤';
+          p2Icon.textContent = '🧤';
+          if (netBtn) netBtn.textContent = state.showHeadgear ? '🪖 Net Hat: ON' : '🪖 Net Hat: OFF';
+        } else {
+          modeEmoji.textContent = '🤺';
+          modeText.textContent = 'CHOP CHOP FENCING';
+          bottomHint.textContent = '🤺 3D Fencing Mask & Long Fencing Sword! Slash your long blade across the fruit with the right answer!';
+          p1Icon.textContent = '⚔️';
+          p2Icon.textContent = '⚔️';
+          if (netBtn) netBtn.textContent = state.showHeadgear ? '🤺 Fencing Mask: ON' : '🤺 Fencing Mask: OFF';
+        }
+
+        const optionsBar = document.getElementById('hudOptionsBar');
+        optionsBar.innerHTML = qObj.options.map((optText, idx) => {
+          const badgeColors = [
+            'bg-rose-500 text-white',
+            'bg-amber-500 text-slate-950',
+            'bg-cyan-400 text-slate-950',
+            'bg-purple-500 text-white'
+          ];
+          return `
+            <button type="button" data-option-idx="${idx}" class="group flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-950/75 hover:bg-slate-800 border border-white/15 transition text-left overflow-hidden">
+              <span class="w-5 h-5 rounded-md ${badgeColors[idx]} font-display font-bold text-xs flex items-center justify-center shrink-0">${OPTION_LETTERS[idx]}</span>
+              <span class="text-xs sm:text-sm font-semibold text-slate-100 truncate group-hover:text-sky-300">${escapeHtml(optText)}</span>
+            </button>
+          `;
+        }).join('');
+
+        updateScoreCardsHUD();
+      }
+
+      function updateScoreCardsHUD() {
+        const p1 = state.players[0];
+        const p2 = state.players[1];
+
+        document.getElementById('hudP1Name').textContent = p1.name;
+        document.getElementById('hudP1Score').textContent = `${p1.score} pts`;
+        document.getElementById('hudP1Streak').textContent = `🔥 x${p1.streak}`;
+
+        const p2Card = document.getElementById('hudP2Card');
+        if (state.numPlayers === 2) {
+          p2Card.classList.remove('opacity-50');
+          document.getElementById('hudP2Name').textContent = p2.name;
+          document.getElementById('hudP2Score').textContent = `${p2.score} pts`;
+          document.getElementById('hudP2Streak').textContent = `🔥 x${p2.streak}`;
+        } else {
+          p2Card.classList.add('opacity-50');
+          document.getElementById('hudP2Name').textContent = 'Hits';
+          document.getElementById('hudP2Score').textContent = `${p1.hits}/${state.questions.length}`;
+          document.getElementById('hudP2Streak').textContent = '🎯 Solo';
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 7. SLAP & FULL-LENGTH FENCING SWORD BLADE COLLISION LOGIC
+      // -----------------------------------------------------------------------
+      // Distance from point (px, py) to line segment (x1, y1)-(x2, y2)
+      function distToSegment(px, py, x1, y1, x2, y2) {
+        const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+        if (l2 === 0) return Math.hypot(px - x1, py - y1);
+        let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+      }
+
+      // Checks if ANY part of the long 3D Fencing Sword blade (from hilt to tip) sliced a fruit!
+      function checkSwordBladeCollisions(playerIdx, hx, hy, tipX, tipY) {
+        if (!state.inGame || state.roundResolved) return;
+        for (let i = 0; i < state.targets.length; i++) {
+          const t = state.targets[i];
+          if (!t.alive || t.cooldown > 0) continue;
+
+          const d = distToSegment(t.x, t.y, hx, hy, tipX, tipY);
+          if (d <= t.radius + 22) {
+            triggerTargetHit(playerIdx, t);
+            break;
+          }
+        }
+      }
+
+      function checkTargetInteractions(playerIdx, normX, normY, isDirectClickOrSlap) {
+        if (!state.inGame || state.roundResolved) return;
+
+        const cw = state.viewW;
+        const ch = state.viewH;
+        const px = normX * cw;
+        const py = normY * ch;
+        const p = state.players[playerIdx];
+
+        if (state.activeRoundMode === 'chop') {
+          const bladeLen = getFencingSwordBladeLength(cw, p);
+          const tipX = px + Math.cos(p.swordAngle) * bladeLen;
+          const tipY = py + Math.sin(p.swordAngle) * bladeLen;
+          checkSwordBladeCollisions(playerIdx, px, py, tipX, tipY);
+          return;
+        }
+
+        for (let i = 0; i < state.targets.length; i++) {
+          const t = state.targets[i];
+          if (!t.alive || t.cooldown > 0) continue;
+
+          const dist = Math.hypot(px - t.x, py - t.y);
+          const hitRadius = t.radius + (isDirectClickOrSlap ? 44 : 32);
+
+          if (dist <= hitRadius) {
+            triggerTargetHit(playerIdx, t);
+            break;
+          }
+        }
+      }
+
+      function triggerTargetHit(playerIdx, target) {
+        if (state.roundResolved) return;
+        const p = state.players[playerIdx];
+        p.slapAnim = 1.0;
+        p.swordLunge = 1.0;
+
+        if (target.isCorrect) {
+          target.alive = false;
+          state.roundResolved = true;
+          const pts = 100 * p.streak + Math.round(state.questionTimer * 5);
+          p.score += pts;
+          p.hits += 1;
+          p.streak = Math.min(5, p.streak + 1);
+
+          if (state.activeRoundMode === 'mosquito') {
+            playSlapSound(true);
+            state.splats.push({
+              x: target.x,
+              y: target.y,
+              color: '#a855f7',
+              alpha: 1.0
+            });
+            spawnBurstParticles(target.x, target.y, '#c084fc', 32);
+            spawnFloatingText(
+              target.x,
+              target.y - 24,
+              `👏 CLAP SLAP! ${target.letter} +${pts}`,
+              '#4ade80'
+            );
+          } else {
+            playSwordSlashSound(true);
+            spawnSlicedFruitHalves(target);
+            spawnBurstParticles(target.x, target.y, target.color.main, 42);
+            spawnFloatingText(
+              target.x,
+              target.y - 24,
+              `🤺 EN GARDE SLICE! ${target.letter} +${pts}`,
+              '#38bdf8'
+            );
+          }
+
+          updateScoreCardsHUD();
+          setTimeout(() => {
+            if (!state.inGame) return;
+            state.currentQIndex++;
+            loadCurrentQuestion();
+          }, 1200);
+        } else {
+          target.cooldown = 32;
+          p.streak = 1;
+          p.score = Math.max(0, p.score - 25);
+
+          if (state.activeRoundMode === 'mosquito') {
+            playSlapSound(false);
+            target.vx = -target.vx * 1.3;
+            target.vy = -target.vy * 1.3;
+            spawnBurstParticles(target.x, target.y, '#f43f5e', 14);
+            spawnFloatingText(target.x, target.y - 15, `❌ OUCH! Not ${target.letter} (-25)`, '#fb7185');
+          } else {
+            playSwordSlashSound(false);
+            target.alive = false;
+            spawnSlicedFruitHalves(target);
+            spawnBurstParticles(target.x, target.y, '#f43f5e', 20);
+            spawnFloatingText(target.x, target.y - 15, `❌ WRONG (${target.letter})! -25`, '#fb7185');
+          }
+          updateScoreCardsHUD();
+        }
+      }
+
+      function spawnSlicedFruitHalves(target) {
+        for (let side = -1; side <= 1; side += 2) {
+          state.slicedHalves.push({
+            x: target.x + side * 14,
+            y: target.y,
+            vx: target.vx + side * (3.6 + Math.random() * 1.6),
+            vy: -4.0 - Math.random() * 2,
+            rotation: target.rotation,
+            rotSpeed: side * 0.14,
+            radius: target.radius,
+            side: side,
+            color: target.color,
+            alpha: 1.0
+          });
+        }
+      }
+
+      function spawnBurstParticles(x, y, color, count) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const spd = 2.5 + Math.random() * 8.5;
+          state.particles.push({
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * spd,
+            vy: Math.sin(angle) * spd - 1.8,
+            size: 4 + Math.random() * 7,
+            color: color,
+            life: 1.0
+          });
+        }
+      }
+
+      function spawnFloatingText(x, y, text, color) {
+        state.floatingTexts.push({
+          x: x,
+          y: y,
+          text: text,
+          color: color,
+          life: 1.0
+        });
+      }
+
+      function finishGameSession() {
+        const modal = document.getElementById('gameOverModal');
+        const p1 = state.players[0];
+        const p2 = state.players[1];
+
+        document.getElementById('finalP1Name').textContent = p1.name;
+        document.getElementById('finalP1Score').textContent = `${p1.score} pts`;
+        document.getElementById('finalP1Hits').textContent = `${p1.hits} Correct Answers`;
+
+        const p2Box = document.getElementById('finalP2Box');
+        const titleEl = document.getElementById('victoryTitle');
+        const subEl = document.getElementById('victorySubtitle');
+
+        if (state.numPlayers === 2) {
+          p2Box.classList.remove('opacity-40');
+          document.getElementById('finalP2Name').textContent = p2.name;
+          document.getElementById('finalP2Score').textContent = `${p2.score} pts`;
+          document.getElementById('finalP2Hits').textContent = `${p2.hits} Correct Answers`;
+
+          if (p1.score > p2.score) {
+            titleEl.textContent = `🏆 ${p1.name} Wins!`;
+          } else if (p2.score > p1.score) {
+            titleEl.textContent = `🏆 ${p2.name} Wins!`;
+          } else {
+            titleEl.textContent = `🤝 Epic Tie Game!`;
+          }
+          subEl.textContent = `${p1.name} (${p1.score} pts) vs ${p2.name} (${p2.score} pts)`;
+        } else {
+          p2Box.classList.add('opacity-40');
+          document.getElementById('finalP2Name').textContent = 'Questions';
+          document.getElementById('finalP2Score').textContent = `${p1.hits} / ${state.questions.length}`;
+          document.getElementById('finalP2Hits').textContent = 'Completed';
+          titleEl.textContent = `🎉 ${p1.name} Scored ${p1.score} pts!`;
+          subEl.textContent = `You answered ${p1.hits} of ${state.questions.length} questions!`;
+        }
+
+        modal.classList.remove('hidden');
+      }
+
+      // -----------------------------------------------------------------------
+      // 8. ULTRA-CRISP 3D RENDERING:
+      //    - MOSQUITO SLAP: Purple Beekeeper Mosquito-Net Hat + 2 Purple Clapping Gloves
+      //    - CHOP CHOP: 3D Metallic Steel-Mesh Fencing Mask + Long 3D Fencing Sword (`image_2333c3.png`)
+      // -----------------------------------------------------------------------
+      function drawBackgroundAndCamera(cw, ch, time) {
+        if (state.cameraActive && webcamVideo.readyState >= 2) {
+          const tr = getCameraCoverTransform(cw, ch);
+          ctx.save();
+          ctx.translate(cw, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(webcamVideo, cw - tr.offsetX - tr.drawW, tr.offsetY, tr.drawW, tr.drawH);
+          ctx.restore();
+
+          // Subtle vibrant vignette around outer edges only (keeps face 100% bright & sharp!)
+          const vig = ctx.createRadialGradient(cw * 0.5, ch * 0.5, cw * 0.3, cw * 0.5, ch * 0.5, cw * 0.78);
+          vig.addColorStop(0, 'rgba(0,0,0,0)');
+          vig.addColorStop(1, 'rgba(2, 6, 23, 0.38)');
+          ctx.fillStyle = vig;
+          ctx.fillRect(0, 0, cw, ch);
+        } else {
+          // Vibrant 3D Atmospheric Studio Arena when camera is off
+          const grad = ctx.createRadialGradient(cw * 0.5, ch * 0.38, 40, cw * 0.5, ch * 0.5, Math.max(cw, ch) * 0.85);
+          if (state.activeRoundMode === 'mosquito') {
+            grad.addColorStop(0, '#2e1065');
+            grad.addColorStop(0.55, '#1e1b4b');
+            grad.addColorStop(1, '#090d16');
+          } else {
+            grad.addColorStop(0, '#1e293b');
+            grad.addColorStop(0.55, '#0f172a');
+            grad.addColorStop(1, '#020617');
+          }
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, cw, ch);
+
+          // 3D Perspective Floor Grid & Glowing Orbs
+          ctx.save();
+          ctx.strokeStyle = state.activeRoundMode === 'mosquito'
+            ? 'rgba(168, 85, 247, 0.14)'
+            : 'rgba(56, 189, 248, 0.14)';
+          ctx.lineWidth = 1;
+          for (let i = 0; i < 14; i++) {
+            const bx = ((i * 197 + time * 0.025) % cw);
+            const by = ((i * 131 + Math.sin(time * 0.0012 + i) * 40) % ch);
+            ctx.fillStyle = state.activeRoundMode === 'mosquito'
+              ? 'rgba(216, 180, 254, 0.22)'
+              : 'rgba(125, 211, 252, 0.22)';
+            ctx.beginPath();
+            ctx.arc(bx, by, 3.5 + (i % 4), 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+
+        if (state.numPlayers === 2) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([10, 10]);
+          ctx.beginPath();
+          ctx.moveTo(cw / 2, 0);
+          ctx.lineTo(cw / 2, ch);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // Dispatcher: Draws Purple Mosquito-Net Hat in Mosquito Slap mode,
+      // OR 3D Metallic Fencing Mask (`image_2333c3.png`) in Chop Chop mode!
+      function drawARHeadgearForPlayer(p, cw, ch) {
+        if (!state.showHeadgear) return;
+        if (state.activeRoundMode === 'mosquito') {
+          drawPurpleMosquitoNetHat(p, cw, ch);
+        } else {
+          draw3DFencingMask(p, cw, ch);
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // HEADGEAR A (MOSQUITO SLAP): Purple Beekeeper Mosquito-Net Hat (`image.png`)
+      // -----------------------------------------------------------------------
+      function drawPurpleMosquitoNetHat(p, cw, ch) {
+        const hx = p.headX * cw;
+        const hy = p.headY * ch;
+        const baseScale = Math.max(0.75, Math.min(1.28, cw / 960)) * p.headScale;
+        const th = p.theme;
+
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(p.headTilt);
+        ctx.scale(baseScale, baseScale);
+
+        if (!state.cameraActive) {
+          ctx.fillStyle = '#ea580c';
+          ctx.strokeStyle = '#1e1042';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.ellipse(0, 185, 130, 82, 0, Math.PI, 0, false);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#1e1b2e';
+          ctx.beginPath();
+          ctx.ellipse(0, 30, 82, 95, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#fde0c4';
+          ctx.beginPath();
+          ctx.ellipse(0, 15, 62, 74, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(-24, -4, 17, 0, Math.PI * 2);
+          ctx.arc(24, -4, 17, 0, Math.PI * 2);
+          ctx.moveTo(-7, -4);
+          ctx.lineTo(7, -4);
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#be123c';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(0, 32, 18, 0.1, Math.PI - 0.1, false);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        const veilTopY = -46;
+        const veilBottomY = 96;
+        const veilTopHalfW = 122;
+        const veilBotHalfW = 114;
+
+        // 3D Translucent White Cylindrical Mosquito Veil
+        const veilGrad = ctx.createLinearGradient(-veilTopHalfW, 0, veilTopHalfW, 0);
+        veilGrad.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+        veilGrad.addColorStop(0.18, 'rgba(241, 245, 249, 0.28)');
+        veilGrad.addColorStop(0.5, 'rgba(248, 250, 252, 0.20)');
+        veilGrad.addColorStop(0.82, 'rgba(241, 245, 249, 0.30)');
+        veilGrad.addColorStop(1, 'rgba(255, 255, 255, 0.56)');
+
+        ctx.fillStyle = veilGrad;
+        ctx.beginPath();
+        ctx.moveTo(-veilTopHalfW, veilTopY);
+        ctx.lineTo(-veilBotHalfW, veilBottomY);
+        ctx.quadraticCurveTo(0, veilBottomY + 28, veilBotHalfW, veilBottomY);
+        ctx.lineTo(veilTopHalfW, veilTopY);
+        ctx.quadraticCurveTo(0, veilTopY - 18, -veilTopHalfW, veilTopY);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = -104; x <= 104; x += 12) {
+          ctx.moveTo(x, veilTopY);
+          ctx.lineTo(x * 0.94, veilBottomY + 8);
+        }
+        for (let y = veilTopY + 12; y <= veilBottomY; y += 12) {
+          ctx.moveTo(-114, y);
+          ctx.lineTo(114, y + 4);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 4.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-veilTopHalfW, veilTopY + 4);
+        ctx.lineTo(-veilBotHalfW, veilBottomY);
+        ctx.moveTo(veilTopHalfW, veilTopY + 4);
+        ctx.lineTo(veilBotHalfW, veilBottomY);
+        ctx.stroke();
+
+        // Rolled Purple Bottom Rim
+        ctx.fillStyle = th.hatMain;
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(-veilBotHalfW - 6, veilBottomY - 4);
+        ctx.quadraticCurveTo(0, veilBottomY + 26, veilBotHalfW + 6, veilBottomY - 4);
+        ctx.quadraticCurveTo(veilBotHalfW + 10, veilBottomY + 10, veilBotHalfW - 2, veilBottomY + 14);
+        ctx.quadraticCurveTo(0, veilBottomY + 42, -veilBotHalfW + 2, veilBottomY + 14);
+        ctx.quadraticCurveTo(-veilBotHalfW - 10, veilBottomY + 10, -veilBotHalfW - 6, veilBottomY - 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = th.hatLight;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-veilBotHalfW + 14, veilBottomY + 5);
+        ctx.quadraticCurveTo(0, veilBottomY + 29, veilBotHalfW - 14, veilBottomY + 5);
+        ctx.stroke();
+
+        // Left Feather Plume
+        ctx.fillStyle = th.plume;
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-58, -98);
+        ctx.quadraticCurveTo(-115, -135, -162, -124);
+        ctx.lineTo(-148, -110);
+        ctx.lineTo(-175, -102);
+        ctx.lineTo(-152, -88);
+        ctx.lineTo(-168, -78);
+        ctx.lineTo(-132, -72);
+        ctx.lineTo(-142, -60);
+        ctx.quadraticCurveTo(-96, -64, -55, -74);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 3D Shaded Purple Hat Dome
+        const domeGrad = ctx.createRadialGradient(-22, -110, 10, 0, -90, 95);
+        domeGrad.addColorStop(0, th.hatLight);
+        domeGrad.addColorStop(0.55, th.hatMain);
+        domeGrad.addColorStop(1, th.hatDark);
+        ctx.fillStyle = domeGrad;
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-78, -66);
+        ctx.bezierCurveTo(-82, -138, 82, -138, 78, -66);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Brown Hatband + Gold Buckle
+        ctx.fillStyle = th.band;
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-78, -82);
+        ctx.quadraticCurveTo(0, -94, 78, -82);
+        ctx.lineTo(81, -64);
+        ctx.quadraticCurveTo(0, -76, -81, -64);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = th.buckle;
+        ctx.beginPath();
+        ctx.moveTo(28, -86);
+        ctx.lineTo(66, -83);
+        ctx.lineTo(68, -66);
+        ctx.lineTo(26, -69);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Wide Upper Brim
+        ctx.fillStyle = th.hatMain;
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-136, -42);
+        ctx.quadraticCurveTo(0, -82, 136, -42);
+        ctx.quadraticCurveTo(142, -32, 126, -32);
+        ctx.quadraticCurveTo(0, -60, -126, -32);
+        ctx.quadraticCurveTo(-142, -32, -136, -42);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Round Blue-Ring Emblem Badge on Left
+        ctx.save();
+        ctx.translate(-52, -82);
+        ctx.fillStyle = th.badgeRing;
+        ctx.strokeStyle = '#4c1122';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 22, 25, -0.08, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = th.plume;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 7.5, 10, -0.08, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      // -----------------------------------------------------------------------
+      // HEADGEAR B (CHOP CHOP MODE): 3D Metallic Fencing Mask (`image_2333c3.png`)
+      // -----------------------------------------------------------------------
+      function draw3DFencingMask(p, cw, ch) {
+        const hx = p.headX * cw;
+        const hy = p.headY * ch;
+        const baseScale = Math.max(0.76, Math.min(1.30, cw / 950)) * p.headScale;
+
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(p.headTilt);
+        ctx.scale(baseScale, baseScale);
+
+        // Drop shadow for 3D depth
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+        ctx.shadowBlur = 24;
+        ctx.shadowOffsetY = 12;
+
+        // 1. BROAD 3D PADDED SILVER/WHITE FENCING BIB (GORGET / THROAT PROTECTOR)
+        // Faithfully sculpted after the wide curved lower bib in `image_2333c3.png`
+        const bibGrad = ctx.createRadialGradient(0, 88, 12, 0, 95, 130);
+        bibGrad.addColorStop(0, '#f8fafc');
+        bibGrad.addColorStop(0.45, '#e2e8f0');
+        bibGrad.addColorStop(0.78, '#94a3b8');
+        bibGrad.addColorStop(1, '#64748b');
+
+        ctx.fillStyle = bibGrad;
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        // Neck/cheek sides sweeping down into the wide rounded fencing bib
+        ctx.moveTo(-74, -6);
+        ctx.bezierCurveTo(-76, 35, -108, 52, -106, 92);
+        ctx.bezierCurveTo(-104, 146, 104, 146, 106, 92);
+        ctx.bezierCurveTo(108, 52, 76, 35, 74, -6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // 3D Contour shading folds on the fencing bib
+        ctx.strokeStyle = 'rgba(71, 85, 105, 0.35)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-78, 86);
+        ctx.quadraticCurveTo(0, 124, 78, 86);
+        ctx.stroke();
+
+        // 2. 3D METALLIC OUTER BEZEL / CHIN GUARD FRAME AROUND THE MESH VISOR
+        const bezelGrad = ctx.createLinearGradient(-85, -110, 85, 85);
+        bezelGrad.addColorStop(0, '#f1f5f9');
+        bezelGrad.addColorStop(0.35, '#94a3b8');
+        bezelGrad.addColorStop(0.7, '#475569');
+        bezelGrad.addColorStop(1, '#cbd5e1');
+
+        ctx.fillStyle = bezelGrad;
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -122);
+        ctx.bezierCurveTo(92, -122, 92, 12, 0, 82);
+        ctx.bezierCurveTo(-92, 12, -92, -122, 0, -122);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 3. OVAL DARK STEEL WIRE-MESH VISOR DOME (`image_2333c3.png`)
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(0, -114);
+        ctx.bezierCurveTo(82, -114, 82, 4, 0, 68);
+        ctx.bezierCurveTo(-82, 4, -82, -114, 0, -114);
+        ctx.closePath();
+
+        // Semi-translucent dark steel interior so the mask looks 3D & solid while subtly framing the player
+        const meshBg = ctx.createRadialGradient(-18, -52, 10, 0, -25, 105);
+        meshBg.addColorStop(0, 'rgba(30, 41, 59, 0.82)');
+        meshBg.addColorStop(0.6, 'rgba(15, 23, 42, 0.88)');
+        meshBg.addColorStop(1, 'rgba(2, 6, 23, 0.94)');
+        ctx.fillStyle = meshBg;
+        ctx.fill();
+
+        // Clip the 3D curved steel wire-mesh grid inside the oval visor!
+        ctx.clip();
+
+        // Vertical curved 3D steel wires
+        ctx.lineWidth = 1.15;
+        for (let i = -12; i <= 12; i++) {
+          const xTop = i * 6.8;
+          const xMid = i * 8.2;
+          const xBot = i * 6.2;
+          const distFromCenter = Math.abs(i) / 12;
+          const alpha = 0.72 - distFromCenter * 0.38;
+          ctx.strokeStyle = `rgba(226, 232, 240, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(xTop, -118);
+          ctx.quadraticCurveTo(xMid, -22, xBot, 72);
+          ctx.stroke();
+        }
+
+        // Horizontal curved 3D steel wires
+        for (let j = -14; j <= 10; j++) {
+          const yCenter = j * 7.6;
+          const curve = j * 1.4;
+          const distFromCenter = Math.abs(j + 2) / 14;
+          const alpha = 0.72 - distFromCenter * 0.35;
+          ctx.strokeStyle = `rgba(226, 232, 240, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(-88, yCenter - curve);
+          ctx.quadraticCurveTo(0, yCenter + curve, 88, yCenter - curve);
+          ctx.stroke();
+        }
+
+        // 3D Specular sheen on top-left of the steel mesh dome
+        const sheen = ctx.createRadialGradient(-26, -64, 4, -20, -55, 58);
+        sheen.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+        sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = sheen;
+        ctx.fillRect(-90, -120, 180, 195);
+        ctx.restore();
+
+        // Inner metallic rim highlight around the mesh visor
+        ctx.strokeStyle = p.id === 0 ? '#e2e8f0' : '#fca5a5';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -114);
+        ctx.bezierCurveTo(82, -114, 82, 4, 0, 68);
+        ctx.bezierCurveTo(-82, 4, -82, -114, 0, -114);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      // -----------------------------------------------------------------------
+      // WEAPON A (MOSQUITO SLAP): Cartoon Long-Cuff Purple Clapping Gloves (`image.png`)
+      // -----------------------------------------------------------------------
+      function drawSingleCartoonGlove(gx, gy, angle, scale, isRightHand, th, slapBoost) {
+        ctx.save();
+        ctx.translate(gx, gy);
+        ctx.rotate(angle);
+        const s = scale * (1 + slapBoost * 0.20);
+        ctx.scale(isRightHand ? s : -s, s);
+
+        if (slapBoost > 0.08) {
+          ctx.save();
+          ctx.strokeStyle = '#e879f9';
+          ctx.lineWidth = 4;
+          ctx.globalAlpha = slapBoost;
+          ctx.beginPath();
+          ctx.arc(0, -25, 45 + (1 - slapBoost) * 38, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 3D shaded purple glove gradient
+        const gloveGrad = ctx.createLinearGradient(-26, -60, 26, 65);
+        gloveGrad.addColorStop(0, th.gloveLight);
+        gloveGrad.addColorStop(0.5, th.gloveMain);
+        gloveGrad.addColorStop(1, th.gloveDark);
+
+        ctx.fillStyle = gloveGrad;
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 4.5;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
+        ctx.beginPath();
+        ctx.moveTo(-24, 68);
+        ctx.quadraticCurveTo(-30, 62, -23, 54);
+        ctx.quadraticCurveTo(-24, 15, -24, -44);
+        ctx.bezierCurveTo(-24, -64, -10, -66, -9, -48);
+        ctx.bezierCurveTo(-9, -68, 6, -68, 6, -46);
+        ctx.bezierCurveTo(6, -62, 19, -58, 19, -38);
+        ctx.quadraticCurveTo(22, -8, 25, 18);
+        ctx.quadraticCurveTo(24, 42, 23, 54);
+        ctx.quadraticCurveTo(30, 62, 24, 68);
+        ctx.quadraticCurveTo(0, 74, -24, 68);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Highlight on fingers
+        ctx.fillStyle = th.gloveLight;
+        ctx.beginPath();
+        ctx.ellipse(-6, -10, 9, 26, -0.05, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Finger divider seams
+        ctx.strokeStyle = th.outline;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(-9, -48);
+        ctx.lineTo(-7, -6);
+        ctx.moveTo(6, -46);
+        ctx.lineTo(7, -4);
+        ctx.moveTo(11, -14);
+        ctx.quadraticCurveTo(2, 8, 14, 26);
+        ctx.moveTo(-21, 55);
+        ctx.quadraticCurveTo(0, 60, 21, 55);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      // -----------------------------------------------------------------------
+      // WEAPON B (CHOP CHOP): Extra-Long 3D Metallic Fencing Sword (`image_2333c3.png`)
+      //   + Volumetric Multi-Layer Slash Ribbon & Dynamic Lunge Animation
+      // -----------------------------------------------------------------------
+      function draw3DFencingSwordAndTrail(p, cw, ch, now) {
+        const hx = p.handX * cw;
+        const hy = p.handY * ch;
+        const bladeLen = getFencingSwordBladeLength(cw, p);
+
+        // 1. VOLUMETRIC 3D SWORD SLASH RIBBON TRAIL
+        if (p.trail.length > 2) {
+          ctx.save();
+          for (let i = 1; i < p.trail.length; i++) {
+            const pt0 = p.trail[i - 1];
+            const pt1 = p.trail[i];
+            const x0 = (pt0.tipX !== undefined ? pt0.tipX : pt0.x) * cw;
+            const y0 = (pt0.tipY !== undefined ? pt0.tipY : pt0.y) * ch;
+            const x1 = (pt1.tipX !== undefined ? pt1.tipX : pt1.x) * cw;
+            const y1 = (pt1.tipY !== undefined ? pt1.tipY : pt1.y) * ch;
+
+            // Outer glowing energy wake
+            ctx.strokeStyle = p.theme.swordColor;
+            ctx.globalAlpha = pt1.life * 0.45;
+            ctx.lineWidth = pt1.life * 26;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+
+            // Inner razor-sharp white steel core
+            ctx.strokeStyle = '#ffffff';
+            ctx.globalAlpha = pt1.life * 0.92;
+            ctx.lineWidth = pt1.life * 7;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // 2. 3D METALLIC FENCING SWORD (SABRE / EPEE FROM `image_2333c3.png`)
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(p.swordAngle);
+
+        // Subtle 3D drop shadow under the sword
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 6;
+
+        // A. Curved Metallic Knuckle-Bow Guard Loop (connecting Bell Guard to Pommel, exact match to `image_2333c3.png`)
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(6, 28);
+        ctx.bezierCurveTo(-18, 48, -68, 36, -78, 6);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // B. Ergonomic Ribbed Black Handle Grip (`#111827` -> `#374151`)
+        const gripGrad = ctx.createLinearGradient(-74, -8, -74, 8);
+        gripGrad.addColorStop(0, '#4b5563');
+        gripGrad.addColorStop(0.5, '#1f2937');
+        gripGrad.addColorStop(1, '#090d16');
+        ctx.fillStyle = gripGrad;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        roundRect(ctx, -74, -7.5, 62, 15, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        // Metallic ferrule collar near bell guard
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(-18, -8.5, 10, 17);
+
+        // C. Spherical 3D Metallic Pommel at back of handle (`image_2333c3.png`)
+        const pommelGrad = ctx.createRadialGradient(-82, -3, 1, -80, 0, 11);
+        pommelGrad.addColorStop(0, '#ffffff');
+        pommelGrad.addColorStop(0.5, '#94a3b8');
+        pommelGrad.addColorStop(1, '#334155');
+        ctx.fillStyle = pommelGrad;
+        ctx.beginPath();
+        ctx.arc(-80, 0, 9.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // D. LONG GLEAMING 3D TAPERED STEEL BLADE (Extending `bladeLen` pixels!)
+        // Upper sunlit bevel (bright white/silver)
+        const upperBladeGrad = ctx.createLinearGradient(12, 0, bladeLen, 0);
+        upperBladeGrad.addColorStop(0, '#e2e8f0');
+        upperBladeGrad.addColorStop(0.5, '#ffffff');
+        upperBladeGrad.addColorStop(0.85, '#bae6fd');
+        upperBladeGrad.addColorStop(1, '#ffffff');
+
+        ctx.fillStyle = upperBladeGrad;
+        ctx.beginPath();
+        ctx.moveTo(12, -6.5);
+        ctx.lineTo(bladeLen - 16, -2.2);
+        ctx.lineTo(bladeLen, 0);
+        ctx.lineTo(12, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        // Lower shaded steel bevel
+        const lowerBladeGrad = ctx.createLinearGradient(12, 0, bladeLen, 0);
+        lowerBladeGrad.addColorStop(0, '#475569');
+        lowerBladeGrad.addColorStop(0.6, '#94a3b8');
+        lowerBladeGrad.addColorStop(1, '#e2e8f0');
+
+        ctx.fillStyle = lowerBladeGrad;
+        ctx.beginPath();
+        ctx.moveTo(12, 0);
+        ctx.lineTo(bladeLen, 0);
+        ctx.lineTo(bladeLen - 16, 2.2);
+        ctx.lineTo(12, 6.5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Central fuller ridge highlight along the blade
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(16, 0);
+        ctx.lineTo(bladeLen - 4, 0);
+        ctx.stroke();
+
+        // E. 3D Sculpted Hemispherical Metallic Bell Guard (Cup Hilt from `image_2333c3.png`)
+        const bellGrad = ctx.createRadialGradient(4, -10, 3, 2, 0, 34);
+        bellGrad.addColorStop(0, '#ffffff');
+        bellGrad.addColorStop(0.35, '#e2e8f0');
+        bellGrad.addColorStop(0.72, '#64748b');
+        bellGrad.addColorStop(1, '#1e293b');
+
+        ctx.fillStyle = bellGrad;
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        // Cup curve facing forward toward the blade
+        ctx.moveTo(14, -30);
+        ctx.bezierCurveTo(-18, -28, -18, 28, 14, 30);
+        ctx.quadraticCurveTo(20, 0, 14, -30);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Rolled front lip of the Bell Guard
+        ctx.fillStyle = '#cbd5e1';
+        ctx.beginPath();
+        ctx.ellipse(14, 0, 4.5, 31, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // F. Animated Star-Glint at the Tip of the Long Fencing Sword!
+        const glintPulse = 0.75 + Math.sin(now * 0.015) * 0.25 + p.swordLunge * 0.5;
+        ctx.save();
+        ctx.translate(bladeLen, 0);
+        ctx.scale(glintPulse, glintPulse);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          ctx.rotate(Math.PI / 2);
+          ctx.moveTo(0, 0);
+          ctx.quadraticCurveTo(2, -3, 14, 0);
+          ctx.quadraticCurveTo(2, 3, 0, 0);
+        }
+        ctx.fill();
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      function drawPlayerHandWeapon(p, cw, ch, now) {
+        if (!state.showHandGear) return;
+
+        if (state.activeRoundMode === 'mosquito') {
+          const baseScale = Math.max(0.78, Math.min(1.18, cw / 980));
+          drawSingleCartoonGlove(
+            p.leftHand.x * cw,
+            p.leftHand.y * ch,
+            p.leftHand.angle,
+            baseScale * p.leftHand.scale,
+            false,
+            p.theme,
+            p.slapAnim
+          );
+          drawSingleCartoonGlove(
+            p.rightHand.x * cw,
+            p.rightHand.y * ch,
+            p.rightHand.angle,
+            baseScale * p.rightHand.scale,
+            true,
+            p.theme,
+            p.slapAnim
+          );
+        } else {
+          draw3DFencingSwordAndTrail(p, cw, ch, now);
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 3D VOLUMETRIC MOSQUITO & 3D JUICY FRUIT TARGETS
+      // -----------------------------------------------------------------------
+      function drawMosquitoTarget(t, time) {
+        ctx.save();
+        ctx.translate(t.x, t.y);
+
+        const facingLeft = t.vx < 0;
+        const bobY = Math.sin(time * 0.012 + t.wobblePhase) * 5;
+        ctx.translate(0, bobY);
+
+        // Minimalist 3D Glassmorphic Option Pill below Mosquito
+        const cardW = Math.max(145, Math.min(210, t.text.length * 8.0 + 52));
+        const cardH = 40;
+        const cardY = 24;
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-12, 8);
+        ctx.lineTo(-cardW * 0.28, cardY);
+        ctx.moveTo(12, 8);
+        ctx.lineTo(cardW * 0.28, cardY);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        ctx.shadowBlur = 14;
+        ctx.shadowOffsetY = 5;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+        ctx.strokeStyle = t.color.main;
+        ctx.lineWidth = 2.5;
+        roundRect(ctx, -cardW / 2, cardY, cardW, cardH, 13);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.fillStyle = t.color.main;
+        roundRect(ctx, -cardW / 2 + 5, cardY + 5, 30, 30, 8);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Fredoka, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t.letter, -cardW / 2 + 20, cardY + 20);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '600 13px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        const displayStr = t.text.length > 22 ? t.text.slice(0, 20) + '…' : t.text;
+        ctx.fillText(displayStr, -cardW / 2 + 42, cardY + 20);
+
+        // 3D Shaded Mosquito Body & Iridescent Flapping Wings
+        ctx.save();
+        if (!facingLeft) ctx.scale(-1, 1);
+
+        const wingFlap = Math.sin(time * 0.095 + t.wingPhase) * 0.58;
+        const wingGrad = ctx.createLinearGradient(0, -28, 20, 0);
+        wingGrad.addColorStop(0, 'rgba(255, 255, 255, 0.90)');
+        wingGrad.addColorStop(0.6, 'rgba(186, 230, 253, 0.72)');
+        wingGrad.addColorStop(1, 'rgba(56, 189, 248, 0.35)');
+        ctx.fillStyle = wingGrad;
+        ctx.strokeStyle = '#7dd3fc';
+        ctx.lineWidth = 1.2;
+
+        ctx.save();
+        ctx.translate(4, -12);
+        ctx.rotate(wingFlap - 0.3);
+        ctx.beginPath();
+        ctx.ellipse(10, -14, 23, 9.5, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(-4, -10);
+        ctx.rotate(-wingFlap + 0.2);
+        ctx.beginPath();
+        ctx.ellipse(6, -12, 19, 7.5, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Legs
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.2;
+        for (let l = -1; l <= 1; l++) {
+          ctx.beginPath();
+          ctx.moveTo(l * 8, 4);
+          ctx.lineTo(l * 14, 15);
+          ctx.lineTo(l * 18, 22);
+          ctx.stroke();
+        }
+
+        // 3D Striped Abdomen
+        const abdGrad = ctx.createRadialGradient(14, -2, 2, 18, 2, 20);
+        abdGrad.addColorStop(0, '#64748b');
+        abdGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = abdGrad;
+        ctx.beginPath();
+        ctx.ellipse(18, 2, 19, 10.5, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = t.color.main;
+        for (let s = 8; s <= 26; s += 7) {
+          ctx.fillRect(s, -5, 3.5, 14);
+        }
+
+        // 3D Thorax & Head
+        const thxGrad = ctx.createRadialGradient(-4, -6, 2, 0, -2, 14);
+        thxGrad.addColorStop(0, '#475569');
+        thxGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = thxGrad;
+        ctx.beginPath();
+        ctx.arc(0, -2, 11.5, 0, Math.PI * 2);
+        ctx.arc(-14, -4, 9.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Proboscis
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(-22, -4);
+        ctx.lineTo(-44, -1);
+        ctx.stroke();
+
+        // 3D Glossy Eyes
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-17, -7, 5.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(-18.5, -7, 3.0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-19.5, -8.2, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+        ctx.restore();
+      }
+
+      function drawFruitTarget(t) {
+        ctx.save();
+        ctx.translate(t.x, t.y);
+
+        // 3D Spherical Fruit with Specular Highlight & Rim Lighting
+        ctx.save();
+        ctx.rotate(t.rotation);
+        const r = t.radius * 0.80;
+
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 18;
+        ctx.shadowOffsetY = 8;
+
+        // Outer 3D Rind
+        ctx.fillStyle = t.color.dark;
+        ctx.strokeStyle = t.color.rim;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // 3D Radial Flesh Gradient
+        const fleshGrad = ctx.createRadialGradient(-r * 0.32, -r * 0.32, r * 0.08, 0, 0, r * 0.88);
+        fleshGrad.addColorStop(0, t.color.light);
+        fleshGrad.addColorStop(0.45, t.color.main);
+        fleshGrad.addColorStop(1, t.color.dark);
+        ctx.fillStyle = fleshGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glossy 3D Specular Shine
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(-r * 0.32, -r * 0.32, r * 0.26, r * 0.14, -0.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Seeds
+        ctx.fillStyle = '#0f172a';
+        for (let a = 0; a < 6; a++) {
+          const ang = (a / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(Math.cos(ang) * (r * 0.45), Math.sin(ang) * (r * 0.45), 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Floating Minimalist Option Pill
+        const cardW = Math.max(145, Math.min(215, t.text.length * 8.2 + 52));
+        const cardH = 40;
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+        ctx.strokeStyle = t.color.light;
+        ctx.lineWidth = 2.5;
+        roundRect(ctx, -cardW / 2, -cardH / 2, cardW, cardH, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = t.color.main;
+        roundRect(ctx, -cardW / 2 + 5, -cardH / 2 + 5, 30, 30, 8);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Fredoka, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t.letter, -cardW / 2 + 20, 0);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 13px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        const displayStr = t.text.length > 22 ? t.text.slice(0, 20) + '…' : t.text;
+        ctx.fillText(displayStr, -cardW / 2 + 42, 0);
+
+        ctx.restore();
+      }
+
+      function drawSlicedHalf(h) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, h.alpha);
+        ctx.translate(h.x, h.y);
+        ctx.rotate(h.rotation);
+
+        ctx.fillStyle = h.color.dark;
+        ctx.strokeStyle = h.color.rim || '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, h.radius * 0.78, 0, Math.PI, h.side > 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = h.color.main;
+        ctx.beginPath();
+        ctx.arc(0, 0, h.radius * 0.66, 0, Math.PI, h.side > 0);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function roundRect(context, x, y, w, h, r) {
+        context.beginPath();
+        context.moveTo(x + r, y);
+        context.arcTo(x + w, y, x + w, y + h, r);
+        context.arcTo(x + w, y + h, x, y + h, r);
+        context.arcTo(x, y + h, x, y, r);
+        context.arcTo(x, y, x + w, y, r);
+        context.closePath();
+      }
+
+      // -----------------------------------------------------------------------
+      // 9. MAIN ANIMATION & PHYSICS LOOP (60FPS HiDPI)
+      // -----------------------------------------------------------------------
+      let lastTime = performance.now();
+
+      function gameLoop(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+
+        processWebcamMotion();
+
+        const cw = state.viewW;
+        const ch = state.viewH;
+        const setupOpen = !document.getElementById('setupScreen').classList.contains('hidden');
+
+        if (state.inGame && !setupOpen) {
+          if (!state.roundResolved) {
+            state.questionTimer = Math.max(0, state.questionTimer - dt);
+            const pct = (state.questionTimer / state.questionMaxTime) * 100;
+            const timerBar = document.getElementById('hudTimerBar');
+            if (timerBar) timerBar.style.width = `${pct}%`;
+
+            if (state.questionTimer <= 0) {
+              state.roundResolved = true;
+              const qObj = state.questions[state.currentQIndex];
+              const rightLet = qObj ? OPTION_LETTERS[qObj.correct] : '';
+              spawnFloatingText(cw / 2, ch / 2, `⏰ TIME UP! Correct was ${rightLet}`, '#fbbf24');
+              setTimeout(() => {
+                if (!state.inGame) return;
+                state.currentQIndex++;
+                loadCurrentQuestion();
+              }, 1250);
+            }
+          }
+        }
+
+        // 1. Draw High-Res Mirrored Camera or 3D Arena Backdrop
+        drawBackgroundAndCamera(cw, ch, now);
+
+        // 2. Draw Mode-Specific 3D Headgear:
+        //    - Mosquito Slap: Purple Beekeeper Mosquito-Net Hat
+        //    - Chop Chop: 3D Metallic Fencing Mask (`image_2333c3.png`)
+        drawARHeadgearForPlayer(state.players[0], cw, ch);
+        if (state.numPlayers === 2) {
+          drawARHeadgearForPlayer(state.players[1], cw, ch);
+        }
+
+        // 3. Draw Splat Marks
+        for (let i = state.splats.length - 1; i >= 0; i--) {
+          const s = state.splats[i];
+          s.alpha -= dt * 0.45;
+          if (s.alpha <= 0) {
+            state.splats.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.globalAlpha = s.alpha;
+          ctx.fillStyle = s.color;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 34, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // 4. Draw Player's Gloves (Mosquito Slap) OR Long 3D Fencing Sword (Chop Chop)
+        state.players.forEach((p, idx) => {
+          if (idx === 1 && state.numPlayers === 1) return;
+          p.slapAnim = Math.max(0, p.slapAnim - dt * 3.8);
+          p.swordLunge = Math.max(0, p.swordLunge - dt * 3.2);
+          if (p.clapCooldown > 0) p.clapCooldown--;
+          for (let t = p.trail.length - 1; t >= 0; t--) {
+            p.trail[t].life -= dt * 3.8;
+            if (p.trail[t].life <= 0) p.trail.splice(t, 1);
+          }
+          drawPlayerHandWeapon(p, cw, ch, now);
+        });
+
+        // 5. Update & Draw Targets (3D Mosquitoes OR 3D Flying Fruits)
+        let activeFruitCount = 0;
+        for (let i = 0; i < state.targets.length; i++) {
+          const t = state.targets[i];
+          if (t.cooldown > 0) t.cooldown--;
+          if (!t.alive) continue;
+
+          if (state.activeRoundMode === 'mosquito') {
+            t.x += t.vx + Math.sin(now * 0.006 + t.wobblePhase) * 1.1;
+            t.y += t.vy + Math.cos(now * 0.007 + t.wobblePhase) * 1.1;
+
+            const padX = 95;
+            const padTop = 55;
+            const padBottom = 85;
+            if (t.x < padX) { t.x = padX; t.vx = Math.abs(t.vx); }
+            if (t.x > cw - padX) { t.x = cw - padX; t.vx = -Math.abs(t.vx); }
+            if (t.y < padTop) { t.y = padTop; t.vy = Math.abs(t.vy); }
+            if (t.y > ch - padBottom) { t.y = ch - padBottom; t.vy = -Math.abs(t.vy); }
+
+            drawMosquitoTarget(t, now);
+          } else {
+            t.x += t.vx;
+            t.y += t.vy;
+            t.vy += t.gravity;
+            t.rotation += t.rotSpeed;
+
+            if (t.x < 85) { t.x = 85; t.vx = Math.abs(t.vx); }
+            if (t.x > cw - 85) { t.x = cw - 85; t.vx = -Math.abs(t.vx); }
+
+            if (t.y < ch + 110) {
+              activeFruitCount++;
+            }
+            drawFruitTarget(t);
+          }
+        }
+
+        if (state.activeRoundMode === 'chop' && !state.roundResolved && activeFruitCount === 0) {
+          launchFruitWave();
+        }
+
+        // 6. Sliced Halves, Juice Droplets & Sword Sparks
+        for (let i = state.slicedHalves.length - 1; i >= 0; i--) {
+          const h = state.slicedHalves[i];
+          h.x += h.vx;
+          h.y += h.vy;
+          h.vy += 0.28;
+          h.rotation += h.rotSpeed;
+          h.alpha -= dt * 0.7;
+          if (h.alpha <= 0 || h.y > ch + 100) {
+            state.slicedHalves.splice(i, 1);
+            continue;
+          }
+          drawSlicedHalf(h);
+        }
+
+        for (let i = state.particles.length - 1; i >= 0; i--) {
+          const pt = state.particles[i];
+          pt.x += pt.vx;
+          pt.y += pt.vy;
+          pt.vy += 0.20;
+          pt.life -= dt * 1.4;
+          if (pt.life <= 0) {
+            state.particles.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.globalAlpha = pt.life;
+          ctx.fillStyle = pt.color;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        for (let i = state.swordSparks.length - 1; i >= 0; i--) {
+          const sp = state.swordSparks[i];
+          sp.x += sp.vx;
+          sp.y += sp.vy;
+          sp.life -= dt * 2.6;
+          if (sp.life <= 0) {
+            state.swordSparks.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.globalAlpha = sp.life;
+          ctx.fillStyle = sp.color;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // 7. Floating Score / Feedback Texts
+        for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+          const ft = state.floatingTexts[i];
+          ft.y -= 1.5;
+          ft.life -= dt * 0.95;
+          if (ft.life <= 0) {
+            state.floatingTexts.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.globalAlpha = ft.life;
+          ctx.font = 'bold 23px Fredoka, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 5;
+          ctx.strokeText(ft.text, ft.x, ft.y);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, ft.x, ft.y);
+          ctx.restore();
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // -----------------------------------------------------------------------
+      // 10. EVENT LISTENERS (POP-UP SETUP, BULK PASTE, POINTER & HOTKEYS)
+      // -----------------------------------------------------------------------
+      function initEvents() {
+        document.getElementById('btnSelect1P').addEventListener('click', () => setPlayersCount(1));
+        document.getElementById('btnSelect2P').addEventListener('click', () => setPlayersCount(2));
+
+        document.getElementById('btnModeMosquito').addEventListener('click', () => setGameMode('mosquito'));
+        document.getElementById('btnModeChop').addEventListener('click', () => setGameMode('chop'));
+        document.getElementById('btnModeCombo').addEventListener('click', () => setGameMode('combo'));
+
+        document.getElementById('btnTestCameraSetup').addEventListener('click', () => startCamera(false));
+
+        // Cancel button on Setup Modal -> closes modal and plays immediately
+        document.getElementById('btnCancelSetupModal').addEventListener('click', startGameSession);
+
+        // Folder / Preset Pack selector
+        document.getElementById('selectPresetPack').addEventListener('change', (e) => {
+          const val = e.target.value;
+          if (val && PRESET_DECKS[val]) {
+            state.questions = JSON.parse(JSON.stringify(PRESET_DECKS[val]));
+            state.setupActiveIdx = 0;
+            saveQuestionsToStorage();
+            renderQuestionList();
+            showToast(`Loaded "${e.target.options[e.target.selectedIndex].text}"!`, '📚');
+          }
+        });
+
+        // Question Pager bar inside the blue banner (switches question without scrolling!)
+        document.getElementById('questionPagerBar').addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-page-idx]');
+          if (!btn) return;
+          syncCurrentCardToState();
+          state.setupActiveIdx = parseInt(btn.getAttribute('data-page-idx'), 10) || 0;
+          renderQuestionList();
+        });
+
+        // Live sync when editing inputs in the Setup Card
+        ['inputQuestionText', 'inputOpt0', 'inputOpt1', 'inputOpt2', 'inputOpt3'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('input', syncCurrentCardToState);
+        });
+        document.querySelectorAll('input[name="correctOption"]').forEach(r => {
+          r.addEventListener('change', syncCurrentCardToState);
+        });
+
+        // + Option / - Option buttons (matching `image_232f61.png`)
+        document.getElementById('btnAddOptionField').addEventListener('click', () => {
+          const opt2 = document.getElementById('optBox2');
+          const opt3 = document.getElementById('optBox3');
+          if (opt2.classList.contains('hidden')) {
+            opt2.classList.remove('hidden');
+            showToast('Added Option 3', '➕');
+          } else if (opt3.classList.contains('hidden')) {
+            opt3.classList.remove('hidden');
+            showToast('Added Option 4', '➕');
+          } else {
+            showToast('Maximum 4 options active!', '✨');
+          }
+        });
+
+        document.getElementById('btnRemoveOptionField').addEventListener('click', () => {
+          const opt3 = document.getElementById('optBox3');
+          if (!opt3.classList.contains('hidden')) {
+            opt3.classList.add('hidden');
+            document.getElementById('inputOpt3').value = 'None';
+            showToast('Hid Option 4', '➖');
+          } else {
+            showToast('Minimum 3 options kept active', 'ℹ️');
+          }
+        });
+
+        // Delete current question
+        document.getElementById('btnDeleteCurrentQuestion').addEventListener('click', () => {
+          if (state.questions.length <= 1) {
+            showToast('At least 1 question is required!', '⚠️');
+            return;
+          }
+          state.questions.splice(state.setupActiveIdx, 1);
+          if (state.setupActiveIdx >= state.questions.length) {
+            state.setupActiveIdx = state.questions.length - 1;
+          }
+          saveQuestionsToStorage();
+          renderQuestionList();
+          showToast('Question deleted', '🗑️');
+        });
+
+        // Clear all questions
+        document.getElementById('btnClearQuestions').addEventListener('click', () => {
+          state.questions = [
+            {
+              id: 'q_' + Date.now(),
+              q: '',
+              options: ['', '', '', ''],
+              correct: 0
+            }
+          ];
+          state.setupActiveIdx = 0;
+          saveQuestionsToStorage();
+          renderQuestionList();
+          document.getElementById('inputQuestionText').focus();
+          showToast('Reset deck to Question #1!', '🗑️');
+        });
+
+        // "+ Add Another Question" dashed button & "+ Add Question to Game" submit button
+        function addNewBlankOrSaveQuestion() {
+          syncCurrentCardToState();
+          const cur = state.questions[state.setupActiveIdx];
+          if (cur && !cur.q.trim()) {
+            document.getElementById('inputQuestionText').focus();
+            showToast('Type your current question first!', '✏️');
+            return;
+          }
+          state.questions.push({
+            id: 'q_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+            q: '',
+            options: ['', '', '', ''],
+            correct: 0
+          });
+          state.setupActiveIdx = state.questions.length - 1;
+          saveQuestionsToStorage();
+          renderQuestionList();
+          document.getElementById('inputQuestionText').focus();
+          showToast(`Added Question #${state.setupActiveIdx + 1}!`, '➕');
+        }
+
+        document.getElementById('btnAddAnotherQuestionCard').addEventListener('click', addNewBlankOrSaveQuestion);
+
+        const form = document.getElementById('questionForm');
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          addNewBlankOrSaveQuestion();
+        });
+
+        // Bulk Paste Modal handlers
+        const bulkModal = document.getElementById('bulkPasteModal');
+        document.getElementById('btnOpenBulkPaste').addEventListener('click', () => {
+          document.getElementById('bulkModalTitle').textContent = '📋 Bulk Paste Questions';
+          bulkModal.classList.remove('hidden');
+        });
+        document.getElementById('btnHowToBulkPaste').addEventListener('click', () => {
+          document.getElementById('bulkModalTitle').textContent = '▶️ How to Bulk Paste (1 Line = 1 Question)';
+          document.getElementById('textareaBulkPaste').value =
+            'What is 8 × 7? | 54 | 56 | 64 | 48 | 2\n' +
+            'Which insect buzzes and bites? | Mosquito | Butterfly | Ladybug | Ant | 1\n' +
+            'What protective mask do fencers wear? | Wire-Mesh Fencing Mask | Sun Visor | Beret | Crown | 1';
+          bulkModal.classList.remove('hidden');
+        });
+        document.getElementById('btnCloseBulkModal').addEventListener('click', () => {
+          bulkModal.classList.add('hidden');
+        });
+        document.getElementById('btnFillBulkExample').addEventListener('click', () => {
+          document.getElementById('textareaBulkPaste').value =
+            'What is 12 × 12? | 124 | 144 | 164 | 112 | 2\n' +
+            'Largest planet in our Solar System? | Earth | Mars | Jupiter | Venus | 3\n' +
+            'Capital city of Japan? | Seoul | Tokyo | Bangkok | Hanoi | 2';
+        });
+        document.getElementById('btnImportBulkQuestions').addEventListener('click', () => {
+          const raw = document.getElementById('textareaBulkPaste').value.trim();
+          if (!raw) {
+            showToast('Paste at least one line first!', '⚠️');
+            return;
+          }
+          const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          let added = 0;
+          lines.forEach(line => {
+            const parts = line.split('|').map(s => s.trim());
+            if (parts.length >= 5) {
+              const qStr = parts[0];
+              const opts = [parts[1], parts[2], parts[3], parts[4] || 'Option 4'];
+              const corrNum = parseInt(parts[5], 10);
+              const corrIdx = (!isNaN(corrNum) && corrNum >= 1 && corrNum <= 4) ? (corrNum - 1) : 0;
+              state.questions.push({
+                id: 'qb_' + Date.now() + '_' + Math.random(),
+                q: qStr,
+                options: opts,
+                correct: corrIdx
+              });
+              added++;
+            }
+          });
+          if (added > 0) {
+            // Remove any empty placeholder question
+            state.questions = state.questions.filter(q => q.q && q.q.trim().length > 0);
+            state.setupActiveIdx = state.questions.length - 1;
+            saveQuestionsToStorage();
+            renderQuestionList();
+            bulkModal.classList.add('hidden');
+            showToast(`Imported ${added} question(s)!`, '✅');
+          } else {
+            showToast('Use format: Question | Opt1 | Opt2 | Opt3 | Opt4 | Correct(1-4)', '⚠️');
+          }
+        });
+
+        // Save Quiz / Launch Arena Buttons
+        document.getElementById('btnSaveQuizModal').addEventListener('click', () => {
+          syncCurrentCardToState();
+          state.questions = state.questions.filter(q => q.q && q.q.trim().length > 0);
+          startGameSession();
+          showToast('Quiz Saved! Game Arena Launched!', '💾');
+        });
+        document.getElementById('btnStartGameTop').addEventListener('click', () => {
+          // Filter out empty trailing questions before starting
+          syncCurrentCardToState();
+          state.questions = state.questions.filter(q => q.q && q.q.trim().length > 0);
+          startGameSession();
+          showToast('Quiz Saved! Game Arena Launched!', '🚀');
+        });
+        document.getElementById('btnStartGameBottom').addEventListener('click', () => {
+          syncCurrentCardToState();
+          state.questions = state.questions.filter(q => q.q && q.q.trim().length > 0);
+          startGameSession();
+        });
+
+        // In-Game HUD Controls
+        document.getElementById('btnToggleModeInGame').addEventListener('click', () => {
+          state.activeRoundMode = state.activeRoundMode === 'mosquito' ? 'chop' : 'mosquito';
+          updateInGameHUD();
+          spawnTargetsForCurrentQuestion();
+          showToast(
+            state.activeRoundMode === 'mosquito'
+              ? 'Mosquito Slap Mode (Purple Net Hat + 2 Gloves)!'
+              : 'Chop Chop Mode (3D Fencing Mask + Long Fencing Sword)!',
+            state.activeRoundMode === 'mosquito' ? '🦟' : '🤺'
+          );
+        });
+
+        document.getElementById('btnToggleCamInGame').addEventListener('click', () => {
+          startCamera(false);
+        });
+
+        document.getElementById('btnToggleNetInGame').addEventListener('click', () => {
+          state.showHeadgear = !state.showHeadgear;
+          updateInGameHUD();
+        });
+
+        document.getElementById('btnPauseOrSetup').addEventListener('click', () => {
+          renderQuestionList();
+          document.getElementById('setupScreen').classList.remove('hidden');
+        });
+
+        document.getElementById('hudOptionsBar').addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-option-idx]');
+          if (!btn || !state.inGame || state.roundResolved) return;
+          const optIdx = parseInt(btn.getAttribute('data-option-idx'), 10);
+          const target = state.targets.find(t => t.optionIndex === optIdx && t.alive);
+          if (target) {
+            const cw = state.viewW || 1;
+            const ch = state.viewH || 1;
+            updatePlayerHandPosition(0, target.x / cw, target.y / ch, false);
+            triggerTargetHit(0, target);
+          }
+        });
+
+        document.getElementById('btnPlayAgain').addEventListener('click', startGameSession);
+        document.getElementById('btnBackToSetup').addEventListener('click', () => {
+          document.getElementById('gameOverModal').classList.add('hidden');
+          renderQuestionList();
+          document.getElementById('setupScreen').classList.remove('hidden');
+        });
+
+        let isPointerDown = false;
+
+        function handleCanvasPointer(clientX, clientY, isClickTap) {
+          const rect = gameCanvas.getBoundingClientRect();
+          const normX = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+          const normY = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+
+          const playerIdx = (state.numPlayers === 2 && normX >= 0.5) ? 1 : 0;
+          const p = state.players[playerIdx];
+          if (isClickTap) {
+            p.slapAnim = 1.0;
+            p.swordLunge = 1.0;
+          }
+          updatePlayerHandPosition(playerIdx, normX, normY, false);
+
+          if (isClickTap || state.activeRoundMode === 'chop') {
+            checkTargetInteractions(playerIdx, normX, normY, isClickTap);
+          }
+        }
+
+        gameCanvas.addEventListener('pointerdown', (e) => {
+          isPointerDown = true;
+          ensureAudio();
+          handleCanvasPointer(e.clientX, e.clientY, true);
+        });
+
+        gameCanvas.addEventListener('pointermove', (e) => {
+          const rect = gameCanvas.getBoundingClientRect();
+          const normX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          const normY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+          const playerIdx = (state.numPlayers === 2 && normX >= 0.5) ? 1 : 0;
+          updatePlayerHandPosition(playerIdx, normX, normY, false);
+
+          if (state.activeRoundMode === 'chop' || isPointerDown) {
+            checkTargetInteractions(playerIdx, normX, normY, false);
+          }
+        });
+
+        window.addEventListener('pointerup', () => {
+          isPointerDown = false;
+        });
+
+        window.addEventListener('keydown', (e) => {
+          if (state.roundResolved) return;
+          if (!document.getElementById('setupScreen').classList.contains('hidden')) return;
+          if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+
+          const key = e.key.toUpperCase();
+          const p1Map = { 'A': 0, 'B': 1, 'C': 2, 'D': 3, '1': 0, '2': 1, '3': 2, '4': 3 };
+          const p2Map = { 'J': 0, 'K': 1, 'L': 2, ';': 3, '7': 0, '8': 1, '9': 2, '0': 3 };
+
+          if (key in p1Map) {
+            const idx = p1Map[key];
+            const t = state.targets.find(item => item.optionIndex === idx && item.alive);
+            if (t) {
+              state.players[0].slapAnim = 1.0;
+              updatePlayerHandPosition(0, t.x / state.viewW, t.y / state.viewH, false);
+              triggerTargetHit(0, t);
+            }
+          } else if (state.numPlayers === 2 && key in p2Map) {
+            const idx = p2Map[key];
+            const t = state.targets.find(item => item.optionIndex === idx && item.alive);
+            if (t) {
+              state.players[1].slapAnim = 1.0;
+              updatePlayerHandPosition(1, t.x / state.viewW, t.y / state.viewH, false);
+              triggerTargetHit(1, t);
+            }
+          }
+        });
+
+        window.addEventListener('resize', resizeGameCanvas);
+      }
+
+      window.addEventListener('load', () => {
+        resizeGameCanvas();
+        initAmbientNetBugs();
+        renderQuestionList();
+        loadCurrentQuestion();
+        initEvents();
+        requestAnimationFrame(gameLoop);
+      });
+    })();
+  </script>
+</body>
+</html>

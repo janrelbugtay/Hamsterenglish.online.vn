@@ -144,6 +144,32 @@ export const getPoseName = (poseId?: string | null, poseValue?: string | null): 
 };
 
 /**
+ * Animated Floating Score Badge when points are awarded (+1, +5, etc.)
+ */
+function FloatingScoreBadge({ delta, idKey }: { delta: number; idKey: number }) {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    setVisible(true);
+    const timer = setTimeout(() => setVisible(false), 1200);
+    return () => clearTimeout(timer);
+  }, [idKey]);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      key={idKey}
+      className={`absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-none font-black text-xl sm:text-2xl z-50 animate-score-float drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] select-none ${
+        delta > 0 ? 'text-emerald-300' : 'text-rose-400'
+      }`}
+    >
+      {delta > 0 ? `+${delta}` : delta}
+    </div>
+  );
+}
+
+/**
  * Clean Pose & Hand Emoji Display (No person cartoon images).
  * Displays pure vibrant emojis or custom image assets.
  */
@@ -1414,7 +1440,6 @@ function getInitialCameraHandPoses(): string[] {
 function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => void, onSwitchMode?: () => void }) {
   const [gameState, setGameState] = useState<'start' | 'playing' | 'end'>('start');
   const [playMode, setPlayMode] = useState<'studio' | 'camera'>('camera');
-  const [isCameraExpanded, setIsCameraExpanded] = useState(false);
 
   // Persisted pose selections: Classic Mode uses previous yoga poses; Camera Mode uses pure hand gestures
   const [classicPoses, setClassicPoses] = useState<string[]>(getInitialClassicPoses);
@@ -1498,8 +1523,20 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
     }
   };
 
+  const [scorePops, setScorePops] = useState<Record<string, { delta: number; key: number }>>({});
+  const [teamStreaks, setTeamStreaks] = useState<Record<string, number>>({});
+
   const updateTeamScore = (id: string, delta: number) => {
     setTeams(prev => prev.map(t => t.id === id ? { ...t, score: Math.max(0, t.score + delta) } : t));
+    if (delta > 0) {
+      playSound('correct');
+      setScorePops(prev => ({ ...prev, [id]: { delta, key: Date.now() + Math.random() } }));
+      setTeamStreaks(prev => ({ ...prev, [id]: (prev[id] || 0) + delta }));
+    } else if (delta < 0) {
+      playSound('click');
+      setScorePops(prev => ({ ...prev, [id]: { delta, key: Date.now() + Math.random() } }));
+      setTeamStreaks(prev => ({ ...prev, [id]: 0 }));
+    }
   };
 
   const [isAnswering, setIsAnswering] = useState(false);
@@ -1771,17 +1808,27 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
       setShowConfetti(true);
       if (typeof winningPlayerIndex === 'number' && teamsRef.current[winningPlayerIndex]) {
         const winningTeam = teamsRef.current[winningPlayerIndex];
+        const teamId = winningTeam.id;
         setTeams(prev => prev.map((t, idx) => idx === winningPlayerIndex ? { ...t, score: t.score + 1 } : t));
         setRoundWinnerBanner(`🎉 ${winningTeam.name} matched the pose! +1 Point!`);
+        setScorePops(prev => ({ ...prev, [teamId]: { delta: 1, key: Date.now() + Math.random() } }));
+        setTeamStreaks(prev => ({ ...prev, [teamId]: (prev[teamId] || 0) + 1 }));
       } else if (teamsRef.current.length === 1) {
+        const teamId = teamsRef.current[0].id;
         setTeams(prev => prev.map((t, idx) => idx === 0 ? { ...t, score: t.score + 1 } : t));
         setRoundWinnerBanner(`🎉 Awesome Pose! +1 Point!`);
+        setScorePops(prev => ({ ...prev, [teamId]: { delta: 1, key: Date.now() + Math.random() } }));
+        setTeamStreaks(prev => ({ ...prev, [teamId]: (prev[teamId] || 0) + 1 }));
       } else {
         setRoundWinnerBanner(`🎉 Correct Pose!`);
       }
     } else {
       playSound('incorrect');
       setRoundWinnerBanner(`❌ Not quite! Look at the green pose!`);
+      if (typeof winningPlayerIndex === 'number' && teamsRef.current[winningPlayerIndex]) {
+        const teamId = teamsRef.current[winningPlayerIndex].id;
+        setTeamStreaks(prev => ({ ...prev, [teamId]: 0 }));
+      }
     }
 
     if (autoAdvanceDelay === 'manual') {
@@ -1850,6 +1897,14 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
+        // Dynamically sync canvas internal resolution with displayed size
+        const targetW = canvas.clientWidth || window.innerWidth;
+        const targetH = canvas.clientHeight || window.innerHeight;
+        if (canvas.width !== targetW || canvas.height !== targetH) {
+          canvas.width = targetW;
+          canvas.height = targetH;
+        }
+
         const cw = canvas.width;
         const ch = canvas.height;
         ctx.clearRect(0, 0, cw, ch);
@@ -1867,6 +1922,10 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
           }))
         );
 
+        const videoEl = videoRef.current;
+        const videoW = videoEl?.videoWidth || 1280;
+        const videoH = videoEl?.videoHeight || 720;
+
         // Render Spider-Man's hand on the left side and Thanos's Infinity Gauntlet on the right side!
         drawSuperheroHands({
           ctx,
@@ -1879,6 +1938,8 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
             matchedOptionIdx: h.optionIdx
           })),
           time: performance.now(),
+          videoW,
+          videoH,
         });
 
         if (gameStateRef.current !== 'playing' || playModeRef.current !== 'camera' || isAnsweringRef.current) {
@@ -2147,6 +2208,26 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
   return (
     <div className={`flex-1 flex items-center justify-center p-1.5 md:p-3 mx-auto animate-fade-in ${isFullscreen ? 'fixed inset-0 z-50 bg-teal-50 w-full h-full max-w-none' : 'w-full max-w-[1480px]'}`}>
       {showConfetti && <Confetti width={width} height={height} numberOfPieces={280} recycle={false} style={{ position: 'fixed', zIndex: 100, top: 0, left: 0 }} />}
+
+      <style>{`
+        @keyframes scoreFloat {
+          0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+          15% { transform: translate(-50%, -8px) scale(1.3); opacity: 1; }
+          75% { transform: translate(-50%, -28px) scale(1.1); opacity: 1; }
+          100% { transform: translate(-50%, -46px) scale(0.8); opacity: 0; }
+        }
+        .animate-score-float {
+          animation: scoreFloat 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes scorePopPulse {
+          0% { transform: scale(1); }
+          40% { transform: scale(1.35); }
+          100% { transform: scale(1); }
+        }
+        .animate-score-pulse {
+          animation: scorePopPulse 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+      `}</style>
 
       {/* Settings Modal */}
       {showSettings && (
@@ -2557,324 +2638,502 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         {/* PLAYING SCREEN */}
         {gameState === 'playing' && (
           <div className="flex flex-col h-full flex-grow relative animate-fade-in min-h-0 overflow-hidden z-10 justify-between">
-            {/* Top Navigation & Controls Bar */}
-            <div className="w-full px-3 md:px-5 pt-2 pb-1 flex flex-wrap justify-between items-center gap-2 z-30 shrink-0">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onBack}
-                  className="px-3 py-1.5 text-teal-900 hover:bg-white rounded-2xl transition-colors font-black cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
-                >
-                  <ArrowLeft size={16} /> Exit
-                </button>
-                {onSwitchMode && (
-                  <button
-                    onClick={onSwitchMode}
-                    className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-sm text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
-                    title="Switch Game Mode"
-                  >
-                    <Shuffle size={14} className="text-amber-300" />
-                    <span className="hidden sm:inline">Switch Mode</span>
-                  </button>
-                )}
-
-                {/* Quick Toggle: Camera Mode vs Classic Studio Mode */}
-                <button
-                  onClick={() => setPlayMode(prev => prev === 'camera' ? 'studio' : 'camera')}
-                  className={`px-3 py-1.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5 shadow-sm border transition-all cursor-pointer ${
-                    playMode === 'camera'
-                      ? 'bg-emerald-600 text-white border-emerald-700'
-                      : 'bg-white/90 text-teal-900 border-teal-200 hover:bg-white'
-                  }`}
-                  title="Toggle between AI Camera Mode and Classic Studio Mode"
-                >
-                  {playMode === 'camera' ? <Camera size={15} /> : <CameraOff size={15} />}
-                  <span>{playMode === 'camera' ? 'Camera Mode' : 'Classic Mode'}</span>
-                </button>
-
-                {/* Retrieve Previous Question / Pose button */}
-                {currentIdx > 0 && (
-                  <button
-                    onClick={goToPreviousQuestion}
-                    className="px-3 py-1.5 bg-white/90 hover:bg-white text-teal-900 rounded-2xl font-black text-xs sm:text-sm border border-teal-200 shadow-sm cursor-pointer flex items-center gap-1"
-                    title="Retrieve previous question and pose"
-                  >
-                    <span>⬅️ Prev Pose</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Players / Teams Scoreboard */}
-              <div className="flex flex-nowrap items-center gap-2 overflow-x-auto max-w-[48vw] px-1">
-                {teams.map((team) => {
-                  const theme = teamColors[team.colorIdx];
-                  return (
-                    <div
-                      key={team.id}
-                      className={`flex items-stretch rounded-2xl shadow-sm border-3 ${theme.border} overflow-hidden shrink-0`}
-                    >
-                      <button
-                        onClick={() => updateTeamScore(team.id, -1)}
-                        className={`px-2 py-0.5 bg-white hover:bg-slate-100 text-slate-700 transition-colors border-r-2 ${theme.borderLight} flex items-center justify-center cursor-pointer`}
-                        title="Subtract 1 point"
-                      >
-                        <span className="font-black text-base leading-none">-</span>
-                      </button>
-                      <button
-                        onClick={() => updateTeamScore(team.id, 1)}
-                        className={`px-2.5 py-0.5 font-black text-white ${theme.bg} hover:brightness-110 transition-all flex items-center gap-1.5 cursor-pointer`}
-                        title="Add 1 point"
-                      >
-                        <span className="text-xs sm:text-sm">{team.name}</span>
-                        <span className="bg-white/25 px-1.5 py-0.5 rounded-lg text-xs sm:text-sm leading-none">
-                          {team.score}
-                        </span>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Right Controls: Progress, Font Size Popover (Small / Medium / Large), Settings, Fullscreen */}
-              <div className="flex items-center gap-1.5 relative">
-                <div className="font-bold text-teal-950 bg-white/90 backdrop-blur-md px-3 py-1 rounded-2xl shadow-sm border border-teal-200 text-center flex items-center gap-1">
-                  <span className="text-sm sm:text-base font-black">{currentIdx + 1}</span>
-                  <span className="text-xs opacity-70">/ {quiz.questions.length}</span>
-                </div>
-
-                {/* Directly visible Text Size Adjuster: Small / Medium / Large */}
-                <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl border-2 border-teal-200 p-0.5 shadow-sm">
-                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-teal-900 px-2 flex items-center gap-1 select-none">
-                    <Type size={13} className="text-teal-700" />
-                    <span className="hidden md:inline">Text:</span>
-                  </span>
-                  {(['small', 'medium', 'big'] as const).map(scale => (
-                    <button
-                      key={scale}
-                      onClick={() => setUiScale(scale)}
-                      className={`px-2 sm:px-2.5 py-1 rounded-xl font-black text-xs transition-all cursor-pointer ${
-                        uiScale === scale
-                          ? 'bg-teal-600 text-white shadow-xs scale-105'
-                          : 'text-slate-600 hover:text-teal-950 hover:bg-teal-50'
-                      }`}
-                      title={`Change font size to ${scale === 'big' ? 'Large' : scale}`}
-                    >
-                      {scale === 'small' ? 'Small' : scale === 'medium' ? 'Medium' : 'Large'}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="w-9 h-9 text-teal-900 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 flex items-center justify-center"
-                  title="Settings & Pose Selection"
-                >
-                  <Settings size={17} />
-                </button>
-                <button
-                  onClick={toggleFullscreen}
-                  className="w-9 h-9 text-teal-900 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 flex items-center justify-center"
-                  title="Fullscreen"
-                >
-                  {isFullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Question Prompt Banner (Prominent, Big Typography in Camera Mode) */}
-            {playMode === 'camera' && (currentQuestionText || quiz.questions[currentIdx]?.image) && (
-              <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-5 my-2 shrink-0 flex items-center justify-center gap-3 z-20">
-                {quiz.questions[currentIdx]?.image && (
-                  <div className="h-16 sm:h-20 md:h-24 rounded-2xl overflow-hidden border-3 border-teal-300 shadow-md bg-white p-1 shrink-0">
-                    <img
-                      src={quiz.questions[currentIdx]?.image}
-                      alt="Question Clue"
-                      className="h-full w-auto object-contain rounded-xl"
-                    />
-                  </div>
-                )}
-                {currentQuestionText && (
-                  <h2
-                    className={`w-full max-w-5xl font-black text-slate-950 bg-white/95 backdrop-blur-md py-3 sm:py-4 px-6 sm:px-10 rounded-2xl sm:rounded-3xl border-3 sm:border-4 border-teal-400 shadow-xl text-center leading-snug mx-auto ${
-                      uiScale === 'small'
-                        ? (currentQuestionText.length > 80 ? 'text-lg sm:text-xl md:text-2xl' : currentQuestionText.length > 40 ? 'text-xl sm:text-2xl md:text-3xl' : 'text-2xl sm:text-3xl md:text-4xl')
-                        : uiScale === 'big'
-                        ? (currentQuestionText.length > 80 ? 'text-2xl sm:text-3xl md:text-4xl lg:text-5xl' : currentQuestionText.length > 40 ? 'text-3xl sm:text-4xl md:text-5xl lg:text-6xl' : 'text-4xl sm:text-5xl md:text-6xl lg:text-7xl')
-                        : (currentQuestionText.length > 80 ? 'text-xl sm:text-2xl md:text-3xl lg:text-4xl' : currentQuestionText.length > 40 ? 'text-2xl sm:text-3xl md:text-4xl lg:text-5xl' : 'text-3xl sm:text-4xl md:text-5xl lg:text-6xl')
-                    }`}
-                  >
-                    {currentQuestionText}
-                  </h2>
-                )}
-              </div>
-            )}
-
-            {/* Round Winner / Pose Feedback Toast */}
-            {roundWinnerBanner && (
-              <div className="mx-auto px-5 py-1 rounded-full bg-teal-900/95 text-white font-black text-xs sm:text-sm shadow-lg border-2 border-teal-300 animate-bounce z-30 shrink-0">
-                {roundWinnerBanner}
-              </div>
-            )}
-
-            {/* ADJUSTED CAMERA STAGE (Balanced height so big question & answer cards fit nicely) */}
+            {/* Fullscreen Camera Backdrop for Camera Mode */}
             {playMode === 'camera' && (
-              <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-5 my-1 shrink-0 flex flex-col min-h-0">
-                <div
-                  className={`relative w-full ${
-                    isCameraExpanded
-                      ? 'h-[360px] sm:h-[440px] md:h-[500px]'
-                      : 'h-[210px] sm:h-[260px] md:h-[300px] lg:h-[330px]'
-                  } rounded-3xl overflow-hidden bg-slate-900 border-4 border-teal-500 shadow-2xl transition-all duration-200`}
-                >
-                  {/* Mirrored Live HD Webcam Video */}
-                  <video
-                    ref={videoRef}
-                    playsInline
-                    muted
-                    className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 opacity-95"
-                  />
-                  {/* Hand & Pose Landmark Skeleton Canvas */}
-                  <canvas
-                    ref={canvasRef}
-                    width={960}
-                    height={540}
-                    className="absolute inset-0 w-full h-full pointer-events-none"
-                  />
+              <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0 bg-slate-950">
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 opacity-90"
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                />
 
-                  {/* Expand / Standard Camera Size Toggle Button */}
-                  <button
-                    onClick={() => setIsCameraExpanded(prev => !prev)}
-                    className="absolute top-3 right-3 z-30 bg-black/60 hover:bg-black/80 text-white font-black text-xs px-3 py-1.5 rounded-full border border-white/30 backdrop-blur-xs flex items-center gap-1.5 cursor-pointer shadow-md pointer-events-auto"
-                    title={isCameraExpanded ? "Standard Camera Height" : "Expand Camera Stage"}
-                  >
-                    {isCameraExpanded ? <Minimize size={14} /> : <Maximize size={14} />}
-                    <span>{isCameraExpanded ? 'Compact View' : 'Larger Camera'}</span>
-                  </button>
+                {/* Subtle dark vignette gradient to ensure HUD and cards are ultra-legible */}
+                <div className="absolute inset-0 bg-gradient-to-b from-slate-950/75 via-transparent to-slate-950/85 pointer-events-none" />
 
-                  {/* 2-Player Split Screen Divider & Zone Overlays */}
-                  {isTwoPlayerCamera ? (
-                    <div className="absolute inset-0 grid grid-cols-2 pointer-events-none">
-                      {/* Player 1 Zone (Left Side: Spider-Man) */}
-                      <div className="relative border-r-2 border-dashed border-white/75 p-3 sm:p-4 flex flex-col justify-between">
-                        <div className="flex items-center justify-between gap-2 pr-2">
-                          <span className="bg-rose-700/95 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-rose-300">
-                            🕷️ {teams[0]?.name || 'Player 1'} (Spider-Man)
-                          </span>
-                          {playerDetections[0].matchedOptionIdx !== null && (
-                            <span className="bg-white/95 text-rose-900 font-black text-xs sm:text-sm px-3.5 py-1 rounded-full shadow-lg flex items-center gap-2 border-2 border-rose-400 animate-pulse">
-                              <span className="text-xl sm:text-2xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
-                              <span>Locking Answer</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {playerDetections[0].wrongFeedbackText && (
-                          <div className="self-center bg-rose-600/95 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg animate-bounce">
-                            {playerDetections[0].wrongFeedbackText}
-                          </div>
-                        )}
-
-                        {/* Hold Progress Bar for Player 1 */}
-                        <div className="w-full bg-black/55 backdrop-blur-xs rounded-full h-5 sm:h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
-                          <div
-                            className="bg-gradient-to-r from-rose-500 to-red-400 h-full rounded-full transition-all duration-75"
-                            style={{ width: `${playerDetections[0].holdProgress}%` }}
-                          />
-                          <span className="absolute inset-x-0 text-center text-[11px] sm:text-xs font-black text-white drop-shadow">
-                            {playerDetections[0].holdProgress > 0
-                              ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
-                              : 'Stand on Left & Shoot Web Pose'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Player 2 Zone (Right Side: Thanos) */}
-                      <div className="relative border-l-2 border-dashed border-white/75 p-3 sm:p-4 flex flex-col justify-between">
-                        <div className="flex items-center justify-between gap-2 pr-28">
-                          <span className="bg-amber-600/95 backdrop-blur-xs text-white font-black text-xs sm:text-base px-3.5 py-1 rounded-full shadow-md border border-amber-300">
-                            🥊 {teams[1]?.name || 'Player 2'} (Thanos)
-                          </span>
-                          {playerDetections[1].matchedOptionIdx !== null && (
-                            <span className="bg-white/95 text-amber-900 font-black text-xs sm:text-sm px-3.5 py-1 rounded-full shadow-lg flex items-center gap-2 border-2 border-amber-400 animate-pulse">
-                              <span className="text-xl sm:text-2xl leading-none">{shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}</span>
-                              <span>Locking Answer</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {playerDetections[1].wrongFeedbackText && (
-                          <div className="self-center bg-rose-600/95 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg animate-bounce">
-                            {playerDetections[1].wrongFeedbackText}
-                          </div>
-                        )}
-
-                        {/* Hold Progress Bar for Player 2 */}
-                        <div className="w-full bg-black/55 backdrop-blur-xs rounded-full h-5 sm:h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
-                          <div
-                            className="bg-gradient-to-r from-amber-500 to-yellow-300 h-full rounded-full transition-all duration-75"
-                            style={{ width: `${playerDetections[1].holdProgress}%` }}
-                          />
-                          <span className="absolute inset-x-0 text-center text-[11px] sm:text-xs font-black text-white drop-shadow">
-                            {playerDetections[1].holdProgress > 0
-                              ? `Locking ${shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[1].holdProgress}%`
-                              : 'Stand on Right & Use Infinity Gauntlet'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* 1-Player Camera Overlay */
-                    <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between pointer-events-none">
-                      <div className="flex items-center justify-between pr-28">
-                        <span className="bg-slate-900/90 backdrop-blur-xs text-white font-black text-xs sm:text-base px-4 py-1 rounded-full shadow-md border border-teal-300 flex items-center gap-2">
-                          <span>🕷️ Left: Spider-Man</span>
-                          <span className="text-slate-400">|</span>
-                          <span>🥊 Right: Thanos Gauntlet</span>
-                        </span>
+                {/* 2-Player Split Screen Center Line & Player HUD Labels */}
+                {isTwoPlayerCamera ? (
+                  <div className="absolute inset-0 grid grid-cols-2 pointer-events-none">
+                    {/* Player 1 Zone (Left: Spider-Man) */}
+                    <div className="relative border-r-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44">
+                      <div className="flex items-center justify-end gap-2">
                         {playerDetections[0].matchedOptionIdx !== null && (
-                          <span className="bg-white/95 text-teal-900 font-black text-xs sm:text-base px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border-2 border-teal-400 animate-pulse">
-                            <span className="text-2xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
+                          <span className="bg-white/95 text-rose-950 font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-rose-400 animate-pulse">
+                            <span className="text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
                             <span>Locking Answer</span>
                           </span>
                         )}
                       </div>
 
-                      <div className="w-full max-w-lg mx-auto bg-black/55 backdrop-blur-xs rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
+                      {playerDetections[0].wrongFeedbackText && (
+                        <div className="self-center bg-rose-600/95 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg animate-bounce">
+                          {playerDetections[0].wrongFeedbackText}
+                        </div>
+                      )}
+
+                      {/* Hold Progress Bar for Player 1 */}
+                      <div className="w-full max-w-sm mx-auto bg-black/60 backdrop-blur-md rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                         <div
-                          className="bg-gradient-to-r from-teal-400 to-emerald-300 h-full rounded-full transition-all duration-75"
+                          className="bg-gradient-to-r from-rose-500 to-red-400 h-full rounded-full transition-all duration-75"
                           style={{ width: `${playerDetections[0].holdProgress}%` }}
                         />
                         <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
                           {playerDetections[0].holdProgress > 0
                             ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
-                            : 'Stand in front of camera & copy the pose of the right answer!'}
+                            : 'Stand on Left & Shoot Web Pose'}
                         </span>
                       </div>
                     </div>
+
+                    {/* Player 2 Zone (Right: Thanos) */}
+                    <div className="relative border-l-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44">
+                      <div className="flex items-center justify-start gap-2">
+                        {playerDetections[1].matchedOptionIdx !== null && (
+                          <span className="bg-white/95 text-amber-950 font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-amber-400 animate-pulse">
+                            <span className="text-xl leading-none">{shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}</span>
+                            <span>Locking Answer</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {playerDetections[1].wrongFeedbackText && (
+                        <div className="self-center bg-rose-600/95 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg animate-bounce">
+                          {playerDetections[1].wrongFeedbackText}
+                        </div>
+                      )}
+
+                      {/* Hold Progress Bar for Player 2 */}
+                      <div className="w-full max-w-sm mx-auto bg-black/60 backdrop-blur-md rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
+                        <div
+                          className="bg-gradient-to-r from-amber-500 to-yellow-300 h-full rounded-full transition-all duration-75"
+                          style={{ width: `${playerDetections[1].holdProgress}%` }}
+                        />
+                        <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
+                          {playerDetections[1].holdProgress > 0
+                            ? `Locking ${shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[1].holdProgress}%`
+                            : 'Stand on Right & Use Infinity Gauntlet'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* 1-Player Camera Overlay */
+                  <div className="absolute inset-0 p-4 pt-16 pb-44 flex flex-col justify-between pointer-events-none">
+                    <div className="flex items-center justify-between px-2">
+                      <span className="bg-slate-900/85 backdrop-blur-md text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-md border border-teal-300 flex items-center gap-2">
+                        <span>🕷️ Left: Spider-Man</span>
+                        <span className="text-slate-400">|</span>
+                        <span>🥊 Right: Thanos Gauntlet</span>
+                      </span>
+                      {playerDetections[0].matchedOptionIdx !== null && (
+                        <span className="bg-white/95 text-teal-950 font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border-2 border-teal-400 animate-pulse">
+                          <span className="text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
+                          <span>Locking Answer</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="w-full max-w-md mx-auto bg-black/60 backdrop-blur-md rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
+                      <div
+                        className="bg-gradient-to-r from-teal-400 to-emerald-300 h-full rounded-full transition-all duration-75"
+                        style={{ width: `${playerDetections[0].holdProgress}%` }}
+                      />
+                      <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
+                        {playerDetections[0].holdProgress > 0
+                          ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
+                          : 'Stand in front of camera & copy the pose of the right answer!'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Camera Loading or Error Fallback */}
+                {!isCameraReady && (
+                  <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center text-white z-30 pointer-events-auto">
+                    {cameraError ? (
+                      <>
+                        <p className="text-xs sm:text-sm font-bold text-rose-300 mb-2 max-w-md">{cameraError}</p>
+                        <button
+                          onClick={startCamera}
+                          className="px-4 py-1.5 rounded-full bg-teal-500 hover:bg-teal-600 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg"
+                        >
+                          <RefreshCw size={14} /> Retry Camera
+                        </button>
+                      </>
+                    ) : (
+                      <p className="text-sm sm:text-base font-bold text-teal-200 animate-pulse">
+                        Starting High-Speed AI Pose Camera...
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Top Navigation, Interactive Scoreboards & Question Header (Docked at the TOP) */}
+            <div className="w-full flex flex-col z-30 shrink-0">
+              <div className="w-full px-3 md:px-5 pt-2 pb-1.5 flex flex-wrap justify-between items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onBack}
+                    className="px-3 py-1.5 text-teal-900 hover:bg-white rounded-2xl transition-colors font-black cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
+                  >
+                    <ArrowLeft size={16} /> Exit
+                  </button>
+                  {onSwitchMode && (
+                    <button
+                      onClick={onSwitchMode}
+                      className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-sm text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
+                      title="Switch Game Mode"
+                    >
+                      <Shuffle size={14} className="text-amber-300" />
+                      <span className="hidden sm:inline">Switch Mode</span>
+                    </button>
                   )}
 
-                  {/* Camera Loading or Error Fallback */}
-                  {!isCameraReady && (
-                    <div className="absolute inset-0 bg-slate-900/85 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center text-white z-20">
-                      {cameraError ? (
-                        <>
-                          <p className="text-xs sm:text-sm font-bold text-rose-300 mb-2 max-w-md">{cameraError}</p>
-                          <button
-                            onClick={startCamera}
-                            className="px-4 py-1.5 rounded-full bg-teal-500 hover:bg-teal-600 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <RefreshCw size={14} /> Retry Camera
-                          </button>
-                        </>
-                      ) : (
-                        <p className="text-sm sm:text-base font-bold text-teal-200 animate-pulse">
-                          Starting High-Speed AI Pose Camera...
-                        </p>
+                  {/* Quick Toggle: Camera Mode vs Classic Studio Mode */}
+                  <button
+                    onClick={() => setPlayMode(prev => prev === 'camera' ? 'studio' : 'camera')}
+                    className={`px-3 py-1.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5 shadow-sm border transition-all cursor-pointer ${
+                      playMode === 'camera'
+                        ? 'bg-emerald-600 text-white border-emerald-700'
+                        : 'bg-white/90 text-teal-900 border-teal-200 hover:bg-white'
+                    }`}
+                    title="Toggle between AI Camera Mode and Classic Studio Mode"
+                  >
+                    {playMode === 'camera' ? <Camera size={15} /> : <CameraOff size={15} />}
+                    <span>{playMode === 'camera' ? 'Camera Mode' : 'Classic Mode'}</span>
+                  </button>
+
+                  {/* Retrieve Previous Question / Pose button */}
+                  {currentIdx > 0 && (
+                    <button
+                      onClick={goToPreviousQuestion}
+                      className="px-3 py-1.5 bg-white/90 hover:bg-white text-teal-900 rounded-2xl font-black text-xs sm:text-sm border border-teal-200 shadow-sm cursor-pointer flex items-center gap-1"
+                      title="Retrieve previous question and pose"
+                    >
+                      <span>⬅️ Prev Pose</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Right Controls: Progress, Font Size Popover (Small / Medium / Large), Settings, Fullscreen */}
+                <div className="flex items-center gap-1.5 relative">
+                  <div className="font-bold text-teal-950 bg-white/90 backdrop-blur-md px-3 py-1 rounded-2xl shadow-sm border border-teal-200 text-center flex items-center gap-1">
+                    <span className="text-sm sm:text-base font-black">{currentIdx + 1}</span>
+                    <span className="text-xs opacity-70">/ {quiz.questions.length}</span>
+                  </div>
+
+                  {/* Directly visible Text Size Adjuster: Small / Medium / Large */}
+                  <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl border-2 border-teal-200 p-0.5 shadow-sm">
+                    <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-teal-900 px-2 flex items-center gap-1 select-none">
+                      <Type size={13} className="text-teal-700" />
+                      <span className="hidden md:inline">Text:</span>
+                    </span>
+                    {(['small', 'medium', 'big'] as const).map(scale => (
+                      <button
+                        key={scale}
+                        onClick={() => setUiScale(scale)}
+                        className={`px-2 sm:px-2.5 py-1 rounded-xl font-black text-xs transition-all cursor-pointer ${
+                          uiScale === scale
+                            ? 'bg-teal-600 text-white shadow-xs scale-105'
+                            : 'text-slate-600 hover:text-teal-950 hover:bg-teal-50'
+                        }`}
+                        title={`Change font size to ${scale === 'big' ? 'Large' : scale}`}
+                      >
+                        {scale === 'small' ? 'Small' : scale === 'medium' ? 'Medium' : 'Large'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="w-9 h-9 text-teal-900 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 flex items-center justify-center"
+                    title="Settings & Pose Selection"
+                  >
+                    <Settings size={17} />
+                  </button>
+                  <button
+                    onClick={toggleFullscreen}
+                    className="w-9 h-9 text-teal-900 hover:bg-white rounded-2xl transition-colors font-bold cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 flex items-center justify-center"
+                    title="Fullscreen"
+                  >
+                    {isFullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* TOP HUD ROW: Interactive Superhero Scoreboards + Question Banner (DOUBLES AS LIVE SCORE DASHBOARD) */}
+              {playMode === 'camera' && isTwoPlayerCamera ? (
+                <div className="w-full px-3 md:px-5 py-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-center">
+                  {/* Player 1 (Spider-Man) Interactive Scoreboard */}
+                  <div className="lg:col-span-3 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.35)] p-2.5 flex items-center justify-between gap-2.5 relative transition-all hover:scale-[1.01] pointer-events-auto">
+                    {scorePops[teams[0]?.id]?.key && (
+                      <FloatingScoreBadge delta={scorePops[teams[0]?.id].delta} idKey={scorePops[teams[0]?.id].key} />
+                    )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-red-700 flex items-center justify-center text-xl shadow-md shrink-0 border border-rose-400">
+                        🕷️
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-xs uppercase tracking-wider text-rose-300 truncate">
+                            {teams[0]?.name || 'Player 1'}
+                          </span>
+                        </div>
+                        {teamStreaks[teams[0]?.id] >= 2 ? (
+                          <span className="text-[10px] font-black text-amber-300 flex items-center gap-0.5 animate-pulse">
+                            🔥 {teamStreaks[teams[0]?.id]}x STREAK!
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-rose-300/80 font-bold tracking-wider uppercase">Spider-Man</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Big Score & Live Increment/Decrement */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => updateTeamScore(teams[0]?.id, -1)}
+                        className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center font-black text-base active:scale-90 transition-all border border-slate-700 cursor-pointer"
+                        title="Deduct 1 point"
+                      >
+                        -
+                      </button>
+
+                      <div
+                        onClick={() => updateTeamScore(teams[0]?.id, 1)}
+                        className="cursor-pointer px-1 flex flex-col items-center group"
+                        title="Click to add +1 point"
+                      >
+                        <span
+                          className={`text-3xl sm:text-4xl font-black text-white tabular-nums drop-shadow-[0_0_12px_rgba(244,63,94,0.8)] leading-none transition-transform duration-200 ${
+                            scorePops[teams[0]?.id] ? 'animate-score-pulse text-rose-300' : ''
+                          }`}
+                        >
+                          {teams[0]?.score || 0}
+                        </span>
+                        <span className="text-[8px] text-rose-400 font-black tracking-widest uppercase opacity-0 group-hover:opacity-100 transition-opacity">
+                          +1
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => updateTeamScore(teams[0]?.id, 1)}
+                        className="w-8 h-8 rounded-lg bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white flex items-center justify-center font-black text-sm shadow-md shadow-rose-600/40 active:scale-90 transition-all border border-rose-400 cursor-pointer"
+                        title="Add 1 point"
+                      >
+                        +1
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Question Prompt Banner (TOP OF SCREEN, NOT MIDDLE) */}
+                  <div className="lg:col-span-6 flex items-center justify-center gap-2">
+                    {quiz.questions[currentIdx]?.image && (
+                      <div className="h-12 sm:h-14 rounded-xl overflow-hidden border-2 border-teal-300 shadow-md bg-white p-0.5 shrink-0">
+                        <img
+                          src={quiz.questions[currentIdx]?.image}
+                          alt="Question Clue"
+                          className="h-full w-auto object-contain rounded-lg"
+                        />
+                      </div>
+                    )}
+                    {currentQuestionText && (
+                      <h2
+                        className={`w-full font-black text-slate-950 bg-white/95 backdrop-blur-md py-2 sm:py-2.5 px-4 sm:px-6 rounded-2xl border-2 sm:border-3 border-teal-400 shadow-xl text-center leading-snug mx-auto ${
+                          uiScale === 'small'
+                            ? (currentQuestionText.length > 80 ? 'text-xs sm:text-sm md:text-base' : currentQuestionText.length > 40 ? 'text-sm sm:text-base md:text-lg' : 'text-base sm:text-lg md:text-xl')
+                            : uiScale === 'big'
+                            ? (currentQuestionText.length > 80 ? 'text-base sm:text-lg md:text-xl' : currentQuestionText.length > 40 ? 'text-lg sm:text-xl md:text-2xl' : 'text-xl sm:text-2xl md:text-3xl')
+                            : (currentQuestionText.length > 80 ? 'text-sm sm:text-base md:text-lg' : currentQuestionText.length > 40 ? 'text-base sm:text-lg md:text-xl' : 'text-lg sm:text-xl md:text-2xl')
+                        }`}
+                      >
+                        {currentQuestionText}
+                      </h2>
+                    )}
+                  </div>
+
+                  {/* Player 2 (Thanos) Interactive Scoreboard */}
+                  <div className="lg:col-span-3 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)] p-2.5 flex items-center justify-between gap-2.5 relative transition-all hover:scale-[1.01] pointer-events-auto">
+                    {scorePops[teams[1]?.id]?.key && (
+                      <FloatingScoreBadge delta={scorePops[teams[1]?.id].delta} idKey={scorePops[teams[1]?.id].key} />
+                    )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-600 flex items-center justify-center text-xl shadow-md shrink-0 border border-amber-300">
+                        🥊
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-xs uppercase tracking-wider text-amber-300 truncate">
+                            {teams[1]?.name || 'Player 2'}
+                          </span>
+                        </div>
+                        {teamStreaks[teams[1]?.id] >= 2 ? (
+                          <span className="text-[10px] font-black text-yellow-300 flex items-center gap-0.5 animate-pulse">
+                            👑 {teamStreaks[teams[1]?.id]}x TITAN!
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-amber-300/80 font-bold tracking-wider uppercase">Thanos Gauntlet</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Big Score & Live Increment/Decrement */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => updateTeamScore(teams[1]?.id, -1)}
+                        className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center font-black text-base active:scale-90 transition-all border border-slate-700 cursor-pointer"
+                        title="Deduct 1 point"
+                      >
+                        -
+                      </button>
+
+                      <div
+                        onClick={() => updateTeamScore(teams[1]?.id, 1)}
+                        className="cursor-pointer px-1 flex flex-col items-center group"
+                        title="Click to add +1 point"
+                      >
+                        <span
+                          className={`text-3xl sm:text-4xl font-black text-white tabular-nums drop-shadow-[0_0_12px_rgba(251,191,36,0.8)] leading-none transition-transform duration-200 ${
+                            scorePops[teams[1]?.id] ? 'animate-score-pulse text-amber-300' : ''
+                          }`}
+                        >
+                          {teams[1]?.score || 0}
+                        </span>
+                        <span className="text-[8px] text-amber-400 font-black tracking-widest uppercase opacity-0 group-hover:opacity-100 transition-opacity">
+                          +1
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => updateTeamScore(teams[1]?.id, 1)}
+                        className="w-8 h-8 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-white flex items-center justify-center font-black text-sm shadow-md shadow-amber-500/40 active:scale-90 transition-all border border-amber-300 cursor-pointer"
+                        title="Add 1 point"
+                      >
+                        +1
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : playMode === 'camera' ? (
+                /* 1-Player Camera Mode Top HUD */
+                <div className="w-full px-3 md:px-5 py-1 flex flex-col sm:flex-row items-center gap-3">
+                  <div className="bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 border-teal-400 shadow-[0_0_20px_rgba(45,212,191,0.35)] p-2.5 flex items-center justify-between gap-3 relative transition-all hover:scale-[1.01] pointer-events-auto shrink-0 w-full sm:w-auto min-w-[240px]">
+                    {scorePops[teams[0]?.id]?.key && (
+                      <FloatingScoreBadge delta={scorePops[teams[0]?.id].delta} idKey={scorePops[teams[0]?.id].key} />
+                    )}
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-600 flex items-center justify-center text-xl shadow-md border border-teal-300">
+                        ⚡
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-black text-xs uppercase tracking-wider text-teal-300">
+                          {teams[0]?.name || 'Player 1'}
+                        </span>
+                        {teamStreaks[teams[0]?.id] >= 2 && (
+                          <span className="text-[10px] font-black text-amber-300 animate-pulse">
+                            🔥 {teamStreaks[teams[0]?.id]}x STREAK!
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => updateTeamScore(teams[0]?.id, -1)}
+                        className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-black text-base active:scale-90 cursor-pointer"
+                      >
+                        -
+                      </button>
+                      <span className="text-3xl font-black text-white tabular-nums px-1">
+                        {teams[0]?.score || 0}
+                      </span>
+                      <button
+                        onClick={() => updateTeamScore(teams[0]?.id, 1)}
+                        className="w-8 h-8 rounded-lg bg-teal-500 hover:bg-teal-400 text-white flex items-center justify-center font-black text-sm active:scale-90 cursor-pointer shadow-md"
+                      >
+                        +1
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Question Banner */}
+                  {(currentQuestionText || quiz.questions[currentIdx]?.image) && (
+                    <div className="flex-1 w-full flex items-center justify-center gap-2">
+                      {quiz.questions[currentIdx]?.image && (
+                        <div className="h-12 sm:h-14 rounded-xl overflow-hidden border-2 border-teal-300 shadow-md bg-white p-0.5 shrink-0">
+                          <img
+                            src={quiz.questions[currentIdx]?.image}
+                            alt="Question Clue"
+                            className="h-full w-auto object-contain rounded-lg"
+                          />
+                        </div>
+                      )}
+                      {currentQuestionText && (
+                        <h2
+                          className={`w-full font-black text-slate-950 bg-white/95 backdrop-blur-md py-2 sm:py-2.5 px-4 sm:px-6 rounded-2xl border-2 sm:border-3 border-teal-400 shadow-xl text-center leading-snug mx-auto ${
+                            uiScale === 'small' ? 'text-sm sm:text-base md:text-lg' : uiScale === 'big' ? 'text-lg sm:text-xl md:text-2xl' : 'text-base sm:text-lg md:text-xl'
+                          }`}
+                        >
+                          {currentQuestionText}
+                        </h2>
                       )}
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                /* Classic Studio Mode Top HUD */
+                <div className="w-full px-3 md:px-5 py-1 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {teams.map((team) => {
+                      const theme = teamColors[team.colorIdx];
+                      return (
+                        <div
+                          key={team.id}
+                          className={`flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl border-2 ${theme.border} shadow-sm relative`}
+                        >
+                          {scorePops[team.id]?.key && (
+                            <FloatingScoreBadge delta={scorePops[team.id].delta} idKey={scorePops[team.id].key} />
+                          )}
+                          <span className="font-black text-xs sm:text-sm text-slate-800">{team.name}</span>
+                          <span className={`text-xl sm:text-2xl font-black tabular-nums ${theme.text}`}>
+                            {team.score}
+                          </span>
+                          <div className="flex items-center gap-1 ml-1">
+                            <button
+                              onClick={() => updateTeamScore(team.id, -1)}
+                              className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-black text-xs active:scale-90 cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <button
+                              onClick={() => updateTeamScore(team.id, 1)}
+                              className={`w-7 h-7 rounded-lg ${theme.bg} hover:brightness-110 text-white flex items-center justify-center font-black text-xs active:scale-90 cursor-pointer shadow-sm`}
+                            >
+                              +1
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Clear Middle Camera Viewport (Face & Upper Body completely unblocked!) */}
+            <div className="flex-1 min-h-[100px] pointer-events-none flex flex-col items-center justify-center relative z-20">
+              {roundWinnerBanner && (
+                <div className="px-6 py-2.5 rounded-full bg-slate-950/90 text-white font-black text-sm sm:text-base shadow-2xl border-2 border-teal-400 animate-bounce">
+                  {roundWinnerBanner}
+                </div>
+              )}
+            </div>
+
 
             {/* Question & Options Stage */}
             <div
