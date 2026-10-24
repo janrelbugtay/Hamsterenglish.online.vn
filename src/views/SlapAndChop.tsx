@@ -80,9 +80,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [hudScores, setHudScores] = useState<[number, number]>([0, 0]);
   const [hudStreaks, setHudStreaks] = useState<[number, number]>([1, 1]);
   const [hudScorePops, setHudScorePops] = useState<[string | null, string | null]>([null, null]);
+  const [hudFrozen, setHudFrozen] = useState<[boolean, boolean]>([false, false]);
   const [timerPct, setTimerPct] = useState<number>(100);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Interactive Study Mode States
+  const [studyIndex, setStudyIndex] = useState<number>(0);
+  const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
+  const [studyViewMode, setStudyViewMode] = useState<'cards' | 'list'>('cards');
 
   // Active Quiz Object
   const [activeQuiz, setActiveQuiz] = useState<Quiz>(() => {
@@ -149,6 +155,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const textSizeRef = useRef<number>(textSize);
   const movementStyleRef = useRef<'calm' | 'normal' | 'zigzag' | 'hover'>(movementStyle);
   const speedRef = useRef<number>(speed);
+  const gameModeRef = useRef<'mosquito' | 'chop' | 'combo'>(gameMode);
+  const activeRoundModeRef = useRef<'mosquito' | 'chop'>(activeRoundMode);
+  const soundFxRef = useRef<boolean>(soundFx);
+  const voiceEnabledRef = useRef<boolean>(voiceEnabled);
+  const showSettingsModalRef = useRef<boolean>(showSettingsModal);
+  const onHandsResultsRef = useRef<((results: any) => void) | null>(null);
 
   useEffect(() => {
     textSizeRef.current = textSize;
@@ -161,6 +173,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
+
+  useEffect(() => {
+    gameModeRef.current = gameMode;
+  }, [gameMode]);
+
+  useEffect(() => {
+    activeRoundModeRef.current = activeRoundMode;
+  }, [activeRoundMode]);
+
+  useEffect(() => {
+    soundFxRef.current = soundFx;
+  }, [soundFx]);
+
+  useEffect(() => {
+    voiceEnabledRef.current = voiceEnabled;
+  }, [voiceEnabled]);
+
+  useEffect(() => {
+    showSettingsModalRef.current = showSettingsModal;
+  }, [showSettingsModal]);
 
   // Runtime engine states stored in ref for 60fps loop
   const engineRef = useRef<{
@@ -405,8 +437,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
   };
 
-  const playSoundEffect = (type: 'slap' | 'slash' | 'correct' | 'wrong' | 'whoosh') => {
-    if (!soundFx) return;
+  const playSoundEffect = (type: 'slap' | 'slash' | 'correct' | 'wrong' | 'whoosh' | 'freeze' | 'victory') => {
+    if (!soundFxRef.current) return;
     initAudio();
     const ctx = audioCtxRef.current;
     if (!ctx) return;
@@ -467,41 +499,75 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       popOsc.stop(now + 0.07);
 
     } else if (type === 'slash') {
-      // Layer 1: Metallic sword blade ring + air slice whoosh
-      const bufferSize = Math.floor(ctx.sampleRate * 0.14);
+      // Layer 1: Dual chef chopping knives metallic ring + crisp slice
+      const bufferSize = Math.floor(ctx.sampleRate * 0.13);
       const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
         const env = Math.sin((i / bufferSize) * Math.PI);
-        data[i] = (Math.random() * 2 - 1) * env * 0.7;
+        data[i] = (Math.random() * 2 - 1) * env * 0.75;
       }
       const noise = ctx.createBufferSource();
       noise.buffer = buffer;
       const filter = ctx.createBiquadFilter();
       filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(900, now);
-      filter.frequency.exponentialRampToValueAtTime(3400, now + 0.12);
-      filter.Q.setValueAtTime(2.5, now);
+      filter.frequency.setValueAtTime(1100, now);
+      filter.frequency.exponentialRampToValueAtTime(3800, now + 0.11);
+      filter.Q.setValueAtTime(2.8, now);
       const nGain = ctx.createGain();
-      nGain.gain.setValueAtTime(0.75, now);
-      nGain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+      nGain.gain.setValueAtTime(0.8, now);
+      nGain.gain.exponentialRampToValueAtTime(0.01, now + 0.13);
       noise.connect(filter);
       filter.connect(nGain);
       nGain.connect(ctx.destination);
       noise.start(now);
 
-      // Layer 2: Steel blade shimmer + juicy fruit cleave
+      // Layer 2: Steel cleaver chime + juicy chop thud
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(1650, now);
-      osc.frequency.exponentialRampToValueAtTime(260, now + 0.16);
-      gain.gain.setValueAtTime(0.45, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1850, now);
+      osc.frequency.exponentialRampToValueAtTime(240, now + 0.15);
+      gain.gain.setValueAtTime(0.5, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
-      osc.stop(now + 0.18);
+      osc.stop(now + 0.17);
+
+    } else if (type === 'freeze') {
+      // Crystalline 3D Ice Freeze Chime + Frost Crackle
+      const iceNotes = [1567.98, 1318.51, 1046.5, 783.99];
+      iceNotes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        const startT = now + idx * 0.045;
+        osc.frequency.setValueAtTime(freq, startT);
+        gain.gain.setValueAtTime(0.24, startT);
+        gain.gain.exponentialRampToValueAtTime(0.001, startT + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startT);
+        osc.stop(startT + 0.30);
+      });
+
+    } else if (type === 'victory') {
+      // Grand Championship Fanfare Chord Arpeggio
+      const fanfare = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5, 1318.51];
+      fanfare.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        const startT = now + idx * 0.09;
+        osc.frequency.setValueAtTime(freq, startT);
+        gain.gain.setValueAtTime(0.3, startT);
+        gain.gain.exponentialRampToValueAtTime(0.001, startT + 0.42);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startT);
+        osc.stop(startT + 0.44);
+      });
 
     } else if (type === 'whoosh') {
       const osc = ctx.createOscillator();
@@ -549,7 +615,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
   // Realistic human-like TTS narration
   const speakText = (text: string) => {
-    if (!voiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (!voiceEnabledRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
       const cleanText = text
@@ -571,13 +637,30 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       } else {
         utterance.lang = 'en-US';
       }
-      // Natural conversational cadence & warm pitch
       utterance.rate = 0.96;
       utterance.pitch = 1.02;
       utterance.volume = 1.0;
       window.speechSynthesis.speak(utterance);
     } catch (e) {}
   };
+
+  // Keyboard navigation in Study Mode
+  useEffect(() => {
+    if (screen !== 'study') return;
+    const validQs = (activeQuiz.questions || []).filter(q => q && q.text && q.text.trim());
+    const total = validQs.length || activeQuiz.questions.length || 1;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        setStudyIndex(prev => (prev + 1) % total);
+        setStudySelectedOption(null);
+      } else if (e.key === 'ArrowLeft') {
+        setStudyIndex(prev => (prev - 1 + total) % total);
+        setStudySelectedOption(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [screen, activeQuiz.questions]);
 
   // Helper to initialize players
   const createPlayerEngine = (id: number, name: string, isP2: boolean, totalPlayers: number = numPlayers) => {
@@ -589,6 +672,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       score: 0,
       streak: 1,
       hits: 0,
+      correctHits: 0,
+      wrongHits: 0,
+      frozenTimer: 0,
       theme: isP2 ? {
         hatMain: '#f43f5e',
         hatDark: '#9f1239',
@@ -650,34 +736,38 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       clapMidX: baseX,
       clapMidY: 0.62,
       leftHand: {
-        x: baseX - 0.065,
+        x: baseX - 0.068,
         y: 0.62,
-        prevX: baseX - 0.065,
+        prevX: baseX - 0.068,
         prevY: 0.62,
         vx: 0,
         vy: 0,
         speed: 0,
         angle: -0.18,
+        knifeAngle: -0.45,
         scale: 1.0,
         openness: 1.0,
         slapAnim: 0,
         detected: false,
-        landmarks: null as any[] | null
+        landmarks: null as any[] | null,
+        trail: [] as { x: number; y: number; life: number }[]
       },
       rightHand: {
-        x: baseX + 0.065,
+        x: baseX + 0.068,
         y: 0.62,
-        prevX: baseX + 0.065,
+        prevX: baseX + 0.068,
         prevY: 0.62,
         vx: 0,
         vy: 0,
         speed: 0,
         angle: 0.18,
+        knifeAngle: -2.69,
         scale: 1.0,
         openness: 1.0,
         slapAnim: 0,
         detected: false,
-        landmarks: null as any[] | null
+        landmarks: null as any[] | null,
+        trail: [] as { x: number; y: number; life: number }[]
       }
     };
   };
@@ -693,12 +783,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const ringTip = landmarks[16];
     const pinkyTip = landmarks[20];
 
-    // 1. Palm core size (invariant to finger curling so fist vs open hand still measures distance to camera!)
     const palmLength = Math.hypot(middleMcp.x - wrist.x, middleMcp.y - wrist.y);
     const palmWidth = Math.hypot(indexMcp.x - pinkyMcp.x, indexMcp.y - pinkyMcp.y);
     const coreSize = palmLength * 0.62 + palmWidth * 0.48;
 
-    // 2. Full bounding box span of all 21 landmarks
     let minX = 1, maxX = 0, minY = 1, maxY = 0;
     for (let i = 0; i < landmarks.length; i++) {
       const lm = landmarks[i];
@@ -709,11 +797,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
     const bboxDiag = Math.hypot(maxX - minX, maxY - minY);
 
-    // Combine core palm size + bbox diagonal for smooth, dramatic depth scaling (0.62x far -> 1.95x close)
     const rawScale = (coreSize * 6.8) + (bboxDiag * 1.45);
     const scale = Math.max(0.62, Math.min(1.95, rawScale));
 
-    // 3. Finger openness ratio (dist from wrist to fingertips vs palm length)
     const avgTipDist = (
       Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y) +
       Math.hypot(middleTip.x - wrist.x, middleTip.y - wrist.y) +
@@ -725,7 +811,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     return { scale, openness, palmLength };
   };
 
-  // MediaPipe Hands Results Handler (High-precision 60fps hand & weapon tracking)
+  // MediaPipe Hands Results Handler (High-precision 60fps hand & weapon tracking for both Slap Gloves & Chop Knives)
   const onHandsResults = (results: any) => {
     const eng = engineRef.current;
     if (!eng) return;
@@ -734,7 +820,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const now = performance.now();
     const is2P = eng.numPlayers === 2;
 
-    // Reset per-frame detection flags
     eng.players.forEach(p => {
       p.leftHand.detected = false;
       p.rightHand.detected = false;
@@ -749,7 +834,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       return;
     }
 
-    // Group detected hands by player court side
     const playerHands: { [key: number]: any[] } = { 0: [], 1: [] };
 
     results.multiHandLandmarks.forEach((landmarks: any[], handIndex: number) => {
@@ -759,19 +843,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const indexTip = landmarks[8];
       const middleTip = landmarks[12];
 
-      // Center of the palm/glove in mirrored camera coordinates
-      const rawX = 1.0 - (middleMcp.x * 0.7 + wrist.x * 0.3);
-      const rawY = middleMcp.y * 0.7 + wrist.y * 0.3;
+      const rawX = 1.0 - (middleMcp.x * 0.65 + wrist.x * 0.35);
+      const rawY = middleMcp.y * 0.65 + wrist.y * 0.35;
       const rawWristX = 1.0 - wrist.x;
       const rawWristY = wrist.y;
 
-      // Assign to Player 1 (Left Court < 0.5) or Player 2 (Right Court >= 0.5)
       let pIdx = 0;
       if (is2P) {
         pIdx = rawX < 0.5 ? 0 : 1;
       }
 
-      // Enforce strict 2-player court boundary line
       let clampedX = rawX;
       if (is2P) {
         clampedX = pIdx === 0
@@ -782,7 +863,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       }
       const clampedY = Math.max(0.05, Math.min(0.95, rawY));
 
-      // Hand orientation angle (wrist -> middle/index finger direction)
       const aimX = 1.0 - ((indexTip.x + middleTip.x) * 0.5);
       const aimY = (indexTip.y + middleTip.y) * 0.5;
       const dx = aimX - rawWristX;
@@ -790,10 +870,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const gloveAngle = Math.atan2(dy, dx) + Math.PI / 2;
       const pointingAngle = Math.atan2(dy, dx);
 
-      // Dynamic size based on how close/large the hand is to the camera
       const { scale, openness } = analyzeHandGeometry(landmarks);
 
-      // Mirrored landmarks for 3D articulated finger rendering
       const mirroredLandmarks = landmarks.map((lm: any) => ({
         x: 1.0 - lm.x,
         y: lm.y,
@@ -815,7 +893,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       });
     });
 
-    // Update each player's hands, weapons, and biomechanical head cues
     [0, 1].forEach(pIdx => {
       if (pIdx === 1 && !is2P) return;
       const player = eng.players[pIdx];
@@ -832,57 +909,60 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       player.hasDetectedHands = true;
       player.lastHandTime = now;
 
-      // Sort left-to-right on screen so when 2 hands are visible, left-side hand is leftHand and right-side is rightHand
+      // Sort left-to-right on screen so left-side hand is leftHand and right-side is rightHand
       handsForPlayer.sort((a, b) => a.clampedX - b.clampedX);
 
       let fastestHand = handsForPlayer[0];
 
       if (handsForPlayer.length >= 2) {
-        // 2 real hands detected for this player!
         player.lastDualHandTime = now;
         const leftData = handsForPlayer[0];
         const rightData = handsForPlayer[handsForPlayer.length - 1];
 
-        // Update Left Hand
+        // Update Left Hand (Glove & Left Chopping Knife)
         const lh = player.leftHand;
         lh.prevX = lh.detected ? lh.x : leftData.clampedX;
         lh.prevY = lh.detected ? lh.y : leftData.clampedY;
-        lh.x = lh.x + (leftData.clampedX - lh.x) * 0.75;
-        lh.y = lh.y + (leftData.clampedY - lh.y) * 0.75;
+        lh.x = lh.x + (leftData.clampedX - lh.x) * 0.80;
+        lh.y = lh.y + (leftData.clampedY - lh.y) * 0.80;
         lh.vx = lh.x - lh.prevX;
         lh.vy = lh.y - lh.prevY;
         lh.speed = Math.hypot(lh.vx, lh.vy);
         lh.angle = leftData.gloveAngle;
-        lh.scale = lh.scale + (leftData.scale - lh.scale) * 0.45;
+        lh.knifeAngle = leftData.pointingAngle;
+        lh.scale = lh.scale + (leftData.scale - lh.scale) * 0.48;
         lh.openness = leftData.openness;
         lh.landmarks = leftData.landmarks;
         lh.detected = true;
+        lh.trail.push({ x: lh.x, y: lh.y, life: 1.0 });
+        if (lh.trail.length > 14) lh.trail.shift();
 
-        // Update Right Hand
+        // Update Right Hand (Glove & Right Chopping Knife)
         const rh = player.rightHand;
         rh.prevX = rh.detected ? rh.x : rightData.clampedX;
         rh.prevY = rh.detected ? rh.y : rightData.clampedY;
-        rh.x = rh.x + (rightData.clampedX - rh.x) * 0.75;
-        rh.y = rh.y + (rightData.clampedY - rh.y) * 0.75;
+        rh.x = rh.x + (rightData.clampedX - rh.x) * 0.80;
+        rh.y = rh.y + (rightData.clampedY - rh.y) * 0.80;
         rh.vx = rh.x - rh.prevX;
         rh.vy = rh.y - rh.prevY;
         rh.speed = Math.hypot(rh.vx, rh.vy);
         rh.angle = rightData.gloveAngle;
-        rh.scale = rh.scale + (rightData.scale - rh.scale) * 0.45;
+        rh.knifeAngle = rightData.pointingAngle;
+        rh.scale = rh.scale + (rightData.scale - rh.scale) * 0.48;
         rh.openness = rightData.openness;
         rh.landmarks = rightData.landmarks;
         rh.detected = true;
+        rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
+        if (rh.trail.length > 14) rh.trail.shift();
 
         fastestHand = rh.speed >= lh.speed
           ? { ...rightData, speed: rh.speed, vx: rh.vx, vy: rh.vy, x: rh.x, y: rh.y }
           : { ...leftData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y };
       } else {
-        // 1 hand detected in frame:
-        // If 2 hands were just detected (< 520ms ago) and merged into 1 detection because the player clapped them together,
-        // bring both gloves together at the clap point!
+        // 1 hand detected in frame: if 2 hands just merged (< 550ms ago) or rapid chop/slap motion, bring both hands together
         const hData = handsForPlayer[0];
-        const mergedClap = (now - (player.lastDualHandTime || 0) < 520) &&
-          Math.hypot(player.leftHand.x - player.rightHand.x, player.leftHand.y - player.rightHand.y) < 0.22;
+        const mergedClap = (now - (player.lastDualHandTime || 0) < 550) &&
+          Math.hypot(player.leftHand.x - player.rightHand.x, player.leftHand.y - player.rightHand.y) < 0.24;
 
         const rh = player.rightHand;
         const lh = player.leftHand;
@@ -893,36 +973,38 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         lh.prevY = lh.y;
 
         const moveSpd = Math.hypot(hData.clampedX - rh.x, hData.clampedY - rh.y);
-        // If merged clap or rapid swat/pinch, bring the two gloves together so they touch; otherwise keep companion glove slightly apart
-        const isRapidClap = mergedClap || moveSpd > 0.026 || hData.openness < 0.65;
-        const halfSpread = isRapidClap ? 0.012 : 0.068;
+        const isRapidStrike = mergedClap || moveSpd > 0.022 || hData.openness < 0.68;
+        const halfSpread = isRapidStrike ? 0.012 : 0.066;
 
-        lh.x = lh.x + ((hData.clampedX - halfSpread) - lh.x) * 0.72;
-        lh.y = lh.y + (hData.clampedY - lh.y) * 0.72;
+        lh.x = lh.x + ((hData.clampedX - halfSpread) - lh.x) * 0.76;
+        lh.y = lh.y + (hData.clampedY - lh.y) * 0.76;
         lh.vx = lh.x - lh.prevX;
         lh.vy = lh.y - lh.prevY;
         lh.speed = Math.hypot(lh.vx, lh.vy);
-        lh.angle = -0.22 + (isRapidClap ? 0.22 : 0);
+        lh.angle = -0.22 + (isRapidStrike ? 0.22 : 0);
+        lh.knifeAngle = -0.45 + (isRapidStrike ? 0.35 : 0);
         lh.scale = lh.scale + (hData.scale - lh.scale) * 0.45;
         lh.openness = hData.openness;
         lh.detected = true;
+        lh.trail.push({ x: lh.x, y: lh.y, life: 1.0 });
+        if (lh.trail.length > 14) lh.trail.shift();
 
-        rh.x = rh.x + ((hData.clampedX + halfSpread) - rh.x) * 0.72;
-        rh.y = rh.y + (hData.clampedY - rh.y) * 0.72;
+        rh.x = rh.x + ((hData.clampedX + halfSpread) - rh.x) * 0.76;
+        rh.y = rh.y + (hData.clampedY - rh.y) * 0.76;
         rh.vx = rh.x - rh.prevX;
         rh.vy = rh.y - rh.prevY;
         rh.speed = Math.hypot(rh.vx, rh.vy);
-        rh.angle = 0.22 - (isRapidClap ? 0.22 : 0);
+        rh.angle = 0.22 - (isRapidStrike ? 0.22 : 0);
+        rh.knifeAngle = -2.69 - (isRapidStrike ? 0.35 : 0);
         rh.scale = rh.scale + (hData.scale - rh.scale) * 0.45;
         rh.openness = hData.openness;
         rh.detected = true;
+        rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
+        if (rh.trail.length > 14) rh.trail.shift();
 
         fastestHand = { ...hData, speed: Math.max(lh.speed, rh.speed), vx: rh.vx, vy: rh.vy, x: hData.clampedX, y: hData.clampedY };
       }
 
-      // Check weapon collision:
-      // - In Mosquito mode: ONLY hits a mosquito when Left Glove and Right Glove touch each other!
-      // - In Chop mode: slashes fruits with the 3D fencing sword!
       checkHandWeaponCollision(
         pIdx,
         fastestHand.x ?? fastestHand.clampedX,
@@ -938,12 +1020,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         ch
       );
 
-      // Update primary arm state for sword & trail rendering
       player.handScale = player.handScale + (fastestHand.scale - player.handScale) * 0.45;
       updatePlayerArm(pIdx, fastestHand.x ?? fastestHand.clampedX, fastestHand.y ?? fastestHand.clampedY, fastestHand.pointingAngle, fastestHand.scale);
 
-      // Biomechanical Head Assistance: if optical face detector hasn't updated in the last 180ms,
-      // infer head X and depth scale smoothly from the player's tracked hand(s)
       if (now - (player.lastHeadTime || 0) > 180) {
         const avgHandX = handsForPlayer.reduce((acc, h) => acc + h.clampedX, 0) / handsForPlayer.length;
         const minHandY = Math.min(...handsForPlayer.map(h => h.clampedY));
@@ -966,14 +1045,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     });
   };
 
-  // Zero-Collision Head Tracker (Uses native FaceDetector API when available + fast skin/silhouette upper-body centroid)
+  // Always keep latest onHandsResults in ref so MediaPipe never calls a stale closure!
+  onHandsResultsRef.current = onHandsResults;
+
+  // Zero-Collision Head Tracker
   const trackHeadsFromVideoFrame = async (video: HTMLVideoElement) => {
     const eng = engineRef.current;
     if (!eng || !video || video.readyState < 2) return;
     const now = performance.now();
     const is2P = eng.numPlayers === 2;
 
-    // 1. Try native Chromium FaceDetector if supported (runs on GPU/OS without touching MediaPipe WASM)
     if (faceDetectorRef.current) {
       try {
         const faces = await faceDetectorRef.current.detect(video);
@@ -984,7 +1065,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           faces.forEach((f: any) => {
             const box = f.boundingBox;
             if (!box) return;
-            // Mirrored normalized coordinates
             const centerX = 1.0 - ((box.x + box.width * 0.5) / vw);
             const topY = box.y / vh;
             const relWidth = box.width / vw;
@@ -993,7 +1073,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             const player = eng.players[pIdx];
             if (!player) return;
 
-            // Strict deadband away from 0.5 center divider so 1 person in the middle never duplicates hats
             if (is2P && centerX > 0.45 && centerX < 0.55) return;
 
             const clampedX = is2P
@@ -1011,12 +1090,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           });
           return;
         }
-      } catch (e) {
-        // Fallback to fast canvas skin-tone/head-top tracker below
-      }
+      } catch (e) {}
     }
 
-    // 2. Fast Offscreen Canvas Upper-Body / Face Skin-Tone Centroid Tracker (Zero WASM collision)
     try {
       if (!headTrackCanvasRef.current) {
         const c = document.createElement('canvas');
@@ -1030,7 +1106,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
       const W = hc.width;
       const H = hc.height;
-      // Draw mirrored frame
       hctx.save();
       hctx.translate(W, 0);
       hctx.scale(-1, 1);
@@ -1055,7 +1130,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         let maxSkinX = startX;
         let count = 0;
 
-        // If player has detected hands, exclude pixels right around their hands so hands don't pull the hat
         const lh = player.leftHand;
         const rh = player.rightHand;
 
@@ -1071,7 +1145,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             const g = img[idx + 1];
             const b = img[idx + 2];
 
-            // Broad multi-tone skin chrominance test (YCbCr / RGB ratio)
             const maxC = Math.max(r, g, b);
             const minC = Math.min(r, g, b);
             const isSkin = (
@@ -1082,7 +1155,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             );
 
             if (isSkin) {
-              // Weight upper pixels more strongly (face/forehead is higher than neck/arms)
               const weight = (1.0 - ny) * 2.0;
               sumX += nx * weight;
               sumY += ny * weight;
@@ -1100,7 +1172,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const foreheadY = Math.max(0.08, Math.min(0.42, (minSkinY / H) * 0.45 + cy * 0.55 - 0.04));
           const spanX = (maxSkinX - minSkinX) / W;
 
-          // Combine with hand depth scale if hands are visible
           const faceScale = Math.max(0.75, Math.min(1.48, spanX * 3.8));
           const combinedScale = player.hasDetectedHands
             ? faceScale * 0.55 + player.handScale * 0.45
@@ -1116,7 +1187,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           player.headDetected = true;
           player.lastHeadTime = now;
         } else if (!player.hasDetectedHands && now - (player.lastHeadTime || 0) > 900) {
-          // Smoothly drift back to home center if nobody is in this player's court zone
           player.headX += (player.homeX - player.headX) * 0.08;
           player.headY += (0.20 - player.headY) * 0.08;
           player.headScale += (1.0 - player.headScale) * 0.08;
@@ -1132,7 +1202,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     } catch (e) {}
   };
 
-  // Setup camera & initialize MediaPipe Hands (without FaceMesh WASM conflict!)
+  // Setup camera & initialize MediaPipe Hands
   const setupCamera = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError("Camera API not supported; playing in 3D AR Virtual Mode!");
@@ -1147,7 +1217,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         handsRef.current = null;
       }
 
-      // Initialize native FaceDetector if available in browser
       if ('FaceDetector' in win && !faceDetectorRef.current) {
         try {
           faceDetectorRef.current = new win.FaceDetector({ fastMode: true, maxDetectedFaces: 2 });
@@ -1156,7 +1225,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
       }
 
-      // Initialize MediaPipe Hands with fast modelComplexity: 0 (same proven config as YogaQuiz/BubblePop)
       if (win.Hands) {
         const hands = new win.Hands({
           locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
@@ -1164,10 +1232,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         hands.setOptions({
           maxNumHands: 4,
           modelComplexity: 0,
-          minDetectionConfidence: 0.38,
-          minTrackingConfidence: 0.38
+          minDetectionConfidence: 0.36,
+          minTrackingConfidence: 0.36
         });
-        hands.onResults(onHandsResults);
+        hands.onResults((res: any) => {
+          if (onHandsResultsRef.current) {
+            onHandsResultsRef.current(res);
+          }
+        });
         handsRef.current = hands;
       }
 
@@ -1185,7 +1257,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         cameraLoopActiveRef.current = true;
         let lastFrameTime = 0;
         let frameCount = 0;
-        const TARGET_INTERVAL_MS = 22; // ~45 FPS low-latency hand & head tracking
+        const TARGET_INTERVAL_MS = 22;
 
         const sendCameraFrames = async (time: number) => {
           if (!cameraLoopActiveRef.current || !videoRef.current) return;
@@ -1239,6 +1311,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     setCameraActive(false);
   };
 
+  // Switch between Slap Mode, Chop Mode, and Combo Mix immediately (works in both Setup and Live Game)
+  const changeCombatMode = (nextMode: 'mosquito' | 'chop' | 'combo') => {
+    setGameMode(nextMode);
+    gameModeRef.current = nextMode;
+
+    const currentIdx = engineRef.current.qIndex || 0;
+    const targetRoundMode: 'mosquito' | 'chop' =
+      nextMode === 'combo'
+        ? (currentIdx % 2 === 0 ? 'mosquito' : 'chop')
+        : nextMode;
+
+    setActiveRoundMode(targetRoundMode);
+    activeRoundModeRef.current = targetRoundMode;
+    engineRef.current.roundMode = targetRoundMode;
+
+    if (engineRef.current.isActive) {
+      spawnRoundTargets(currentIdx, targetRoundMode);
+    }
+  };
+
   // Start game mode
   const startGame = async (playersCount: number) => {
     initAudio();
@@ -1251,7 +1343,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
     const activeQuestions = validQuestions;
 
-    const roundM = gameMode === 'combo' ? 'mosquito' : gameMode;
+    const chosenMode = gameModeRef.current || gameMode;
+    const roundM: 'mosquito' | 'chop' = chosenMode === 'combo' ? 'mosquito' : chosenMode;
     const p1 = createPlayerEngine(0, p1Name || "Player 1", false, playersCount);
     const p2 = createPlayerEngine(1, p2Name || "Player 2", true, playersCount);
 
@@ -1274,15 +1367,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       p1.headX = 0.50;
       p1.headY = 0.20;
       p1.handX = 0.50;
+      p1.leftHand.x = 0.42;
+      p1.rightHand.x = 0.58;
     }
 
-    // Set engine active BEFORE starting camera so the very first camera frame is processed!
     engineRef.current = {
       isActive: true,
       questions: activeQuestions,
       qIndex: 0,
-      timer: 18,
-      maxTimer: 18,
+      timer: 20,
+      maxTimer: 20,
       resolved: false,
       roundMode: roundM,
       numPlayers: playersCount,
@@ -1303,8 +1397,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     setCurrentQIndex(0);
     setActiveRoundMode(roundM);
+    activeRoundModeRef.current = roundM;
     setHudScores([0, 0]);
     setHudStreaks([1, 1]);
+    setHudFrozen([false, false]);
     setTimerPct(100);
     setScreen('loading');
 
@@ -1314,14 +1410,18 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     setTimeout(() => {
       setScreen('game');
-      spawnRoundTargets(0, roundM);
+      const liveRoundMode = gameModeRef.current === 'combo' ? 'mosquito' : gameModeRef.current;
+      engineRef.current.roundMode = liveRoundMode;
+      setActiveRoundMode(liveRoundMode);
+      activeRoundModeRef.current = liveRoundMode;
+      spawnRoundTargets(0, liveRoundMode);
       if (activeQuestions[0]) {
         speakText(activeQuestions[0].text);
       }
     }, 380);
   };
 
-  // Target spawning with Dual-Team ABCD options in 2-Player mode
+  // Target spawning with Dual-Team ABCD options in 2-Player mode (Both Slap Mosquitoes & Chop Fruits float in arena bounds!)
   const spawnRoundTargets = (qIdx: number, mode: 'mosquito' | 'chop') => {
     const qObj = engineRef.current.questions[qIdx];
     if (!qObj) return;
@@ -1331,201 +1431,122 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const opts = qObj.options || ["", "", "", ""];
     const targets: any[] = [];
     const is2P = engineRef.current.numPlayers === 2;
-
     const curSpd = speedRef.current || speed || 1.0;
 
     if (mode === 'mosquito') {
       startMosquitoBuzz();
-
-      if (!is2P) {
-        opts.forEach((optText, i) => {
-          const colX = (i % 2 === 0) ? width * (0.20 + Math.random() * 0.14) : width * (0.66 + Math.random() * 0.14);
-          const rowY = (i < 2) ? height * (0.30 + Math.random() * 0.12) : height * (0.62 + Math.random() * 0.12);
-          const angle = Math.random() * Math.PI * 2;
-          const baseSpeed = (2.1 + Math.random() * 1.1) * curSpd;
-
-          targets.push({
-            optionIndex: i,
-            letter: OPTION_LETTERS[i] || '?',
-            text: optText || `Option ${i + 1}`,
-            isCorrect: i === qObj.answerIndex,
-            team: 'all',
-            x: colX,
-            y: rowY,
-            vx: Math.cos(angle) * baseSpeed,
-            vy: Math.sin(angle) * baseSpeed,
-            wobblePhase: Math.random() * 10,
-            wingPhase: Math.random() * 10,
-            radius: 58,
-            color: OPTION_COLORS[i % OPTION_COLORS.length],
-            alive: true,
-            cooldown: 0
-          });
-        });
-      } else {
-        // 2 Players: Team 1 (Left Court) & Team 2 (Right Court) each get A, B, C, D
-        opts.forEach((optText, i) => {
-          const colX = width * (0.11 + (i % 2) * 0.21 + Math.random() * 0.04);
-          const rowY = height * (0.30 + Math.floor(i / 2) * 0.34 + Math.random() * 0.05);
-          const angle = Math.random() * Math.PI * 2;
-          const baseSpeed = (1.9 + Math.random() * 1.0) * curSpd;
-
-          targets.push({
-            optionIndex: i,
-            letter: OPTION_LETTERS[i] || '?',
-            text: optText || `Option ${i + 1}`,
-            isCorrect: i === qObj.answerIndex,
-            team: 'p1',
-            x: colX,
-            y: rowY,
-            vx: Math.cos(angle) * baseSpeed,
-            vy: Math.sin(angle) * baseSpeed,
-            wobblePhase: Math.random() * 10,
-            wingPhase: Math.random() * 10,
-            radius: 54,
-            color: OPTION_COLORS[i % OPTION_COLORS.length],
-            alive: true,
-            cooldown: 0
-          });
-        });
-
-        opts.forEach((optText, i) => {
-          const colX = width * (0.59 + (i % 2) * 0.21 + Math.random() * 0.04);
-          const rowY = height * (0.30 + Math.floor(i / 2) * 0.34 + Math.random() * 0.05);
-          const angle = Math.random() * Math.PI * 2;
-          const baseSpeed = (1.9 + Math.random() * 1.0) * curSpd;
-
-          targets.push({
-            optionIndex: i,
-            letter: OPTION_LETTERS[i] || '?',
-            text: optText || `Option ${i + 1}`,
-            isCorrect: i === qObj.answerIndex,
-            team: 'p2',
-            x: colX,
-            y: rowY,
-            vx: Math.cos(angle) * baseSpeed,
-            vy: Math.sin(angle) * baseSpeed,
-            wobblePhase: Math.random() * 10 + 5,
-            wingPhase: Math.random() * 10 + 5,
-            radius: 54,
-            color: OPTION_COLORS[i % OPTION_COLORS.length],
-            alive: true,
-            cooldown: 0
-          });
-        });
-      }
     } else {
       stopMosquitoBuzz();
+    }
 
-      if (!is2P) {
-        opts.forEach((optText, i) => {
-          const launchX = width * (0.18 + (i / Math.max(1, opts.length - 1)) * 0.64);
-          const vy = -(10.2 + Math.random() * 2.4) * Math.sqrt(curSpd);
-          const vx = (Math.random() - 0.5) * 2.8 * curSpd;
+    if (!is2P) {
+      opts.forEach((optText, i) => {
+        const colX = (i % 2 === 0) ? width * (0.20 + Math.random() * 0.14) : width * (0.66 + Math.random() * 0.14);
+        const rowY = (i < 2) ? height * (0.32 + Math.random() * 0.12) : height * (0.62 + Math.random() * 0.12);
+        const angle = Math.random() * Math.PI * 2;
+        const baseSpeed = (mode === 'chop' ? 1.85 : 2.1) * curSpd;
 
-          targets.push({
-            optionIndex: i,
-            letter: OPTION_LETTERS[i] || '?',
-            text: optText || `Option ${i + 1}`,
-            isCorrect: i === qObj.answerIndex,
-            team: 'all',
-            x: launchX,
-            y: height + 40 + i * 18,
-            vx,
-            vy,
-            gravity: 0.20,
-            radius: 56,
-            rotation: Math.random() * Math.PI,
-            rotSpeed: (Math.random() - 0.5) * 0.07,
-            color: OPTION_COLORS[i % OPTION_COLORS.length],
-            alive: true,
-            cooldown: 0
-          });
+        targets.push({
+          optionIndex: i,
+          letter: OPTION_LETTERS[i] || '?',
+          text: optText || `Option ${i + 1}`,
+          isCorrect: i === qObj.answerIndex,
+          team: 'all',
+          x: colX,
+          y: rowY,
+          vx: Math.cos(angle) * baseSpeed,
+          vy: Math.sin(angle) * baseSpeed,
+          wobblePhase: Math.random() * 10,
+          wingPhase: Math.random() * 10,
+          rotation: Math.random() * Math.PI,
+          rotSpeed: (Math.random() - 0.5) * 0.045,
+          radius: mode === 'chop' ? 56 : 58,
+          color: OPTION_COLORS[i % OPTION_COLORS.length],
+          alive: true,
+          cooldown: 0,
+          frozen: false,
+          frozenTimer: 0,
+          leftKnifeHitTime: 0,
+          rightKnifeHitTime: 0
         });
-      } else {
-        opts.forEach((optText, i) => {
-          const launchX = width * (0.11 + (i / Math.max(1, opts.length - 1)) * 0.28);
-          targets.push({
-            optionIndex: i,
-            letter: OPTION_LETTERS[i] || '?',
-            text: optText || `Option ${i + 1}`,
-            isCorrect: i === qObj.answerIndex,
-            team: 'p1',
-            x: launchX,
-            y: height + 40 + i * 16,
-            vx: (Math.random() - 0.5) * 2.0 * curSpd,
-            vy: -(10.0 + Math.random() * 2.2) * Math.sqrt(curSpd),
-            gravity: 0.20,
-            radius: 52,
-            rotation: Math.random() * Math.PI,
-            rotSpeed: (Math.random() - 0.5) * 0.07,
-            color: OPTION_COLORS[i % OPTION_COLORS.length],
-            alive: true,
-            cooldown: 0
-          });
-        });
+      });
+    } else {
+      // 2 Players: Team 1 (Left Court) & Team 2 (Right Court) each get A, B, C, D
+      opts.forEach((optText, i) => {
+        const colX = width * (0.11 + (i % 2) * 0.21 + Math.random() * 0.04);
+        const rowY = height * (0.32 + Math.floor(i / 2) * 0.32 + Math.random() * 0.05);
+        const angle = Math.random() * Math.PI * 2;
+        const baseSpeed = (mode === 'chop' ? 1.7 : 1.9) * curSpd;
 
-        opts.forEach((optText, i) => {
-          const launchX = width * (0.60 + (i / Math.max(1, opts.length - 1)) * 0.28);
-          targets.push({
-            optionIndex: i,
-            letter: OPTION_LETTERS[i] || '?',
-            text: optText || `Option ${i + 1}`,
-            isCorrect: i === qObj.answerIndex,
-            team: 'p2',
-            x: launchX,
-            y: height + 40 + i * 16,
-            vx: (Math.random() - 0.5) * 2.0 * curSpd,
-            vy: -(10.0 + Math.random() * 2.2) * Math.sqrt(curSpd),
-            gravity: 0.20,
-            radius: 52,
-            rotation: Math.random() * Math.PI,
-            rotSpeed: (Math.random() - 0.5) * 0.07,
-            color: OPTION_COLORS[i % OPTION_COLORS.length],
-            alive: true,
-            cooldown: 0
-          });
+        targets.push({
+          optionIndex: i,
+          letter: OPTION_LETTERS[i] || '?',
+          text: optText || `Option ${i + 1}`,
+          isCorrect: i === qObj.answerIndex,
+          team: 'p1',
+          x: colX,
+          y: rowY,
+          vx: Math.cos(angle) * baseSpeed,
+          vy: Math.sin(angle) * baseSpeed,
+          wobblePhase: Math.random() * 10,
+          wingPhase: Math.random() * 10,
+          rotation: Math.random() * Math.PI,
+          rotSpeed: (Math.random() - 0.5) * 0.045,
+          radius: mode === 'chop' ? 52 : 54,
+          color: OPTION_COLORS[i % OPTION_COLORS.length],
+          alive: true,
+          cooldown: 0,
+          frozen: false,
+          frozenTimer: 0,
+          leftKnifeHitTime: 0,
+          rightKnifeHitTime: 0
         });
-      }
+      });
+
+      opts.forEach((optText, i) => {
+        const colX = width * (0.59 + (i % 2) * 0.21 + Math.random() * 0.04);
+        const rowY = height * (0.32 + Math.floor(i / 2) * 0.32 + Math.random() * 0.05);
+        const angle = Math.random() * Math.PI * 2;
+        const baseSpeed = (mode === 'chop' ? 1.7 : 1.9) * curSpd;
+
+        targets.push({
+          optionIndex: i,
+          letter: OPTION_LETTERS[i] || '?',
+          text: optText || `Option ${i + 1}`,
+          isCorrect: i === qObj.answerIndex,
+          team: 'p2',
+          x: colX,
+          y: rowY,
+          vx: Math.cos(angle) * baseSpeed,
+          vy: Math.sin(angle) * baseSpeed,
+          wobblePhase: Math.random() * 10 + 5,
+          wingPhase: Math.random() * 10 + 5,
+          rotation: Math.random() * Math.PI,
+          rotSpeed: (Math.random() - 0.5) * 0.045,
+          radius: mode === 'chop' ? 52 : 54,
+          color: OPTION_COLORS[i % OPTION_COLORS.length],
+          alive: true,
+          cooldown: 0,
+          frozen: false,
+          frozenTimer: 0,
+          leftKnifeHitTime: 0,
+          rightKnifeHitTime: 0
+        });
+      });
     }
 
     engineRef.current.targets = targets;
-    engineRef.current.timer = 18;
+    engineRef.current.timer = 20;
     engineRef.current.resolved = false;
   };
 
-  // Launch fresh fruit wave in chop chop if all fell
-  const launchFruitWave = () => {
-    const qObj = engineRef.current.questions[engineRef.current.qIndex];
-    if (!qObj) return;
-    const width = containerRef.current?.clientWidth || 960;
-    const height = containerRef.current?.clientHeight || 540;
-    const is2P = engineRef.current.numPlayers === 2;
-    const curSpd = speedRef.current || speed || 1.0;
-
-    engineRef.current.targets.forEach((t, i) => {
-      if (!t.alive) return;
-      if (!is2P) {
-        t.x = width * (0.18 + (i / Math.max(1, engineRef.current.targets.length - 1)) * 0.64);
-      } else {
-        if (t.team === 'p1') {
-          t.x = width * (0.11 + (t.optionIndex / 3) * 0.28);
-        } else {
-          t.x = width * (0.60 + (t.optionIndex / 3) * 0.28);
-        }
-      }
-      t.y = height + 40 + (t.optionIndex % 4) * 16;
-      t.vy = -(10.0 + Math.random() * 2.2) * Math.sqrt(curSpd);
-      t.vx = (Math.random() - 0.5) * 2.4 * curSpd;
-    });
-  };
-
-  // Handle interaction hit (slap or slash)
+  // Handle interaction hit (Slap or Dual-Knife Chop)
+  // Pointing System: +5 Points if Correct, -5 Points & FROZEN if Wrong!
   const handleTargetHit = (playerIdx: number, target: any) => {
-    if (engineRef.current.resolved || !target.alive) return;
+    if (engineRef.current.resolved || !target.alive || target.frozen) return;
     const eng = engineRef.current;
     const p = eng.players[playerIdx];
-    if (!p) return;
+    if (!p || p.frozenTimer > 0) return;
 
     // Enforce Court Team Lock: Player 1 cannot hit Player 2's targets and vice versa
     if (eng.numPlayers === 2) {
@@ -1538,8 +1559,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       x: target.x,
       y: target.y,
       radius: 16,
-      maxRadius: target.isCorrect ? 130 : 75,
-      color: target.isCorrect ? '#4ade80' : '#f87171',
+      maxRadius: target.isCorrect ? 135 : 85,
+      color: target.isCorrect ? '#10b981' : '#38bdf8',
       alpha: 1.0
     });
 
@@ -1550,7 +1571,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       stopMosquitoBuzz();
 
       p.hits++;
-      const addedPoints = 100 * p.streak;
+      p.correctHits = (p.correctHits || 0) + 1;
+      const addedPoints = 5;
       p.score += addedPoints;
       p.streak = Math.min(10, p.streak + 1);
 
@@ -1561,16 +1583,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       setHudStreaks([eng.players[0].streak, eng.players[1].streak]);
       setHudScorePops(prev => {
         const next = [...prev] as [string | null, string | null];
-        next[playerIdx] = `+${addedPoints}!`;
+        next[playerIdx] = `+5 PTS! 🎉`;
         return next;
       });
       setTimeout(() => {
         setHudScorePops([null, null]);
-      }, 1200);
+      }, 1300);
 
       // Juicy Particle Bursts
       spawnBurstParticles(target.x, target.y, target.color.main, 36);
-      spawnBurstParticles(target.x, target.y, '#ffffff', 12);
+      spawnBurstParticles(target.x, target.y, '#ffffff', 14);
       if (eng.roundMode === 'chop') {
         spawnSlicedFruitHalves(target);
       } else {
@@ -1584,7 +1606,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       }
 
       const teamPrefix = eng.numPlayers === 2 ? `${playerIdx === 0 ? p1Name : p2Name}: ` : '';
-      spawnFloatingText(target.x, target.y - 24, `${teamPrefix}💥 SMASH! +${addedPoints}`, '#4ade80');
+      spawnFloatingText(
+        target.x,
+        target.y - 24,
+        `${teamPrefix}${eng.roundMode === 'chop' ? '🔪 CHOPPED!' : '👏 SLAPPED!'} +5 PTS`,
+        '#10b981'
+      );
 
       setTimeout(() => {
         if (!engineRef.current.isActive) return;
@@ -1594,28 +1621,54 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         } else {
           engineRef.current.qIndex = nextIdx;
           setCurrentQIndex(nextIdx);
-          const nextRoundMode = gameMode === 'combo' ? (nextIdx % 2 === 0 ? 'mosquito' : 'chop') : gameMode;
+          const curModeSetting = gameModeRef.current || gameMode;
+          const nextRoundMode: 'mosquito' | 'chop' =
+            curModeSetting === 'combo'
+              ? (nextIdx % 2 === 0 ? 'mosquito' : 'chop')
+              : curModeSetting;
           engineRef.current.roundMode = nextRoundMode;
           setActiveRoundMode(nextRoundMode);
+          activeRoundModeRef.current = nextRoundMode;
           spawnRoundTargets(nextIdx, nextRoundMode);
           if (engineRef.current.questions[nextIdx]) {
             speakText(engineRef.current.questions[nextIdx].text);
           }
         }
-      }, 1500);
+      }, 1450);
 
     } else {
+      // WRONG WORD HIT -> -5 POINTS & FREEZE IN 3D ICE!
       p.streak = 1;
-      eng.screenShake = 6;
+      p.wrongHits = (p.wrongHits || 0) + 1;
+      p.score -= 5;
+      p.frozenTimer = 1.6;
+      eng.screenShake = 8;
+
+      // Freeze the incorrect word in a 3D Ice Block!
+      target.frozen = true;
+      target.frozenTimer = 4.8;
+      target.vx = 0;
+      target.vy = 0;
+      target.cooldown = 120;
+
       playSoundEffect(eng.roundMode === 'chop' ? 'slash' : 'slap');
-      setTimeout(() => playSoundEffect('wrong'), 60);
-      target.cooldown = 36;
-      // Knockback bounce on wrong target
-      target.vx = -target.vx * 1.25;
-      target.vy = -Math.abs(target.vy) - 2.5;
+      setTimeout(() => playSoundEffect('freeze'), 55);
+
+      setHudScores([eng.players[0].score, eng.players[1].score]);
       setHudStreaks([eng.players[0].streak, eng.players[1].streak]);
-      spawnFloatingText(target.x, target.y - 18, `❌ OOPS! Try Again`, '#f87171');
-      spawnBurstParticles(target.x, target.y, '#94a3b8', 16);
+      setHudFrozen([eng.players[0].frozenTimer > 0, eng.players[1].frozenTimer > 0]);
+      setHudScorePops(prev => {
+        const next = [...prev] as [string | null, string | null];
+        next[playerIdx] = `-5 PTS! ❄️`;
+        return next;
+      });
+      setTimeout(() => {
+        setHudScorePops([null, null]);
+      }, 1300);
+
+      spawnFloatingText(target.x, target.y - 24, `❄️ FROZEN! -5 PTS`, '#0284c7');
+      spawnBurstParticles(target.x, target.y, '#38bdf8', 22);
+      spawnBurstParticles(target.x, target.y, '#e0f2fe', 14);
     }
   };
 
@@ -1660,11 +1713,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     stopMosquitoBuzz();
     engineRef.current.isActive = false;
     setScreen('results');
+    setTimeout(() => playSoundEffect('victory'), 120);
   };
 
   // Unified collision check:
   // - In Mosquito Slap Mode: ONLY hits a mosquito when the player's Left Glove and Right Glove touch each other!
-  // - In Chop Mode: slashes fruits with the 3D Fencing Sword!
+  // - In Chop Mode: options are CHOPPED when hit by BOTH Left and Right Chopping Knives!
   const checkHandWeaponCollision = (
     pIdx: number,
     normX: number,
@@ -1680,68 +1734,84 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ch: number
   ) => {
     const eng = engineRef.current;
-    if (!eng || eng.resolved) return;
+    if (!eng || eng.resolved || showSettingsModalRef.current) return;
     const p = eng.players[pIdx];
-    if (!p) return;
+    if (!p || p.frozenTimer > 0) return;
 
-    const hx = normX * cw;
-    const hy = normY * ch;
-    const prevHx = prevNormX * cw;
-    const prevHy = prevNormY * ch;
+    const lx = (p.leftHand?.x ?? (normX - 0.06)) * cw;
+    const ly = (p.leftHand?.y ?? normY) * ch;
+    const prevLx = (p.leftHand?.prevX ?? p.leftHand?.x ?? prevNormX) * cw;
+    const prevLy = (p.leftHand?.prevY ?? p.leftHand?.y ?? prevNormY) * ch;
+
+    const rx = (p.rightHand?.x ?? (normX + 0.06)) * cw;
+    const ry = (p.rightHand?.y ?? normY) * ch;
+    const prevRx = (p.rightHand?.prevX ?? p.rightHand?.x ?? prevNormX) * cw;
+    const prevRy = (p.rightHand?.prevY ?? p.rightHand?.y ?? prevNormY) * ch;
+
+    const leftScale = Math.max(0.85, p.leftHand?.scale || handScale || 1.0);
+    const rightScale = Math.max(0.85, p.rightHand?.scale || handScale || 1.0);
+    const avgScale = (leftScale + rightScale) * 0.5;
+    const handDist = Math.hypot(rx - lx, ry - ly);
 
     if (eng.roundMode === 'chop') {
-      // Responsive Sword Angle: blend wrist->finger pointing angle with slash motion vector
-      let bladeAngle = p.swordAngle;
-      if (handSpeed > 0.008) {
-        const velAngle = Math.atan2(vy * ch, vx * cw);
-        bladeAngle = pointingAngle !== undefined
-          ? Math.atan2(
-              Math.sin(velAngle) * 0.65 + Math.sin(pointingAngle) * 0.35,
-              Math.cos(velAngle) * 0.65 + Math.cos(pointingAngle) * 0.35
-            )
-          : velAngle;
-      } else if (pointingAngle !== undefined) {
-        bladeAngle = pointingAngle;
-      }
-      p.swordAngle = bladeAngle;
-      if (handSpeed > 0.006) {
-        p.swordLunge = Math.min(1.0, p.swordLunge + handSpeed * 9);
-      }
+      // CHOP MODE: Dual Left & Right 3D Chopping Knives!
+      // Calculate Left Knife Blade Tip & Right Knife Blade Tip
+      const leftAng = p.leftHand?.knifeAngle ?? -0.45;
+      const rightAng = p.rightHand?.knifeAngle ?? -2.69;
+      const bladeLen = Math.max(115, cw * 0.13) * avgScale;
 
-      const bladeLen = Math.max(250, cw * 0.29) * Math.max(0.85, Math.min(1.35, handScale));
-      const tipX = hx + Math.cos(bladeAngle) * bladeLen;
-      const tipY = hy + Math.sin(bladeAngle) * bladeLen;
-      const midX = hx + Math.cos(bladeAngle) * (bladeLen * 0.55);
-      const midY = hy + Math.sin(bladeAngle) * (bladeLen * 0.55);
+      const lTipX = lx + Math.cos(leftAng) * bladeLen;
+      const lTipY = ly + Math.sin(leftAng) * bladeLen;
+      const rTipX = rx + Math.cos(rightAng) * bladeLen;
+      const rTipY = ry + Math.sin(rightAng) * bladeLen;
 
-      // Check both blade segment AND hand-path segment so fast slashes never skip over a fruit
+      const midX = (lx + rx) * 0.5;
+      const midY = (ly + ry) * 0.5;
+      const knivesTouching = handDist <= 135 * avgScale || (p.clapTimer && p.clapTimer > 0);
+      const now = performance.now();
+
       eng.targets.forEach(t => {
-        if (!t.alive || t.cooldown > 0) return;
+        if (!t.alive || t.frozen || t.cooldown > 0) return;
         if (eng.numPlayers === 2) {
           if (pIdx === 0 && t.team === 'p2') return;
           if (pIdx === 1 && t.team === 'p1') return;
         }
-        const distBlade = distToSegment({ x: t.x, y: t.y }, { x: hx, y: hy }, { x: tipX, y: tipY });
-        const distSweep = distToSegment({ x: t.x, y: t.y }, { x: prevHx, y: prevHy }, { x: midX, y: midY });
-        const hitRadius = t.radius + 32 * Math.max(0.9, handScale * 0.85);
-        if (distBlade < hitRadius || distSweep < hitRadius) {
+
+        const hitRadius = t.radius + 42 * avgScale;
+        const dLeftBlade = distToSegment({ x: t.x, y: t.y }, { x: lx, y: ly }, { x: lTipX, y: lTipY });
+        const dLeftSweep = distToSegment({ x: t.x, y: t.y }, { x: prevLx, y: prevLy }, { x: lx, y: ly });
+        const leftHit = dLeftBlade < hitRadius || dLeftSweep < hitRadius;
+
+        const dRightBlade = distToSegment({ x: t.x, y: t.y }, { x: rx, y: ry }, { x: rTipX, y: rTipY });
+        const dRightSweep = distToSegment({ x: t.x, y: t.y }, { x: prevRx, y: prevRy }, { x: rx, y: ry });
+        const rightHit = dRightBlade < hitRadius || dRightSweep < hitRadius;
+
+        if (leftHit) {
+          t.leftKnifeHitTime = now;
+          p.leftHand.slapAnim = 1.0;
+        }
+        if (rightHit) {
+          t.rightKnifeHitTime = now;
+          p.rightHand.slapAnim = 1.0;
+        }
+
+        const dMid = Math.hypot(t.x - midX, t.y - midY);
+        const bothKnivesStruck =
+          (now - (t.leftKnifeHitTime || 0) < 620 && now - (t.rightKnifeHitTime || 0) < 620) ||
+          (knivesTouching && dMid < hitRadius + 24);
+
+        if (bothKnivesStruck) {
+          p.slapAnim = 1.0;
           p.swordLunge = 1.0;
+          p.isClapping = true;
           handleTargetHit(pIdx, t);
         }
       });
     } else {
-      // Mosquito Slap Mode: ONLY hit the mosquito when Left Glove and Right Glove touch each other!
-      const lx = (p.leftHand?.x ?? (normX - 0.06)) * cw;
-      const ly = (p.leftHand?.y ?? normY) * ch;
-      const rx = (p.rightHand?.x ?? (normX + 0.06)) * cw;
-      const ry = (p.rightHand?.y ?? normY) * ch;
+      // MOSQUITO SLAP MODE: ONLY hit the mosquito when Left Glove and Right Glove touch each other!
+      const touchThreshold = 116 * avgScale;
 
-      const avgScale = Math.max(0.85, ((p.leftHand?.scale || 1.0) + (p.rightHand?.scale || 1.0)) * 0.5);
-      const gloveDist = Math.hypot(rx - lx, ry - ly);
-      const touchThreshold = 112 * avgScale;
-
-      if (gloveDist <= touchThreshold || (p.clapTimer && p.clapTimer > 0)) {
-        // The two gloves are touching each other!
+      if (handDist <= touchThreshold || (p.clapTimer && p.clapTimer > 0)) {
         p.isClapping = true;
         p.slapAnim = 1.0;
         const clapX = (lx + rx) * 0.5;
@@ -1749,12 +1819,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         p.clapMidX = clapX / cw;
         p.clapMidY = clapY / ch;
 
-        const prevClapX = (((p.leftHand?.prevX ?? p.leftHand?.x ?? normX) + (p.rightHand?.prevX ?? p.rightHand?.x ?? normX)) * 0.5) * cw;
-        const prevClapY = (((p.leftHand?.prevY ?? p.leftHand?.y ?? normY) + (p.rightHand?.prevY ?? p.rightHand?.y ?? normY)) * 0.5) * ch;
+        const prevClapX = (prevLx + prevRx) * 0.5;
+        const prevClapY = (prevLy + prevRy) * 0.5;
 
-        const hitRadiusBonus = 52 * avgScale;
+        const hitRadiusBonus = 54 * avgScale;
         eng.targets.forEach(t => {
-          if (!t.alive || t.cooldown > 0) return;
+          if (!t.alive || t.frozen || t.cooldown > 0) return;
           if (eng.numPlayers === 2) {
             if (pIdx === 0 && t.team === 'p2') return;
             if (pIdx === 1 && t.team === 'p1') return;
@@ -1785,7 +1855,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     const p = eng.players[playerIdx];
     if (p && !p.hasDetectedHands) {
-      // Keep the two virtual gloves apart while moving the mouse/finger unless actively pressing down to clap!
       const isPressed = (e.buttons & 1) === 1 || (p.clapTimer && p.clapTimer > 0);
       const spread = isPressed ? 0.008 : 0.056;
       p.leftHand.prevX = p.leftHand.x;
@@ -1796,6 +1865,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       p.leftHand.y = rawY;
       p.rightHand.x = clampedX + spread;
       p.rightHand.y = rawY;
+      p.leftHand.trail.push({ x: p.leftHand.x, y: p.leftHand.y, life: 1.0 });
+      if (p.leftHand.trail.length > 14) p.leftHand.trail.shift();
+      p.rightHand.trail.push({ x: p.rightHand.x, y: p.rightHand.y, life: 1.0 });
+      if (p.rightHand.trail.length > 14) p.rightHand.trail.shift();
     }
 
     updatePlayerArm(playerIdx, clampedX, rawY);
@@ -1816,11 +1889,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ? (playerIdx === 0 ? Math.min(0.465, Math.max(0.04, rawX)) : Math.max(0.535, Math.min(0.96, rawX)))
       : Math.max(0.04, Math.min(0.96, rawX));
 
-    // Bring Left Glove and Right Glove together to physically touch/clap at the click point!
+    // Bring Left and Right Gloves/Knives together to clap/chop at the click point!
     p.clapTimer = 0.28;
     p.isClapping = true;
     p.slapAnim = 1.0;
     p.swordLunge = 1.0;
+    p.leftHand.slapAnim = 1.0;
+    p.rightHand.slapAnim = 1.0;
     p.clapMidX = clampedX;
     p.clapMidY = rawY;
 
@@ -1858,30 +1933,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const cw = containerRef.current?.clientWidth || 960;
     const ch = containerRef.current?.clientHeight || 540;
 
-    if (p.speed > 0.0025) {
-      const moveAngle = Math.atan2(p.vy * ch, p.vx * cw);
-      if (pointingAngle !== undefined) {
-        p.swordAngle = Math.atan2(
-          Math.sin(moveAngle) * 0.6 + Math.sin(pointingAngle) * 0.4,
-          Math.cos(moveAngle) * 0.6 + Math.cos(pointingAngle) * 0.4
-        );
-      } else {
-        p.swordAngle = moveAngle;
-      }
-      p.swordLunge = Math.min(1.0, p.swordLunge + p.speed * 8);
-    } else if (pointingAngle !== undefined) {
-      p.swordAngle = pointingAngle;
-    }
-
-    const bladeLen = Math.max(250, cw * 0.29) * Math.max(0.85, Math.min(1.35, handScale || p.handScale || 1.0));
-    const hx = p.handX * cw;
-    const hy = p.handY * ch;
-    const tipX = hx + Math.cos(p.swordAngle) * bladeLen;
-    const tipY = hy + Math.sin(p.swordAngle) * bladeLen;
-
-    p.trail.push({ x: p.handX, y: p.handY, tipX: tipX / cw, tipY: tipY / ch, life: 1.0 });
-    if (p.trail.length > 22) p.trail.shift();
-
     checkHandWeaponCollision(pIdx, p.handX, p.handY, p.prevHandX, p.prevHandY, p.vx, p.vy, p.speed, pointingAngle, handScale || p.handScale || 1.0, cw, ch);
   };
 
@@ -1918,7 +1969,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         const eng = engineRef.current;
 
         // Timer Update (Pause timer when Settings Modal is open)
-        if (!eng.resolved && !showSettingsModal) {
+        if (!eng.resolved && !showSettingsModalRef.current) {
           eng.timer = Math.max(0, eng.timer - dt);
           setTimerPct((eng.timer / eng.maxTimer) * 100);
           if (eng.timer <= 0) {
@@ -1935,8 +1986,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               } else {
                 eng.qIndex = nIdx;
                 setCurrentQIndex(nIdx);
-                const nextMode = gameMode === 'combo' ? (nIdx % 2 === 0 ? 'mosquito' : 'chop') : gameMode;
+                const activegm = gameModeRef.current;
+                const nextMode = activegm === 'combo' ? (nIdx % 2 === 0 ? 'mosquito' : 'chop') : activegm;
                 eng.roundMode = nextMode;
+                activeRoundModeRef.current = nextMode;
                 setActiveRoundMode(nextMode);
                 spawnRoundTargets(nIdx, nextMode);
                 if (eng.questions[nIdx]) speakText(eng.questions[nIdx].text);
@@ -2049,14 +2102,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           ctx.restore();
         }
 
-        // 2. Draw Mode-Specific 3D Headgear (Tracked to Player Head & Dynamic Head Scale)
+        // 2. Draw Mode-Specific 3D Headgear (Mosquito Net Hat in Slap Mode, 3D Chef's Hat in Chop Mode!)
         if (showHeadgear) {
           eng.players.forEach((p, idx) => {
             if (idx === 1 && eng.numPlayers === 1) return;
             if (eng.roundMode === 'mosquito') {
               drawPurpleMosquitoNetHat(ctx, p, cw, ch);
             } else {
-              draw3DFencingMask(ctx, p, cw, ch);
+              draw3DChefHat(ctx, p, cw, ch);
             }
           });
         }
@@ -2072,110 +2125,104 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           draw3DSplat(ctx, s);
         }
 
-        // 4. Update & Draw Targets with Strict Court Separation + Adjustable Movement Style & Speed
+        // 4. Update & Draw Targets with Strict Court Separation + Freeze Support + Adjustable Movement Style & Speed
         const mvStyle = movementStyleRef.current;
         const moveMult = mvStyle === 'hover' ? 0.14 : mvStyle === 'calm' ? 0.55 : mvStyle === 'zigzag' ? 1.25 : 1.0;
+        const padTop = 152;
+        const padBottom = 92;
 
-        let aliveFruitCount = 0;
         eng.targets.forEach(t => {
           if (t.cooldown > 0) t.cooldown--;
           if (!t.alive) return;
 
-          if (eng.roundMode === 'mosquito') {
-            if (!showSettingsModal) {
-              if (mvStyle === 'zigzag') {
-                t.x += t.vx * moveMult + Math.sin(now * 0.014 + t.wobblePhase) * 3.4;
-                t.y += t.vy * moveMult + Math.cos(now * 0.016 + t.wobblePhase) * 2.8;
-              } else if (mvStyle === 'hover') {
-                t.x += Math.sin(now * 0.003 + t.wobblePhase) * 0.45;
-                t.y += Math.cos(now * 0.004 + t.wobblePhase) * 0.55;
-              } else {
-                t.x += t.vx * moveMult + Math.sin(now * 0.006 + t.wobblePhase) * 1.15 * moveMult;
-                t.y += t.vy * moveMult + Math.cos(now * 0.007 + t.wobblePhase) * 1.15 * moveMult;
-              }
-            }
+          if (t.frozenTimer > 0) {
+            t.frozenTimer = Math.max(0, t.frozenTimer - dt);
+          }
 
-            const padTop = 148;
-            const padBottom = 92;
-
-            if (t.team === 'p1') {
-              if (t.x < 85) { t.x = 85; t.vx = Math.abs(t.vx); }
-              if (t.x > (cw / 2) - 85) { t.x = (cw / 2) - 85; t.vx = -Math.abs(t.vx); }
-            } else if (t.team === 'p2') {
-              if (t.x < (cw / 2) + 85) { t.x = (cw / 2) + 85; t.vx = Math.abs(t.vx); }
-              if (t.x > cw - 85) { t.x = cw - 85; t.vx = -Math.abs(t.vx); }
+          // Only move targets that are NOT frozen in ice!
+          if (!t.frozen && !showSettingsModalRef.current) {
+            if (mvStyle === 'zigzag') {
+              t.x += t.vx * moveMult + Math.sin(now * 0.014 + t.wobblePhase) * 3.4;
+              t.y += t.vy * moveMult + Math.cos(now * 0.016 + t.wobblePhase) * 2.8;
+            } else if (mvStyle === 'hover') {
+              t.x += Math.sin(now * 0.003 + t.wobblePhase) * 0.45;
+              t.y += Math.cos(now * 0.004 + t.wobblePhase) * 0.55;
             } else {
-              if (t.x < 95) { t.x = 95; t.vx = Math.abs(t.vx); }
-              if (t.x > cw - 95) { t.x = cw - 95; t.vx = -Math.abs(t.vx); }
+              t.x += t.vx * moveMult + Math.sin(now * 0.006 + t.wobblePhase) * 1.15 * moveMult;
+              t.y += t.vy * moveMult + Math.cos(now * 0.007 + t.wobblePhase) * 1.15 * moveMult;
             }
+            if (eng.roundMode === 'chop') {
+              t.rotation = (t.rotation || 0) + (t.rotSpeed || 0.02) * moveMult;
+            }
+          }
 
-            if (t.y < padTop) { t.y = padTop; t.vy = Math.abs(t.vy); }
-            if (t.y > ch - padBottom) { t.y = ch - padBottom; t.vy = -Math.abs(t.vy); }
+          if (t.team === 'p1') {
+            if (t.x < 85) { t.x = 85; t.vx = Math.abs(t.vx); }
+            if (t.x > (cw / 2) - 85) { t.x = (cw / 2) - 85; t.vx = -Math.abs(t.vx); }
+          } else if (t.team === 'p2') {
+            if (t.x < (cw / 2) + 85) { t.x = (cw / 2) + 85; t.vx = Math.abs(t.vx); }
+            if (t.x > cw - 85) { t.x = cw - 85; t.vx = -Math.abs(t.vx); }
+          } else {
+            if (t.x < 95) { t.x = 95; t.vx = Math.abs(t.vx); }
+            if (t.x > cw - 95) { t.x = cw - 95; t.vx = -Math.abs(t.vx); }
+          }
 
+          if (t.y < padTop) { t.y = padTop; t.vy = Math.abs(t.vy); }
+          if (t.y > ch - padBottom) { t.y = ch - padBottom; t.vy = -Math.abs(t.vy); }
+
+          if (eng.roundMode === 'mosquito') {
             drawMosquitoTarget(ctx, t, now);
           } else {
-            if (!showSettingsModal) {
-              t.x += t.vx * moveMult;
-              t.y += t.vy * (mvStyle === 'calm' ? 0.8 : 1.0);
-              t.vy += t.gravity * (mvStyle === 'calm' ? 0.72 : 1.0);
-              t.rotation += t.rotSpeed * moveMult;
-            }
-
-            if (t.team === 'p1') {
-              if (t.x < 75) { t.x = 75; t.vx = Math.abs(t.vx); }
-              if (t.x > (cw / 2) - 75) { t.x = (cw / 2) - 75; t.vx = -Math.abs(t.vx); }
-            } else if (t.team === 'p2') {
-              if (t.x < (cw / 2) + 75) { t.x = (cw / 2) + 75; t.vx = Math.abs(t.vx); }
-              if (t.x > cw - 75) { t.x = cw - 75; t.vx = -Math.abs(t.vx); }
-            } else {
-              if (t.x < 85) { t.x = 85; t.vx = Math.abs(t.vx); }
-              if (t.x > cw - 85) { t.x = cw - 85; t.vx = -Math.abs(t.vx); }
-            }
-
-            if (t.y < ch + 120) {
-              aliveFruitCount++;
-            }
-            drawFruitTarget(ctx, t);
+            drawFruitTarget(ctx, t, now);
           }
         });
 
-        if (eng.roundMode === 'chop' && !eng.resolved && aliveFruitCount === 0) {
-          launchFruitWave();
-        }
-
-        // 5. Draw Weapons (Unified 3D Connected Gloves with Clap-to-Hit Indicator, or 3D Fencing Swords)
+        // 5. Draw Weapons (Unified 3D Connected Gloves in Slap Mode, or Dual Left & Right 3D Chopping Knives in Chop Mode!)
         eng.players.forEach((p, idx) => {
           if (idx === 1 && eng.numPlayers === 1) return;
           p.slapAnim = Math.max(0, p.slapAnim - dt * 3.8);
           p.swordLunge = Math.max(0, p.swordLunge - dt * 3.2);
+          if (p.frozenTimer > 0) {
+            p.frozenTimer = Math.max(0, p.frozenTimer - dt);
+          }
           if (p.clapTimer > 0) {
             p.clapTimer = Math.max(0, p.clapTimer - dt);
             if (p.clapTimer === 0 && !p.hasDetectedHands) {
               p.isClapping = false;
-              // Gently separate virtual gloves after a mouse/touch clap finishes
               p.leftHand.x = p.handX - 0.056;
               p.rightHand.x = p.handX + 0.056;
             }
           }
 
+          // Decay trails on player and both hands
           for (let t = p.trail.length - 1; t >= 0; t--) {
             p.trail[t].life -= dt * 3.6;
             if (p.trail[t].life <= 0) p.trail.splice(t, 1);
           }
+          if (p.leftHand?.trail) {
+            for (let t = p.leftHand.trail.length - 1; t >= 0; t--) {
+              p.leftHand.trail[t].life -= dt * 4.0;
+              if (p.leftHand.trail[t].life <= 0) p.leftHand.trail.splice(t, 1);
+            }
+          }
+          if (p.rightHand?.trail) {
+            for (let t = p.rightHand.trail.length - 1; t >= 0; t--) {
+              p.rightHand.trail[t].life -= dt * 4.0;
+              if (p.rightHand.trail[t].life <= 0) p.rightHand.trail.splice(t, 1);
+            }
+          }
+
+          const baseScale = Math.max(0.88, Math.min(1.28, cw / 960));
+          const lx = (p.leftHand?.x ?? (p.handX - 0.056)) * cw;
+          const ly = (p.leftHand?.y ?? p.handY) * ch;
+          const rx = (p.rightHand?.x ?? (p.handX + 0.056)) * cw;
+          const ry = (p.rightHand?.y ?? p.handY) * ch;
+          const leftScale = baseScale * (p.leftHand?.scale || p.handScale || 1.0);
+          const rightScale = baseScale * (p.rightHand?.scale || p.handScale || 1.0);
+          const handDist = Math.hypot(rx - lx, ry - ly);
+          const isTouching = handDist <= 125 * ((leftScale + rightScale) * 0.5) || p.isClapping;
 
           if (eng.roundMode === 'mosquito') {
-            const baseScale = Math.max(0.88, Math.min(1.28, cw / 960));
-
-            const lx = (p.leftHand?.x ?? (p.handX - 0.056)) * cw;
-            const ly = (p.leftHand?.y ?? p.handY) * ch;
-            const rx = (p.rightHand?.x ?? (p.handX + 0.056)) * cw;
-            const ry = (p.rightHand?.y ?? p.handY) * ch;
-
-            const leftScale = baseScale * (p.leftHand?.scale || p.handScale || 1.0);
-            const rightScale = baseScale * (p.rightHand?.scale || p.handScale || 1.0);
-            const gloveDist = Math.hypot(rx - lx, ry - ly);
-            const isTouching = gloveDist <= 112 * ((leftScale + rightScale) * 0.5) || p.isClapping;
-
             // Draw Left 3D Connected Glove
             drawSingleCartoonGlove(
               ctx,
@@ -2186,7 +2233,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               false,
               p.theme,
               isTouching ? Math.max(0.4, p.slapAnim) : 0,
-              p.leftHand?.openness ?? 1.0
+              p.leftHand?.openness ?? 1.0,
+              p.frozenTimer > 0
             );
 
             // Draw Right 3D Connected Glove
@@ -2199,14 +2247,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               true,
               p.theme,
               isTouching ? Math.max(0.4, p.slapAnim) : 0,
-              p.rightHand?.openness ?? 1.0
+              p.rightHand?.openness ?? 1.0,
+              p.frozenTimer > 0
             );
 
             // Visual 3D CLAP Burst when Left & Right Gloves touch each other!
-            if (isTouching) {
+            if (isTouching && p.frozenTimer <= 0) {
               const midX = (lx + rx) * 0.5;
               const midY = (ly + ry) * 0.5;
-              if (!showSettingsModal) {
+              if (!showSettingsModalRef.current) {
                 checkHandWeaponCollision(
                   idx,
                   midX / cw,
@@ -2241,7 +2290,90 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               ctx.restore();
             }
           } else {
-            draw3DFencingSwordAndTrail(ctx, p, cw, ch, now);
+            // CHOP MODE: Draw BOTH Left & Right 3D Chopping Knives (Chef's Cleavers)
+            const leftKnifeAngle = p.hasDetectedHands
+              ? (p.leftHand?.knifeAngle ?? -0.35)
+              : (-0.38 + p.slapAnim * 0.45);
+            const rightKnifeAngle = p.hasDetectedHands
+              ? (p.rightHand?.knifeAngle ?? (-Math.PI + 0.35))
+              : (-Math.PI + 0.38 - p.slapAnim * 0.45);
+
+            drawSingle3DChoppingKnife(
+              ctx,
+              lx,
+              ly,
+              leftKnifeAngle,
+              leftScale,
+              false,
+              p.theme,
+              p.leftHand?.trail || [],
+              cw,
+              ch,
+              now,
+              p.slapAnim,
+              p.frozenTimer > 0
+            );
+
+            drawSingle3DChoppingKnife(
+              ctx,
+              rx,
+              ry,
+              rightKnifeAngle,
+              rightScale,
+              true,
+              p.theme,
+              p.rightHand?.trail || [],
+              cw,
+              ch,
+              now,
+              p.slapAnim,
+              p.frozenTimer > 0
+            );
+
+            // Check dual-knife chop collision every frame when not frozen
+            if (!showSettingsModalRef.current && p.frozenTimer <= 0) {
+              const midX = (lx + rx) * 0.5;
+              const midY = (ly + ry) * 0.5;
+              checkHandWeaponCollision(
+                idx,
+                midX / cw,
+                midY / ch,
+                midX / cw,
+                midY / ch,
+                0,
+                0,
+                0.05,
+                0,
+                (p.leftHand?.scale || 1.0) * 0.5 + (p.rightHand?.scale || 1.0) * 0.5,
+                cw,
+                ch
+              );
+            }
+
+            // Visual 3D Cross-Blade X-CHOP Spark when Left & Right Chopping Knives cross or chop together!
+            if (isTouching && p.frozenTimer <= 0) {
+              const midX = (lx + rx) * 0.5;
+              const midY = (ly + ry) * 0.5;
+              ctx.save();
+              ctx.translate(midX, midY);
+              ctx.strokeStyle = '#38bdf8';
+              ctx.lineWidth = 5;
+              ctx.lineCap = 'round';
+              const slashR = 32 + p.slapAnim * 24;
+              ctx.beginPath();
+              ctx.moveTo(-slashR, -slashR * 0.7);
+              ctx.lineTo(slashR, slashR * 0.7);
+              ctx.moveTo(slashR, -slashR * 0.7);
+              ctx.lineTo(-slashR, slashR * 0.7);
+              ctx.stroke();
+
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 2.5;
+              ctx.beginPath();
+              ctx.arc(0, 0, 18 + p.slapAnim * 12, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.restore();
+            }
           }
         });
 
@@ -2582,10 +2714,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
   };
 
-  const draw3DFencingMask = (ctx: CanvasRenderingContext2D, p: any, cw: number, ch: number) => {
+  // 3D Volumetric Puffy Chef's Hat (Toque Blanche) for Chop Mode — sits cleanly on top of the player's forehead!
+  const draw3DChefHat = (ctx: CanvasRenderingContext2D, p: any, cw: number, ch: number) => {
     const hx = p.headX * cw;
     const hy = p.headY * ch;
-    const baseScale = Math.max(0.72, Math.min(1.42, cw / 950)) * (p.headScale || 1.0);
+    const baseScale = Math.max(0.75, Math.min(1.45, cw / 950)) * (p.headScale || 1.0);
     const th = p.theme;
 
     ctx.save();
@@ -2593,86 +2726,113 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.rotate(p.headTilt || 0);
     ctx.scale(baseScale, baseScale);
 
-    // 1. Broad Padded 3D White/Silver Fencing Bib (Gorget) below chin
-    const bibGrad = ctx.createRadialGradient(0, 78, 10, 0, 88, 120);
-    bibGrad.addColorStop(0, '#ffffff');
-    bibGrad.addColorStop(0.5, '#e2e8f0');
-    bibGrad.addColorStop(0.85, '#94a3b8');
-    bibGrad.addColorStop(1, '#475569');
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.35)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 8;
 
-    ctx.fillStyle = bibGrad;
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 3.5;
+    // 1. Puffy 3D Cloud-Like Chef Toque Top Lobes (Above forehead from y = -65 to y = -168)
+    const puffCircles = [
+      { x: -64, y: -102, r: 38 },
+      { x: -34, y: -128, r: 44 },
+      { x: 0,   y: -138, r: 48 },
+      { x: 34,  y: -128, r: 44 },
+      { x: 64,  y: -102, r: 38 },
+    ];
+
+    // Outer dark outline behind puffs for crisp 3D cartoon depth
+    ctx.fillStyle = '#334155';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 7;
+    puffCircles.forEach(c => {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+
+    // Main Volumetric White & Cream 3D Puffs
+    const puffGrad = ctx.createRadialGradient(-18, -145, 10, 0, -105, 115);
+    puffGrad.addColorStop(0, '#ffffff');
+    puffGrad.addColorStop(0.55, '#f8fafc');
+    puffGrad.addColorStop(0.85, '#e2e8f0');
+    puffGrad.addColorStop(1, '#cbd5e1');
+    ctx.fillStyle = puffGrad;
+    puffCircles.forEach(c => {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r - 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Connecting Chef Crown Body between puffs and headband
     ctx.beginPath();
-    ctx.moveTo(-70, 6);
-    ctx.bezierCurveTo(-74, 38, -102, 54, -98, 88);
-    ctx.bezierCurveTo(-96, 134, 96, 134, 98, 88);
-    ctx.bezierCurveTo(102, 54, 74, 38, 70, 6);
+    ctx.moveTo(-78, -94);
+    ctx.lineTo(-68, -48);
+    ctx.quadraticCurveTo(0, -36, 68, -48);
+    ctx.lineTo(78, -94);
     ctx.closePath();
     ctx.fill();
-    ctx.stroke();
 
-    // 2. 3D Chrome Outer Helmet Frame (Trimmed in Player Team Color)
-    const bezelGrad = ctx.createLinearGradient(-85, -115, 85, 80);
-    bezelGrad.addColorStop(0, '#ffffff');
-    bezelGrad.addColorStop(0.3, th.maskTrim || '#cbd5e1');
-    bezelGrad.addColorStop(0.65, th.hatMain);
-    bezelGrad.addColorStop(1, '#1e293b');
+    ctx.shadowColor = 'transparent';
 
-    ctx.fillStyle = bezelGrad;
-    ctx.strokeStyle = '#0f172a';
+    // 3D Vertical Pleat Folds on the Chef Toque
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    [-46, -24, 0, 24, 46].forEach(px => {
+      ctx.beginPath();
+      ctx.moveTo(px * 1.08, -116);
+      ctx.quadraticCurveTo(px * 0.96, -82, px * 0.9, -54);
+      ctx.stroke();
+    });
+
+    // Specular White Shine on Top Puff
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.beginPath();
+    ctx.ellipse(-18, -152, 22, 10, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Snug 3D Chef Headband Rim with Team Color Accent Stripe
+    const bandGrad = ctx.createLinearGradient(-74, -64, 74, -36);
+    bandGrad.addColorStop(0, '#ffffff');
+    bandGrad.addColorStop(0.5, '#f1f5f9');
+    bandGrad.addColorStop(1, '#cbd5e1');
+    ctx.fillStyle = bandGrad;
+    ctx.strokeStyle = '#334155';
     ctx.lineWidth = 4;
+
     ctx.beginPath();
-    ctx.moveTo(0, -118);
-    ctx.bezierCurveTo(88, -118, 88, 10, 0, 74);
-    ctx.bezierCurveTo(-88, 10, -88, -118, 0, -118);
+    ctx.moveTo(-72, -64);
+    ctx.quadraticCurveTo(0, -78, 72, -64);
+    ctx.lineTo(70, -38);
+    ctx.quadraticCurveTo(0, -52, -70, -38);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // 3. See-Through 3D Curved Wire-Mesh Visor (Translucent so player's real face & eyes are clearly visible!)
-    ctx.save();
+    // Team-Colored Chef Ribbon Stripe along Headband
+    ctx.fillStyle = th.hatMain || '#8b5cf6';
     ctx.beginPath();
-    ctx.moveTo(0, -108);
-    ctx.bezierCurveTo(76, -108, 76, 4, 0, 62);
-    ctx.bezierCurveTo(-76, 4, -76, -108, 0, -108);
+    ctx.moveTo(-71, -50);
+    ctx.quadraticCurveTo(0, -64, 71, -50);
+    ctx.lineTo(70, -41);
+    ctx.quadraticCurveTo(0, -55, -70, -41);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.24)';
     ctx.fill();
-    ctx.clip();
 
-    // 3D Steel Mesh Grid
-    ctx.lineWidth = 1.1;
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.38)';
-    for (let i = -10; i <= 10; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * 7.5, -112);
-      ctx.quadraticCurveTo(i * 8.8, -22, i * 6.5, 66);
-      ctx.stroke();
-    }
-    for (let j = -12; j <= 8; j++) {
-      ctx.beginPath();
-      ctx.moveTo(-82, j * 8.5);
-      ctx.quadraticCurveTo(0, j * 8.5 + j * 1.2, 82, j * 8.5);
-      ctx.stroke();
-    }
-
-    // Diagonal 3D Chrome Visor Glint
-    const visorGlint = ctx.createLinearGradient(-65, -95, 45, 25);
-    visorGlint.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
-    visorGlint.addColorStop(0.25, 'rgba(255, 255, 255, 0.08)');
-    visorGlint.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    ctx.fillStyle = visorGlint;
-    ctx.fillRect(-85, -115, 170, 190);
-    ctx.restore();
-
-    // 4. Center 3D Metallic Crest Ridge
-    ctx.fillStyle = th.buckle || '#fbbf24';
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 2;
-    roundRect(ctx, -7, -124, 14, 24, 5);
+    // Gold 3D Chef Badge Emblem in Center of Headband
+    ctx.fillStyle = '#facc15';
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, -54, 12, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+
+    ctx.fillStyle = '#78350f';
+    ctx.font = '900 11px Fredoka, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔪', 0, -54);
 
     ctx.restore();
   };
@@ -2687,7 +2847,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     isRightHand: boolean,
     th: any,
     slapBoost: number,
-    openness: number = 1.0
+    openness: number = 1.0,
+    isFrozen: boolean = false
   ) => {
     ctx.save();
     ctx.translate(gx, gy);
@@ -2730,8 +2891,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.shadowOffsetY = 8;
 
     // Pass A: Draw thick outer outline behind all connected parts
-    ctx.fillStyle = th.outline || '#3b0764';
-    ctx.strokeStyle = th.outline || '#3b0764';
+    ctx.fillStyle = isFrozen ? '#0284c7' : (th.outline || '#3b0764');
+    ctx.strokeStyle = isFrozen ? '#0284c7' : (th.outline || '#3b0764');
     ctx.lineWidth = 8.5;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -2767,16 +2928,20 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.stroke();
     ctx.restore(); // End drop shadow
 
-    // Pass B: Fill 3D Volumetric Thumb, Fingers, and Connected Palm (Overlapping seamlessly with NO dark internal ovals!)
+    const gLight = isFrozen ? '#e0f2fe' : th.gloveLight;
+    const gMain = isFrozen ? '#38bdf8' : th.gloveMain;
+    const gDark = isFrozen ? '#0369a1' : th.gloveDark;
+
+    // Pass B: Fill 3D Volumetric Thumb, Fingers, and Connected Palm
     // Thumb 3D Fill
     ctx.save();
     ctx.translate(-29, 0);
     ctx.rotate(-0.52 - (openness - 1) * 0.2);
     const thumbGrad = ctx.createRadialGradient(-4, -8, 2, 0, 0, 24);
     thumbGrad.addColorStop(0, '#ffffff');
-    thumbGrad.addColorStop(0.28, th.gloveLight);
-    thumbGrad.addColorStop(0.7, th.gloveMain);
-    thumbGrad.addColorStop(1, th.gloveDark);
+    thumbGrad.addColorStop(0.28, gLight);
+    thumbGrad.addColorStop(0.7, gMain);
+    thumbGrad.addColorStop(1, gDark);
     ctx.fillStyle = thumbGrad;
     ctx.beginPath();
     ctx.ellipse(0, 0, 13, 22, 0, 0, Math.PI * 2);
@@ -2795,9 +2960,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ctx.rotate(f.rot);
       const fGrad = ctx.createRadialGradient(-3, -f.ry * 0.45, 2, 0, 0, f.ry * 1.15);
       fGrad.addColorStop(0, '#ffffff');
-      fGrad.addColorStop(0.25, th.gloveLight);
-      fGrad.addColorStop(0.68, th.gloveMain);
-      fGrad.addColorStop(1, th.gloveDark);
+      fGrad.addColorStop(0.25, gLight);
+      fGrad.addColorStop(0.68, gMain);
+      fGrad.addColorStop(1, gDark);
       ctx.fillStyle = fGrad;
       ctx.beginPath();
       ctx.ellipse(0, 0, f.rx, f.ry, 0, 0, Math.PI * 2);
@@ -2811,8 +2976,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ctx.restore();
     });
 
-    // Subtle 3D Finger Crease Dividers between fingers (only at upper web, blending into palm)
-    ctx.strokeStyle = th.gloveDark;
+    // Subtle 3D Finger Crease Dividers between fingers
+    ctx.strokeStyle = gDark;
     ctx.lineWidth = 2.2;
     ctx.lineCap = 'round';
     [-13.5, 0.5, 14].forEach(wx => {
@@ -2822,12 +2987,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ctx.stroke();
     });
 
-    // Seamless 3D Puffy Palm Cushion (Blends smoothly over finger bases)
+    // Seamless 3D Puffy Palm Cushion
     const palmGrad = ctx.createRadialGradient(-10, -12, 6, 0, 6, 48);
     palmGrad.addColorStop(0, '#ffffff');
-    palmGrad.addColorStop(0.22, th.gloveLight);
-    palmGrad.addColorStop(0.62, th.gloveMain);
-    palmGrad.addColorStop(1, th.gloveDark);
+    palmGrad.addColorStop(0.22, gLight);
+    palmGrad.addColorStop(0.62, gMain);
+    palmGrad.addColorStop(1, gDark);
 
     ctx.fillStyle = palmGrad;
     ctx.beginPath();
@@ -2842,8 +3007,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     // Soft 3D Swatting Target Pad in Center of Palm
     const padGrad = ctx.createRadialGradient(-3, 4, 2, 0, 6, 22);
     padGrad.addColorStop(0, '#ffffff');
-    padGrad.addColorStop(0.55, th.gloveLight);
-    padGrad.addColorStop(1, th.gloveMain);
+    padGrad.addColorStop(0.55, gLight);
+    padGrad.addColorStop(1, gMain);
     ctx.fillStyle = padGrad;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.lineWidth = 2;
@@ -2856,19 +3021,19 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const cuffGrad = ctx.createLinearGradient(-26, 36, 26, 62);
     cuffGrad.addColorStop(0, '#ffffff');
     cuffGrad.addColorStop(0.45, '#f1f5f9');
-    cuffGrad.addColorStop(0.85, th.gloveLight);
-    cuffGrad.addColorStop(1, th.hatMain);
+    cuffGrad.addColorStop(0.85, gLight);
+    cuffGrad.addColorStop(1, isFrozen ? '#0284c7' : th.hatMain);
 
     ctx.fillStyle = cuffGrad;
-    ctx.strokeStyle = th.outline || '#3b0764';
+    ctx.strokeStyle = isFrozen ? '#0284c7' : (th.outline || '#3b0764');
     ctx.lineWidth = 4;
     roundRect(ctx, -25, 36, 50, 22, 11);
     ctx.fill();
     ctx.stroke();
 
     // Gold 3D Star/Button Badge on Wrist Cuff
-    ctx.fillStyle = '#facc15';
-    ctx.strokeStyle = th.outline || '#3b0764';
+    ctx.fillStyle = isFrozen ? '#bae6fd' : '#facc15';
+    ctx.strokeStyle = isFrozen ? '#0284c7' : (th.outline || '#3b0764');
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(0, 47, 6.5, 0, Math.PI * 2);
@@ -2878,27 +3043,36 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
   };
 
-  const draw3DFencingSwordAndTrail = (ctx: CanvasRenderingContext2D, p: any, cw: number, ch: number, now: number) => {
-    const hx = p.handX * cw;
-    const hy = p.handY * ch;
-    const dynamicScale = Math.max(0.82, Math.min(1.45, p.handScale || 1.0));
-    const baseLen = Math.max(255, Math.min(360, cw * 0.29)) * dynamicScale;
-    const bladeLen = baseLen * (1 + (p.swordLunge || 0) * 0.24);
-
-    // 1. Volumetric 3D Glowing Slash Ribbon Trail
-    if (p.trail && p.trail.length > 2) {
+  // 3D Chef's Chopping Knife (Cleaver) for BOTH Left and Right Hands in Chop Mode
+  const drawSingle3DChoppingKnife = (
+    ctx: CanvasRenderingContext2D,
+    kx: number,
+    ky: number,
+    angle: number,
+    scale: number,
+    isRightHand: boolean,
+    th: any,
+    trail: any[],
+    cw: number,
+    ch: number,
+    now: number,
+    chopBoost: number = 0,
+    isFrozen: boolean = false
+  ) => {
+    // 1. Draw Glowing 3D Slash Ribbon Trail for this Knife
+    if (trail && trail.length > 2) {
       ctx.save();
-      for (let i = 1; i < p.trail.length; i++) {
-        const pt0 = p.trail[i - 1];
-        const pt1 = p.trail[i];
-        const x0 = (pt0.tipX ?? pt0.x) * cw;
-        const y0 = (pt0.tipY ?? pt0.y) * ch;
-        const x1 = (pt1.tipX ?? pt1.x) * cw;
-        const y1 = (pt1.tipY ?? pt1.y) * ch;
+      for (let i = 1; i < trail.length; i++) {
+        const pt0 = trail[i - 1];
+        const pt1 = trail[i];
+        const x0 = pt0.x * cw;
+        const y0 = pt0.y * ch;
+        const x1 = pt1.x * cw;
+        const y1 = pt1.y * ch;
 
-        ctx.strokeStyle = p.theme.swordColor;
-        ctx.globalAlpha = pt1.life * 0.52;
-        ctx.lineWidth = pt1.life * 28 * dynamicScale;
+        ctx.strokeStyle = isFrozen ? '#38bdf8' : (th.swordColor || '#f59e0b');
+        ctx.globalAlpha = pt1.life * 0.48;
+        ctx.lineWidth = pt1.life * 22 * scale;
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(x0, y0);
@@ -2906,8 +3080,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         ctx.stroke();
 
         ctx.strokeStyle = '#ffffff';
-        ctx.globalAlpha = pt1.life * 0.92;
-        ctx.lineWidth = pt1.life * 7 * dynamicScale;
+        ctx.globalAlpha = pt1.life * 0.9;
+        ctx.lineWidth = pt1.life * 6 * scale;
         ctx.beginPath();
         ctx.moveTo(x0, y0);
         ctx.lineTo(x1, y1);
@@ -2916,112 +3090,125 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ctx.restore();
     }
 
-    // 2. 3D Fencing Saber & Gloved Hand Grip
+    // 2. Draw 3D Stainless Steel Chef's Chopping Knife & Gloved Grip
     ctx.save();
-    ctx.translate(hx, hy);
-    ctx.rotate(p.swordAngle);
-    ctx.scale(dynamicScale, dynamicScale);
+    ctx.translate(kx, ky);
+    ctx.rotate(angle);
+    const s = Math.max(0.68, Math.min(1.65, scale * (1 + chopBoost * 0.18)));
+    ctx.scale(s, isRightHand ? -s : s);
 
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.36)';
+    ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 6;
 
-    // Gold & Chrome Knuckle-Bow Guard Loop
-    ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 4.5;
-    ctx.beginPath();
-    ctx.moveTo(10, 30);
-    ctx.bezierCurveTo(-18, 52, -70, 38, -80, 6);
-    ctx.stroke();
-
-    // Ribbed 3D Leather Grip + Tracked Mini Glove Fist
-    const gripGrad = ctx.createLinearGradient(-76, -9, -12, 9);
-    gripGrad.addColorStop(0, '#475569');
-    gripGrad.addColorStop(0.5, '#1e293b');
-    gripGrad.addColorStop(1, '#334155');
-    ctx.fillStyle = gripGrad;
-    roundRect(ctx, -76, -8.5, 64, 17, 5);
-    ctx.fill();
-
-    // 3D Gloved Knuckles gripping the hilt
-    const fistGrad = ctx.createRadialGradient(-38, -6, 2, -38, 0, 22);
-    fistGrad.addColorStop(0, p.theme.gloveLight);
-    fistGrad.addColorStop(0.6, p.theme.gloveMain);
-    fistGrad.addColorStop(1, p.theme.gloveDark);
-    ctx.fillStyle = fistGrad;
-    ctx.strokeStyle = p.theme.outline;
-    ctx.lineWidth = 2.5;
-    roundRect(ctx, -56, -13, 38, 26, 10);
-    ctx.fill();
-    ctx.stroke();
-
-    // 3D Gold Pommel Counterweight
-    const pommelGrad = ctx.createRadialGradient(-84, -3, 1, -82, 0, 12);
-    pommelGrad.addColorStop(0, '#fef08a');
-    pommelGrad.addColorStop(0.6, '#f59e0b');
-    pommelGrad.addColorStop(1, '#78350f');
-    ctx.fillStyle = pommelGrad;
-    ctx.beginPath();
-    ctx.arc(-82, 0, 10.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Dual-Bevel 3D Steel & Plasma Blade
-    const scaledBlade = bladeLen / dynamicScale;
-    const upperGrad = ctx.createLinearGradient(12, 0, scaledBlade, 0);
-    upperGrad.addColorStop(0, '#ffffff');
-    upperGrad.addColorStop(0.55, '#f8fafc');
-    upperGrad.addColorStop(1, p.theme.swordColor);
-    ctx.fillStyle = upperGrad;
-    ctx.beginPath();
-    ctx.moveTo(12, -7.5);
-    ctx.lineTo(scaledBlade - 18, -2.5);
-    ctx.lineTo(scaledBlade, 0);
-    ctx.lineTo(12, 0);
-    ctx.closePath();
-    ctx.fill();
-
-    const lowerGrad = ctx.createLinearGradient(12, 0, scaledBlade, 0);
-    lowerGrad.addColorStop(0, '#64748b');
-    lowerGrad.addColorStop(0.6, '#cbd5e1');
-    lowerGrad.addColorStop(1, '#f1f5f9');
-    ctx.fillStyle = lowerGrad;
-    ctx.beginPath();
-    ctx.moveTo(12, 0);
-    ctx.lineTo(scaledBlade, 0);
-    ctx.lineTo(scaledBlade - 18, 2.5);
-    ctx.lineTo(12, 7.5);
-    ctx.closePath();
-    ctx.fill();
-
-    // 3D Chrome Bell Guard (Cup Hilt)
-    const bellGrad = ctx.createRadialGradient(4, -12, 3, 2, 0, 36);
-    bellGrad.addColorStop(0, '#ffffff');
-    bellGrad.addColorStop(0.35, p.theme.maskTrim || '#e2e8f0');
-    bellGrad.addColorStop(0.75, p.theme.hatMain);
-    bellGrad.addColorStop(1, '#334155');
-    ctx.fillStyle = bellGrad;
+    // Ergonomic 3D Wood/Polymer Handle with 3 Brass Rivets
+    const handleGrad = ctx.createLinearGradient(-64, -14, -8, 14);
+    handleGrad.addColorStop(0, '#78350f');
+    handleGrad.addColorStop(0.5, '#451a03');
+    handleGrad.addColorStop(1, '#92400e');
+    ctx.fillStyle = handleGrad;
     ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
+    roundRect(ctx, -64, -11, 56, 22, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // 3 Brass Rivets on Handle
+    ctx.fillStyle = '#facc15';
+    [-50, -36, -22].forEach(rx => {
+      ctx.beginPath();
+      ctx.arc(rx, 0, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Steel Bolster Collar
+    ctx.fillStyle = '#cbd5e1';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, -10, -16, 12, 32, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Broad 3D Chef's Chopping Cleaver Blade (Extending from x = 0 to x = 118)
+    const bladeLen = 118;
+    const bladeH = 48;
+    const bladeGrad = ctx.createLinearGradient(0, -bladeH * 0.5, 0, bladeH * 0.5);
+    if (isFrozen) {
+      bladeGrad.addColorStop(0, '#e0f2fe');
+      bladeGrad.addColorStop(0.5, '#7dd3fc');
+      bladeGrad.addColorStop(0.82, '#38bdf8');
+      bladeGrad.addColorStop(1, '#ffffff');
+    } else {
+      bladeGrad.addColorStop(0, '#94a3b8');
+      bladeGrad.addColorStop(0.25, '#f8fafc');
+      bladeGrad.addColorStop(0.75, '#e2e8f0');
+      bladeGrad.addColorStop(1, '#ffffff');
+    }
+
+    ctx.fillStyle = bladeGrad;
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.moveTo(15, -32);
-    ctx.bezierCurveTo(-20, -30, -20, 30, 15, 32);
-    ctx.quadraticCurveTo(22, 0, 15, -32);
+    ctx.moveTo(0, -20);
+    ctx.lineTo(bladeLen - 8, -22);
+    ctx.quadraticCurveTo(bladeLen + 4, -20, bladeLen, 16);
+    ctx.quadraticCurveTo(bladeLen * 0.55, 28, 0, 22);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Star-Glint at Blade Tip
-    const glintPulse = 0.8 + Math.sin(now * 0.016) * 0.28;
+    // Honed Razor-Sharp Bottom Cutting Edge Bevel
+    const edgeGrad = ctx.createLinearGradient(0, 12, bladeLen, 22);
+    edgeGrad.addColorStop(0, '#ffffff');
+    edgeGrad.addColorStop(0.5, th.swordColor || '#38bdf8');
+    edgeGrad.addColorStop(1, '#ffffff');
+    ctx.strokeStyle = edgeGrad;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(2, 20);
+    ctx.quadraticCurveTo(bladeLen * 0.55, 26, bladeLen - 1, 15);
+    ctx.stroke();
+
+    // Cleaver Hanging Hole near top corner of blade
+    ctx.fillStyle = '#334155';
+    ctx.beginPath();
+    ctx.arc(bladeLen - 16, -10, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Diagonal Specular Steel Sheen across Cleaver Blade
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(24, -18);
+    ctx.lineTo(44, -18);
+    ctx.lineTo(28, 18);
+    ctx.lineTo(10, 18);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3D Gloved Hand Fist Gripping the Knife Handle
+    const fistGrad = ctx.createRadialGradient(-34, -4, 2, -34, 0, 22);
+    fistGrad.addColorStop(0, isFrozen ? '#e0f2fe' : th.gloveLight);
+    fistGrad.addColorStop(0.6, isFrozen ? '#38bdf8' : th.gloveMain);
+    fistGrad.addColorStop(1, isFrozen ? '#0284c7' : th.gloveDark);
+    ctx.fillStyle = fistGrad;
+    ctx.strokeStyle = isFrozen ? '#0284c7' : th.outline;
+    ctx.lineWidth = 3;
+    roundRect(ctx, -50, -15, 34, 30, 11);
+    ctx.fill();
+    ctx.stroke();
+
+    // Star Glint on Blade Corner
+    const glintPulse = 0.75 + Math.sin(now * 0.015) * 0.25;
     ctx.save();
-    ctx.translate(scaledBlade, 0);
+    ctx.translate(bladeLen - 2, 14);
     ctx.scale(glintPulse, glintPulse);
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     for (let k = 0; k < 4; k++) {
       ctx.rotate(Math.PI / 2);
       ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(2.5, -3.5, 16, 0);
-      ctx.quadraticCurveTo(2.5, 3.5, 0, 0);
+      ctx.quadraticCurveTo(2, -3, 13, 0);
+      ctx.quadraticCurveTo(2, 3, 0, 0);
     }
     ctx.fill();
     ctx.restore();
@@ -3029,13 +3216,79 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
   };
 
-  // True 3D Volumetric Mosquito + Bright Light 3D Extruded Answer Capsule (Scaled by textSize)
+  // 3D Translucent Ice Block Overlay drawn over Frozen Wrong Words/Options!
+  const draw3DFrozenIceOverlay = (
+    ctx: CanvasRenderingContext2D,
+    cardW: number,
+    cardY: number,
+    cardH: number,
+    topExtendY: number = -46
+  ) => {
+    ctx.save();
+    const iceW = cardW + 18;
+    const iceTop = topExtendY;
+    const iceH = (cardY + cardH + 10) - iceTop;
+
+    const iceGrad = ctx.createLinearGradient(-iceW / 2, iceTop, iceW / 2, iceTop + iceH);
+    iceGrad.addColorStop(0, 'rgba(224, 242, 254, 0.72)');
+    iceGrad.addColorStop(0.45, 'rgba(125, 211, 252, 0.58)');
+    iceGrad.addColorStop(1, 'rgba(56, 189, 248, 0.76)');
+
+    ctx.fillStyle = iceGrad;
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 3.5;
+    roundRect(ctx, -iceW / 2, iceTop, iceW, iceH, 20);
+    ctx.fill();
+    ctx.stroke();
+
+    // Diagonal 3D Ice Specular Glint
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(-iceW * 0.35, iceTop + 4);
+    ctx.lineTo(-iceW * 0.12, iceTop + 4);
+    ctx.lineTo(-iceW * 0.32, iceTop + iceH - 4);
+    ctx.lineTo(-iceW * 0.45, iceTop + iceH - 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Frosty Ice Cracks
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-24, iceTop + 14);
+    ctx.lineTo(-6, iceTop + 28);
+    ctx.lineTo(-16, iceTop + 42);
+    ctx.moveTo(22, iceTop + 18);
+    ctx.lineTo(8, iceTop + 34);
+    ctx.lineTo(26, iceTop + 46);
+    ctx.stroke();
+
+    // "❄️ FROZEN (-5)" Pill Badge at Top of Ice Block
+    const fBadgeW = 128;
+    const fBadgeH = 24;
+    ctx.fillStyle = '#0284c7';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    roundRect(ctx, -fBadgeW / 2, iceTop - 12, fBadgeW, fBadgeH, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 12px Fredoka, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('❄️ FROZEN (-5)', 0, iceTop);
+
+    ctx.restore();
+  };
+
+  // True 3D Volumetric Mosquito + Bright Light 3D Extruded Answer Capsule (Scaled by textSize + Freeze Support)
   const drawMosquitoTarget = (ctx: CanvasRenderingContext2D, t: any, time: number) => {
     ctx.save();
     ctx.translate(t.x, t.y);
 
     const facingLeft = t.vx < 0;
-    const bobY = Math.sin(time * 0.012 + t.wobblePhase) * 6;
+    const bobY = t.frozen ? 0 : Math.sin(time * 0.012 + t.wobblePhase) * 6;
     ctx.translate(0, bobY);
 
     // ---------------------------------------------
@@ -3050,7 +3303,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     ctx.save();
     // 3D Bottom Extrusion Lip in Vibrant Option Color
-    ctx.fillStyle = t.color.dark || '#0284c7';
+    ctx.fillStyle = t.frozen ? '#0284c7' : (t.color.dark || '#0284c7');
     roundRect(ctx, -cardW / 2, cardY + 5, cardW, cardH, 16);
     ctx.fill();
 
@@ -3059,10 +3312,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.shadowBlur = 12;
     ctx.shadowOffsetY = 5;
     const pillGrad = ctx.createLinearGradient(0, cardY, 0, cardY + cardH);
-    pillGrad.addColorStop(0, '#ffffff');
-    pillGrad.addColorStop(1, '#f0f9ff');
+    pillGrad.addColorStop(0, t.frozen ? '#e0f2fe' : '#ffffff');
+    pillGrad.addColorStop(1, t.frozen ? '#bae6fd' : '#f0f9ff');
     ctx.fillStyle = pillGrad;
-    ctx.strokeStyle = t.color.main;
+    ctx.strokeStyle = t.frozen ? '#0284c7' : t.color.main;
     ctx.lineWidth = 3.5;
     roundRect(ctx, -cardW / 2, cardY, cardW, cardH, 16);
     ctx.fill();
@@ -3072,9 +3325,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     // 3D Extruded Option Letter Badge (A, B, C, D)
     const badgeY = cardY + (cardH - badgeSize) / 2;
     const badgeGrad = ctx.createLinearGradient(0, badgeY, 0, badgeY + badgeSize);
-    badgeGrad.addColorStop(0, t.color.light);
-    badgeGrad.addColorStop(0.35, t.color.main);
-    badgeGrad.addColorStop(1, t.color.dark);
+    badgeGrad.addColorStop(0, t.frozen ? '#7dd3fc' : t.color.light);
+    badgeGrad.addColorStop(0.35, t.frozen ? '#0284c7' : t.color.main);
+    badgeGrad.addColorStop(1, t.frozen ? '#0369a1' : t.color.dark);
     ctx.fillStyle = badgeGrad;
     roundRect(ctx, -cardW / 2 + 6, badgeY, badgeSize, badgeSize, 11);
     ctx.fill();
@@ -3086,7 +3339,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.fillText(t.letter, -cardW / 2 + 6 + badgeSize / 2, cardY + cardH / 2);
 
     // High-Contrast Dark Slate Option Answer Text on Bright White Capsule
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
     ctx.font = `800 ${fontPx}px Inter, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -3100,7 +3353,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.save();
     if (!facingLeft) ctx.scale(-1, 1);
 
-    const wingFlap = Math.sin(time * 0.15 + t.wingPhase) * 0.72;
+    const wingFlap = t.frozen ? 0.15 : Math.sin(time * 0.15 + t.wingPhase) * 0.72;
 
     // Back Iridescent 3D Wing
     ctx.save();
@@ -3126,7 +3379,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.lineJoin = 'round';
     for (let legIdx = 0; legIdx < 3; legIdx++) {
       const legOffset = legIdx * 10 - 6;
-      const legWiggle = Math.sin(time * 0.022 + legIdx * 1.6) * 4.5;
+      const legWiggle = t.frozen ? 0 : Math.sin(time * 0.022 + legIdx * 1.6) * 4.5;
       ctx.beginPath();
       ctx.moveTo(legOffset, 5);
       ctx.lineTo(legOffset + 7, 17 + legWiggle);
@@ -3267,17 +3520,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
 
     ctx.restore();
+
+    // 3. If Wrong Option was Slapped, Encase Mosquito & Word in a 3D Ice Block!
+    if (t.frozen) {
+      draw3DFrozenIceOverlay(ctx, cardW, cardY, cardH, -44);
+    }
+
     ctx.restore();
   };
 
-  // True 3D Volumetric Fruit + Bright Light 3D Option Capsule (Scaled by textSize)
-  const drawFruitTarget = (ctx: CanvasRenderingContext2D, t: any) => {
+  // True 3D Volumetric Fruit + Bright Light 3D Option Capsule (Scaled by textSize + Freeze & Dual-Knife Support)
+  const drawFruitTarget = (ctx: CanvasRenderingContext2D, t: any, time: number = 0) => {
     ctx.save();
     ctx.translate(t.x, t.y);
 
     // 1. 3D Spherical Fruit Body
     ctx.save();
-    ctx.rotate(t.rotation);
+    ctx.rotate(t.rotation || 0);
     const r = (t.radius || 52) * 0.86;
 
     ctx.shadowColor = 'rgba(15, 23, 42, 0.3)';
@@ -3304,8 +3563,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.fill();
 
     // Outer 3D Rind
-    ctx.fillStyle = t.color.dark;
-    ctx.strokeStyle = t.color.rim;
+    ctx.fillStyle = t.frozen ? '#0284c7' : t.color.dark;
+    ctx.strokeStyle = t.frozen ? '#bae6fd' : t.color.rim;
     ctx.lineWidth = 3.5;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -3315,9 +3574,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     // Inner Juicy 3D Spherical Flesh
     const fleshGrad = ctx.createRadialGradient(-r * 0.32, -r * 0.32, r * 0.08, 0, 0, r * 0.92);
     fleshGrad.addColorStop(0, '#ffffff');
-    fleshGrad.addColorStop(0.22, t.color.light);
-    fleshGrad.addColorStop(0.62, t.color.main);
-    fleshGrad.addColorStop(1, t.color.dark);
+    fleshGrad.addColorStop(0.22, t.frozen ? '#bae6fd' : t.color.light);
+    fleshGrad.addColorStop(0.62, t.frozen ? '#38bdf8' : t.color.main);
+    fleshGrad.addColorStop(1, t.frozen ? '#0369a1' : t.color.dark);
     ctx.fillStyle = fleshGrad;
     ctx.beginPath();
     ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2);
@@ -3332,39 +3591,72 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     // 2. Bright Light-Colored 3D Extruded Option Pill
     const tScale = textSizeRef.current || 1.15;
-    const fontPx = Math.round(14 * tScale);
-    const badgeSize = Math.round(34 * Math.max(0.92, tScale * 0.94));
-    const cardH = Math.round(42 * Math.max(0.92, tScale * 0.94));
-    const cardW = Math.max(Math.round(165 * tScale * 0.9), Math.min(Math.round(280 * tScale), t.text.length * (fontPx * 0.62) + badgeSize + 30));
+    const fontPx = Math.round(15 * tScale);
+    const badgeSize = Math.round(36 * Math.max(0.92, tScale * 0.94));
+    const cardH = Math.round(46 * Math.max(0.92, tScale * 0.94));
+    const cardW = Math.max(Math.round(185 * tScale * 0.9), Math.min(Math.round(310 * tScale), t.text.length * (fontPx * 0.62) + badgeSize + 34));
     const cardY = r * 0.45;
 
-    ctx.fillStyle = t.color.dark;
-    roundRect(ctx, -cardW / 2, cardY + 4, cardW, cardH, 13);
+    ctx.fillStyle = t.frozen ? '#0284c7' : t.color.dark;
+    roundRect(ctx, -cardW / 2, cardY + 4, cardW, cardH, 14);
     ctx.fill();
 
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = t.color.main;
-    ctx.lineWidth = 3;
-    roundRect(ctx, -cardW / 2, cardY, cardW, cardH, 13);
+    ctx.fillStyle = t.frozen ? '#e0f2fe' : '#ffffff';
+    ctx.strokeStyle = t.frozen ? '#0284c7' : t.color.main;
+    ctx.lineWidth = 3.2;
+    roundRect(ctx, -cardW / 2, cardY, cardW, cardH, 14);
     ctx.fill();
     ctx.stroke();
 
     const badgeY = cardY + (cardH - badgeSize) / 2;
-    ctx.fillStyle = t.color.main;
-    roundRect(ctx, -cardW / 2 + 5, badgeY, badgeSize, badgeSize, 9);
+    ctx.fillStyle = t.frozen ? '#0284c7' : t.color.main;
+    roundRect(ctx, -cardW / 2 + 5, badgeY, badgeSize, badgeSize, 10);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(18 * tScale * 0.94)}px Fredoka, sans-serif`;
+    ctx.font = `900 ${Math.round(20 * tScale * 0.94)}px Fredoka, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(t.letter, -cardW / 2 + 5 + badgeSize / 2, cardY + cardH / 2);
 
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
     ctx.font = `800 ${fontPx}px Inter, sans-serif`;
     ctx.textAlign = 'left';
-    const displayStr = t.text.length > 22 ? t.text.slice(0, 20) + '…' : t.text;
-    ctx.fillText(displayStr, -cardW / 2 + badgeSize + 12, cardY + cardH / 2);
+    const displayStr = t.text.length > 24 ? t.text.slice(0, 22) + '…' : t.text;
+    ctx.fillText(displayStr, -cardW / 2 + badgeSize + 13, cardY + cardH / 2);
+
+    // Show 1st Knife Slash Indicator if one knife hit recently and awaiting second knife!
+    if (!t.frozen && time > 0) {
+      const leftActive = time - (t.leftKnifeHitTime || 0) < 950;
+      const rightActive = time - (t.rightKnifeHitTime || 0) < 950;
+      if ((leftActive && !rightActive) || (!leftActive && rightActive)) {
+        ctx.save();
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-28, -22);
+        ctx.lineTo(28, 18);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fef08a';
+        ctx.strokeStyle = '#854d0e';
+        ctx.lineWidth = 2;
+        roundRect(ctx, -78, -r - 28, 156, 22, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#713f12';
+        ctx.font = '900 11px Fredoka, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🔪 1/2 CHOP! USE BOTH KNIVES', 0, -r - 17);
+        ctx.restore();
+      }
+    }
+
+    // 3. If Wrong Option was Chopped, Encase Fruit & Word in a 3D Ice Block!
+    if (t.frozen) {
+      draw3DFrozenIceOverlay(ctx, cardW, cardY, cardH, -r - 12);
+    }
 
     ctx.restore();
   };
@@ -3482,13 +3774,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             {/* 3D Sunny Hero Title Header */}
             <div className="text-center mb-6">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 text-sky-700 border-2 border-sky-300 text-xs font-black uppercase tracking-widest mb-2 shadow-sm">
-                <span>🦟 3D Motion AR Camera Arena 🤺</span>
+                <span>🦟 3D Motion AR Camera Arena 👨‍🍳🔪</span>
               </div>
               <h2 className="text-5xl sm:text-6xl font-black text-sky-900 drop-shadow-[0_4px_0_rgba(255,255,255,1)] tracking-tight">
                 SLAP &amp; CHOP 3D
               </h2>
               <p className="text-slate-700 font-bold text-sm sm:text-base mt-1.5">
-                Clap Both 3D Gloves Together to Slap Mosquitoes • Slash 3D Swords to Chop Fruits!
+                Clap 2 Gloves to Slap Mosquitoes • Chop Options with Left &amp; Right Chef Knives! (+5 Correct / -5 &amp; Freeze if Wrong)
               </p>
             </div>
 
@@ -3549,7 +3841,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                           <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg ${
                             numPlayers === 1 ? 'bg-white/25 text-white' : 'bg-sky-100 text-sky-800'
                           }`}>
-                            👏 Clap 2 Gloves to Hit!
+                            👏 2 Gloves / 🔪 2 Knives!
                           </span>
                         </div>
                       </div>
@@ -3573,7 +3865,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                           : 'bg-white border-b-sky-300'
                       }`}>
                         <span>🟣⚡🔴</span>
-                        <span className="absolute -bottom-1.5 -right-1.5 text-lg">🤺</span>
+                        <span className="absolute -bottom-1.5 -right-1.5 text-lg">🔪</span>
                       </div>
 
                       <div className="flex flex-col flex-1 min-w-0">
@@ -3649,15 +3941,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                       {
                         id: 'mosquito' as const,
                         title: 'Mosquito Slap',
-                        sub: 'Clap 2 Gloves Together!',
+                        sub: 'Clap 2 Gloves + Net Hat',
                         icon: '🦟',
                         activeClass: 'from-purple-500 to-indigo-600 border-purple-300 border-b-indigo-900 text-white shadow-lg'
                       },
                       {
                         id: 'chop' as const,
-                        title: 'Fruit Chop',
-                        sub: '3D Saber + Mask',
-                        icon: '🤺',
+                        title: 'Chef Fruit Chop',
+                        sub: '2 Chopping Knives + Chef Hat',
+                        icon: '👨‍🍳🔪',
                         activeClass: 'from-amber-400 to-orange-500 border-amber-200 border-b-orange-800 text-white shadow-lg'
                       },
                       {
@@ -3671,7 +3963,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setGameMode(m.id)}
+                        onClick={() => changeCombatMode(m.id)}
                         className={`relative rounded-2xl p-3.5 flex flex-col items-center text-center transition-all cursor-pointer border-2 border-b-[6px] ${
                           gameMode === m.id
                             ? `bg-gradient-to-b ${m.activeClass} -translate-y-0.5`
@@ -3702,7 +3994,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                       ⚡ Speed: {speed === 0.6 ? 'Slow' : speed === 1 ? 'Normal' : speed === 1.4 ? 'Fast' : 'Turbo'}
                     </span>
                     <span className="px-2.5 py-1 rounded-xl bg-white border border-sky-200">
-                      🦋 Move: {movementStyle.toUpperCase()}
+                      🎯 Scoring: +5 / -5 (❄️ Freeze)
                     </span>
                   </div>
                   <button
@@ -3730,17 +4022,17 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               {/* Right 4 Columns: Bright 3D AR Gear Showcase + Study Mode Card */}
               <div className="lg:col-span-4 flex flex-col gap-6 justify-between">
                 
-                {/* 3D AR Equipment & Clap-to-Hit Info Card */}
+                {/* 3D AR Equipment & Rules Info Card */}
                 <div className="flex-1 rounded-[2.2rem] bg-white/95 backdrop-blur-xl border-2 border-sky-200 border-b-[10px] border-b-sky-300 shadow-xl p-6 flex flex-col justify-between">
                   <div>
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-100 border border-sky-300 text-sky-700 text-[11px] font-black uppercase tracking-wider mb-3">
-                      <span>👏 Clap-to-Hit &amp; Depth Tracking</span>
+                      <span>👏 Dual-Hand Tracking &amp; Freeze Rules</span>
                     </div>
                     <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">
                       How to Play 3D
                     </h3>
                     <p className="text-xs text-slate-600 font-semibold leading-relaxed mb-4">
-                      Bring both of your 3D gloves together to CLAP mosquitoes, or swing your 3D saber to slice flying fruits!
+                      Use both hands to slap mosquitoes or chop fruits! Correct hits award <strong className="text-emerald-600">+5 pts</strong>; wrong hits deduct <strong className="text-rose-600">-5 pts</strong> and freeze the word in ice!
                     </p>
                   </div>
 
@@ -3750,28 +4042,28 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         🧤
                       </div>
                       <div>
-                        <div className="text-sm font-black text-slate-900">Touch Gloves to Slap!</div>
-                        <div className="text-[11px] font-semibold text-slate-600">Mosquitoes are hit only when your Left &amp; Right gloves touch each other</div>
+                        <div className="text-sm font-black text-slate-900">Mosquito Slap Mode</div>
+                        <div className="text-[11px] font-semibold text-slate-600">Bring Left &amp; Right 3D Gloves together to slap! Wrong words freeze in 3D ice ❄️</div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-amber-50 border-2 border-amber-200">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 border-b-4 border-orange-800 flex items-center justify-center text-2xl shrink-0 shadow text-white">
-                        🤺
+                        🔪
                       </div>
                       <div>
-                        <div className="text-sm font-black text-slate-900">3D Saber &amp; See-Through Mask</div>
-                        <div className="text-[11px] font-semibold text-slate-600">Tracks your hand &amp; head size dynamically</div>
+                        <div className="text-sm font-black text-slate-900">Chef Hat &amp; 2 Chopping Knives</div>
+                        <div className="text-[11px] font-semibold text-slate-600">Wear a 3D Chef's Hat &amp; chop options with BOTH Left &amp; Right Chopping Knives!</div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-sky-50 border-2 border-sky-200">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 border-b-4 border-blue-900 flex items-center justify-center text-2xl shrink-0 shadow text-white">
-                        ⚙️
+                        🎯
                       </div>
                       <div>
-                        <div className="text-sm font-black text-slate-900">Full Settings Control</div>
-                        <div className="text-[11px] font-semibold text-slate-600">Adjust Text Size, Speed, Movements, Music, Voice &amp; Headgear anytime</div>
+                        <div className="text-sm font-black text-slate-900">+5 Correct / -5 Wrong</div>
+                        <div className="text-[11px] font-semibold text-slate-600">Switch Mode, Camera, Headgear, Music &amp; Voice anytime inside ⚙️ Settings</div>
                       </div>
                     </div>
                   </div>
@@ -3787,7 +4079,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                 {/* 3D Extruded Study Mode Button Card (Bright Sunny Style) */}
                 <button
                   type="button"
-                  onClick={() => setScreen('study')}
+                  onClick={() => {
+                    setStudyIndex(0);
+                    setStudySelectedOption(null);
+                    setScreen('study');
+                  }}
                   className="group relative w-full rounded-[2rem] bg-gradient-to-b from-amber-300 via-amber-400 to-orange-400 hover:from-amber-200 hover:to-orange-300 border-t-2 border-white border-b-[8px] border-b-orange-600 shadow-xl active:translate-y-1 transition-all duration-200 cursor-pointer flex items-center p-6 gap-5 text-left"
                 >
                   <div className="w-16 h-16 rounded-2xl bg-white border-b-4 border-amber-600 flex items-center justify-center text-4xl transform group-hover:scale-110 group-hover:rotate-6 transition duration-300 shadow-md shrink-0">
@@ -3795,13 +4091,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] font-black uppercase tracking-widest text-orange-900">
-                      Warm Up Before Battle
+                      Interactive Flashcards &amp; Quiz Review
                     </span>
                     <h3 className="text-2xl font-black text-slate-900">
                       Study Mode
                     </h3>
                     <p className="text-slate-800 font-bold text-xs mt-0.5">
-                      Review all {activeQuiz.questions.length} questions &amp; answers!
+                      Practice all {activeQuiz.questions.length} questions with voice &amp; instant check!
                     </p>
                   </div>
                 </button>
@@ -3816,14 +4112,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       {screen === 'loading' && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-b from-sky-200 via-sky-100 to-white p-6 text-center">
           <div className="w-24 h-24 rounded-3xl bg-white border-4 border-sky-300 border-b-8 border-b-sky-500 animate-bounce flex items-center justify-center text-5xl mb-6 shadow-xl">
-            🦟
+            {gameMode === 'chop' ? '👨‍🍳' : '🦟'}
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-2">Preparing Sunny 3D Arena...</h2>
-          <p className="text-slate-600 font-bold text-sm max-w-sm">Calibrating 3D Gloves, Net Hat, Fencing Mask &amp; Camera Sensors!</p>
+          <p className="text-slate-600 font-bold text-sm max-w-sm">Calibrating 3D Gloves, Chef's Hat, Dual Chopping Knives &amp; Camera Sensors!</p>
         </div>
       )}
 
-      {/* Screen 4: Live 3D AR Motion Game Arena (Light Theme HUD + Big Question Banner without Redundant ABCD Options) */}
+      {/* Screen 4: Live 3D AR Motion Game Arena (Bigger Immersive Player Point Cards + Mode & Camera Moved Inside Settings) */}
       {screen === 'game' && (
         <div className="absolute inset-0 z-30 flex flex-col w-full h-full overflow-hidden select-none">
           
@@ -3831,73 +4127,125 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           <div className="relative z-40 w-full px-3 sm:px-6 pt-3 pb-2 pointer-events-auto">
             <div className="max-w-6xl mx-auto flex flex-col gap-2.5">
               
-              {/* Row 1: Light 3D Player Score Pills + Center Controls with Settings Button */}
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+              {/* Row 1: BIGGER, IMMERSIVE 3D PLAYER SCOREBOARD CARDS + Clean Center Controls (Settings & Fullscreen) */}
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 
-                {/* Player 1 Pill (Bright White & Purple 3D Card) */}
-                <div className="relative flex items-center gap-2.5 px-4 py-1.5 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-purple-300 border-b-4 border-b-purple-500 shadow-md">
-                  <span className="text-xl">🧤</span>
-                  <span className="text-xs font-black uppercase tracking-wider text-purple-700">{p1Name || "Player 1"}</span>
-                  <span className="font-black text-base sm:text-lg text-slate-900 font-mono">{hudScores[0]} pts</span>
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black">
-                    🔥 x{hudStreaks[0]}
-                  </span>
+                {/* PLAYER 1 JUMBO 3D SCOREBOARD CARD */}
+                <div className={`relative flex items-center gap-3.5 px-5 py-2.5 sm:px-6 sm:py-3 rounded-3xl backdrop-blur-md border-2 border-b-[7px] shadow-xl transition-all duration-300 ${
+                  hudFrozen[0]
+                    ? 'bg-gradient-to-b from-sky-100 to-sky-200 border-sky-400 border-b-sky-600 ring-4 ring-sky-300/60'
+                    : 'bg-gradient-to-b from-white via-purple-50/70 to-indigo-50/90 border-purple-300 border-b-purple-600'
+                }`}>
+                  {/* 3D Team Avatar Badge */}
+                  <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl border-t border-white/80 border-b-4 shadow-md shrink-0 ${
+                    hudFrozen[0]
+                      ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
+                      : 'bg-gradient-to-br from-purple-500 to-indigo-600 border-b-indigo-900 text-white'
+                  }`}>
+                    {hudFrozen[0] ? '❄️' : activeRoundMode === 'mosquito' ? '🧤' : '🔪'}
+                  </div>
+
+                  {/* Player Name, Streak & Status */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-purple-900">
+                        {p1Name || "Player 1"}
+                      </span>
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs">
+                        🔥 x{hudStreaks[0]}
+                      </span>
+                      {hudFrozen[0] && (
+                        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-500 text-white font-black animate-pulse">
+                          ❄️ FROZEN
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-0.5">
+                      <span className={`font-black text-2xl sm:text-4xl tracking-tight font-mono leading-none ${
+                        hudScores[0] < 0 ? 'text-rose-600' : 'text-slate-900'
+                      }`}>
+                        {hudScores[0]}
+                      </span>
+                      <span className="text-xs sm:text-sm font-black uppercase text-purple-700 tracking-wide">
+                        PTS
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Animated +5 / -5 Floating Score Popup */}
                   {hudScorePops[0] && (
-                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-sm sm:text-base font-black text-white bg-emerald-500 px-3 py-0.5 rounded-full border-2 border-white shadow-lg animate-bounce">
+                    <span className={`absolute -bottom-6 right-4 text-base sm:text-xl font-black text-white px-3.5 py-1 rounded-2xl border-2 border-white shadow-xl animate-bounce z-50 ${
+                      hudScorePops[0].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
+                    }`}>
                       {hudScorePops[0]}
                     </span>
                   )}
                 </div>
 
-                {/* Center Controls (Light 3D Pills + ⚙️ Settings Button) */}
-                <div className="flex items-center gap-2 flex-wrap justify-center">
-                  <span className="px-3.5 py-1.5 rounded-2xl bg-white/95 border-2 border-sky-300 border-b-4 border-b-sky-400 text-xs font-black text-sky-800 shadow-sm">
-                    Round {currentQIndex + 1} / {activeQuiz.questions.length}
-                  </span>
-
-                  <button
-                    onClick={() => {
-                      const nextM = activeRoundMode === 'mosquito' ? 'chop' : 'mosquito';
-                      setActiveRoundMode(nextM);
-                      engineRef.current.roundMode = nextM;
-                      spawnRoundTargets(currentQIndex, nextM);
-                    }}
-                    className="px-3.5 py-1.5 rounded-2xl bg-white/95 hover:bg-sky-50 border-2 border-purple-300 border-b-4 border-b-purple-400 text-xs font-black text-purple-800 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <span>{activeRoundMode === 'mosquito' ? '🦟 SLAP MODE' : '🤺 CHOP MODE'}</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (cameraActive) stopCamera();
-                      else setupCamera();
-                    }}
-                    className="px-3.5 py-1.5 rounded-2xl bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-4 border-b-sky-400 text-xs font-black text-sky-800 transition cursor-pointer shadow-sm"
-                  >
-                    {cameraActive ? '📷 Cam: ON' : '📷 Cam: Virtual'}
-                  </button>
+                {/* Center Controls (Round Badge + ⚙️ Settings Modal Trigger + Fullscreen) */}
+                <div className="flex items-center gap-2.5 flex-wrap justify-center">
+                  <div className="px-4 py-2 rounded-2xl bg-white/95 border-2 border-sky-300 border-b-4 border-b-sky-500 text-xs sm:text-sm font-black text-sky-900 shadow-md flex items-center gap-2">
+                    <span>{activeRoundMode === 'mosquito' ? '🦟 Slap' : '👨‍🍳🔪 Chop'}</span>
+                    <span className="text-sky-300">•</span>
+                    <span>Round {currentQIndex + 1} / {activeQuiz.questions.length}</span>
+                  </div>
 
                   <button
                     onClick={() => setShowSettingsModal(true)}
-                    className="px-4 py-1.5 rounded-2xl bg-amber-400 hover:bg-amber-300 border-t border-amber-200 border-b-4 border-b-amber-600 text-xs font-black text-slate-900 transition shadow-md cursor-pointer flex items-center gap-1.5"
+                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 hover:from-amber-200 hover:to-amber-400 border-t border-white border-b-4 border-b-amber-700 text-xs sm:text-sm font-black text-slate-900 transition shadow-lg cursor-pointer flex items-center gap-2 active:translate-y-0.5"
                   >
-                    <span>⚙️ Settings</span>
+                    <span className="text-base">⚙️</span>
+                    <span>Settings</span>
                   </button>
 
-                  <FullscreenButton targetId="slap-and-chop-container" className="bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-4 border-b-sky-400 text-slate-800 !py-1.5 !px-3" />
+                  <FullscreenButton targetId="slap-and-chop-container" className="bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-4 border-b-sky-500 text-slate-800 !py-2 !px-3.5 shadow-md" />
                 </div>
 
-                {/* Player 2 Pill (if 2P - Bright White & Rose 3D Card) */}
+                {/* PLAYER 2 JUMBO 3D SCOREBOARD CARD (If 2 Players) */}
                 {numPlayers === 2 && (
-                  <div className="relative flex items-center gap-2.5 px-4 py-1.5 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-rose-300 border-b-4 border-b-rose-500 shadow-md">
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black">
-                      🔥 x{hudStreaks[1]}
-                    </span>
-                    <span className="font-black text-base sm:text-lg text-slate-900 font-mono">{hudScores[1]} pts</span>
-                    <span className="text-xs font-black uppercase tracking-wider text-rose-700">{p2Name || "Player 2"}</span>
-                    <span className="text-xl">🧤</span>
+                  <div className={`relative flex items-center gap-3.5 px-5 py-2.5 sm:px-6 sm:py-3 rounded-3xl backdrop-blur-md border-2 border-b-[7px] shadow-xl transition-all duration-300 ${
+                    hudFrozen[1]
+                      ? 'bg-gradient-to-b from-sky-100 to-sky-200 border-sky-400 border-b-sky-600 ring-4 ring-sky-300/60'
+                      : 'bg-gradient-to-b from-white via-rose-50/70 to-pink-50/90 border-rose-300 border-b-rose-600'
+                  }`}>
+                    <div className="flex flex-col text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {hudFrozen[1] && (
+                          <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-500 text-white font-black animate-pulse">
+                            ❄️ FROZEN
+                          </span>
+                        )}
+                        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs">
+                          🔥 x{hudStreaks[1]}
+                        </span>
+                        <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-rose-900">
+                          {p2Name || "Player 2"}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-end gap-1.5 mt-0.5">
+                        <span className={`font-black text-2xl sm:text-4xl tracking-tight font-mono leading-none ${
+                          hudScores[1] < 0 ? 'text-rose-600' : 'text-slate-900'
+                        }`}>
+                          {hudScores[1]}
+                        </span>
+                        <span className="text-xs sm:text-sm font-black uppercase text-rose-700 tracking-wide">
+                          PTS
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl border-t border-white/80 border-b-4 shadow-md shrink-0 ${
+                      hudFrozen[1]
+                        ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
+                        : 'bg-gradient-to-br from-rose-500 to-pink-600 border-b-rose-900 text-white'
+                    }`}>
+                      {hudFrozen[1] ? '❄️' : activeRoundMode === 'mosquito' ? '🧤' : '🔪'}
+                    </div>
+
                     {hudScorePops[1] && (
-                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-sm sm:text-base font-black text-white bg-emerald-500 px-3 py-0.5 rounded-full border-2 border-white shadow-lg animate-bounce">
+                      <span className={`absolute -bottom-6 left-4 text-base sm:text-xl font-black text-white px-3.5 py-1 rounded-2xl border-2 border-white shadow-xl animate-bounce z-50 ${
+                        hudScorePops[1].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
+                      }`}>
                         {hudScorePops[1]}
                       </span>
                     )}
@@ -3951,25 +4299,25 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             {/* Bottom Light 3D Instruction Pill */}
             <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-white/95 backdrop-blur-md border-2 border-sky-300 border-b-4 border-b-sky-500 text-xs sm:text-sm font-black text-slate-800 whitespace-nowrap shadow-lg">
               {activeRoundMode === 'mosquito'
-                ? '👏 Bring your Left & Right 3D Gloves together to TOUCH & SLAP the right mosquito!'
-                : '🤺 Slash your 3D Fencing Sword across the right fruit to CHOP it!'}
+                ? '👏 Clap Left & Right 3D Gloves together to SLAP! (+5 Correct / -5 & Freeze if Wrong)'
+                : '👨‍🍳🔪 Chop the fruit with BOTH Left & Right Chopping Knives! (+5 Correct / -5 & Freeze if Wrong)'}
             </div>
           </div>
         </div>
       )}
 
-      {/* 3D LIGHT SETTINGS MODAL (Accessible anytime from Game HUD or Setup Screen) */}
+      {/* 3D LIGHT SETTINGS MODAL (Contains Combat Mode, Camera, Headgear, Music, Voice, Text Size, Speed & Movements) */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 bg-sky-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white max-w-xl w-full rounded-[2.2rem] p-6 sm:p-8 border-2 border-sky-200 border-b-[10px] border-b-sky-400 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200 text-slate-900 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b-2 border-sky-100 pb-4">
+          <div className="bg-white max-w-xl w-full rounded-[2.2rem] p-6 sm:p-8 border-2 border-sky-200 border-b-[10px] border-b-sky-400 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 text-slate-900 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b-2 border-sky-100 pb-3">
               <div className="flex items-center gap-3">
                 <span className="w-12 h-12 rounded-2xl bg-amber-100 border-2 border-amber-300 flex items-center justify-center text-2xl">
                   ⚙️
                 </span>
                 <div>
                   <h3 className="text-2xl font-black text-slate-900">Game Settings</h3>
-                  <p className="text-xs font-bold text-slate-500">Customize Headgear, Music, Voice, Text Size, Speed &amp; Movements</p>
+                  <p className="text-xs font-bold text-slate-500">Mode, Camera, Headgear, Music, Voice, Text Size, Speed &amp; Movements</p>
                 </div>
               </div>
               <button
@@ -3980,13 +4328,68 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               </button>
             </div>
 
+            {/* 0. Combat Mode & Camera Controls (Moved from Top HUD into Settings!) */}
+            <div className="p-4 rounded-2xl bg-amber-50/90 border-2 border-amber-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-black text-slate-900">🎮 3D Combat Mode</span>
+                <span className="text-xs font-extrabold text-amber-800">
+                  {gameMode === 'mosquito' ? 'Mosquito Slap 🦟' : gameMode === 'chop' ? 'Chef Fruit Chop 👨‍🍳🔪' : 'Combo Mix 🔥'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'mosquito' as const, label: '🦟 Slap Mode', desc: '2 Gloves + Net Hat' },
+                  { id: 'chop' as const, label: '🔪 Chop Mode', desc: '2 Knives + Chef Hat' },
+                  { id: 'combo' as const, label: '🔥 Combo Mix', desc: 'Alternates Rounds' }
+                ].map(cm => (
+                  <button
+                    key={cm.id}
+                    type="button"
+                    onClick={() => changeCombatMode(cm.id)}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-black border-b-4 transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                      gameMode === cm.id
+                        ? 'bg-gradient-to-b from-amber-400 to-orange-500 border-orange-800 text-white shadow'
+                        : 'bg-white border-amber-200 text-slate-700 hover:bg-amber-100/60'
+                    }`}
+                  >
+                    <span>{cm.label}</span>
+                    <span className={`text-[10px] font-bold ${gameMode === cm.id ? 'text-white/90' : 'text-slate-400'}`}>{cm.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Camera Tracking Toggle Inside Settings */}
+              <div className="flex items-center justify-between pt-2 border-t border-amber-200/80">
+                <div>
+                  <div className="text-sm font-black text-slate-900">📷 AR Camera Feed &amp; Hand Tracking</div>
+                  <div className="text-[11px] font-bold text-slate-500">
+                    {cameraActive ? 'Live Webcam Tracking Active' : 'Virtual Meadow Arena (Mouse / Touch)'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cameraActive) stopCamera();
+                    else setupCamera();
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-black border-b-4 transition cursor-pointer ${
+                    cameraActive
+                      ? 'bg-emerald-500 border-emerald-800 text-white'
+                      : 'bg-sky-500 border-sky-800 text-white'
+                  }`}
+                >
+                  {cameraActive ? '📷 Camera: ON' : '🌤️ Virtual Arena'}
+                </button>
+              </div>
+            </div>
+
             {/* 1. Headgear, Music, Sound FX & Voice Toggles */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Headgear */}
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-sky-50 border-2 border-sky-200">
                 <div>
                   <div className="text-sm font-black text-slate-900">🪖 3D Headgear</div>
-                  <div className="text-[11px] font-bold text-slate-500">Net Hat &amp; Fencing Mask</div>
+                  <div className="text-[11px] font-bold text-slate-500">Net Hat &amp; 3D Chef's Hat</div>
                 </div>
                 <button
                   type="button"
@@ -4044,8 +4447,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               {/* 3D Sound FX */}
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-sky-50 border-2 border-sky-200">
                 <div>
-                  <div className="text-sm font-black text-slate-900">🔊 Slap &amp; Buzz FX</div>
-                  <div className="text-[11px] font-bold text-slate-500">Mosquito &amp; Sword Audio</div>
+                  <div className="text-sm font-black text-slate-900">🔊 Slap &amp; Chop FX</div>
+                  <div className="text-[11px] font-bold text-slate-500">Mosquito, Knife &amp; Freeze Audio</div>
                 </div>
                 <button
                   type="button"
@@ -4182,120 +4585,400 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         </div>
       )}
 
-      {/* Screen 5: Bright Light Results Victory Screen */}
-      {screen === 'results' && (
-        <div className="fixed inset-0 z-50 bg-sky-900/35 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-[2.2rem] p-6 sm:p-8 text-center border-2 border-sky-200 border-b-[10px] border-b-sky-400 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200 text-slate-900">
-            <div className="text-6xl animate-bounce">🏆</div>
-            <div>
-              <span className="text-xs font-black uppercase tracking-widest text-sky-600">Arena Complete!</span>
-              <h2 className="text-3xl font-black text-slate-900 mt-1">
-                {numPlayers === 2
-                  ? (engineRef.current.players[0].score > engineRef.current.players[1].score
-                      ? `${p1Name} Wins!`
-                      : engineRef.current.players[1].score > engineRef.current.players[0].score
-                      ? `${p2Name} Wins!`
-                      : 'Epic Tie Game!')
-                  : `${p1Name} Scored ${engineRef.current.players[0].score} pts!`}
-              </h2>
-              <p className="text-sm font-semibold text-slate-600 mt-1">
-                Mosquitoes clapped &amp; fruits sliced like a true 3D champion!
-              </p>
-            </div>
+      {/* Screen 5: Immersive 3D Championship Winner Announcement Modal */}
+      {screen === 'results' && (() => {
+        const p1 = engineRef.current.players[0] || { score: 0, correctHits: 0, wrongHits: 0, hits: 0 };
+        const p2 = engineRef.current.players[1] || { score: 0, correctHits: 0, wrongHits: 0, hits: 0 };
+        const p1TotalAttempts = (p1.correctHits || 0) + (p1.wrongHits || 0);
+        const p2TotalAttempts = (p2.correctHits || 0) + (p2.wrongHits || 0);
+        const p1Acc = p1TotalAttempts > 0 ? Math.round(((p1.correctHits || 0) / p1TotalAttempts) * 100) : 100;
+        const p2Acc = p2TotalAttempts > 0 ? Math.round(((p2.correctHits || 0) / p2TotalAttempts) * 100) : 100;
 
-            <div className="grid grid-cols-2 gap-3 bg-sky-50 p-4 rounded-2xl border-2 border-sky-200">
-              <div className="p-3 rounded-xl bg-white border-2 border-purple-200 text-center shadow-sm">
-                <div className="text-xs font-black text-purple-700 uppercase">{p1Name || "Player 1"}</div>
-                <div className="text-2xl font-black text-slate-900 mt-1 font-mono">{engineRef.current.players[0]?.score || 0}</div>
-                <div className="text-[11px] font-bold text-slate-500 mt-0.5">{engineRef.current.players[0]?.hits || 0} Hits</div>
+        const isP1Winner = numPlayers === 1 || p1.score > p2.score;
+        const isP2Winner = numPlayers === 2 && p2.score > p1.score;
+        const isTie = numPlayers === 2 && p1.score === p2.score;
+
+        const winnerHeadline = numPlayers === 2
+          ? isP1Winner
+            ? `👑 ${p1Name || 'Player 1'} Wins the Championship!`
+            : isP2Winner
+            ? `👑 ${p2Name || 'Player 2'} Wins the Championship!`
+            : `⚡ Epic Championship Tie!`
+          : `🏆 ${p1Name || 'Player 1'} Completed the Arena!`;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-sky-900/45 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+            <div className="relative bg-gradient-to-b from-amber-50 via-white to-sky-50 max-w-2xl w-full rounded-[2.6rem] p-6 sm:p-9 text-center border-4 border-amber-300 border-b-[12px] border-b-amber-500 shadow-[0_24px_60px_rgba(14,165,233,0.35)] space-y-6 animate-in fade-in zoom-in-95 duration-300 text-slate-900">
+              
+              {/* Top 3D Championship Ribbon & Trophy */}
+              <div className="flex flex-col items-center">
+                <div className="w-24 h-24 rounded-3xl bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-500 border-t-2 border-white border-b-8 border-b-amber-700 flex items-center justify-center text-6xl shadow-xl animate-bounce mb-3">
+                  🏆
+                </div>
+                <span className="px-4 py-1 rounded-full bg-amber-100 border-2 border-amber-300 text-amber-800 text-xs font-black uppercase tracking-widest shadow-xs">
+                  🌟 Official 3D Arena Winner Announcement 🌟
+                </span>
+                <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mt-2 tracking-tight drop-shadow-[0_2px_0_rgba(255,255,255,1)]">
+                  {winnerHeadline}
+                </h2>
+                <p className="text-sm font-bold text-slate-600 mt-1">
+                  Scoring Rules: <span className="text-emerald-600 font-black">+5 Points</span> per Correct Hit • <span className="text-rose-600 font-black">-5 Points</span> per Wrong Hit
+                </p>
               </div>
-              <div className={`p-3 rounded-xl text-center bg-white shadow-sm ${numPlayers === 2 ? 'border-2 border-rose-200' : 'border-2 border-sky-200'}`}>
-                <div className="text-xs font-black text-rose-600 uppercase">{numPlayers === 2 ? (p2Name || "Player 2") : "Questions"}</div>
-                <div className="text-2xl font-black text-slate-900 mt-1 font-mono">
-                  {numPlayers === 2 ? engineRef.current.players[1]?.score || 0 : activeQuiz.questions.length}
+
+              {/* 3D Championship Podium Score Cards */}
+              <div className={`grid gap-4 ${numPlayers === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 max-w-md mx-auto'}`}>
+                {/* Player 1 Podium Card */}
+                <div className={`relative rounded-3xl p-5 border-2 border-b-[8px] transition-all flex flex-col items-center ${
+                  isP1Winner || isTie
+                    ? 'bg-gradient-to-b from-purple-50 to-white border-purple-400 border-b-purple-600 shadow-lg'
+                    : 'bg-white border-slate-200 border-b-slate-300 opacity-90'
+                }`}>
+                  {(isP1Winner || isTie) && (
+                    <span className=" -top-3.5 px-3 py-0.5 rounded-full bg-amber-400 border-2 border-white text-slate-900 text-[11px] font-black uppercase shadow">
+                      {isTie ? '🥇 Co-Champion' : '👑 Winner'}
+                    </span>
+                  )}
+                  <div className="text-sm font-black uppercase tracking-wider text-purple-700 mt-1">
+                    {p1Name || "Player 1"}
+                  </div>
+                  <div className="text-5xl font-black text-slate-900 font-mono my-2">
+                    {p1.score} <span className="text-base font-black text-purple-600">PTS</span>
+                  </div>
+                  <div className="w-full grid grid-cols-3 gap-2 pt-3 border-t border-purple-100 text-xs font-extrabold">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-1.5 text-emerald-700">
+                      <div className="text-sm font-black">+{ (p1.correctHits || 0) * 5 }</div>
+                      <div className="text-[10px]">✓ {p1.correctHits || 0} Correct</div>
+                    </div>
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl py-1.5 text-rose-700">
+                      <div className="text-sm font-black">-{ (p1.wrongHits || 0) * 5 }</div>
+                      <div className="text-[10px]">❄️ {p1.wrongHits || 0} Wrong</div>
+                    </div>
+                    <div className="bg-sky-50 border border-sky-200 rounded-xl py-1.5 text-sky-800">
+                      <div className="text-sm font-black">{p1Acc}%</div>
+                      <div className="text-[10px]">🎯 Accuracy</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-                  {numPlayers === 2 ? `${engineRef.current.players[1]?.hits || 0} Hits` : 'Total Completed'}
-                </div>
+
+                {/* Player 2 Podium Card (If 2 Players) */}
+                {numPlayers === 2 && (
+                  <div className={`relative rounded-3xl p-5 border-2 border-b-[8px] transition-all flex flex-col items-center ${
+                    isP2Winner || isTie
+                      ? 'bg-gradient-to-b from-rose-50 to-white border-rose-400 border-b-rose-600 shadow-lg'
+                      : 'bg-white border-slate-200 border-b-slate-300 opacity-90'
+                  }`}>
+                    {(isP2Winner || isTie) && (
+                      <span className="-top-3.5 px-3 py-0.5 rounded-full bg-amber-400 border-2 border-white text-slate-900 text-[11px] font-black uppercase shadow">
+                        {isTie ? '🥇 Co-Champion' : '👑 Winner'}
+                      </span>
+                    )}
+                    <div className="text-sm font-black uppercase tracking-wider text-rose-700 mt-1">
+                      {p2Name || "Player 2"}
+                    </div>
+                    <div className="text-5xl font-black text-slate-900 font-mono my-2">
+                      {p2.score} <span className="text-base font-black text-rose-600">PTS</span>
+                    </div>
+                    <div className="w-full grid grid-cols-3 gap-2 pt-3 border-t border-rose-100 text-xs font-extrabold">
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-1.5 text-emerald-700">
+                        <div className="text-sm font-black">+{(p2.correctHits || 0) * 5}</div>
+                        <div className="text-[10px]">✓ {p2.correctHits || 0} Correct</div>
+                      </div>
+                      <div className="bg-rose-50 border border-rose-200 rounded-xl py-1.5 text-rose-700">
+                        <div className="text-sm font-black">-{(p2.wrongHits || 0) * 5}</div>
+                        <div className="text-[10px]">❄️ {p2.wrongHits || 0} Wrong</div>
+                      </div>
+                      <div className="bg-sky-50 border border-sky-200 rounded-xl py-1.5 text-sky-800">
+                        <div className="text-sm font-black">{p2Acc}%</div>
+                        <div className="text-[10px]">🎯 Accuracy</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  onClick={() => startGame(numPlayers)}
+                  className="flex-1 py-4 px-6 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 border-t border-emerald-200 border-b-[6px] border-b-emerald-800 text-white font-black text-lg transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <RotateCcw size={20} />
+                  <span>Play Rematch</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setStudyIndex(0);
+                    setStudySelectedOption(null);
+                    setScreen('study');
+                  }}
+                  className="py-4 px-5 rounded-2xl bg-amber-300 hover:bg-amber-200 text-slate-900 border-b-[6px] border-amber-600 font-black text-base transition cursor-pointer"
+                >
+                  📖 Study Questions
+                </button>
+                <button
+                  onClick={() => setScreen('setup')}
+                  className="py-4 px-5 rounded-2xl bg-sky-100 hover:bg-sky-200 text-sky-900 border-b-[6px] border-sky-300 font-black text-base transition cursor-pointer"
+                >
+                  ⚙️ Setup
+                </button>
               </div>
             </div>
+          </div>
+        );
+      })()}
 
-            <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
-              <button
-                onClick={() => startGame(numPlayers)}
-                className="flex-1 py-3 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 border-b-4 border-emerald-700 text-white font-black transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
-              >
-                <RotateCcw size={16} />
-                <span>Play Again</span>
-              </button>
+      {/* Screen 6: Interactive Bright Light 3D Study Mode (Flashcard Practice + Full Question List) */}
+      {screen === 'study' && (() => {
+        const totalQs = activeQuiz.questions.length;
+        const safeStudyIdx = Math.min(Math.max(0, studyIndex), Math.max(0, totalQs - 1));
+        const studyQ = activeQuiz.questions[safeStudyIdx] || activeQuiz.questions[0];
+
+        return (
+          <div className="absolute inset-0 z-40 bg-gradient-to-b from-sky-200 via-sky-100 to-amber-50 overflow-y-auto p-4 sm:p-8 flex flex-col items-center">
+            {/* Top Navigation Header */}
+            <div className="w-full max-w-4xl flex items-center justify-between gap-3 mb-6 flex-wrap">
               <button
                 onClick={() => setScreen('setup')}
-                className="flex-1 py-3 px-5 rounded-2xl bg-sky-100 hover:bg-sky-200 text-sky-900 border-b-4 border-sky-300 font-black transition cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white hover:bg-sky-50 border-2 border-sky-200 border-b-4 border-b-sky-300 text-slate-800 font-black transition cursor-pointer shadow-sm"
               >
-                Game Setup
+                <ArrowLeft size={18} className="text-sky-600" />
+                <span>Back to Setup</span>
+              </button>
+
+              <div className="flex items-center gap-2 bg-white/90 p-1.5 rounded-2xl border-2 border-sky-200 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setStudyViewMode('cards')}
+                  className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer ${
+                    studyViewMode === 'cards'
+                      ? 'bg-sky-500 text-white shadow'
+                      : 'text-slate-600 hover:bg-sky-50'
+                  }`}
+                >
+                  🃏 Interactive Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStudyViewMode('list')}
+                  className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer ${
+                    studyViewMode === 'list'
+                      ? 'bg-sky-500 text-white shadow'
+                      : 'text-slate-600 hover:bg-sky-50'
+                  }`}
+                >
+                  📋 All Questions ({totalQs})
+                </button>
+              </div>
+
+              <button
+                onClick={() => startGame(numPlayers)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 border-b-4 border-emerald-800 text-white font-black transition cursor-pointer shadow-md"
+              >
+                <Play size={18} fill="currentColor" />
+                <span>Start 3D Arena</span>
               </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Screen 6: Bright Light Study Mode */}
-      {screen === 'study' && (
-        <div className="absolute inset-0 z-40 bg-gradient-to-b from-sky-200 via-sky-100 to-amber-50 overflow-y-auto p-4 sm:p-8 flex flex-col items-center">
-          <div className="w-full max-w-3xl flex items-center justify-between mb-8">
-            <button
-              onClick={() => setScreen('setup')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white hover:bg-sky-50 border-2 border-sky-200 border-b-4 border-b-sky-300 text-slate-800 font-black transition cursor-pointer shadow-sm"
-            >
-              <ArrowLeft size={18} className="text-sky-600" />
-              <span>Back to Setup</span>
-            </button>
-            <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-              <span>📖 Study Mode</span>
-            </h2>
-            <button
-              onClick={() => startGame(numPlayers)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 border-b-4 border-emerald-700 text-white font-black transition cursor-pointer shadow-md"
-            >
-              <Play size={18} fill="currentColor" />
-              <span>Start Game</span>
-            </button>
-          </div>
-
-          <div className="w-full max-w-3xl flex flex-col gap-4">
-            {activeQuiz.questions.map((q, idx) => (
-              <div key={q.id || idx} className="bg-white border-2 border-sky-200 border-b-6 border-b-sky-300 rounded-3xl p-5 shadow-md flex flex-col gap-3">
-                <div className="flex items-start gap-3">
-                  <span className="w-8 h-8 rounded-xl bg-sky-100 border border-sky-300 text-sky-700 font-black flex items-center justify-center shrink-0">
-                    {idx + 1}
-                  </span>
-                  <p className="text-lg font-black text-slate-900 flex-1">{q.text}</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pl-11">
-                  {q.options.map((opt, oIdx) => (
-                    <div
-                      key={oIdx}
-                      className={`p-3 rounded-2xl text-sm font-extrabold flex items-center gap-2.5 ${
-                        oIdx === q.answerIndex
-                          ? 'bg-emerald-100 text-emerald-900 border-2 border-emerald-400'
-                          : 'bg-sky-50 text-slate-700 border-2 border-sky-200'
+            {studyViewMode === 'cards' && studyQ ? (
+              <div className="w-full max-w-3xl my-auto flex flex-col gap-5">
+                {/* Question Progress Pill Dots */}
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  {activeQuiz.questions.map((qItem, idx) => (
+                    <button
+                      key={qItem.id || idx}
+                      type="button"
+                      onClick={() => {
+                        setStudyIndex(idx);
+                        setStudySelectedOption(null);
+                      }}
+                      className={`w-9 h-9 rounded-xl font-black text-xs border-b-4 transition cursor-pointer ${
+                        idx === safeStudyIdx
+                          ? 'bg-amber-400 border-amber-600 text-slate-900 scale-110 shadow'
+                          : 'bg-white border-sky-200 text-slate-600 hover:bg-sky-50'
                       }`}
                     >
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${
-                        oIdx === q.answerIndex ? 'bg-emerald-500 text-white' : 'bg-white border border-sky-300 text-sky-800'
-                      }`}>
-                        {OPTION_LETTERS[oIdx]}
-                      </span>
-                      <span>{opt}</span>
-                      {oIdx === q.answerIndex && <span className="ml-auto text-xs font-black text-emerald-700">✓ CORRECT</span>}
-                    </div>
+                      {idx + 1}
+                    </button>
                   ))}
                 </div>
+
+                {/* Main 3D Interactive Study Card */}
+                <div className="bg-white rounded-[2.4rem] border-2 border-sky-200 border-b-[10px] border-b-sky-400 p-6 sm:p-9 shadow-2xl flex flex-col gap-6">
+                  <div className="flex items-center justify-between gap-3 border-b-2 border-sky-100 pb-4">
+                    <span className="px-3.5 py-1 rounded-full bg-sky-100 border border-sky-300 text-sky-800 text-xs font-black uppercase tracking-wider">
+                      Question {safeStudyIdx + 1} of {totalQs}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => speakText(studyQ.text)}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-100 hover:bg-sky-200 border border-sky-300 text-sky-800 text-xs font-black cursor-pointer transition"
+                    >
+                      <span>🔊 Read Aloud</span>
+                    </button>
+                  </div>
+
+                  {/* Question Prompt */}
+                  <h3 className="text-2xl sm:text-3xl font-black text-slate-900 text-center leading-snug py-2">
+                    {studyQ.text}
+                  </h3>
+
+                  {/* Interactive Click-to-Test Options (A, B, C, D) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {studyQ.options.map((opt, oIdx) => {
+                      const isPicked = studySelectedOption === oIdx;
+                      const isCorrectAnswer = oIdx === studyQ.answerIndex;
+                      const showResult = studySelectedOption !== null;
+
+                      let btnStyle = 'bg-sky-50 hover:bg-sky-100/80 border-sky-200 border-b-sky-300 text-slate-800';
+                      if (showResult) {
+                        if (isCorrectAnswer) {
+                          btnStyle = 'bg-emerald-100 border-emerald-400 border-b-emerald-600 text-emerald-950 shadow-md -translate-y-0.5';
+                        } else if (isPicked && !isCorrectAnswer) {
+                          btnStyle = 'bg-rose-100 border-rose-400 border-b-rose-600 text-rose-950';
+                        } else {
+                          btnStyle = 'bg-slate-50 border-slate-200 border-b-slate-300 text-slate-400 opacity-75';
+                        }
+                      }
+
+                      return (
+                        <button
+                          key={oIdx}
+                          type="button"
+                          onClick={() => {
+                            setStudySelectedOption(oIdx);
+                            if (oIdx === studyQ.answerIndex) {
+                              playSoundEffect('correct');
+                            } else {
+                              playSoundEffect('freeze');
+                            }
+                          }}
+                          className={`p-4 rounded-2xl border-2 border-b-[6px] text-left font-extrabold text-base flex items-center gap-3.5 transition-all cursor-pointer ${btnStyle}`}
+                        >
+                          <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-base font-black shrink-0 shadow-xs ${
+                            showResult && isCorrectAnswer
+                              ? 'bg-emerald-500 text-white'
+                              : showResult && isPicked && !isCorrectAnswer
+                              ? 'bg-rose-500 text-white'
+                              : 'bg-white border-2 border-sky-300 text-sky-800'
+                          }`}>
+                            {OPTION_LETTERS[oIdx]}
+                          </span>
+                          <span className="flex-1">{opt}</span>
+                          {showResult && isCorrectAnswer && (
+                            <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-500 text-white">
+                              ✓ +5 PTS
+                            </span>
+                          )}
+                          {showResult && isPicked && !isCorrectAnswer && (
+                            <span className="text-xs font-black px-2.5 py-1 rounded-full bg-sky-500 text-white">
+                              ❄️ -5 PTS
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Instant Practice Feedback Banner */}
+                  {studySelectedOption !== null && (
+                    <div className={`p-3.5 rounded-2xl border-2 text-center font-black text-sm animate-in fade-in duration-150 ${
+                      studySelectedOption === studyQ.answerIndex
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : 'bg-sky-50 border-sky-300 text-sky-900'
+                    }`}>
+                      {studySelectedOption === studyQ.answerIndex
+                        ? `🎉 Awesome! "${studyQ.options[studyQ.answerIndex]}" is the correct answer (+5 points in game)!`
+                        : `❄️ Careful! That word freezes in the arena (-5 points). The correct answer is ${OPTION_LETTERS[studyQ.answerIndex]}: "${studyQ.options[studyQ.answerIndex]}".`}
+                    </div>
+                  )}
+
+                  {/* Card Footer Navigation (Prev / Reveal Answer / Next) */}
+                  <div className="flex items-center justify-between gap-3 pt-2 border-t border-sky-100">
+                    <button
+                      type="button"
+                      disabled={safeStudyIdx === 0}
+                      onClick={() => {
+                        setStudyIndex(Math.max(0, safeStudyIdx - 1));
+                        setStudySelectedOption(null);
+                      }}
+                      className="px-5 py-2.5 rounded-2xl bg-sky-100 hover:bg-sky-200 disabled:opacity-40 text-sky-900 border-b-4 border-sky-300 font-black text-sm transition cursor-pointer"
+                    >
+                      ← Previous
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStudySelectedOption(studyQ.answerIndex)}
+                      className="px-4 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-black text-xs transition cursor-pointer"
+                    >
+                      💡 Show Answer
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (safeStudyIdx + 1 < totalQs) {
+                          setStudyIndex(safeStudyIdx + 1);
+                          setStudySelectedOption(null);
+                        } else {
+                          startGame(numPlayers);
+                        }
+                      }}
+                      className="px-5 py-2.5 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white border-b-4 border-sky-700 font-black text-sm transition cursor-pointer shadow"
+                    >
+                      {safeStudyIdx + 1 < totalQs ? 'Next Question →' : '🚀 Ready! Start Game'}
+                    </button>
+                  </div>
+                </div>
               </div>
-            ))}
+            ) : (
+              /* Full List View of All Questions */
+              <div className="w-full max-w-4xl flex flex-col gap-4 pb-10">
+                {activeQuiz.questions.map((q, idx) => (
+                  <div key={q.id || idx} className="bg-white border-2 border-sky-200 border-b-[6px] border-b-sky-300 rounded-3xl p-5 shadow-md flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <span className="w-8 h-8 rounded-xl bg-sky-100 border border-sky-300 text-sky-700 font-black flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <p className="text-lg font-black text-slate-900 flex-1">{q.text}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => speakText(q.text)}
+                        className="px-3 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-xs font-black text-sky-700 cursor-pointer shrink-0"
+                      >
+                        🔊 Listen
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pl-11">
+                      {q.options.map((opt, oIdx) => (
+                        <div
+                          key={oIdx}
+                          className={`p-3 rounded-2xl text-sm font-extrabold flex items-center gap-2.5 ${
+                            oIdx === q.answerIndex
+                              ? 'bg-emerald-100 text-emerald-900 border-2 border-emerald-400'
+                              : 'bg-sky-50 text-slate-700 border-2 border-sky-200'
+                          }`}
+                        >
+                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${
+                            oIdx === q.answerIndex ? 'bg-emerald-500 text-white' : 'bg-white border border-sky-300 text-sky-800'
+                          }`}>
+                            {OPTION_LETTERS[oIdx]}
+                          </span>
+                          <span>{opt}</span>
+                          {oIdx === q.answerIndex && <span className="ml-auto text-xs font-black text-emerald-700">✓ +5 PTS</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Mode Switcher Modal */}
       {showModeModal && (
