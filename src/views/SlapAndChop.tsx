@@ -1332,6 +1332,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const targets: any[] = [];
     const is2P = engineRef.current.numPlayers === 2;
 
+    const curSpd = speedRef.current || speed || 1.0;
+
     if (mode === 'mosquito') {
       startMosquitoBuzz();
 
@@ -1340,7 +1342,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const colX = (i % 2 === 0) ? width * (0.20 + Math.random() * 0.14) : width * (0.66 + Math.random() * 0.14);
           const rowY = (i < 2) ? height * (0.30 + Math.random() * 0.12) : height * (0.62 + Math.random() * 0.12);
           const angle = Math.random() * Math.PI * 2;
-          const baseSpeed = (2.1 + Math.random() * 1.1) * speed;
+          const baseSpeed = (2.1 + Math.random() * 1.1) * curSpd;
 
           targets.push({
             optionIndex: i,
@@ -1366,7 +1368,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const colX = width * (0.11 + (i % 2) * 0.21 + Math.random() * 0.04);
           const rowY = height * (0.30 + Math.floor(i / 2) * 0.34 + Math.random() * 0.05);
           const angle = Math.random() * Math.PI * 2;
-          const baseSpeed = (1.9 + Math.random() * 1.0) * speed;
+          const baseSpeed = (1.9 + Math.random() * 1.0) * curSpd;
 
           targets.push({
             optionIndex: i,
@@ -1391,7 +1393,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const colX = width * (0.59 + (i % 2) * 0.21 + Math.random() * 0.04);
           const rowY = height * (0.30 + Math.floor(i / 2) * 0.34 + Math.random() * 0.05);
           const angle = Math.random() * Math.PI * 2;
-          const baseSpeed = (1.9 + Math.random() * 1.0) * speed;
+          const baseSpeed = (1.9 + Math.random() * 1.0) * curSpd;
 
           targets.push({
             optionIndex: i,
@@ -1418,8 +1420,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       if (!is2P) {
         opts.forEach((optText, i) => {
           const launchX = width * (0.18 + (i / Math.max(1, opts.length - 1)) * 0.64);
-          const vy = -(10.2 + Math.random() * 2.4) * Math.sqrt(speed);
-          const vx = (Math.random() - 0.5) * 2.8 * speed;
+          const vy = -(10.2 + Math.random() * 2.4) * Math.sqrt(curSpd);
+          const vx = (Math.random() - 0.5) * 2.8 * curSpd;
 
           targets.push({
             optionIndex: i,
@@ -1451,8 +1453,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             team: 'p1',
             x: launchX,
             y: height + 40 + i * 16,
-            vx: (Math.random() - 0.5) * 2.0 * speed,
-            vy: -(10.0 + Math.random() * 2.2) * Math.sqrt(speed),
+            vx: (Math.random() - 0.5) * 2.0 * curSpd,
+            vy: -(10.0 + Math.random() * 2.2) * Math.sqrt(curSpd),
             gravity: 0.20,
             radius: 52,
             rotation: Math.random() * Math.PI,
@@ -1473,8 +1475,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             team: 'p2',
             x: launchX,
             y: height + 40 + i * 16,
-            vx: (Math.random() - 0.5) * 2.0 * speed,
-            vy: -(10.0 + Math.random() * 2.2) * Math.sqrt(speed),
+            vx: (Math.random() - 0.5) * 2.0 * curSpd,
+            vy: -(10.0 + Math.random() * 2.2) * Math.sqrt(curSpd),
             gravity: 0.20,
             radius: 52,
             rotation: Math.random() * Math.PI,
@@ -1499,6 +1501,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const width = containerRef.current?.clientWidth || 960;
     const height = containerRef.current?.clientHeight || 540;
     const is2P = engineRef.current.numPlayers === 2;
+    const curSpd = speedRef.current || speed || 1.0;
 
     engineRef.current.targets.forEach((t, i) => {
       if (!t.alive) return;
@@ -1512,8 +1515,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
       }
       t.y = height + 40 + (t.optionIndex % 4) * 16;
-      t.vy = -(10.0 + Math.random() * 2.2) * Math.sqrt(speed);
-      t.vx = (Math.random() - 0.5) * 2.4 * speed;
+      t.vy = -(10.0 + Math.random() * 2.2) * Math.sqrt(curSpd);
+      t.vx = (Math.random() - 0.5) * 2.4 * curSpd;
     });
   };
 
@@ -2203,6 +2206,22 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             if (isTouching) {
               const midX = (lx + rx) * 0.5;
               const midY = (ly + ry) * 0.5;
+              if (!showSettingsModal) {
+                checkHandWeaponCollision(
+                  idx,
+                  midX / cw,
+                  midY / ch,
+                  midX / cw,
+                  midY / ch,
+                  0,
+                  0,
+                  0.05,
+                  undefined,
+                  (p.leftHand?.scale || 1.0) * 0.5 + (p.rightHand?.scale || 1.0) * 0.5,
+                  cw,
+                  ch
+                );
+              }
               ctx.save();
               ctx.translate(midX, midY);
               ctx.strokeStyle = '#facc15';
@@ -4508,25 +4527,25 @@ function QuizEditor({
   };
 
   return (
-    <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
+    <div className="absolute inset-0 z-40 bg-gradient-to-br from-sky-100 via-amber-50 to-emerald-100 overflow-y-auto custom-scrollbar">
       <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
-        {/* Exact Bubble Pop Glass Container */}
-        <div className="w-full max-w-4xl glass-panel rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8">
-          <div className="bg-white dark:bg-slate-800/80 p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
+        {/* 3D Light Glass Container */}
+        <div className="w-full max-w-4xl bg-white/95 rounded-3xl overflow-hidden flex flex-col shadow-2xl border-2 border-white mb-8">
+          <div className="bg-white p-8 flex flex-col gap-6 border-b-2 border-sky-200">
             <div className="flex justify-between items-center">
-              <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">GAME SETUP</h2>
+              <h2 className="text-3xl font-extrabold text-slate-800 tracking-wide">GAME SETUP</h2>
               <div className="flex gap-3 items-center">
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl text-slate-600 font-bold bg-slate-100 hover:bg-slate-200 hover:text-slate-900 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-sky-500 text-white font-bold hover:bg-sky-600 transition-colors shadow-lg shadow-sky-500/30 cursor-pointer"
                 >
                   <Save size={18} /> Save Quiz
                 </button>
@@ -4535,31 +4554,31 @@ function QuizEditor({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">TOPIC</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">TOPIC</label>
                 <input
                   type="text"
                   placeholder="e.g. Present Simple"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
+                  className="w-full text-sm font-medium bg-sky-50/60 border border-slate-300 outline-none text-slate-800 px-4 py-3 rounded-xl focus:border-sky-500 placeholder-slate-400 transition-colors"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">CLASS LEVEL</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">CLASS LEVEL</label>
                 <input
                   type="text"
                   placeholder="e.g. KET, Starters"
                   value={classLevel}
                   onChange={(e) => setClassLevel(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
+                  className="w-full text-sm font-medium bg-sky-50/60 border border-slate-300 outline-none text-slate-800 px-4 py-3 rounded-xl focus:border-sky-500 placeholder-slate-400 transition-colors"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">FOLDER</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">FOLDER</label>
                 <select
                   value={folderId}
                   onChange={(e) => setFolderId(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 appearance-none cursor-pointer transition-colors"
+                  className="w-full text-sm font-medium bg-sky-50/60 border border-slate-300 outline-none text-slate-800 px-4 py-3 rounded-xl focus:border-sky-500 appearance-none cursor-pointer transition-colors"
                 >
                   <option value="">No Folder (Root)</option>
                   {folders.map(f => (
@@ -4571,28 +4590,28 @@ function QuizEditor({
           </div>
 
           {errorMsg && (
-            <div className="bg-red-500/20 text-red-400 p-3 mx-6 mt-6 rounded-lg font-medium text-center border border-red-500/30 animate-pulse">
+            <div className="bg-red-50 text-red-600 p-3 mx-6 mt-6 rounded-lg font-bold text-center border border-red-200 animate-pulse">
               {errorMsg}
             </div>
           )}
 
           {toastMsg && (
-            <div className="bg-cyan-500/20 text-cyan-500 dark:text-cyan-300 p-3 mx-6 mt-6 rounded-xl font-bold text-center border border-cyan-500/30 animate-in fade-in slide-in-from-top-2 duration-300 flex items-center justify-center gap-2 shadow-sm">
+            <div className="bg-sky-50 text-sky-700 p-3 mx-6 mt-6 rounded-xl font-bold text-center border border-sky-200 animate-in fade-in slide-in-from-top-2 duration-300 flex items-center justify-center gap-2 shadow-sm">
               <Sparkles size={18} /> {toastMsg}
             </div>
           )}
 
-          <div className="p-6 flex flex-col gap-6 bg-slate-100 dark:bg-slate-900/50">
+          <div className="p-6 flex flex-col gap-6 bg-sky-50/50">
             {/* Bulk Paste Action Bar with How to Bulk Paste Video Guide Button */}
-            <div className="bg-blue-500/10 dark:bg-blue-950/30 border border-blue-500/20 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <span className="font-bold text-sm text-blue-900 dark:text-blue-200 uppercase tracking-wider">
+            <div className="bg-sky-100/80 border border-sky-200 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <span className="font-bold text-sm text-sky-900 uppercase tracking-wider">
                 QUESTIONS ({questions.length})
               </span>
               <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
                 <button
                   type="button"
                   onClick={() => setShowBulkPasteModal(true)}
-                  className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-blue-500/25 flex items-center gap-2.5 cursor-pointer"
+                  className="px-5 py-2.5 bg-sky-500 hover:bg-sky-600 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/25 flex items-center gap-2.5 cursor-pointer"
                 >
                   <ClipboardList size={22} className="stroke-[2.5]" />
                   <span>Bulk Paste</span>
@@ -4613,12 +4632,12 @@ function QuizEditor({
 
             {/* Questions List */}
             {questions.map((q, index) => (
-              <div key={q.id} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-300 dark:border-slate-700 shadow-sm relative group">
+              <div key={q.id} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative group">
                 <button
                   type="button"
                   onClick={() => duplicateQuestion(index)}
                   title="Duplicate Question"
-                  className="absolute right-6 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10"
+                  className="absolute right-6 -top-3 w-8 h-8 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-sky-500 hover:text-white border-2 border-white cursor-pointer z-10"
                 >
                   <Copy size={14} />
                 </button>
@@ -4626,13 +4645,13 @@ function QuizEditor({
                   type="button"
                   onClick={() => removeQuestion(q.id)}
                   title="Delete Question"
-                  className="absolute -right-3 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10"
+                  className="absolute -right-3 -top-3 w-8 h-8 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white border-2 border-white cursor-pointer z-10"
                 >
                   <Trash2 size={14} />
                 </button>
 
                 <div className="flex gap-4 mb-4 items-start">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                  <div className="w-8 h-8 rounded-full bg-sky-100 text-sky-600 font-bold flex items-center justify-center shrink-0 border border-sky-200">
                     {index + 1}
                   </div>
                   <input
@@ -4643,7 +4662,7 @@ function QuizEditor({
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     onPaste={(e) => handlePaste(e, index)}
                     placeholder="Type your question here..."
-                    className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                    className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 outline-none focus:border-sky-500 text-slate-800 font-medium"
                   />
                 </div>
 
@@ -4655,16 +4674,16 @@ function QuizEditor({
                         name={`answer-${q.id}`}
                         checked={q.answerIndex === optIndex}
                         onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                        className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
+                        className="w-4 h-4 text-sky-500 focus:ring-sky-500 bg-slate-50 border-slate-300 cursor-pointer"
                       />
                       {opt.startsWith('data:image') || opt.startsWith('http') ? (
-                        <div className="flex-1 flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 pr-3">
+                        <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-lg p-1.5 pr-3">
                           <img src={opt} alt="Option" className="w-8 h-8 rounded object-cover" />
-                          <span className="text-xs text-slate-400 flex-1 truncate">Image/GIF</span>
+                          <span className="text-xs text-slate-500 flex-1 truncate">Image/GIF</span>
                           <button
                             type="button"
                             onClick={() => updateOption(q.id, optIndex, '')}
-                            className="text-red-400 hover:text-red-300 cursor-pointer p-1"
+                            className="text-red-500 hover:text-red-600 cursor-pointer p-1"
                           >
                             <X size={14} />
                           </button>
@@ -4676,16 +4695,16 @@ function QuizEditor({
                             value={opt}
                             onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
                             placeholder={`Option ${optIndex + 1}`}
-                            className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${
+                            className={`flex-1 min-w-0 bg-slate-50 border ${
                               q.answerIndex === optIndex
-                                ? 'border-blue-500/50 bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'
-                                : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                            } rounded-lg px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium`}
+                                ? 'border-sky-500 bg-sky-50 text-sky-700 font-bold'
+                                : 'border-slate-300 text-slate-700'
+                            } rounded-lg px-3 py-2 outline-none focus:border-sky-500 text-sm font-medium`}
                           />
                           <button
                             type="button"
                             onClick={() => setActiveGiphyInput({ qId: q.id, optIndex })}
-                            className="bg-purple-500/20 text-purple-400 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
+                            className="bg-purple-100 text-purple-600 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
                             title="Search Giphy"
                           >
                             <ImageIcon size={16} />
@@ -4701,7 +4720,7 @@ function QuizEditor({
                     type="button"
                     onClick={() => addOption(q.id)}
                     disabled={q.options.length >= 6}
-                    className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer"
+                    className="text-xs bg-slate-100 text-slate-700 px-3 py-1 rounded hover:bg-slate-200 disabled:opacity-50 cursor-pointer font-bold"
                   >
                     + Option
                   </button>
@@ -4709,7 +4728,7 @@ function QuizEditor({
                     type="button"
                     onClick={() => removeOption(q.id)}
                     disabled={q.options.length <= 2}
-                    className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer"
+                    className="text-xs bg-slate-100 text-slate-700 px-3 py-1 rounded hover:bg-slate-200 disabled:opacity-50 cursor-pointer font-bold"
                   >
                     - Option
                   </button>
@@ -4720,7 +4739,7 @@ function QuizEditor({
             <button
               type="button"
               onClick={addQuestion}
-              className="w-full py-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-4 border-2 border-dashed border-sky-300 rounded-2xl text-sky-700 font-bold hover:bg-sky-50 hover:border-sky-400 transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <Plus size={20} /> Add Another Question
             </button>
@@ -4740,34 +4759,34 @@ function QuizEditor({
       />
 
       {showPublishModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[9999] bg-sky-900/35 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div
-            className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md p-8 shadow-2xl border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transform scale-100 animate-in fade-in zoom-in-95 duration-150"
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl border-2 border-sky-100 flex flex-col items-center text-center transform scale-100 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Publish Game?</h3>
-            <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">
+            <h3 className="text-2xl font-black text-slate-800 mb-2">Publish Game?</h3>
+            <p className="text-slate-600 mb-8 font-medium">
               Would you like to publish this game to the Community so other teachers can use it?
             </p>
             <div className="flex flex-col gap-3 w-full">
               <button
                 type="button"
                 onClick={() => confirmSave(true)}
-                className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer text-lg"
+                className="w-full py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-bold rounded-xl shadow-lg shadow-sky-500/30 hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer text-lg"
               >
                 Yes, Publish (Public)
               </button>
               <button
                 type="button"
                 onClick={() => confirmSave(false)}
-                className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer text-lg"
+                className="w-full py-4 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors cursor-pointer text-lg"
               >
                 No, Keep Private
               </button>
               <button
                 type="button"
                 onClick={() => setShowPublishModal(false)}
-                className="w-full py-2 mt-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold text-sm transition-colors cursor-pointer"
+                className="w-full py-2 mt-2 text-slate-400 hover:text-slate-600 font-bold text-sm transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -4779,21 +4798,21 @@ function QuizEditor({
 
       {/* Bulk Paste Modal with Mystery Box 3-Step Guide & Prompt Copy */}
       {showBulkPasteModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-sky-900/40 backdrop-blur-md p-4 animate-in fade-in duration-150">
           <div
-            className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 transform scale-100 animate-in fade-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 transform scale-100 animate-in fade-in zoom-in-95 duration-150 border-2 border-sky-100 max-h-[90vh] overflow-y-auto custom-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center font-bold">
                   <ClipboardList size={22} />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+                  <h3 className="text-2xl font-black text-slate-800">
                     Bulk Paste &amp; Auto-Divide
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-slate-500">
                     Paste multiple questions, numbered lists with options &amp; answer (e.g. Answer: B), or tabular TSV data.
                   </p>
                 </div>
@@ -4802,16 +4821,16 @@ function QuizEditor({
                 <button
                   type="button"
                   onClick={() => setShowVideoGuide(true)}
-                  className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 border border-purple-200 text-purple-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                   title="Watch Video Tutorial"
                 >
-                  <Play size={13} className="fill-current text-purple-500" />
+                  <Play size={13} className="fill-current text-purple-600" />
                   <span>Video Guide</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => { setShowBulkPasteModal(false); setBulkText(""); }}
-                  className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer"
                 >
                   <X size={16} />
                 </button>
@@ -4819,17 +4838,17 @@ function QuizEditor({
             </div>
 
             {/* Step-by-step instructions with Video walkthrough & prompt copy */}
-            <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-4 flex flex-col gap-3">
+            <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-sky-50 border border-purple-200 rounded-2xl p-4 flex flex-col gap-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Play size={14} className="ml-0.5 fill-current" />
                   </div>
                   <div>
-                    <span className="font-black text-sm text-slate-800 dark:text-white block">
+                    <span className="font-black text-sm text-slate-800 block">
                       How to Bulk Paste: 3 Simple Steps
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="text-[11px] text-slate-500">
                       Generate 20-30 questions with AI and auto-populate in seconds
                     </span>
                   </div>
@@ -4846,41 +4865,41 @@ function QuizEditor({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
-                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
-                  <span className="font-bold text-purple-600 dark:text-purple-400">1. Prompt AI</span>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-purple-600">1. Prompt AI</span>
+                  <p className="text-[11px] text-slate-600">
                     Ask ChatGPT/Claude for multiple-choice questions with answers.
                   </p>
                   <button
                     type="button"
                     onClick={handleCopyAiPrompt}
-                    className="mt-1 px-2 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-700 dark:text-purple-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                    className="mt-1 px-2 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-700 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
                   >
                     {copiedPromptInModal ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                     <span>{copiedPromptInModal ? "Copied Prompt!" : "Copy AI Prompt"}</span>
                   </button>
                 </div>
 
-                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
-                  <span className="font-bold text-blue-600 dark:text-blue-400">2. Copy Output</span>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-sky-600">2. Copy Output</span>
+                  <p className="text-[11px] text-slate-600">
                     Highlight all questions generated by the AI and copy to clipboard.
                   </p>
                   <span className="text-[10px] text-slate-400 font-mono">Ctrl+C or ⌘+C</span>
                 </div>
 
-                <div className="bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between gap-1.5">
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">3. Paste &amp; Click + Add</span>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between gap-1.5">
+                  <span className="font-bold text-emerald-600">3. Paste &amp; Click + Add</span>
+                  <p className="text-[11px] text-slate-600">
                     Paste below. Questions, options &amp; answers are auto-divided!
                   </p>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Ready in 1 click!</span>
+                  <span className="text-[10px] text-emerald-600 font-bold">Ready in 1 click!</span>
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Paste Text Below (Supports multi-line Q&amp;A format or Excel copy)
               </label>
               <textarea
@@ -4888,15 +4907,15 @@ function QuizEditor({
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
                 placeholder={"Example:\n1. What is the capital of France?\na) London\nb) Paris\nc) Berlin\nd) Madrid\nAnswer: B\n\nOr paste tabular data directly from Excel!"}
-                className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-cyan-500 transition-colors custom-scrollbar"
+                className="w-full text-sm font-medium bg-slate-50 border border-slate-300 outline-none text-slate-800 p-4 rounded-2xl focus:border-sky-500 transition-colors custom-scrollbar"
               />
             </div>
 
             {bulkText.trim() && (
-              <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div className="text-cyan-500 mt-0.5"><Info size={16} /></div>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Found <span className="font-bold text-slate-800 dark:text-white">{parsePastedQuiz(bulkText).length}</span> items.
+              <div className="flex items-start gap-2 bg-sky-50 p-3 rounded-xl border border-sky-200">
+                <div className="text-sky-500 mt-0.5"><Info size={16} /></div>
+                <p className="text-sm text-slate-600">
+                  Found <span className="font-bold text-slate-800">{parsePastedQuiz(bulkText).length}</span> items.
                 </p>
               </div>
             )}
@@ -4905,14 +4924,14 @@ function QuizEditor({
               <button
                 type="button"
                 onClick={() => handleApplyBulkPaste('replace')}
-                className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
+                className="flex-1 py-3 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
               >
                 Replace All
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyBulkPaste('append')}
-                className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 py-3 rounded-xl font-bold text-white bg-sky-500 hover:bg-sky-600 transition-colors shadow-lg shadow-sky-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Plus size={18} />
                 + Add
