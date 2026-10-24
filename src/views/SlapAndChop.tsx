@@ -1202,7 +1202,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     } catch (e) {}
   };
 
-  // Setup camera & initialize MediaPipe Hands
+  // Setup camera & initialize MediaPipe Hands (Always acquire live camera stream first!)
   const setupCamera = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError("Camera API not supported; playing in 3D AR Virtual Mode!");
@@ -1210,13 +1210,43 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
     try {
       const win = window as any;
-
       cameraLoopActiveRef.current = false;
-      if (handsRef.current && handsRef.current.close) {
-        try { handsRef.current.close(); } catch (e) {}
-        handsRef.current = null;
+
+      // 1. Always acquire or reuse the live webcam stream FIRST so camera never goes missing!
+      let stream = videoRef.current?.srcObject as MediaStream | null;
+      const hasLiveTrack = stream && stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
+
+      if (!hasLiveTrack) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+            audio: false
+          });
+        } catch (constraintErr) {
+          // Fallback to default video constraints if 1280x720 is not supported by the webcam
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+        }
       }
 
+      if (videoRef.current && stream) {
+        if (videoRef.current.srcObject !== stream) {
+          videoRef.current.srcObject = stream;
+        }
+        videoRef.current.muted = true;
+        videoRef.current.playsInline = true;
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          // Autoplay will resume on next frame
+        }
+        setCameraActive(true);
+        setCameraError(null);
+      }
+
+      // 2. Initialize FaceDetector if available
       if ('FaceDetector' in win && !faceDetectorRef.current) {
         try {
           faceDetectorRef.current = new win.FaceDetector({ fastMode: true, maxDetectedFaces: 2 });
@@ -1225,70 +1255,73 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
       }
 
-      if (win.Hands) {
-        const hands = new win.Hands({
-          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
-        hands.setOptions({
-          maxNumHands: 4,
-          modelComplexity: 0,
-          minDetectionConfidence: 0.36,
-          minTrackingConfidence: 0.36
-        });
-        hands.onResults((res: any) => {
-          if (onHandsResultsRef.current) {
-            onHandsResultsRef.current(res);
+      // 3. Initialize or reuse MediaPipe Hands (Never call .close() on WASM singleton as it breaks subsequent runs)
+      const ensureHandsInitialized = () => {
+        if (!handsRef.current && win.Hands) {
+          try {
+            const hands = new win.Hands({
+              locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+            hands.setOptions({
+              maxNumHands: 4,
+              modelComplexity: 0,
+              minDetectionConfidence: 0.36,
+              minTrackingConfidence: 0.36
+            });
+            hands.onResults((res: any) => {
+              if (onHandsResultsRef.current) {
+                onHandsResultsRef.current(res);
+              }
+            });
+            handsRef.current = hands;
+          } catch (handsErr) {
+            console.warn("MediaPipe Hands init warning:", handsErr);
           }
-        });
-        handsRef.current = hands;
-      }
+        }
+      };
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-        audio: false
-      });
+      ensureHandsInitialized();
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setCameraActive(true);
-        setCameraError(null);
+      // 4. Start 60fps Camera & Hand/Head Tracking Loop
+      cameraLoopActiveRef.current = true;
+      cameraProcessingRef.current = false;
+      let lastFrameTime = 0;
+      let frameCount = 0;
+      const TARGET_INTERVAL_MS = 22;
 
-        cameraLoopActiveRef.current = true;
-        let lastFrameTime = 0;
-        let frameCount = 0;
-        const TARGET_INTERVAL_MS = 22;
-
-        const sendCameraFrames = async (time: number) => {
-          if (!cameraLoopActiveRef.current || !videoRef.current) return;
-          if (
-            videoRef.current.readyState >= 2 &&
-            !cameraProcessingRef.current &&
-            time - lastFrameTime >= TARGET_INTERVAL_MS
-          ) {
-            cameraProcessingRef.current = true;
-            lastFrameTime = time;
-            frameCount++;
-            try {
-              if (handsRef.current) {
-                await handsRef.current.send({ image: videoRef.current });
-              }
-              if (frameCount % 2 === 0) {
-                await trackHeadsFromVideoFrame(videoRef.current);
-              }
-            } catch (e) {
-              // Ignore dropped frame
-            } finally {
-              cameraProcessingRef.current = false;
+      const sendCameraFrames = async (time: number) => {
+        if (!cameraLoopActiveRef.current || !videoRef.current) return;
+        if (videoRef.current.paused && videoRef.current.srcObject) {
+          videoRef.current.play().catch(() => {});
+        }
+        if (
+          videoRef.current.readyState >= 2 &&
+          !cameraProcessingRef.current &&
+          time - lastFrameTime >= TARGET_INTERVAL_MS
+        ) {
+          cameraProcessingRef.current = true;
+          lastFrameTime = time;
+          frameCount++;
+          try {
+            ensureHandsInitialized();
+            if (handsRef.current) {
+              await handsRef.current.send({ image: videoRef.current });
             }
+            if (frameCount % 2 === 0) {
+              await trackHeadsFromVideoFrame(videoRef.current);
+            }
+          } catch (e) {
+            // Ignore dropped frame
+          } finally {
+            cameraProcessingRef.current = false;
           }
-          if (cameraLoopActiveRef.current) {
-            requestAnimationFrame(sendCameraFrames);
-          }
-        };
+        }
+        if (cameraLoopActiveRef.current) {
+          requestAnimationFrame(sendCameraFrames);
+        }
+      };
 
-        requestAnimationFrame(sendCameraFrames);
-      }
+      requestAnimationFrame(sendCameraFrames);
     } catch (err: any) {
       console.warn("Camera could not start:", err);
       setCameraActive(false);
@@ -1298,15 +1331,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
   const stopCamera = () => {
     cameraLoopActiveRef.current = false;
+    cameraProcessingRef.current = false;
     stopMosquitoBuzz();
     if (videoRef.current && videoRef.current.srcObject) {
       const s = videoRef.current.srcObject as MediaStream;
       s.getTracks().forEach(t => t.stop());
       videoRef.current.srcObject = null;
-    }
-    if (handsRef.current && handsRef.current.close) {
-      try { handsRef.current.close(); } catch (e) {}
-      handsRef.current = null;
     }
     setCameraActive(false);
   };
@@ -1948,6 +1978,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   useEffect(() => {
     if (screen !== 'game') return;
 
+    // Ensure the live camera stream is active whenever entering the game screen
+    if (!videoRef.current?.srcObject) {
+      setupCamera();
+    } else if (videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+    }
+
     let isRunning = true;
     const loop = (now: number) => {
       if (!isRunning) return;
@@ -2009,16 +2046,19 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           eng.screenShake = 0;
         }
 
-        // 1. Draw Bright Light 3D Arena or Clean Camera Feed (No dark vignette!)
+        // 1. Draw Live Camera Feed (or let the live <video> layer show through while warming up)
         ctx.clearRect(-20, -20, cw + 40, ch + 40);
-        if (videoRef.current && videoRef.current.readyState >= 2) {
-          ctx.save();
-          ctx.translate(cw, 0);
-          ctx.scale(-1, 1);
-          ctx.drawImage(videoRef.current, 0, 0, cw, ch);
-          ctx.restore();
+        const hasCameraStream = Boolean(videoRef.current && videoRef.current.srcObject);
+        if (hasCameraStream && videoRef.current) {
+          if (videoRef.current.readyState >= 2) {
+            ctx.save();
+            ctx.translate(cw, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(videoRef.current, 0, 0, cw, ch);
+            ctx.restore();
+          }
         } else {
-          // Sunny Light 3D Sky & Meadow Arena when camera is off (No dark colors!)
+          // Sunny Light 3D Sky & Meadow Arena only when camera stream is not available
           const grad = ctx.createLinearGradient(0, 0, 0, ch);
           grad.addColorStop(0, '#bae6fd');   // Bright sky blue
           grad.addColorStop(0.55, '#e0f2fe'); // Soft cloud white-blue
@@ -3712,8 +3752,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
   return (
     <div id="slap-and-chop-container" ref={containerRef} className="relative w-full h-full min-h-screen bg-sky-100 overflow-hidden font-sans select-none text-slate-900">
-      {/* Hidden camera video element */}
-      <video ref={videoRef} className="hidden" autoPlay playsInline muted />
+      {/* Live full-screen mirrored webcam video layer (kept rendered so browser never pauses video decoding) */}
+      <video
+        ref={videoRef}
+        className={`absolute inset-0 w-full h-full object-cover -scale-x-100 pointer-events-none z-0 transition-opacity duration-200 ${
+          screen === 'game' && cameraActive ? 'opacity-100' : 'opacity-0'
+        }`}
+        autoPlay
+        playsInline
+        muted
+      />
 
       {/* Screen 1: Quiz Editor */}
       {screen === 'editor' && (
@@ -4119,13 +4167,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         </div>
       )}
 
-      {/* Screen 4: Live 3D AR Motion Game Arena (Bigger Immersive Player Point Cards + Mode & Camera Moved Inside Settings) */}
+      {/* Screen 4: Live 3D AR Motion Game Arena (Full-Screen Live Camera + Bigger Immersive Player Point Cards + Mode & Camera Inside Settings) */}
       {screen === 'game' && (
-        <div className="absolute inset-0 z-30 flex flex-col w-full h-full overflow-hidden select-none">
+        <div className="absolute inset-0 z-10 w-full h-full overflow-hidden select-none">
           
-          {/* BRIGHT LIGHT 3D FLOATING TOP HUD */}
-          <div className="relative z-40 w-full px-3 sm:px-6 pt-3 pb-2 pointer-events-auto">
-            <div className="max-w-6xl mx-auto flex flex-col gap-2.5">
+          {/* BRIGHT LIGHT 3D FLOATING TOP HUD (Floats over the full-screen live camera & AR canvas) */}
+          <div className="absolute top-0 left-0 right-0 z-40 w-full px-3 sm:px-6 pt-3 pb-2 pointer-events-none">
+            <div className="max-w-6xl mx-auto flex flex-col gap-2.5 pointer-events-auto">
               
               {/* Row 1: BIGGER, IMMERSIVE 3D PLAYER SCOREBOARD CARDS + Clean Center Controls (Settings & Fullscreen) */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -4287,8 +4335,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             </div>
           </div>
 
-          {/* High-Resolution 3D Canvas */}
-          <div className="relative flex-1 w-full h-full overflow-hidden">
+          {/* High-Resolution Full-Screen 3D AR & Live Camera Canvas */}
+          <div className="absolute inset-0 w-full h-full overflow-hidden z-10">
             <canvas
               ref={canvasRef}
               onPointerMove={handlePointerMove}
