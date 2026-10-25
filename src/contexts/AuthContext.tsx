@@ -14,6 +14,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider, facebookProvider } from '../lib/firebase';
+import { logUserActivity } from '../utils/activityTracker';
 
 interface AuthContextType {
   user: User | null;
@@ -61,7 +62,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               lastLoginAt: serverTimestamp(),
             },
             { merge: true }
-          ).catch((err) => {
+          ).then(() => {
+            logUserActivity({
+              userId: currentUser.uid,
+              userEmail: currentUser.email || undefined,
+              userName: currentUser.displayName || undefined,
+              userPhoto: currentUser.photoURL || null,
+              action: 'login',
+              title: 'Signed in to account'
+            });
+          }).catch((err) => {
             console.warn('Background user profile sync notice:', err?.message);
           });
         }

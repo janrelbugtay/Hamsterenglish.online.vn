@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ViewState } from '../types';
 import { GameThumbnail } from '../components/GameThumbnail';
 import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '../components/GameModeModal';
+import { logUserActivity } from '../utils/activityTracker';
 
 export const GamesLibrary = ({ 
   onViewChange, 
@@ -337,6 +338,19 @@ export const GamesLibrary = ({
       delete newGame.id;
       const docRef = await addDoc(collection(db, "mysteryBoxGames"), newGame);
       setGames([...games, { id: docRef.id, ...newGame }]);
+      if (user) {
+        logUserActivity({
+          userId: user.uid,
+          userEmail: user.email || '',
+          userName: user.displayName || 'User',
+          userPhoto: user.photoURL || null,
+          action: 'create_game',
+          title: `Duplicated Game: "${newGame.name}"`,
+          gameTitle: newGame.name,
+          gameType: newGame.gameType,
+          details: `Created copy of ${newGame.gameType || 'game'} in My Games.`
+        });
+      }
       setToastMsg("Game duplicated successfully as private copy! 📋");
       setTimeout(() => setToastMsg(null), 3000);
     } catch (error) {

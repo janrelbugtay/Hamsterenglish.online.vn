@@ -1,100 +1,94 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    match /mysteryBoxGames/{gameId} {
-      allow read: if request.auth != null || resource.data.isPublic == true || resource.data.isPublic == 'true';
-      allow write: if request.auth != null;
-    }
-    match /gameFolders/{folderId} {
-      allow read, write: if request.auth != null;
-    }
-    match /users/{userId} {
-      allow read, write: if request.auth != null;
-      match /{allSubcollections=**} {
-        allow read, write: if request.auth != null;
-      }
-    }
-    match /classRewards/{rewardId} {
-      allow read, write: if request.auth != null;
-    }
-    match /userClassData/{userId} {
-      allow read, write: if request.auth != null;
-    }
-    match /settings/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'janrelbugtay03@gmail.com' ||
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'janrelbugtay03@gmail.com')
+      );
     }
 
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isSignedIn() {
-      return request.auth != null;
+    // User accounts and profiles
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+
+      match /{allSubcollections=**} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
     }
 
-    function incoming() {
-      return request.resource.data;
+    // User activity logs
+    match /userActivities/{activityId} {
+      allow read: if isSignedIn();
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
-    function existing() {
-      return resource.data;
+    // Custom games created across all modes (Slap & Chop, Mystery Box, Shark Attack, etc.)
+    match /mysteryBoxGames/{gameId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
     }
 
-    // Validation for Room
-    function isValidRoom(data) {
-      return data.keys().hasAll(['hostId', 'status', 'createdAt'])
-        && data.hostId is string && data.hostId.size() <= 128
-        && data.status is string && data.status in ['lobby', 'playing', 'finished']
-        && data.createdAt is number
-        && data.hostId == request.auth.uid; // Only host can create/update room
+    // Game folders
+    match /gameFolders/{folderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
     }
 
-    // Validation for Player
-    function isValidPlayer(data) {
-      return data.keys().hasAll(['name', 'score', 'joinedAt'])
-        && data.name is string && data.name.size() > 0 && data.name.size() <= 20
-        && data.score is number
-        && data.joinedAt is number;
+    // Classroom data and student economy
+    match /userClassData/{userId} {
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
+    match /classRewards/{rewardId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // App global settings & page visits
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Tic-Tac-Toe Multiplayer Rooms
     match /ttt_rooms/{roomId} {
       allow read, write: if true;
       match /actions/{actionId} {
         allow read, write: if true;
       }
     }
-    
-    match /rooms/{roomId} {
-      // Allow read to everyone so players can join
-      allow get: if isValidId(roomId);
-      allow list: if false; // No blanket listing of rooms
 
-      // Host can create their room
-      allow create: if isSignedIn() && isValidId(roomId) && isValidRoom(incoming()) && incoming().createdAt == request.time;
-      
-      // Host can update their room
-      allow update: if isSignedIn() && isValidId(roomId) && existing().hostId == request.auth.uid && isValidRoom(incoming()) && incoming().hostId == existing().hostId && incoming().createdAt == existing().createdAt;
-      
-      // Host can delete their room
-      allow delete: if isSignedIn() && isValidId(roomId) && existing().hostId == request.auth.uid;
+    // Multiplayer Game Rooms
+    match /rooms/{roomId} {
+      allow get: if isValidId(roomId);
+      allow list: if false;
+
+      allow create: if isSignedIn() && isValidId(roomId);
+      allow update: if isSignedIn() && isValidId(roomId) && (resource.data.hostId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && isValidId(roomId) && (resource.data.hostId == request.auth.uid || isAdmin());
 
       match /players/{playerId} {
-        // Anyone in the room can read players
-        allow read: if isValidId(roomId) && isValidId(playerId);
-
-        // A player can join the room anonymously or signed in
-        allow create: if isValidId(roomId) && isValidId(playerId) && isValidPlayer(incoming()) && incoming().joinedAt == request.time;
-        
-        // A player can update their own score
-        allow update: if isValidId(roomId) && isValidId(playerId) && isValidPlayer(incoming()) && incoming().name == existing().name && incoming().joinedAt == existing().joinedAt;
-        
-        // A player can leave, or host can kick
-        allow delete: if isValidId(roomId) && isValidId(playerId);
+        allow read, write: if isValidId(roomId) && isValidId(playerId);
       }
     }
   }

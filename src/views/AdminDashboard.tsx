@@ -11,6 +11,9 @@ import { collection, onSnapshot, getDocs, deleteDoc, doc, setDoc, serverTimestam
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { examineUserThreat, categorizeThreats, SUPER_ADMIN_EMAIL, ThreatReport } from '../utils/threatDetector';
+import { UserActivityModal } from '../components/UserActivityModal';
+import { AdminActivityGamesView } from '../components/AdminActivityGamesView';
+import { UserActivityEvent } from '../utils/activityTracker';
 
 // Helper to safely format last login timestamps
 const formatLastLogin = (lastLoginAt: any) => {
@@ -123,7 +126,11 @@ const DashboardOverview = ({
   publishedGames, 
   onToggleGamePublish, 
   pageVisits,
-  onFilterThreats
+  onFilterThreats,
+  games = [],
+  activities = [],
+  onInspectUserActivity,
+  onNavigateToRoute
 }: any) => {
   const [showGuestModal, setShowGuestModal] = React.useState(false);
   const registeredUsersList = users.filter((u: any) => u.isAnonymous !== true && u.email && u.email !== "User");
@@ -170,7 +177,7 @@ const DashboardOverview = ({
       )}
 
       {/* Top Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Users" value={pageVisits.toLocaleString()} 
           subtitle="Total platform users"
@@ -197,6 +204,25 @@ const DashboardOverview = ({
               </div>
             </div>
           )}
+        </StatCard>
+        <StatCard 
+          title="My Games Created" value={games.length.toString()} 
+          subtitle="Total custom games created"
+          icon={Gamepad2} colorClass="bg-purple-500" 
+        >
+          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+            <span className="text-xs font-medium text-purple-700 dark:text-purple-400">
+              {activities.length} Recorded activities
+            </span>
+            {onNavigateToRoute && (
+              <button 
+                onClick={() => onNavigateToRoute('user-activity')}
+                className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline"
+              >
+                Inspect Games →
+              </button>
+            )}
+          </div>
         </StatCard>
         <StatCard 
           title="Email Threats" value={threatStats.critical.length.toString()} 
@@ -265,25 +291,39 @@ const DashboardOverview = ({
         }
       >
         <div className="overflow-x-auto -mx-6">
-          <table className="w-full text-left text-sm min-w-[600px]">
+          <table className="w-full text-left text-sm min-w-[700px]">
             <thead className="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50">
               <tr>
                 <th className="py-3 px-6 font-medium">User</th>
                 <th className="py-3 px-6 font-medium">Email & Threat Status</th>
+                <th className="py-3 px-6 font-medium text-center">My Games</th>
                 <th className="py-3 px-6 font-medium text-right">Last Login</th>
+                <th className="py-3 px-6 font-medium text-right">Admin Inspection</th>
               </tr>
             </thead>
             <tbody>
               {users.slice(0, 10).map((user: any) => {
                 const threat = examineUserThreat(user);
+                const uid = user.uid || user.id;
+                const email = (user.email || '').toLowerCase().trim();
+                const userCreatedGames = games.filter((g: any) => {
+                  if (g.userId && (g.userId === uid || g.userId === user.id)) return true;
+                  if (email && email !== 'user' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
+                  return false;
+                });
+
                 return (
-                  <tr key={user.uid || user.id} className="border-b border-slate-50 dark:border-slate-700/40 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                  <tr 
+                    key={uid} 
+                    onClick={() => onInspectUserActivity && onInspectUserActivity(user)}
+                    className="border-b border-slate-50 dark:border-slate-700/40 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
+                  >
                     <td className="py-3 px-6">
                       <div className="flex items-center gap-3">
                         <Avatar src={user.photoURL} alt={user.displayName || user.email} size="sm" />
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <p className="font-semibold text-slate-800 dark:text-slate-200">{user.displayName || 'User'}</p>
+                            <p className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{user.displayName || 'User'}</p>
                             {threat.isSuperAdmin && (
                               <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-bold">Admin</span>
                             )}
@@ -316,15 +356,41 @@ const DashboardOverview = ({
                         )}
                       </div>
                     </td>
+                    <td className="py-3 px-6 text-center">
+                      {userCreatedGames.length > 0 ? (
+                        <span 
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                          title={`${userCreatedGames.length} games created by this user`}
+                        >
+                          <Gamepad2 size={12} />
+                          <span>{userCreatedGames.length} Game{userCreatedGames.length === 1 ? '' : 's'}</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium">0 games</span>
+                      )}
+                    </td>
                     <td className="py-3 px-6 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
                       {formatLastLogin(user.lastLoginAt)}
+                    </td>
+                    <td className="py-3 px-6 text-right whitespace-nowrap">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onInspectUserActivity) onInspectUserActivity(user);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all border border-indigo-200 dark:border-indigo-800 shadow-sm"
+                        title="View user activity & created games"
+                      >
+                        <Eye size={13} />
+                        <span>Activity & Games</span>
+                      </button>
                     </td>
                   </tr>
                 );
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={5} className="py-6 text-center text-slate-500 dark:text-slate-400">
                     No users found. Click <span className="font-semibold text-indigo-600 dark:text-indigo-400">Sync Users</span> to refresh.
                   </td>
                 </tr>
@@ -371,7 +437,7 @@ const DashboardOverview = ({
 };
 
 // --- USERS MANAGEMENT WITH AUTOMATED THREAT ENGINE & ADMIN DELETION ---
-const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all' }: any) => {
+const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', games = [], onInspectUserActivity }: any) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'threats' | 'suspicious' | 'safe' | 'guests'>(initialFilter);
   const [isScanning, setIsScanning] = useState(false);
@@ -820,6 +886,7 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all' }: an
                 <th className="py-3.5 px-4 font-semibold">User</th>
                 <th className="py-3.5 px-4 font-semibold">Email & Threat Diagnostics</th>
                 <th className="py-3.5 px-4 font-semibold text-center">Threat Level</th>
+                <th className="py-3.5 px-4 font-semibold text-center">My Games</th>
                 <th className="py-3.5 px-4 font-semibold text-right">Last Login</th>
                 <th className="py-3.5 px-4 font-semibold text-right">Admin Actions</th>
               </tr>
@@ -830,6 +897,11 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all' }: an
                 const uid = user.uid || user.id;
                 const isSelected = selectedUserIds.includes(uid);
                 const isSuperAdmin = threat.isSuperAdmin;
+                const userCreatedGames = games.filter((g: any) => {
+                  if (g.userId && (g.userId === uid || g.userId === user.id)) return true;
+                  if (user.email && user.email !== 'User' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
+                  return false;
+                });
 
                 return (
                   <tr 
@@ -947,6 +1019,22 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all' }: an
                       </div>
                     </td>
 
+                    {/* User's Created Games */}
+                    <td className="py-3.5 px-4 text-center">
+                      {userCreatedGames.length > 0 ? (
+                        <button
+                          onClick={() => onInspectUserActivity && onInspectUserActivity(user)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 transition-colors shadow-sm"
+                          title="Click to view user's created games and activity"
+                        >
+                          <Gamepad2 size={12} />
+                          <span>{userCreatedGames.length} Game{userCreatedGames.length === 1 ? '' : 's'}</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium">0</span>
+                      )}
+                    </td>
+
                     {/* Last Login */}
                     <td className="py-3.5 px-4 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap text-xs">
                       {formatLastLogin(user.lastLoginAt)}
@@ -955,6 +1043,14 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all' }: an
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => onInspectUserActivity && onInspectUserActivity(user)}
+                          className="p-2 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                          title="View user activity & My Games created"
+                        >
+                          <Gamepad2 size={17} />
+                        </button>
+
                         <button
                           onClick={() => setInspectingUser(user)}
                           className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
@@ -984,7 +1080,7 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all' }: an
 
               {filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-500 dark:text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <UserX size={36} className="text-slate-300 dark:text-slate-600" />
                       <p className="font-semibold text-slate-700 dark:text-slate-300">No users found</p>
@@ -1248,12 +1344,15 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all' }: an
 };
 
 // --- MAIN APP COMPONENT ---
-export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => void }) {
+export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, data?: any) => void }) {
   const { user: currentUser } = useAuth();
   const [currentRoute, setCurrentRoute] = useState('dashboard');
   const [usersFilter, setUsersFilter] = useState<'all' | 'threats' | 'suspicious' | 'safe' | 'guests'>('all');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [users, setUsers] = useState<any[]>([]);
+  const [games, setGames] = useState<any[]>([]);
+  const [activities, setActivities] = useState<UserActivityEvent[]>([]);
+  const [inspectingUserActivity, setInspectingUserActivity] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -1261,50 +1360,97 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => 
 
   const [pageVisits, setPageVisits] = useState<number>(0);
 
-  // Sync users logic
+  // Sync users, games, and activities logic
   const handleSyncUsers = async () => {
     setIsSyncing(true);
     setSyncMessage(null);
     try {
-      // Ensure currentUser document exists and is up to date
+      // Ensure currentUser document exists and is up to date if signed in
       if (currentUser) {
-        const userRef = doc(db, 'users', currentUser.uid);
-        await setDoc(userRef, {
-          uid: currentUser.uid,
-          email: currentUser.email || 'User',
-          displayName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
-          photoURL: currentUser.photoURL || null,
-          isAnonymous: currentUser.isAnonymous,
-          lastLoginAt: serverTimestamp(),
-        }, { merge: true });
+        try {
+          const userRef = doc(db, 'users', currentUser.uid);
+          await setDoc(userRef, {
+            uid: currentUser.uid,
+            email: currentUser.email || 'User',
+            displayName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
+            photoURL: currentUser.photoURL || null,
+            isAnonymous: currentUser.isAnonymous,
+            lastLoginAt: serverTimestamp(),
+          }, { merge: true });
+        } catch (profileErr: any) {
+          console.warn("Notice updating admin profile in sync:", profileErr?.message || profileErr);
+        }
       }
 
-      // Fetch all users directly
-      const querySnapshot = await getDocs(collection(db, 'users'));
+      // Fetch users, mysteryBoxGames, and userActivities safely in parallel
+      const [usersSnap, gamesSnap, actSnap] = await Promise.all([
+        getDocs(collection(db, 'users')).catch((err) => {
+          console.warn("Notice querying users in sync:", err?.message || err);
+          return { forEach: () => {} } as any;
+        }),
+        getDocs(collection(db, 'mysteryBoxGames')).catch((err) => {
+          console.warn("Notice querying mysteryBoxGames in sync:", err?.message || err);
+          return { forEach: () => {} } as any;
+        }),
+        getDocs(collection(db, 'userActivities')).catch((err) => {
+          console.warn("Notice querying userActivities in sync:", err?.message || err);
+          return { forEach: () => {} } as any;
+        })
+      ]);
+
       const fetchedUsers: any[] = [];
-      querySnapshot.forEach((doc) => {
+      usersSnap.forEach((doc: any) => {
         fetchedUsers.push({ id: doc.id, ...doc.data() });
       });
 
-      // Sort client-side by lastLoginAt desc
-      fetchedUsers.sort((a, b) => {
-        const getTime = (val: any) => {
-          if (!val) return 0;
-          if (val.toMillis) return val.toMillis();
-          if (val.seconds) return val.seconds * 1000;
-          if (typeof val === 'number') return val;
-          if (typeof val === 'string') return new Date(val).getTime();
-          return 0;
-        };
-        return getTime(b.lastLoginAt) - getTime(a.lastLoginAt);
+      if (fetchedUsers.length > 0) {
+        fetchedUsers.sort((a, b) => {
+          const getTime = (val: any) => {
+            if (!val) return 0;
+            if (val.toMillis) return val.toMillis();
+            if (val.seconds) return val.seconds * 1000;
+            if (typeof val === 'number') return val;
+            if (typeof val === 'string') return new Date(val).getTime();
+            return 0;
+          };
+          return getTime(b.lastLoginAt) - getTime(a.lastLoginAt);
+        });
+        setUsers(fetchedUsers);
+      }
+
+      const fetchedGames: any[] = [];
+      gamesSnap.forEach((doc: any) => {
+        fetchedGames.push({ id: doc.id, ...doc.data() });
+      });
+      if (fetchedGames.length > 0) {
+        setGames(fetchedGames);
+      }
+
+      const fetchedActs: any[] = [];
+      actSnap.forEach((doc: any) => {
+        fetchedActs.push({ id: doc.id, ...doc.data() });
       });
 
-      setUsers(fetchedUsers);
-      setSyncMessage(`Successfully synced ${fetchedUsers.length} user accounts!`);
+      if (fetchedActs.length > 0) {
+        fetchedActs.sort((a, b) => {
+          const getMs = (val: any) => {
+            if (!val) return 0;
+            if (val.toMillis) return val.toMillis();
+            if (val.seconds) return val.seconds * 1000;
+            if (typeof val === 'number') return val;
+            if (typeof val === 'string') return new Date(val).getTime();
+            return 0;
+          };
+          return getMs(b.timestamp) - getMs(a.timestamp);
+        });
+        setActivities(fetchedActs);
+      }
+
+      setSyncMessage(`Successfully synced ${fetchedUsers.length} users and ${fetchedGames.length} games!`);
       setTimeout(() => setSyncMessage(null), 4000);
-    } catch (error) {
-      console.error("Error syncing users:", error);
-      setSyncMessage("Sync completed with existing local data.");
+    } catch (error: any) {
+      console.warn("Notice during sync:", error?.message || error);
+      setSyncMessage("Sync updated with latest cloud records.");
       setTimeout(() => setSyncMessage(null), 3000);
     } finally {
       setIsSyncing(false);
@@ -1313,6 +1459,10 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => 
 
   // Fetch real users from Firestore realtime listener
   useEffect(() => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const usersData: any[] = [];
       snapshot.forEach((doc) => {
@@ -1334,12 +1484,56 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => 
       setUsers(usersData);
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching users: ", error);
+      console.warn("Notice fetching users: ", error?.message || error);
       setLoading(false);
     });
 
     return () => unsubscribe();
+  }, [currentUser]);
+
+  // Fetch all user-created games from Firestore realtime listener
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'mysteryBoxGames'), (snapshot) => {
+      const gamesData: any[] = [];
+      snapshot.forEach((doc) => {
+        gamesData.push({ id: doc.id, ...doc.data() });
+      });
+      setGames(gamesData);
+    }, (error) => {
+      console.warn("Notice fetching mysteryBoxGames: ", error?.message || error);
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  // Fetch all user activities from Firestore realtime listener
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubscribe = onSnapshot(collection(db, 'userActivities'), (snapshot) => {
+      const actData: any[] = [];
+      snapshot.forEach((doc) => {
+        actData.push({ id: doc.id, ...doc.data() });
+      });
+
+      actData.sort((a, b) => {
+        const getMs = (val: any) => {
+          if (!val) return 0;
+          if (val.toMillis) return val.toMillis();
+          if (val.seconds) return val.seconds * 1000;
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') return new Date(val).getTime();
+          return 0;
+        };
+        return getMs(b.timestamp) - getMs(a.timestamp);
+      });
+
+      setActivities(actData);
+    }, (error) => {
+      console.warn("Notice fetching userActivities: ", error?.message || error);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   // Fetch published games setting and page visits
   useEffect(() => {
@@ -1371,10 +1565,11 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => 
     setCurrentRoute('users');
   };
 
-  // Navigation config
+  // Navigation config with dedicated User Activity & Games tab
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Activity },
     { id: 'users', label: 'User & Threat Management', icon: Users },
+    { id: 'user-activity', label: 'User Activity & Games', icon: Gamepad2 },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -1520,6 +1715,10 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => 
                   onToggleGamePublish={toggleGamePublish}
                   pageVisits={pageVisits}
                   onFilterThreats={handleFilterThreatsFromOverview}
+                  games={games}
+                  activities={activities}
+                  onInspectUserActivity={(u: any) => setInspectingUserActivity(u)}
+                  onNavigateToRoute={(r: string) => setCurrentRoute(r)}
                 />
               )}
               {currentRoute === 'users' && (
@@ -1528,6 +1727,19 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => 
                   onSync={handleSyncUsers} 
                   isSyncing={isSyncing}
                   initialFilter={usersFilter}
+                  games={games}
+                  onInspectUserActivity={(u: any) => setInspectingUserActivity(u)}
+                />
+              )}
+              {currentRoute === 'user-activity' && (
+                <AdminActivityGamesView
+                  users={users}
+                  games={games}
+                  activities={activities}
+                  onLaunchGame={(game: any) => {
+                    onViewChange(game.gameType || 'mystery-box', game);
+                  }}
+                  onRefresh={handleSyncUsers}
                 />
               )}
               {currentRoute === 'settings' && (
@@ -1544,6 +1756,20 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any) => 
           )}
         </div>
       </main>
+
+      {/* USER ACTIVITY & CREATED GAMES MODAL (ADMIN ONLY) */}
+      {inspectingUserActivity && (
+        <UserActivityModal
+          user={inspectingUserActivity}
+          games={games}
+          activities={activities}
+          onClose={() => setInspectingUserActivity(null)}
+          onLaunchGame={(game: any) => {
+            setInspectingUserActivity(null);
+            onViewChange(game.gameType || 'mystery-box', game);
+          }}
+        />
+      )}
 
     </div>
   );

@@ -9,6 +9,7 @@ import { collection, query, where, getDocs, doc, addDoc, updateDoc } from "fireb
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
+import { logUserActivity } from "../utils/activityTracker";
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
 
@@ -72,6 +73,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [textSize, setTextSize] = useState<number>(1.15); // 0.9 = Small, 1.0 = Normal, 1.2 = Large, 1.4 = Extra Large
   const [movementStyle, setMovementStyle] = useState<'calm' | 'normal' | 'zigzag' | 'hover'>('normal');
+  const [playingTime, setPlayingTime] = useState<number>(120); // Playing time in seconds (up to 300s = 5 minutes)
   const [selectedTheme, setSelectedTheme] = useState<string>("theme-sky");
 
   // In-Game Live HUD States
@@ -82,6 +84,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [hudScorePops, setHudScorePops] = useState<[string | null, string | null]>([null, null]);
   const [hudFrozen, setHudFrozen] = useState<[boolean, boolean]>([false, false]);
   const [timerPct, setTimerPct] = useState<number>(100);
+  const [hudTimeLeft, setHudTimeLeft] = useState<number>(120);
+  const [nextQCountdown, setNextQCountdown] = useState<number | null>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -160,7 +164,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const soundFxRef = useRef<boolean>(soundFx);
   const voiceEnabledRef = useRef<boolean>(voiceEnabled);
   const showSettingsModalRef = useRef<boolean>(showSettingsModal);
+  const playingTimeRef = useRef<number>(playingTime);
+  const nextQTimerRef = useRef<number | null>(null);
+  const lastHudSecRef = useRef<number>(playingTime);
   const onHandsResultsRef = useRef<((results: any) => void) | null>(null);
+
+  const formatPlayTime = (totalSec: number) => {
+    const clamped = Math.max(0, Math.ceil(totalSec));
+    const mins = Math.floor(clamped / 60);
+    const secs = clamped % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  useEffect(() => {
+    playingTimeRef.current = playingTime;
+  }, [playingTime]);
 
   useEffect(() => {
     textSizeRef.current = textSize;
@@ -437,7 +455,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
   };
 
-  const playSoundEffect = (type: 'slap' | 'slash' | 'correct' | 'wrong' | 'whoosh' | 'freeze' | 'victory') => {
+  const playSoundEffect = (type: 'slap' | 'slash' | 'correct' | 'wrong' | 'whoosh' | 'freeze' | 'victory' | 'countdown') => {
     if (!soundFxRef.current) return;
     initAudio();
     const ctx = audioCtxRef.current;
@@ -610,6 +628,18 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       gain.connect(ctx.destination);
       osc.start(now);
       osc.stop(now + 0.28);
+    } else if (type === 'countdown') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(660, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.17);
     }
   };
 
@@ -1401,12 +1431,19 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       p1.rightHand.x = 0.58;
     }
 
+    const initialPlaySeconds = playingTimeRef.current || playingTime || 120;
+    if (nextQTimerRef.current) {
+      window.clearInterval(nextQTimerRef.current);
+      nextQTimerRef.current = null;
+    }
+    setNextQCountdown(null);
+
     engineRef.current = {
       isActive: true,
       questions: activeQuestions,
       qIndex: 0,
-      timer: 20,
-      maxTimer: 20,
+      timer: initialPlaySeconds,
+      maxTimer: initialPlaySeconds,
       resolved: false,
       roundMode: roundM,
       numPlayers: playersCount,
@@ -1432,6 +1469,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     setHudStreaks([1, 1]);
     setHudFrozen([false, false]);
     setTimerPct(100);
+    setHudTimeLeft(initialPlaySeconds);
+    lastHudSecRef.current = initialPlaySeconds;
     setScreen('loading');
 
     try {
@@ -1449,6 +1488,69 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         speakText(activeQuestions[0].text);
       }
     }, 380);
+  };
+
+  // Clear 3-second inter-question countdown timer
+  const clearNextQuestionTimer = () => {
+    if (nextQTimerRef.current) {
+      window.clearInterval(nextQTimerRef.current);
+      nextQTimerRef.current = null;
+    }
+    setNextQCountdown(null);
+  };
+
+  // 3-Second Countdown Timer before the next question appears
+  const startNextQuestionCountdown = () => {
+    clearNextQuestionTimer();
+    stopMosquitoBuzz();
+    // Clear remaining options from the arena so players see the 3-second countdown clearly
+    engineRef.current.targets = [];
+
+    let remaining = 3;
+    setNextQCountdown(remaining);
+    playSoundEffect('countdown');
+
+    nextQTimerRef.current = window.setInterval(() => {
+      if (!engineRef.current.isActive) {
+        clearNextQuestionTimer();
+        return;
+      }
+      // Pause countdown if Settings Modal is open
+      if (showSettingsModalRef.current) return;
+
+      remaining -= 1;
+      if (remaining > 0) {
+        setNextQCountdown(remaining);
+        playSoundEffect('countdown');
+      } else {
+        clearNextQuestionTimer();
+        if (!engineRef.current.isActive) return;
+        if (engineRef.current.timer <= 0) {
+          finishGame();
+          return;
+        }
+        const totalQs = engineRef.current.questions.length;
+        if (totalQs === 0) {
+          finishGame();
+          return;
+        }
+        const nextIdx = (engineRef.current.qIndex + 1) % totalQs;
+        engineRef.current.qIndex = nextIdx;
+        setCurrentQIndex(nextIdx);
+        const curModeSetting = gameModeRef.current || gameMode;
+        const nextRoundMode: 'mosquito' | 'chop' =
+          curModeSetting === 'combo'
+            ? (nextIdx % 2 === 0 ? 'mosquito' : 'chop')
+            : curModeSetting;
+        engineRef.current.roundMode = nextRoundMode;
+        setActiveRoundMode(nextRoundMode);
+        activeRoundModeRef.current = nextRoundMode;
+        spawnRoundTargets(nextIdx, nextRoundMode);
+        if (engineRef.current.questions[nextIdx]) {
+          speakText(engineRef.current.questions[nextIdx].text);
+        }
+      }
+    }, 1000);
   };
 
   // Target spawning with Dual-Team ABCD options in 2-Player mode (Both Slap Mosquitoes & Chop Fruits float in arena bounds!)
@@ -1566,7 +1668,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
 
     engineRef.current.targets = targets;
-    engineRef.current.timer = 20;
     engineRef.current.resolved = false;
   };
 
@@ -1643,28 +1744,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         '#10b981'
       );
 
-      setTimeout(() => {
-        if (!engineRef.current.isActive) return;
-        const nextIdx = engineRef.current.qIndex + 1;
-        if (nextIdx >= engineRef.current.questions.length) {
-          finishGame();
-        } else {
-          engineRef.current.qIndex = nextIdx;
-          setCurrentQIndex(nextIdx);
-          const curModeSetting = gameModeRef.current || gameMode;
-          const nextRoundMode: 'mosquito' | 'chop' =
-            curModeSetting === 'combo'
-              ? (nextIdx % 2 === 0 ? 'mosquito' : 'chop')
-              : curModeSetting;
-          engineRef.current.roundMode = nextRoundMode;
-          setActiveRoundMode(nextRoundMode);
-          activeRoundModeRef.current = nextRoundMode;
-          spawnRoundTargets(nextIdx, nextRoundMode);
-          if (engineRef.current.questions[nextIdx]) {
-            speakText(engineRef.current.questions[nextIdx].text);
-          }
-        }
-      }, 1450);
+      // Start the 3-second countdown timer before the next question appears
+      startNextQuestionCountdown();
 
     } else {
       // WRONG WORD HIT -> -5 POINTS & FREEZE IN 3D ICE!
@@ -1740,6 +1821,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   };
 
   const finishGame = () => {
+    clearNextQuestionTimer();
     stopMosquitoBuzz();
     engineRef.current.isActive = false;
     setScreen('results');
@@ -2005,33 +2087,24 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
         const eng = engineRef.current;
 
-        // Timer Update (Pause timer when Settings Modal is open)
-        if (!eng.resolved && !showSettingsModalRef.current) {
+        // Playing Time Countdown Update (Paused when Settings Modal is open or during 3s inter-question countdown)
+        if (!eng.resolved && !showSettingsModalRef.current && nextQTimerRef.current === null) {
           eng.timer = Math.max(0, eng.timer - dt);
-          setTimerPct((eng.timer / eng.maxTimer) * 100);
+          setTimerPct((eng.timer / Math.max(1, eng.maxTimer)) * 100);
+          const ceilSec = Math.ceil(eng.timer);
+          if (ceilSec !== lastHudSecRef.current) {
+            lastHudSecRef.current = ceilSec;
+            setHudTimeLeft(ceilSec);
+          }
           if (eng.timer <= 0) {
             eng.resolved = true;
-            const qObj = eng.questions[eng.qIndex];
-            const correctLetter = qObj ? OPTION_LETTERS[qObj.answerIndex] : '';
-            spawnFloatingText(cw / 2, ch / 2, `⏰ TIME UP! Correct was ${correctLetter}`, '#f59e0b');
-            playSoundEffect('wrong');
+            clearNextQuestionTimer();
+            spawnFloatingText(cw / 2, ch / 2, `⏰ PLAYING TIME UP!`, '#f59e0b');
+            playSoundEffect('victory');
             setTimeout(() => {
               if (!eng.isActive) return;
-              const nIdx = eng.qIndex + 1;
-              if (nIdx >= eng.questions.length) {
-                finishGame();
-              } else {
-                eng.qIndex = nIdx;
-                setCurrentQIndex(nIdx);
-                const activegm = gameModeRef.current;
-                const nextMode = activegm === 'combo' ? (nIdx % 2 === 0 ? 'mosquito' : 'chop') : activegm;
-                eng.roundMode = nextMode;
-                activeRoundModeRef.current = nextMode;
-                setActiveRoundMode(nextMode);
-                spawnRoundTargets(nIdx, nextMode);
-                if (eng.questions[nIdx]) speakText(eng.questions[nIdx].text);
-              }
-            }, 1400);
+              finishGame();
+            }, 950);
           }
         }
 
@@ -2550,6 +2623,20 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       } else {
         await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
       }
+
+      logUserActivity({
+        userId: user.uid,
+        userEmail: user.email || '',
+        userName: user.displayName || 'User',
+        userPhoto: user.photoURL || null,
+        action: initialGame?.id ? 'edit_game' : 'create_game',
+        title: `${initialGame?.id ? 'Updated' : 'Created'} Game: "${quiz.title || 'Slap & Chop'}"`,
+        gameTitle: quiz.title || 'Slap & Chop',
+        gameType: 'slap-and-chop',
+        questionCount: quiz.questions?.length || 0,
+        details: `Configured ${quiz.questions?.length || 0} questions for ${quiz.classLevel || 'all grades'}. Topic: ${quiz.topic || 'General'}.`
+      });
+
       onViewChange("games");
     } catch (e: any) {
       console.error("Save error:", e);
@@ -4230,12 +4317,22 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   )}
                 </div>
 
-                {/* Center Controls (Round Badge + ⚙️ Settings Modal Trigger + Fullscreen) */}
+                {/* Center Controls (Round Badge + Live Playing Time Pill + ⚙️ Settings Modal Trigger + Fullscreen) */}
                 <div className="flex items-center gap-2.5 flex-wrap justify-center">
                   <div className="px-4 py-2 rounded-2xl bg-white/95 border-2 border-sky-300 border-b-4 border-b-sky-500 text-xs sm:text-sm font-black text-sky-900 shadow-md flex items-center gap-2">
                     <span>{activeRoundMode === 'mosquito' ? '🦟 Slap' : '👨‍🍳🔪 Chop'}</span>
                     <span className="text-sky-300">•</span>
-                    <span>Round {currentQIndex + 1} / {activeQuiz.questions.length}</span>
+                    <span>Q{currentQIndex + 1} / {activeQuiz.questions.length}</span>
+                  </div>
+
+                  {/* Live Playing Time Countdown Badge */}
+                  <div className={`px-4 py-2 rounded-2xl border-2 border-b-4 text-xs sm:text-sm font-black font-mono shadow-md flex items-center gap-1.5 transition-colors ${
+                    hudTimeLeft <= 15
+                      ? 'bg-rose-500 border-rose-300 border-b-rose-800 text-white animate-pulse'
+                      : 'bg-white/95 border-emerald-300 border-b-emerald-600 text-emerald-900'
+                  }`}>
+                    <span>⏱️</span>
+                    <span>{formatPlayTime(hudTimeLeft)}</span>
                   </div>
 
                   <button
@@ -4319,7 +4416,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   className="flex-1 font-black text-slate-900 tracking-tight leading-snug"
                   style={{ fontSize: `${Math.round(24 * textSize)}px` }}
                 >
-                  {currentQ?.text || "Loading question..."}
+                  {nextQCountdown !== null
+                    ? `⏳ Next Question Appears in ${nextQCountdown}s...`
+                    : (currentQ?.text || "Loading question...")}
                 </p>
 
                 <button
@@ -4334,6 +4433,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
             </div>
           </div>
+
+          {/* 3-SECOND COUNTDOWN OVERLAY BEFORE NEXT QUESTION APPEARS */}
+          {nextQCountdown !== null && (
+            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+              <div className="px-10 py-7 rounded-[2.5rem] bg-white/95 backdrop-blur-xl border-4 border-sky-300 border-b-[10px] border-b-sky-600 shadow-[0_24px_60px_rgba(14,165,233,0.35)] flex flex-col items-center gap-2 animate-bounce">
+                <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-sky-700 bg-sky-100 px-4 py-1 rounded-full border border-sky-200">
+                  ⏳ Get Ready! Next Question In
+                </span>
+                <span className="text-6xl sm:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-sky-500 via-indigo-600 to-purple-700 font-mono leading-none drop-shadow-sm">
+                  {nextQCountdown}
+                </span>
+                <span className="text-xs font-extrabold text-slate-500">
+                  Seconds
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* High-Resolution Full-Screen 3D AR & Live Camera Canvas */}
           <div className="absolute inset-0 w-full h-full overflow-hidden z-10">
@@ -4516,6 +4632,84 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               </div>
             </div>
 
+            {/* 1.5 Playing Time Timer Slider (Up to 5 Minutes / 300 Seconds) */}
+            <div className="p-4 rounded-2xl bg-emerald-50/90 border-2 border-emerald-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-black text-slate-900">⏱️ Playing Time Timer</span>
+                  <p className="text-[11px] font-bold text-slate-500">Slide up to 5 minutes of total game playing time</p>
+                </div>
+                <span className="px-3.5 py-1 rounded-xl bg-emerald-500 text-white text-xs sm:text-sm font-black font-mono shadow-xs">
+                  {formatPlayTime(playingTime)} ({Math.round((playingTime / 60) * 10) / 10}m)
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <input
+                  type="range"
+                  min={30}
+                  max={300}
+                  step={15}
+                  value={playingTime}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setPlayingTime(val);
+                    playingTimeRef.current = val;
+                    setHudTimeLeft(val);
+                    lastHudSecRef.current = val;
+                    if (engineRef.current.isActive) {
+                      engineRef.current.maxTimer = val;
+                      engineRef.current.timer = val;
+                      setTimerPct(100);
+                    }
+                  }}
+                  className="w-full h-3 bg-emerald-200 rounded-full appearance-none cursor-pointer accent-emerald-600"
+                />
+                <div className="flex justify-between text-[10px] font-black text-emerald-800 px-1">
+                  <span>30s</span>
+                  <span>1m</span>
+                  <span>2m</span>
+                  <span>3m</span>
+                  <span>4m</span>
+                  <span>5m (Max)</span>
+                </div>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="grid grid-cols-5 gap-2 pt-1">
+                {[
+                  { sec: 60, label: '1 Min' },
+                  { sec: 120, label: '2 Min' },
+                  { sec: 180, label: '3 Min' },
+                  { sec: 240, label: '4 Min' },
+                  { sec: 300, label: '5 Min' }
+                ].map(preset => (
+                  <button
+                    key={preset.sec}
+                    type="button"
+                    onClick={() => {
+                      setPlayingTime(preset.sec);
+                      playingTimeRef.current = preset.sec;
+                      setHudTimeLeft(preset.sec);
+                      lastHudSecRef.current = preset.sec;
+                      if (engineRef.current.isActive) {
+                        engineRef.current.maxTimer = preset.sec;
+                        engineRef.current.timer = preset.sec;
+                        setTimerPct(100);
+                      }
+                    }}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-black border-b-4 transition cursor-pointer ${
+                      playingTime === preset.sec
+                        ? 'bg-emerald-500 border-emerald-800 text-white shadow'
+                        : 'bg-white border-emerald-200 text-slate-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* 2. Text Size Adjuster */}
             <div className="p-4 rounded-2xl bg-sky-50 border-2 border-sky-200 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -4612,6 +4806,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   type="button"
                   onClick={() => {
                     setShowSettingsModal(false);
+                    clearNextQuestionTimer();
                     stopMosquitoBuzz();
                     engineRef.current.isActive = false;
                     setScreen('setup');
