@@ -4,11 +4,12 @@ import gsap from 'gsap';
 import {
     Users, Play, Check, MousePointerClick, Skull, UserRound, VolumeX,
     Volume2, Volume1, Power, Crown, RotateCcw, Square, Circle, Triangle, Gamepad2, ClipboardList,
-    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft, Eye, Crosshair
+    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft, Eye, Crosshair, Camera
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { getSavedClasses, DojoClass } from './ClassRecord';
 import { SquidHamsterSprite } from '../components/SquidHamsterSprite';
+import { RedLightCameraMode } from '../components/RedLightCameraMode';
 
 const generateSeed = (str: string) => {
     let hash = 0;
@@ -7474,6 +7475,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             setGameMode('picker');
         }
         if (activeGame === 'redlight') {
+            if (gameMode === 'survival') {
+                setGameMode('camera');
+            }
             setTagTimer(prev => {
                 const chosen = prev === 60 ? 60 : 30;
                 threeManagerRef.current?.setTagTimer(chosen);
@@ -7738,6 +7742,10 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     };
 
     const startGame = async () => {
+        if (activeGame === 'redlight' && gameMode === 'camera') {
+            setView('camera_redlight');
+            return;
+        }
         const rosterToUse = cryptoShuffle(students);
         return startGameWith(rosterToUse);
     };
@@ -7824,38 +7832,59 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 <MousePointerClick className="w-4 h-4" /> {activeGame === 'redlight' ? 'Doll Picker' : 'Tag Picker'}
                             </Button>
                             <Button 
-                                variant={gameMode === 'survival' ? 'success' : 'secondary'} 
-                                onClick={() => setGameMode('survival')} 
-                                active={gameMode === 'survival'}
+                                variant={(activeGame === 'redlight' ? gameMode === 'camera' : gameMode === 'survival') ? 'success' : 'secondary'} 
+                                onClick={() => setGameMode(activeGame === 'redlight' ? 'camera' : 'survival')} 
+                                active={activeGame === 'redlight' ? gameMode === 'camera' : gameMode === 'survival'}
                                 className="flex-1 text-xs sm:text-sm py-2"
                             >
-                                {activeGame === 'redlight' ? <Eye className="w-4 h-4" /> : <Tag className="w-4 h-4" />} {activeGame === 'redlight' ? 'Red Light Survival' : 'Tag Survival'}
+                                {activeGame === 'redlight' ? <Camera className="w-4 h-4" /> : <Tag className="w-4 h-4" />} {activeGame === 'redlight' ? 'Camera Mode' : 'Tag Survival'}
                             </Button>
                         </div>
                     )}
                     
-                    {(activeGame === 'mingle' || gameMode === 'picker') && (
+                    {(activeGame === 'mingle' || gameMode === 'picker' || (activeGame === 'redlight' && gameMode === 'camera')) && (
                         <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50 mb-2">
                             <div className="flex justify-between items-center">
-                                <span className="text-slate-300 font-bold text-xs uppercase tracking-wider">Targets:</span>
+                                <span className="text-slate-300 font-bold text-xs uppercase tracking-wider">
+                                    {gameMode === 'camera' ? 'Students to Pick:' : 'Targets:'}
+                                </span>
                                 <span className="text-rose-500 font-bold text-lg bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">{pickCount}</span>
                             </div>
                             <input 
                                 type="range" 
                                 min="1" 
-                                max="10" 
+                                max={Math.min(10, Math.max(1, students.length))} 
                                 value={pickCount} 
                                 onChange={(e) => setPickCount(parseInt(e.target.value))}
                                 className="w-full mt-1.5 accent-rose-600 cursor-pointer"
                             />
                             <div className="flex justify-between text-[10px] text-slate-500 font-bold px-1 mt-0.5">
                                 <span>1</span>
-                                <span>10</span>
+                                <span>{Math.min(10, Math.max(1, students.length))}</span>
                             </div>
                         </div>
                     )}
 
-                    {activeGame === 'redlight' ? (
+                    {activeGame === 'redlight' && gameMode === 'camera' ? (
+                        <div className="flex flex-col gap-2 bg-slate-900 p-3.5 rounded-xl border border-rose-500/30 bg-gradient-to-br from-slate-900 to-rose-950/20">
+                            <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                                <Camera className="w-4 h-4" />
+                                <span>Classroom Live Camera Setup</span>
+                            </div>
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                                The doll faces away while singing the Korean chant. When she turns around on <strong className="text-red-400">RED LIGHT</strong>, your webcam detects student movement and the doll locks onto players who move!
+                            </p>
+                            <div className="flex items-center justify-between pt-1 text-[11px]">
+                                <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                                    <Users className="w-3.5 h-3.5" />
+                                    {students.length} students enrolled
+                                </span>
+                                <span className="text-rose-400 font-semibold bg-rose-950/60 px-2 py-0.5 rounded border border-rose-500/30">
+                                    Pick {pickCount} {pickCount === 1 ? 'Student' : 'Students'}
+                                </span>
+                            </div>
+                        </div>
+                    ) : activeGame === 'redlight' ? (
                         <div className="flex flex-col gap-2 bg-slate-900 p-3 sm:p-3.5 rounded-xl border border-slate-700/50">
                             <div className="flex justify-between items-center">
                                 <span className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
@@ -7930,16 +7959,24 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             </div>
                         </div>
                     ) : null}
-                    {(activeGame === 'tag' || activeGame === 'redlight') && gameMode === 'survival' && (
+                    {activeGame === 'tag' && gameMode === 'survival' && (
                         <div className="text-emerald-400 text-xs font-bold tracking-wider pt-2 text-center">
-                            {activeGame === 'redlight' ? 'CROSS THE FINISH LINE • MULTIPLE ROUNDS' : 'MULTIPLE ROUNDS • ONE SOLE SURVIVOR'}
+                            MULTIPLE ROUNDS • ONE SOLE SURVIVOR
                         </div>
                     )}
                 </div>
 
                 <div className="flex flex-col gap-2.5 items-center relative z-10 shrink-0 w-full mt-1">
                     <Button size="md" onClick={startGame} className="w-full py-3 sm:py-3.5 text-base sm:text-lg font-black tracking-wide shadow-lg shadow-rose-600/30">
-                        <Play className="w-5 h-5 fill-current" /> START GAME
+                        {activeGame === 'redlight' && gameMode === 'camera' ? (
+                            <span className="flex items-center gap-2 justify-center">
+                                <Camera className="w-5 h-5" /> START CAMERA MODE
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-2 justify-center">
+                                <Play className="w-5 h-5 fill-current" /> START GAME
+                            </span>
+                        )}
                     </Button>
                     <Button variant="secondary" onClick={() => setView('students')} className="w-full py-2 sm:py-2.5 text-xs sm:text-sm">
                         <UserRound className="w-4 h-4" /> MANAGE ROSTER ({students.length})
@@ -8457,7 +8494,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     {activeGame === 'tag' 
                                         ? `Tag • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}` 
                                         : activeGame === 'redlight'
-                                        ? `Red Light • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}`
+                                        ? `Red Light • ${gameMode === 'picker' ? 'Picker Active' : 'Camera Mode Active'}`
                                         : 'Mingle • Picker Active'}
                                 </span>
                             </div>
@@ -8629,6 +8666,17 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                     {view === 'home' && renderHome()}
                     {view === 'students' && <StudentManager students={students} setStudents={setStudents} onBack={() => setView('home')} onViewChange={onViewChange} />}
                     {view === 'game' && renderGameUI()}
+                    {view === 'camera_redlight' && (
+                        <RedLightCameraMode
+                            students={students}
+                            pickCount={pickCount}
+                            onClose={() => setView('home')}
+                            onPickComplete={(picked) => {
+                                setChosenOnes(picked);
+                            }}
+                            initialVolume={volume}
+                        />
+                    )}
                 </div>
             </div>
 

@@ -538,3 +538,5 @@ export function BulkPasteVideoModal({
 
   return createPortal(modalContent, document.body);
 }
+
+export default BulkPasteVideoModal;

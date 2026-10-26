@@ -375,3 +375,5 @@ function GameCard({
     </motion.div>
   );
 }
+
+export default Home;
