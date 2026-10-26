@@ -120,11 +120,12 @@ export function RollerCoasterQuiz({
 
   // Setup & Ride Configuration State
   const [riderName, setRiderName] = useState('Captain Hammy');
-  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1); // 0.7 = Slow, 1 = Normal, 1.45 = Turbo
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1); // 0.7 = Slow, 1 = Normal, 1.45 = Fast
+  const [timerMinutes, setTimerMinutes] = useState<number>(3); // 1 to 10 minutes countdown timer
+  const [initialLives, setInitialLives] = useState<number>(3); // 1 to 5 heart lives for revive
   const [parkTheme, setParkTheme] = useState<'sunny' | 'sunset' | 'neon'>('sunny');
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
   const [cameraLeanEnabled, setCameraLeanEnabled] = useState<boolean>(false);
-  const [showInGameSettings, setShowInGameSettings] = useState<boolean>(false);
   const [studyIndex, setStudyIndex] = useState<number>(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
 
@@ -343,7 +344,7 @@ export function RollerCoasterQuiz({
         />
       )}
 
-      {/* SCREEN 2: SETUP (BubblePop-style Pre-Game Setup with Theme, Speed, Study Mode & Controls) */}
+      {/* SCREEN 2: SETUP (Pre-Game Setup with Timer 1-10m Slider, Lives, Difficulty Slow-to-Fast, Voice On/Off & Webcam Steering) */}
       {screen === 'setup' && (
         <div
           className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-6 sm:p-8 overflow-y-auto backdrop-blur-sm transition-colors duration-700 ${
@@ -375,7 +376,7 @@ export function RollerCoasterQuiz({
               {/* Left Setup Card */}
               <div className="flex-1 bg-white/15 dark:bg-slate-900/60 backdrop-blur-xl rounded-[2rem] border border-white/25 p-6 sm:p-8 shadow-2xl flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between gap-4 mb-6 pb-4 border-b border-white/15">
+                  <div className="flex items-center justify-between gap-4 mb-5 pb-4 border-b border-white/15">
                     <div className="flex items-center gap-3.5">
                       <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center text-3xl shadow-lg border-2 border-white/40">
                         🐹
@@ -399,7 +400,7 @@ export function RollerCoasterQuiz({
                   </div>
 
                   {/* Rider Name */}
-                  <div className="mb-5">
+                  <div className="mb-4">
                     <label className="text-xs font-black uppercase tracking-wider text-sky-100 block mb-2">
                       Coaster Pilot Name
                     </label>
@@ -411,7 +412,7 @@ export function RollerCoasterQuiz({
                         type="text"
                         value={riderName}
                         onChange={(e) => setRiderName(e.target.value)}
-                        className="flex-1 bg-black/25 text-white font-bold placeholder-white/50 border border-white/25 rounded-2xl px-4 py-3 outline-none focus:border-amber-400 transition-colors text-base"
+                        className="flex-1 bg-black/25 text-white font-bold placeholder-white/50 border border-white/25 rounded-2xl px-4 py-2.5 outline-none focus:border-amber-400 transition-colors text-base"
                         placeholder="Enter Pilot or Team Name"
                       />
                     </div>
@@ -419,16 +420,69 @@ export function RollerCoasterQuiz({
 
                   {/* Ride Settings Box */}
                   <div className="bg-black/25 p-4 sm:p-5 rounded-2xl border border-white/15 flex flex-col gap-4 mb-6">
-                    {/* Coaster Speed */}
-                    <div className="flex flex-wrap justify-between items-center gap-2 text-white">
+                    {/* 1. Countdown Timer Slider (1 to 10 Minutes) */}
+                    <div className="text-white pb-3 border-b border-white/10">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold flex items-center gap-2 text-sm sm:text-base">
+                          <span>⏱️</span> Ride Timer (1 – 10 Minutes)
+                        </span>
+                        <span className="px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow">
+                          {timerMinutes} {timerMinutes === 1 ? 'Minute' : 'Minutes'} ({timerMinutes}:00)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-black text-white/75">1m</span>
+                        <input
+                          type="range"
+                          min={1}
+                          max={10}
+                          step={1}
+                          value={timerMinutes}
+                          onChange={(e) => setTimerMinutes(Number(e.target.value))}
+                          className="w-full h-2.5 bg-white/25 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                        />
+                        <span className="text-xs font-black text-white/75">10m</span>
+                      </div>
+                    </div>
+
+                    {/* 2. Player Lives (Heart Revives before Game Over) */}
+                    <div className="flex flex-wrap justify-between items-center gap-2 text-white pb-3 border-b border-white/10">
+                      <div>
+                        <span className="font-bold flex items-center gap-2 text-sm sm:text-base">
+                          <span>❤️</span> Player Lives (Revives)
+                        </span>
+                        <span className="text-[11px] text-white/70 block">
+                          Revive on crash until lives reach 0 (Game Over)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {[1, 2, 3, 4, 5].map((lv) => (
+                          <button
+                            key={lv}
+                            onClick={() => setInitialLives(lv)}
+                            className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-1 ${
+                              initialLives === lv
+                                ? 'bg-rose-500 text-white border-2 border-white shadow-[0_0_15px_rgba(244,63,94,0.65)] scale-105'
+                                : 'bg-white/15 text-white hover:bg-white/25 border border-transparent'
+                            }`}
+                          >
+                            <span>❤️</span>
+                            <span>{lv}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 3. Difficulty Level (Slow to Fast) */}
+                    <div className="flex flex-wrap justify-between items-center gap-2 text-white pb-3 border-b border-white/10">
                       <span className="font-bold flex items-center gap-2 text-sm sm:text-base">
-                        <Gauge size={18} className="text-amber-400" /> Coaster Speed
+                        <Gauge size={18} className="text-amber-400" /> Difficulty (Slow to Fast)
                       </span>
                       <div className="flex gap-2">
                         {[
-                          { label: 'Cruise', val: 0.7 },
+                          { label: 'Slow', val: 0.7 },
                           { label: 'Normal', val: 1 },
-                          { label: 'Turbo', val: 1.45 },
+                          { label: 'Fast', val: 1.45 },
                         ].map((s) => (
                           <button
                             key={s.label}
@@ -445,29 +499,41 @@ export function RollerCoasterQuiz({
                       </div>
                     </div>
 
-                    {/* Voice Narration */}
-                    <div className="flex justify-between items-center text-white">
+                    {/* 4. Voice Question Reader (Voice On / Voice Off) */}
+                    <div className="flex flex-wrap justify-between items-center gap-2 text-white pb-3 border-b border-white/10">
                       <span className="font-bold text-sm sm:text-base">Voice Question Reader</span>
-                      <button
-                        onClick={() => setVoiceEnabled(!voiceEnabled)}
-                        className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
-                          voiceEnabled ? 'bg-emerald-500' : 'bg-white/30'
-                        }`}
-                      >
-                        <div
-                          className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${
-                            voiceEnabled ? 'left-7' : 'left-1'
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setVoiceEnabled(true)}
+                          className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                            voiceEnabled
+                              ? 'bg-emerald-400 text-slate-950 shadow-[0_0_15px_rgba(52,211,153,0.6)] scale-105'
+                              : 'bg-white/15 text-white hover:bg-white/25'
                           }`}
-                        />
-                      </button>
+                        >
+                          <Volume2 size={15} />
+                          <span>Voice On</span>
+                        </button>
+                        <button
+                          onClick={() => setVoiceEnabled(false)}
+                          className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                            !voiceEnabled
+                              ? 'bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.6)] scale-105'
+                              : 'bg-white/15 text-white hover:bg-white/25'
+                          }`}
+                        >
+                          <VolumeX size={15} />
+                          <span>Voice Off</span>
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Optional Camera Head-Lean Control */}
-                    <div className="flex justify-between items-center text-white pt-2 border-t border-white/10">
+                    {/* 5. Optional Webcam Head-Tilt Steering */}
+                    <div className="flex justify-between items-center text-white">
                       <div>
                         <span className="font-bold text-sm sm:text-base block">Webcam Head-Tilt Steering</span>
                         <span className="text-[11px] text-white/70">
-                          Lean your head Left/Right on camera (Touch, Keys &amp; Tablet Tilt always active)
+                          Shows live camera above hamster &amp; steers when you lean Left/Right
                         </span>
                       </div>
                       <button
@@ -665,10 +731,14 @@ export function RollerCoasterQuiz({
           riderName={riderName}
           speedMultiplier={speedMultiplier}
           onChangeSpeedMultiplier={setSpeedMultiplier}
+          timerMinutes={timerMinutes}
+          onChangeTimerMinutes={setTimerMinutes}
+          initialLives={initialLives}
           parkTheme={parkTheme}
           voiceEnabled={voiceEnabled}
           onChangeVoiceEnabled={setVoiceEnabled}
           cameraLeanEnabled={cameraLeanEnabled}
+          onChangeCameraLeanEnabled={setCameraLeanEnabled}
           onExitToSetup={() => setScreen('setup')}
           onEditQuestions={() => setScreen('editor')}
         />
@@ -704,10 +774,14 @@ function Coaster3DGameplay({
   riderName,
   speedMultiplier,
   onChangeSpeedMultiplier,
+  timerMinutes,
+  onChangeTimerMinutes,
+  initialLives,
   parkTheme,
   voiceEnabled,
   onChangeVoiceEnabled,
   cameraLeanEnabled,
+  onChangeCameraLeanEnabled,
   onExitToSetup,
   onEditQuestions,
 }: {
@@ -715,10 +789,14 @@ function Coaster3DGameplay({
   riderName: string;
   speedMultiplier: number;
   onChangeSpeedMultiplier: (v: number) => void;
+  timerMinutes: number;
+  onChangeTimerMinutes: (v: number) => void;
+  initialLives: number;
   parkTheme: 'sunny' | 'sunset' | 'neon';
   voiceEnabled: boolean;
   onChangeVoiceEnabled: (v: boolean) => void;
   cameraLeanEnabled: boolean;
+  onChangeCameraLeanEnabled: (v: boolean) => void;
   onExitToSetup: () => void;
   onEditQuestions: () => void;
 }) {
@@ -726,13 +804,12 @@ function Coaster3DGameplay({
   const bumperRef = useRef<HTMLDivElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
-  // HUD & Live Score / Timer / Coin / Power-Up State
-  const [score, setScore] = useState(0);
+  // HUD State: Big Coins Counter, Countdown Timer, Player Lives (Hearts), Gate Progress & Power-Ups
   const [coinsCount, setCoinsCount] = useState(0);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(timerMinutes * 60);
+  const [livesLeft, setLivesLeft] = useState(initialLives);
   const [gateSecondsLeft, setGateSecondsLeft] = useState<number | null>(null);
   const [streak, setStreak] = useState(0);
-  const [speedKmh, setSpeedKmh] = useState(42);
   const [currentGateIdx, setCurrentGateIdx] = useState(0);
   const [countdownNum, setCountdownNum] = useState<number | null>(4);
   const [activePrompt, setActivePrompt] = useState<{
@@ -758,7 +835,7 @@ function Coaster3DGameplay({
   const [tiltAngleDeg, setTiltAngleDeg] = useState<number>(0);
   const [tiltStatus, setTiltStatus] = useState('Tablet Auto-Tilt Ready');
 
-  // Active Power-Up Timers & Floating Score Popups
+  // Active Power-Up Timers & Floating Coin Popups
   const [activePowerUps, setActivePowerUps] = useState<{
     magnet: number;
     slow: number;
@@ -785,7 +862,7 @@ function Coaster3DGameplay({
     }, 1150);
   };
 
-  // Modals for Derailment or Victory
+  // Modals for Derailment / Revive / Game Over or Victory
   const [crashModal, setCrashModal] = useState<{
     title: string;
     reason: string;
@@ -795,12 +872,15 @@ function Coaster3DGameplay({
     gateNumber: number;
     totalGates: number;
     wasTimeout: boolean;
+    livesRemaining: number;
+    isGameOver: boolean;
+    isTimeUp?: boolean;
   } | null>(null);
   const [victoryModal, setVictoryModal] = useState<{
-    finalScore: number;
     maxStreak: number;
     coins: number;
     timeSec: number;
+    livesRemaining: number;
   } | null>(null);
   const [dangerVignette, setDangerVignette] = useState(false);
 
@@ -811,6 +891,7 @@ function Coaster3DGameplay({
   const musicEnabledRef = useRef<boolean>(true);
   const voiceEnabledRef = useRef<boolean>(voiceEnabled);
   const speedMultRef = useRef<number>(speedMultiplier);
+  const timerMinutesRef = useRef<number>(timerMinutes);
   const pausedRef = useRef<boolean>(false);
   const tabletModeRef = useRef<boolean>(true);
   const tiltSensitivityRef = useRef<number>(1.0);
@@ -821,6 +902,9 @@ function Coaster3DGameplay({
   useEffect(() => {
     speedMultRef.current = speedMultiplier;
   }, [speedMultiplier]);
+  useEffect(() => {
+    timerMinutesRef.current = timerMinutes;
+  }, [timerMinutes]);
   useEffect(() => {
     pausedRef.current = showSettingsModal;
   }, [showSettingsModal]);
@@ -1098,7 +1182,7 @@ function Coaster3DGameplay({
     }
   };
 
-  // Optional Webcam Head-Lean Tracking (with safe fallback)
+  // Webcam Head-Tilt Steering (Placed directly above the hamster's head when enabled!)
   useEffect(() => {
     if (!cameraLeanEnabled) {
       setCameraActive(false);
@@ -1142,18 +1226,16 @@ function Coaster3DGameplay({
           faceMesh.onResults((results: any) => {
             if (!active || !results?.multiFaceLandmarks?.[0]) return;
             const face = results.multiFaceLandmarks[0];
-            // Nose tip (1) or eye roll between left eye (33) and right eye (263)
             const nose = face[1];
             if (nose) {
-              // Mirrored X: 0.5 is center, < 0.43 leans left, > 0.57 leans right
               const mirroredX = 1.0 - nose.x;
               const offset = (mirroredX - 0.5) * 3.2;
               const clamped = Math.max(-1, Math.min(1, offset));
               smoothSteerRef.current = clamped;
               setSmoothSteerPct(50 + clamped * 38);
-              if (clamped < -0.26 && steeringRef.current !== -1) {
+              if (clamped < -0.24 && steeringRef.current !== -1) {
                 actionsRef.current.selectSteer(-1);
-              } else if (clamped > 0.26 && steeringRef.current !== 1) {
+              } else if (clamped > 0.24 && steeringRef.current !== 1) {
                 actionsRef.current.selectSteer(1);
               }
             }
@@ -1171,6 +1253,57 @@ function Coaster3DGameplay({
             if (active) animId = requestAnimationFrame(loopFrames);
           };
           animId = requestAnimationFrame(loopFrames);
+        } else {
+          // Lightweight 2D Canvas Head/Motion Centroid Tracker when FaceMesh isn't globally loaded
+          const trackCanvas = document.createElement('canvas');
+          trackCanvas.width = 64;
+          trackCanvas.height = 48;
+          const tCtx = trackCanvas.getContext('2d', { willReadFrequently: true });
+          let prevFrame: Uint8ClampedArray | null = null;
+          let lastSample = 0;
+
+          const loopCanvasTracker = (t: number) => {
+            if (!active) return;
+            if (webcamVideoRef.current && webcamVideoRef.current.readyState >= 2 && tCtx && t - lastSample > 75) {
+              lastSample = t;
+              tCtx.drawImage(webcamVideoRef.current, 0, 0, 64, 48);
+              const imgData = tCtx.getImageData(0, 0, 64, 48).data;
+              if (prevFrame) {
+                let weightedX = 0;
+                let totalWeight = 0;
+                for (let y = 6; y < 42; y++) {
+                  for (let x = 4; x < 60; x++) {
+                    const idx = (y * 64 + x) * 4;
+                    const diff =
+                      Math.abs(imgData[idx] - prevFrame[idx]) +
+                      Math.abs(imgData[idx + 1] - prevFrame[idx + 1]) +
+                      Math.abs(imgData[idx + 2] - prevFrame[idx + 2]);
+                    if (diff > 42) {
+                      // Mirror X so leaning left on screen is < 0.5 and leaning right is > 0.5
+                      const mirroredX = 1.0 - x / 64;
+                      weightedX += mirroredX * diff;
+                      totalWeight += diff;
+                    }
+                  }
+                }
+                if (totalWeight > 3200) {
+                  const avgX = weightedX / totalWeight;
+                  const offset = (avgX - 0.5) * 3.0;
+                  const clamped = Math.max(-1, Math.min(1, offset));
+                  smoothSteerRef.current = clamped;
+                  setSmoothSteerPct(50 + clamped * 38);
+                  if (clamped < -0.22 && steeringRef.current !== -1) {
+                    actionsRef.current.selectSteer(-1);
+                  } else if (clamped > 0.22 && steeringRef.current !== 1) {
+                    actionsRef.current.selectSteer(1);
+                  }
+                }
+              }
+              prevFrame = new Uint8ClampedArray(imgData);
+            }
+            if (active) animId = requestAnimationFrame(loopCanvasTracker);
+          };
+          animId = requestAnimationFrame(loopCanvasTracker);
         }
       } catch {
         setCameraActive(false);
@@ -2408,13 +2541,12 @@ function Coaster3DGameplay({
     let trackProgressT = 0.0;
     let wrongBranchT = 0.0;
     let activeGateIdx = 0;
-    let localScore = 0;
     let localCoins = 0;
+    let localLives = initialLives;
     let localStreak = 0;
     let maxStreak = 0;
     let rideTimeSec = 0;
     let lastTimerUiUpdate = 0;
-    let distancePointsAccum = 0;
 
     // Active Power-Up state inside 60fps loop
     let magnetTimer = 0;
@@ -2531,6 +2663,7 @@ function Coaster3DGameplay({
     };
 
     const triggerRetryCheckpoint = () => {
+      if (localLives <= 0) return;
       setCrashModal(null);
       setDangerVignette(false);
       const gate = gateCheckpoints[activeGateIdx];
@@ -2551,12 +2684,11 @@ function Coaster3DGameplay({
     };
 
     const triggerFullRestart = () => {
-      localScore = 0;
       localCoins = 0;
+      localLives = initialLives;
       localStreak = 0;
       maxStreak = 0;
       rideTimeSec = 0;
-      distancePointsAccum = 0;
       magnetTimer = 0;
       slowTimer = 0;
       boostTimer = 0;
@@ -2566,9 +2698,9 @@ function Coaster3DGameplay({
       trackProgressT = 0;
       steeringRef.current = 0;
       smoothSteerRef.current = 0;
-      setScore(0);
       setCoinsCount(0);
-      setElapsedSeconds(0);
+      setLivesLeft(initialLives);
+      setRemainingSeconds(timerMinutesRef.current * 60);
       setGateSecondsLeft(null);
       setStreak(0);
       setCurrentGateIdx(0);
@@ -2706,28 +2838,54 @@ function Coaster3DGameplay({
           ridePhase = 'RIDING';
         }
       } else if (ridePhase === 'RIDING') {
-        // 1. Live Ride Timer & Power-Up Timers
+        // 1. Countdown Timer (1 to 10 minutes configured in Setup) & Power-Up Timers
         rideTimeSec += dt;
         if (magnetTimer > 0) magnetTimer = Math.max(0, magnetTimer - dt);
         if (slowTimer > 0) slowTimer = Math.max(0, slowTimer - dt);
         if (boostTimer > 0) boostTimer = Math.max(0, boostTimer - dt);
         if (doubleTimer > 0) doubleTimer = Math.max(0, doubleTimer - dt);
 
+        const totalAllowedSec = timerMinutesRef.current * 60;
+        const remSec = Math.max(0, Math.ceil(totalAllowedSec - rideTimeSec));
+
         if (now - lastTimerUiUpdate > 120) {
           lastTimerUiUpdate = now;
-          setElapsedSeconds(Math.floor(rideTimeSec));
+          setRemainingSeconds(remSec);
         }
         if (now - lastPowerUpUiSync > 250) {
           lastPowerUpUiSync = now;
           syncPowerUpsToUI();
         }
 
+        // Check if Ride Countdown Timer hit 00:00 -> GAME OVER!
+        if (remSec <= 0) {
+          setRemainingSeconds(0);
+          ridePhase = 'CRASHED';
+          setActivePrompt(null);
+          setGateSecondsLeft(null);
+          updateContinuousCoasterSound(0, false, 0);
+          playDerailmentAlarmAndCrash();
+          const gate = gateCheckpoints[activeGateIdx];
+          setCrashModal({
+            title: "⏰ TIME'S UP! GAME OVER!",
+            reason: `Your ${timerMinutesRef.current}-minute coaster timer ran out before reaching the finish line!`,
+            question: gate?.question || 'Course Timer Expired',
+            wrongAnswer: 'Ran Out of Time (00:00)',
+            correctAnswer: gate?.correctAnswer || 'Complete all gates before the timer ends!',
+            gateNumber: (gate?.index ?? activeGateIdx) + 1,
+            totalGates: gateCheckpoints.length || questions.length,
+            wasTimeout: true,
+            livesRemaining: 0,
+            isGameOver: true,
+            isTimeUp: true,
+          });
+          renderer.render(scene, camera);
+          return;
+        }
+
         const tangent = mainCurve.getTangentAt(Math.min(0.99, trackProgressT));
         const slopeFactor = 1.0 - tangent.y * 0.48;
         const currentSpeed = baseSpeedT * Math.max(0.65, slopeFactor);
-
-        const displayKmh = Math.round(55 * effectiveSpeedMult * Math.max(0.65, slopeFactor));
-        if (Math.random() < 0.25) setSpeedKmh(displayKmh);
 
         if (tangent.y > 0.12) {
           playChainClack(120);
@@ -2738,17 +2896,9 @@ function Coaster3DGameplay({
         trackProgressT += currentSpeed * dt;
         positionCameraOnCurve(mainCurve, trackProgressT, smoothSteerRef.current);
 
-        // 2. Live-Adding Points while driving along the rails!
-        const scoreMult = doubleTimer > 0 ? 2 : 1;
-        distancePointsAccum += currentSpeed * dt * 260 * (boostTimer > 0 ? 2.2 : 1) * scoreMult;
-        if (distancePointsAccum >= 1) {
-          const addPts = Math.floor(distancePointsAccum);
-          distancePointsAccum -= addPts;
-          localScore += addPts;
-          setScore(localScore);
-        }
+        const coinMultiplier = doubleTimer > 0 ? 2 : 1;
 
-        // 3. Check 3D Coin Pickups & Magnet Pull
+        // 2. Check 3D Coin Pickups & Magnet Pull
         const coasterPos = mainCurve.getPointAt(Math.min(0.999, trackProgressT));
         const magnetRadius = magnetTimer > 0 ? 19.0 : 2.9;
 
@@ -2765,18 +2915,16 @@ function Coaster3DGameplay({
           if (dist < 2.75) {
             c.collected = true;
             c.mesh.visible = false;
-            const coinPts = 25 * scoreMult;
-            localCoins += 1;
-            localScore += coinPts;
+            const addedCoins = 1 * coinMultiplier;
+            localCoins += addedCoins;
             setCoinsCount(localCoins);
-            setScore(localScore);
             playCoinCollectSound();
             spawnCelebrationSparks(c.mesh.position, 10);
-            pushScorePopup(`+${coinPts} 🪙`, 'text-amber-300', doubleTimer > 0 ? '2X COIN!' : undefined);
+            pushScorePopup(`+${addedCoins} 🪙`, 'text-amber-300', doubleTimer > 0 ? '2X COINS!' : undefined);
           }
         }
 
-        // 4. Check 3D Special Power-Up Pickups
+        // 3. Check 3D Special Power-Up Pickups
         for (let i = 0; i < powerUpItems.length; i++) {
           const p = powerUpItems[i];
           if (p.collected) continue;
@@ -2784,24 +2932,24 @@ function Coaster3DGameplay({
           if (dist < (magnetTimer > 0 ? 5.5 : 3.1)) {
             p.collected = true;
             p.mesh.visible = false;
-            const bonusPts = 50 * scoreMult;
-            localScore += bonusPts;
-            setScore(localScore);
+            const bonusCoins = 3 * coinMultiplier;
+            localCoins += bonusCoins;
+            setCoinsCount(localCoins);
             playPowerUpSound(p.type);
             spawnCelebrationSparks(p.mesh.position, 22);
 
             if (p.type === 'magnet') {
               magnetTimer = 10.0;
-              pushScorePopup('🧲 MAGNET ACTIVE!', 'text-rose-300', `Pulls all coins +${bonusPts}`);
+              pushScorePopup('🧲 MAGNET ACTIVE!', 'text-rose-300', `Pulls all coins +${bonusCoins} 🪙`);
             } else if (p.type === 'slow') {
               slowTimer = 8.0;
-              pushScorePopup('⏳ SLOW-MO ACTIVE!', 'text-cyan-300', `Extra time to read +${bonusPts}`);
+              pushScorePopup('⏳ SLOW-MO ACTIVE!', 'text-cyan-300', `Extra time to read +${bonusCoins} 🪙`);
             } else if (p.type === 'boost') {
               boostTimer = 6.0;
-              pushScorePopup('🚀 TURBO BOOST!', 'text-orange-300', `Auto-Pilot + Speed +${bonusPts}`);
+              pushScorePopup('🚀 TURBO BOOST!', 'text-orange-300', `Auto-Pilot +${bonusCoins} 🪙`);
             } else if (p.type === 'double') {
               doubleTimer = 12.0;
-              pushScorePopup('⚡ 2X POINTS!', 'text-purple-300', `Double Score for 12s!`);
+              pushScorePopup('⚡ 2X COINS!', 'text-purple-300', `Double Coins for 12s!`);
             } else if (p.type === 'shield') {
               hasShield = true;
               pushScorePopup('🛡️ SAFETY SHIELD!', 'text-emerald-300', `Saves you from 1 wrong rail!`);
@@ -2810,7 +2958,7 @@ function Coaster3DGameplay({
           }
         }
 
-        // 5. Question Gate Approach & Fork Resolution
+        // 4. Question Gate Approach & Fork Resolution
         const gate = gateCheckpoints[activeGateIdx];
         if (gate && !gate.resolved) {
           if (!gate.promptShown && trackProgressT >= gate.promptStartT) {
@@ -2853,16 +3001,16 @@ function Coaster3DGameplay({
             setGateSecondsLeft(null);
 
             if (steeringRef.current === gate.correctSide) {
-              // CORRECT RAIL!
+              // CORRECT RAIL! Award bonus coins!
               localStreak += 1;
               maxStreak = Math.max(maxStreak, localStreak);
-              const gatePts = (100 + (localStreak - 1) * 25) * scoreMult;
-              localScore += gatePts;
-              setScore(localScore);
+              const gateCoins = 5 * coinMultiplier;
+              localCoins += gateCoins;
+              setCoinsCount(localCoins);
               setStreak(localStreak);
               playCorrectFanfare(localStreak);
               spawnCelebrationSparks(camera.position, 40);
-              pushScorePopup(`+${gatePts} GATE CLEAR!`, 'text-emerald-300', `${localStreak}x Streak 🔥`);
+              pushScorePopup(`+${gateCoins} 🪙 GATE CLEAR!`, 'text-emerald-300', `${localStreak}x Streak 🔥`);
               activeGateIdx++;
             } else if (hasShield) {
               // SHIELD SAVES PLAYER FROM WRONG TRACK!
@@ -2897,10 +3045,10 @@ function Coaster3DGameplay({
           playCorrectFanfare(5);
           spawnCelebrationSparks(camera.position, 55);
           setVictoryModal({
-            finalScore: localScore,
             maxStreak,
             coins: localCoins,
             timeSec: Math.round(rideTimeSec),
+            livesRemaining: localLives,
           });
         }
       } else if (ridePhase === 'WRONG_BRANCH' && wrongBranchCurve) {
@@ -2930,11 +3078,21 @@ function Coaster3DGameplay({
 
         if (fallPosition.y <= 1.8 || fallTimer > 1.55) {
           ridePhase = 'CRASHED';
+          localLives = Math.max(0, localLives - 1);
+          setLivesLeft(localLives);
+          const isOutOfLives = localLives <= 0;
+
           const gate = gateCheckpoints[activeGateIdx];
           const wasTimeout = steeringRef.current === 0;
           setCrashModal({
-            title: wasTimeout ? 'TIME RAN OUT! TRACK SPLIT MISSED!' : 'WRONG TRACK! YOU FELL!',
-            reason: wasTimeout
+            title: isOutOfLives
+              ? '💔 OUT OF LIVES! GAME OVER!'
+              : wasTimeout
+              ? 'TIME RAN OUT! TRACK SPLIT MISSED!'
+              : 'WRONG TRACK! YOU FELL!',
+            reason: isOutOfLives
+              ? 'You lost all your hearts! Start a new ride to try again.'
+              : wasTimeout
               ? "You didn't lean or steer Left/Right before reaching the track junction!"
               : 'Your coaster smashed through the hazard barrier onto the snapped trap rail!',
             question: gate?.question || '',
@@ -2943,6 +3101,8 @@ function Coaster3DGameplay({
             gateNumber: (gate?.index ?? activeGateIdx) + 1,
             totalGates: gateCheckpoints.length || questions.length,
             wasTimeout,
+            livesRemaining: localLives,
+            isGameOver: isOutOfLives,
           });
         }
       }
@@ -2966,7 +3126,7 @@ function Coaster3DGameplay({
       pmremGenerator.dispose();
       renderer.dispose();
     };
-  }, [questions, parkTheme]);
+  }, [questions, parkTheme, initialLives]);
 
   // Auto-Detect Tablet Tilt (Lean Left / Lean Right) Support
   const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
@@ -3094,17 +3254,6 @@ function Coaster3DGameplay({
       {/* 3D WebGL Viewport */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full z-0" />
 
-      {/* Hidden or Mini Webcam Preview when Head-Lean Mode is enabled */}
-      <video
-        ref={webcamVideoRef}
-        className={`absolute bottom-28 right-5 w-28 h-20 rounded-2xl object-cover border-2 border-sky-400 shadow-xl scale-x-[-1] z-30 pointer-events-none transition-opacity ${
-          cameraActive ? 'opacity-90' : 'opacity-0 pointer-events-none'
-        }`}
-        autoPlay
-        playsInline
-        muted
-      />
-
       {/* Red Danger Vignette on Wrong Track */}
       <div
         className={`pointer-events-none absolute inset-0 z-10 transition-opacity duration-300 ${
@@ -3115,7 +3264,7 @@ function Coaster3DGameplay({
         }}
       />
 
-      {/* Top HUD Bar (Absolute inside game viewport so it is NEVER covered by global app Header!) */}
+      {/* Top HUD Bar (Big Coins Counter, Hearts Lives Indicator, Countdown Timer & Gate Progress — No LIVE PTS or km/h) */}
       <header className="absolute top-0 left-0 right-0 z-40 flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 sm:px-5 pointer-events-none">
         <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
           <button
@@ -3126,65 +3275,73 @@ function Coaster3DGameplay({
             <span className="hidden sm:inline">Setup</span>
           </button>
 
-          {/* Live Points, Coins, Timer & Gate Progress Pill */}
-          <div className="bg-slate-900/90 backdrop-blur-md border border-white/25 rounded-2xl px-3.5 py-1.5 flex items-center gap-2.5 sm:gap-3.5 shadow-xl">
-            {/* Live Adding Score */}
-            <div className="flex items-center gap-1.5" title="Live Coaster Points">
-              <span className="text-amber-400 text-base sm:text-lg">★</span>
+          {/* Big Coins, Hearts Lives Indicator, Countdown Timer & Gate Progress Pill */}
+          <div className="bg-slate-900/92 backdrop-blur-md border border-white/25 rounded-2xl px-4 py-2 flex items-center gap-3 sm:gap-4 shadow-2xl">
+            {/* BIGGER Coins Counter (Only Coins shown, no LIVE PTS) */}
+            <div className="flex items-center gap-2" title="Coins Collected on Rails">
+              <span className="text-2xl sm:text-3xl drop-shadow-[0_2px_8px_rgba(250,204,21,0.65)] animate-pulse">
+                🪙
+              </span>
               <div className="flex flex-col leading-none">
-                <span className="text-[9px] uppercase font-extrabold tracking-wider text-amber-300/80">
-                  LIVE PTS
-                </span>
-                <span className="text-white text-base sm:text-xl font-black tracking-wide tabular-nums">
-                  {score.toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            <div className="h-6 w-px bg-white/15" />
-
-            {/* Collected Coins Counter */}
-            <div className="flex items-center gap-1.5" title="Coins Collected on Rails">
-              <span className="text-base sm:text-lg">🪙</span>
-              <div className="flex flex-col leading-none">
-                <span className="text-[9px] uppercase font-extrabold tracking-wider text-yellow-300/80">
+                <span className="text-[10px] uppercase font-black tracking-widest text-yellow-300/90">
                   COINS
                 </span>
-                <span className="text-yellow-300 text-sm sm:text-lg font-black tabular-nums">
-                  {coinsCount}
+                <span className="text-yellow-300 text-xl sm:text-3xl font-black tracking-tight tabular-nums drop-shadow">
+                  {coinsCount.toLocaleString()}
                 </span>
               </div>
             </div>
 
-            <div className="h-6 w-px bg-white/15" />
+            <div className="h-8 w-px bg-white/15" />
 
-            {/* Live Ride Timer */}
-            <div className="flex items-center gap-1.5" title="Ride Timer">
-              <span className="text-sky-400 text-sm sm:text-base">⏱️</span>
+            {/* Hearts Lives Indicator */}
+            <div className="flex flex-col leading-none" title="Player Lives Remaining">
+              <span className="text-[9px] uppercase font-extrabold tracking-wider text-rose-300/90 mb-0.5">
+                LIVES
+              </span>
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                {Array.from({ length: initialLives }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`text-base sm:text-xl transition-transform duration-300 ${
+                      i < livesLeft ? 'scale-100 drop-shadow-[0_0_8px_rgba(244,63,94,0.65)]' : 'opacity-35 scale-90 grayscale'
+                    }`}
+                  >
+                    {i < livesLeft ? '❤️' : '🖤'}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-8 w-px bg-white/15" />
+
+            {/* Countdown Ride Timer (Configured 1 to 10 Minutes in Setup) */}
+            <div className="flex items-center gap-1.5" title="Countdown Ride Timer">
+              <span className="text-sky-400 text-base sm:text-lg">⏱️</span>
               <div className="flex flex-col leading-none">
                 <span className="text-[9px] uppercase font-extrabold tracking-wider text-sky-300/80">
-                  TIME
+                  TIMER
                 </span>
-                <span className="text-white text-sm sm:text-base font-black tabular-nums">
-                  {String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:
-                  {String(elapsedSeconds % 60).padStart(2, '0')}
+                <span
+                  className={`text-sm sm:text-xl font-black tabular-nums ${
+                    remainingSeconds <= 20 ? 'text-rose-400 animate-pulse' : 'text-white'
+                  }`}
+                >
+                  {String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:
+                  {String(remainingSeconds % 60).padStart(2, '0')}
                 </span>
               </div>
             </div>
 
             {streak > 1 && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-black">
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-black">
                 🔥 {streak}x
               </span>
             )}
 
-            <div className="hidden sm:block h-6 w-px bg-white/15" />
+            <div className="hidden sm:block h-8 w-px bg-white/15" />
             <div className="hidden sm:block text-xs sm:text-sm font-bold text-slate-300">
               Gate <span className="text-white font-black">{currentGateIdx + 1}/{questions.length}</span>
-            </div>
-            <div className="hidden xl:flex items-center gap-1 text-xs font-bold text-sky-300 pl-2 border-l border-white/15">
-              <Gauge size={14} />
-              <span>{speedKmh} km/h</span>
             </div>
           </div>
 
@@ -3250,7 +3407,7 @@ function Coaster3DGameplay({
           <button
             onClick={() => setShowSettingsModal(true)}
             className="bg-gradient-to-r from-amber-500/95 to-orange-500/95 hover:from-amber-400 hover:to-orange-400 active:scale-95 text-slate-950 border-2 border-amber-200/80 text-xs sm:text-sm font-black px-3.5 py-2 rounded-2xl shadow-[0_0_20px_rgba(245,158,11,0.45)] flex items-center gap-1.5 transition cursor-pointer"
-            title="Open In-Game Settings (Difficulty, Voice, Text Size, Tablet Mode)"
+            title="Open In-Game Settings (Difficulty Slow to Fast, Voice On/Off, Text Size, Tablet Mode)"
           >
             <Settings size={17} className="text-slate-950" />
             <span>Settings</span>
@@ -3261,7 +3418,7 @@ function Coaster3DGameplay({
         </div>
       </header>
 
-      {/* Floating Live-Adding Score & Power-Up Popups */}
+      {/* Floating Coin & Power-Up Popups */}
       <div className="absolute top-20 right-5 z-30 flex flex-col items-end gap-1.5 pointer-events-none">
         {floatingPopups.map((p) => (
           <div
@@ -3278,7 +3435,7 @@ function Coaster3DGameplay({
       {countdownNum !== null && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none pb-20">
           <div className="px-4 py-1 rounded-full bg-slate-900/70 border border-white/20 text-amber-300 text-xs sm:text-sm font-black uppercase tracking-widest mb-2">
-            Pilot: {riderName} 🐹 · Collect 🪙 Coins &amp; Power-Ups!
+            Pilot: {riderName} 🐹 · Collect 🪙 Coins &amp; Keep Your ❤️ Lives!
           </div>
           <h1 className="text-5xl sm:text-7xl md:text-8xl font-black tracking-wider uppercase coaster-title-stroke text-center px-4">
             GET READY
@@ -3305,7 +3462,7 @@ function Coaster3DGameplay({
         <div className="bg-slate-900/88 backdrop-blur-xl border-x border-b border-white/25 rounded-b-3xl px-4 py-3 sm:px-6 sm:py-4 shadow-2xl text-center">
           <div className="flex items-center justify-between gap-2 mb-1.5">
             <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-extrabold uppercase tracking-widest text-amber-400 bg-amber-500/15 border border-amber-400/30 px-3 py-0.5 rounded-full">
-              ⚡ Twin Track Split — Tap, Key, or Lean Tablet!
+              ⚡ Twin Track Split — Tap, Key, or Lean!
             </span>
             {gateSecondsLeft !== null && (
               <span
@@ -3430,36 +3587,40 @@ function Coaster3DGameplay({
         <div className="mx-auto mt-2.5 w-44 sm:w-60 h-2.5 rounded-full bg-zinc-800 border border-zinc-600/50 shadow-inner" />
       </div>
 
-      {/* Live Tilt / Steering Angle Meter */}
-      <div className="absolute bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
-        <div className="bg-slate-950/85 backdrop-blur-md border border-white/15 rounded-full px-4 py-1.5 flex items-center gap-3 shadow-xl">
-          <span className="text-xs font-black text-sky-400">◀ L</span>
-          <div className="w-28 sm:w-36 h-2.5 bg-slate-800 rounded-full relative overflow-hidden border border-white/10">
-            <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/40 -translate-x-1/2 z-10" />
-            <div
-              className="absolute top-0 bottom-0 w-5 bg-amber-400 rounded-full shadow transition-all duration-75"
-              style={{ left: `calc(${smoothSteerPct}% - 10px)` }}
-            />
-          </div>
-          <span className="text-xs font-black text-rose-400">R ▶</span>
-        </div>
-        <span
-          className={`text-[11px] font-extrabold uppercase tracking-wider mt-1 drop-shadow ${
+      {/* Webcam Camera Feed Above the Hamster's Head (Replaces the removed L-R sign when Webcam Head-Tilt Steering is ON!) */}
+      <div
+        className={`absolute bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-none transition-all duration-300 ${
+          cameraLeanEnabled
+            ? 'opacity-100 scale-100'
+            : 'opacity-0 scale-75 pointer-events-none'
+        }`}
+      >
+        <div
+          className={`relative rounded-2xl overflow-hidden border-2 shadow-2xl bg-slate-950/90 ${
             steeringChoice === -1
-              ? 'text-sky-300'
+              ? 'border-sky-400 shadow-[0_0_25px_rgba(56,189,248,0.8)]'
               : steeringChoice === 1
-              ? 'text-rose-300'
-              : 'text-amber-300'
+              ? 'border-rose-400 shadow-[0_0_25px_rgba(244,63,94,0.8)]'
+              : 'border-amber-400/90 shadow-[0_0_20px_rgba(251,191,36,0.45)]'
           }`}
         >
-          {steeringChoice === -1
-            ? 'STEERING: ◀ LEFT TRACK LOCKED'
-            : steeringChoice === 1
-            ? 'STEERING: RIGHT TRACK LOCKED ▶'
-            : tabletMode && tiltAngleDeg !== 0
-            ? `TABLET TILT: ${tiltAngleDeg > 0 ? `+${tiltAngleDeg}° RIGHT` : `${tiltAngleDeg}° LEFT`}`
-            : 'STEERING: CENTER (TAP OR LEAN TABLET!)'}
-        </span>
+          <video
+            ref={webcamVideoRef}
+            className="w-32 h-22 sm:w-40 sm:h-28 object-cover scale-x-[-1] block"
+            autoPlay
+            playsInline
+            muted
+          />
+          {/* Center Guide Line & Live Lean Badge on Camera */}
+          <div className="absolute inset-y-0 left-1/2 w-0.5 bg-white/35 -translate-x-1/2 pointer-events-none" />
+          <div className="absolute bottom-1 inset-x-1 flex items-center justify-between px-1.5 py-0.5 rounded-lg bg-slate-950/80 backdrop-blur-sm text-[9px] font-black uppercase tracking-wider text-white">
+            <span className={steeringChoice === -1 ? 'text-sky-300' : 'text-white/50'}>◀ L</span>
+            <span className="text-amber-300">
+              {cameraActive ? '📷 HEAD TILT' : '📷 STARTING...'}
+            </span>
+            <span className={steeringChoice === 1 ? 'text-rose-300' : 'text-white/50'}>R ▶</span>
+          </div>
+        </div>
       </div>
 
       {/* Dashed Circular Touch Steering Wheels on Bottom Left & Right */}
@@ -3502,7 +3663,7 @@ function Coaster3DGameplay({
         {isMuted ? <VolumeX size={20} className="text-rose-400" /> : <Volume2 size={20} />}
       </button>
 
-      {/* IN-GAME SETTINGS MODAL (Difficulty, Voice, Text Size, Ride Music, Tablet Mode Auto-Lean, Full Screen) */}
+      {/* IN-GAME SETTINGS MODAL (Difficulty Slow to Fast, Voice On/Off, Text Size, Ride Timer, Webcam Camera, Tablet Mode) */}
       {showSettingsModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="bg-slate-900 border-2 border-amber-400/50 rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl text-white max-h-[90vh] overflow-y-auto">
@@ -3530,16 +3691,16 @@ function Coaster3DGameplay({
             </div>
 
             <div className="space-y-4 mt-5">
-              {/* 1. Difficulty Level */}
+              {/* 1. Difficulty Level (Slow to Fast) */}
               <div className="bg-slate-800/75 border border-white/10 rounded-2xl p-4">
                 <label className="text-xs font-black uppercase tracking-wider text-amber-300 block mb-2.5">
-                  1. Difficulty Level (Coaster Speed)
+                  1. Difficulty Level (Slow to Fast)
                 </label>
                 <div className="grid grid-cols-3 gap-2.5">
                   {[
-                    { label: 'Easy (Cruise)', val: 0.7, desc: 'More time to read' },
-                    { label: 'Medium (Normal)', val: 1.0, desc: 'Balanced speed' },
-                    { label: 'Hard (Turbo)', val: 1.45, desc: 'Fast reflexes!' },
+                    { label: '🐢 Slow', val: 0.7, desc: 'Relaxed pace' },
+                    { label: '🎢 Normal', val: 1.0, desc: 'Balanced speed' },
+                    { label: '🚀 Fast', val: 1.45, desc: 'High-speed thrill!' },
                   ].map((d) => (
                     <button
                       key={d.label}
@@ -3563,10 +3724,61 @@ function Coaster3DGameplay({
                 </div>
               </div>
 
-              {/* 2. Text Size */}
+              {/* 2. Voice Question Reader (Explicit Voice On / Voice Off) */}
+              <div className="bg-slate-800/75 border border-white/10 rounded-2xl p-4 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <div className="text-sm font-black text-white">2. Voice Question Reader</div>
+                    <div className="text-xs text-slate-400">Reads each question aloud at track splits</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onChangeVoiceEnabled(true)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer border ${
+                        voiceEnabled
+                          ? 'bg-emerald-400 text-slate-950 border-white shadow-md scale-105'
+                          : 'bg-slate-900/70 text-white/75 border-white/15 hover:bg-slate-900'
+                      }`}
+                    >
+                      🔊 Voice On
+                    </button>
+                    <button
+                      onClick={() => onChangeVoiceEnabled(false)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer border ${
+                        !voiceEnabled
+                          ? 'bg-rose-500 text-white border-white shadow-md scale-105'
+                          : 'bg-slate-900/70 text-white/75 border-white/15 hover:bg-slate-900'
+                      }`}
+                    >
+                      🔇 Voice Off
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                  <div>
+                    <div className="text-sm font-black text-white">Theme Park Ride Music</div>
+                    <div className="text-xs text-slate-400">Upbeat coaster background music during ride</div>
+                  </div>
+                  <button
+                    onClick={() => setMusicEnabled(!musicEnabled)}
+                    className={`w-13 h-7 rounded-full transition-colors relative cursor-pointer ${
+                      musicEnabled ? 'bg-amber-400' : 'bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-full bg-white absolute top-1 transition-all ${
+                        musicEnabled ? 'left-7' : 'left-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Question & Answer Text Size */}
               <div className="bg-slate-800/75 border border-white/10 rounded-2xl p-4">
                 <label className="text-xs font-black uppercase tracking-wider text-sky-300 block mb-2.5">
-                  2. Question &amp; Answer Text Size
+                  3. Question &amp; Answer Text Size
                 </label>
                 <div className="grid grid-cols-4 gap-2">
                   {[
@@ -3590,48 +3802,51 @@ function Coaster3DGameplay({
                 </div>
               </div>
 
-              {/* 3. Voice Narration & Ride Music */}
+              {/* 4. Ride Timer Slider (1 to 10 Minutes) & Webcam Head-Tilt Camera Toggle */}
               <div className="bg-slate-800/75 border border-white/10 rounded-2xl p-4 space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-black text-white">Voice Question Reader</div>
-                    <div className="text-xs text-slate-400">Reads each question aloud at track splits</div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                      4. Ride Timer (1 to 10 Minutes)
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-lg bg-amber-400 text-slate-950 font-black text-xs">
+                      {timerMinutes} {timerMinutes === 1 ? 'Min' : 'Mins'}
+                    </span>
                   </div>
-                  <button
-                    onClick={() => onChangeVoiceEnabled(!voiceEnabled)}
-                    className={`w-13 h-7 rounded-full transition-colors relative cursor-pointer ${
-                      voiceEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-                    }`}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full bg-white absolute top-1 transition-all ${
-                        voiceEnabled ? 'left-7' : 'left-1'
-                      }`}
-                    />
-                  </button>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={timerMinutes}
+                    onChange={(e) => onChangeTimerMinutes(Number(e.target.value))}
+                    className="w-full h-2.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-white/10">
                   <div>
-                    <div className="text-sm font-black text-white">Theme Park Ride Music</div>
-                    <div className="text-xs text-slate-400">Upbeat coaster background music during ride</div>
+                    <div className="text-sm font-black text-white">Webcam Head-Tilt Steering</div>
+                    <div className="text-xs text-slate-400">
+                      Shows camera above hamster&apos;s head &amp; steers when you lean Left/Right
+                    </div>
                   </div>
                   <button
-                    onClick={() => setMusicEnabled(!musicEnabled)}
-                    className={`w-13 h-7 rounded-full transition-colors relative cursor-pointer ${
-                      musicEnabled ? 'bg-amber-400' : 'bg-slate-700'
+                    onClick={() => onChangeCameraLeanEnabled(!cameraLeanEnabled)}
+                    className={`w-13 h-7 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+                      cameraLeanEnabled ? 'bg-sky-400' : 'bg-slate-700'
                     }`}
                   >
                     <div
                       className={`w-5 h-5 rounded-full bg-white absolute top-1 transition-all ${
-                        musicEnabled ? 'left-7' : 'left-1'
+                        cameraLeanEnabled ? 'left-7' : 'left-1'
                       }`}
                     />
                   </button>
                 </div>
               </div>
 
-              {/* 4. Tablet Mode (Auto-Detect Lean Left & Lean Right) */}
+              {/* 5. Tablet Mode (Auto-Detect Lean Left & Lean Right) */}
               <div className="bg-indigo-950/60 border border-indigo-400/40 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -3722,7 +3937,7 @@ function Coaster3DGameplay({
         </div>
       )}
 
-      {/* UPGRADED WRONG TRACK / DERAILMENT MODAL */}
+      {/* WRONG TRACK / REVIVE / GAME OVER MODAL */}
       {crashModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-3 sm:p-5 overflow-y-auto">
           <div className="relative bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-rose-500/80 rounded-[2rem] max-w-lg w-full overflow-hidden shadow-[0_0_60px_rgba(244,63,94,0.4)] my-auto">
@@ -3738,7 +3953,9 @@ function Coaster3DGameplay({
             {/* Top Bar inside Modal: Gate Badge + Quick Settings & Full Screen */}
             <div className="flex items-center justify-between px-5 pt-4">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 text-xs font-black uppercase tracking-wider">
-                ⚠️ Coaster Derailed · Gate {crashModal.gateNumber}/{crashModal.totalGates}
+                {crashModal.isGameOver
+                  ? `💔 GAME OVER · Gate ${crashModal.gateNumber}/${crashModal.totalGates}`
+                  : `⚠️ Coaster Derailed · Gate ${crashModal.gateNumber}/${crashModal.totalGates}`}
               </span>
 
               <div className="flex items-center gap-2">
@@ -3759,7 +3976,6 @@ function Coaster3DGameplay({
               <div className="relative w-36 h-28 mx-auto mb-3 flex items-center justify-center">
                 <div className="absolute inset-0 bg-gradient-to-tr from-rose-600/35 via-orange-500/25 to-amber-400/20 rounded-full blur-xl animate-pulse" />
                 <svg viewBox="0 0 200 140" className="w-full h-full relative z-10 overflow-visible drop-shadow-xl">
-                  {/* Snapped Steel Coaster Track with Gap */}
                   <path
                     d="M 10 115 Q 55 82 95 74"
                     fill="none"
@@ -3774,15 +3990,11 @@ function Coaster3DGameplay({
                     strokeWidth="5"
                     strokeLinecap="round"
                   />
-                  {/* Jagged Snapped Rail Ends */}
                   <path d="M 95 74 L 112 62 L 106 78 L 120 71" fill="none" stroke="#facc15" strokeWidth="3.5" />
-                  {/* Wooden Crossties */}
                   <line x1="28" y1="98" x2="36" y2="116" stroke="#78350f" strokeWidth="5" strokeLinecap="round" />
                   <line x1="55" y1="82" x2="63" y2="100" stroke="#78350f" strokeWidth="5" strokeLinecap="round" />
                   <line x1="82" y1="72" x2="90" y2="90" stroke="#78350f" strokeWidth="5" strokeLinecap="round" />
-                  {/* Tilted Red Coaster Car Plunging Off the Edge */}
                   <g transform="translate(122, 48) rotate(28)">
-                    {/* Cute Hamster Pilot */}
                     <circle cx="0" cy="-14" r="14" fill="#f59e0b" />
                     <circle cx="-10" cy="-24" r="5" fill="#f59e0b" />
                     <circle cx="10" cy="-24" r="5" fill="#f59e0b" />
@@ -3791,12 +4003,10 @@ function Coaster3DGameplay({
                     <circle cx="-6" cy="-12" r="2" fill="#0f172a" />
                     <circle cx="6" cy="-12" r="2" fill="#0f172a" />
                     <ellipse cx="0" cy="-6" rx="4" ry="3" fill="#fda4af" />
-                    {/* Coaster Car Body */}
                     <rect x="-24" y="-4" width="48" height="22" rx="9" fill="#dc2626" stroke="#fbbf24" strokeWidth="3" />
                     <circle cx="-14" cy="20" r="5" fill="#334155" stroke="#94a3b8" strokeWidth="2" />
                     <circle cx="14" cy="20" r="5" fill="#334155" stroke="#94a3b8" strokeWidth="2" />
                   </g>
-                  {/* Explosive Sparks */}
                   <polygon
                     points="105,42 110,52 121,50 113,59 118,69 107,64 98,71 100,60 91,54 102,51"
                     fill="#facc15"
@@ -3813,6 +4023,20 @@ function Coaster3DGameplay({
                 {crashModal.reason}
               </p>
 
+              {/* Hearts Lives Remaining Banner */}
+              <div className="mt-3 inline-flex items-center gap-2 px-4 py-1.5 rounded-2xl bg-slate-950/90 border border-rose-500/40">
+                <span className="text-xs font-black uppercase tracking-wider text-rose-300">
+                  Lives Remaining:
+                </span>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: initialLives }).map((_, i) => (
+                    <span key={i} className="text-lg">
+                      {i < crashModal.livesRemaining ? '❤️' : '🖤'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
               {/* Question & Side-by-Side Track Answer Breakdown */}
               <div className="mt-4 bg-slate-950/80 border border-white/15 rounded-2xl p-4 text-left space-y-3">
                 <div>
@@ -3825,7 +4049,6 @@ function Coaster3DGameplay({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-white/10">
-                  {/* Trap Track Chosen */}
                   <div className="bg-rose-950/60 border border-rose-500/50 rounded-xl p-2.5 flex items-start gap-2.5">
                     <span className="w-6 h-6 rounded-lg bg-rose-500/30 border border-rose-400 flex items-center justify-center text-xs shrink-0 mt-0.5">
                       ❌
@@ -3840,7 +4063,6 @@ function Coaster3DGameplay({
                     </div>
                   </div>
 
-                  {/* Safe Correct Track */}
                   <div className="bg-emerald-950/60 border border-emerald-400/60 rounded-xl p-2.5 flex items-start gap-2.5 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
                     <span className="w-6 h-6 rounded-lg bg-emerald-500/30 border border-emerald-400 flex items-center justify-center text-xs shrink-0 mt-0.5">
                       ✅
@@ -3857,39 +4079,57 @@ function Coaster3DGameplay({
                 </div>
               </div>
 
-              {/* Current Ride Stats Strip */}
-              <div className="grid grid-cols-3 gap-2 mt-3.5">
-                <div className="bg-slate-800/70 border border-white/10 rounded-xl py-2 px-3">
-                  <div className="text-[9px] font-extrabold uppercase text-amber-300">Live Score</div>
-                  <div className="text-sm sm:text-base font-black text-white">★ {score.toLocaleString()}</div>
+              {/* Current Ride Stats Strip (Coins & Time Remaining — No LIVE PTS) */}
+              <div className="grid grid-cols-2 gap-2.5 mt-3.5">
+                <div className="bg-slate-800/70 border border-yellow-400/30 rounded-xl py-2.5 px-3">
+                  <div className="text-[10px] font-extrabold uppercase text-yellow-300">Coins Collected</div>
+                  <div className="text-lg sm:text-xl font-black text-yellow-300">🪙 {coinsCount}</div>
                 </div>
-                <div className="bg-slate-800/70 border border-white/10 rounded-xl py-2 px-3">
-                  <div className="text-[9px] font-extrabold uppercase text-yellow-300">Coins</div>
-                  <div className="text-sm sm:text-base font-black text-white">🪙 {coinsCount}</div>
-                </div>
-                <div className="bg-slate-800/70 border border-white/10 rounded-xl py-2 px-3">
-                  <div className="text-[9px] font-extrabold uppercase text-sky-300">Ride Time</div>
-                  <div className="text-sm sm:text-base font-black text-white">
-                    {String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:
-                    {String(elapsedSeconds % 60).padStart(2, '0')}
+                <div className="bg-slate-800/70 border border-sky-400/30 rounded-xl py-2.5 px-3">
+                  <div className="text-[10px] font-extrabold uppercase text-sky-300">Time Remaining</div>
+                  <div className="text-lg sm:text-xl font-black text-white">
+                    ⏱️ {String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:
+                    {String(remainingSeconds % 60).padStart(2, '0')}
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Buttons: Revive if lives > 0, or Game Over Full Restart */}
               <div className="flex flex-col sm:flex-row gap-2.5 mt-5">
-                <button
-                  onClick={() => actionsRef.current.retryCheckpoint()}
-                  className="flex-1 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-300 hover:to-rose-400 text-slate-950 font-black text-base sm:text-lg py-3.5 px-5 rounded-2xl shadow-[0_8px_25px_rgba(245,158,11,0.45)] transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <span>🔄 Retry Gate #{crashModal.gateNumber}</span>
-                </button>
-                <button
-                  onClick={() => actionsRef.current.restartFullRide()}
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3.5 px-5 rounded-2xl border border-white/15 transition active:scale-95 cursor-pointer"
-                >
-                  Full Restart
-                </button>
+                {!crashModal.isGameOver && crashModal.livesRemaining > 0 ? (
+                  <>
+                    <button
+                      onClick={() => actionsRef.current.retryCheckpoint()}
+                      className="flex-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-orange-500 hover:from-emerald-300 hover:to-orange-400 text-slate-950 font-black text-base sm:text-lg py-3.5 px-5 rounded-2xl shadow-[0_8px_25px_rgba(245,158,11,0.45)] transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <span>
+                        ❤️ Revive at Gate #{crashModal.gateNumber} ({crashModal.livesRemaining}{' '}
+                        {crashModal.livesRemaining === 1 ? 'Life' : 'Lives'} Left)
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => actionsRef.current.restartFullRide()}
+                      className="bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3.5 px-5 rounded-2xl border border-white/15 transition active:scale-95 cursor-pointer"
+                    >
+                      Full Restart
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => actionsRef.current.restartFullRide()}
+                      className="flex-1 bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 hover:from-rose-400 hover:to-amber-300 text-slate-950 font-black text-base sm:text-lg py-3.5 px-5 rounded-2xl shadow-[0_8px_25px_rgba(244,63,94,0.45)] transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <span>🔄 Game Over — Play Again!</span>
+                    </button>
+                    <button
+                      onClick={onExitToSetup}
+                      className="bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3.5 px-5 rounded-2xl border border-white/15 transition active:scale-95 cursor-pointer"
+                    >
+                      Back to Setup
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -3907,23 +4147,23 @@ function Coaster3DGameplay({
               RIDE CONQUERED!
             </h2>
             <p className="text-slate-300 text-sm sm:text-base mt-2">
-              Awesome reflexes, <span className="text-amber-300 font-bold">{riderName}</span>! You navigated every coaster junction without falling off!
+              Awesome reflexes, <span className="text-amber-300 font-bold">{riderName}</span>! You navigated every coaster junction!
             </p>
             <div className="grid grid-cols-3 gap-2.5 mt-5">
-              <div className="bg-slate-800/90 border border-amber-400/30 rounded-2xl p-3">
-                <div className="text-[10px] uppercase font-bold tracking-widest text-amber-400">
-                  Final Score
+              <div className="bg-slate-800/90 border border-yellow-400/40 rounded-2xl p-3">
+                <div className="text-[10px] uppercase font-bold tracking-widest text-yellow-300">
+                  Total Coins
                 </div>
-                <div className="text-xl sm:text-2xl font-black text-white mt-1">
-                  {victoryModal.finalScore.toLocaleString()}
+                <div className="text-2xl sm:text-3xl font-black text-yellow-300 mt-1">
+                  🪙 {victoryModal.coins}
                 </div>
               </div>
-              <div className="bg-slate-800/90 border border-yellow-400/30 rounded-2xl p-3">
-                <div className="text-[10px] uppercase font-bold tracking-widest text-yellow-300">
-                  Coins
+              <div className="bg-slate-800/90 border border-rose-400/40 rounded-2xl p-3">
+                <div className="text-[10px] uppercase font-bold tracking-widest text-rose-300">
+                  Lives Left
                 </div>
                 <div className="text-xl sm:text-2xl font-black text-white mt-1">
-                  🪙 {victoryModal.coins}
+                  ❤️ {victoryModal.livesRemaining}/{initialLives}
                 </div>
               </div>
               <div className="bg-slate-800/90 border border-sky-400/30 rounded-2xl p-3">

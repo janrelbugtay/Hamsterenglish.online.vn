@@ -164,7 +164,9 @@ export function PublicDashboard({
   const allGameTemplates = [
     { id: "mystery-box", title: "Mystery Box", color: "text-orange-600", icon: "https://drive.google.com/thumbnail?id=1ugM0rhtk40XdbSDrdDJja5QpLNkWebQn&sz=w1000" },
     { id: "bubble-pop", title: "Bubble Pop", color: "text-blue-600", icon: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000" },
-    { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "https://images.unsplash.com/photo-1560275619-4662e36fa65c?q=80&w=1000&auto=format&fit=crop" },
+    { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", color: "text-amber-600", icon: "/images/roller-coaster-quiz-card.jpg" },
+    { id: "slap-and-chop", title: "Slap & Chop", color: "text-purple-600", icon: "/images/slap-and-chop-card.jpg" },
+    { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "/images/shark-attack-card.jpg" },
     { id: "flashcards-match", title: "Flashcards Match", color: "text-indigo-600", icon: "https://drive.google.com/thumbnail?id=1UtaZtVX0onrqj3VorxedOxy1iVXdFAHk&sz=w1000" },
     { id: "bubble-sentence-pro", title: "Bubble Island", color: "text-sky-600", icon: "https://drive.google.com/thumbnail?id=136UAXGhVDr4ZhJd3bRABHDKp40RJIQSJ&sz=w1000" },
     { id: "yoga-quiz", title: "Yoga Quiz", color: "text-emerald-600", icon: "https://drive.google.com/thumbnail?id=16viKskpD4hXygTg-0UaGSjfrWibNoqeQ&sz=w1000" },

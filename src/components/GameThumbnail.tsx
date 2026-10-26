@@ -408,6 +408,16 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
   // Compact 64x64 mode for small icons in My Games folder list
   if (compact) {
+    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack')) {
+      return (
+        <img
+          src={info.icon}
+          referrerPolicy="no-referrer"
+          alt={info?.title || cleanTitle}
+          className="absolute inset-0 w-full h-full object-cover scale-110 pointer-events-none select-none"
+        />
+      );
+    }
     return (
       <div className={`absolute inset-0 w-full h-full bg-gradient-to-br ${palette.bgGradient} flex flex-col items-center justify-center p-1 overflow-hidden pointer-events-none select-none`}>
         <span className="text-2xl leading-none drop-shadow-md">{emojis[0]}</span>
@@ -415,6 +425,18 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           {normalizedType === 'bubble-sentence-pro' ? 'Island' : normalizedType.replace(/-/g, ' ')}
         </span>
       </div>
+    );
+  }
+
+  // Template card mode (no custom game object passed) for Roller Coaster Quiz, Slap & Chop, and Shark Attack
+  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack')) {
+    return (
+      <img
+        src={info.icon}
+        referrerPolicy="no-referrer"
+        alt={info?.title || cleanTitle}
+        className="absolute inset-0 w-full h-full object-cover scale-[1.12] group-hover:scale-[1.20] transition-transform duration-500"
+      />
     );
   }
 
