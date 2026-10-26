@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Coaster Quiz 3D - Theme Park Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700;800&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Inter', sans-serif;
+        }
+        .font-display {
+            font-family: 'Fredoka', sans-serif;
+        }
+        #canvas-container {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        /* Cartoon 3D Text Stroke Effect matching the reference image */
+        .title-stroke {
+            color: #ffffff;
+            text-shadow:
+                0 4px 0 #1e293b,
+                -2px -2px 0 #1e293b,
+                2px -2px 0 #1e293b,
+                -2px 2px 0 #1e293b,
+                2px 2px 0 #1e293b,
+                0 10px 25px rgba(0,0,0,0.65);
+        }
+        .countdown-number {
+            color: #f59e0b;
+            text-shadow:
+                0 6px 0 #78350f,
+                -3px -3px 0 #78350f,
+                3px -3px 0 #78350f,
+                -3px 3px 0 #78350f,
+                3px 3px 0 #78350f,
+                0 15px 35px rgba(0,0,0,0.75);
+        }
+        /* Dashed Touch/Tilt Control Circles from the reference image */
+        .touch-wheel {
+            border: 3.5px dashed rgba(255, 255, 255, 0.65);
+            box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.08), 0 0 20px rgba(0, 0, 0, 0.35);
+            transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+            backdrop-filter: blur(2px);
+        }
+        .touch-wheel.active-left {
+            border-color: #38bdf8;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.32) 0%, rgba(56, 189, 248, 0.05) 70%);
+            transform: scale(1.07);
+            box-shadow: 0 0 35px rgba(56, 189, 248, 0.6), inset 0 0 25px rgba(56, 189, 248, 0.3);
+        }
+        .touch-wheel.active-right {
+            border-color: #f43f5e;
+            background: radial-gradient(circle, rgba(244, 63, 94, 0.32) 0%, rgba(244, 63, 94, 0.05) 70%);
+            transform: scale(1.07);
+            box-shadow: 0 0 35px rgba(244, 63, 94, 0.6), inset 0 0 25px rgba(244, 63, 94, 0.3);
+        }
+        /* Question Gate Cards */
+        .answer-pill {
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .answer-pill.selected {
+            transform: scale(1.08) translateY(-4px);
+        }
+        @keyframes pulseGlow {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .animate-pulse-slow {
+            animation: pulseGlow 1.6s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden select-none">
+
+    <!-- 3D WebGL Viewport -->
+    <div id="canvas-container"></div>
+
+    <!-- Vignette & Speed Lines Overlay -->
+    <div id="vignette-overlay" class="pointer-events-none fixed inset-0 z-10 transition-opacity duration-300 opacity-0"
+         style="background: radial-gradient(circle, transparent 45%, rgba(220, 38, 38, 0.65) 100%);"></div>
+
+    <!-- Top HUD Bar -->
+    <header class="fixed top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-3 sm:px-6 pointer-events-none">
+        <!-- Score & Question Progress -->
+        <div class="flex items-center gap-2 sm:gap-3 pointer-events-auto">
+            <div class="bg-slate-900/80 backdrop-blur-md border border-white/15 rounded-2xl px-3.5 py-2 flex items-center gap-3 shadow-xl">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-amber-400 text-lg">★</span>
+                    <span id="hud-score" class="font-display text-white text-lg sm:text-xl tracking-wide">0</span>
+                </div>
+                <div class="h-5 w-px bg-white/20"></div>
+                <div class="text-xs sm:text-sm font-semibold text-slate-300">
+                    Gate <span id="hud-progress" class="text-white font-bold">1/8</span>
+                </div>
+            </div>
+
+            <!-- Subject Selector Pill -->
+            <select id="subject-select" class="bg-slate-900/80 backdrop-blur-md border border-white/15 text-white text-xs sm:text-sm font-semibold rounded-2xl px-3 py-2.5 shadow-xl focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer">
+                <option value="all">All Subjects</option>
+                <option value="math">Math Mental</option>
+                <option value="science">Science & Space</option>
+                <option value="geography">World Geography</option>
+                <option value="english">Vocabulary & Grammar</option>
+                <option value="custom">Custom Teacher Set</option>
+            </select>
+        </div>
+
+        <!-- Tablet Tilt Status & Action Buttons -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <button id="btn-tilt-toggle" onclick="requestTiltPermission()"
+                class="bg-indigo-600/90 hover:bg-indigo-500 active:scale-95 backdrop-blur-md border border-indigo-300/40 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-2xl shadow-lg flex items-center gap-1.5 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+                <span id="tilt-status-text">Enable Tablet Tilt</span>
+            </button>
+
+            <button onclick="openQuestionModal()"
+                class="bg-slate-900/80 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-white/15 text-white text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-2xl shadow-lg flex items-center gap-1.5 transition"
+                title="Teacher Question Editor">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+                <span class="hidden sm:inline">Questions</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Center Countdown Overlay ("GET READY" + 4, 3, 2, 1 matching reference image) -->
+    <div id="countdown-overlay" class="fixed inset-0 z-20 flex flex-col items-center justify-center pointer-events-none pb-20">
+        <h1 id="countdown-title" class="font-display text-5xl sm:text-7xl md:text-8xl tracking-wider uppercase title-stroke text-center px-4 select-none">
+            GET READY
+        </h1>
+        <div id="countdown-digit" class="font-display text-7xl sm:text-9xl countdown-number mt-2 animate-pulse-slow select-none">
+            4
+        </div>
+    </div>
+
+    <!-- Active Question HUD Overlay (Compact at top so track split ahead is 100% visible) -->
+    <div id="question-hud" class="fixed top-14 sm:top-16 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-xl pointer-events-none transition-all duration-300 opacity-0 scale-90">
+        <!-- Timer Bar -->
+        <div class="w-full bg-slate-950/85 h-2.5 rounded-t-2xl overflow-hidden border-x border-t border-white/20 p-0.5">
+            <div id="question-timer-bar" class="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 rounded-full transition-all duration-75" style="width: 100%;"></div>
+        </div>
+
+        <!-- Question Card -->
+        <div class="bg-slate-900/80 backdrop-blur-md border-x border-b border-white/20 rounded-b-3xl px-4 py-2.5 sm:px-5 sm:py-3.5 shadow-2xl text-center">
+            <div class="inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-extrabold uppercase tracking-widest text-amber-400 bg-amber-500/15 border border-amber-400/30 px-2.5 py-0.5 rounded-full mb-1">
+                <span>⚡ Track Split Ahead — Lean or Tap to Switch Rails!</span>
+            </div>
+            <h2 id="question-text" class="font-display text-lg sm:text-2xl md:text-3xl text-white tracking-wide drop-shadow-md">
+                7 × 8 = ?
+            </h2>
+
+            <!-- Left & Right Answer Choice Gates -->
+            <div class="grid grid-cols-2 gap-2.5 sm:gap-4 mt-2.5 pointer-events-auto">
+                <!-- Left Choice -->
+                <button id="choice-left-card" onclick="setSteeringChoice(-1)"
+                    class="answer-pill group relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/90 to-blue-700/90 border-2 border-sky-300/70 p-2.5 sm:p-3 text-left shadow-xl flex items-center justify-between cursor-pointer">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <span class="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-slate-950/40 border border-white/25 flex items-center justify-center font-display text-white text-base sm:text-lg shrink-0">
+                            ◀
+                        </span>
+                        <div>
+                            <div class="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-sky-100/85">Left Track</div>
+                            <div id="choice-left-text" class="font-display text-base sm:text-xl text-white leading-tight">56</div>
+                        </div>
+                    </div>
+                    <span id="left-lock-badge" class="hidden text-[9px] sm:text-[10px] font-extrabold uppercase bg-white text-blue-900 px-1.5 py-0.5 rounded-md shadow">LOCKED</span>
+                </button>
+
+                <!-- Right Choice -->
+                <button id="choice-right-card" onclick="setSteeringChoice(1)"
+                    class="answer-pill group relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-500/90 to-red-700/90 border-2 border-rose-300/70 p-2.5 sm:p-3 text-right shadow-xl flex items-center justify-between cursor-pointer">
+                    <span id="right-lock-badge" class="hidden text-[9px] sm:text-[10px] font-extrabold uppercase bg-white text-rose-900 px-1.5 py-0.5 rounded-md shadow">LOCKED</span>
+                    <div class="flex items-center gap-2 sm:gap-2.5 ml-auto">
+                        <div>
+                            <div class="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-rose-100/85">Right Track</div>
+                            <div id="choice-right-text" class="font-display text-base sm:text-xl text-white leading-tight">54</div>
+                        </div>
+                        <span class="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-slate-950/40 border border-white/25 flex items-center justify-center font-display text-white text-base sm:text-lg shrink-0">
+                            ▶
+                        </span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sleek Low-Profile 2D Coaster Front Bumper Bar at Very Bottom (~12% height max, never blocks view) -->
+    <div id="coaster-bumper-bar" class="fixed bottom-0 left-0 right-0 h-20 sm:h-24 z-10 pointer-events-none transition-transform duration-100 overflow-hidden"
+         style="background: linear-gradient(to bottom, rgba(24,24,27,0.88) 0%, rgba(9,9,11,0.98) 100%); border-top: 4px solid #dc2626; box-shadow: 0 -10px 30px rgba(0,0,0,0.65);">
+        <!-- Subtle metallic sheen highlight -->
+        <div class="w-full h-2 bg-gradient-to-r from-transparent via-white/25 to-transparent"></div>
+        <!-- Center Coaster Lap Bar Graphic -->
+        <div class="mx-auto mt-3 w-48 sm:w-64 h-3 rounded-full bg-zinc-800 border border-zinc-600/50 shadow-inner"></div>
+    </div>
+
+    <!-- Live Tilt / Steering Angle Meter (Positioned cleanly just above the low bumper) -->
+    <div class="fixed bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
+        <div class="bg-slate-950/80 backdrop-blur-md border border-white/15 rounded-full px-4 py-1.5 flex items-center gap-3 shadow-xl">
+            <span class="text-xs font-bold text-sky-400">◀ L</span>
+            <div class="w-28 sm:w-36 h-2.5 bg-slate-800 rounded-full relative overflow-hidden border border-white/10">
+                <!-- Center tick -->
+                <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/40 -translate-x-1/2 z-10"></div>
+                <!-- Tilt bubble indicator -->
+                <div id="tilt-indicator-dot" class="absolute top-0 bottom-0 w-5 bg-amber-400 rounded-full shadow transition-all duration-75" style="left: calc(50% - 10px);"></div>
+            </div>
+            <span class="text-xs font-bold text-rose-400">R ▶</span>
+        </div>
+        <span id="steer-direction-label" class="text-[11px] font-extrabold uppercase tracking-wider text-white/90 mt-1 drop-shadow">
+            STEERING: CENTER
+        </span>
+    </div>
+
+    <!-- Interactive Dashed Circular Touch Zones on Bottom Corners (Matching Reference Image) -->
+    <div class="fixed bottom-4 sm:bottom-6 left-0 right-0 z-20 flex items-center justify-between px-6 sm:px-14 md:px-24 pointer-events-none">
+        <!-- Left Dashed Steering Wheel Zone -->
+        <button id="wheel-left"
+            onpointerdown="setSteeringChoice(-1)"
+            class="touch-wheel pointer-events-auto w-28 h-28 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center text-white/90 active:scale-95 cursor-pointer group">
+            <svg class="w-8 h-8 sm:w-11 sm:h-11 text-white/85 group-hover:text-sky-300 transition" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            <span class="font-display text-xs sm:text-sm tracking-wider uppercase mt-1 text-white/95">LEAN LEFT</span>
+        </button>
+
+        <!-- Right Dashed Steering Wheel Zone -->
+        <button id="wheel-right"
+            onpointerdown="setSteeringChoice(1)"
+            class="touch-wheel pointer-events-auto w-28 h-28 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center text-white/90 active:scale-95 cursor-pointer group">
+            <svg class="w-8 h-8 sm:w-11 sm:h-11 text-white/85 group-hover:text-rose-300 transition" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="font-display text-xs sm:text-sm tracking-wider uppercase mt-1 text-white/95">LEAN RIGHT</span>
+        </button>
+    </div>
+
+    <!-- Bottom Right Mute Button (Matching Reference Image) -->
+    <button id="btn-mute" onclick="toggleAudioMute()"
+        class="fixed bottom-4 right-5 z-30 w-11 h-11 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-white/20 text-white flex items-center justify-center shadow-xl transition active:scale-90"
+        title="Toggle Coaster Sound">
+        <svg id="icon-sound-on" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
+        </svg>
+        <svg id="icon-sound-off" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
+        </svg>
+    </button>
+
+    <!-- Crash / Derailment Modal ("WRONG TRACK! YOU FELL OFF!") -->
+    <div id="crash-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border-2 border-rose-500/60 rounded-3xl max-w-md w-full p-6 sm:p-8 text-center shadow-2xl transform transition-all">
+            <div class="w-20 h-20 rounded-full bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center mx-auto mb-4 text-4xl">
+                🎢💥
+            </div>
+            <h2 id="crash-title" class="font-display text-3xl sm:text-4xl text-white tracking-wide">
+                DERAILED!
+            </h2>
+            <p id="crash-reason" class="text-slate-300 text-sm sm:text-base mt-2">
+                You steered onto the broken track!
+            </p>
+            <div id="crash-correct-box" class="mt-4 bg-slate-800/90 border border-white/10 rounded-2xl p-3.5 text-sm text-emerald-300 font-semibold">
+                Correct Answer: <span id="crash-correct-answer" class="text-white font-bold">56</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3 mt-6">
+                <button onclick="retryFromCheckpoint()"
+                    class="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-display text-lg py-3 px-5 rounded-2xl shadow-lg transition active:scale-95 cursor-pointer">
+                    Retry This Gate
+                </button>
+                <button onclick="restartFullRide()"
+                    class="bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm py-3 px-5 rounded-2xl border border-white/15 transition active:scale-95 cursor-pointer">
+                    New Ride
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory Modal (Completed All Coaster Gates) -->
+    <div id="victory-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border-2 border-amber-400/70 rounded-3xl max-w-md w-full p-6 sm:p-8 text-center shadow-2xl">
+            <div class="w-20 h-20 rounded-full bg-amber-400/20 border-2 border-amber-400 flex items-center justify-center mx-auto mb-4 text-4xl">
+                🏆🎡
+            </div>
+            <h2 class="font-display text-3xl sm:text-4xl text-white tracking-wide">
+                RIDE CONQUERED!
+            </h2>
+            <p class="text-slate-300 text-sm sm:text-base mt-2">
+                Amazing reflexes! You navigated every coaster junction without falling off!
+            </p>
+            <div class="mt-5 bg-slate-800/90 border border-amber-400/30 rounded-2xl p-4">
+                <div class="text-xs uppercase font-bold tracking-widest text-amber-400">Final Score</div>
+                <div id="victory-score" class="font-display text-4xl text-white mt-1">800 PTS</div>
+            </div>
+            <button onclick="restartFullRide()"
+                class="w-full mt-6 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-display text-xl py-3.5 px-6 rounded-2xl shadow-xl transition active:scale-95 cursor-pointer">
+                Ride Again! 🎢
+            </button>
+        </div>
+    </div>
+
+    <!-- Teacher / Student Question Editor Modal -->
+    <div id="question-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border border-white/20 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-white/10 pb-3">
+                <div>
+                    <h3 class="font-display text-xl sm:text-2xl text-white">Teacher Question Studio</h3>
+                    <p class="text-xs text-slate-400">Add custom Left/Right questions for students on tablets</p>
+                </div>
+                <button onclick="closeQuestionModal()" class="text-slate-400 hover:text-white p-1.5 rounded-xl bg-slate-800">✕</button>
+            </div>
+
+            <!-- Add New Question Form -->
+            <div class="mt-4 space-y-3">
+                <div>
+                    <label class="text-xs font-bold uppercase text-slate-300">Question Prompt</label>
+                    <input id="custom-q-text" type="text" placeholder="e.g., What is 12 × 6 ?"
+                        class="w-full mt-1 bg-slate-800 border border-white/15 rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-bold uppercase text-emerald-400">Correct Answer</label>
+                        <input id="custom-q-correct" type="text" placeholder="e.g., 72"
+                            class="w-full mt-1 bg-slate-800 border border-emerald-500/40 rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none focus:border-emerald-400">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold uppercase text-rose-400">Wrong Answer (Falls Off)</label>
+                        <input id="custom-q-wrong" type="text" placeholder="e.g., 68"
+                            class="w-full mt-1 bg-slate-800 border border-rose-500/40 rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none focus:border-rose-400">
+                    </div>
+                </div>
+                <button onclick="addCustomQuestion()"
+                    class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm py-2.5 rounded-xl shadow transition cursor-pointer">
+                    + Add Question to Custom Deck
+                </button>
+            </div>
+
+            <!-- Existing Custom Questions List -->
+            <div class="mt-4 flex-1 overflow-y-auto space-y-2 pr-1" id="custom-questions-list"></div>
+
+            <div class="mt-4 pt-3 border-t border-white/10 flex justify-between items-center">
+                <button onclick="useCustomDeckNow()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm px-4 py-2 rounded-xl cursor-pointer">
+                    Play Custom Deck Now
+                </button>
+                <button onclick="closeQuestionModal()" class="text-slate-300 hover:text-white text-sm font-semibold px-4 py-2">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /********************************************************************
+         * 1. QUESTION BANK (Multi-Subject + Teacher Custom Deck)
+         ********************************************************************/
+        const QUESTION_BANK = {
+            math: [
+                { q: "7 × 8 = ?", correct: "56", wrong: "54" },
+                { q: "144 ÷ 12 = ?", correct: "12", wrong: "14" },
+                { q: "9 × 6 = ?", correct: "54", wrong: "52" },
+                { q: "25 + 38 = ?", correct: "63", wrong: "53" },
+                { q: "Square root of 81?", correct: "9", wrong: "8" },
+                { q: "15 × 4 = ?", correct: "60", wrong: "45" },
+                { q: "100 − 37 = ?", correct: "63", wrong: "73" },
+                { q: "3³ (3 cubed) = ?", correct: "27", wrong: "9" }
+            ],
+            science: [
+                { q: "Which planet is known as the Red Planet?", correct: "Mars", wrong: "Venus" },
+                { q: "What gas do plants absorb for photosynthesis?", correct: "Carbon Dioxide", wrong: "Oxygen" },
+                { q: "Boiling point of water at sea level?", correct: "100°C", wrong: "90°C" },
+                { q: "Which force pulls the roller coaster down hills?", correct: "Gravity", wrong: "Magnetism" },
+                { q: "Largest organ in the human body?", correct: "Skin", wrong: "Liver" },
+                { q: "Chemical symbol for Gold?", correct: "Au", wrong: "Ag" },
+                { q: "How many bones are in an adult human?", correct: "206", wrong: "186" },
+                { q: "Center of an atom is called the...?", correct: "Nucleus", wrong: "Electron" }
+            ],
+            geography: [
+                { q: "Largest ocean on Earth?", correct: "Pacific Ocean", wrong: "Atlantic Ocean" },
+                { q: "Capital city of Japan?", correct: "Tokyo", wrong: "Kyoto" },
+                { q: "Which continent is the Sahara Desert in?", correct: "Africa", wrong: "Asia" },
+                { q: "Longest river in the world?", correct: "Nile", wrong: "Amazon" },
+                { q: "Country famous for the Eiffel Tower?", correct: "France", wrong: "Italy" },
+                { q: "Tallest mountain peak in the world?", correct: "Mt. Everest", wrong: "K2" }
+            ],
+            english: [
+                { q: "Antonym of 'ANCIENT'?", correct: "Modern", wrong: "Historic" },
+                { q: "Choose the correct spelling:", correct: "Necessary", wrong: "Neccessary" },
+                { q: "Plural of 'Child'?", correct: "Children", wrong: "Childs" },
+                { q: "Which word is a Verb?", correct: "Accelerate", wrong: "Quickly" },
+                { q: "Synonym of 'COURAGEOUS'?", correct: "Brave", wrong: "Timid" },
+                { q: "Past tense of 'Fly'?", correct: "Flew", wrong: "Flied" }
+            ],
+            custom: [
+                { q: "8 × 9 = ?", correct: "72", wrong: "64" },
+                { q: "Does the Earth revolve around the Sun?", correct: "Yes!", wrong: "No" },
+                { q: "How many continents are on Earth?", correct: "7", wrong: "5" }
+            ]
+        };
+
+        let activeDeck = [];
+        let currentQuestionIndex = 0;
+        let currentGateData = null; // { q, leftText, rightText, correctSide: -1 or 1 }
+        let score = 0;
+
+        function buildQuestionDeck() {
+            const subject = document.getElementById('subject-select').value;
+            let pool = [];
+            if (subject === 'all') {
+                pool = [
+                    ...QUESTION_BANK.math,
+                    ...QUESTION_BANK.science,
+                    ...QUESTION_BANK.geography,
+                    ...QUESTION_BANK.english
+                ];
+            } else {
+                pool = [...(QUESTION_BANK[subject] || QUESTION_BANK.math)];
+            }
+            // Shuffle pool
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            activeDeck = pool.slice(0, 8);
+        }
+
+        document.getElementById('subject-select').addEventListener('change', () => {
+            restartFullRide();
+        });
+
+        /********************************************************************
+         * 2. SYNTHESIZED WEB AUDIO API SOUND ENGINE
+         ********************************************************************/
+        let audioCtx = null;
+        let isMuted = false;
+        let lastClackTime = 0;
+
+        function ensureAudio() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                    audioCtx = new AudioContextClass();
+                }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function toggleAudioMute() {
+            isMuted = !isMuted;
+            document.getElementById('icon-sound-on').classList.toggle('hidden', isMuted);
+            document.getElementById('icon-sound-off').classList.toggle('hidden', !isMuted);
+        }
+
+        function playTone(freq, type = 'sine', duration = 0.18, gainVal = 0.18, slideTo = null) {
+            if (isMuted) return;
+            ensureAudio();
+            if (!audioCtx) return;
+
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, now);
+            if (slideTo) {
+                osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+            }
+            gain.gain.setValueAtTime(gainVal, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + duration);
+        }
+
+        function playChainClack() {
+            if (isMuted) return;
+            ensureAudio();
+            if (!audioCtx) return;
+            const now = performance.now();
+            if (now - lastClackTime < 130) return;
+            lastClackTime = now;
+            playTone(190, 'triangle', 0.045, 0.07, 90);
+        }
+
+        function playCorrectChime() {
+            playTone(523.25, 'triangle', 0.14, 0.22); // C5
+            setTimeout(() => playTone(659.25, 'triangle', 0.14, 0.22), 90); // E5
+            setTimeout(() => playTone(783.99, 'triangle', 0.28, 0.25), 180); // G5
+        }
+
+        function playFallScreamAndCrash() {
+            if (isMuted) return;
+            ensureAudio();
+            if (!audioCtx) return;
+            // Falling whistle / derailment sound
+            playTone(620, 'sawtooth', 1.1, 0.22, 110);
+            setTimeout(() => playTone(95, 'square', 0.45, 0.28, 40), 650);
+        }
+
+        /********************************************************************
+         * 3. THREE.JS HIGH-RES THEME PARK & ROLLER COASTER SCENE
+         ********************************************************************/
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x3b82f6);
+        scene.fog = new THREE.FogExp2(0x7dd3fc, 0.00085);
+
+        const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 1200);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.05;
+        container.appendChild(renderer.domElement);
+
+        // Sky Dome with vibrant blue gradient and 3D puffy clouds
+        function createSkyDome() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            const grad = ctx.createLinearGradient(0, 0, 0, 512);
+            grad.addColorStop(0, '#1e40af');
+            grad.addColorStop(0.35, '#2563eb');
+            grad.addColorStop(0.55, '#60a5fa');
+            grad.addColorStop(0.75, '#bae6fd');
+            grad.addColorStop(1, '#bae6fd');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 1024, 512);
+
+            // Soft streaky cirrus & cumulus clouds in upper hemisphere
+            for (let i = 0; i < 65; i++) {
+                const x = Math.random() * 1024;
+                const y = 40 + Math.random() * 200;
+                const w = 65 + Math.random() * 150;
+                const h = 16 + Math.random() * 32;
+                const cloudGrad = ctx.createRadialGradient(x, y, 4, x, y, w);
+                cloudGrad.addColorStop(0, 'rgba(255,255,255,0.85)');
+                cloudGrad.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = cloudGrad;
+                ctx.beginPath();
+                ctx.ellipse(x, y, w, h, -0.12, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const skyTex = new THREE.CanvasTexture(canvas);
+            const skyGeo = new THREE.SphereGeometry(750, 32, 24);
+            const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, depthWrite: false });
+            const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+            scene.add(skyMesh);
+
+            // Fluffy 3D Cloud Clusters floating in the sky
+            const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, fog: false });
+            for (let c = 0; c < 18; c++) {
+                const cloudGroup = new THREE.Group();
+                const cx = (Math.random() - 0.5) * 420;
+                const cy = 65 + Math.random() * 55;
+                const cz = -40 - Math.random() * 360;
+                cloudGroup.position.set(cx, cy, cz);
+                for (let p = 0; p < 4; p++) {
+                    const puff = new THREE.Mesh(new THREE.SphereGeometry(6 + Math.random() * 5, 10, 10), cloudMat);
+                    puff.position.set((p - 1.5) * 6, (Math.random() - 0.5) * 2.5, (Math.random() - 0.5) * 3);
+                    puff.scale.set(1.4, 0.75, 1);
+                    cloudGroup.add(puff);
+                }
+                scene.add(cloudGroup);
+            }
+        }
+        createSkyDome();
+
+        // Lighting
+        const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x3f6212, 0.75);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.35);
+        sunLight.position.set(80, 140, -60);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 10;
+        sunLight.shadow.camera.far = 350;
+        const d = 110;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
+        scene.add(sunLight);
+
+        // Rich Grassy Park Terrain with Wildflowers Texture
+        function createGrassGround() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#365314';
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Grass blades
+            for (let i = 0; i < 6000; i++) {
+                ctx.fillStyle = i % 3 === 0 ? '#4d7c0f' : (i % 2 === 0 ? '#3f6212' : '#65a30d');
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                ctx.fillRect(x, y, 2, 6);
+            }
+            // Tiny yellow dandelion dots like in the reference image
+            for (let i = 0; i < 160; i++) {
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(Math.random() * 512, Math.random() * 512, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(70, 70);
+
+            const groundGeo = new THREE.PlaneGeometry(1200, 1200);
+            const groundMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0;
+            ground.receiveShadow = true;
+            scene.add(ground);
+        }
+        createGrassGround();
+
+        /********************************************************************
+         * 4. THEME PARK LANDMARKS (Giant Neon Ferris Wheel, Carousel, Trees)
+         ********************************************************************/
+        const ferrisWheelGroup = new THREE.Group();
+        let ferrisWheelRotor = null;
+
+        function buildFerrisWheel() {
+            ferrisWheelGroup.position.set(28, 0, -145);
+            ferrisWheelGroup.rotation.y = -0.25;
+
+            const radius = 38;
+            const supportMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.6, roughness: 0.4 });
+            const neonPinkMat = new THREE.MeshStandardMaterial({
+                color: 0xf472b6,
+                emissive: 0xec4899,
+                emissiveIntensity: 0.65,
+                roughness: 0.25
+            });
+            const rimMat = new THREE.MeshStandardMaterial({
+                color: 0xfbcfe8,
+                emissive: 0xf472b6,
+                emissiveIntensity: 0.35
+            });
+
+            // A-Frame Legs
+            const legGeo = new THREE.CylinderGeometry(0.9, 1.4, 52, 12);
+            const legOffsets = [
+                { x: -14, z: -5, rz: -0.26 },
+                { x: 14, z: -5, rz: 0.26 },
+                { x: -14, z: 5, rz: -0.26 },
+                { x: 14, z: 5, rz: 0.26 }
+            ];
+            legOffsets.forEach(cfg => {
+                const leg = new THREE.Mesh(legGeo, supportMat);
+                leg.position.set(cfg.x * 0.5, 23, cfg.z);
+                leg.rotation.z = cfg.rz;
+                ferrisWheelGroup.add(leg);
+            });
+
+            // Rotating Wheel Hub
+            ferrisWheelRotor = new THREE.Group();
+            ferrisWheelRotor.position.set(0, 45, 0);
+            ferrisWheelGroup.add(ferrisWheelRotor);
+
+            // Dual Outer & Inner Rims
+            [-3.2, 3.2].forEach(zOff => {
+                const outerRim = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.55, 12, 48), rimMat);
+                outerRim.position.z = zOff;
+                ferrisWheelRotor.add(outerRim);
+
+                const innerRim = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.72, 0.38, 10, 48), neonPinkMat);
+                innerRim.position.z = zOff;
+                ferrisWheelRotor.add(innerRim);
+            });
+
+            // Glowing Pink Spokes & Gondola Cabins
+            const numCabins = 20;
+            const cabinColors = [0xef4444, 0xf59e0b, 0x10b981, 0x3b82f6, 0xa855f7, 0xec4899];
+
+            for (let i = 0; i < numCabins; i++) {
+                const angle = (i / numCabins) * Math.PI * 2;
+                const spokeGeo = new THREE.CylinderGeometry(0.22, 0.22, radius * 2, 8);
+                if (i < numCabins / 2) {
+                    [-3.2, 3.2].forEach(zOff => {
+                        const spoke = new THREE.Mesh(spokeGeo, neonPinkMat);
+                        spoke.rotation.z = angle;
+                        spoke.position.z = zOff;
+                        ferrisWheelRotor.add(spoke);
+                    });
+                }
+
+                // Gondola Cabin
+                const cabinGroup = new THREE.Group();
+                cabinGroup.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+                const cabinMat = new THREE.MeshStandardMaterial({
+                    color: cabinColors[i % cabinColors.length],
+                    roughness: 0.35,
+                    metalness: 0.2
+                });
+                const cabin = new THREE.Mesh(new THREE.SphereGeometry(2.1, 14, 12), cabinMat);
+                cabin.scale.set(1.1, 0.85, 1.3);
+                cabinGroup.add(cabin);
+                ferrisWheelRotor.add(cabinGroup);
+            }
+
+            // Center Axle
+            const axle = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 9, 16), neonPinkMat);
+            axle.rotation.x = Math.PI / 2;
+            ferrisWheelRotor.add(axle);
+
+            scene.add(ferrisWheelGroup);
+        }
+        buildFerrisWheel();
+
+        // Yellow & Purple Striped Circus Carousel (Matching Reference Image right side)
+        let carouselRotor = null;
+        function buildCarouselTent() {
+            const group = new THREE.Group();
+            group.position.set(18, 0, -52);
+
+            // Stepped circular base
+            const base1 = new THREE.Mesh(
+                new THREE.CylinderGeometry(7.5, 8.2, 1.2, 28),
+                new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.5 })
+            );
+            base1.position.y = 0.6;
+            group.add(base1);
+
+            carouselRotor = new THREE.Group();
+            carouselRotor.position.y = 1.2;
+            group.add(carouselRotor);
+
+            // Striped Yellow & Purple Cone Roof Texture
+            const cCanvas = document.createElement('canvas');
+            cCanvas.width = 512;
+            cCanvas.height = 256;
+            const cCtx = cCanvas.getContext('2d');
+            const stripes = 16;
+            for (let i = 0; i < stripes; i++) {
+                cCtx.fillStyle = i % 2 === 0 ? '#facc15' : '#581c87';
+                cCtx.fillRect((i * 512) / stripes, 0, 512 / stripes + 1, 256);
+            }
+            const roofTex = new THREE.CanvasTexture(cCanvas);
+            const roofGeo = new THREE.ConeGeometry(7.2, 6.2, 32);
+            const roofMat = new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.45 });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.y = 7.5;
+            carouselRotor.add(roof);
+
+            // Center Column & Golden Poles
+            const centerPole = new THREE.Mesh(
+                new THREE.CylinderGeometry(1.1, 1.1, 6, 16),
+                new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.6, roughness: 0.3 })
+            );
+            centerPole.position.y = 3;
+            carouselRotor.add(centerPole);
+
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                const pole = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.12, 0.12, 5.2, 8),
+                    new THREE.MeshStandardMaterial({ color: 0xfde047, metalness: 0.8 })
+                );
+                pole.position.set(Math.cos(a) * 5.2, 2.6, Math.sin(a) * 5.2);
+                carouselRotor.add(pole);
+            }
+
+            // Crown Sign on top of Carousel ("KING" sign in reference image)
+            const crown = new THREE.Mesh(
+                new THREE.ConeGeometry(1.6, 2.2, 6),
+                new THREE.MeshStandardMaterial({ color: 0xf472b6, emissive: 0xdb2777, emissiveIntensity: 0.5 })
+            );
+            crown.position.y = 11.4;
+            group.add(crown);
+
+            scene.add(group);
+        }
+        buildCarouselTent();
+
+        // Decorative Decorative Loop Coaster & Trees & City Skyline
+        function populateParkScenery() {
+            // Trees scattered around the park
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+            const foliageColors = [0x15803d, 0x166534, 0x14532d, 0x3f6212];
+
+            for (let i = 0; i < 85; i++) {
+                const tx = (Math.random() - 0.5) * 260;
+                const tz = -Math.random() * 340 + 30;
+                // Keep central coaster corridor clear
+                if (Math.abs(tx) < 13) continue;
+
+                const tree = new THREE.Group();
+                tree.position.set(tx, 0, tz);
+
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.7, 4.5, 7), trunkMat);
+                trunk.position.y = 2.25;
+                trunk.castShadow = true;
+                tree.add(trunk);
+
+                const fMat = new THREE.MeshStandardMaterial({
+                    color: foliageColors[i % foliageColors.length],
+                    roughness: 0.85
+                });
+                for (let c = 0; c < 3; c++) {
+                    const puff = new THREE.Mesh(new THREE.DodecahedronGeometry(2.6 - c * 0.45, 1), fMat);
+                    puff.position.set((Math.random() - 0.5) * 1.2, 5.2 + c * 1.6, (Math.random() - 0.5) * 1.2);
+                    puff.castShadow = true;
+                    tree.add(puff);
+                }
+                const s = 0.85 + Math.random() * 0.7;
+                tree.scale.set(s, s, s);
+                scene.add(tree);
+            }
+
+            // Distant City Skyline Silhouettes
+            const bldgMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.7 });
+            for (let i = 0; i < 24; i++) {
+                const w = 10 + Math.random() * 16;
+                const h = 25 + Math.random() * 55;
+                const d = 10 + Math.random() * 16;
+                const bldg = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bldgMat);
+                bldg.position.set(-140 + i * 14, h / 2, -230 - Math.random() * 40);
+                scene.add(bldg);
+            }
+
+            // Secondary Red Coaster Track Curve on the Left (matching reference image)
+            const sideTrackPoints = [
+                new THREE.Vector3(-9, 5, 10),
+                new THREE.Vector3(-16, 12, -15),
+                new THREE.Vector3(-22, 14, -45),
+                new THREE.Vector3(-14, 9, -75),
+                new THREE.Vector3(-25, 15, -120)
+            ];
+            const sideCurve = new THREE.CatmullRomCurve3(sideTrackPoints);
+            const sideRailMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35, metalness: 0.3 });
+            const sideTube = new THREE.Mesh(new THREE.TubeGeometry(sideCurve, 60, 0.35, 8, false), sideRailMat);
+            scene.add(sideTube);
+
+            // Red Truss Towers on Left matching the reference image
+            for (let t = 0.1; t <= 0.9; t += 0.2) {
+                const pt = sideCurve.getPointAt(t);
+                const pillar = createTrussSupportPillar(pt.x, pt.y, pt.z);
+                scene.add(pillar);
+            }
+        }
+
+        function createTrussSupportPillar(x, height, z) {
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+            const redSteel = new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.45, metalness: 0.35 });
+            const darkCapMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.6 });
+
+            const postOffsets = [
+                [-0.9, -0.9], [0.9, -0.9], [-0.9, 0.9], [0.9, 0.9]
+            ];
+            postOffsets.forEach(([px, pz]) => {
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, height, 6), redSteel);
+                post.position.set(px, height / 2, pz);
+                group.add(post);
+            });
+
+            // Top Cap Block (seen on left supports in reference image)
+            const cap = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.1, 2.5), darkCapMat);
+            cap.position.y = Math.max(1, height - 0.6);
+            group.add(cap);
+            return group;
+        }
+        populateParkScenery();
+
+        /********************************************************************
+         * 5. UNOBSTRUCTED FIRST-PERSON CAMERA SETUP
+         *    (3D blocking mesh removed so track is 100% visible to the bottom)
+         ********************************************************************/
+        scene.add(camera);
+        const coasterBumperEl = document.getElementById('coaster-bumper-bar');
+
+        /********************************************************************
+         * 6. DYNAMIC BRANCHING ROLLER COASTER TRACK BUILDER
+         *    Generates main track + Left/Right forks at each question gate.
+         *    Wrong branch visibly breaks off in mid-air!
+         ********************************************************************/
+        const trackMeshGroup = new THREE.Group();
+        scene.add(trackMeshGroup);
+
+        let mainCurve = null;
+        let wrongBranchCurve = null;
+        let gateCheckpoints = []; // Z/t positions of each question fork
+        let gate3DSigns = [];
+
+        const RAIL_SPACING = 1.15;
+        const railMaterial = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.32, metalness: 0.35 });
+        const spineMaterial = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.45, metalness: 0.3 });
+        const tieMaterial = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.65 });
+
+        function buildDetailedTrackSegment(curve, steps, includePillars = true, isBrokenBranch = false) {
+            const segGroup = new THREE.Group();
+            const leftRailPts = [];
+            const rightRailPts = [];
+            const spinePts = [];
+
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const pt = curve.getPointAt(t);
+                const tan = curve.getTangentAt(t).normalize();
+                const up = new THREE.Vector3(0, 1, 0);
+                const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+
+                leftRailPts.push(pt.clone().addScaledVector(side, -RAIL_SPACING * 0.5));
+                rightRailPts.push(pt.clone().addScaledVector(side, RAIL_SPACING * 0.5));
+                spinePts.push(pt.clone().add(new THREE.Vector3(0, -0.24, 0)));
+
+                // Crossties (sleepers) like the reference image
+                if (i % 2 === 0) {
+                    const tieGeo = new THREE.BoxGeometry(RAIL_SPACING + 0.25, 0.09, 0.24);
+                    const tie = new THREE.Mesh(tieGeo, tieMaterial);
+                    tie.position.copy(pt).add(new THREE.Vector3(0, -0.06, 0));
+                    const lookTarget = pt.clone().add(tan);
+                    tie.lookAt(lookTarget);
+                    segGroup.add(tie);
+                }
+
+                // Vertical support pillars along intact track
+                if (includePillars && i > 0 && i % 22 === 0 && pt.y > 2.5) {
+                    const pillar = createTrussSupportPillar(pt.x, pt.y - 0.3, pt.z);
+                    segGroup.add(pillar);
+                }
+            }
+
+            const leftCurve = new THREE.CatmullRomCurve3(leftRailPts);
+            const rightCurve = new THREE.CatmullRomCurve3(rightRailPts);
+            const spineCurve = new THREE.CatmullRomCurve3(spinePts);
+
+            const leftTube = new THREE.Mesh(new THREE.TubeGeometry(leftCurve, steps, 0.11, 8, false), railMaterial);
+            const rightTube = new THREE.Mesh(new THREE.TubeGeometry(rightCurve, steps, 0.11, 8, false), railMaterial);
+            const spineTube = new THREE.Mesh(new THREE.TubeGeometry(spineCurve, steps, 0.18, 8, false), spineMaterial);
+
+            segGroup.add(leftTube, rightTube, spineTube);
+
+            // If this is the wrong answer branch, add jagged hazard stripes at the broken cliff edge
+            if (isBrokenBranch) {
+                const endPt = curve.getPointAt(1);
+                const warnGeo = new THREE.BoxGeometry(1.7, 0.35, 0.35);
+                const warnMat = new THREE.MeshStandardMaterial({
+                    color: 0xfacc15,
+                    emissive: 0xdc2626,
+                    emissiveIntensity: 0.5
+                });
+                const warnBar = new THREE.Mesh(warnGeo, warnMat);
+                warnBar.position.copy(endPt);
+                segGroup.add(warnBar);
+            }
+
+            return segGroup;
+        }
+
+        function create3DGateArch(position, gateIndex, questionObj) {
+            const archGroup = new THREE.Group();
+            archGroup.position.copy(position);
+
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.5, roughness: 0.4 });
+            const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7, 10), pillarMat);
+            leftPost.position.set(-4.2, 2.5, 0);
+            const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7, 10), pillarMat);
+            rightPost.position.set(4.2, 2.5, 0);
+            archGroup.add(leftPost, rightPost);
+
+            // 3D Floating Left & Right Answer Signboards above the branching rails
+            const signCanvasL = createAnswerSignCanvas(questionObj.leftText, '#0284c7', '◀ LEFT');
+            const signTexL = new THREE.CanvasTexture(signCanvasL);
+            const signL = new THREE.Mesh(
+                new THREE.PlaneGeometry(3.8, 2.0),
+                new THREE.MeshBasicMaterial({ map: signTexL, side: THREE.DoubleSide })
+            );
+            signL.position.set(-2.3, 4.3, 0);
+            archGroup.add(signL);
+
+            const signCanvasR = createAnswerSignCanvas(questionObj.rightText, '#e11d48', 'RIGHT ▶');
+            const signTexR = new THREE.CanvasTexture(signCanvasR);
+            const signR = new THREE.Mesh(
+                new THREE.PlaneGeometry(3.8, 2.0),
+                new THREE.MeshBasicMaterial({ map: signTexR, side: THREE.DoubleSide })
+            );
+            signR.position.set(2.3, 4.3, 0);
+            archGroup.add(signR);
+
+            return archGroup;
+        }
+
+        function createAnswerSignCanvas(text, bgColor, label) {
+            const c = document.createElement('canvas');
+            c.width = 512;
+            c.height = 256;
+            const ctx = c.getContext('2d');
+
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(12, 12, 488, 232, 36);
+            } else {
+                ctx.rect(12, 12, 488, 232);
+            }
+            ctx.fill();
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.font = 'bold 34px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, 256, 68);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 64px Fredoka, sans-serif';
+            ctx.fillText(String(text).slice(0, 14), 256, 165);
+            return c;
+        }
+
+        // Generate the entire roller coaster course with 8 question forks
+        function generateCoasterCourse() {
+            while (trackMeshGroup.children.length > 0) {
+                trackMeshGroup.remove(trackMeshGroup.children[0]);
+            }
+            gateCheckpoints = [];
+            gate3DSigns = [];
+
+            const pts = [];
+            let curX = 0;
+            let curY = 4.5;
+            let curZ = 25;
+
+            // Initial Lift Hill (matching reference image climb toward the arch)
+            pts.push(new THREE.Vector3(0, 3.8, 28));
+            pts.push(new THREE.Vector3(0, 6.2, 12));
+            pts.push(new THREE.Vector3(0, 10.5, -6));
+            pts.push(new THREE.Vector3(0, 13.8, -22));
+
+            curZ = -22;
+            curY = 13.8;
+
+            const numGates = activeDeck.length;
+
+            for (let g = 0; g < numGates; g++) {
+                const qItem = activeDeck[g];
+                const correctSide = Math.random() < 0.5 ? -1 : 1; // -1 = Left, +1 = Right
+                const leftText = correctSide === -1 ? qItem.correct : qItem.wrong;
+                const rightText = correctSide === 1 ? qItem.correct : qItem.wrong;
+
+                // Straight approach before the fork
+                const approachZ = curZ - 18;
+                const approachPt = new THREE.Vector3(curX, curY, approachZ);
+                pts.push(approachPt);
+
+                const forkZ = approachZ - 14;
+                const forkPt = new THREE.Vector3(curX, curY - 1.2, forkZ);
+                pts.push(forkPt);
+
+                // The intact branch bends toward `correctSide`
+                const branchX = curX + correctSide * 6.5;
+                const peakOrDipY = g % 2 === 0 ? Math.max(5.5, curY - 4.5) : Math.min(18, curY + 4.5);
+                const postForkZ = forkZ - 20;
+                const intactPt = new THREE.Vector3(branchX, peakOrDipY, postForkZ);
+                pts.push(intactPt);
+
+                // Build the WRONG broken track branch curving the opposite way and ending in mid-air!
+                const wrongSide = -correctSide;
+                const wrongPts = [
+                    forkPt.clone(),
+                    new THREE.Vector3(curX + wrongSide * 2.8, curY - 1.5, forkZ - 7),
+                    new THREE.Vector3(curX + wrongSide * 6.2, curY - 2.2, forkZ - 15)
+                ];
+                const wrongCurve = new THREE.CatmullRomCurve3(wrongPts);
+                const wrongMesh = buildDetailedTrackSegment(wrongCurve, 18, false, true);
+                trackMeshGroup.add(wrongMesh);
+
+                gateCheckpoints.push({
+                    index: g,
+                    question: qItem.q,
+                    correctAnswer: qItem.correct,
+                    leftText,
+                    rightText,
+                    correctSide,
+                    forkWorldPos: forkPt.clone(),
+                    wrongCurve,
+                    resolved: false,
+                    promptShown: false
+                });
+
+                curX = branchX;
+                curY = peakOrDipY;
+                curZ = postForkZ;
+            }
+
+            // Finale victory hill
+            pts.push(new THREE.Vector3(curX, curY + 3, curZ - 25));
+            pts.push(new THREE.Vector3(curX, curY, curZ - 50));
+
+            mainCurve = new THREE.CatmullRomCurve3(pts);
+            const mainTrackMesh = buildDetailedTrackSegment(mainCurve, 340, true, false);
+            trackMeshGroup.add(mainTrackMesh);
+
+            // Compute normalized curve `t` parameter for each gate fork
+            const totalSamples = 600;
+            gateCheckpoints.forEach(gate => {
+                let bestT = 0;
+                let bestDist = Infinity;
+                for (let s = 0; s <= totalSamples; s++) {
+                    const t = s / totalSamples;
+                    const p = mainCurve.getPointAt(t);
+                    const dist = p.distanceTo(gate.forkWorldPos);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestT = t;
+                    }
+                }
+                gate.forkT = bestT;
+                gate.promptStartT = Math.max(0.02, bestT - 0.072);
+
+                const arch = create3DGateArch(gate.forkWorldPos, gate.index, gate);
+                trackMeshGroup.add(arch);
+                gate3DSigns.push(arch);
+            });
+        }
+
+        /********************************************************************
+         * 7. CONFETTI / SPARKS PARTICLE BURST ON CORRECT GATE
+         ********************************************************************/
+        const particles = [];
+        function spawnCelebrationSparks(origin) {
+            const colors = [0xfacc15, 0x38bdf8, 0x4ade80, 0xf43f5e, 0xa855f7];
+            for (let i = 0; i < 32; i++) {
+                const mat = new THREE.MeshBasicMaterial({ color: colors[i % colors.length] });
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.28), mat);
+                mesh.position.copy(origin).add(new THREE.Vector3(0, 1.5, -2));
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 14,
+                    4 + Math.random() * 10,
+                    (Math.random() - 0.5) * 12
+                );
+                scene.add(mesh);
+                particles.push({ mesh, vel, life: 1.1 });
+            }
+        }
+
+        function updateParticles(dt) {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life -= dt;
+                p.vel.y -= 18 * dt;
+                p.mesh.position.addScaledVector(p.vel, dt);
+                p.mesh.rotation.x += 5 * dt;
+                p.mesh.rotation.y += 5 * dt;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        /********************************************************************
+         * 8. CONTROLS: TABLET GYROSCOPE TILT + TOUCH RINGS + KEYBOARD
+         ********************************************************************/
+        let steeringChoice = 0; // -1 = Left, 0 = Center, +1 = Right
+        let smoothSteerAngle = 0; // Continuous value [-1, 1] for visual lean & meter
+        let tiltSensorEnabled = false;
+
+        function setSteeringChoice(dir) {
+            ensureAudio();
+            steeringChoice = dir;
+            smoothSteerAngle = dir;
+            playTone(dir < 0 ? 420 : 520, 'sine', 0.07, 0.1);
+            updateSteeringUI();
+        }
+
+        function updateSteeringUI() {
+            const dot = document.getElementById('tilt-indicator-dot');
+            const label = document.getElementById('steer-direction-label');
+            const wheelL = document.getElementById('wheel-left');
+            const wheelR = document.getElementById('wheel-right');
+            const cardL = document.getElementById('choice-left-card');
+            const cardR = document.getElementById('choice-right-card');
+            const badgeL = document.getElementById('left-lock-badge');
+            const badgeR = document.getElementById('right-lock-badge');
+
+            const pct = 50 + smoothSteerAngle * 38;
+            dot.style.left = `calc(${pct}% - 10px)`;
+
+            wheelL.classList.toggle('active-left', steeringChoice === -1);
+            wheelR.classList.toggle('active-right', steeringChoice === 1);
+
+            cardL.classList.toggle('selected', steeringChoice === -1);
+            cardR.classList.toggle('selected', steeringChoice === 1);
+            badgeL.classList.toggle('hidden', steeringChoice !== -1);
+            badgeR.classList.toggle('hidden', steeringChoice !== 1);
+
+            if (steeringChoice === -1) {
+                label.textContent = "STEERING: ◀ LEFT TRACK LOCKED";
+                label.className = "text-[11px] font-extrabold uppercase tracking-wider text-sky-300 mt-1 drop-shadow";
+            } else if (steeringChoice === 1) {
+                label.textContent = "STEERING: RIGHT TRACK LOCKED ▶";
+                label.className = "text-[11px] font-extrabold uppercase tracking-wider text-rose-300 mt-1 drop-shadow";
+            } else {
+                label.textContent = "STEERING: CENTER (TILT OR TAP!)";
+                label.className = "text-[11px] font-extrabold uppercase tracking-wider text-amber-300 mt-1 drop-shadow";
+            }
+        }
+
+        // Keyboard A/D & Left/Right Arrow Support
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                setSteeringChoice(-1);
+            } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                setSteeringChoice(1);
+            }
+        });
+
+        // Tablet / Mobile DeviceOrientation Tilt Handler
+        function handleOrientation(event) {
+            // Depending on portrait vs landscape tablet orientation, use gamma or beta
+            const isLandscape = window.innerWidth > window.innerHeight;
+            let rawTilt = isLandscape ? event.beta : event.gamma;
+            if (rawTilt === null || rawTilt === undefined) return;
+
+            // Clamp tilt between -25 deg and +25 deg
+            const normalized = Math.max(-1, Math.min(1, rawTilt / 18));
+            smoothSteerAngle = normalized;
+
+            if (normalized < -0.28) {
+                if (steeringChoice !== -1) {
+                    steeringChoice = -1;
+                }
+            } else if (normalized > 0.28) {
+                if (steeringChoice !== 1) {
+                    steeringChoice = 1;
+                }
+            }
+            updateSteeringUI();
+        }
+
+        async function requestTiltPermission() {
+            ensureAudio();
+            const statusText = document.getElementById('tilt-status-text');
+            try {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation, true);
+                        tiltSensorEnabled = true;
+                        statusText.textContent = "Tablet Tilt Active ✓";
+                    } else {
+                        statusText.textContent = "Touch Mode Active";
+                    }
+                } else if ('DeviceOrientationEvent' in window) {
+                    window.addEventListener('deviceorientation', handleOrientation, true);
+                    tiltSensorEnabled = true;
+                    statusText.textContent = "Tablet Tilt Active ✓";
+                } else {
+                    statusText.textContent = "Touch / Keys Active";
+                }
+            } catch (err) {
+                statusText.textContent = "Touch / Keys Active";
+            }
+        }
+
+        // Automatically attach listener on non-iOS tablets
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission !== 'function') {
+            window.addEventListener('deviceorientation', handleOrientation, true);
+        }
+
+        /********************************************************************
+         * 9. GAME STATE MACHINE & COASTER PHYSICS LOOP
+         ********************************************************************/
+        // States: 'COUNTDOWN', 'RIDING', 'WRONG_BRANCH', 'FALLING', 'CRASHED', 'VICTORY'
+        let gameState = 'COUNTDOWN';
+        let countdownTimer = 4.0;
+        let lastCountdownInt = 5;
+
+        let trackProgressT = 0.0;
+        let baseSpeedT = 0.026; // Normalized curve speed
+        let wrongBranchT = 0.0;
+        let activeGateIndex = 0;
+
+        // Free-fall physics state when derailing off the broken track
+        let fallPosition = new THREE.Vector3();
+        let fallVelocity = new THREE.Vector3();
+        let fallRotation = new THREE.Euler();
+        let fallTimer = 0;
+
+        function startCountdownSequence() {
+            gameState = 'COUNTDOWN';
+            countdownTimer = 4.0;
+            lastCountdownInt = 5;
+            document.getElementById('countdown-overlay').classList.remove('hidden');
+            document.getElementById('countdown-title').textContent = 'GET READY';
+            document.getElementById('countdown-digit').textContent = '4';
+            document.getElementById('question-hud').classList.add('opacity-0', 'scale-90');
+            document.getElementById('vignette-overlay').classList.add('opacity-0');
+        }
+
+        function showGatePrompt(gate) {
+            gate.promptShown = true;
+            steeringChoice = 0;
+            smoothSteerAngle = 0;
+            updateSteeringUI();
+
+            document.getElementById('hud-progress').textContent = `${gate.index + 1}/${gateCheckpoints.length}`;
+            document.getElementById('question-text').textContent = gate.question;
+            document.getElementById('choice-left-text').textContent = gate.leftText;
+            document.getElementById('choice-right-text').textContent = gate.rightText;
+
+            const qHud = document.getElementById('question-hud');
+            qHud.classList.remove('opacity-0', 'scale-90');
+            qHud.classList.add('opacity-100', 'scale-100');
+        }
+
+        function hideGatePrompt() {
+            const qHud = document.getElementById('question-hud');
+            qHud.classList.remove('opacity-100', 'scale-100');
+            qHud.classList.add('opacity-0', 'scale-90');
+        }
+
+        function retryFromCheckpoint() {
+            document.getElementById('crash-modal').classList.add('hidden');
+            document.getElementById('crash-modal').classList.remove('flex');
+            document.getElementById('vignette-overlay').classList.add('opacity-0');
+
+            const gate = gateCheckpoints[activeGateIndex];
+            if (gate) {
+                gate.resolved = false;
+                gate.promptShown = false;
+                trackProgressT = Math.max(0.01, gate.promptStartT - 0.015);
+            } else {
+                trackProgressT = 0;
+            }
+            steeringChoice = 0;
+            smoothSteerAngle = 0;
+            updateSteeringUI();
+            gameState = 'RIDING';
+        }
+
+        function restartFullRide() {
+            document.getElementById('crash-modal').classList.add('hidden');
+            document.getElementById('crash-modal').classList.remove('flex');
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('victory-modal').classList.remove('flex');
+            document.getElementById('vignette-overlay').classList.add('opacity-0');
+
+            score = 0;
+            activeGateIndex = 0;
+            trackProgressT = 0.0;
+            steeringChoice = 0;
+            smoothSteerAngle = 0;
+            document.getElementById('hud-score').textContent = '0';
+
+            buildQuestionDeck();
+            generateCoasterCourse();
+            document.getElementById('hud-progress').textContent = `1/${gateCheckpoints.length}`;
+            updateSteeringUI();
+            startCountdownSequence();
+        }
+
+        // Position Camera along a 3D spline with realistic coaster banking & subtle 2D bumper tilt
+        function positionCameraOnCurve(curve, t, extraRoll = 0) {
+            const clampedT = Math.max(0, Math.min(0.999, t));
+            const pos = curve.getPointAt(clampedT);
+            const tangent = curve.getTangentAt(clampedT).normalize();
+
+            // Place camera slightly above the rails looking down the coaster track ahead
+            const eyePos = pos.clone().add(new THREE.Vector3(0, 1.45, 0));
+            camera.position.copy(eyePos);
+
+            const lookTarget = eyePos.clone().add(tangent.clone().multiplyScalar(12)).add(new THREE.Vector3(0, -0.85, 0));
+            camera.lookAt(lookTarget);
+
+            // Apply tablet/steering lean roll to camera and subtle tilt to low-profile 2D bumper
+            camera.rotateZ(-extraRoll * 0.22);
+            if (coasterBumperEl) {
+                coasterBumperEl.style.transform = `rotate(${-extraRoll * 3.5}deg) translateY(6px)`;
+            }
+        }
+
+        let prevTime = performance.now();
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+            const dt = Math.min(0.05, (now - prevTime) / 1000);
+            prevTime = now;
+
+            // Rotate background Ferris Wheel & Carousel
+            if (ferrisWheelRotor) {
+                ferrisWheelRotor.rotation.z += 0.14 * dt;
+            }
+            if (carouselRotor) {
+                carouselRotor.rotation.y += 0.45 * dt;
+            }
+
+            updateParticles(dt);
+
+            if (gameState === 'COUNTDOWN') {
+                // Slowly crawl up the initial lift hill during 4-3-2-1 countdown
+                trackProgressT = Math.min(0.04, trackProgressT + 0.006 * dt);
+                positionCameraOnCurve(mainCurve, trackProgressT, smoothSteerAngle);
+                playChainClack();
+
+                countdownTimer -= dt;
+                const ceilInt = Math.ceil(countdownTimer);
+                if (ceilInt !== lastCountdownInt && ceilInt >= 1) {
+                    lastCountdownInt = ceilInt;
+                    document.getElementById('countdown-digit').textContent = String(ceilInt);
+                    playTone(440 + (4 - ceilInt) * 60, 'sine', 0.12, 0.18);
+                }
+
+                if (countdownTimer <= 0) {
+                    playTone(880, 'triangle', 0.3, 0.25);
+                    document.getElementById('countdown-overlay').classList.add('hidden');
+                    gameState = 'RIDING';
+                }
+            } else if (gameState === 'RIDING') {
+                // Determine speed based on slope
+                const tangent = mainCurve.getTangentAt(Math.min(0.99, trackProgressT));
+                const slopeFactor = 1.0 - tangent.y * 0.45;
+                const currentSpeed = baseSpeedT * Math.max(0.65, slopeFactor);
+
+                // Play lift hill clack when climbing
+                if (tangent.y > 0.15) {
+                    playChainClack();
+                }
+
+                trackProgressT += currentSpeed * dt;
+                positionCameraOnCurve(mainCurve, trackProgressT, smoothSteerAngle);
+
+                // Check current active gate
+                const gate = gateCheckpoints[activeGateIndex];
+                if (gate && !gate.resolved) {
+                    if (!gate.promptShown && trackProgressT >= gate.promptStartT) {
+                        showGatePrompt(gate);
+                    }
+
+                    if (gate.promptShown) {
+                        // Update remaining distance timer bar
+                        const totalWindow = gate.forkT - gate.promptStartT;
+                        const remaining = Math.max(0, (gate.forkT - trackProgressT) / totalWindow);
+                        document.getElementById('question-timer-bar').style.width = `${remaining * 100}%`;
+                    }
+
+                    // Reached the Y-junction fork!
+                    if (trackProgressT >= gate.forkT) {
+                        gate.resolved = true;
+                        hideGatePrompt();
+
+                        if (steeringChoice === gate.correctSide) {
+                            // CORRECT ANSWER! Stay on main coaster track
+                            score += 100;
+                            document.getElementById('hud-score').textContent = String(score);
+                            playCorrectChime();
+                            spawnCelebrationSparks(camera.position);
+                            activeGateIndex++;
+                        } else {
+                            // WRONG ANSWER (or failed to lean)! Switch onto broken rail branch!
+                            gameState = 'WRONG_BRANCH';
+                            wrongBranchCurve = gate.wrongCurve;
+                            wrongBranchT = 0.0;
+                            document.getElementById('vignette-overlay').classList.remove('opacity-0');
+                            playTone(220, 'sawtooth', 0.35, 0.22, 130);
+                        }
+                    }
+                }
+
+                // Reached the end of the entire coaster course!
+                if (trackProgressT >= 0.97) {
+                    gameState = 'VICTORY';
+                    playCorrectChime();
+                    document.getElementById('victory-score').textContent = `${score} PTS`;
+                    document.getElementById('victory-modal').classList.remove('hidden');
+                    document.getElementById('victory-modal').classList.add('flex');
+                }
+            } else if (gameState === 'WRONG_BRANCH') {
+                // Ride along the short broken spur track until it runs out of rails!
+                wrongBranchT += 0.85 * dt;
+                positionCameraOnCurve(wrongBranchCurve, Math.min(1, wrongBranchT), smoothSteerAngle);
+
+                if (wrongBranchT >= 1.0) {
+                    // Plunge off the broken track cliff!
+                    gameState = 'FALLING';
+                    fallTimer = 0;
+                    const endPt = wrongBranchCurve.getPointAt(1).add(new THREE.Vector3(0, 1.35, 0));
+                    const endTan = wrongBranchCurve.getTangentAt(1).normalize();
+                    fallPosition.copy(endPt);
+                    fallVelocity.copy(endTan).multiplyScalar(22);
+                    fallRotation.copy(camera.rotation);
+                    playFallScreamAndCrash();
+                }
+            } else if (gameState === 'FALLING') {
+                fallTimer += dt;
+                // Gravity accelerates the coaster car downward toward the park ground
+                fallVelocity.y -= 34 * dt;
+                fallPosition.addScaledVector(fallVelocity, dt);
+
+                camera.position.copy(fallPosition);
+                // Dramatic tumbling pitch & roll as the coaster falls
+                camera.rotation.x -= 1.4 * dt;
+                camera.rotation.z += (steeringChoice || 1) * 1.8 * dt;
+
+                if (fallPosition.y <= 1.8 || fallTimer > 1.65) {
+                    gameState = 'CRASHED';
+                    const gate = gateCheckpoints[activeGateIndex];
+                    const crashTitle = document.getElementById('crash-title');
+                    const crashReason = document.getElementById('crash-reason');
+
+                    if (steeringChoice === 0) {
+                        crashTitle.textContent = "TOO SLOW! YOU FELL OFF!";
+                        crashReason.textContent = "You didn't lean Left or Right before the track split!";
+                    } else {
+                        crashTitle.textContent = "WRONG TRACK! YOU FELL!";
+                        crashReason.textContent = `You steered onto the broken rail for "${gate ? gate.question : ''}"`;
+                    }
+                    document.getElementById('crash-correct-answer').textContent = gate ? gate.correctAnswer : '';
+                    document.getElementById('crash-modal').classList.remove('hidden');
+                    document.getElementById('crash-modal').classList.add('flex');
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        /********************************************************************
+         * 10. TEACHER / CUSTOM QUESTION EDITOR MODAL
+         ********************************************************************/
+        function openQuestionModal() {
+            renderCustomQuestionsList();
+            document.getElementById('question-modal').classList.remove('hidden');
+            document.getElementById('question-modal').classList.add('flex');
+        }
+
+        function closeQuestionModal() {
+            document.getElementById('question-modal').classList.add('hidden');
+            document.getElementById('question-modal').classList.remove('flex');
+        }
+
+        function renderCustomQuestionsList() {
+            const listEl = document.getElementById('custom-questions-list');
+            listEl.innerHTML = '';
+            QUESTION_BANK.custom.forEach((item, idx) => {
+                const row = document.createElement('div');
+                row.className = "bg-slate-800/80 border border-white/10 rounded-xl p-3 flex items-center justify-between gap-2";
+                row.innerHTML = `
+                    <div class="text-xs sm:text-sm text-white">
+                        <div class="font-bold">${idx + 1}. ${item.q}</div>
+                        <div class="text-xs mt-0.5">
+                            <span class="text-emerald-400 font-semibold">✓ ${item.correct}</span>
+                            <span class="text-slate-500 mx-1.5">|</span>
+                            <span class="text-rose-400 font-semibold">✗ ${item.wrong}</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteCustomQuestion(${idx})" class="text-xs text-rose-400 hover:text-rose-300 font-bold px-2 py-1 rounded bg-rose-500/10">
+                        Delete
+                    </button>
+                `;
+                listEl.appendChild(row);
+            });
+        }
+
+        function addCustomQuestion() {
+            const qInput = document.getElementById('custom-q-text');
+            const cInput = document.getElementById('custom-q-correct');
+            const wInput = document.getElementById('custom-q-wrong');
+
+            const q = qInput.value.trim();
+            const correct = cInput.value.trim();
+            const wrong = wInput.value.trim();
+            if (!q || !correct || !wrong) return;
+
+            QUESTION_BANK.custom.push({ q, correct, wrong });
+            qInput.value = '';
+            cInput.value = '';
+            wInput.value = '';
+            renderCustomQuestionsList();
+        }
+
+        function deleteCustomQuestion(idx) {
+            if (QUESTION_BANK.custom.length <= 1) return;
+            QUESTION_BANK.custom.splice(idx, 1);
+            renderCustomQuestionsList();
+        }
+
+        function useCustomDeckNow() {
+            document.getElementById('subject-select').value = 'custom';
+            closeQuestionModal();
+            restartFullRide();
+        }
+
+        // Responsive Window Resize Handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start Game on Window Load
+        window.onload = function () {
+            restartFullRide();
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>

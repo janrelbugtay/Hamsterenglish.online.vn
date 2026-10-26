@@ -165,14 +165,51 @@ export const RedLightCameraMode: React.FC<RedLightCameraModeProps> = ({
                 streamRef.current.getTracks().forEach(t => t.stop());
             }
             setCameraError(null);
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: facing,
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: false
-            });
+
+            if (!navigator?.mediaDevices?.getUserMedia) {
+                setHasCamera(false);
+                setCameraError('Camera API is not supported on this device. You can play with manual doll picking or simulated motion!');
+                return;
+            }
+
+            let stream: MediaStream | null = null;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: facing,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+            } catch (err1) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: facing },
+                        audio: false
+                    });
+                } catch (err2) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: true,
+                            audio: false
+                        });
+                    } catch (fallbackErr: any) {
+                        console.warn("Camera init unavailable:", fallbackErr?.name || fallbackErr?.message);
+                        setHasCamera(false);
+                        setCameraError(fallbackErr?.name === 'NotAllowedError' 
+                            ? 'Camera access denied. Please click the camera icon in your browser URL bar to allow camera access.'
+                            : 'Could not access camera. You can still play with manual doll picking or simulated motion!');
+                        return;
+                    }
+                }
+            }
+
+            if (!stream) {
+                setHasCamera(false);
+                return;
+            }
+
             streamRef.current = stream;
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
@@ -180,9 +217,9 @@ export const RedLightCameraMode: React.FC<RedLightCameraModeProps> = ({
             }
             setHasCamera(true);
         } catch (err: any) {
-            console.warn("Camera init failed:", err);
+            console.warn("Camera init notice:", err?.name || err?.message);
             setHasCamera(false);
-            setCameraError(err.name === 'NotAllowedError' 
+            setCameraError(err?.name === 'NotAllowedError' 
                 ? 'Camera access denied. Please click the camera icon in your browser URL bar to allow camera access.'
                 : 'Could not access camera. You can still play with manual doll picking or simulated motion!');
         }

@@ -1353,9 +1353,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
       requestAnimationFrame(sendCameraFrames);
     } catch (err: any) {
-      console.warn("Camera could not start:", err);
+      console.warn("Camera could not start:", err?.name || err?.message);
       setCameraActive(false);
-      setCameraError("Camera permission denied. Using 3D Virtual AR + Mouse/Touch!");
+      setCameraError(err?.name === 'NotAllowedError' ? "Camera permission denied. Using 3D Virtual AR + Mouse/Touch!" : "Camera not detected. Using 3D Virtual AR + Mouse/Touch!");
     }
   };
 

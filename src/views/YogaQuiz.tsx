@@ -2154,14 +2154,45 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
 
       handsInstanceRef.current = hands;
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 960 },
-          height: { ideal: 540 },
-          frameRate: { ideal: 30 }
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        setCameraError("Camera is not supported on this browser. You can play using click-based choices!");
+        setIsCameraReady(false);
+        return;
+      }
+
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 960 },
+            height: { ideal: 540 },
+            frameRate: { ideal: 30 }
+          }
+        });
+      } catch (e1) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' }
+          });
+        } catch (e2) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true
+            });
+          } catch (e3: any) {
+            console.warn("Yoga camera unavailable:", e3?.name || e3?.message);
+            setCameraError("Camera not found or permission denied. You can play directly using click/tap mode!");
+            setIsCameraReady(false);
+            return;
+          }
         }
-      });
+      }
+
+      if (!stream) {
+        setIsCameraReady(false);
+        return;
+      }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -2216,7 +2247,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
         setIsCameraReady(true);
       }
     } catch (err: any) {
-      console.error("Yoga camera setup error:", err);
+      console.warn("Yoga camera setup notice:", err?.name || err?.message);
       setCameraError(err?.message || "Camera access unavailable. You can still click choices or retry camera.");
       setIsCameraReady(false);
     }

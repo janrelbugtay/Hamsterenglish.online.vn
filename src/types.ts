@@ -26,7 +26,8 @@ export type ViewState =
   | "phonemic-master"
   | "squid-game-picker"
   | "shark-attack"
-  | "slap-and-chop";
+  | "slap-and-chop"
+  | "roller-coaster-quiz";
 
 export interface Game {
   id: string;

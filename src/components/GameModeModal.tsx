@@ -4,6 +4,7 @@ import { ViewState } from '../types';
 
 export type PlayableGameMode =
   | 'bubble-pop'
+  | 'roller-coaster-quiz'
   | 'slap-and-chop'
   | 'shark-attack'
   | 'yoga-quiz'
@@ -59,6 +60,23 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     btnBg: 'bg-blue-600 hover:bg-blue-700',
     btnShadow: 'shadow-[0_4px_0_#1e3a8a]',
     accentText: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    id: 'roller-coaster-quiz',
+    title: 'Roller Coaster Quiz',
+    shortAction: 'Play in Coaster Quiz',
+    tagline: '3D Theme Park 2-Track Split',
+    description: 'Ride a 3D roller coaster with Captain Hammy! Lean, tap, or tilt Left/Right before each track split!',
+    players: '1 Player / Class · Tilt / Touch / Keys',
+    category: 'camera',
+    emoji: '🎢',
+    image: '/images/roller-coaster-quiz-card.jpg',
+    gradient: 'from-red-500 via-orange-500 to-amber-500',
+    cardBg: 'bg-amber-50/70 dark:bg-amber-950/25 hover:bg-amber-100/80 dark:hover:bg-amber-900/35',
+    cardBorder: 'border-amber-200 dark:border-amber-800/70',
+    btnBg: 'bg-amber-500 hover:bg-amber-600',
+    btnShadow: 'shadow-[0_4px_0_#b45309]',
+    accentText: 'text-amber-600 dark:text-amber-400',
   },
   {
     id: 'slap-and-chop',
@@ -239,6 +257,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   const normalized = rawType.replace(/[-_ ]+/g, '');
 
   if (normalized === 'bubblepop') return 'bubble-pop';
+  if (normalized === 'rollercoasterquiz' || normalized === 'coasterquiz') return 'roller-coaster-quiz';
   if (normalized === 'sharkattack' || normalized === 'sharkstairs') return 'shark-attack';
   if (normalized === 'sumo' || normalized === 'sumotags' || normalized === 'sumoshowdown') return 'sumo';
   if (normalized === 'yoga' || normalized === 'yogaquiz') return 'yoga-quiz';

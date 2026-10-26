@@ -425,12 +425,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     
     setScreen('loading');
     
-    if (!videoRef.current?.srcObject) {
+    if (!videoRef.current?.srcObject && !isCameraActive) {
        try {
            await setupCamera();
        } catch (err) {
-           // Error is already handled by setupCamera setting cameraError
-           return;
+           console.warn("Camera could not start; continuing with mouse/touch mode:", err);
        }
     }
     
@@ -1501,14 +1500,46 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         }
         
         if (videoRef.current) {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: 'user',
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    frameRate: { ideal: 30 }
-                } 
-            });
+            let stream: MediaStream | null = null;
+            if (navigator?.mediaDevices?.getUserMedia) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            facingMode: 'user',
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            frameRate: { ideal: 30 }
+                        } 
+                    });
+                } catch (prefErr: any) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: 'user' }
+                        });
+                    } catch (fallback1Err: any) {
+                        try {
+                            stream = await navigator.mediaDevices.getUserMedia({
+                                video: true
+                            });
+                        } catch (finalErr: any) {
+                            console.warn("Webcam not detected or access denied:", finalErr?.name || finalErr?.message);
+                            setCameraError("Webcam not detected on this device. Mouse and touch pointer mode are enabled automatically!");
+                            setIsCameraActive(false);
+                            return;
+                        }
+                    }
+                }
+            } else {
+                setCameraError("Camera API not supported in this browser. Mouse/touch pointer mode is active.");
+                setIsCameraActive(false);
+                return;
+            }
+
+            if (!stream) {
+                setIsCameraActive(false);
+                return;
+            }
+
             videoRef.current.srcObject = stream;
             
             await new Promise((resolve) => {
@@ -1519,7 +1550,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 }
             });
             
-            await videoRef.current.play();
+            try {
+                await videoRef.current.play();
+            } catch (playErr) {
+                // Autoplay will proceed on user gesture
+            }
             
             let active = true;
             let isProcessing = false;
@@ -1570,18 +1605,19 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             };
             
             setIsCameraActive(true);
+            setCameraError("");
         }
     } catch (e: any) {
-        console.error("Camera setup failed:", e);
-        setCameraError(e.message || "Could not start video source. Please check permissions or if another app is using the camera.");
-        throw e;
+        console.warn("Camera setup notice:", e?.message || e);
+        setCameraError("Camera unavailable. Mouse and touch controls are ready!");
+        setIsCameraActive(false);
     }
   };
 
   
   useEffect(() => {
     if (screen === 'setup' && !isCameraActive && !cameraRef.current && !cameraError) {
-        setupCamera().catch(e => console.error("Initial camera setup failed:", e));
+        setupCamera().catch(e => console.warn("Initial camera setup notice:", e?.message || e));
     }
   }, [screen, isCameraActive, cameraError]);
 
@@ -1602,8 +1638,34 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 pointers.current[isLeft ? 0 : 1].detected = true; pointers.current[isLeft ? 0 : 1].targetX = mx; pointers.current[isLeft ? 0 : 1].targetY = my;
             }
         };
-        canvasRef.current.addEventListener('mousemove', handleMouseMove);
-        return () => canvasRef.current?.removeEventListener('mousemove', handleMouseMove);
+
+        const handleTouch = (e: TouchEvent) => {
+            if (!gameState.current.isActive || !e.touches.length) return;
+            const rect = canvasRef.current!.getBoundingClientRect();
+            const width = rect.width;
+            for (let i = 0; i < e.touches.length; i++) {
+                const touch = e.touches[i];
+                const tx = touch.clientX - rect.left;
+                const ty = touch.clientY - rect.top;
+                if (gameState.current.numPlayers === 1) {
+                    pointers.current[0].x = tx; pointers.current[0].y = ty; pointers.current[0].detected = true; pointers.current[0].targetX = tx; pointers.current[0].targetY = ty;
+                } else {
+                    const isLeft = tx < width / 2;
+                    pointers.current[isLeft ? 0 : 1].x = tx; pointers.current[isLeft ? 0 : 1].y = ty;
+                    pointers.current[isLeft ? 0 : 1].detected = true; pointers.current[isLeft ? 0 : 1].targetX = tx; pointers.current[isLeft ? 0 : 1].targetY = ty;
+                }
+            }
+        };
+
+        const canvas = canvasRef.current;
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('touchstart', handleTouch, { passive: true });
+        canvas.addEventListener('touchmove', handleTouch, { passive: true });
+        return () => {
+            canvas.removeEventListener('mousemove', handleMouseMove);
+            canvas.removeEventListener('touchstart', handleTouch);
+            canvas.removeEventListener('touchmove', handleTouch);
+        };
     }
   }, [screen]);
 

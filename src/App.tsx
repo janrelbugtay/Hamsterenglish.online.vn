@@ -17,6 +17,7 @@ import { MysteryBox } from "./views/MysteryBox";
 import { MediaStudio } from "./views/MediaStudio";
 import { NeonChain } from "./views/NeonChain";
 import { BubblePop } from "./views/BubblePop";
+import { RollerCoasterQuiz } from "./views/RollerCoasterQuiz";
 import { SlapAndChop } from "./views/SlapAndChop";
 import { SharkAttack } from "./views/SharkAttack";
 import { FlashcardsMatch } from "./views/FlashcardsMatch";
@@ -303,6 +304,8 @@ export default function App() {
         return <NeonChain onViewChange={handleViewChange} />;
       case "bubble-pop":
         return <BubblePop onViewChange={handleViewChange} initialGame={selectedGame} />;
+      case "roller-coaster-quiz":
+        return <RollerCoasterQuiz onViewChange={handleViewChange} initialGame={selectedGame} />;
       case "slap-and-chop":
         return <SlapAndChop onViewChange={handleViewChange} initialGame={selectedGame} />;
       case "shark-attack":
@@ -364,7 +367,7 @@ export default function App() {
   };
 
   const isGame = [
-    "mystery-box", "bubble-pop", "slap-and-chop", "shark-attack", "yoga-quiz", "bubble-sentence-pro",
+    "mystery-box", "bubble-pop", "roller-coaster-quiz", "slap-and-chop", "shark-attack", "yoga-quiz", "bubble-sentence-pro",
     "family-feud", "sumo", "hamster-pop-quiz", "student-race",
     "squid-game-picker", "letter-lock", "tic-tac-toe", "neon-chain",
     "flashcards-match", "phonemic-master"

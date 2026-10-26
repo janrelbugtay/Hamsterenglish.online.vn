@@ -129,6 +129,22 @@ function FeaturedGamesSection({
       icon: "🫧",
     },
     {
+      id: "roller-coaster-quiz",
+      title: "Roller Coaster Quiz",
+      description:
+        "Ride a 3D theme park roller coaster with Captain Hammy! Lean or tap Left/Right at each 2-option track split!",
+      difficulty: "Medium",
+      players: "1 Player / Class",
+      time: "5-10m",
+      subject: "All Subjects",
+      grade: "All",
+      imageUrl: "/images/roller-coaster-quiz-card.jpg",
+      isNew: true,
+      isAI: false,
+      color: "from-red-500 to-amber-500",
+      icon: "🎢",
+    },
+    {
       id: "slap-and-chop",
       title: "Slap & Chop",
       description:
