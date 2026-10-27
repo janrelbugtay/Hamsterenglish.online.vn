@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Image as ImageIcon,
   Sparkles,
@@ -24,7 +24,7 @@ import {
   TOPIC_STARTER_QUESTIONS,
 } from '../utils/mediaAndPresets';
 
-interface SetupCurriculumHeaderProps {
+export interface SetupCurriculumHeaderProps {
   topic: string;
   setTopic: (val: string) => void;
   classLevel: string;
@@ -32,12 +32,19 @@ interface SetupCurriculumHeaderProps {
   folderId: string;
   setFolderId: (val: string) => void;
   folders: { id: string; name: string }[];
+  onCreateFolder?: (name: string) => void;
   contentMode: AnswerContentMode;
   setContentMode: (mode: AnswerContentMode) => void;
-  autoPhotosEnabled: boolean;
-  setAutoPhotosEnabled: (enabled: boolean) => void;
+  autoPhotosEnabled?: boolean;
+  setAutoPhotosEnabled?: (enabled: boolean) => void;
+  autoRecommendPhoto?: boolean;
+  setAutoRecommendPhoto?: (enabled: boolean) => void;
   onApplyModeToAll?: (mode: AnswerContentMode) => void;
   onLoadStarterQuestions?: (
+    questions: { id: number; text: string; options: string[]; answerIndex: number }[],
+    topicName: string
+  ) => void;
+  onApplyStarterTopic?: (
     questions: { id: number; text: string; options: string[]; answerIndex: number }[],
     topicName: string
   ) => void;
@@ -52,14 +59,29 @@ export function SetupCurriculumHeader({
   folderId,
   setFolderId,
   folders,
+  onCreateFolder,
   contentMode,
   setContentMode,
   autoPhotosEnabled,
   setAutoPhotosEnabled,
+  autoRecommendPhoto,
+  setAutoRecommendPhoto,
   onApplyModeToAll,
   onLoadStarterQuestions,
+  onApplyStarterTopic,
   maxOptionsPerQuestion = 4,
 }: SetupCurriculumHeaderProps) {
+  const effectiveAutoPhotos = autoPhotosEnabled ?? autoRecommendPhoto ?? true;
+  const handleSetAutoPhotos = useCallback(
+    (enabled: boolean) => {
+      if (typeof setAutoPhotosEnabled === 'function') setAutoPhotosEnabled(enabled);
+      if (typeof setAutoRecommendPhoto === 'function') setAutoRecommendPhoto(enabled);
+    },
+    [setAutoPhotosEnabled, setAutoRecommendPhoto]
+  );
+
+  const starterCallback = onLoadStarterQuestions || onApplyStarterTopic;
+
   const [customFolders, setCustomFolders] = useState<{ id: string; name: string }[]>(() => {
     try {
       const saved = localStorage.getItem('esl_custom_setup_folders');
@@ -74,7 +96,7 @@ export function SetupCurriculumHeader({
   // Merge user folders + custom folders + suggested curriculum folders without duplicates
   const allFolders = React.useMemo(() => {
     const map = new Map<string, { id: string; name: string }>();
-    folders.forEach((f) => map.set(f.id, f));
+    (folders || []).forEach((f) => map.set(f.id, f));
     customFolders.forEach((f) => map.set(f.id, f));
     DEFAULT_SUGGESTED_FOLDERS.forEach((f) => {
       if (!map.has(f.id)) map.set(f.id, f);
@@ -85,7 +107,8 @@ export function SetupCurriculumHeader({
   const handleCreateFolder = () => {
     const clean = newFolderName.trim();
     if (!clean) return;
-    const newF = { id: `custom-folder-${Date.now()}`, name: `📁 ${clean}` };
+    const formattedName = clean.startsWith('📁') ? clean : `📁 ${clean}`;
+    const newF = { id: `custom-folder-${Date.now()}`, name: formattedName };
     const updated = [...customFolders, newF];
     setCustomFolders(updated);
     try {
@@ -93,7 +116,11 @@ export function SetupCurriculumHeader({
     } catch {
       // Ignore storage error
     }
-    setFolderId(newF.id);
+    if (typeof onCreateFolder === 'function') {
+      onCreateFolder(formattedName);
+    } else {
+      setFolderId(newF.id);
+    }
     setNewFolderName('');
     setIsAddingFolder(false);
   };
@@ -101,7 +128,7 @@ export function SetupCurriculumHeader({
   const hasStarterDeck = Boolean(topic && TOPIC_STARTER_QUESTIONS[topic]);
 
   const handleGenerateTopicDeck = async () => {
-    if (!onLoadStarterQuestions || !topic || !TOPIC_STARTER_QUESTIONS[topic]) return;
+    if (!starterCallback || !topic || !TOPIC_STARTER_QUESTIONS[topic]) return;
     const templates = TOPIC_STARTER_QUESTIONS[topic];
 
     const built = await Promise.all(
@@ -133,7 +160,7 @@ export function SetupCurriculumHeader({
       })
     );
 
-    onLoadStarterQuestions(built, topic);
+    starterCallback(built, topic);
   };
 
   return (
@@ -146,7 +173,7 @@ export function SetupCurriculumHeader({
             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Topic
             </label>
-            {hasStarterDeck && onLoadStarterQuestions && (
+            {hasStarterDeck && starterCallback && (
               <button
                 type="button"
                 onClick={handleGenerateTopicDeck}
@@ -328,7 +355,7 @@ export function SetupCurriculumHeader({
               type="button"
               onClick={() => {
                 setContentMode('words');
-                if (onApplyModeToAll) onApplyModeToAll('words');
+                if (typeof onApplyModeToAll === 'function') onApplyModeToAll('words');
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                 contentMode === 'words'
@@ -344,8 +371,8 @@ export function SetupCurriculumHeader({
               type="button"
               onClick={() => {
                 setContentMode('photos_gifs');
-                setAutoPhotosEnabled(true);
-                if (onApplyModeToAll) onApplyModeToAll('photos_gifs');
+                handleSetAutoPhotos(true);
+                if (typeof onApplyModeToAll === 'function') onApplyModeToAll('photos_gifs');
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                 contentMode === 'photos_gifs'
@@ -361,8 +388,8 @@ export function SetupCurriculumHeader({
               type="button"
               onClick={() => {
                 setContentMode('both');
-                setAutoPhotosEnabled(true);
-                if (onApplyModeToAll) onApplyModeToAll('both');
+                handleSetAutoPhotos(true);
+                if (typeof onApplyModeToAll === 'function') onApplyModeToAll('both');
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                 contentMode === 'both'
@@ -381,8 +408,8 @@ export function SetupCurriculumHeader({
           <label className="flex items-center gap-2 cursor-pointer select-none bg-white/80 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-amber-400/40">
             <input
               type="checkbox"
-              checked={autoPhotosEnabled}
-              onChange={(e) => setAutoPhotosEnabled(e.target.checked)}
+              checked={effectiveAutoPhotos}
+              onChange={(e) => handleSetAutoPhotos(e.target.checked)}
               className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
             />
             <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
@@ -396,14 +423,19 @@ export function SetupCurriculumHeader({
   );
 }
 
-interface SmartOptionInputProps {
+export interface SmartOptionInputProps {
   value: string;
-  onChange: (newValue: string) => void;
+  onChange?: (newValue: string) => void;
+  onChangeValue?: (newValue: string) => void;
   onOpenMediaPicker: (initialQuery: string) => void;
   placeholder?: string;
   isCorrect?: boolean;
+  onSelectCorrect?: () => void;
+  optionIndex?: number;
+  radioName?: string;
   contentMode?: AnswerContentMode;
   autoPhotosEnabled?: boolean;
+  autoRecommendPhoto?: boolean;
 }
 
 /**
@@ -416,12 +448,30 @@ interface SmartOptionInputProps {
 export function SmartOptionInput({
   value,
   onChange,
+  onChangeValue,
   onOpenMediaPicker,
   placeholder = 'Option',
   isCorrect = false,
+  onSelectCorrect,
+  radioName,
   contentMode = 'both',
-  autoPhotosEnabled = true,
+  autoPhotosEnabled,
+  autoRecommendPhoto,
 }: SmartOptionInputProps) {
+  const isAutoPhotos = autoPhotosEnabled ?? autoRecommendPhoto ?? true;
+
+  const emitChange = useCallback(
+    (newVal: string) => {
+      if (typeof onChange === 'function') {
+        onChange(newVal);
+      }
+      if (typeof onChangeValue === 'function') {
+        onChangeValue(newVal);
+      }
+    },
+    [onChange, onChangeValue]
+  );
+
   const parsed = parseOptionContent(value);
   const [recommendedUrl, setRecommendedUrl] = useState<string | null>(() =>
     getInstantCartoonPng(parsed.text)
@@ -476,51 +526,51 @@ export function SmartOptionInput({
   // Determine the active image to display (either explicitly set on the option, or the auto-recommended Cartoon PNG)
   const activeImageUrl =
     parsed.imageUrl ||
-    (autoPhotosEnabled && recommendedUrl && recommendedUrl !== dismissedAutoUrl
+    (isAutoPhotos && recommendedUrl && recommendedUrl !== dismissedAutoUrl
       ? recommendedUrl
       : null);
 
   // Auto-sync into option value when contentMode is 'both' or 'photos_gifs' and we have an auto-recommended cartoon PNG
   useEffect(() => {
-    if (!autoPhotosEnabled || !recommendedUrl || recommendedUrl === dismissedAutoUrl) return;
+    if (!isAutoPhotos || !recommendedUrl || recommendedUrl === dismissedAutoUrl) return;
     if (parsed.imageUrl) return; // Already has an explicit image
     if (!parsed.text.trim()) return;
 
     if (contentMode === 'both') {
       const nextVal = formatOptionContent(parsed.text, recommendedUrl, 'both');
       if (nextVal !== value) {
-        onChange(nextVal);
+        emitChange(nextVal);
       }
     } else if (contentMode === 'photos_gifs') {
       const nextVal = formatOptionContent(parsed.text, recommendedUrl, 'photos_gifs');
       if (nextVal !== value) {
-        onChange(nextVal);
+        emitChange(nextVal);
       }
     }
-  }, [recommendedUrl, contentMode, autoPhotosEnabled, dismissedAutoUrl]);
+  }, [recommendedUrl, contentMode, isAutoPhotos, dismissedAutoUrl, parsed.imageUrl, parsed.text, value, emitChange]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newText = e.target.value;
     setRememberedWord(newText);
     setDismissedAutoUrl(null);
 
-    const instantPng = autoPhotosEnabled ? getInstantCartoonPng(newText) : null;
+    const instantPng = isAutoPhotos ? getInstantCartoonPng(newText) : null;
     const imgToKeep = parsed.imageUrl || instantPng;
 
     if (contentMode === 'words' || !imgToKeep) {
-      onChange(newText);
+      emitChange(newText);
     } else if (contentMode === 'both') {
       if (!newText.trim()) {
-        onChange('');
+        emitChange('');
       } else {
-        onChange(`${newText}${ '|||' }${imgToKeep}`);
+        emitChange(`${newText}|||${imgToKeep}`);
       }
     } else {
       // contentMode === 'photos_gifs'
       if (!newText.trim()) {
-        onChange('');
+        emitChange('');
       } else {
-        onChange(`${newText}|||${imgToKeep}`);
+        emitChange(`${newText}|||${imgToKeep}`);
       }
     }
   };
@@ -529,114 +579,125 @@ export function SmartOptionInput({
     if (recommendedUrl) {
       setDismissedAutoUrl(recommendedUrl);
     }
-    onChange(effectiveWord || '');
+    emitChange(effectiveWord || '');
   };
 
   const handleAcceptRecommended = (targetMode: AnswerContentMode = 'both') => {
     if (!recommendedUrl) return;
     setDismissedAutoUrl(null);
-    onChange(formatOptionContent(effectiveWord, recommendedUrl, targetMode));
+    emitChange(formatOptionContent(effectiveWord, recommendedUrl, targetMode));
   };
 
   return (
-    <div className="flex-1 flex flex-col gap-1.5 min-w-0">
-      <div className="flex items-center gap-2">
-        {/* Word Input (Always editable so user can type "apple" and see recommended picture!) */}
+    <div className="flex-1 flex items-start gap-2 min-w-0">
+      {typeof onSelectCorrect === 'function' && (
         <input
-          type="text"
-          value={parsed.mode === 'image' ? rememberedWord : parsed.text}
-          onChange={handleTextChange}
-          placeholder={placeholder}
-          className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${
-            isCorrect
-              ? 'border-emerald-500/70 bg-emerald-50/70 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 font-bold'
-              : 'border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-          } rounded-xl px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium transition-colors`}
+          type="radio"
+          name={radioName}
+          checked={isCorrect}
+          onChange={onSelectCorrect}
+          className="w-4 h-4 mt-3 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
         />
-
-        {/* Button to Open MediaPickerModal (Pre-filled with the typed word e.g. "apple") */}
-        <button
-          type="button"
-          onClick={() => onOpenMediaPicker(effectiveWord || '')}
-          className="bg-purple-500/15 hover:bg-purple-500 text-purple-600 dark:text-purple-300 hover:text-white px-2.5 py-2 rounded-xl transition-colors shrink-0 cursor-pointer flex items-center gap-1 text-xs font-bold border border-purple-500/25"
-          title={activeImageUrl ? 'Replace Photo or GIF' : 'Search Cartoon PNGs, Photos or Giphy'}
-        >
-          <ImageIcon size={15} />
-          <span className="hidden xl:inline">{activeImageUrl ? 'Replace' : 'Media'}</span>
-        </button>
-      </div>
-
-      {/* Automatic Recommended Picture / Attached Picture Preview Bar */}
-      {(activeImageUrl || recommendedUrl) && (
-        <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-800/95 border border-amber-400/40 dark:border-slate-700 rounded-xl p-1.5 px-2.5 shadow-xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <div
-              onClick={() => onOpenMediaPicker(effectiveWord || '')}
-              className="relative group w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
-              title="Click to Replace Picture or GIF"
-            >
-              <img
-                src={activeImageUrl || recommendedUrl!}
-                alt={effectiveWord || 'Option picture'}
-                className="w-full h-full object-contain p-0.5"
-              />
-            </div>
-
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-400/25 text-amber-700 dark:text-amber-300">
-                  {parsed.imageUrl === recommendedUrl || !parsed.imageUrl
-                    ? '✨ Recommended PNG'
-                    : '🖼️ Custom Media'}
-                </span>
-                {isLoadingAuto && (
-                  <span className="text-[10px] text-slate-400 animate-pulse">updating...</span>
-                )}
-              </div>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                {parsed.mode === 'both'
-                  ? `Showing: "${effectiveWord}" + Picture`
-                  : parsed.mode === 'image'
-                  ? 'Showing: Picture Only'
-                  : 'Word Only (Click Use to attach)'}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1 shrink-0">
-            {!parsed.imageUrl && recommendedUrl && (
-              <button
-                type="button"
-                onClick={() => handleAcceptRecommended('both')}
-                className="px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-xs"
-                title="Use this recommended picture with the word"
-              >
-                <Check size={11} /> Use
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => onOpenMediaPicker(effectiveWord || '')}
-              className="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500 text-blue-600 dark:text-blue-300 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-              title="Replace with another Cartoon PNG, Photo, or Giphy GIF"
-            >
-              <RefreshCw size={11} /> Replace
-            </button>
-
-            {activeImageUrl && (
-              <button
-                type="button"
-                onClick={handleRemoveImage}
-                className="p-1 rounded-lg text-rose-500 hover:bg-rose-500/15 cursor-pointer"
-                title="Remove picture (keep word only)"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-        </div>
       )}
+      <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+        <div className="flex items-center gap-2">
+          {/* Word Input (Always editable so user can type "apple" and see recommended picture!) */}
+          <input
+            type="text"
+            value={parsed.mode === 'image' ? rememberedWord : parsed.text}
+            onChange={handleTextChange}
+            placeholder={placeholder}
+            className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${
+              isCorrect
+                ? 'border-emerald-500/70 bg-emerald-50/70 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 font-bold'
+                : 'border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+            } rounded-xl px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium transition-colors`}
+          />
+
+          {/* Button to Open MediaPickerModal (Pre-filled with the typed word e.g. "apple") */}
+          <button
+            type="button"
+            onClick={() => onOpenMediaPicker(effectiveWord || '')}
+            className="bg-purple-500/15 hover:bg-purple-500 text-purple-600 dark:text-purple-300 hover:text-white px-2.5 py-2 rounded-xl transition-colors shrink-0 cursor-pointer flex items-center gap-1 text-xs font-bold border border-purple-500/25"
+            title={activeImageUrl ? 'Replace Photo or GIF' : 'Search Cartoon PNGs, Photos or Giphy'}
+          >
+            <ImageIcon size={15} />
+            <span className="hidden xl:inline">{activeImageUrl ? 'Replace' : 'Media'}</span>
+          </button>
+        </div>
+
+        {/* Automatic Recommended Picture / Attached Picture Preview Bar */}
+        {(activeImageUrl || recommendedUrl) && (
+          <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-800/95 border border-amber-400/40 dark:border-slate-700 rounded-xl p-1.5 px-2.5 shadow-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <div
+                onClick={() => onOpenMediaPicker(effectiveWord || '')}
+                className="relative group w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
+                title="Click to Replace Picture or GIF"
+              >
+                <img
+                  src={activeImageUrl || recommendedUrl!}
+                  alt={effectiveWord || 'Option picture'}
+                  className="w-full h-full object-contain p-0.5"
+                />
+              </div>
+
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-400/25 text-amber-700 dark:text-amber-300">
+                    {parsed.imageUrl === recommendedUrl || !parsed.imageUrl
+                      ? '✨ Recommended PNG'
+                      : '🖼️ Custom Media'}
+                  </span>
+                  {isLoadingAuto && (
+                    <span className="text-[10px] text-slate-400 animate-pulse">updating...</span>
+                  )}
+                </div>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {parsed.mode === 'both'
+                    ? `Showing: "${effectiveWord}" + Picture`
+                    : parsed.mode === 'image'
+                    ? 'Showing: Picture Only'
+                    : 'Word Only (Click Use to attach)'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {!parsed.imageUrl && recommendedUrl && (
+                <button
+                  type="button"
+                  onClick={() => handleAcceptRecommended('both')}
+                  className="px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+                  title="Use this recommended picture with the word"
+                >
+                  <Check size={11} /> Use
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onOpenMediaPicker(effectiveWord || '')}
+                className="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500 text-blue-600 dark:text-blue-300 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                title="Replace with another Cartoon PNG, Photo, or Giphy GIF"
+              >
+                <RefreshCw size={11} /> Replace
+              </button>
+
+              {activeImageUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="p-1 rounded-lg text-rose-500 hover:bg-rose-500/15 cursor-pointer"
+                  title="Remove picture (keep word only)"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -647,8 +708,12 @@ export function SmartOptionInput({
  */
 export async function convertQuestionsContentMode<
   T extends { id: any; text: string; options: string[]; answerIndex: number; optionImages?: (string | null)[] }
->(questions: T[], mode: AnswerContentMode): Promise<T[]> {
-  return Promise.all(
+>(
+  questions: T[],
+  mode: AnswerContentMode,
+  onComplete?: (updated: T[]) => void
+): Promise<T[]> {
+  const result = await Promise.all(
     questions.map(async (q) => {
       const newOptions = await Promise.all(
         q.options.map(async (rawOpt, idx) => {
@@ -682,4 +747,9 @@ export async function convertQuestionsContentMode<
       };
     })
   );
+
+  if (typeof onComplete === 'function') {
+    onComplete(result);
+  }
+  return result;
 }

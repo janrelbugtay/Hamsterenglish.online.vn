@@ -1,6 +1,7 @@
 // Multi-Source Cartoon PNG, Photo & GIF Search + Auto-Recommended Photo Engine + Setup Presets
 
 export type AnswerContentMode = 'words' | 'photos_gifs' | 'both';
+export type OptionContentMode = AnswerContentMode;
 
 export interface ParsedOptionContent {
   raw: string;
