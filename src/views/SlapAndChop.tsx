@@ -10,6 +10,20 @@ import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { logUserActivity } from "../utils/activityTracker";
+import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
+import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
+
+const slapChopImgCache: Record<string, HTMLImageElement> = {};
+function getCachedSlapChopImage(url: string): HTMLImageElement | null {
+  if (!url) return null;
+  if (!slapChopImgCache[url]) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = url;
+    slapChopImgCache[url] = img;
+  }
+  return slapChopImgCache[url];
+}
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
 
@@ -3421,11 +3435,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     // ---------------------------------------------
     // 1. Bright Light-Colored 3D Extruded Option Capsule Below Mosquito
     // ---------------------------------------------
+    const parsedOpt = parseOptionContent(t.text || "");
+    const cleanWord = parsedOpt.text || (parsedOpt.imageUrl ? "" : t.text || "");
+    const optImgEl = parsedOpt.imageUrl ? getCachedSlapChopImage(parsedOpt.imageUrl) : null;
+    const hasLoadedImg = Boolean(optImgEl && optImgEl.complete && optImgEl.naturalWidth > 0);
+
     const tScale = textSizeRef.current || 1.15;
     const fontPx = Math.round(15.5 * tScale);
     const badgeSize = Math.round(38 * Math.max(0.92, tScale * 0.94));
+    const thumbSize = hasLoadedImg ? Math.round(38 * Math.max(0.92, tScale * 0.94)) : 0;
     const cardH = Math.round(48 * Math.max(0.92, tScale * 0.94));
-    const cardW = Math.max(Math.round(195 * tScale * 0.9), Math.min(Math.round(320 * tScale), t.text.length * (fontPx * 0.62) + badgeSize + 36));
+    const cardW = Math.max(
+      Math.round(195 * tScale * 0.9),
+      Math.min(
+        Math.round(340 * tScale),
+        cleanWord.length * (fontPx * 0.62) + badgeSize + thumbSize + (hasLoadedImg ? 48 : 36)
+      )
+    );
     const cardY = 34;
 
     ctx.save();
@@ -3465,14 +3491,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.textBaseline = 'middle';
     ctx.fillText(t.letter, -cardW / 2 + 6 + badgeSize / 2, cardY + cardH / 2);
 
+    let textStartX = -cardW / 2 + badgeSize + 14;
+    if (hasLoadedImg && optImgEl) {
+      try {
+        ctx.drawImage(optImgEl, textStartX, cardY + (cardH - thumbSize) / 2, thumbSize, thumbSize);
+        textStartX += thumbSize + 8;
+      } catch {
+        // ignore draw error
+      }
+    }
+
     // High-Contrast Dark Slate Option Answer Text on Bright White Capsule
-    ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
-    ctx.font = `800 ${fontPx}px Inter, sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const maxChars = 24;
-    const displayStr = t.text.length > maxChars ? t.text.slice(0, maxChars - 1) + '…' : t.text;
-    ctx.fillText(displayStr, -cardW / 2 + badgeSize + 14, cardY + cardH / 2);
+    if (cleanWord) {
+      ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
+      ctx.font = `800 ${fontPx}px Inter, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const maxChars = 22;
+      const displayStr = cleanWord.length > maxChars ? cleanWord.slice(0, maxChars - 1) + '…' : cleanWord;
+      ctx.fillText(displayStr, textStartX, cardY + cardH / 2);
+    }
 
     // ---------------------------------------------
     // 2. Volumetric 3D Cartoon Mosquito (Friendly Bright 3D Colors)
@@ -3717,11 +3755,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
 
     // 2. Bright Light-Colored 3D Extruded Option Pill
+    const parsedOpt = parseOptionContent(t.text || "");
+    const cleanWord = parsedOpt.text || (parsedOpt.imageUrl ? "" : t.text || "");
+    const optImgEl = parsedOpt.imageUrl ? getCachedSlapChopImage(parsedOpt.imageUrl) : null;
+    const hasLoadedImg = Boolean(optImgEl && optImgEl.complete && optImgEl.naturalWidth > 0);
+
     const tScale = textSizeRef.current || 1.15;
     const fontPx = Math.round(15 * tScale);
     const badgeSize = Math.round(36 * Math.max(0.92, tScale * 0.94));
+    const thumbSize = hasLoadedImg ? Math.round(36 * Math.max(0.92, tScale * 0.94)) : 0;
     const cardH = Math.round(46 * Math.max(0.92, tScale * 0.94));
-    const cardW = Math.max(Math.round(185 * tScale * 0.9), Math.min(Math.round(310 * tScale), t.text.length * (fontPx * 0.62) + badgeSize + 34));
+    const cardW = Math.max(
+      Math.round(185 * tScale * 0.9),
+      Math.min(
+        Math.round(330 * tScale),
+        cleanWord.length * (fontPx * 0.62) + badgeSize + thumbSize + (hasLoadedImg ? 46 : 34)
+      )
+    );
     const cardY = r * 0.45;
 
     ctx.fillStyle = t.frozen ? '#0284c7' : t.color.dark;
@@ -3746,11 +3796,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.textBaseline = 'middle';
     ctx.fillText(t.letter, -cardW / 2 + 5 + badgeSize / 2, cardY + cardH / 2);
 
-    ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
-    ctx.font = `800 ${fontPx}px Inter, sans-serif`;
-    ctx.textAlign = 'left';
-    const displayStr = t.text.length > 24 ? t.text.slice(0, 22) + '…' : t.text;
-    ctx.fillText(displayStr, -cardW / 2 + badgeSize + 13, cardY + cardH / 2);
+    let textStartX = -cardW / 2 + badgeSize + 13;
+    if (hasLoadedImg && optImgEl) {
+      try {
+        ctx.drawImage(optImgEl, textStartX, cardY + (cardH - thumbSize) / 2, thumbSize, thumbSize);
+        textStartX += thumbSize + 8;
+      } catch {
+        // ignore draw error
+      }
+    }
+
+    if (cleanWord) {
+      ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
+      ctx.font = `800 ${fontPx}px Inter, sans-serif`;
+      ctx.textAlign = 'left';
+      const displayStr = cleanWord.length > 22 ? cleanWord.slice(0, 20) + '…' : cleanWord;
+      ctx.fillText(displayStr, textStartX, cardY + cardH / 2);
+    }
 
     // Show 1st Knife Slash Indicator if one knife hit recently and awaiting second knife!
     if (!t.frozen && time > 0) {
@@ -5107,7 +5169,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                           }`}>
                             {OPTION_LETTERS[oIdx]}
                           </span>
-                          <span className="flex-1">{opt}</span>
+                          {(() => {
+                            const parsedOpt = parseOptionContent(opt);
+                            return (
+                              <span className="flex-1 flex items-center gap-2.5">
+                                {parsedOpt.imageUrl && (
+                                  <img
+                                    src={parsedOpt.imageUrl}
+                                    alt={parsedOpt.text || "Option"}
+                                    className="w-11 h-11 rounded-lg object-contain bg-white p-1 border border-sky-200 shrink-0"
+                                  />
+                                )}
+                                {parsedOpt.text && <span>{parsedOpt.text}</span>}
+                              </span>
+                            );
+                          })()}
                           {showResult && isCorrectAnswer && (
                             <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-500 text-white">
                               ✓ +5 PTS
@@ -5268,13 +5344,16 @@ function QuizEditor({
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
   const [folderId, setFolderId] = useState(quiz.folderId || "");
+  const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
+  const [contentMode, setContentMode] = useState<OptionContentMode>("both");
+  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
   const [questions, setQuestions] = useState<Question[]>(
     quiz.questions && quiz.questions.length > 0
       ? quiz.questions
       : [{ id: Date.now(), text: "", options: ["", "", "", ""], answerIndex: 0 }]
   );
 
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number; initialQuery?: string } | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
   const [showVideoGuide, setShowVideoGuide] = useState(false);
@@ -5282,6 +5361,25 @@ function QuizEditor({
   const [bulkText, setBulkText] = useState("");
   const [toastMsg, setToastMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    setLocalFolders(folders || []);
+  }, [folders]);
+
+  const handleContentModeChange = (nextMode: OptionContentMode) => {
+    setContentMode(nextMode);
+    convertQuestionsContentMode(questions, nextMode, (updated) => {
+      setQuestions(updated);
+      setToastMsg(
+        nextMode === "words"
+          ? "📝 Converted options to Words Only!"
+          : nextMode === "photos_gifs"
+          ? "🎨 Converted options to Cartoon PNGs & GIFs!"
+          : "✨ Converted options to Both (Words + Cartoon PNGs)!"
+      );
+      setTimeout(() => setToastMsg(""), 3000);
+    });
+  };
 
   const handleCopyAiPrompt = () => {
     navigator.clipboard.writeText(`Create 50 fill-in-the-blank questions on the topic of Passive Voice. Each question should have 4 multiple-choice options (A, B, C, and D) and include the correct answer.`);
@@ -5478,41 +5576,38 @@ function QuizEditor({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">TOPIC</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Present Simple"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  className="w-full text-sm font-medium bg-sky-50/60 border border-slate-300 outline-none text-slate-800 px-4 py-3 rounded-xl focus:border-sky-500 placeholder-slate-400 transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">CLASS LEVEL</label>
-                <input
-                  type="text"
-                  placeholder="e.g. KET, Starters"
-                  value={classLevel}
-                  onChange={(e) => setClassLevel(e.target.value)}
-                  className="w-full text-sm font-medium bg-sky-50/60 border border-slate-300 outline-none text-slate-800 px-4 py-3 rounded-xl focus:border-sky-500 placeholder-slate-400 transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">FOLDER</label>
-                <select
-                  value={folderId}
-                  onChange={(e) => setFolderId(e.target.value)}
-                  className="w-full text-sm font-medium bg-sky-50/60 border border-slate-300 outline-none text-slate-800 px-4 py-3 rounded-xl focus:border-sky-500 appearance-none cursor-pointer transition-colors"
-                >
-                  <option value="">No Folder (Root)</option>
-                  {folders.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <SetupCurriculumHeader
+              topic={topic}
+              setTopic={setTopic}
+              classLevel={classLevel}
+              setClassLevel={setClassLevel}
+              folderId={folderId}
+              setFolderId={setFolderId}
+              folders={localFolders}
+              onCreateFolder={(name) => {
+                const newF = { id: `folder_${Date.now()}`, name };
+                setLocalFolders((prev) => [...prev, newF]);
+                setFolderId(newF.id);
+              }}
+              contentMode={contentMode}
+              setContentMode={handleContentModeChange}
+              autoRecommendPhoto={autoRecommendPhoto}
+              setAutoRecommendPhoto={setAutoRecommendPhoto}
+              onApplyStarterTopic={(starterQs) => {
+                const formatted = starterQs.map((sq, i) => ({
+                  id: Date.now() + i + Math.random(),
+                  text: sq.text,
+                  options: sq.options,
+                  answerIndex: sq.answerIndex,
+                }));
+                setQuestions(formatted);
+                convertQuestionsContentMode(formatted, contentMode, (updated) => {
+                  setQuestions(updated);
+                });
+                setToastMsg(`✨ Loaded ${formatted.length} "${topic}" questions with auto Cartoon PNGs!`);
+                setTimeout(() => setToastMsg(""), 3500);
+              }}
+            />
           </div>
 
           {errorMsg && (
@@ -5592,52 +5687,21 @@ function QuizEditor({
                   />
                 </div>
 
-                <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {q.options.map((opt, optIndex) => (
-                    <div key={optIndex} className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name={`answer-${q.id}`}
-                        checked={q.answerIndex === optIndex}
-                        onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                        className="w-4 h-4 text-sky-500 focus:ring-sky-500 bg-slate-50 border-slate-300 cursor-pointer"
-                      />
-                      {opt.startsWith('data:image') || opt.startsWith('http') ? (
-                        <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-lg p-1.5 pr-3">
-                          <img src={opt} alt="Option" className="w-8 h-8 rounded object-cover" />
-                          <span className="text-xs text-slate-500 flex-1 truncate">Image/GIF</span>
-                          <button
-                            type="button"
-                            onClick={() => updateOption(q.id, optIndex, '')}
-                            className="text-red-500 hover:text-red-600 cursor-pointer p-1"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex-1 flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={opt}
-                            onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
-                            placeholder={`Option ${optIndex + 1}`}
-                            className={`flex-1 min-w-0 bg-slate-50 border ${
-                              q.answerIndex === optIndex
-                                ? 'border-sky-500 bg-sky-50 text-sky-700 font-bold'
-                                : 'border-slate-300 text-slate-700'
-                            } rounded-lg px-3 py-2 outline-none focus:border-sky-500 text-sm font-medium`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setActiveGiphyInput({ qId: q.id, optIndex })}
-                            className="bg-purple-100 text-purple-600 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
-                            title="Search Giphy"
-                          >
-                            <ImageIcon size={16} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <SmartOptionInput
+                      key={optIndex}
+                      value={opt}
+                      optionIndex={optIndex}
+                      isCorrect={q.answerIndex === optIndex}
+                      onSelectCorrect={() => updateQuestion(q.id, 'answerIndex', optIndex)}
+                      onChangeValue={(val) => updateOption(q.id, optIndex, val)}
+                      onOpenMediaPicker={(initialQuery) => setActiveGiphyInput({ qId: q.id, optIndex, initialQuery })}
+                      contentMode={contentMode}
+                      autoRecommendPhoto={autoRecommendPhoto}
+                      placeholder={`Option ${optIndex + 1} (e.g. apple)`}
+                      radioName={`answer-${q.id}`}
+                    />
                   ))}
                 </div>
 
@@ -5676,9 +5740,14 @@ function QuizEditor({
       <MediaPickerModal
         isOpen={activeGiphyInput !== null}
         onClose={() => setActiveGiphyInput(null)}
+        initialQuery={activeGiphyInput?.initialQuery || ""}
         onSelect={(url) => {
           if (activeGiphyInput) {
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, url);
+            const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
+            const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
+            const parsed = parseOptionContent(currentRaw);
+            const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
+            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
             setActiveGiphyInput(null);
           }
         }}

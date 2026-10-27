@@ -1,83 +1,127 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, Loader2, Link as LinkIcon, Upload, Image as ImageIcon } from 'lucide-react';
+import { Search, X, Loader2, Link as LinkIcon, Upload, Image as ImageIcon, Sparkles } from 'lucide-react';
+import {
+  searchPhotosMultiSource,
+  searchGifsMultiSource,
+  PhotoSearchResult,
+  GifSearchResult,
+  normalizeKeyword,
+} from '../utils/mediaAndPresets';
 
 interface MediaPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (mediaUrl: string) => void;
+  initialQuery?: string;
+  defaultTab?: 'photos' | 'giphy' | 'upload';
 }
 
-type Tab = 'giphy' | 'upload' | 'photos';
+type Tab = 'photos' | 'giphy' | 'upload';
 
-export function MediaPickerModal({ isOpen, onClose, onSelect }: MediaPickerModalProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('giphy');
-  
-  // Giphy state
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+const QUICK_SEARCH_CHIPS = [
+  'apple',
+  'banana',
+  'cat',
+  'dog',
+  'hamster',
+  'lion',
+  'shark',
+  'pizza',
+  'ice cream',
+  'car',
+  'airplane',
+  'book',
+  'run',
+  'happy',
+  'sun',
+];
+
+export function MediaPickerModal({
+  isOpen,
+  onClose,
+  onSelect,
+  initialQuery = '',
+  defaultTab = 'photos',
+}: MediaPickerModalProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
+  const [query, setQuery] = useState('');
+  const [photoResults, setPhotoResults] = useState<PhotoSearchResult[]>([]);
+  const [gifResults, setGifResults] = useState<GifSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  // Link state
-  const [linkUrl, setLinkUrl] = useState("");
-
-  // Upload state
+  const [error, setError] = useState('');
+  const [prioritizeCartoonPng, setPrioritizeCartoonPng] = useState(true);
+  const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!isOpen) {
-      setQuery("");
-      setResults([]);
-      setError("");
-      setLinkUrl("");
-      setActiveTab('giphy');
-    }
-  }, [isOpen]);
-
-  const searchPhotos = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    
+  const runSearch = async (searchWord: string, tab: Tab, cartoonPriority: boolean = prioritizeCartoonPng) => {
+    const clean = searchWord.trim();
+    if (!clean) return;
     setIsLoading(true);
-    setError("");
-    
+    setError('');
+
     try {
-      const res = await fetch(`/api/photo-search?q=${encodeURIComponent(query)}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch photos. API might be rate limited.");
+      if (tab === 'photos') {
+        const items = await searchPhotosMultiSource(clean, cartoonPriority);
+        setPhotoResults(items);
+      } else if (tab === 'giphy') {
+        const items = await searchGifsMultiSource(clean);
+        setGifResults(items);
       }
-      if (data.error) throw new Error(data.error);
-      
-      setResults(data.results || []);
     } catch (err: any) {
-      setError(err.message || "Failed to fetch photos");
+      setError(err.message || 'Search encountered an issue. Please try another keyword.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const searchGiphy = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!isOpen) {
+      setQuery('');
+      setPhotoResults([]);
+      setGifResults([]);
+      setError('');
+      setLinkUrl('');
+    } else {
+      const startTab = defaultTab || 'photos';
+      setActiveTab(startTab);
+      const cleanedInit = normalizeKeyword(initialQuery) || initialQuery.trim();
+      if (cleanedInit) {
+        setQuery(cleanedInit);
+        runSearch(cleanedInit, startTab, prioritizeCartoonPng);
+      } else {
+        // Pre-populate with default popular cartoon PNGs / GIFs (e.g., "apple") so modal is never empty
+        setQuery('apple');
+        runSearch('apple', startTab, prioritizeCartoonPng);
+      }
+    }
+  }, [isOpen, initialQuery, defaultTab]);
+
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
-    
-    setIsLoading(true);
-    setError("");
-    
-    try {
-      const res = await fetch(`/api/giphy-search?q=${encodeURIComponent(query)}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch GIFs from Giphy. API might be rate limited.");
-      }
-      if (data.error) throw new Error(data.error);
-      
-      setResults(data.data || []);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch GIFs");
-    } finally {
-      setIsLoading(false);
+    runSearch(query, activeTab, prioritizeCartoonPng);
+  };
+
+  const handleSwitchTab = (tab: Tab) => {
+    setActiveTab(tab);
+    setError('');
+    if (tab === 'photos' && photoResults.length === 0 && query.trim()) {
+      runSearch(query, 'photos', prioritizeCartoonPng);
+    } else if (tab === 'giphy' && gifResults.length === 0 && query.trim()) {
+      runSearch(query, 'giphy', prioritizeCartoonPng);
     }
+  };
+
+  const handleToggleCartoonPriority = (cartoonOnly: boolean) => {
+    setPrioritizeCartoonPng(cartoonOnly);
+    if (query.trim() && activeTab === 'photos') {
+      runSearch(query, 'photos', cartoonOnly);
+    }
+  };
+
+  const handleQuickChip = (word: string) => {
+    setQuery(word);
+    runSearch(word, activeTab, prioritizeCartoonPng);
   };
 
   const handleLinkSubmit = (e: React.FormEvent) => {
@@ -91,8 +135,8 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }: MediaPickerModal
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) { // 2MB limit
-      setError("File is too large. Please select an image under 2MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File is too large. Please select an image under 5MB.');
       return;
     }
 
@@ -103,7 +147,7 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }: MediaPickerModal
       }
     };
     reader.onerror = () => {
-      setError("Failed to read file.");
+      setError('Failed to read file.');
     };
     reader.readAsDataURL(file);
   };
@@ -111,59 +155,84 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }: MediaPickerModal
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-          <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-            Select Image or GIF
-          </h3>
-          <button onClick={onClose} className="p-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] border border-slate-200 dark:border-slate-700">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/60">
+          <div>
+            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white flex items-center gap-2">
+              <Sparkles size={18} className="text-amber-500" />
+              Select Cartoon PNG, Photo, or GIF
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Multi-source search: Cartoon PNGs (ARASAAC &amp; Commons), Openverse Photos &amp; Tenor/Giphy GIFs
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+          >
             <X size={20} />
           </button>
         </div>
-        
+
+        {/* Tabs */}
         <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
-          <button 
-            onClick={() => { setActiveTab('giphy'); setError(''); setQuery(''); setResults([]); }}
-            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'giphy' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          <button
+            type="button"
+            onClick={() => handleSwitchTab('photos')}
+            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'photos'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-500/5'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
           >
-            <Search size={16} /> Giphy
+            <ImageIcon size={16} /> Photos &amp; Cartoon PNGs
           </button>
-          <button 
-            onClick={() => { setActiveTab('upload'); setError(''); setQuery(''); setResults([]); }}
-            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'upload' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          <button
+            type="button"
+            onClick={() => handleSwitchTab('giphy')}
+            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'giphy'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-500/5'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
           >
-            <Upload size={16} /> Upload File
+            <Search size={16} /> Giphy &amp; Tenor GIFs
           </button>
-          <button 
-            onClick={() => { setActiveTab('photos'); setError(''); setQuery(''); setResults([]); }}
-            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'photos' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          <button
+            type="button"
+            onClick={() => handleSwitchTab('upload')}
+            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'upload'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-500/5'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
           >
-            <ImageIcon size={16} /> Photos
+            <Upload size={16} /> Upload / Paste Link
           </button>
         </div>
 
+        {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-slate-50 dark:bg-slate-900/20">
-          
-          {error && activeTab === 'upload' && (
-            <div className="bg-red-500/10 text-red-500 text-sm p-3 rounded-lg mb-4 text-center border border-red-500/20">
-              {error}
-            </div>
-          )}
-
-          {activeTab === 'giphy' && (
+          {(activeTab === 'photos' || activeTab === 'giphy') && (
             <div className="flex flex-col h-full">
-              <form onSubmit={searchGiphy} className="relative mb-4 shrink-0">
+              {/* Search Form */}
+              <form onSubmit={handleFormSubmit} className="relative mb-2.5 shrink-0">
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search Giphy..."
-                  className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                  placeholder={
+                    activeTab === 'photos'
+                      ? 'Search Cartoon PNGs & Photos (e.g., apple, cat, run, happy)...'
+                      : 'Search Animated GIFs (e.g., apple, celebration, dance, cat)...'
+                  }
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-24 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium shadow-xs"
                   autoFocus
                 />
                 <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
-                <button 
+                <button
                   type="submit"
                   disabled={isLoading || !query.trim()}
                   className="absolute right-2 top-2 bg-blue-500 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-600 disabled:opacity-50 transition-colors cursor-pointer"
@@ -172,41 +241,132 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }: MediaPickerModal
                 </button>
               </form>
 
-              <div className="flex-1 min-h-[250px]">
+              {/* Filter & Quick Word Chips */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3 shrink-0">
+                {activeTab === 'photos' && (
+                  <div className="flex items-center gap-1.5 bg-slate-200/70 dark:bg-slate-800 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCartoonPriority(true)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        prioritizeCartoonPng
+                          ? 'bg-amber-500 text-slate-950 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                      }`}
+                    >
+                      🎨 Prioritize Cartoon PNGs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCartoonPriority(false)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        !prioritizeCartoonPng
+                          ? 'bg-blue-500 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                      }`}
+                    >
+                      📸 All Photos
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 max-w-full">
+                  <span className="text-[11px] font-bold text-slate-400 mr-1 shrink-0">Quick:</span>
+                  {QUICK_SEARCH_CHIPS.map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => handleQuickChip(chip)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition shrink-0 cursor-pointer ${
+                        query.toLowerCase() === chip
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                      }`}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Results Grid */}
+              <div className="flex-1 min-h-[260px]">
                 {isLoading ? (
-                  <div className="h-full flex items-center justify-center">
-                    <Loader2 className="animate-spin text-blue-500" size={32} />
+                  <div className="h-56 flex flex-col items-center justify-center gap-2">
+                    <Loader2 className="animate-spin text-blue-500" size={34} />
+                    <span className="text-xs font-bold text-slate-500">
+                      Searching Cartoon PNGs, Pictograms &amp; GIFs...
+                    </span>
                   </div>
                 ) : error ? (
                   <div className="text-red-500 text-center py-8">{error}</div>
-                ) : results.length > 0 ? (
+                ) : activeTab === 'photos' ? (
+                  photoResults.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {photoResults.map((photo) => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => onSelect(photo.urls.regular)}
+                          className="relative group rounded-xl overflow-hidden aspect-square border-2 border-slate-200 dark:border-slate-700 hover:border-blue-500 transition-all cursor-pointer bg-white dark:bg-slate-800 p-2 flex flex-col items-center justify-center shadow-xs"
+                        >
+                          {photo.isCartoonPng && (
+                            <span className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[9px] font-black uppercase tracking-wider shadow">
+                              Cartoon PNG
+                            </span>
+                          )}
+                          <img
+                            src={photo.urls.small}
+                            alt={photo.alt_description || 'Photo'}
+                            className={`w-full h-full ${
+                              photo.isCartoonPng ? 'object-contain p-1' : 'object-cover rounded-lg'
+                            }`}
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2 text-center">
+                            <span className="text-white text-xs font-bold px-3 py-1.5 bg-blue-500 rounded-lg shadow">
+                              Use Picture
+                            </span>
+                            {photo.source && (
+                              <span className="text-[10px] text-white/80 mt-1 font-medium truncate max-w-full">
+                                {photo.source}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-slate-500 text-center py-12">
+                      No photos found for &ldquo;{query}&rdquo;. Try another keyword!
+                    </div>
+                  )
+                ) : gifResults.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {results.map((gif) => (
+                    {gifResults.map((gif) => (
                       <button
                         key={gif.id}
+                        type="button"
                         onClick={() => onSelect(gif.images.fixed_height.url)}
-                        className="relative group rounded-xl overflow-hidden aspect-square border-2 border-transparent hover:border-blue-500 transition-all cursor-pointer bg-slate-200 dark:bg-slate-800"
+                        className="relative group rounded-xl overflow-hidden aspect-square border-2 border-slate-200 dark:border-slate-700 hover:border-blue-500 transition-all cursor-pointer bg-slate-200 dark:bg-slate-800"
                       >
-                        <img 
-                          src={gif.images.fixed_height_small.url} 
+                        <img
+                          src={gif.images.fixed_height_small.url}
                           alt={gif.title}
                           className="w-full h-full object-cover"
+                          loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <span className="text-white text-xs font-bold px-2 py-1 bg-blue-500 rounded-lg">Select</span>
+                          <span className="text-white text-xs font-bold px-3 py-1.5 bg-blue-500 rounded-lg shadow">
+                            Select GIF
+                          </span>
                         </div>
                       </button>
                     ))}
                   </div>
-                ) : query ? (
-                   <div className="text-slate-500 text-center py-8">No GIFs found for "{query}"</div>
                 ) : (
-                  <div className="text-slate-500 text-center py-8 flex flex-col items-center justify-center h-full gap-2">
-                     <Search size={32} className="text-slate-300 dark:text-slate-600" />
-                     <p>Search to find the perfect GIF!</p>
-                     <a href="https://giphy.com/?utm_source=chatgpt.com" target="_blank" rel="noreferrer" className="text-xs text-slate-400 hover:text-blue-500 flex items-center mt-4">
-                       Powered By GIPHY
-                     </a>
+                  <div className="text-slate-500 text-center py-12">
+                    No GIFs found for &ldquo;{query}&rdquo;. Try another keyword!
                   </div>
                 )}
               </div>
@@ -214,88 +374,57 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }: MediaPickerModal
           )}
 
           {activeTab === 'upload' && (
-            <div className="h-[250px] flex flex-col items-center justify-center">
-              <input 
+            <div className="py-6 flex flex-col items-center justify-center gap-6">
+              {error && (
+                <div className="bg-red-500/10 text-red-500 text-sm p-3 rounded-lg w-full max-w-md text-center border border-red-500/20">
+                  {error}
+                </div>
+              )}
+
+              <input
                 type="file"
-                accept="image/png, image/jpeg, image/gif, image/webp"
+                accept="image/png, image/jpeg, image/gif, image/webp, image/svg+xml"
                 className="hidden"
                 ref={fileInputRef}
                 onChange={handleFileUpload}
               />
-              <button 
+              <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full max-w-sm border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 bg-slate-100 hover:bg-blue-50 dark:bg-slate-900 dark:hover:bg-blue-900/20 transition-colors rounded-2xl flex flex-col items-center justify-center gap-4 py-12 cursor-pointer group"
+                className="w-full max-w-md border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 bg-white hover:bg-blue-50 dark:bg-slate-900 dark:hover:bg-blue-900/20 transition-colors rounded-2xl flex flex-col items-center justify-center gap-3 py-10 cursor-pointer group"
               >
-                <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                  <Upload size={28} />
+                <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+                  <Upload size={26} />
                 </div>
                 <div className="text-center">
-                  <p className="font-bold text-slate-700 dark:text-slate-300">Click to upload a file</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">PNG, JPG, GIF up to 2MB</p>
+                  <p className="font-bold text-slate-700 dark:text-slate-300">Click to upload an image or GIF</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    PNG, JPG, GIF, SVG, WebP up to 5MB
+                  </p>
                 </div>
               </button>
-            </div>
-          )}
 
-          {activeTab === 'photos' && (
-            <div className="flex flex-col h-full">
-              <form onSubmit={searchPhotos} className="relative mb-4 shrink-0">
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search Openverse photos..."
-                  className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
-                  autoFocus
-                />
-                <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
-                <button 
-                  type="submit"
-                  disabled={isLoading || !query.trim()}
-                  className="absolute right-2 top-2 bg-blue-500 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-600 disabled:opacity-50 transition-colors cursor-pointer"
-                >
-                  Search
-                </button>
+              <form onSubmit={handleLinkSubmit} className="w-full max-w-md flex flex-col gap-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <LinkIcon size={13} /> Or Paste Direct Image / GIF URL
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    placeholder="https://example.com/cartoon-apple.png"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 text-slate-800 dark:text-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!linkUrl.trim()}
+                    className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl cursor-pointer"
+                  >
+                    Use URL
+                  </button>
+                </div>
               </form>
-
-              <div className="flex-1 min-h-[250px]">
-                {isLoading ? (
-                  <div className="h-full flex items-center justify-center">
-                    <Loader2 className="animate-spin text-blue-500" size={32} />
-                  </div>
-                ) : error ? (
-                  <div className="text-red-500 text-center py-8">{error}</div>
-                ) : results.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {results.map((photo) => (
-                      <button
-                        key={photo.id}
-                        onClick={() => onSelect(photo.urls.regular)}
-                        className="relative group rounded-xl overflow-hidden aspect-square border-2 border-transparent hover:border-blue-500 transition-all cursor-pointer bg-slate-200 dark:bg-slate-800"
-                      >
-                        <img 
-                          src={photo.urls.small} 
-                          alt={photo.alt_description || "Photo"}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <span className="text-white text-xs font-bold px-2 py-1 bg-blue-500 rounded-lg">Select</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : query ? (
-                   <div className="text-slate-500 text-center py-8">No photos found for "{query}"</div>
-                ) : (
-                  <div className="text-slate-500 text-center py-8 flex flex-col items-center justify-center h-full gap-2">
-                     <Search size={32} className="text-slate-300 dark:text-slate-600" />
-                     <p>Search to find the perfect photo!</p>
-                     <a href="https://openverse.org" target="_blank" rel="noreferrer" className="text-xs text-slate-400 hover:text-blue-500 flex items-center mt-4">
-                       Powered By Openverse
-                     </a>
-                  </div>
-                )}
-              </div>
             </div>
           )}
         </div>

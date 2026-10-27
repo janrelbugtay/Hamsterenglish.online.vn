@@ -38,6 +38,8 @@ import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { drawSuperheroHands } from "../utils/superheroHands";
+import { SetupCurriculumHeader } from "../components/SetupSmartControls";
+import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng } from "../utils/mediaAndPresets";
 
 export interface Question {
   id: number | string;
@@ -629,6 +631,9 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   const [folderId, setFolderId] = useState(quiz.folderId || "");
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
+  const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
+  const [contentMode, setContentMode] = useState<OptionContentMode>("both");
+  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
   const [questions, setQuestions] = useState<Question[]>(() => {
     return quiz.questions.map(q => ({
       ...q,
@@ -639,10 +644,50 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   const [errorMsg, setErrorMsg] = useState("");
   
   const [activeMediaPicker, setActiveMediaPicker] = useState<
-    | { type: 'option'; qId: number | string; optIndex: number }
-    | { type: 'question'; qId: number | string }
+    | { type: 'option'; qId: number | string; optIndex: number; initialQuery?: string }
+    | { type: 'question'; qId: number | string; initialQuery?: string }
     | null
   >(null);
+
+  useEffect(() => {
+    setLocalFolders(folders || []);
+  }, [folders]);
+
+  const handleContentModeChange = async (nextMode: OptionContentMode) => {
+    setContentMode(nextMode);
+    if (nextMode === "words") {
+      setQuestions((prev) =>
+        prev.map((q) => ({
+          ...q,
+          optionImages: Array(q.options.length).fill(null),
+        }))
+      );
+      setToastMsg("📝 Switched options to Words Only!");
+      setTimeout(() => setToastMsg(""), 3000);
+      return;
+    }
+
+    const updated = await Promise.all(
+      questions.map(async (q) => {
+        const nextImgs = [...(q.optionImages || Array(q.options.length).fill(null))];
+        for (let i = 0; i < q.options.length; i++) {
+          const word = (q.options[i] || "").trim();
+          if (!nextImgs[i] && word) {
+            const pic = getInstantCartoonPng(word) || (await fetchRecommendedCartoonPng(word));
+            if (pic) nextImgs[i] = pic;
+          }
+        }
+        return { ...q, optionImages: nextImgs };
+      })
+    );
+    setQuestions(updated);
+    setToastMsg(
+      nextMode === "photos_gifs"
+        ? "🎨 Auto-matched Cartoon PNGs for options!"
+        : "✨ Enabled Both (Words + Auto Cartoon PNGs)!"
+    );
+    setTimeout(() => setToastMsg(""), 3000);
+  };
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
@@ -754,14 +799,40 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const updateOptionText = (qId: number | string, optIndex: number, textValue: string) => {
-    setQuestions(questions.map(q => {
+    setQuestions(prev => prev.map(q => {
       if (q.id === qId) {
         const newOptions = [...q.options];
         newOptions[optIndex] = textValue;
-        return { ...q, options: newOptions };
+        const newImgs = [...(q.optionImages || Array(q.options.length).fill(null))];
+        if (autoRecommendPhoto && contentMode !== "words") {
+          const instant = getInstantCartoonPng(textValue);
+          if (instant) {
+            newImgs[optIndex] = instant;
+          }
+        }
+        return { ...q, options: newOptions, optionImages: newImgs };
       }
       return q;
     }));
+
+    if (autoRecommendPhoto && contentMode !== "words" && textValue.trim().length >= 2 && !getInstantCartoonPng(textValue)) {
+      const trimmed = textValue.trim();
+      setTimeout(async () => {
+        const recommended = await fetchRecommendedCartoonPng(trimmed);
+        if (recommended) {
+          setQuestions(curr => curr.map(q => {
+            if (q.id === qId && q.options[optIndex]?.trim() === trimmed) {
+              const imgs = [...(q.optionImages || Array(q.options.length).fill(null))];
+              if (!imgs[optIndex]) {
+                imgs[optIndex] = recommended;
+              }
+              return { ...q, optionImages: imgs };
+            }
+            return q;
+          }));
+        }
+      }, 320);
+    }
   };
 
   const updateOptionImage = (qId: number | string, optIndex: number, imgUrl: string) => {
@@ -932,41 +1003,39 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                 </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Topic</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Action Verbs, Grammar" 
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-teal-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
-                    />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Class Level</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Grade 3, Starters, KET" 
-                      value={classLevel}
-                      onChange={(e) => setClassLevel(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-teal-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
-                    />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Folder</label>
-                    <select 
-                      value={folderId}
-                      onChange={(e) => setFolderId(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-teal-500 appearance-none cursor-pointer transition-colors"
-                    >
-                      <option value="">No Folder (Root)</option>
-                      {folders.map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
-                      ))}
-                    </select>
-                </div>
-            </div>
+            <SetupCurriculumHeader
+              topic={topic}
+              setTopic={setTopic}
+              classLevel={classLevel}
+              setClassLevel={setClassLevel}
+              folderId={folderId}
+              setFolderId={setFolderId}
+              folders={localFolders}
+              onCreateFolder={(name) => {
+                const newF = { id: `folder_${Date.now()}`, name };
+                setLocalFolders((prev) => [...prev, newF]);
+                setFolderId(newF.id);
+              }}
+              contentMode={contentMode}
+              setContentMode={handleContentModeChange}
+              autoRecommendPhoto={autoRecommendPhoto}
+              setAutoRecommendPhoto={setAutoRecommendPhoto}
+              onApplyStarterTopic={(starterQs) => {
+                const formatted: Question[] = starterQs.map((sq, i) => ({
+                  id: Date.now() + i + Math.random(),
+                  text: sq.text,
+                  options: sq.options,
+                  answerIndex: sq.answerIndex,
+                  optionImages:
+                    contentMode === "words"
+                      ? Array(sq.options.length).fill(null)
+                      : sq.options.map((w) => getInstantCartoonPng(w) || null),
+                }));
+                setQuestions(formatted);
+                setToastMsg(`✨ Loaded ${formatted.length} "${topic}" questions with auto Cartoon PNGs!`);
+                setTimeout(() => setToastMsg(""), 3500);
+              }}
+            />
         </div>
 
         {errorMsg && (
@@ -1217,11 +1286,11 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                         {optImg ? (
                           <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700 rounded-xl p-1.5 pr-2.5 shadow-xs">
                             <div 
-                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex })}
+                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex, initialQuery: optText })}
                               className="relative group w-11 h-11 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 shrink-0 cursor-pointer hover:border-teal-400 transition-colors"
-                              title="Click to change picture"
+                              title="Click to replace picture"
                             >
-                              <img src={optImg} alt="Option Visual" className="w-full h-full object-cover" />
+                              <img src={optImg} alt="Option Visual" className="w-full h-full object-contain p-0.5" />
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                                 <Pencil size={14} />
                               </div>
@@ -1230,16 +1299,16 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                               type="text"
                               value={optText}
                               onChange={(e) => updateOptionText(q.id, optIndex, e.target.value)}
-                              placeholder="Label (optional)"
+                              placeholder="Type word (e.g. apple)..."
                               className="flex-1 min-w-0 bg-transparent outline-none text-slate-800 dark:text-white text-xs sm:text-sm font-medium"
                             />
                             <button 
                               type="button"
-                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex })}
-                              className="p-1.5 text-teal-600 hover:text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950 rounded-lg cursor-pointer transition-colors"
-                              title="Change Picture"
+                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex, initialQuery: optText })}
+                              className="px-2 py-1 text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950 rounded-lg cursor-pointer transition-colors shrink-0"
+                              title="Replace Picture"
                             >
-                              <ImageIcon size={15} />
+                              Replace
                             </button>
                             <button 
                               type="button"
@@ -1256,7 +1325,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                               type="text"
                               value={opt}
                               onChange={(e) => updateOptionText(q.id, optIndex, e.target.value)}
-                              placeholder={`Option ${optIndex + 1}`}
+                              placeholder={`Option ${optIndex + 1} (e.g. apple)`}
                               className={`flex-1 min-w-0 bg-white dark:bg-slate-800 border ${
                                 q.answerIndex === optIndex 
                                   ? 'border-teal-500/60 bg-teal-50/30 dark:bg-teal-950/20 text-teal-900 dark:text-teal-200 font-bold' 
@@ -1265,7 +1334,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                             />
                             <button 
                               type="button"
-                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex })}
+                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex, initialQuery: opt })}
                               className="px-2.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:hover:bg-teal-900 dark:text-teal-300 rounded-xl flex items-center gap-1 text-xs font-bold border border-teal-200/80 dark:border-teal-800 transition-all shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95"
                               title="Add Picture / Photo / GIF to this option"
                             >
@@ -1299,6 +1368,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
       <MediaPickerModal 
         isOpen={activeMediaPicker !== null}
         onClose={() => setActiveMediaPicker(null)}
+        initialQuery={activeMediaPicker?.initialQuery || ""}
         onSelect={(url) => {
           if (!activeMediaPicker) return;
           if (activeMediaPicker.type === 'option') {

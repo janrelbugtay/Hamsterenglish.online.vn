@@ -361,59 +361,325 @@ Return exactly a JSON array of 4 objects.`;
     }
   });
 
-  // Giphy Search Endpoint
+  // Multi-Source Giphy & Tenor & Commons GIF Search Endpoint (Zero Rate-Limit Failures)
   app.get("/api/giphy-search", async (req, res) => {
     try {
-      const query = req.query.q as string;
+      const query = ((req.query.q as string) || "").trim();
       if (!query) return res.status(400).json({ error: "Query is required" });
-      
-      const apiKey = process.env.GIPHY_API_KEY || 'CdRKiCMbTnt9CkZTZ0lGukSczk6iT4Z6'; // Fallback to public beta key
-      const response = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=20&rating=g`);
-      
-      if (!response.ok) {
-        throw new Error(`Giphy API error: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      res.json(data);
+
+      const combinedGifs: any[] = [];
+      const seenUrls = new Set<string>();
+      const pushGif = (id: string, title: string, fullUrl: string, smallUrl?: string) => {
+        if (!fullUrl || seenUrls.has(fullUrl)) return;
+        seenUrls.add(fullUrl);
+        combinedGifs.push({
+          id,
+          title: title || query,
+          images: {
+            fixed_height: { url: fullUrl },
+            fixed_height_small: { url: smallUrl || fullUrl },
+          },
+        });
+      };
+
+      const tasks: Promise<void>[] = [];
+
+      // Source 1: Tenor GIF API (High volume, reliable animated GIFs)
+      tasks.push(
+        (async () => {
+          try {
+            const tenorKey = process.env.TENOR_API_KEY || "LIVDSRZULELA";
+            const tenorRes = await fetch(
+              `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${tenorKey}&limit=28`
+            );
+            if (tenorRes.ok) {
+              const tenorData: any = await tenorRes.json();
+              if (Array.isArray(tenorData?.results)) {
+                tenorData.results.forEach((item: any) => {
+                  const media = item.media?.[0];
+                  const full = media?.gif?.url || media?.mediumgif?.url || media?.tinygif?.url;
+                  const small = media?.tinygif?.url || media?.nanogif?.url || full;
+                  if (full) {
+                    pushGif(`tenor-${item.id}`, item.content_description || item.title || query, full, small);
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            // Continue with other sources
+          }
+        })()
+      );
+
+      // Source 2: Giphy API (if custom key or public key succeeds)
+      tasks.push(
+        (async () => {
+          try {
+            const apiKey = process.env.GIPHY_API_KEY || "dc6zaTOxFJmzC";
+            const response = await fetch(
+              `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=20&rating=g`
+            );
+            if (response.ok) {
+              const data: any = await response.json();
+              if (Array.isArray(data?.data)) {
+                data.data.forEach((g: any) => {
+                  const full = g?.images?.fixed_height?.url || g?.images?.original?.url;
+                  const small = g?.images?.fixed_height_small?.url || full;
+                  if (full) pushGif(`giphy-${g.id}`, g.title || query, full, small);
+                });
+              }
+            }
+          } catch (e) {
+            // Continue with other sources
+          }
+        })()
+      );
+
+      // Source 3: Wikimedia Commons Animated GIFs
+      tasks.push(
+        (async () => {
+          try {
+            const wikiRes = await fetch(
+              `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
+                `filetype:bitmap mime:image/gif ${query}`
+              )}&gsrnamespace=6&gsrlimit=18&prop=imageinfo&iiprop=url&format=json`,
+              { headers: { "User-Agent": "ESLGameStudio/1.0 (Educational Game App)" } }
+            );
+            if (wikiRes.ok) {
+              const wikiData: any = await wikiRes.json();
+              const pages = wikiData?.query?.pages ? Object.values(wikiData.query.pages) : [];
+              (pages as any[]).forEach((p: any) => {
+                const url = p?.imageinfo?.[0]?.url;
+                if (url && url.toLowerCase().endsWith(".gif")) {
+                  pushGif(`wiki-gif-${p.pageid}`, (p.title || query).replace(/^File:/i, ""), url, url);
+                }
+              });
+            }
+          } catch (e) {
+            // Continue
+          }
+        })()
+      );
+
+      // Source 4: ARASAAC Cartoon PNG Stickers as bonus visual fallback if GIFs are sparse
+      tasks.push(
+        (async () => {
+          try {
+            const araRes = await fetch(
+              `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(query)}`
+            );
+            if (araRes.ok) {
+              const araData: any = await araRes.json();
+              if (Array.isArray(araData)) {
+                araData.slice(0, 8).forEach((item: any, idx: number) => {
+                  if (item?._id) {
+                    const url = `https://static.arasaac.org/pictograms/${item._id}/${item._id}_500.png`;
+                    pushGif(`arasaac-sticker-${item._id}-${idx}`, `${query} Cartoon Sticker`, url, url);
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            // Continue
+          }
+        })()
+      );
+
+      await Promise.allSettled(tasks);
+      res.json({ data: combinedGifs });
     } catch (err: any) {
-      console.error("Giphy error:", err);
-      res.status(500).json({ error: err.message });
+      console.error("Giphy search error:", err);
+      res.json({ data: [] });
     }
   });
 
-
-  // Photo Search Endpoint (Openverse API - Free & No Auth)
+  // Multi-Source Photo Search Endpoint (Prioritizes Cartoon PNGs via ARASAAC + Wikimedia Cartoon PNGs + Openverse)
   app.get("/api/photo-search", async (req, res) => {
     try {
-      const query = req.query.q as string;
+      const query = ((req.query.q as string) || "").trim();
+      const prioritizeCartoon = req.query.cartoon !== "0";
       if (!query) return res.status(400).json({ error: "Query is required" });
-      
-      const response = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&page_size=20`);
-      
-      if (!response.ok) {
-        throw new Error(`Openverse API error: ${response.statusText}`);
+
+      const combinedPhotos: any[] = [];
+      const seenUrls = new Set<string>();
+      const pushPhoto = (
+        id: string,
+        title: string,
+        regular: string,
+        small?: string,
+        isCartoonPng: boolean = false,
+        source: string = "Photo"
+      ) => {
+        if (!regular || seenUrls.has(regular)) return;
+        seenUrls.add(regular);
+        combinedPhotos.push({
+          id,
+          alt_description: title || query,
+          isCartoonPng,
+          source,
+          urls: {
+            regular,
+            small: small || regular,
+          },
+        });
+      };
+
+      const tasks: Promise<void>[] = [];
+
+      // Source 1: ARASAAC Educational Cartoon Pictograms (500px Transparent Cartoon PNGs — Priority #1!)
+      tasks.push(
+        (async () => {
+          try {
+            const araRes = await fetch(
+              `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(query)}`
+            );
+            if (araRes.ok) {
+              const araData: any = await araRes.json();
+              if (Array.isArray(araData)) {
+                araData.slice(0, 16).forEach((item: any, idx: number) => {
+                  if (item?._id) {
+                    const pngUrl = `https://static.arasaac.org/pictograms/${item._id}/${item._id}_500.png`;
+                    const kw = item.keywords?.[0]?.keyword || query;
+                    pushPhoto(
+                      `arasaac-${item._id}-${idx}`,
+                      `${kw} (Cartoon PNG)`,
+                      pngUrl,
+                      pngUrl,
+                      true,
+                      "ARASAAC Cartoon PNG"
+                    );
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            // Continue
+          }
+        })()
+      );
+
+      // Source 2: Wikimedia Commons Cartoon PNGs, Clipart & Vector Illustrations (rendered as PNG)
+      tasks.push(
+        (async () => {
+          try {
+            const gsr = prioritizeCartoon
+              ? `filetype:bitmap|drawing ${query} cartoon OR clipart OR illustration OR icon`
+              : `filetype:bitmap ${query}`;
+            const wikiRes = await fetch(
+              `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
+                gsr
+              )}&gsrnamespace=6&gsrlimit=24&prop=imageinfo&iiprop=url|mime&iiurlwidth=500&format=json`,
+              { headers: { "User-Agent": "ESLGameStudio/1.0 (Educational Game App)" } }
+            );
+            if (wikiRes.ok) {
+              const wikiData: any = await wikiRes.json();
+              const pages = wikiData?.query?.pages ? Object.values(wikiData.query.pages) : [];
+              (pages as any[]).forEach((p: any) => {
+                const info = p?.imageinfo?.[0];
+                const thumb = info?.thumburl || info?.url;
+                if (thumb) {
+                  const isPng =
+                    thumb.toLowerCase().endsWith(".png") ||
+                    (info?.mime && (info.mime.includes("png") || info.mime.includes("svg")));
+                  pushPhoto(
+                    `wiki-cartoon-${p.pageid}`,
+                    (p.title || query).replace(/^File:/i, ""),
+                    thumb,
+                    thumb,
+                    Boolean(isPng),
+                    isPng ? "Cartoon PNG" : "Wikimedia Commons"
+                  );
+                }
+              });
+            }
+          } catch (e) {
+            // Continue
+          }
+        })()
+      );
+
+      // Source 3: Openverse API (with User-Agent header & PNG extension priority)
+      tasks.push(
+        (async () => {
+          try {
+            const ovUrl = prioritizeCartoon
+              ? `https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&extension=png&page_size=20`
+              : `https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&page_size=20`;
+            const response = await fetch(ovUrl, {
+              headers: {
+                "User-Agent": "ESLGameStudio/1.0 (Educational Classroom Platform)",
+                Accept: "application/json",
+              },
+            });
+            if (response.ok) {
+              const data: any = await response.json();
+              if (Array.isArray(data?.results)) {
+                data.results.forEach((img: any) => {
+                  if (img?.url) {
+                    const isPng = img.url.toLowerCase().endsWith(".png") || img.filetype === "png";
+                    pushPhoto(
+                      `ov-${img.id}`,
+                      img.title || query,
+                      img.url,
+                      img.thumbnail || img.url,
+                      isPng,
+                      isPng ? "Openverse PNG" : "Openverse Photo"
+                    );
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            // Continue
+          }
+        })()
+      );
+
+      // Source 4: Wikimedia Commons General High-Res Photos
+      tasks.push(
+        (async () => {
+          try {
+            const wikiPhotoRes = await fetch(
+              `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
+                `filetype:bitmap ${query}`
+              )}&gsrnamespace=6&gsrlimit=16&prop=imageinfo&iiprop=url|mime&iiurlwidth=500&format=json`,
+              { headers: { "User-Agent": "ESLGameStudio/1.0 (Educational Game App)" } }
+            );
+            if (wikiPhotoRes.ok) {
+              const wikiData: any = await wikiPhotoRes.json();
+              const pages = wikiData?.query?.pages ? Object.values(wikiData.query.pages) : [];
+              (pages as any[]).forEach((p: any) => {
+                const info = p?.imageinfo?.[0];
+                const thumb = info?.thumburl || info?.url;
+                if (thumb) {
+                  const isPng = thumb.toLowerCase().endsWith(".png");
+                  pushPhoto(
+                    `wiki-gen-${p.pageid}`,
+                    (p.title || query).replace(/^File:/i, ""),
+                    thumb,
+                    thumb,
+                    isPng,
+                    isPng ? "PNG Photo" : "Commons Photo"
+                  );
+                }
+              });
+            }
+          } catch (e) {
+            // Continue
+          }
+        })()
+      );
+
+      await Promise.allSettled(tasks);
+
+      if (prioritizeCartoon) {
+        combinedPhotos.sort((a, b) => (b.isCartoonPng ? 1 : 0) - (a.isCartoonPng ? 1 : 0));
       }
-      
-      const data = await response.json();
-      
-      if (!data.results) {
-        return res.json({ results: [] });
-      }
-      
-      const results = data.results.map((img: any) => ({
-        id: img.id,
-        alt_description: img.title,
-        urls: {
-          regular: img.url,
-          small: img.thumbnail || img.url
-        }
-      })).filter((r: any) => r.urls.regular);
-      
-      res.json({ results });
+
+      res.json({ results: combinedPhotos });
     } catch (err: any) {
       console.error("Photo search error:", err);
-      res.status(500).json({ error: err.message });
+      res.json({ results: [] });
     }
   });
 

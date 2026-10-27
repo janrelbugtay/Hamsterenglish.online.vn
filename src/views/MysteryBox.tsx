@@ -5,6 +5,8 @@ import { FullscreenButton } from "../components/FullscreenButton";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { GameModeModal } from "../components/GameModeModal";
+import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
+import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 import { 
   ArrowLeft, Edit3, Trash2, Plus, Sparkles, Save, X, Play, 
   Image as ImageIcon, ClipboardList, Info, Copy, 
@@ -2354,15 +2356,23 @@ export function MysteryBox({
                                 >
                                   {letter}
                                 </span>
-                                {isImageOpt ? (
-                                  <img
-                                    src={opt}
-                                    alt={`Option ${letter}`}
-                                    className="h-24 sm:h-28 w-auto rounded-2xl object-contain bg-white p-1.5"
-                                  />
-                                ) : (
-                                  <span className="flex-1 break-words leading-snug">{opt}</span>
-                                )}
+                                {(() => {
+                                  const parsedOpt = parseOptionContent(opt);
+                                  return (
+                                    <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                                      {parsedOpt.imageUrl && (
+                                        <img
+                                          src={parsedOpt.imageUrl}
+                                          alt={parsedOpt.text || `Option ${letter}`}
+                                          className="h-20 sm:h-24 w-auto rounded-2xl object-contain bg-white p-1.5 shrink-0"
+                                        />
+                                      )}
+                                      {parsedOpt.text && (
+                                        <span className="flex-1 break-words leading-snug">{parsedOpt.text}</span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
 
                               {/* Auto-Revealed Status Indicator on Option */}
@@ -2832,9 +2842,12 @@ function QuizEditor({
   const [folderId, setFolderId] = useState(quiz.folderId || "");
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
+  const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
+  const [contentMode, setContentMode] = useState<OptionContentMode>("both");
+  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
   const [questions, setQuestions] = useState<Question[]>(() => (quiz.questions && quiz.questions.length > 0 ? quiz.questions.slice(0, 30) : [{ id: Date.now(), text: "", options: ["", "", "", ""], answerIndex: 0, optionImages: [null, null, null, null] }]));
   const [errorMsg, setErrorMsg] = useState("");
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number, initialQuery?: string } | null>(null);
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
@@ -2842,6 +2855,25 @@ function QuizEditor({
   const [bulkText, setBulkText] = useState("");
   const [toastMsg, setToastMsg] = useState("");
   const [copiedPromptInModal, setCopiedPromptInModal] = useState(false);
+
+  useEffect(() => {
+    setLocalFolders(folders || []);
+  }, [folders]);
+
+  const handleContentModeChange = (nextMode: OptionContentMode) => {
+    setContentMode(nextMode);
+    convertQuestionsContentMode(questions, nextMode, (updated) => {
+      setQuestions(updated);
+      setToastMsg(
+        nextMode === "words"
+          ? "📝 Converted options to Words Only!"
+          : nextMode === "photos_gifs"
+          ? "🎨 Converted options to Cartoon PNGs & GIFs!"
+          : "✨ Converted options to Both (Words + Cartoon PNGs)!"
+      );
+      setTimeout(() => setToastMsg(""), 3000);
+    });
+  };
 
   const handleCopyAiPrompt = () => {
     navigator.clipboard.writeText(`Create 50 fill-in-the-blank questions on the topic of Passive Voice. Each question should have 4 multiple-choice options (A, B, C, and D) and include the correct answer.`);
@@ -3053,41 +3085,38 @@ function QuizEditor({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">TOPIC</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Present Simple" 
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">CLASS LEVEL</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. KET, Starters" 
-                  value={classLevel}
-                  onChange={(e) => setClassLevel(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">FOLDER</label>
-                <select 
-                  value={folderId}
-                  onChange={(e) => setFolderId(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 appearance-none cursor-pointer transition-colors"
-                >
-                  <option value="">No Folder (Root)</option>
-                  {folders.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <SetupCurriculumHeader
+              topic={topic}
+              setTopic={setTopic}
+              classLevel={classLevel}
+              setClassLevel={setClassLevel}
+              folderId={folderId}
+              setFolderId={setFolderId}
+              folders={localFolders}
+              onCreateFolder={(name) => {
+                const newF = { id: `folder_${Date.now()}`, name };
+                setLocalFolders((prev) => [...prev, newF]);
+                setFolderId(newF.id);
+              }}
+              contentMode={contentMode}
+              setContentMode={handleContentModeChange}
+              autoRecommendPhoto={autoRecommendPhoto}
+              setAutoRecommendPhoto={setAutoRecommendPhoto}
+              onApplyStarterTopic={(starterQs) => {
+                const formatted = starterQs.map((sq, i) => ({
+                  id: Date.now() + i + Math.random(),
+                  text: sq.text,
+                  options: sq.options,
+                  answerIndex: sq.answerIndex,
+                }));
+                setQuestions(formatted);
+                convertQuestionsContentMode(formatted, contentMode, (updated) => {
+                  setQuestions(updated);
+                });
+                setToastMsg(`✨ Loaded ${formatted.length} "${topic}" questions with auto Cartoon PNGs!`);
+                setTimeout(() => setToastMsg(""), 3500);
+              }}
+            />
           </div>
 
           {errorMsg && (
@@ -3166,44 +3195,21 @@ function QuizEditor({
                   />
                 </div>
 
-                <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {q.options.map((opt, optIndex) => (
-                    <div key={optIndex} className="flex items-center gap-2">
-                      <input 
-                        type="radio" 
-                        name={`answer-${q.id}`} 
-                        checked={q.answerIndex === optIndex}
-                        onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                        className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-                      />
-                      {opt.startsWith('data:image') || opt.startsWith('http') ? (
-                        <div className="flex-1 flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 pr-3">
-                          <img src={opt} alt="Option" className="w-8 h-8 rounded object-cover" />
-                          <span className="text-xs text-slate-400 flex-1 truncate">Image/GIF</span>
-                          <button onClick={() => updateOption(q.id, optIndex, '')} className="text-red-400 hover:text-red-300 cursor-pointer p-1">
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex-1 flex items-center gap-2">
-                          <input 
-                            type="text"
-                            value={opt}
-                            onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
-                            placeholder={`Option ${optIndex + 1}`}
-                            className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${q.answerIndex === optIndex ? 'border-blue-500/50 bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'} rounded-lg px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium`}
-                          />
-                          <button 
-                            type="button"
-                            onClick={() => setActiveGiphyInput({ qId: q.id, optIndex })}
-                            className="bg-purple-500/20 text-purple-400 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
-                            title="Search Giphy"
-                          >
-                            <ImageIcon size={16} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <SmartOptionInput
+                      key={optIndex}
+                      value={opt}
+                      optionIndex={optIndex}
+                      isCorrect={q.answerIndex === optIndex}
+                      onSelectCorrect={() => updateQuestion(q.id, 'answerIndex', optIndex)}
+                      onChangeValue={(val) => updateOption(q.id, optIndex, val)}
+                      onOpenMediaPicker={(initialQuery) => setActiveGiphyInput({ qId: q.id, optIndex, initialQuery })}
+                      contentMode={contentMode}
+                      autoRecommendPhoto={autoRecommendPhoto}
+                      placeholder={`Option ${optIndex + 1} (e.g. apple)`}
+                      radioName={`answer-${q.id}`}
+                    />
                   ))}
                 </div>
                 <div className="ml-12 mt-3 flex gap-2">
@@ -3227,9 +3233,14 @@ function QuizEditor({
       <MediaPickerModal 
         isOpen={activeGiphyInput !== null}
         onClose={() => setActiveGiphyInput(null)}
+        initialQuery={activeGiphyInput?.initialQuery || ""}
         onSelect={(url) => {
           if (activeGiphyInput) {
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, url);
+            const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
+            const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
+            const parsed = parseOptionContent(currentRaw);
+            const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
+            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
             setActiveGiphyInput(null);
           }
         }}

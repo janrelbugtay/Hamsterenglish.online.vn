@@ -7,6 +7,8 @@ import { FullscreenButton } from '../components/FullscreenButton';
 import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { GameModeModal } from '../components/GameModeModal';
+import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
+import { parseOptionContent, formatOptionContent, AnswerContentMode } from '../utils/mediaAndPresets';
 import {
   ArrowLeft,
   Trash2,
@@ -691,7 +693,21 @@ export function RollerCoasterQuiz({
                             {i === 0 ? '◀ Option A' : 'Option B ▶'}
                           </div>
                           <div className="flex items-center justify-center gap-3">
-                            <span>{opt}</span>
+                            {(() => {
+                              const parsed = parseOptionContent(opt);
+                              return (
+                                <>
+                                  {parsed.imageUrl && (
+                                    <img
+                                      src={parsed.imageUrl}
+                                      alt={parsed.text || 'Option'}
+                                      className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-xl bg-white/90 p-1 shrink-0"
+                                    />
+                                  )}
+                                  {parsed.text && <span>{parsed.text}</span>}
+                                </>
+                              );
+                            })()}
                             {showAsCorrect && <span>✅</span>}
                             {showAsIncorrect && <span>❌</span>}
                           </div>
@@ -1938,38 +1954,85 @@ function Coaster3DGameplay({
       return segGroup;
     };
 
-    const createAnswerSignCanvas = (text: string, bgColor: string, accentColor: string, label: string) => {
+    const createAnswerSignTexture = (rawText: string, bgColor: string, accentColor: string, label: string) => {
       const c = document.createElement('canvas');
       c.width = 512;
       c.height = 256;
       const ctx = c.getContext('2d')!;
+      const parsed = parseOptionContent(rawText);
 
-      const grad = ctx.createLinearGradient(0, 0, 0, 256);
-      grad.addColorStop(0, bgColor);
-      grad.addColorStop(1, accentColor);
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      if (ctx.roundRect) {
-        ctx.roundRect(12, 12, 488, 232, 36);
-      } else {
-        ctx.rect(12, 12, 488, 232);
+      const drawSign = (loadedImg?: HTMLImageElement) => {
+        ctx.clearRect(0, 0, 512, 256);
+        const grad = ctx.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, bgColor);
+        grad.addColorStop(1, accentColor);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(12, 12, 488, 232, 36);
+        } else {
+          ctx.rect(12, 12, 488, 232);
+        }
+        ctx.fill();
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = '800 30px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, 256, 56);
+
+        const cleanStr = String(parsed.text || '').slice(0, 18);
+
+        if (loadedImg && cleanStr) {
+          // Draw both Cartoon PNG and Text side-by-side on the 3D Gate Sign
+          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(38, 76, 136, 136, 22);
+          else ctx.rect(38, 76, 136, 136);
+          ctx.fill();
+          ctx.drawImage(loadedImg, 46, 84, 120, 120);
+
+          ctx.fillStyle = '#ffffff';
+          const fontSize = cleanStr.length > 10 ? 40 : 52;
+          ctx.font = `900 ${fontSize}px Fredoka, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(cleanStr, 332, 158);
+        } else if (loadedImg) {
+          // Picture only
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(180, 72, 152, 152, 24);
+          else ctx.rect(180, 72, 152, 152);
+          ctx.fill();
+          ctx.drawImage(loadedImg, 190, 82, 132, 132);
+        } else {
+          // Text only
+          ctx.fillStyle = '#ffffff';
+          const displayLabel = cleanStr || ' Picture ';
+          const fontSize = displayLabel.length > 11 ? 46 : 62;
+          ctx.font = `900 ${fontSize}px Fredoka, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(displayLabel, 256, 165);
+        }
+      };
+
+      drawSign();
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+
+      if (parsed.imageUrl) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          drawSign(img);
+          tex.needsUpdate = true;
+        };
+        img.src = parsed.imageUrl;
       }
-      ctx.fill();
-      ctx.lineWidth = 10;
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.font = '800 32px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(label, 256, 66);
-
-      ctx.fillStyle = '#ffffff';
-      const cleanStr = String(text || '').slice(0, 18);
-      const fontSize = cleanStr.length > 11 ? 46 : 62;
-      ctx.font = `900 ${fontSize}px Fredoka, sans-serif`;
-      ctx.fillText(cleanStr, 256, 165);
-      return c;
+      return tex;
     };
 
     const create3DGateArch = (
@@ -2002,10 +2065,7 @@ function Coaster3DGameplay({
 
       archGroup.add(leftPost, rightPost, topBeam);
 
-      const signTexL = new THREE.CanvasTexture(
-        createAnswerSignCanvas(gateInfo.leftText, '#0284c7', '#1e3a8a', '◀ LEFT TRACK')
-      );
-      signTexL.colorSpace = THREE.SRGBColorSpace;
+      const signTexL = createAnswerSignTexture(gateInfo.leftText, '#0284c7', '#1e3a8a', '◀ LEFT TRACK');
       const signL = new THREE.Mesh(
         new THREE.PlaneGeometry(4.0, 2.1),
         new THREE.MeshBasicMaterial({ map: signTexL, side: THREE.DoubleSide })
@@ -2013,10 +2073,7 @@ function Coaster3DGameplay({
       signL.position.set(-2.35, 4.35, 0);
       archGroup.add(signL);
 
-      const signTexR = new THREE.CanvasTexture(
-        createAnswerSignCanvas(gateInfo.rightText, '#e11d48', '#881337', 'RIGHT TRACK ▶')
-      );
-      signTexR.colorSpace = THREE.SRGBColorSpace;
+      const signTexR = createAnswerSignTexture(gateInfo.rightText, '#e11d48', '#881337', 'RIGHT TRACK ▶');
       const signR = new THREE.Mesh(
         new THREE.PlaneGeometry(4.0, 2.1),
         new THREE.MeshBasicMaterial({ map: signTexR, side: THREE.DoubleSide })
@@ -3505,23 +3562,41 @@ function Coaster3DGameplay({
                 <span className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-950/45 border border-white/25 flex items-center justify-center text-white text-base sm:text-lg font-black shrink-0">
                   ◀
                 </span>
-                <div className="min-w-0">
-                  <div className="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-sky-100/90">
-                    Left Track
-                  </div>
-                  <div
-                    className={`font-black text-white truncate ${
-                      textSize === 'sm'
-                        ? 'text-xs sm:text-base'
-                        : textSize === 'md'
-                        ? 'text-sm sm:text-lg'
-                        : textSize === 'xl'
-                        ? 'text-lg sm:text-2xl md:text-3xl'
-                        : 'text-base sm:text-xl md:text-2xl'
-                    }`}
-                  >
-                    {activePrompt?.leftText}
-                  </div>
+                <div className="min-w-0 flex items-center gap-2">
+                  {(() => {
+                    const parsedL = parseOptionContent(activePrompt?.leftText || '');
+                    return (
+                      <>
+                        {parsedL.imageUrl && (
+                          <img
+                            src={parsedL.imageUrl}
+                            alt={parsedL.text || 'Left option'}
+                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/95 p-1 object-contain shrink-0 shadow"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-sky-100/90">
+                            Left Track
+                          </div>
+                          {parsedL.text && (
+                            <div
+                              className={`font-black text-white truncate ${
+                                textSize === 'sm'
+                                  ? 'text-xs sm:text-base'
+                                  : textSize === 'md'
+                                  ? 'text-sm sm:text-lg'
+                                  : textSize === 'xl'
+                                  ? 'text-lg sm:text-2xl md:text-3xl'
+                                  : 'text-base sm:text-xl md:text-2xl'
+                              }`}
+                            >
+                              {parsedL.text}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
               {steeringChoice === -1 && (
@@ -3546,24 +3621,40 @@ function Coaster3DGameplay({
                 </span>
               )}
               <div className="flex items-center gap-2 sm:gap-3 ml-auto min-w-0">
-                <div className="min-w-0">
-                  <div className="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-rose-100/90">
-                    Right Track
-                  </div>
-                  <div
-                    className={`font-black text-white truncate ${
-                      textSize === 'sm'
-                        ? 'text-xs sm:text-base'
-                        : textSize === 'md'
-                        ? 'text-sm sm:text-lg'
-                        : textSize === 'xl'
-                        ? 'text-lg sm:text-2xl md:text-3xl'
-                        : 'text-base sm:text-xl md:text-2xl'
-                    }`}
-                  >
-                    {activePrompt?.rightText}
-                  </div>
-                </div>
+                {(() => {
+                  const parsedR = parseOptionContent(activePrompt?.rightText || '');
+                  return (
+                    <>
+                      <div className="min-w-0">
+                        <div className="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-rose-100/90">
+                          Right Track
+                        </div>
+                        {parsedR.text && (
+                          <div
+                            className={`font-black text-white truncate ${
+                              textSize === 'sm'
+                                ? 'text-xs sm:text-base'
+                                : textSize === 'md'
+                                ? 'text-sm sm:text-lg'
+                                : textSize === 'xl'
+                                ? 'text-lg sm:text-2xl md:text-3xl'
+                                : 'text-base sm:text-xl md:text-2xl'
+                            }`}
+                          >
+                            {parsedR.text}
+                          </div>
+                        )}
+                      </div>
+                      {parsedR.imageUrl && (
+                        <img
+                          src={parsedR.imageUrl}
+                          alt={parsedR.text || 'Right option'}
+                          className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/95 p-1 object-contain shrink-0 shadow"
+                        />
+                      )}
+                    </>
+                  );
+                })()}
                 <span className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-950/45 border border-white/25 flex items-center justify-center text-white text-base sm:text-lg font-black shrink-0">
                   ▶
                 </span>
@@ -4217,7 +4308,9 @@ function CoasterQuizEditor({
   const [classLevel, setClassLevel] = useState(quiz.classLevel || '');
   const [questions, setQuestions] = useState<Question[]>(() => normalizeToTwoOptions(quiz.questions));
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number; query?: string } | null>(null);
+  const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
+  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(true);
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
@@ -4434,49 +4527,37 @@ function CoasterQuizEditor({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Topic
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Present Simple"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Class Level
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. KET, Starters"
-                  value={classLevel}
-                  onChange={(e) => setClassLevel(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Folder
-                </label>
-                <select
-                  value={folderId}
-                  onChange={(e) => setFolderId(e.target.value)}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-4 py-3 rounded-xl focus:border-blue-500 appearance-none cursor-pointer transition-colors"
-                >
-                  <option value="">No Folder (Root)</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <SetupCurriculumHeader
+              topic={topic}
+              setTopic={setTopic}
+              classLevel={classLevel}
+              setClassLevel={setClassLevel}
+              folderId={folderId}
+              setFolderId={setFolderId}
+              folders={folders}
+              contentMode={contentMode}
+              setContentMode={setContentMode}
+              autoPhotosEnabled={autoPhotosEnabled}
+              setAutoPhotosEnabled={setAutoPhotosEnabled}
+              maxOptionsPerQuestion={2}
+              onApplyModeToAll={async (mode) => {
+                const updated = await convertQuestionsContentMode(questions, mode);
+                setQuestions(updated);
+                setToastMsg(
+                  mode === 'words'
+                    ? '🔤 Switched all options to Words Only!'
+                    : mode === 'photos_gifs'
+                    ? '🖼️ Switched all options to Cartoon PNGs / GIFs!'
+                    : '✨ Switched all options to Words + Cartoon PNGs!'
+                );
+                setTimeout(() => setToastMsg(''), 3000);
+              }}
+              onLoadStarterQuestions={(newQs, topicName) => {
+                setQuestions(newQs);
+                setToastMsg(`🎢 Loaded ${newQs.length} 2-choice "${topicName}" questions with Cartoon PNGs!`);
+                setTimeout(() => setToastMsg(''), 3500);
+              }}
+            />
           </div>
 
           {errorMsg && (
@@ -4577,52 +4658,30 @@ function CoasterQuizEditor({
                     const opt = q.options[optIndex] || '';
                     const isCorrect = q.answerIndex === optIndex;
                     return (
-                      <div key={optIndex} className="flex items-center gap-2">
+                      <div key={optIndex} className="flex items-start gap-2">
                         <input
                           type="radio"
                           name={`coaster-answer-${q.id}`}
                           checked={isCorrect}
                           onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                          className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
+                          className="w-4 h-4 mt-3 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
                           title="Mark as Correct Track Answer"
                         />
-                        {opt.startsWith('data:image') || opt.startsWith('http') ? (
-                          <div className="flex-1 flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 pr-3">
-                            <img src={opt} alt="Option" className="w-8 h-8 rounded object-cover" />
-                            <span className="text-xs text-slate-400 flex-1 truncate">Image/GIF</span>
-                            <button
-                              onClick={() => updateOption(q.id, optIndex, '')}
-                              className="text-red-400 hover:text-red-300 cursor-pointer p-1"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex-1 flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={opt}
-                              onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
-                              placeholder={
-                                isCorrect
-                                  ? `Option ${optIndex + 1} (✓ Correct Track)`
-                                  : `Option ${optIndex + 1} (✗ Broken Track)`
-                              }
-                              className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${
-                                isCorrect
-                                  ? 'border-emerald-500/60 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                  : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                              } rounded-lg px-3 py-2.5 outline-none focus:border-blue-500 text-sm font-medium`}
-                            />
-                            <button
-                              onClick={() => setActiveGiphyInput({ qId: q.id, optIndex })}
-                              className="bg-purple-500/20 text-purple-400 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
-                              title="Pick Image or GIF"
-                            >
-                              <ImageIcon size={16} />
-                            </button>
-                          </div>
-                        )}
+                        <SmartOptionInput
+                          value={opt}
+                          onChange={(val) => updateOption(q.id, optIndex, val)}
+                          onOpenMediaPicker={(initialQ) =>
+                            setActiveGiphyInput({ qId: q.id, optIndex, query: initialQ })
+                          }
+                          placeholder={
+                            isCorrect
+                              ? `Option ${optIndex + 1} (✓ Correct Track, e.g. apple)`
+                              : `Option ${optIndex + 1} (✗ Trap Track, e.g. banana)`
+                          }
+                          isCorrect={isCorrect}
+                          contentMode={contentMode}
+                          autoPhotosEnabled={autoPhotosEnabled}
+                        />
                       </div>
                     );
                   })}
@@ -4645,10 +4704,19 @@ function CoasterQuizEditor({
 
       <MediaPickerModal
         isOpen={activeGiphyInput !== null}
+        initialQuery={activeGiphyInput?.query || ''}
         onClose={() => setActiveGiphyInput(null)}
         onSelect={(url) => {
           if (activeGiphyInput) {
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, url);
+            const targetQ = questions.find((item) => item.id === activeGiphyInput.qId);
+            const rawExisting = targetQ?.options[activeGiphyInput.optIndex] || '';
+            const parsedExisting = parseOptionContent(rawExisting);
+            const wordToKeep = parsedExisting.text || activeGiphyInput.query || '';
+            const finalVal =
+              contentMode === 'photos_gifs' || !wordToKeep
+                ? url
+                : formatOptionContent(wordToKeep, url, 'both');
+            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, finalVal);
             setActiveGiphyInput(null);
           }
         }}
