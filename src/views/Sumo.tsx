@@ -7,7 +7,7 @@ import { FullscreenButton } from "../components/FullscreenButton";
 import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, Info, ClipboardList, Copy, Trophy, Shuffle, Volume2, VolumeX, Users, Camera, Type, Check } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
-import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
+import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 import {
   SumoStadiumEnvironment,
@@ -121,6 +121,7 @@ import { db } from "../lib/firebase";
 interface Question {
   id: number | string;
   text: string;
+  image?: string;
   options: string[];
   answerIndex: number;
 }
@@ -335,6 +336,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     
     return {
       text: q.text || "Question",
+      image: q.image,
       options: shuffledOpts,
       correctIndex: Math.max(0, shuffledOpts.indexOf(correctOpt))
     };
@@ -739,9 +741,27 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
         <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-5xl mx-auto w-full">
            {studyQuestions.length > 0 ? (
               <>
-                 <h1 className={`${getQuestionFontSize(currentQ?.text || "", false)} font-black text-black tracking-tight leading-snug text-center max-w-full break-words mb-12`}>
-                     {renderQuestionText(currentQ?.text || "")}
-                 </h1>
+                 {(() => {
+                   const parsedQ = parseOptionContent(currentQ?.text || "");
+                   const qImg = currentQ?.image || parsedQ.imageUrl;
+                   const qText = currentQ?.image ? currentQ?.text || "" : (parsedQ.text || currentQ?.text || "");
+                   return (
+                     <div className="flex flex-col items-center gap-4 mb-10 w-full">
+                       {qImg && (
+                         <img
+                           src={qImg}
+                           alt="Question"
+                           className="max-h-40 sm:max-h-52 object-contain rounded-2xl border-2 border-slate-200 bg-slate-50 p-2 shadow-sm"
+                         />
+                       )}
+                       {qText && (
+                         <h1 className={`${getQuestionFontSize(qText, false)} font-black text-black tracking-tight leading-snug text-center max-w-full break-words`}>
+                             {renderQuestionText(qText)}
+                         </h1>
+                       )}
+                     </div>
+                   );
+                 })()}
                  
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                      {currentQ?.options.map((opt, i) => {
@@ -1143,6 +1163,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
   }
 
     const currentQText = leftTeam.q?.text || rightTeam.q?.text || DEFAULT_QUESTIONS[0].text;
+    const currentQImage = leftTeam.q?.image || rightTeam.q?.image;
 
     return (
       <div id="game-container" className="w-full min-h-full flex-1 select-none overflow-hidden font-sans relative flex flex-col">
@@ -1310,10 +1331,28 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             {/* Grammar Question Centered Directly UNDER the Arena in Single Question Mode */}
             {questionMode === 'single' && (
               <div className="w-full max-w-5xl mx-auto pt-1 pb-1.5 px-4 text-center z-20 shrink-0 pointer-events-none">
-                <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl py-3 sm:py-4 px-6 sm:px-10 shadow-xl border-2 border-amber-900/15">
-                  <div className={`${getQuestionFontSize(currentQText, false)} font-black text-[#0f172a] leading-snug tracking-tight drop-shadow-xs break-words`}>
-                    {renderQuestionText(currentQText)}
-                  </div>
+                <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl py-3 sm:py-4 px-6 sm:px-10 shadow-xl border-2 border-amber-900/15 flex flex-col items-center gap-2">
+                  {(() => {
+                    const parsedQ = parseOptionContent(currentQText);
+                    const qImg = currentQImage || parsedQ.imageUrl;
+                    const qText = currentQImage ? currentQText : (parsedQ.text || currentQText);
+                    return (
+                      <>
+                        {qImg && (
+                          <img
+                            src={qImg}
+                            alt="Question"
+                            className="max-h-16 sm:max-h-24 md:max-h-28 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1 shadow-sm"
+                          />
+                        )}
+                        {qText && (
+                          <div className={`${getQuestionFontSize(qText, false)} font-black text-[#0f172a] leading-snug tracking-tight drop-shadow-xs break-words`}>
+                            {renderQuestionText(qText)}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -1325,10 +1364,28 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             <div className="flex-1 bg-[#0055fe] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#0038b3] flex flex-col justify-between">
               {/* Split Mode: Blue Question displayed directly on Blue side */}
               {questionMode === 'split' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
-                  <div className={`${getQuestionFontSize(leftTeam.q?.text || "", true)} font-black text-[#0f172a] leading-snug px-1.5 break-words`}>
-                    {renderQuestionText(leftTeam.q?.text || "")}
-                  </div>
+                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col items-center justify-center min-h-[56px] sm:min-h-[88px] gap-1.5">
+                  {(() => {
+                    const parsedQ = parseOptionContent(leftTeam.q?.text || "");
+                    const qImg = leftTeam.q?.image || parsedQ.imageUrl;
+                    const qText = leftTeam.q?.image ? leftTeam.q?.text || "" : (parsedQ.text || leftTeam.q?.text || "");
+                    return (
+                      <>
+                        {qImg && (
+                          <img
+                            src={qImg}
+                            alt="Question"
+                            className="max-h-14 sm:max-h-20 md:max-h-24 object-contain rounded-lg border border-slate-200 bg-slate-50 p-1 shadow-sm"
+                          />
+                        )}
+                        {qText && (
+                          <div className={`${getQuestionFontSize(qText, true)} font-black text-[#0f172a] leading-snug px-1.5 break-words`}>
+                            {renderQuestionText(qText)}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1389,10 +1446,28 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             <div className="flex-1 bg-[#cc0000] rounded-2xl sm:rounded-3xl md:rounded-[2.5rem] p-2 sm:p-4 md:p-5 shadow-2xl border-b-4 md:border-b-8 border-[#990000] flex flex-col justify-between">
               {/* Split Mode: Red Question displayed directly on Red side */}
               {questionMode === 'split' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
-                  <div className={`${getQuestionFontSize(rightTeam.q?.text || "", true)} font-black text-[#0f172a] leading-snug px-1.5 break-words`}>
-                    {renderQuestionText(rightTeam.q?.text || "")}
-                  </div>
+                <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col items-center justify-center min-h-[56px] sm:min-h-[88px] gap-1.5">
+                  {(() => {
+                    const parsedQ = parseOptionContent(rightTeam.q?.text || "");
+                    const qImg = rightTeam.q?.image || parsedQ.imageUrl;
+                    const qText = rightTeam.q?.image ? rightTeam.q?.text || "" : (parsedQ.text || rightTeam.q?.text || "");
+                    return (
+                      <>
+                        {qImg && (
+                          <img
+                            src={qImg}
+                            alt="Question"
+                            className="max-h-14 sm:max-h-20 md:max-h-24 object-contain rounded-lg border border-slate-200 bg-slate-50 p-1 shadow-sm"
+                          />
+                        )}
+                        {qText && (
+                          <div className={`${getQuestionFontSize(qText, true)} font-black text-[#0f172a] leading-snug px-1.5 break-words`}>
+                            {renderQuestionText(qText)}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1495,7 +1570,7 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
     });
   });
   const [errorMsg, setErrorMsg] = useState("");
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number, initialQuery?: string } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question', initialQuery?: string } | null>(null);
 
   useEffect(() => {
     setLocalFolders(folders || []);
@@ -1674,7 +1749,7 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
 
 
   const initiateSave = () => {
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = questions.filter(q => q.text.trim() || q.image);
     if(validQuestions.length === 0) {
       setErrorMsg("Please add at least one complete question.");
       setTimeout(() => setErrorMsg(""), 3000);
@@ -1686,7 +1761,7 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
   const handleSave = (isPublic: boolean) => {
     setShowPublishModal(false);
     const generatedTitle = topic.trim() ? topic.trim() : "Sumo Showdown";
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = questions.filter(q => q.text.trim() || q.image);
     
     onSave({
       ...game,
@@ -1959,17 +2034,19 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
               </button>
               
               <div className="flex gap-4 mb-4 items-start">
-                <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30 mt-2">
                   {index + 1}
                 </div>
-                <input 
+                <SmartQuestionInput
                   id={`question-input-${index}`}
-                  type="text"
                   value={q.text}
-                  onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                  imageUrl={q.image}
+                  onChange={(val) => updateQuestion(q.id, 'text', val)}
+                  onChangeImage={(url) => updateQuestion(q.id, 'image', url)}
+                  onOpenMediaPicker={(initialQuery) => setActiveGiphyInput({ qId: q.id, optIndex: 'question', initialQuery })}
                   onKeyDown={(e) => handleKeyDown(e, index)}
                   placeholder="Type your question here..."
-                  className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                  autoPhotosEnabled={autoRecommendPhoto}
                 />
               </div>
 
@@ -2013,11 +2090,15 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
         initialQuery={activeGiphyInput?.initialQuery || ""}
         onSelect={(url) => {
           if (activeGiphyInput) {
-            const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
-            const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
-            const parsed = parseOptionContent(currentRaw);
-            const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
+            if (activeGiphyInput.optIndex === 'question') {
+              updateQuestion(activeGiphyInput.qId, 'image', url);
+            } else {
+              const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
+              const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
+              const parsed = parseOptionContent(currentRaw);
+              const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
+              updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
+            }
             setActiveGiphyInput(null);
           }
         }}

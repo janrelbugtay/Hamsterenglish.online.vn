@@ -3,6 +3,7 @@ import { Search, X, Loader2, Link as LinkIcon, Upload, Image as ImageIcon, Spark
 import {
   searchPhotosMultiSource,
   searchGifsMultiSource,
+  getInstantCartoonGallery,
   PhotoSearchResult,
   GifSearchResult,
   normalizeKeyword,
@@ -19,8 +20,6 @@ interface MediaPickerModalProps {
 type Tab = 'photos' | 'giphy' | 'upload';
 
 const QUICK_SEARCH_CHIPS = [
-  'apple',
-  'banana',
   'cat',
   'dog',
   'hamster',
@@ -55,16 +54,48 @@ export function MediaPickerModal({
 
   const runSearch = async (searchWord: string, tab: Tab, cartoonPriority: boolean = prioritizeCartoonPng) => {
     const clean = searchWord.trim();
-    if (!clean) return;
-    setIsLoading(true);
+    if (!clean) {
+      if (tab === 'photos') {
+        setPhotoResults(getInstantCartoonGallery(''));
+        setIsLoading(false);
+      } else if (tab === 'giphy') {
+        setIsLoading(true);
+        const items = await searchGifsMultiSource('happy cartoon', (partial) => {
+          setGifResults(partial);
+          if (partial.length > 0) setIsLoading(false);
+        });
+        setGifResults(items);
+        setIsLoading(false);
+      }
+      return;
+    }
+
     setError('');
 
     try {
       if (tab === 'photos') {
-        const items = await searchPhotosMultiSource(clean, cartoonPriority);
+        const instant = getInstantCartoonGallery(clean);
+        if (instant.length > 0) {
+          setPhotoResults(instant);
+          setIsLoading(false);
+        } else {
+          setIsLoading(true);
+        }
+        const items = await searchPhotosMultiSource(clean, cartoonPriority, (partial) => {
+          setPhotoResults(partial);
+          if (partial.length > 0) {
+            setIsLoading(false);
+          }
+        });
         setPhotoResults(items);
       } else if (tab === 'giphy') {
-        const items = await searchGifsMultiSource(clean);
+        setIsLoading(true);
+        const items = await searchGifsMultiSource(clean, (partial) => {
+          setGifResults(partial);
+          if (partial.length > 0) {
+            setIsLoading(false);
+          }
+        });
         setGifResults(items);
       }
     } catch (err: any) {
@@ -81,6 +112,7 @@ export function MediaPickerModal({
       setGifResults([]);
       setError('');
       setLinkUrl('');
+      setIsLoading(false);
     } else {
       const startTab = defaultTab || 'photos';
       setActiveTab(startTab);
@@ -89,32 +121,35 @@ export function MediaPickerModal({
         setQuery(cleanedInit);
         runSearch(cleanedInit, startTab, prioritizeCartoonPng);
       } else {
-        // Pre-populate with default popular cartoon PNGs / GIFs (e.g., "apple") so modal is never empty
-        setQuery('apple');
-        runSearch('apple', startTab, prioritizeCartoonPng);
+        // Keep search input completely empty (do not pre-type 'apple') and show instant Cartoon PNG starter gallery!
+        setQuery('');
+        setPhotoResults(getInstantCartoonGallery(''));
+        setIsLoading(false);
+        if (startTab === 'giphy') {
+          runSearch('', 'giphy', prioritizeCartoonPng);
+        }
       }
     }
   }, [isOpen, initialQuery, defaultTab]);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
     runSearch(query, activeTab, prioritizeCartoonPng);
   };
 
   const handleSwitchTab = (tab: Tab) => {
     setActiveTab(tab);
     setError('');
-    if (tab === 'photos' && photoResults.length === 0 && query.trim()) {
+    if (tab === 'photos' && photoResults.length === 0) {
       runSearch(query, 'photos', prioritizeCartoonPng);
-    } else if (tab === 'giphy' && gifResults.length === 0 && query.trim()) {
+    } else if (tab === 'giphy' && gifResults.length === 0) {
       runSearch(query, 'giphy', prioritizeCartoonPng);
     }
   };
 
   const handleToggleCartoonPriority = (cartoonOnly: boolean) => {
     setPrioritizeCartoonPng(cartoonOnly);
-    if (query.trim() && activeTab === 'photos') {
+    if (activeTab === 'photos') {
       runSearch(query, 'photos', cartoonOnly);
     }
   };
@@ -165,7 +200,7 @@ export function MediaPickerModal({
               Select Cartoon PNG, Photo, or GIF
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Multi-source search: Cartoon PNGs (ARASAAC &amp; Commons), Openverse Photos &amp; Tenor/Giphy GIFs
+              Search Cartoon PNGs, Photos &amp; Animated GIFs or upload your own
             </p>
           </div>
           <button
@@ -198,7 +233,7 @@ export function MediaPickerModal({
                 : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
-            <Search size={16} /> Giphy &amp; Tenor GIFs
+            <Search size={16} /> GIFs
           </button>
           <button
             type="button"
@@ -225,8 +260,8 @@ export function MediaPickerModal({
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={
                     activeTab === 'photos'
-                      ? 'Search Cartoon PNGs & Photos (e.g., apple, cat, run, happy)...'
-                      : 'Search Animated GIFs (e.g., apple, celebration, dance, cat)...'
+                      ? 'Type a word to search Cartoon PNGs & Photos...'
+                      : 'Type a word to search Animated GIFs...'
                   }
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-24 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium shadow-xs"
                   autoFocus
@@ -254,7 +289,7 @@ export function MediaPickerModal({
                           : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                       }`}
                     >
-                      🎨 Prioritize Cartoon PNGs
+                      🎨 Cartoon PNGs
                     </button>
                     <button
                       type="button"
@@ -270,8 +305,7 @@ export function MediaPickerModal({
                   </div>
                 )}
 
-                <div className="flex items-center gap-1 overflow-x-auto pb-1 max-w-full">
-                  <span className="text-[11px] font-bold text-slate-400 mr-1 shrink-0">Quick:</span>
+                <div className="flex flex-wrap items-center gap-1">
                   {QUICK_SEARCH_CHIPS.map((chip) => (
                     <button
                       key={chip}
@@ -295,7 +329,7 @@ export function MediaPickerModal({
                   <div className="h-56 flex flex-col items-center justify-center gap-2">
                     <Loader2 className="animate-spin text-blue-500" size={34} />
                     <span className="text-xs font-bold text-slate-500">
-                      Searching Cartoon PNGs, Pictograms &amp; GIFs...
+                      Searching...
                     </span>
                   </div>
                 ) : error ? (

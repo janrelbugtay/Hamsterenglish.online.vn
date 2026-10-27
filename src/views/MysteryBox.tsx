@@ -5,7 +5,7 @@ import { FullscreenButton } from "../components/FullscreenButton";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { GameModeModal } from "../components/GameModeModal";
-import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
+import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 import { 
   ArrowLeft, Edit3, Trash2, Plus, Sparkles, Save, X, Play, 
@@ -25,6 +25,7 @@ interface Question {
   options: string[];
   answerIndex: number;
   optionImages?: (string | null)[];
+  image?: string;
 }
 
 interface Quiz {
@@ -1882,9 +1883,30 @@ export function MysteryBox({
                   Question {studyIndex + 1}
                 </span>
 
-                <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white text-center leading-tight mb-8 max-w-4xl break-words">
-                  {activeQuiz.questions[studyIndex]?.text}
-                </h2>
+                {(() => {
+                  const currentStudyQ = activeQuiz.questions[studyIndex];
+                  const qParsed = parseOptionContent(currentStudyQ?.text || '');
+                  const qImg = currentStudyQ?.image || qParsed.imageUrl;
+                  const qDisplayText = qParsed.text || currentStudyQ?.text;
+                  return (
+                    <div className="w-full flex flex-col items-center mb-8 max-w-4xl">
+                      {qImg && (
+                        <div className="mb-4 max-h-56 sm:max-h-72 w-full flex items-center justify-center">
+                          <img
+                            src={qImg}
+                            alt={qDisplayText || `Question ${studyIndex + 1}`}
+                            className="max-h-52 sm:max-h-64 max-w-full rounded-2xl object-contain shadow-lg bg-white/10 p-2 border border-white/20"
+                          />
+                        </div>
+                      )}
+                      {qDisplayText && (
+                        <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white text-center leading-tight break-words">
+                          {qDisplayText}
+                        </h2>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-4xl mb-8">
                   {activeQuiz.questions[studyIndex]?.options.map((opt, i) => {
@@ -2304,14 +2326,32 @@ export function MysteryBox({
                     {/* FULL-SCREEN CENTER QUESTION & GIANT OPTIONS STAGE */}
                     <div className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-10 py-6 sm:py-10 flex flex-col justify-center gap-6 sm:gap-8">
                       {/* Giant Question Card */}
-                      <div className="w-full bg-white text-slate-900 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 lg:p-12 border-4 border-amber-400 shadow-[0_20px_60px_rgba(0,0,0,0.5)] text-center flex flex-col items-center justify-center min-h-[160px] sm:min-h-[220px]">
-                        <span className="px-4 py-1 rounded-full bg-amber-100 text-amber-800 font-black text-xs sm:text-sm uppercase tracking-widest mb-3">
-                          Question #{activeBoxNum} • 50 PTS Question
-                        </span>
-                        <h3 className="text-2xl sm:text-4xl lg:text-5xl xl:text-6xl font-black text-slate-900 leading-tight break-words max-w-6xl">
-                          {currentQ?.text}
-                        </h3>
-                      </div>
+                      {(() => {
+                        const qParsed = parseOptionContent(currentQ?.text || '');
+                        const qImg = currentQ?.image || qParsed.imageUrl;
+                        const qDisplayText = qParsed.text || currentQ?.text;
+                        return (
+                          <div className="w-full bg-white text-slate-900 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 lg:p-12 border-4 border-amber-400 shadow-[0_20px_60px_rgba(0,0,0,0.5)] text-center flex flex-col items-center justify-center min-h-[160px] sm:min-h-[220px]">
+                            <span className="px-4 py-1 rounded-full bg-amber-100 text-amber-800 font-black text-xs sm:text-sm uppercase tracking-widest mb-3">
+                              Question #{activeBoxNum} • 50 PTS Question
+                            </span>
+                            {qImg && (
+                              <div className="mb-4 max-h-56 sm:max-h-72 w-full flex items-center justify-center">
+                                <img
+                                  src={qImg}
+                                  alt={qDisplayText || `Question ${activeBoxNum}`}
+                                  className="max-h-52 sm:max-h-64 max-w-full rounded-2xl object-contain shadow-md bg-slate-50 p-2 border-2 border-amber-300"
+                                />
+                              </div>
+                            )}
+                            {qDisplayText && (
+                              <h3 className="text-2xl sm:text-4xl lg:text-5xl xl:text-6xl font-black text-slate-900 leading-tight break-words max-w-6xl">
+                                {qDisplayText}
+                              </h3>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Giant Full-Screen Options Grid: Clicking ANY Option Immediately Auto-Reveals! */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 w-full">
@@ -2847,7 +2887,7 @@ function QuizEditor({
   const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
   const [questions, setQuestions] = useState<Question[]>(() => (quiz.questions && quiz.questions.length > 0 ? quiz.questions.slice(0, 30) : [{ id: Date.now(), text: "", options: ["", "", "", ""], answerIndex: 0, optionImages: [null, null, null, null] }]));
   const [errorMsg, setErrorMsg] = useState("");
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number, initialQuery?: string } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question', initialQuery?: string } | null>(null);
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
@@ -3180,18 +3220,20 @@ function QuizEditor({
                 </button>
                 
                 <div className="flex gap-4 mb-4 items-start">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                  <div className="w-8 h-8 mt-2 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
                     {index + 1}
                   </div>
-                  <input 
+                  <SmartQuestionInput 
                     id={`question-input-${index}`}
-                    type="text"
                     value={q.text}
-                    onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                    imageUrl={q.image || parseOptionContent(q.text).imageUrl}
+                    onChange={(newVal) => updateQuestion(q.id, 'text', newVal)}
+                    onChangeImage={(newImg) => updateQuestion(q.id, 'image', newImg || undefined)}
+                    onOpenMediaPicker={(initialQuery) => setActiveGiphyInput({ qId: q.id, optIndex: 'question', initialQuery: initialQuery || q.text })}
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     onPaste={(e) => handlePaste(e, index)}
-                    placeholder="Type your question here..."
-                    className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                    placeholder="Type your question here (or click Add Media for picture/GIF)..."
+                    autoPhotosEnabled={autoRecommendPhoto}
                   />
                 </div>
 
@@ -3236,11 +3278,15 @@ function QuizEditor({
         initialQuery={activeGiphyInput?.initialQuery || ""}
         onSelect={(url) => {
           if (activeGiphyInput) {
-            const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
-            const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
-            const parsed = parseOptionContent(currentRaw);
-            const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
+            if (activeGiphyInput.optIndex === 'question') {
+              updateQuestion(activeGiphyInput.qId, 'image', url);
+            } else {
+              const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
+              const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
+              const parsed = parseOptionContent(currentRaw);
+              const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
+              updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
+            }
             setActiveGiphyInput(null);
           }
         }}

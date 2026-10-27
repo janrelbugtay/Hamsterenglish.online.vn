@@ -484,11 +484,87 @@ export function getInstantCartoonPng(word: string): string | null {
   return null;
 }
 
+async function fetchWithTimeout(url: string, timeoutMs: number = 2200): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+/**
+ * Returns an instant list of Cartoon PNGs from the built-in dictionary (0ms latency)
+ */
+export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchResult[] {
+  const clean = normalizeKeyword(searchQuery);
+  const entries = Object.entries(WORD_TO_TWEMOJI_CODE);
+  const seenCodes = new Set<string>();
+  const matched: PhotoSearchResult[] = [];
+
+  if (clean) {
+    // Exact matches first, then partial matches
+    for (const [word, code] of entries) {
+      if (word === clean && !seenCodes.has(code)) {
+        seenCodes.add(code);
+        const url = `${TWEMOJI_BASE}/${code}.png`;
+        matched.push({
+          id: `instant-exact-${word}`,
+          alt_description: word,
+          isCartoonPng: true,
+          source: 'Cartoon PNG',
+          urls: { regular: url, small: url },
+        });
+      }
+    }
+    for (const [word, code] of entries) {
+      if ((word.includes(clean) || clean.includes(word)) && !seenCodes.has(code)) {
+        seenCodes.add(code);
+        const url = `${TWEMOJI_BASE}/${code}.png`;
+        matched.push({
+          id: `instant-partial-${word}`,
+          alt_description: word,
+          isCartoonPng: true,
+          source: 'Cartoon PNG',
+          urls: { regular: url, small: url },
+        });
+      }
+    }
+  } else {
+    // Popular starter gallery when search box is empty (0ms loading!)
+    const popularWords = [
+      'cat', 'dog', 'hamster', 'lion', 'tiger', 'panda', 'monkey', 'elephant',
+      'rabbit', 'shark', 'dolphin', 'butterfly', 'pizza', 'burger', 'ice cream',
+      'cake', 'strawberry', 'banana', 'watermelon', 'car', 'airplane', 'rocket',
+      'book', 'school', 'soccer', 'guitar', 'sun', 'rainbow', 'happy', 'star',
+      'trophy', 'crown'
+    ];
+    for (const word of popularWords) {
+      const code = WORD_TO_TWEMOJI_CODE[word];
+      if (code && !seenCodes.has(code)) {
+        seenCodes.add(code);
+        const url = `${TWEMOJI_BASE}/${code}.png`;
+        matched.push({
+          id: `instant-pop-${word}`,
+          alt_description: word,
+          isCartoonPng: true,
+          source: 'Cartoon PNG',
+          urls: { regular: url, small: url },
+        });
+      }
+    }
+  }
+
+  return matched;
+}
+
 /**
  * Asynchronously fetches the best Cartoon PNG for any word or phrase:
- * 1. Checks instant Twemoji cartoon PNG dictionary
- * 2. Queries ARASAAC Cartoon Pictograms API (13,000+ transparent educational cartoon PNGs)
- * 3. Queries `/api/photo-search` (which aggregates ARASAAC, Wikimedia Cartoon PNGs, Openverse)
+ * 1. Checks instant Twemoji cartoon PNG dictionary (0ms)
+ * 2. Queries ARASAAC Cartoon Pictograms API with fast timeout
+ * 3. Queries Wikimedia Cartoon PNG search with fast timeout
  */
 export async function fetchRecommendedCartoonPng(word: string): Promise<string | null> {
   const clean = normalizeKeyword(word);
@@ -498,10 +574,18 @@ export async function fetchRecommendedCartoonPng(word: string): Promise<string |
     return recommendedPhotoCache.get(clean)!;
   }
 
-  // 1. Try ARASAAC Educational Cartoon Pictogram PNG first for rich classroom cartoon illustrations!
+  // 1. Check instant Twemoji cartoon PNG first for 0ms response!
+  const instant = getInstantCartoonPng(clean);
+  if (instant) {
+    recommendedPhotoCache.set(clean, instant);
+    return instant;
+  }
+
+  // 2. Try ARASAAC Educational Cartoon Pictogram PNG with fast 1.8s timeout
   try {
-    const arasaacRes = await fetch(
-      `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(clean)}`
+    const arasaacRes = await fetchWithTimeout(
+      `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(clean)}`,
+      1800
     );
     if (arasaacRes.ok) {
       const data = await arasaacRes.json();
@@ -515,19 +599,12 @@ export async function fetchRecommendedCartoonPng(word: string): Promise<string |
     // Fallback to next source
   }
 
-  // 2. Check instant Twemoji cartoon PNG
-  const instant = getInstantCartoonPng(clean);
-  if (instant) {
-    recommendedPhotoCache.set(clean, instant);
-    return instant;
-  }
-
-  // 3. Try Wikimedia Commons Cartoon PNG search directly
+  // 3. Try Wikimedia Commons Cartoon PNG search with fast 1.8s timeout
   try {
     const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
       `filetype:bitmap|drawing ${clean} cartoon OR clipart OR icon`
     )}&gsrnamespace=6&gsrlimit=4&prop=imageinfo&iiprop=url|mime&iiurlwidth=400&format=json&origin=*`;
-    const wikiRes = await fetch(wikiUrl);
+    const wikiRes = await fetchWithTimeout(wikiUrl, 1800);
     if (wikiRes.ok) {
       const wikiData = await wikiRes.json();
       const pages = wikiData?.query?.pages ? Object.values(wikiData.query.pages) : [];
@@ -568,18 +645,31 @@ export interface GifSearchResult {
 }
 
 /**
- * Multi-source Cartoon PNG & Photo Search (Works both via server `/api/photo-search` and direct client-side CORS APIs)
- * Prioritizes Cartoon PNGs first!
+ * Multi-source Cartoon PNG & Photo Search with fast timeouts and progressive streaming
  */
 export async function searchPhotosMultiSource(
   rawQuery: string,
-  prioritizeCartoonPng: boolean = true
+  prioritizeCartoonPng: boolean = true,
+  onProgress?: (partial: PhotoSearchResult[]) => void
 ): Promise<PhotoSearchResult[]> {
   const query = rawQuery.trim();
-  if (!query) return [];
+  if (!query) {
+    const starter = getInstantCartoonGallery('');
+    onProgress?.(starter);
+    return starter;
+  }
 
   const results: PhotoSearchResult[] = [];
   const seenUrls = new Set<string>();
+
+  const notifyProgress = () => {
+    if (!onProgress) return;
+    const copy = [...results];
+    if (prioritizeCartoonPng) {
+      copy.sort((a, b) => (b.isCartoonPng ? 1 : 0) - (a.isCartoonPng ? 1 : 0));
+    }
+    onProgress(copy);
+  };
 
   const pushUnique = (item: PhotoSearchResult) => {
     if (!item?.urls?.regular || seenUrls.has(item.urls.regular)) return;
@@ -587,19 +677,14 @@ export async function searchPhotosMultiSource(
     results.push(item);
   };
 
-  // 1. Instant Twemoji Cartoon PNG if matching
-  const instantPng = getInstantCartoonPng(query);
-  if (instantPng) {
-    pushUnique({
-      id: `twemoji-${query}`,
-      alt_description: `${query} (Cartoon PNG Sticker)`,
-      isCartoonPng: true,
-      source: 'Cartoon PNG',
-      urls: { regular: instantPng, small: instantPng },
-    });
+  // 1. Instant local Cartoon PNG matches (0ms!)
+  const instantMatches = getInstantCartoonGallery(query);
+  instantMatches.forEach((m) => pushUnique(m));
+  if (results.length > 0) {
+    notifyProgress();
   }
 
-  // 2. Fetch in parallel from Server Proxy + ARASAAC Cartoon PNGs + Wikimedia Commons Cartoon PNGs
+  // 2. Fetch in parallel with fast 2.2s timeout per source so slow APIs never block UI
   const tasks: Promise<void>[] = [];
 
   // Task A: ARASAAC Cartoon Pictograms API (Transparent 500x500 Cartoon PNGs!)
@@ -607,13 +692,14 @@ export async function searchPhotosMultiSource(
     (async () => {
       try {
         const cleanQ = normalizeKeyword(query) || query;
-        const res = await fetch(
-          `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(cleanQ)}`
+        const res = await fetchWithTimeout(
+          `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(cleanQ)}`,
+          2200
         );
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) {
-            data.slice(0, 14).forEach((item: any, idx: number) => {
+            data.slice(0, 16).forEach((item: any, idx: number) => {
               if (item && item._id) {
                 const pngUrl = `https://static.arasaac.org/pictograms/${item._id}/${item._id}_500.png`;
                 const kw = item.keywords?.[0]?.keyword || query;
@@ -621,15 +707,16 @@ export async function searchPhotosMultiSource(
                   id: `arasaac-${item._id}-${idx}`,
                   alt_description: `${kw} (Cartoon PNG)`,
                   isCartoonPng: true,
-                  source: 'ARASAAC Cartoon PNG',
+                  source: 'Cartoon PNG',
                   urls: { regular: pngUrl, small: pngUrl },
                 });
               }
             });
+            notifyProgress();
           }
         }
       } catch {
-        // Ignore individual source error
+        // Ignore individual source timeout/error
       }
     })()
   );
@@ -644,7 +731,7 @@ export async function searchPhotosMultiSource(
         const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
           searchQ
         )}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url|mime&iiurlwidth=480&format=json&origin=*`;
-        const res = await fetch(url);
+        const res = await fetchWithTimeout(url, 2200);
         if (res.ok) {
           const data = await res.json();
           const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
@@ -660,11 +747,12 @@ export async function searchPhotosMultiSource(
                 id: `wiki-${page.pageid}`,
                 alt_description: (page.title || query).replace(/^File:/i, ''),
                 isCartoonPng: isPng,
-                source: isPng ? 'Cartoon PNG' : 'Wikimedia Photo',
+                source: isPng ? 'Cartoon PNG' : 'Photo',
                 urls: { regular: thumb, small: thumb },
               });
             }
           });
+          notifyProgress();
         }
       } catch {
         // Ignore
@@ -672,35 +760,14 @@ export async function searchPhotosMultiSource(
     })()
   );
 
-  // Task C: Server `/api/photo-search` (Openverse + Server-side aggregation)
-  tasks.push(
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/photo-search?q=${encodeURIComponent(query)}&cartoon=${prioritizeCartoonPng ? '1' : '0'}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data?.results)) {
-            data.results.forEach((item: PhotoSearchResult) => {
-              pushUnique(item);
-            });
-          }
-        }
-      } catch {
-        // Ignore
-      }
-    })()
-  );
-
-  // Task D: Secondary Wikimedia general photos if user also wants regular photos or if cartoon results are few
+  // Task C: Wikimedia general photos
   tasks.push(
     (async () => {
       try {
         const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
           `filetype:bitmap ${query}`
         )}&gsrnamespace=6&gsrlimit=16&prop=imageinfo&iiprop=url|mime&iiurlwidth=480&format=json&origin=*`;
-        const res = await fetch(url);
+        const res = await fetchWithTimeout(url, 2200);
         if (res.ok) {
           const data = await res.json();
           const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
@@ -713,11 +780,12 @@ export async function searchPhotosMultiSource(
                 id: `wiki-photo-${page.pageid}`,
                 alt_description: (page.title || query).replace(/^File:/i, ''),
                 isCartoonPng: isPng,
-                source: isPng ? 'PNG Image' : 'Wikimedia Commons',
+                source: isPng ? 'PNG Image' : 'Photo',
                 urls: { regular: thumb, small: thumb },
               });
             }
           });
+          notifyProgress();
         }
       } catch {
         // Ignore
@@ -727,7 +795,6 @@ export async function searchPhotosMultiSource(
 
   await Promise.allSettled(tasks);
 
-  // Sort so Cartoon PNGs are strictly prioritized first when prioritizeCartoonPng is true
   if (prioritizeCartoonPng) {
     results.sort((a, b) => {
       const aScore = a.isCartoonPng ? 1 : 0;
@@ -740,12 +807,13 @@ export async function searchPhotosMultiSource(
 }
 
 /**
- * Multi-source GIF Search (Tenor API + Server `/api/giphy-search` + Wikimedia Animated GIFs)
- * Never fails or rate-limits!
+ * Multi-source GIF Search with fast timeouts and progressive results
  */
-export async function searchGifsMultiSource(rawQuery: string): Promise<GifSearchResult[]> {
-  const query = rawQuery.trim();
-  if (!query) return [];
+export async function searchGifsMultiSource(
+  rawQuery: string,
+  onProgress?: (partial: GifSearchResult[]) => void
+): Promise<GifSearchResult[]> {
+  const query = rawQuery.trim() || 'happy cartoon';
 
   const results: GifSearchResult[] = [];
   const seenUrls = new Set<string>();
@@ -759,29 +827,13 @@ export async function searchGifsMultiSource(rawQuery: string): Promise<GifSearch
 
   const tasks: Promise<void>[] = [];
 
-  // 1. Server `/api/giphy-search` (aggregates Tenor, Giphy, Wikimedia GIFs)
+  // 1. Direct Tenor Public API (Client-side CORS enabled, super fast, millions of GIFs)
   tasks.push(
     (async () => {
       try {
-        const res = await fetch(`/api/giphy-search?q=${encodeURIComponent(query)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data?.data)) {
-            data.data.forEach((gif: GifSearchResult) => pushUnique(gif));
-          }
-        }
-      } catch {
-        // Ignore
-      }
-    })()
-  );
-
-  // 2. Direct Tenor Public API (Client-side CORS enabled, super fast, millions of GIFs)
-  tasks.push(
-    (async () => {
-      try {
-        const tenorRes = await fetch(
-          `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=LIVDSRZULELA&limit=24`
+        const tenorRes = await fetchWithTimeout(
+          `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=LIVDSRZULELA&limit=24`,
+          2200
         );
         if (tenorRes.ok) {
           const tenorData = await tenorRes.json();
@@ -802,6 +854,7 @@ export async function searchGifsMultiSource(rawQuery: string): Promise<GifSearch
                 });
               }
             });
+            onProgress?.([...results]);
           }
         }
       } catch {
@@ -810,14 +863,14 @@ export async function searchGifsMultiSource(rawQuery: string): Promise<GifSearch
     })()
   );
 
-  // 3. Wikimedia Commons Animated GIFs
+  // 2. Wikimedia Commons Animated GIFs
   tasks.push(
     (async () => {
       try {
         const wikiGifUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
           `filetype:bitmap mime:image/gif ${query}`
         )}&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url&format=json&origin=*`;
-        const res = await fetch(wikiGifUrl);
+        const res = await fetchWithTimeout(wikiGifUrl, 2200);
         if (res.ok) {
           const data = await res.json();
           const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
@@ -835,6 +888,7 @@ export async function searchGifsMultiSource(rawQuery: string): Promise<GifSearch
               });
             }
           });
+          onProgress?.([...results]);
         }
       } catch {
         // Ignore

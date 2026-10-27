@@ -31,7 +31,7 @@ import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { FullscreenButton } from '../components/FullscreenButton';
 import { GameModeModal } from '../components/GameModeModal';
-import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
+import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
 import { parseOptionContent, formatOptionContent, AnswerContentMode } from '../utils/mediaAndPresets';
 
 // ============================================================================
@@ -1640,6 +1640,7 @@ interface Question {
   text: string;
   options: string[];
   answerIndex: number;
+  image?: string;
 }
 
 interface GameData {
@@ -1835,8 +1836,8 @@ export function SharkAttack({
   };
 
   const questionsDB =
-    activeGame?.questions && activeGame.questions.filter((q) => q.text.trim()).length > 0
-      ? activeGame.questions.filter((q) => q.text.trim())
+    activeGame?.questions && activeGame.questions.filter((q) => q.text.trim() || q.image).length > 0
+      ? activeGame.questions.filter((q) => q.text.trim() || q.image)
       : DEFAULT_QUESTIONS;
 
   const [questionMode, setQuestionMode] = useState<'single' | 'split'>('single');
@@ -1875,7 +1876,8 @@ export function SharkAttack({
 
     const shuffledOpts = [...validOptions].sort(() => Math.random() - 0.5);
     return {
-      text: q.text || 'Question',
+      text: q.text || '',
+      image: q.image,
       options: shuffledOpts,
       correctIndex: Math.max(0, shuffledOpts.indexOf(correctOpt)),
     };
@@ -2550,14 +2552,32 @@ export function SharkAttack({
         <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-5xl mx-auto w-full">
           {studyQuestions.length > 0 ? (
             <>
-              <h1
-                className={`${getQuestionFontSize(
-                  currentQ?.text || '',
-                  false
-                )} font-black text-black tracking-tight leading-snug text-center max-w-full break-words mb-12`}
-              >
-                {renderQuestionText(currentQ?.text || '')}
-              </h1>
+              {(() => {
+                const qParsed = parseOptionContent(currentQ?.text || '');
+                const qImg = currentQ?.image || qParsed.imageUrl;
+                const qDisplayText = qParsed.text || currentQ?.text || '';
+                return (
+                  <div className="flex flex-col items-center justify-center gap-4 mb-10 w-full">
+                    {qImg && (
+                      <img
+                        src={qImg}
+                        alt="Question"
+                        className="max-h-52 sm:max-h-64 w-auto rounded-2xl object-contain bg-slate-50 border-2 border-slate-200 p-2 shadow-md"
+                      />
+                    )}
+                    {qDisplayText && (
+                      <h1
+                        className={`${getQuestionFontSize(
+                          qDisplayText,
+                          false
+                        )} font-black text-black tracking-tight leading-snug text-center max-w-full break-words`}
+                      >
+                        {renderQuestionText(qDisplayText)}
+                      </h1>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                 {currentQ?.options.map((rawOpt, i) => {
@@ -3336,20 +3356,35 @@ export function SharkAttack({
           timeUpBanner={timeUpBanner}
         />
 
-        {questionMode === 'single' && (
-          <div className="w-full max-w-5xl mx-auto pt-2 pb-1 px-4 text-center z-20 shrink-0 pointer-events-none">
-            <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl py-3 sm:py-4 px-6 sm:px-10 shadow-xl border-2 border-sky-900/15">
-              <div
-                className={`${getQuestionFontSize(
-                  currentQText,
-                  false
-                )} font-black text-[#0f172a] leading-snug tracking-tight drop-shadow-xs break-words`}
-              >
-                {renderQuestionText(currentQText)}
+        {questionMode === 'single' && (() => {
+          const singleQ = leftTeam.q || rightTeam.q;
+          const qParsed = parseOptionContent(currentQText || '');
+          const qImg = singleQ?.image || qParsed.imageUrl;
+          const qDisplayText = qParsed.text || currentQText;
+          return (
+            <div className="w-full max-w-5xl mx-auto pt-2 pb-1 px-4 text-center z-20 shrink-0 pointer-events-none">
+              <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl py-3 sm:py-4 px-6 sm:px-10 shadow-xl border-2 border-sky-900/15 flex items-center justify-center gap-4">
+                {qImg && (
+                  <img
+                    src={qImg}
+                    alt="Question"
+                    className="h-14 sm:h-20 w-auto max-w-[140px] rounded-xl object-contain bg-sky-50 border border-sky-200 p-1 shrink-0 shadow-sm"
+                  />
+                )}
+                {qDisplayText && (
+                  <div
+                    className={`${getQuestionFontSize(
+                      qDisplayText,
+                      false
+                    )} font-black text-[#0f172a] leading-snug tracking-tight drop-shadow-xs break-words`}
+                  >
+                    {renderQuestionText(qDisplayText)}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* BOTTOM ANSWER AREA (CLEAN OPTION TEXT WITH NO A/B/C/D PREFIX + TABLET MULTI-TOUCH SUPPORT) */}
@@ -3364,18 +3399,32 @@ export function SharkAttack({
                 : ''
           }`}
         >
-          {questionMode === 'split' && (
-            <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
-              <div
-                className={`${getQuestionFontSize(
-                  leftTeam.q?.text || '',
-                  true
-                )} font-black text-[#0f172a] leading-snug px-1.5 break-words`}
-              >
-                {renderQuestionText(leftTeam.q?.text || '')}
+          {questionMode === 'split' && (() => {
+            const qParsed = parseOptionContent(leftTeam.q?.text || '');
+            const qImg = leftTeam.q?.image || qParsed.imageUrl;
+            const qDisplayText = qParsed.text || leftTeam.q?.text || '';
+            return (
+              <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-blue-400/40 text-center flex items-center justify-center gap-3 min-h-[56px] sm:min-h-[88px]">
+                {qImg && (
+                  <img
+                    src={qImg}
+                    alt="Question"
+                    className="h-12 sm:h-16 w-auto max-w-[110px] rounded-xl object-contain bg-blue-50 border border-blue-200 p-1 shrink-0"
+                  />
+                )}
+                {qDisplayText && (
+                  <div
+                    className={`${getQuestionFontSize(
+                      qDisplayText,
+                      true
+                    )} font-black text-[#0f172a] leading-snug px-1.5 break-words`}
+                  >
+                    {renderQuestionText(qDisplayText)}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div
             className={`grid gap-1.5 sm:gap-3 md:gap-4 ${
@@ -3460,15 +3509,33 @@ export function SharkAttack({
           }`}
         >
           {questionMode === 'split' && (
-            <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col justify-center min-h-[56px] sm:min-h-[88px]">
-              <div
-                className={`${getQuestionFontSize(
-                  rightTeam.q?.text || '',
-                  true
-                )} font-black text-[#0f172a] leading-snug px-1.5 break-words`}
-              >
-                {renderQuestionText(rightTeam.q?.text || '')}
-              </div>
+            <div className="bg-white rounded-xl sm:rounded-2xl md:rounded-3xl p-2.5 sm:p-4 mb-1.5 sm:mb-3.5 shadow-lg border-2 border-red-400/40 text-center flex flex-col items-center justify-center min-h-[56px] sm:min-h-[88px] gap-1.5">
+              {(() => {
+                const parsedQ = parseOptionContent(rightTeam.q?.text || '');
+                const qImg = rightTeam.q?.image || parsedQ.imageUrl;
+                const qText = rightTeam.q?.image ? rightTeam.q?.text || '' : (parsedQ.text || rightTeam.q?.text || '');
+                return (
+                  <>
+                    {qImg && (
+                      <img
+                        src={qImg}
+                        alt="Question"
+                        className="max-h-14 sm:max-h-20 md:max-h-24 object-contain rounded-lg border border-slate-200 bg-slate-50 p-1 shadow-sm"
+                      />
+                    )}
+                    {qText && (
+                      <div
+                        className={`${getQuestionFontSize(
+                          qText,
+                          true
+                        )} font-black text-[#0f172a] leading-snug px-1.5 break-words`}
+                      >
+                        {renderQuestionText(qText)}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -3693,7 +3760,7 @@ function GameEditor({
   const [errorMsg, setErrorMsg] = useState('');
   const [activeGiphyInput, setActiveGiphyInput] = useState<{
     qId: number | string;
-    optIndex: number;
+    optIndex: number | 'question';
     query?: string;
   } | null>(null);
   const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
@@ -3855,7 +3922,7 @@ function GameEditor({
   };
 
   const initiateSave = () => {
-    const validQuestions = questions.filter((q) => q.text.trim());
+    const validQuestions = questions.filter((q) => q.text.trim() || q.image);
     if (validQuestions.length === 0) {
       setErrorMsg('Please add at least one complete question.');
       setTimeout(() => setErrorMsg(''), 3000);
@@ -3866,7 +3933,7 @@ function GameEditor({
 
   const handleSave = (isPublic: boolean) => {
     const validQuestions = questions
-      .filter((q) => q.text.trim())
+      .filter((q) => q.text.trim() || q.image)
       .map((q) => ({
         ...q,
         options: q.options.map((opt) => stripOptionPrefix(opt)),
@@ -4094,7 +4161,7 @@ function GameEditor({
                 <button
                   onClick={() => {
                     const validQuestions = questions
-                      .filter((q) => q.text.trim())
+                      .filter((q) => q.text.trim() || q.image)
                       .map((q) => ({
                         ...q,
                         options: q.options.map((opt) => stripOptionPrefix(opt)),
@@ -4215,17 +4282,21 @@ function GameEditor({
                 </button>
 
                 <div className="flex gap-4 mb-4 items-start">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30 mt-2">
                     {index + 1}
                   </div>
-                  <input
+                  <SmartQuestionInput
                     id={`question-input-${index}`}
-                    type="text"
                     value={q.text}
-                    onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                    imageUrl={q.image}
+                    onChange={(val) => updateQuestion(q.id, 'text', val)}
+                    onChangeImage={(url) => updateQuestion(q.id, 'image', url)}
+                    onOpenMediaPicker={(initialQ) =>
+                      setActiveGiphyInput({ qId: q.id, optIndex: 'question', query: initialQ })
+                    }
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     placeholder="Type your question here..."
-                    className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                    autoPhotosEnabled={autoPhotosEnabled}
                   />
                 </div>
 
@@ -4288,15 +4359,19 @@ function GameEditor({
         onClose={() => setActiveGiphyInput(null)}
         onSelect={(url) => {
           if (activeGiphyInput) {
-            const targetQ = questions.find((item) => item.id === activeGiphyInput.qId);
-            const rawExisting = targetQ?.options[activeGiphyInput.optIndex] || '';
-            const parsedExisting = parseOptionContent(rawExisting);
-            const wordToKeep = parsedExisting.text || activeGiphyInput.query || '';
-            const finalVal =
-              contentMode === 'photos_gifs' || !wordToKeep
-                ? url
-                : formatOptionContent(wordToKeep, url, 'both');
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, finalVal);
+            if (activeGiphyInput.optIndex === 'question') {
+              updateQuestion(activeGiphyInput.qId, 'image', url);
+            } else {
+              const targetQ = questions.find((item) => item.id === activeGiphyInput.qId);
+              const rawExisting = targetQ?.options[activeGiphyInput.optIndex] || '';
+              const parsedExisting = parseOptionContent(rawExisting);
+              const wordToKeep = parsedExisting.text || activeGiphyInput.query || '';
+              const finalVal =
+                contentMode === 'photos_gifs' || !wordToKeep
+                  ? url
+                  : formatOptionContent(wordToKeep, url, 'both');
+              updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, finalVal);
+            }
             setActiveGiphyInput(null);
           }
         }}

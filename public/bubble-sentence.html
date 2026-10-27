@@ -1791,6 +1791,14 @@ var Game = {
                     this.slots = [];
                     return;
                 } else if (Storage.data.mode === 'anagram' && this.anagramWords && this.anagramWords.length > 0) {
+                    const currentSent = this.sents[this.idx] || {};
+                    const sImg = currentSent.image || currentSent.imageUrl || '';
+                    if (sImg) {
+                        const imgWrap = document.createElement('div');
+                        imgWrap.className = 'w-full flex justify-center mb-2';
+                        imgWrap.innerHTML = `<img src="${sImg}" alt="Prompt" class="max-h-24 sm:max-h-32 rounded-2xl object-contain border-2 border-white/60 shadow-md bg-white/50 p-1" />`;
+                        con.appendChild(imgWrap);
+                    }
                     const hasMultipleWords = this.anagramWords.length >= 2;
                     
                     this.anagramWords.forEach((wordTokens, wordIdx) => {
@@ -1826,6 +1834,14 @@ var Game = {
                         }
                     });
                 } else {
+                    const currentSent = this.sents[this.idx] || {};
+                    const sImg = currentSent.image || currentSent.imageUrl || '';
+                    if (sImg) {
+                        const imgWrap = document.createElement('div');
+                        imgWrap.className = 'w-full flex justify-center mb-2';
+                        imgWrap.innerHTML = `<img src="${sImg}" alt="Prompt" class="max-h-24 sm:max-h-32 rounded-2xl object-contain border-2 border-white/60 shadow-md bg-white/50 p-1" />`;
+                        con.appendChild(imgWrap);
+                    }
                     this.words.forEach((w,i) => {
                         const s = document.createElement('div');
                         s.className = 'word-slot shadow-inner relative';
@@ -1861,12 +1877,22 @@ var Game = {
                         const el = document.createElement('div');
                         el.className = 'bubble-word mcq-bubble';
                         
-                        const isImg = opt.text.startsWith('data:image') || opt.text.startsWith('http');
-                        const cleanText = opt.text.replace(/^[A-Da-d][\.\)\:\-]\s+/, '').trim();
+                        let optImg = '';
+                        let rawLabel = opt.text || '';
+                        if (rawLabel.includes('|||')) {
+                            const parts = rawLabel.split('|||');
+                            rawLabel = (parts[0] || '').trim();
+                            optImg = (parts[1] || '').trim();
+                        } else if (rawLabel.startsWith('data:image') || rawLabel.startsWith('http') || rawLabel.startsWith('/')) {
+                            optImg = rawLabel;
+                            rawLabel = '';
+                        }
+                        const cleanText = rawLabel.replace(/^[A-Da-d][\.\)\:\-]\s+/, '').trim();
                         
                         el.innerHTML = `
                             <span class="mcq-letter-badge badge-${opt.letter}">${opt.letter}</span>
-                            ${isImg ? `<img src="${opt.text}" alt="Option ${opt.letter}" class="mcq-opt-image pointer-events-none" />` : `<span class="mcq-opt-label">${cleanText}</span>`}
+                            ${optImg ? `<img src="${optImg}" alt="Option ${opt.letter}" class="mcq-opt-image pointer-events-none" />` : ''}
+                            ${cleanText ? `<span class="mcq-opt-label">${cleanText}</span>` : ''}
                         `;
                         
                         el.style.transform = `scale(${sizeMult})`;

@@ -8,12 +8,15 @@ import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { MediaPickerModal } from "../components/MediaPickerModal";
+import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput } from "../components/SetupSmartControls";
+import { AnswerContentMode, formatOptionContent, parseOptionContent } from "../utils/mediaAndPresets";
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'study';
 
 export interface Question {
   id: number | string;
   text: string;
+  image?: string;
   options: string[];
   answerIndex: number;
 }
@@ -21,6 +24,9 @@ export interface Question {
 export interface Sentence {
   id: number | string;
   text: string;
+  image?: string;
+  options?: string[];
+  answerIndex?: number;
   emoji: string;
   diff: number;
 }
@@ -358,21 +364,44 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
                       <span className="text-sm font-extrabold uppercase tracking-widest text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 px-4 py-1.5 rounded-full border border-cyan-200 dark:border-cyan-800">
                         Question {studyIndex + 1}
                       </span>
-                      <h2 className="text-3xl sm:text-5xl font-black text-slate-800 dark:text-white text-center tracking-tight leading-tight">
-                        {activeGame.questions[studyIndex]?.text}
-                      </h2>
+                      {(() => {
+                        const studyQ = activeGame.questions[studyIndex];
+                        const parsedQ = parseOptionContent(studyQ?.text || '');
+                        const qImg = studyQ?.image || parsedQ.imageUrl;
+                        const qText = studyQ?.image ? studyQ?.text : (parsedQ.text || studyQ?.text);
+                        return (
+                          <>
+                            {qImg && (
+                              <img
+                                src={qImg}
+                                alt="Question"
+                                className="max-h-40 sm:max-h-52 object-contain rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white p-2 shadow-md"
+                              />
+                            )}
+                            {qText && (
+                              <h2 className="text-3xl sm:text-5xl font-black text-slate-800 dark:text-white text-center tracking-tight leading-tight">
+                                {qText}
+                              </h2>
+                            )}
+                          </>
+                        );
+                      })()}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-4">
                         {activeGame.questions[studyIndex]?.options.map((opt, oIdx) => {
                           const isCorrect = (activeGame.questions![studyIndex]?.answerIndex === oIdx);
+                          const parsedOpt = parseOptionContent(opt || '');
                           return (
                             <div 
                               key={oIdx}
                               className={`p-4 rounded-2xl flex items-center gap-3 font-bold border-2 transition-all ${isCorrect ? 'bg-green-500/10 border-green-500 text-green-700 dark:text-green-300 shadow-sm' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}
                             >
-                              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black ${isCorrect ? 'bg-green-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
+                              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${isCorrect ? 'bg-green-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
                                 {isCorrect ? '✓' : String.fromCharCode(65 + oIdx)}
                               </span>
-                              <span className="flex-1 text-base sm:text-lg">{opt || `(Option ${oIdx + 1})`}</span>
+                              {parsedOpt.imageUrl && (
+                                <img src={parsedOpt.imageUrl} alt="Option" className="w-12 h-12 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shrink-0" />
+                              )}
+                              <span className="flex-1 text-base sm:text-lg">{parsedOpt.text || (!parsedOpt.imageUrl ? `(Option ${oIdx + 1})` : '')}</span>
                             </div>
                           );
                         })}
@@ -383,9 +412,18 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
                   )
                 ) : (
                   activeGame.sentences.length > 0 ? (
-                      <h1 className="text-[12vw] sm:text-[10vw] font-black text-slate-800 dark:text-white tracking-tight leading-[1.1] text-center max-w-full break-words drop-shadow-sm pointer-events-none w-full px-8">
-                          {activeGame.sentences[studyIndex]?.text}
-                      </h1>
+                      <div className="flex flex-col items-center gap-6 max-w-full px-8">
+                        {activeGame.sentences[studyIndex]?.image && (
+                          <img
+                            src={activeGame.sentences[studyIndex]?.image}
+                            alt="Sentence"
+                            className="max-h-48 sm:max-h-64 object-contain rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white p-2 shadow-md"
+                          />
+                        )}
+                        <h1 className="text-[10vw] sm:text-[8vw] font-black text-slate-800 dark:text-white tracking-tight leading-[1.1] text-center max-w-full break-words drop-shadow-sm pointer-events-none w-full">
+                            {activeGame.sentences[studyIndex]?.text}
+                        </h1>
+                      </div>
                   ) : (
                       <div className="text-slate-500 text-3xl font-bold pointer-events-none">No words/sentences to study!</div>
                   )
@@ -651,7 +689,9 @@ function GameEditor({
     }
   }, [folderId, topic, classLevel, mode, sentences, questions]);
 
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question' | 'sentence', initialQuery?: string } | null>(null);
+  const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
+  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(true);
   const [showVideoGuide, setShowVideoGuide] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [toastMsg, setToastMsg] = useState("");
@@ -663,10 +703,11 @@ function GameEditor({
     setMode(newMode);
     if (newMode === 'multiple-choice') {
       // If questions has only 1 blank item and sentences has content, initialize questions from sentences
-      if (questions.length === 1 && !questions[0].text.trim() && sentences.some(s => s.text.trim())) {
-        const generatedQs: Question[] = sentences.filter(s => s.text.trim()).map((s, i) => ({
+      if (questions.length === 1 && !questions[0].text.trim() && !questions[0].image && sentences.some(s => s.text.trim() || s.image)) {
+        const generatedQs: Question[] = sentences.filter(s => s.text.trim() || s.image).map((s, i) => ({
           id: Date.now() + i,
           text: s.text,
+          image: s.image,
           options: ['', '', '', ''],
           answerIndex: 0
         }));
@@ -676,10 +717,11 @@ function GameEditor({
       }
     } else {
       // If switching to word or anagram, and sentences has only 1 blank item while questions has text, initialize sentences from questions
-      if (sentences.length === 1 && !sentences[0].text.trim() && questions.some(q => q.text.trim())) {
-        const generatedSents: Sentence[] = questions.filter(q => q.text.trim()).map((q, i) => ({
+      if (sentences.length === 1 && !sentences[0].text.trim() && !sentences[0].image && questions.some(q => q.text.trim() || q.image)) {
+        const generatedSents: Sentence[] = questions.filter(q => q.text.trim() || q.image).map((q, i) => ({
           id: Date.now() + i,
           text: q.text,
+          image: q.image,
           emoji: '✨',
           diff: 1
         }));
@@ -944,14 +986,14 @@ function GameEditor({
 
   const initiateSave = () => {
     if (mode === 'multiple-choice') {
-      const validQuestions = questions.filter(q => q.text.trim());
+      const validQuestions = questions.filter(q => q.text.trim() || q.image);
       if (validQuestions.length === 0) {
         setErrorMsg("Please add at least one complete question.");
         setTimeout(() => setErrorMsg(""), 3000);
         return;
       }
     } else {
-      const validSentences = sentences.filter(s => s.text.trim());
+      const validSentences = sentences.filter(s => s.text.trim() || s.image);
       if (validSentences.length === 0) {
         setErrorMsg(`Please add at least one complete ${mode === 'anagram' ? 'word/phrase' : 'sentence'}.`);
         setTimeout(() => setErrorMsg(""), 3000);
@@ -966,10 +1008,11 @@ function GameEditor({
     const generatedTitle = topic.trim() ? topic.trim() : "Bubble Island Game";
     
     if (mode === 'multiple-choice') {
-      const validQuestions = questions.filter(q => q.text.trim());
+      const validQuestions = questions.filter(q => q.text.trim() || q.image);
       const mappedSentences: Sentence[] = validQuestions.map((q, i) => ({
         id: q.id,
         text: q.text,
+        image: q.image,
         options: q.options || ['', '', '', ''],
         answerIndex: q.answerIndex || 0,
         emoji: '✨',
@@ -987,10 +1030,11 @@ function GameEditor({
         isPublic
       });
     } else {
-      const validSentences = sentences.filter(s => s.text.trim());
+      const validSentences = sentences.filter(s => s.text.trim() || s.image);
       const mappedQuestions: Question[] = validSentences.map((s, i) => ({
         id: s.id,
         text: s.text,
+        image: s.image,
         options: ['', '', '', ''],
         answerIndex: 0
       }));
@@ -1110,10 +1154,24 @@ function GameEditor({
         {/* Media Picker Modal */}
         <MediaPickerModal 
           isOpen={activeGiphyInput !== null}
+          initialQuery={activeGiphyInput?.initialQuery || ''}
           onClose={() => setActiveGiphyInput(null)}
           onSelect={(url) => {
             if (activeGiphyInput) {
-              updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, url);
+              if (activeGiphyInput.optIndex === 'question') {
+                updateQuestion(activeGiphyInput.qId, 'image', url);
+              } else if (activeGiphyInput.optIndex === 'sentence') {
+                updateSentence(activeGiphyInput.qId, 'image', url);
+              } else {
+                const targetQ = questions.find(item => item.id === activeGiphyInput.qId);
+                const rawExisting = targetQ?.options[activeGiphyInput.optIndex] || '';
+                const parsedExisting = parseOptionContent(rawExisting);
+                const wordToKeep = parsedExisting.text || activeGiphyInput.initialQuery || '';
+                const finalVal = contentMode === 'photos_gifs' || !wordToKeep
+                  ? url
+                  : formatOptionContent(wordToKeep, url, 'both');
+                updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, finalVal);
+              }
               setActiveGiphyInput(null);
             }
           }}
@@ -1270,57 +1328,42 @@ function GameEditor({
                   </button>
                   
                   <div className="flex gap-4 mb-4 items-start">
-                    <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                    <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30 mt-2">
                       {index + 1}
                     </div>
-                    <input 
+                    <SmartQuestionInput
                       id={`question-input-${index}`}
-                      type="text"
                       value={q.text}
-                      onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                      imageUrl={q.image}
+                      onChange={(val) => updateQuestion(q.id, 'text', val)}
+                      onChangeImage={(url) => updateQuestion(q.id, 'image', url)}
+                      onOpenMediaPicker={(initialQ) => setActiveGiphyInput({ qId: q.id, optIndex: 'question', initialQuery: initialQ })}
                       onKeyDown={(e) => handleQuestionKeyDown(e, index)}
                       onPaste={(e) => handleQuestionPaste(e, index)}
                       placeholder="Type your question here..."
-                      className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                      autoPhotosEnabled={autoPhotosEnabled}
                     />
                   </div>
 
                   <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {q.options.map((opt, optIndex) => (
-                      <div key={optIndex} className="flex items-center gap-2">
+                      <div key={optIndex} className="flex items-start gap-2">
                         <input 
                           type="radio" 
                           name={`answer-${q.id}`} 
                           checked={q.answerIndex === optIndex}
                           onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                          className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
+                          className="w-4 h-4 mt-3 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
                         />
-                        {opt.startsWith('data:image') || opt.startsWith('http') ? (
-                          <div className="flex-1 flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 pr-3">
-                            <img src={opt} alt="Option" className="w-8 h-8 rounded object-cover" />
-                            <span className="text-xs text-slate-400 flex-1 truncate">Image/GIF</span>
-                            <button onClick={() => updateOption(q.id, optIndex, '')} className="text-red-400 hover:text-red-300 cursor-pointer p-1">
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex-1 flex items-center gap-2">
-                            <input 
-                              type="text"
-                              value={opt}
-                              onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
-                              placeholder={`Option ${optIndex + 1}`}
-                              className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${q.answerIndex === optIndex ? 'border-blue-500/50 bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'} rounded-lg px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium`}
-                            />
-                            <button 
-                              onClick={() => setActiveGiphyInput({ qId: q.id, optIndex })}
-                              className="bg-purple-500/20 text-purple-400 p-2 rounded-lg hover:bg-purple-500 hover:text-white transition-colors shrink-0 cursor-pointer flex items-center justify-center"
-                              title="Search Giphy"
-                            >
-                              <ImageIcon size={16} />
-                            </button>
-                          </div>
-                        )}
+                        <SmartOptionInput
+                          value={opt}
+                          onChange={(val) => updateOption(q.id, optIndex, val)}
+                          onOpenMediaPicker={(initialQ) => setActiveGiphyInput({ qId: q.id, optIndex, initialQuery: initialQ })}
+                          placeholder={`Option ${optIndex + 1} (e.g. apple)`}
+                          isCorrect={q.answerIndex === optIndex}
+                          contentMode={contentMode}
+                          autoPhotosEnabled={autoPhotosEnabled}
+                        />
                       </div>
                     ))}
                   </div>
@@ -1394,18 +1437,20 @@ function GameEditor({
                   </button>
                   
                   <div className="flex gap-4 items-start">
-                    <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-500 font-bold flex items-center justify-center shrink-0 border border-cyan-500/30">
+                    <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-500 font-bold flex items-center justify-center shrink-0 border border-cyan-500/30 mt-2">
                       {index + 1}
                     </div>
-                    <input 
+                    <SmartQuestionInput
                       id={`sentence-input-${index}`}
-                      type="text"
                       value={s.text}
-                      onChange={(e) => updateSentence(s.id, 'text', e.target.value)}
+                      imageUrl={s.image}
+                      onChange={(val) => updateSentence(s.id, 'text', val)}
+                      onChangeImage={(url) => updateSentence(s.id, 'image', url)}
+                      onOpenMediaPicker={(initialQ) => setActiveGiphyInput({ qId: s.id, optIndex: 'sentence', initialQuery: initialQ })}
                       onKeyDown={(e) => handleSentenceKeyDown(e, index)}
                       onPaste={(e) => handleSentencePaste(e, index)}
                       placeholder={mode === 'anagram' ? "Type or paste words here..." : "Type or paste your sentences here..."}
-                      className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-cyan-500 text-slate-800 dark:text-white font-medium transition-colors"
+                      autoPhotosEnabled={autoPhotosEnabled}
                     />
                   </div>
                 </div>

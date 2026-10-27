@@ -10,7 +10,7 @@ import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { logUserActivity } from "../utils/activityTracker";
-import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
+import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 
 const slapChopImgCache: Record<string, HTMLImageElement> = {};
@@ -32,6 +32,7 @@ interface Question {
   text: string;
   options: string[];
   answerIndex: number;
+  image?: string;
 }
 
 interface Quiz {
@@ -4474,14 +4475,30 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   Q{currentQIndex + 1}
                 </div>
 
-                <p
-                  className="flex-1 font-black text-slate-900 tracking-tight leading-snug"
-                  style={{ fontSize: `${Math.round(24 * textSize)}px` }}
-                >
-                  {nextQCountdown !== null
+                {(() => {
+                  const qParsed = parseOptionContent(currentQ?.text || '');
+                  const qImg = currentQ?.image || qParsed.imageUrl;
+                  const qTextDisplay = nextQCountdown !== null
                     ? `⏳ Next Question Appears in ${nextQCountdown}s...`
-                    : (currentQ?.text || "Loading question...")}
-                </p>
+                    : (qParsed.text || currentQ?.text || "Loading question...");
+                  return (
+                    <div className="flex-1 flex items-center justify-center gap-3 min-w-0">
+                      {qImg && nextQCountdown === null && (
+                        <img
+                          src={qImg}
+                          alt="Question"
+                          className="h-12 sm:h-16 w-auto max-w-[120px] rounded-xl object-contain bg-sky-50 border-2 border-sky-300 p-1 shrink-0 shadow-sm"
+                        />
+                      )}
+                      <p
+                        className="font-black text-slate-900 tracking-tight leading-snug break-words"
+                        style={{ fontSize: `${Math.round(24 * textSize)}px` }}
+                      >
+                        {qTextDisplay}
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 <button
                   type="button"
@@ -5124,9 +5141,27 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   </div>
 
                   {/* Question Prompt */}
-                  <h3 className="text-2xl sm:text-3xl font-black text-slate-900 text-center leading-snug py-2">
-                    {studyQ.text}
-                  </h3>
+                  {(() => {
+                    const qParsed = parseOptionContent(studyQ.text || '');
+                    const qImg = studyQ.image || qParsed.imageUrl;
+                    const qDisplayText = qParsed.text || studyQ.text;
+                    return (
+                      <div className="flex flex-col items-center justify-center gap-3 py-2">
+                        {qImg && (
+                          <img
+                            src={qImg}
+                            alt="Question"
+                            className="max-h-48 sm:max-h-56 w-auto rounded-2xl object-contain bg-sky-50 border-2 border-sky-300 p-2 shadow-md"
+                          />
+                        )}
+                        {qDisplayText && (
+                          <h3 className="text-2xl sm:text-3xl font-black text-slate-900 text-center leading-snug">
+                            {qDisplayText}
+                          </h3>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Interactive Click-to-Test Options (A, B, C, D) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -5353,7 +5388,7 @@ function QuizEditor({
       : [{ id: Date.now(), text: "", options: ["", "", "", ""], answerIndex: 0 }]
   );
 
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number; initialQuery?: string } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number | 'question'; initialQuery?: string } | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
   const [showVideoGuide, setShowVideoGuide] = useState(false);
@@ -5672,18 +5707,20 @@ function QuizEditor({
                 </button>
 
                 <div className="flex gap-4 mb-4 items-start">
-                  <div className="w-8 h-8 rounded-full bg-sky-100 text-sky-600 font-bold flex items-center justify-center shrink-0 border border-sky-200">
+                  <div className="w-8 h-8 mt-2 rounded-full bg-sky-100 text-sky-600 font-bold flex items-center justify-center shrink-0 border border-sky-200">
                     {index + 1}
                   </div>
-                  <input
+                  <SmartQuestionInput
                     id={`question-input-${index}`}
-                    type="text"
                     value={q.text}
-                    onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                    imageUrl={q.image || parseOptionContent(q.text).imageUrl}
+                    onChange={(newVal) => updateQuestion(q.id, 'text', newVal)}
+                    onChangeImage={(newImg) => updateQuestion(q.id, 'image', newImg || undefined)}
+                    onOpenMediaPicker={(initialQuery) => setActiveGiphyInput({ qId: q.id, optIndex: 'question', initialQuery: initialQuery || q.text })}
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     onPaste={(e) => handlePaste(e, index)}
-                    placeholder="Type your question here..."
-                    className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 outline-none focus:border-sky-500 text-slate-800 font-medium"
+                    placeholder="Type your question here (or click Add Media for picture/GIF)..."
+                    autoPhotosEnabled={autoRecommendPhoto}
                   />
                 </div>
 
@@ -5743,11 +5780,15 @@ function QuizEditor({
         initialQuery={activeGiphyInput?.initialQuery || ""}
         onSelect={(url) => {
           if (activeGiphyInput) {
-            const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
-            const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
-            const parsed = parseOptionContent(currentRaw);
-            const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
+            if (activeGiphyInput.optIndex === 'question') {
+              updateQuestion(activeGiphyInput.qId, 'image', url);
+            } else {
+              const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
+              const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
+              const parsed = parseOptionContent(currentRaw);
+              const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
+              updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
+            }
             setActiveGiphyInput(null);
           }
         }}

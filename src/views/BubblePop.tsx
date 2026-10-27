@@ -4,7 +4,7 @@ import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
-import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
+import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { parseOptionContent, formatOptionContent, AnswerContentMode } from "../utils/mediaAndPresets";
 import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, ClipboardList, Info, Settings, Copy, Flag, Volume2, VolumeX, Shuffle, Check } from "lucide-react";
 import { collection, query, where, getDocs, deleteDoc, doc, addDoc, updateDoc } from "firebase/firestore";
@@ -31,6 +31,7 @@ interface StatsData {
 interface Question {
   id: number | string;
   text: string;
+  image?: string;
   options: string[];
   answerIndex: number;
 }
@@ -195,6 +196,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const [scores, setScores] = useState([0, 0]);
   const [frozenTeams, setFrozenTeams] = useState([false, false]);
   const [questionText, setQuestionText] = useState("Loading...");
+  const [questionImage, setQuestionImage] = useState<string | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(null);
   
@@ -759,8 +761,14 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         return;
     }
     const q = gameState.current.questions[gameState.current.currentQuestionIndex];
-    setQuestionText(q.text);
-    speakText(q.text);
+    const parsedQ = parseOptionContent(q.text || '');
+    const qImg = parsedQ.imageUrl || q.image || null;
+    const qDisplayText = parsedQ.text || (qImg ? '' : q.text);
+    setQuestionText(qDisplayText);
+    setQuestionImage(qImg);
+    if (qDisplayText) {
+      speakText(qDisplayText);
+    }
     
     gameState.current.frozenTeams = [false, false];
     setFrozenTeams([false, false]);
@@ -858,6 +866,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             });
 
             setQuestionText(`Amazing!`);
+            setQuestionImage(null);
             speakText("Correct!");
             
             setTimeout(() => {
@@ -1828,9 +1837,25 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-12 w-full h-full max-w-5xl mx-auto">
                 {activeQuiz.questions.length > 0 ? (
                     <>
-                        <h1 className="text-4xl sm:text-6xl font-black text-white tracking-tight leading-tight text-center max-w-full break-words drop-shadow-lg mb-12">
-                            {activeQuiz.questions[studyIndex]?.text}
-                        </h1>
+                        {(() => {
+                            const currentStudyQ = activeQuiz.questions[studyIndex];
+                            const parsedStudyQ = parseOptionContent(currentStudyQ?.text || '');
+                            const studyQImg = parsedStudyQ.imageUrl || currentStudyQ?.image || null;
+                            return (
+                                <div className="flex flex-col items-center justify-center gap-5 mb-10 max-w-full">
+                                    {studyQImg && (
+                                        <div className="w-36 h-36 sm:w-48 sm:h-48 rounded-3xl bg-white/95 p-3 shadow-2xl border-4 border-cyan-400/50 flex items-center justify-center overflow-hidden">
+                                            <img src={studyQImg} alt={parsedStudyQ.text || 'Question Media'} className="w-full h-full object-contain rounded-2xl" />
+                                        </div>
+                                    )}
+                                    {parsedStudyQ.text && (
+                                        <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight leading-tight text-center max-w-full break-words drop-shadow-lg">
+                                            {parsedStudyQ.text}
+                                        </h1>
+                                    )}
+                                </div>
+                            );
+                        })()}
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-3xl">
                             {activeQuiz.questions[studyIndex]?.options.map((opt, i) => {
@@ -2340,7 +2365,22 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                     </div>
 
                     <div className="glass-panel bg-white/90 dark:bg-slate-900/90 rounded-2xl sm:rounded-3xl w-full max-w-4xl p-2.5 sm:p-4 md:p-6 text-center border-t-4 border-indigo-500 shadow-2xl relative overflow-hidden backdrop-blur-xl mb-2 pointer-events-auto flex-1">
-                        <h1 className="text-base sm:text-xl md:text-3xl font-black text-slate-800 dark:text-white leading-snug sm:leading-relaxed drop-shadow-md">{questionText}</h1>
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-5">
+                            {questionImage && (
+                                <div className="w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-2xl bg-white/95 dark:bg-slate-800/95 p-1.5 shadow-lg border-2 border-indigo-400/50 flex items-center justify-center shrink-0 overflow-hidden">
+                                    <img
+                                        src={questionImage}
+                                        alt={questionText || "Question Media"}
+                                        className="w-full h-full object-contain rounded-xl"
+                                    />
+                                </div>
+                            )}
+                            {questionText && (
+                                <h1 className="text-base sm:text-xl md:text-3xl font-black text-slate-800 dark:text-white leading-snug sm:leading-relaxed drop-shadow-md">
+                                    {questionText}
+                                </h1>
+                            )}
+                        </div>
                         
                         {showCombo && (
                             <div key={`combo-${combo}`} className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-center animate-pop">
@@ -2493,7 +2533,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
   const [questions, setQuestions] = useState<Question[]>(quiz.questions);
   const [errorMsg, setErrorMsg] = useState("");
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number, query?: string } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question', query?: string } | null>(null);
   const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
   const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(true);
 
@@ -2667,7 +2707,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const handleSave = () => {
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = questions.filter(q => (q.text && q.text.trim()) || q.image);
     if(validQuestions.length === 0) {
       setErrorMsg("Please add at least one complete question.");
       setTimeout(() => setErrorMsg(""), 3000);
@@ -2678,7 +2718,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
 
   const confirmSave = (isPublic: boolean) => {
     const generatedTitle = "Bubble Pop Game";
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = questions.filter(q => (q.text && q.text.trim()) || q.image);
     onSave({
       ...quiz,
       title: generatedTitle,
@@ -2798,18 +2838,22 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
               </button>
               
               <div className="flex gap-4 mb-4 items-start">
-                <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                <div className="w-8 h-8 mt-2 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
                   {index + 1}
                 </div>
-                <input 
+                <SmartQuestionInput
                   id={`question-input-${index}`}
-                  type="text"
                   value={q.text}
-                  onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                  imageUrl={q.image}
+                  onChange={(newVal) => updateQuestion(q.id, 'text', newVal)}
+                  onChangeImage={(newImg) => updateQuestion(q.id, 'image', newImg || undefined)}
+                  onOpenMediaPicker={(initialQ) =>
+                    setActiveGiphyInput({ qId: q.id, optIndex: 'question', query: initialQ })
+                  }
                   onKeyDown={(e) => handleKeyDown(e, index)}
                   onPaste={(e) => handlePaste(e, index)}
-                  placeholder="Type your question here..."
-                  className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                  placeholder="Type your question here (or click Add Media for picture/GIF question)..."
+                  autoPhotosEnabled={autoPhotosEnabled}
                 />
               </div>
 
@@ -2861,14 +2905,31 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
         onSelect={(url) => {
           if (activeGiphyInput) {
             const targetQ = questions.find((item) => item.id === activeGiphyInput.qId);
-            const rawExisting = targetQ?.options[activeGiphyInput.optIndex] || '';
-            const parsedExisting = parseOptionContent(rawExisting);
-            const wordToKeep = parsedExisting.text || activeGiphyInput.query || '';
-            const finalVal =
-              contentMode === 'photos_gifs' || !wordToKeep
-                ? url
-                : formatOptionContent(wordToKeep, url, 'both');
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, finalVal);
+            if (activeGiphyInput.optIndex === 'question') {
+              const rawExistingQ = targetQ?.text || '';
+              const parsedExistingQ = parseOptionContent(rawExistingQ);
+              const questionTextToKeep = parsedExistingQ.text;
+              const finalQuestionVal = questionTextToKeep
+                ? formatOptionContent(questionTextToKeep, url, 'both')
+                : url;
+              setQuestions((prev) =>
+                prev.map((qItem) =>
+                  qItem.id === activeGiphyInput.qId
+                    ? { ...qItem, text: finalQuestionVal, image: url }
+                    : qItem
+                )
+              );
+            } else {
+              const optIdx = activeGiphyInput.optIndex;
+              const rawExisting = targetQ?.options[optIdx] || '';
+              const parsedExisting = parseOptionContent(rawExisting);
+              const wordToKeep = parsedExisting.text || activeGiphyInput.query || '';
+              const finalVal =
+                contentMode === 'photos_gifs' || !wordToKeep
+                  ? url
+                  : formatOptionContent(wordToKeep, url, 'both');
+              updateOption(activeGiphyInput.qId, optIdx, finalVal);
+            }
             setActiveGiphyInput(null);
           }
         }}

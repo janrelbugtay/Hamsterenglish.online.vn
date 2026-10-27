@@ -7,7 +7,7 @@ import { FullscreenButton } from '../components/FullscreenButton';
 import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { GameModeModal } from '../components/GameModeModal';
-import { SetupCurriculumHeader, SmartOptionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
+import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
 import { parseOptionContent, formatOptionContent, AnswerContentMode } from '../utils/mediaAndPresets';
 import {
   ArrowLeft,
@@ -43,6 +43,7 @@ type GameScreen = 'editor' | 'setup' | 'study' | 'game' | 'results';
 export interface Question {
   id: number | string;
   text: string;
+  image?: string;
   options: [string, string] | string[];
   answerIndex: number; // 0 or 1
 }
@@ -663,9 +664,24 @@ export function RollerCoasterQuiz({
                 </div>
 
                 <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 w-full max-w-4xl mx-auto">
-                  <h1 className="text-3xl sm:text-5xl font-black text-white text-center drop-shadow-lg mb-10">
-                    {currQ?.text}
-                  </h1>
+                  {(() => {
+                    const parsedStudyQ = parseOptionContent(currQ?.text || '');
+                    const studyQImg = parsedStudyQ.imageUrl || currQ?.image || null;
+                    return (
+                      <div className="flex flex-col items-center justify-center gap-4 mb-10">
+                        {studyQImg && (
+                          <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-3xl bg-white/95 p-3 shadow-2xl border-4 border-amber-400/50 flex items-center justify-center overflow-hidden">
+                            <img src={studyQImg} alt={parsedStudyQ.text || 'Question Media'} className="w-full h-full object-contain rounded-2xl" />
+                          </div>
+                        )}
+                        {parsedStudyQ.text && (
+                          <h1 className="text-3xl sm:text-5xl font-black text-white text-center drop-shadow-lg">
+                            {parsedStudyQ.text}
+                          </h1>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-3xl">
                     {currQ?.options.slice(0, 2).map((opt, i) => {
@@ -3534,19 +3550,35 @@ function Coaster3DGameplay({
             )}
           </div>
 
-          <h2
-            className={`font-black text-white tracking-wide drop-shadow-md ${
-              textSize === 'sm'
-                ? 'text-base sm:text-xl'
-                : textSize === 'md'
-                ? 'text-lg sm:text-2xl'
-                : textSize === 'xl'
-                ? 'text-2xl sm:text-4xl md:text-5xl leading-tight'
-                : 'text-xl sm:text-3xl md:text-4xl'
-            }`}
-          >
-            {activePrompt?.question}
-          </h2>
+          {(() => {
+            const parsedPromptQ = parseOptionContent(activePrompt?.question || '');
+            return (
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 my-1">
+                {parsedPromptQ.imageUrl && (
+                  <img
+                    src={parsedPromptQ.imageUrl}
+                    alt={parsedPromptQ.text || 'Question Media'}
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white/95 p-1.5 object-contain shrink-0 shadow-lg border-2 border-amber-400/50"
+                  />
+                )}
+                {parsedPromptQ.text && (
+                  <h2
+                    className={`font-black text-white tracking-wide drop-shadow-md ${
+                      textSize === 'sm'
+                        ? 'text-base sm:text-xl'
+                        : textSize === 'md'
+                        ? 'text-lg sm:text-2xl'
+                        : textSize === 'xl'
+                        ? 'text-2xl sm:text-4xl md:text-5xl leading-tight'
+                        : 'text-xl sm:text-3xl md:text-4xl'
+                    }`}
+                  >
+                    {parsedPromptQ.text}
+                  </h2>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-3 pointer-events-auto">
             {/* Option 1: Left Track */}
@@ -4308,7 +4340,7 @@ function CoasterQuizEditor({
   const [classLevel, setClassLevel] = useState(quiz.classLevel || '');
   const [questions, setQuestions] = useState<Question[]>(() => normalizeToTwoOptions(quiz.questions));
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number; query?: string } | null>(null);
+  const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string; optIndex: number | 'question'; query?: string } | null>(null);
   const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
   const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(true);
 
@@ -4637,18 +4669,22 @@ function CoasterQuizEditor({
                 </button>
 
                 <div className="flex gap-4 mb-4 items-start">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-500 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                  <div className="w-8 h-8 mt-2 rounded-full bg-blue-500/20 text-blue-500 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
                     {index + 1}
                   </div>
-                  <input
+                  <SmartQuestionInput
                     id={`coaster-question-input-${index}`}
-                    type="text"
                     value={q.text}
-                    onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
+                    imageUrl={q.image}
+                    onChange={(newVal) => updateQuestion(q.id, 'text', newVal)}
+                    onChangeImage={(newImg) => updateQuestion(q.id, 'image', newImg || undefined)}
+                    onOpenMediaPicker={(initialQ) =>
+                      setActiveGiphyInput({ qId: q.id, optIndex: 'question', query: initialQ })
+                    }
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     onPaste={(e) => handlePaste(e, index)}
-                    placeholder="Type your question here..."
-                    className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-slate-800 dark:text-white font-medium"
+                    placeholder="Type your question here (or click Add Media for picture/GIF question)..."
+                    autoPhotosEnabled={autoPhotosEnabled}
                   />
                 </div>
 
@@ -4709,14 +4745,31 @@ function CoasterQuizEditor({
         onSelect={(url) => {
           if (activeGiphyInput) {
             const targetQ = questions.find((item) => item.id === activeGiphyInput.qId);
-            const rawExisting = targetQ?.options[activeGiphyInput.optIndex] || '';
-            const parsedExisting = parseOptionContent(rawExisting);
-            const wordToKeep = parsedExisting.text || activeGiphyInput.query || '';
-            const finalVal =
-              contentMode === 'photos_gifs' || !wordToKeep
-                ? url
-                : formatOptionContent(wordToKeep, url, 'both');
-            updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, finalVal);
+            if (activeGiphyInput.optIndex === 'question') {
+              const rawExistingQ = targetQ?.text || '';
+              const parsedExistingQ = parseOptionContent(rawExistingQ);
+              const questionTextToKeep = parsedExistingQ.text;
+              const finalQuestionVal = questionTextToKeep
+                ? formatOptionContent(questionTextToKeep, url, 'both')
+                : url;
+              setQuestions((prev) =>
+                prev.map((qItem) =>
+                  qItem.id === activeGiphyInput.qId
+                    ? { ...qItem, text: finalQuestionVal, image: url }
+                    : qItem
+                )
+              );
+            } else {
+              const optIdx = activeGiphyInput.optIndex;
+              const rawExisting = targetQ?.options[optIdx] || '';
+              const parsedExisting = parseOptionContent(rawExisting);
+              const wordToKeep = parsedExisting.text || activeGiphyInput.query || '';
+              const finalVal =
+                contentMode === 'photos_gifs' || !wordToKeep
+                  ? url
+                  : formatOptionContent(wordToKeep, url, 'both');
+              updateOption(activeGiphyInput.qId, optIdx, finalVal);
+            }
             setActiveGiphyInput(null);
           }
         }}
