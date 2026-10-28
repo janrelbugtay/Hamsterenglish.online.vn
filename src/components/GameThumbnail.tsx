@@ -408,7 +408,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
   // Compact 64x64 mode for small icons in My Games folder list
   if (compact) {
-    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack')) {
+    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
       return (
         <img
           src={info.icon}
@@ -428,8 +428,8 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     );
   }
 
-  // Template card mode (no custom game object passed) for Roller Coaster Quiz, Slap & Chop, and Shark Attack
-  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack')) {
+  // Template card mode (no custom game object passed) for Roller Coaster Quiz, Slap & Chop, Shark Attack, Name Picker, and Mystery Box
+  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
     return (
       <img
         src={info.icon}

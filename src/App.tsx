@@ -170,8 +170,8 @@ export default function App() {
             await setDoc(ref, { pageVisits: 1 });
           }
           sessionStorage.setItem("visit_tracked", "true");
-        } catch (e) {
-          console.error("Failed to track visit", e);
+        } catch (e: any) {
+          console.warn("Notice tracking visit:", e?.message || e);
         }
       }
     };

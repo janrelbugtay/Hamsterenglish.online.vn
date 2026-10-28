@@ -1538,12 +1538,18 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
   // Fetch published games setting and page visits
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'general'), (doc) => {
-      if (doc.exists()) {
-        setPublishedGames(doc.data().publishedGames || {});
-        setPageVisits(doc.data().pageVisits || 0);
+    const unsubscribe = onSnapshot(
+      doc(db, 'settings', 'general'), 
+      (doc) => {
+        if (doc.exists()) {
+          setPublishedGames(doc.data().publishedGames || {});
+          setPageVisits(doc.data().pageVisits || 0);
+        }
+      },
+      (err) => {
+        console.warn("Notice in Admin settings listener:", err?.message || err);
       }
-    });
+    );
     return () => unsubscribe();
   }, []);
 

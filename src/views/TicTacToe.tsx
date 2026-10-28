@@ -84,6 +84,8 @@ const NetworkManager = {
                         deleteDoc(change.doc.ref).catch(() => {});
                     }
                 });
+            }, (err) => {
+                console.warn("TicTacToe action listener notice:", err?.message || err);
             });
         } else {
             const roomRef = doc(db, 'ttt_rooms', room);
@@ -91,6 +93,8 @@ const NetworkManager = {
                 if (docSnap.exists() && NetworkManager.messageCallback) {
                     NetworkManager.messageCallback({ type: 'STATE_UPDATE', state: docSnap.data().state });
                 }
+            }, (err) => {
+                console.warn("TicTacToe state listener notice:", err?.message || err);
             });
         }
     },

@@ -7,6 +7,7 @@ import { ViewState } from '../types';
 import { GameThumbnail } from '../components/GameThumbnail';
 import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '../components/GameModeModal';
 import { logUserActivity } from '../utils/activityTracker';
+import { getSavedGames, getSavedFolders } from '../lib/gameStore';
 
 export const GamesLibrary = ({ 
   onViewChange, 
@@ -164,24 +165,68 @@ export const GamesLibrary = ({
       );
       
       const [gamesSnap, foldersSnap] = await Promise.all([
-        getDocs(qGames),
-        getDocs(qFolders)
+        getDocs(qGames).catch((err) => {
+          console.warn("Notice querying games from cloud (falling back to cache):", err?.message || err);
+          return { forEach: () => {} } as any;
+        }),
+        getDocs(qFolders).catch((err) => {
+          console.warn("Notice querying folders from cloud (falling back to cache):", err?.message || err);
+          return { forEach: () => {} } as any;
+        })
       ]);
 
       const userGames: any[] = [];
-      gamesSnap.forEach((doc) => {
+      gamesSnap.forEach((doc: any) => {
         userGames.push({ id: doc.id, ...doc.data() });
       });
 
       const userFolders: any[] = [];
-      foldersSnap.forEach((doc) => {
+      foldersSnap.forEach((doc: any) => {
         userFolders.push({ id: doc.id, ...doc.data() });
       });
 
-      setGames(userGames);
-      setFolders(userFolders);
-    } catch (error) {
-      console.error("Error fetching library:", error);
+      if (userGames.length > 0) {
+        setGames(userGames);
+        try { localStorage.setItem('hamster_cached_user_games', JSON.stringify(userGames)); } catch (e) {}
+      } else {
+        try {
+          const cached = localStorage.getItem('hamster_cached_user_games');
+          if (cached) {
+            setGames(JSON.parse(cached));
+          } else {
+            setGames(getSavedGames());
+          }
+        } catch (e) {
+          setGames(getSavedGames());
+        }
+      }
+
+      if (userFolders.length > 0) {
+        setFolders(userFolders);
+        try { localStorage.setItem('hamster_cached_user_folders', JSON.stringify(userFolders)); } catch (e) {}
+      } else {
+        try {
+          const cachedF = localStorage.getItem('hamster_cached_user_folders');
+          if (cachedF) {
+            setFolders(JSON.parse(cachedF));
+          } else {
+            setFolders(getSavedFolders());
+          }
+        } catch (e) {
+          setFolders(getSavedFolders());
+        }
+      }
+    } catch (error: any) {
+      console.warn("Notice fetching library from cloud (using local cache):", error?.message || error);
+      try {
+        const cached = localStorage.getItem('hamster_cached_user_games');
+        setGames(cached ? JSON.parse(cached) : getSavedGames());
+        const cachedF = localStorage.getItem('hamster_cached_user_folders');
+        setFolders(cachedF ? JSON.parse(cachedF) : getSavedFolders());
+      } catch (e) {
+        setGames(getSavedGames());
+        setFolders(getSavedFolders());
+      }
     } finally {
       setLoading(false);
     }

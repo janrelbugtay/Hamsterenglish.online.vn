@@ -60,11 +60,17 @@ function FeaturedGamesSection({
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "settings", "general"), (doc) => {
-      if (doc.exists()) {
-        setPublishedGames(doc.data().publishedGames || {});
+    const unsub = onSnapshot(
+      doc(db, "settings", "general"), 
+      (doc) => {
+        if (doc.exists()) {
+          setPublishedGames(doc.data().publishedGames || {});
+        }
+      },
+      (err) => {
+        console.warn("Notice in Home settings listener:", err?.message || err);
       }
-    });
+    );
     return () => unsub();
   }, []);
 

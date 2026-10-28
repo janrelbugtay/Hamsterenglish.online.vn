@@ -139,7 +139,7 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     players: '2–8 Teams · Classroom Game Show',
     category: 'board',
     emoji: '🎁',
-    image: 'https://drive.google.com/thumbnail?id=1ugM0rhtk40XdbSDrdDJja5QpLNkWebQn&sz=w1000',
+    image: '/images/mystery-box-card.jpg',
     gradient: 'from-amber-500 via-orange-500 to-yellow-500',
     cardBg: 'bg-amber-50/70 dark:bg-amber-950/25 hover:bg-amber-100/80 dark:hover:bg-amber-900/35',
     cardBorder: 'border-amber-200 dark:border-amber-800/70',
