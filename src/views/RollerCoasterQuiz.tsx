@@ -33,6 +33,8 @@ import {
   Trophy,
   RotateCcw,
   Edit3,
+  Users,
+  User,
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -129,6 +131,7 @@ export function RollerCoasterQuiz({
   const [parkTheme, setParkTheme] = useState<'sunny' | 'sunset' | 'neon'>('sunny');
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
   const [cameraLeanEnabled, setCameraLeanEnabled] = useState<boolean>(false);
+  const [cameraMode, setCameraMode] = useState<'group' | 'solo'>('group');
   const [studyIndex, setStudyIndex] = useState<number>(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
 
@@ -532,25 +535,59 @@ export function RollerCoasterQuiz({
                     </div>
 
                     {/* 5. Optional Webcam Head-Tilt Steering */}
-                    <div className="flex justify-between items-center text-white">
-                      <div>
-                        <span className="font-bold text-sm sm:text-base block">Webcam Head-Tilt Steering</span>
-                        <span className="text-[11px] text-white/70">
-                          Shows live camera above hamster &amp; steers when you lean Left/Right
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setCameraLeanEnabled(!cameraLeanEnabled)}
-                        className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                          cameraLeanEnabled ? 'bg-sky-400' : 'bg-white/30'
-                        }`}
-                      >
-                        <div
-                          className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${
-                            cameraLeanEnabled ? 'left-7' : 'left-1'
+                    <div className="text-white space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="font-bold text-sm sm:text-base block">Webcam Head-Tilt Steering</span>
+                          <span className="text-[11px] text-white/70">
+                            Shows live camera above hamster &amp; steers when you lean Left/Right
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setCameraLeanEnabled(!cameraLeanEnabled)}
+                          className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+                            cameraLeanEnabled ? 'bg-sky-400' : 'bg-white/30'
                           }`}
-                        />
-                      </button>
+                        >
+                          <div
+                            className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${
+                              cameraLeanEnabled ? 'left-7' : 'left-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {cameraLeanEnabled && (
+                        <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-amber-300">
+                            Tracking Mode:
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setCameraMode('group')}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                                cameraMode === 'group'
+                                  ? 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(251,191,36,0.5)] scale-105'
+                                  : 'bg-white/15 text-white hover:bg-white/25'
+                              }`}
+                            >
+                              <Users size={13} />
+                              <span>Group Line Mode (3+ in Line)</span>
+                            </button>
+                            <button
+                              onClick={() => setCameraMode('solo')}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                                cameraMode === 'solo'
+                                  ? 'bg-sky-400 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.5)] scale-105'
+                                  : 'bg-white/15 text-white hover:bg-white/25'
+                              }`}
+                            >
+                              <User size={13} />
+                              <span>Solo Pilot</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -771,6 +808,8 @@ export function RollerCoasterQuiz({
           onChangeVoiceEnabled={setVoiceEnabled}
           cameraLeanEnabled={cameraLeanEnabled}
           onChangeCameraLeanEnabled={setCameraLeanEnabled}
+          cameraMode={cameraMode}
+          onChangeCameraMode={setCameraMode}
           onExitToSetup={() => setScreen('setup')}
           onEditQuestions={() => setScreen('editor')}
         />
@@ -814,6 +853,8 @@ function Coaster3DGameplay({
   onChangeVoiceEnabled,
   cameraLeanEnabled,
   onChangeCameraLeanEnabled,
+  cameraMode = 'group',
+  onChangeCameraMode,
   onExitToSetup,
   onEditQuestions,
 }: {
@@ -829,6 +870,8 @@ function Coaster3DGameplay({
   onChangeVoiceEnabled: (v: boolean) => void;
   cameraLeanEnabled: boolean;
   onChangeCameraLeanEnabled: (v: boolean) => void;
+  cameraMode?: 'group' | 'solo';
+  onChangeCameraMode?: (v: 'group' | 'solo') => void;
   onExitToSetup: () => void;
   onEditQuestions: () => void;
 }) {
@@ -858,6 +901,23 @@ function Coaster3DGameplay({
   const [isMuted, setIsMuted] = useState(false);
   const [musicEnabled, setMusicEnabled] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
+
+  // Group Line & Multi-Person Motion Tracking State
+  const [activeCameraMode, setActiveCameraMode] = useState<'group' | 'solo'>(cameraMode || 'group');
+  const cameraModeRef = useRef<'group' | 'solo'>(cameraMode || 'group');
+  const [detectedPeopleCount, setDetectedPeopleCount] = useState<number>(0);
+  const [personMarkers, setPersonMarkers] = useState<
+    Array<{ x: number; y: number; lean: number; id: number }>
+  >([]);
+  const [groupLeanStatus, setGroupLeanStatus] = useState<string>('');
+  const [showEndNowConfirm, setShowEndNowConfirm] = useState(false);
+
+  useEffect(() => {
+    if (cameraMode) {
+      setActiveCameraMode(cameraMode);
+      cameraModeRef.current = cameraMode;
+    }
+  }, [cameraMode]);
 
   // In-Game Settings & Tablet Auto-Lean State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -913,7 +973,11 @@ function Coaster3DGameplay({
     coins: number;
     timeSec: number;
     livesRemaining: number;
+    gatesCleared?: number;
+    totalGates?: number;
+    endedEarly?: boolean;
   } | null>(null);
+  const dangerVignetteRef = useRef<boolean>(false);
   const [dangerVignette, setDangerVignette] = useState(false);
 
   // Mutable Refs for 60FPS loop access
@@ -954,10 +1018,12 @@ function Coaster3DGameplay({
     retryCheckpoint: () => void;
     restartFullRide: () => void;
     selectSteer: (dir: -1 | 1) => void;
+    endRideNow: () => void;
   }>({
     retryCheckpoint: () => {},
     restartFullRide: () => {},
     selectSteer: () => {},
+    endRideNow: () => {},
   });
 
   // Web Audio Synthesizer Engine (Ride Music + Coaster Roar + Coin Chimes + Power-Up SFX)
@@ -1250,33 +1316,119 @@ function Coaster3DGameplay({
             locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
           });
           faceMesh.setOptions({
-            maxNumFaces: 1,
+            maxNumFaces: 6, // Detect up to 6 people standing in line / group!
             refineLandmarks: false,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5,
+            minDetectionConfidence: 0.45,
+            minTrackingConfidence: 0.45,
           });
           faceMesh.onResults((results: any) => {
-            if (!active || !results?.multiFaceLandmarks?.[0]) return;
-            const face = results.multiFaceLandmarks[0];
-            const nose = face[1];
-            if (nose) {
-              const mirroredX = 1.0 - nose.x;
-              const offset = (mirroredX - 0.5) * 3.2;
-              const clamped = Math.max(-1, Math.min(1, offset));
-              smoothSteerRef.current = clamped;
-              setSmoothSteerPct(50 + clamped * 38);
-              if (clamped < -0.24 && steeringRef.current !== -1) {
-                actionsRef.current.selectSteer(-1);
-              } else if (clamped > 0.24 && steeringRef.current !== 1) {
-                actionsRef.current.selectSteer(1);
+            if (!active) return;
+            const faces = results?.multiFaceLandmarks;
+            if (!faces || faces.length === 0) {
+              setDetectedPeopleCount(0);
+              setPersonMarkers([]);
+              setGroupLeanStatus('');
+              return;
+            }
+
+            const faceCount = faces.length;
+            setDetectedPeopleCount(faceCount);
+
+            // Calculate lean metric for each person in line
+            const markers: Array<{ x: number; y: number; lean: number; id: number }> = [];
+            const tilts: number[] = [];
+
+            for (let i = 0; i < faceCount; i++) {
+              const face = faces[i];
+              const nose = face[1];
+              const topHead = face[10];
+              const chin = face[152];
+              const leftEye = face[33];
+              const rightEye = face[263];
+
+              // Mirrored horizontal coordinates (0 = left, 1 = right of viewer's screen)
+              const mxNose = nose ? 1.0 - nose.x : 0.5;
+              const mxTop = topHead ? 1.0 - topHead.x : mxNose;
+              const mxChin = chin ? 1.0 - chin.x : mxNose;
+
+              // 1. Head Roll/Tilt angle (when leaning left on screen, top of head is left of chin)
+              const headTilt = (mxTop - mxChin) * 4.6;
+
+              // 2. Eye tilt angle (eye line slope)
+              const eyeSlope = leftEye && rightEye ? (rightEye.y - leftEye.y) * 3.8 : 0;
+
+              // 3. Body horizontal shift relative to center
+              const lateralPos = (mxNose - 0.5) * 2.6;
+
+              // Combined person tilt: positive = right, negative = left
+              const combinedLean = Math.max(-1, Math.min(1, headTilt * 0.65 + eyeSlope * 0.2 + lateralPos * 0.35));
+              tilts.push(combinedLean);
+
+              markers.push({
+                x: mxNose,
+                y: nose ? nose.y : 0.5,
+                lean: combinedLean,
+                id: i + 1,
+              });
+            }
+
+            setPersonMarkers(markers);
+
+            // Group Consensus vs Solo mode:
+            // Example: 3 people standing in line, when lean left all of them should lean
+            let consensusSteer = 0;
+            const isGroup = cameraModeRef.current === 'group';
+
+            if (!isGroup || faceCount === 1) {
+              // Solo Pilot mode: track the primary person
+              consensusSteer = tilts[0];
+              setGroupLeanStatus(
+                tilts[0] < -0.2 ? 'LEANING LEFT ◀' : tilts[0] > 0.2 ? 'LEANING RIGHT ▶' : 'CENTERED'
+              );
+            } else {
+              // Group mode with 2, 3 or more people standing in line
+              const avgTilt = tilts.reduce((a, b) => a + b, 0) / tilts.length;
+              const leaningLeftCount = tilts.filter((t) => t < -0.16).length;
+              const leaningRightCount = tilts.filter((t) => t > 0.16).length;
+              const majorityNeeded = Math.ceil(faceCount / 2);
+
+              if (leaningLeftCount === faceCount) {
+                // ALL of them are leaning left! Strong group consensus steer!
+                consensusSteer = Math.min(-0.35, avgTilt * 1.35);
+                setGroupLeanStatus(`🔥 ALL ${faceCount} LEANING LEFT! ◀`);
+              } else if (leaningRightCount === faceCount) {
+                // ALL of them are leaning right! Strong group consensus steer!
+                consensusSteer = Math.max(0.35, avgTilt * 1.35);
+                setGroupLeanStatus(`🔥 ALL ${faceCount} LEANING RIGHT! ▶`);
+              } else if (leaningLeftCount >= majorityNeeded && leaningLeftCount > leaningRightCount) {
+                // Majority leaning left
+                consensusSteer = Math.min(-0.25, avgTilt);
+                setGroupLeanStatus(`◀ ${leaningLeftCount}/${faceCount} LEANING LEFT`);
+              } else if (leaningRightCount >= majorityNeeded && leaningRightCount > leaningLeftCount) {
+                // Majority leaning right
+                consensusSteer = Math.max(0.25, avgTilt);
+                setGroupLeanStatus(`▶ ${leaningRightCount}/${faceCount} LEANING RIGHT`);
+              } else {
+                consensusSteer = avgTilt;
+                setGroupLeanStatus(`👥 ${faceCount} RIDERS IN LINE`);
               }
+            }
+
+            const clamped = Math.max(-1, Math.min(1, consensusSteer));
+            smoothSteerRef.current = clamped;
+            setSmoothSteerPct(50 + clamped * 38);
+
+            if (clamped < -0.22 && steeringRef.current !== -1) {
+              actionsRef.current.selectSteer(-1);
+            } else if (clamped > 0.22 && steeringRef.current !== 1) {
+              actionsRef.current.selectSteer(1);
             }
           });
 
           let lastSend = 0;
           const loopFrames = async (t: number) => {
             if (!active) return;
-            if (webcamVideoRef.current && webcamVideoRef.current.readyState >= 2 && t - lastSend > 55) {
+            if (webcamVideoRef.current && webcamVideoRef.current.readyState >= 2 && t - lastSend > 50) {
               lastSend = t;
               try {
                 await faceMesh.send({ image: webcamVideoRef.current });
@@ -1286,7 +1438,7 @@ function Coaster3DGameplay({
           };
           animId = requestAnimationFrame(loopFrames);
         } else {
-          // Lightweight 2D Canvas Head/Motion Centroid Tracker when FaceMesh isn't globally loaded
+          // Lightweight 2D Canvas Multi-Zone Motion Tracker when FaceMesh isn't globally loaded
           const trackCanvas = document.createElement('canvas');
           trackCanvas.width = 64;
           trackCanvas.height = 48;
@@ -1296,13 +1448,16 @@ function Coaster3DGameplay({
 
           const loopCanvasTracker = (t: number) => {
             if (!active) return;
-            if (webcamVideoRef.current && webcamVideoRef.current.readyState >= 2 && tCtx && t - lastSample > 75) {
+            if (webcamVideoRef.current && webcamVideoRef.current.readyState >= 2 && tCtx && t - lastSample > 70) {
               lastSample = t;
               tCtx.drawImage(webcamVideoRef.current, 0, 0, 64, 48);
               const imgData = tCtx.getImageData(0, 0, 64, 48).data;
               if (prevFrame) {
                 let weightedX = 0;
                 let totalWeight = 0;
+                let leftWeight = 0;
+                let rightWeight = 0;
+
                 for (let y = 6; y < 42; y++) {
                   for (let x = 4; x < 60; x++) {
                     const idx = (y * 64 + x) * 4;
@@ -1310,17 +1465,32 @@ function Coaster3DGameplay({
                       Math.abs(imgData[idx] - prevFrame[idx]) +
                       Math.abs(imgData[idx + 1] - prevFrame[idx + 1]) +
                       Math.abs(imgData[idx + 2] - prevFrame[idx + 2]);
-                    if (diff > 42) {
-                      // Mirror X so leaning left on screen is < 0.5 and leaning right is > 0.5
+                    if (diff > 40) {
                       const mirroredX = 1.0 - x / 64;
                       weightedX += mirroredX * diff;
                       totalWeight += diff;
+
+                      if (mirroredX < 0.38) leftWeight += diff;
+                      else if (mirroredX > 0.62) rightWeight += diff;
                     }
                   }
                 }
-                if (totalWeight > 3200) {
+
+                if (totalWeight > 2800) {
                   const avgX = weightedX / totalWeight;
-                  const offset = (avgX - 0.5) * 3.0;
+                  const isGroup = cameraModeRef.current === 'group';
+                  let offset = (avgX - 0.5) * 3.0;
+
+                  if (isGroup && leftWeight > rightWeight * 1.8 && leftWeight > 1200) {
+                    offset = -0.38;
+                    setGroupLeanStatus('🔥 GROUP LEAN LEFT! ◀');
+                  } else if (isGroup && rightWeight > leftWeight * 1.8 && rightWeight > 1200) {
+                    offset = 0.38;
+                    setGroupLeanStatus('🔥 GROUP LEAN RIGHT! ▶');
+                  } else {
+                    setGroupLeanStatus(avgX < 0.44 ? 'LEANING LEFT ◀' : avgX > 0.56 ? 'LEANING RIGHT ▶' : 'MOTION TRACKING');
+                  }
+
                   const clamped = Math.max(-1, Math.min(1, offset));
                   smoothSteerRef.current = clamped;
                   setSmoothSteerPct(50 + clamped * 38);
@@ -2793,10 +2963,29 @@ function Coaster3DGameplay({
       playRailSwitchClick(dir);
     };
 
+    const triggerEndRideNow = () => {
+      ridePhase = 'VICTORY';
+      updateContinuousCoasterSound(0, false, 0);
+      playCorrectFanfare(4);
+      spawnCelebrationSparks(camera.position, 55);
+      setActivePrompt(null);
+      setGateSecondsLeft(null);
+      setVictoryModal({
+        maxStreak,
+        coins: localCoins,
+        timeSec: Math.round(rideTimeSec),
+        livesRemaining: localLives,
+        gatesCleared: activeGateIdx,
+        totalGates: gateCheckpoints.length || questions.length,
+        endedEarly: true,
+      });
+    };
+
     actionsRef.current = {
       retryCheckpoint: triggerRetryCheckpoint,
       restartFullRide: triggerFullRestart,
       selectSteer,
+      endRideNow: triggerEndRideNow,
     };
 
     // Initialize course & countdown
@@ -3476,6 +3665,16 @@ function Coaster3DGameplay({
             <span className="hidden md:inline">Questions</span>
           </button>
 
+          {/* End Now Flag Button */}
+          <button
+            onClick={() => setShowEndNowConfirm(true)}
+            className="bg-gradient-to-r from-emerald-600/90 to-teal-700/90 hover:from-emerald-500 hover:to-teal-600 active:scale-95 text-white border border-emerald-400/50 text-xs sm:text-sm font-black px-3.5 py-2 rounded-2xl shadow-[0_0_15px_rgba(16,185,129,0.35)] flex items-center gap-1.5 transition cursor-pointer"
+            title="End Ride Now (Finish and view final score)"
+          >
+            <Flag size={15} className="text-emerald-300 fill-emerald-300/30" />
+            <span>End Now</span>
+          </button>
+
           {/* Prominent In-Game Settings Button */}
           <button
             onClick={() => setShowSettingsModal(true)}
@@ -3729,19 +3928,70 @@ function Coaster3DGameplay({
         >
           <video
             ref={webcamVideoRef}
-            className="w-32 h-22 sm:w-40 sm:h-28 object-cover scale-x-[-1] block"
+            className="w-36 h-26 sm:w-48 sm:h-34 object-cover scale-x-[-1] block"
             autoPlay
             playsInline
             muted
           />
-          {/* Center Guide Line & Live Lean Badge on Camera */}
-          <div className="absolute inset-y-0 left-1/2 w-0.5 bg-white/35 -translate-x-1/2 pointer-events-none" />
-          <div className="absolute bottom-1 inset-x-1 flex items-center justify-between px-1.5 py-0.5 rounded-lg bg-slate-950/80 backdrop-blur-sm text-[9px] font-black uppercase tracking-wider text-white">
-            <span className={steeringChoice === -1 ? 'text-sky-300' : 'text-white/50'}>◀ L</span>
-            <span className="text-amber-300">
-              {cameraActive ? '📷 HEAD TILT' : '📷 STARTING...'}
-            </span>
-            <span className={steeringChoice === 1 ? 'text-rose-300' : 'text-white/50'}>R ▶</span>
+
+          {/* Center Guide Line */}
+          <div className="absolute inset-y-0 left-1/2 w-0.5 bg-white/30 -translate-x-1/2 pointer-events-none" />
+
+          {/* Live Detected People Tracking Reticles */}
+          {personMarkers.map((p) => (
+            <div
+              key={p.id}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 px-1 py-0.5 rounded-md text-[8px] font-black pointer-events-none border transition-all duration-75 flex items-center gap-0.5 shadow-md ${
+                p.lean < -0.16
+                  ? 'bg-sky-500/85 border-sky-300 text-white shadow-[0_0_8px_rgba(56,189,248,0.8)]'
+                  : p.lean > 0.16
+                  ? 'bg-rose-500/85 border-rose-300 text-white shadow-[0_0_8px_rgba(244,63,94,0.8)]'
+                  : 'bg-black/70 border-white/40 text-amber-300'
+              }`}
+              style={{
+                left: `${Math.max(10, Math.min(90, p.x * 100))}%`,
+                top: `${Math.max(12, Math.min(78, p.y * 100))}%`,
+              }}
+            >
+              <span>{p.lean < -0.16 ? '◀' : ''}</span>
+              <span>P{p.id}</span>
+              <span>{p.lean > 0.16 ? '▶' : ''}</span>
+            </div>
+          ))}
+
+          {/* Top Status Banner (Group Consensus Banner) */}
+          {groupLeanStatus && (
+            <div className="absolute top-1 inset-x-1 text-center py-0.5 px-1 rounded-md bg-slate-950/85 backdrop-blur-sm border border-amber-400/40 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-amber-300 truncate pointer-events-none">
+              {groupLeanStatus}
+            </div>
+          )}
+
+          {/* Bottom Bar: Steer Indicators & Quick Mode Toggle */}
+          <div className="absolute bottom-1 inset-x-1 flex items-center justify-between px-1.5 py-0.5 rounded-lg bg-slate-950/85 backdrop-blur-sm text-[9px] font-black uppercase tracking-wider text-white">
+            <span className={steeringChoice === -1 ? 'text-sky-300 font-extrabold' : 'text-white/50'}>◀ L</span>
+            <button
+              onClick={() => {
+                const next = activeCameraMode === 'group' ? 'solo' : 'group';
+                setActiveCameraMode(next);
+                cameraModeRef.current = next;
+                onChangeCameraMode?.(next);
+              }}
+              className="pointer-events-auto px-1.5 py-0.5 rounded bg-white/15 hover:bg-white/25 text-amber-300 flex items-center gap-1 transition cursor-pointer"
+              title="Click to switch between Group Mode (3+ people in line) and Solo Pilot"
+            >
+              {activeCameraMode === 'group' ? (
+                <>
+                  <Users size={11} className="text-amber-400" />
+                  <span>GROUP ({detectedPeopleCount > 0 ? detectedPeopleCount : '3+'})</span>
+                </>
+              ) : (
+                <>
+                  <User size={11} className="text-sky-300" />
+                  <span>SOLO</span>
+                </>
+              )}
+            </button>
+            <span className={steeringChoice === 1 ? 'text-rose-300 font-extrabold' : 'text-white/50'}>R ▶</span>
           </div>
         </div>
       </div>
@@ -3967,6 +4217,47 @@ function Coaster3DGameplay({
                     />
                   </button>
                 </div>
+
+                {cameraLeanEnabled && (
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-amber-300">Tracking Mode:</div>
+                      <div className="text-[11px] text-slate-400">Detect 1 rider or group in line</div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => {
+                          setActiveCameraMode('group');
+                          cameraModeRef.current = 'group';
+                          onChangeCameraMode?.('group');
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                          activeCameraMode === 'group'
+                            ? 'bg-amber-400 text-slate-950 shadow-md scale-105'
+                            : 'bg-slate-700/80 text-white hover:bg-slate-700'
+                        }`}
+                      >
+                        <Users size={12} />
+                        <span>Group Line (3+)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setActiveCameraMode('solo');
+                          cameraModeRef.current = 'solo';
+                          onChangeCameraMode?.('solo');
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                          activeCameraMode === 'solo'
+                            ? 'bg-sky-400 text-slate-950 shadow-md scale-105'
+                            : 'bg-slate-700/80 text-white hover:bg-slate-700'
+                        }`}
+                      >
+                        <User size={12} />
+                        <span>Solo</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 5. Tablet Mode (Auto-Detect Lean Left & Lean Right) */}
@@ -4259,29 +4550,78 @@ function Coaster3DGameplay({
         </div>
       )}
 
-      {/* Victory Modal */}
+      {/* End Now Confirmation Modal */}
+      {showEndNowConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border-2 border-emerald-400/80 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center mx-auto mb-3 text-3xl">
+              🏁
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white">End Coaster Ride?</h3>
+            <p className="text-slate-300 text-xs sm:text-sm mt-1.5 mb-5">
+              Finish the ride now and view your current coins, gate progress, and stats!
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => {
+                  setShowEndNowConfirm(false);
+                  actionsRef.current.endRideNow();
+                }}
+                className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl shadow-lg transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Flag size={16} />
+                <span>Finish Ride 🏁</span>
+              </button>
+              <button
+                onClick={() => setShowEndNowConfirm(false)}
+                className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/15 transition cursor-pointer"
+              >
+                Keep Riding
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Victory / Ride Summary Modal */}
       {victoryModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 overflow-y-auto">
           <div className="bg-slate-900 border-2 border-amber-400/75 rounded-3xl max-w-md w-full p-6 sm:p-8 text-center shadow-2xl my-auto">
             <div className="w-20 h-20 rounded-full bg-amber-400/20 border-2 border-amber-400 flex items-center justify-center mx-auto mb-4 text-4xl">
-              🏆🐹
+              {victoryModal.endedEarly ? '🏁🐹' : '🏆🐹'}
             </div>
             <h2 className="text-3xl sm:text-4xl font-black text-white tracking-wide">
-              RIDE CONQUERED!
+              {victoryModal.endedEarly ? 'RIDE SUMMARY!' : 'RIDE CONQUERED!'}
             </h2>
             <p className="text-slate-300 text-sm sm:text-base mt-2">
-              Awesome reflexes, <span className="text-amber-300 font-bold">{riderName}</span>! You navigated every coaster junction!
+              {victoryModal.endedEarly ? (
+                <>
+                  Great ride, <span className="text-amber-300 font-bold">{riderName}</span>! Here is your final coaster scorecard:
+                </>
+              ) : (
+                <>
+                  Awesome reflexes, <span className="text-amber-300 font-bold">{riderName}</span>! You navigated every coaster junction!
+                </>
+              )}
             </p>
-            <div className="grid grid-cols-3 gap-2.5 mt-5">
-              <div className="bg-slate-800/90 border border-yellow-400/40 rounded-2xl p-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5">
+              <div className="bg-slate-800/90 border border-yellow-400/40 rounded-2xl p-2.5">
                 <div className="text-[10px] uppercase font-bold tracking-widest text-yellow-300">
                   Total Coins
                 </div>
-                <div className="text-2xl sm:text-3xl font-black text-yellow-300 mt-1">
+                <div className="text-xl sm:text-2xl font-black text-yellow-300 mt-1">
                   🪙 {victoryModal.coins}
                 </div>
               </div>
-              <div className="bg-slate-800/90 border border-rose-400/40 rounded-2xl p-3">
+              <div className="bg-slate-800/90 border border-emerald-400/40 rounded-2xl p-2.5">
+                <div className="text-[10px] uppercase font-bold tracking-widest text-emerald-300">
+                  Gates Cleared
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-white mt-1">
+                  🏁 {victoryModal.gatesCleared ?? questions.length}/{victoryModal.totalGates ?? questions.length}
+                </div>
+              </div>
+              <div className="bg-slate-800/90 border border-rose-400/40 rounded-2xl p-2.5">
                 <div className="text-[10px] uppercase font-bold tracking-widest text-rose-300">
                   Lives Left
                 </div>
@@ -4289,7 +4629,7 @@ function Coaster3DGameplay({
                   ❤️ {victoryModal.livesRemaining}/{initialLives}
                 </div>
               </div>
-              <div className="bg-slate-800/90 border border-sky-400/30 rounded-2xl p-3">
+              <div className="bg-slate-800/90 border border-sky-400/30 rounded-2xl p-2.5">
                 <div className="text-[10px] uppercase font-bold tracking-widest text-sky-400">
                   Ride Time
                 </div>
@@ -4298,6 +4638,11 @@ function Coaster3DGameplay({
                 </div>
               </div>
             </div>
+            {victoryModal.maxStreak > 1 && (
+              <div className="mt-3 py-1.5 px-3 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-black inline-flex items-center gap-1.5">
+                <span>🔥 Best Combo Streak: {victoryModal.maxStreak} in a row!</span>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-3 mt-6">
               <button
                 onClick={() => actionsRef.current.restartFullRide()}
