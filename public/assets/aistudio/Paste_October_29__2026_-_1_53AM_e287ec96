@@ -1,0 +1,2262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CardMaster Studio — Interactive Flashcards & Card Dealer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@600;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    :root {
+      --card-font: 'Inter', sans-serif;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      user-select: none;
+      overflow-x: hidden;
+    }
+
+    /* 3D Card Flip & Perspective Utilities */
+    .perspective-1200 {
+      perspective: 1400px;
+    }
+    .preserve-3d {
+      transform-style: preserve-3d;
+    }
+    .backface-hidden {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .rotate-y-180 {
+      transform: rotateY(180deg);
+    }
+
+    /* Smooth Card Flip Container */
+    .card-flip-inner {
+      transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      transform-style: preserve-3d;
+    }
+    .card-flip-inner.is-flipped {
+      transform: rotateY(180deg);
+    }
+
+    /* Deal Fly-over Animation */
+    @keyframes dealFlyIn {
+      0% {
+        opacity: 0;
+        transform: translate3d(-340px, -30px, 120px) scale(0.72) rotateZ(-8deg) rotateY(-65deg);
+      }
+      65% {
+        opacity: 1;
+        transform: translate3d(14px, -6px, 30px) scale(1.03) rotateZ(1.5deg) rotateY(6deg);
+      }
+      100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1) rotateZ(0deg) rotateY(0deg);
+      }
+    }
+    .animate-deal {
+      animation: dealFlyIn 0.52s cubic-bezier(0.2, 0.9, 0.3, 1.05) forwards;
+    }
+
+    /* Undo Fly-back Animation */
+    @keyframes undoFlyBack {
+      0% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate3d(-320px, -20px, 80px) scale(0.7) rotateZ(-10deg);
+      }
+    }
+    .animate-undo {
+      animation: undoFlyBack 0.36s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    /* Shuffle Riffle Animation */
+    @keyframes shuffleRiffleLeft {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      25% { transform: translate(-36px, -18px) rotate(-9deg); }
+      50% { transform: translate(22px, 10px) rotate(6deg); }
+      75% { transform: translate(-15px, 6px) rotate(-4deg); }
+    }
+    .animate-shuffle {
+      animation: shuffleRiffleLeft 0.55s ease-in-out;
+    }
+
+    /* Floating bus / space / cloud subtle motion */
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+    .float-slow {
+      animation: floatSlow 5s ease-in-out infinite;
+    }
+
+    @keyframes busDrive {
+      0%, 100% { transform: translateX(0px); }
+      50% { transform: translateX(18px); }
+    }
+    .bus-bob {
+      animation: busDrive 8s ease-in-out infinite;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Theme Typography Classes */
+    .font-london { font-family: 'Playfair Display', Georgia, serif; }
+    .font-cyber { font-family: 'Orbitron', sans-serif; }
+    .font-playful { font-family: 'Fredoka', sans-serif; }
+    .font-clean { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <!-- ========================================================= -->
+  <!-- TOAST NOTIFICATION CONTAINER                              -->
+  <!-- ========================================================= -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- ========================================================= -->
+  <!-- VIEW 1: GAME SETUP VIEW (MODERN EDTECH DASHBOARD)         -->
+  <!-- ========================================================= -->
+  <div id="setupView" class="min-h-screen pb-24 transition-opacity duration-300">
+    <!-- Top Sticky Navigation Header -->
+    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+            <i class="ph-fill ph-cards text-2xl"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">GAME SETUP</h1>
+              <span class="px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-600 rounded-full border border-indigo-200">Flashcard Dealer Pro</span>
+            </div>
+            <p class="text-xs text-slate-500 hidden sm:block">Customize theme, 1-sided or 2-sided flip cards, photos & classroom extras</p>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <button onclick="openLibraryModal()" class="px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition flex items-center gap-1.5">
+            <i class="ph ph-books text-lg text-indigo-600"></i>
+            <span>My Library</span>
+            <span id="libraryCountBadge" class="ml-1 px-1.5 py-0.2 bg-indigo-100 text-indigo-700 rounded-md text-xs font-bold">0</span>
+          </button>
+
+          <button onclick="loadPresetSample()" class="px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5" title="Reset to sample Emotions deck">
+            <i class="ph ph-magic-wand text-lg text-amber-500"></i>
+            <span class="hidden md:inline">Sample Deck</span>
+          </button>
+
+          <button onclick="saveDeckToLibrary()" class="px-4 py-2 rounded-xl text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition flex items-center gap-1.5">
+            <i class="ph-bold ph-floppy-disk text-lg"></i>
+            <span>Save Quiz</span>
+          </button>
+
+          <button onclick="startGame()" class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-600/25 transition transform active:scale-95 flex items-center gap-2">
+            <i class="ph-fill ph-play-circle text-xl"></i>
+            <span>Play Game</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Setup Card Container -->
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 mt-6">
+      <div class="bg-white rounded-3xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-5 sm:p-8 space-y-8">
+
+        <!-- SECTION 1: METADATA ROW (TOPIC, CLASS LEVEL, FOLDER) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <!-- Topic -->
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+              <i class="ph-bold ph-tag mr-1 text-blue-500"></i> Topic
+            </label>
+            <input id="topicInput" type="text" value="Feelings & Emotions (Cảm xúc)" placeholder="e.g. Animals, Present Simple, IELTS Speaking..."
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium text-slate-800 transition" />
+          </div>
+
+          <!-- Class Level -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                <i class="ph-bold ph-graduation-cap mr-1 text-indigo-500"></i> Class Level
+              </label>
+              <div class="flex gap-1">
+                <button type="button" onclick="setQuickLevel('Starters')" class="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 font-medium text-slate-600 transition">Starters</button>
+                <button type="button" onclick="setQuickLevel('Grade 5')" class="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 font-medium text-slate-600 transition">Grade 5</button>
+                <button type="button" onclick="setQuickLevel('IELTS')" class="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 font-medium text-slate-600 transition">IELTS</button>
+              </div>
+            </div>
+            <input id="levelInput" type="text" value="Movers / Flyers (B1)" placeholder="e.g. Kindergarten, Grade 3, Starters..."
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium text-slate-800 transition" />
+          </div>
+
+          <!-- Folder -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                <i class="ph-bold ph-folder-notch mr-1 text-amber-500"></i> Folder
+              </label>
+              <button type="button" onclick="openNewFolderModal()" class="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                <i class="ph-bold ph-folder-plus"></i> + New Folder
+              </button>
+            </div>
+            <select id="folderSelect" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium text-slate-800 bg-white transition">
+              <option value="No Folder (Root Library)">No Folder (Root Library)</option>
+              <option value="Vocabulary & Idioms" selected>Vocabulary & Idioms</option>
+              <option value="Grammar Drills">Grammar Drills</option>
+              <option value="Cambridge Starters/Movers">Cambridge Starters/Movers</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- SECTION 2: CARD SIDE MODE (1-SIDED VS 2-SIDED) & CONTENT MODE (TEXT / PHOTOS / BOTH) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 bg-slate-50/90 p-4 sm:p-5 rounded-2xl border border-slate-200/80">
+          <!-- Left: 1-Sided vs 2-Sided Card Mode -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200/70 shadow-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                <i class="ph-fill ph-flip-horizontal text-xl"></i>
+              </div>
+              <div>
+                <div class="text-xs font-extrabold uppercase tracking-wider text-slate-700">Card Side Mode</div>
+                <div id="sideModeSubtext" class="text-xs text-slate-500">2-Sided: Flip between Front & Back</div>
+              </div>
+            </div>
+
+            <div class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+              <button type="button" id="btnSide1" onclick="setCardSides(1)"
+                class="px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-600 hover:text-slate-900">
+                <i class="ph-bold ph-square text-sm"></i>
+                <span>1-Side Card</span>
+              </button>
+              <button type="button" id="btnSide2" onclick="setCardSides(2)"
+                class="px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-white text-indigo-600 shadow-sm border border-slate-200/60">
+                <i class="ph-bold ph-arrows-clockwise text-sm"></i>
+                <span>Double-Side (Flip)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Content Mode (Text Only / Photos Only / Word + Picture) -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200/70 shadow-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <i class="ph-fill ph-stack text-xl"></i>
+              </div>
+              <div>
+                <div class="text-xs font-extrabold uppercase tracking-wider text-slate-700">Option Content Mode</div>
+                <div id="contentModeSubtext" class="text-xs text-slate-500">Show Word + Picture on cards</div>
+              </div>
+            </div>
+
+            <div class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+              <button type="button" id="btnContentText" onclick="setContentMode('text')"
+                class="px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-600 hover:text-slate-900">
+                <i class="ph-bold ph-text-t text-sm"></i>
+                <span>Text Only</span>
+              </button>
+              <button type="button" id="btnContentPhoto" onclick="setContentMode('photo')"
+                class="px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-600 hover:text-slate-900">
+                <i class="ph-bold ph-image text-sm"></i>
+                <span>Photos</span>
+              </button>
+              <button type="button" id="btnContentBoth" onclick="setContentMode('both')"
+                class="px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-white text-amber-600 shadow-sm border border-slate-200/60">
+                <i class="ph-fill ph-sparkle text-sm"></i>
+                <span>Word & Pic</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: VISUAL GAME THEME SELECTOR -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <i class="ph-fill ph-palette text-purple-600 text-base"></i>
+                Select Game Stage Theme & Card Back
+              </h2>
+              <p class="text-xs text-slate-500">Changes the animated stage scenery, card deck emblem, and sound vibe during gameplay</p>
+            </div>
+            <span id="selectedThemeLabel" class="text-xs font-bold px-3 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">London Fog (Royal Crown)</span>
+          </div>
+
+          <div id="themeSelectorGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <!-- Populated dynamically by JS -->
+          </div>
+        </div>
+
+        <hr class="border-slate-200" />
+
+        <!-- SECTION 4: CARDS HEADER & BULK PASTE BAR -->
+        <div class="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <span class="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-extrabold text-xs tracking-wide shadow-sm">
+              CARDS (<span id="cardCountLabel">8</span> / 50)
+            </span>
+            <div class="text-xs sm:text-sm font-medium text-slate-600">
+              <span id="editorModeHint">Editing <strong>Double-Sided</strong> cards with <strong>Word & Picture</strong></span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <button type="button" onclick="swapAllFrontBack()" id="btnSwapAllSides"
+              class="px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm transition flex items-center gap-1.5">
+              <i class="ph-bold ph-arrows-left-right text-indigo-600 text-sm"></i>
+              <span>Swap All Front/Back</span>
+            </button>
+
+            <button type="button" onclick="openBulkPasteModal()"
+              class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-500/20 transition flex items-center gap-1.5">
+              <i class="ph-bold ph-clipboard-text text-base"></i>
+              <span>Bulk Paste</span>
+            </button>
+
+            <button type="button" onclick="openHowToBulkModal()"
+              class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-sm shadow-purple-500/20 transition flex items-center gap-1.5">
+              <i class="ph-fill ph-play-circle text-base"></i>
+              <span>How to Bulk Paste</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SECTION 5: DYNAMIC CARDS EDITOR LIST -->
+        <div id="cardsEditorList" class="space-y-4">
+          <!-- Rendered dynamically by renderCardsEditor() -->
+        </div>
+
+        <!-- ADD ANOTHER CARD BUTTON -->
+        <button type="button" onclick="addNewCard()"
+          class="w-full py-4 rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/40 text-slate-600 hover:text-blue-600 font-bold text-sm transition flex items-center justify-center gap-2 group">
+          <i class="ph-bold ph-plus-circle text-xl group-hover:scale-110 transition"></i>
+          <span>+ Add Another Flashcard</span>
+        </button>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- VIEW 2: FULL-SCREEN PLAY / CARD DEALER VIEW               -->
+  <!-- ========================================================= -->
+  <div id="playView" class="fixed inset-0 z-40 hidden flex-col justify-between overflow-hidden select-none">
+    
+    <!-- Dynamic Illustrated Background Stage -->
+    <div id="themeStageBackground" class="absolute inset-0 pointer-events-none z-0 overflow-hidden"></div>
+
+    <!-- TOP HUD BAR -->
+    <header class="relative z-20 px-4 sm:px-8 pt-4 pb-2 flex items-center justify-between gap-4">
+      <!-- Left: Deck Title & Level -->
+      <div class="flex items-center gap-3 bg-slate-900/45 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-white shadow-lg">
+        <div class="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center text-lg" id="hudThemeIcon">🇬🇧</div>
+        <div>
+          <h2 id="hudTopicTitle" class="font-bold text-sm sm:text-base leading-tight line-clamp-1">Feelings & Emotions</h2>
+          <div class="flex items-center gap-2 text-[11px] text-white/80 font-medium">
+            <span id="hudLevelBadge">Movers / Flyers</span>
+            <span>•</span>
+            <span id="hudModeBadge" class="text-amber-300 font-semibold">2-Sided Flip</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Close / Back to Setup Button (Matches reference top-center 'X' + label) -->
+      <button onclick="exitGameToSetup()" title="Return to Game Setup (Esc)"
+        class="group flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/55 hover:bg-rose-600/90 text-white backdrop-blur-md border border-white/25 shadow-lg transition duration-200">
+        <i class="ph-bold ph-x text-base"></i>
+        <span class="text-xs font-bold tracking-wide hidden sm:inline">Edit Setup</span>
+      </button>
+
+      <!-- Right: Progress Counter & Deal Direction Toggle -->
+      <div class="flex items-center gap-2.5">
+        <div id="dealSideToggleWrap" class="hidden md:flex items-center bg-slate-900/45 backdrop-blur-md p-1 rounded-xl border border-white/20 text-white text-xs">
+          <button id="btnDealFrontFirst" onclick="setDealFrontFirst(true)" class="px-2.5 py-1 rounded-lg font-bold bg-white/20 text-white transition">Front First</button>
+          <button id="btnDealBackFirst" onclick="setDealFrontFirst(false)" class="px-2.5 py-1 rounded-lg font-bold text-white/70 hover:text-white transition">Back First</button>
+        </div>
+
+        <div class="bg-slate-900/45 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-white shadow-lg flex items-center gap-3">
+          <div class="text-right">
+            <div class="text-[10px] uppercase tracking-wider text-white/70 font-bold">Dealt Cards</div>
+            <div class="text-sm sm:text-base font-extrabold leading-none">
+              <span id="hudDealtCount">0</span> <span class="text-white/50">/</span> <span id="hudTotalCount">8</span>
+            </div>
+          </div>
+          <div class="w-16 sm:w-24 h-2.5 bg-white/20 rounded-full overflow-hidden">
+            <div id="hudProgressBar" class="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- CENTER STAGE: LEFT 3D DECK STACK + RIGHT MASSIVE DEALT ACTIVE CARD -->
+    <div class="relative z-10 flex-1 w-full max-w-[1720px] mx-auto px-4 sm:px-8 lg:px-12 py-2 flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-10 min-h-0">
+
+      <!-- LEFT COLUMN: 3D STACKED DECK -->
+      <div class="w-full lg:w-[28%] xl:w-[26%] flex flex-col items-center justify-center shrink-0">
+        <div id="deckStackWrapper" onclick="dealNextCard()"
+          class="relative w-full max-w-[260px] sm:max-w-[320px] lg:max-w-[380px] aspect-[4/3] cursor-pointer group select-none">
+
+          <!-- Empty Deck Placeholder (shown when 0 cards remain in undealt pile) -->
+          <div id="emptyDeckPlaceholder"
+            class="absolute inset-0 rounded-3xl border-4 border-dashed border-white/40 bg-slate-900/30 backdrop-blur-sm flex flex-col items-center justify-center text-white/80 p-6 text-center transition">
+            <i class="ph-duotone ph-StackSimple text-5xl mb-2 text-white/60"></i>
+            <p class="font-bold text-base">All Cards Dealt!</p>
+            <p class="text-xs text-white/70 mt-1">Click Shuffle to restart the deck</p>
+          </div>
+
+          <!-- 3D Thickness Layers (Dynamic height based on remaining undealt cards) -->
+          <div id="deckThicknessContainer" class="absolute inset-0 transition-transform duration-300 group-hover:-translate-y-1.5">
+            <!-- Populated by renderPlayStage() -->
+          </div>
+        </div>
+
+        <!-- Remaining counter pill under deck -->
+        <div class="mt-6 flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/20 text-white text-xs sm:text-sm font-bold shadow-md">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="deckRemainingLabel">8 cards in deck — Click deck or Deal</span>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: MASSIVE ACTIVE DEALT CARD AREA FITTING SCREEN -->
+      <div class="w-full lg:w-[72%] xl:w-[74%] h-full flex flex-col items-center justify-center min-h-0">
+        <div class="relative w-full h-[50vh] sm:h-[60vh] lg:h-[70vh] max-h-[680px] min-h-[340px] perspective-1200">
+
+          <!-- Waiting to Deal State -->
+          <div id="noCardDealtState" onclick="dealNextCard()"
+            class="absolute inset-0 rounded-[2rem] border-4 border-dashed border-white/45 bg-white/10 backdrop-blur-md flex flex-col items-center justify-center text-white p-8 text-center cursor-pointer hover:bg-white/15 transition shadow-2xl">
+            <div class="w-20 h-20 rounded-3xl bg-white/20 flex items-center justify-center mb-4 animate-bounce">
+              <i class="ph-fill ph-hand-tap text-5xl"></i>
+            </div>
+            <h3 class="text-2xl sm:text-4xl font-extrabold tracking-tight">Ready to Deal!</h3>
+            <p class="text-sm sm:text-base text-white/85 mt-2 max-w-md">Click the deck on the left or press <kbd class="px-2.5 py-1 bg-black/40 rounded-lg border border-white/30 font-mono">Space</kbd> / <strong>Deal</strong> to draw your first full-size flashcard.</p>
+          </div>
+
+          <!-- Active Dealt Card Wrapper (with Fly-in animation + 3D Flip) -->
+          <div id="activeCardStage" class="hidden w-full h-full perspective-1200">
+            <div id="activeCardFlipInner" onclick="handleActiveCardClick(event)"
+              class="card-flip-inner relative w-full h-full rounded-[2rem] cursor-pointer">
+
+              <!-- FRONT FACE OF DEALT CARD -->
+              <div id="activeCardFront"
+                class="backface-hidden absolute inset-0 rounded-[2rem] bg-gradient-to-b from-white via-slate-50 to-slate-100 border-[6px] border-white shadow-[0_30px_70px_-15px_rgba(0,0,0,0.65)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden">
+                
+                <!-- Card Top Floating Utility Bar -->
+                <div class="flex items-center justify-between gap-2 z-10 shrink-0">
+                  <span id="frontSideBadge" class="px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-slate-900/10 text-slate-700">
+                    Front • Prompt
+                  </span>
+
+                  <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+                    <button onclick="speakCardSide('front')" title="Listen (Text-to-Speech)"
+                      class="w-11 h-11 rounded-2xl bg-slate-200/80 hover:bg-blue-600 hover:text-white text-slate-700 flex items-center justify-center transition shadow-sm">
+                      <i class="ph-fill ph-speaker-high text-xl"></i>
+                    </button>
+                    <button onclick="toggleSpotlightModal()" title="Classroom Spotlight Zoom"
+                      class="w-11 h-11 rounded-2xl bg-slate-200/80 hover:bg-indigo-600 hover:text-white text-slate-700 flex items-center justify-center transition shadow-sm">
+                      <i class="ph-bold ph-corners-out text-xl"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Card Center Content (Left = Words, Right = Picture when both present) -->
+                <div id="frontContentBody" class="flex-1 min-h-0 w-full my-3 flex items-center justify-center overflow-hidden">
+                  <!-- Populated dynamically -->
+                </div>
+
+                <!-- Card Bottom Footer (Flip Prompt or Classroom Check) -->
+                <div class="flex items-center justify-between text-xs sm:text-sm text-slate-500 pt-3 border-t border-slate-200/90 z-10 shrink-0">
+                  <span id="frontCardIndexLabel" class="font-extrabold text-slate-400">#1</span>
+                  <span id="frontFlipHint" class="font-bold text-indigo-600 flex items-center gap-1.5 animate-pulse">
+                    <i class="ph-bold ph-arrows-clockwise text-base"></i> Click card or press Up/Down to Flip
+                  </span>
+                  <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+                    <button onclick="requeueCurrentCard()" title="Put card back into deck to review again"
+                      class="px-3.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition">
+                      <i class="ph-bold ph-arrow-counter-clockwise"></i> Again
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BACK FACE OF DEALT CARD (FOR 2-SIDED MODE) -->
+              <div id="activeCardBack"
+                class="backface-hidden rotate-y-180 absolute inset-0 rounded-[2rem] bg-gradient-to-b from-indigo-50 via-white to-blue-50 border-[6px] border-indigo-300 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.65)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden">
+                
+                <!-- Top Bar -->
+                <div class="flex items-center justify-between gap-2 z-10 shrink-0">
+                  <span class="px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-indigo-600 text-white shadow-sm">
+                    Back • Answer / Meaning
+                  </span>
+
+                  <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+                    <button onclick="speakCardSide('back')" title="Listen (Text-to-Speech)"
+                      class="w-11 h-11 rounded-2xl bg-indigo-100 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition shadow-sm">
+                      <i class="ph-fill ph-speaker-high text-xl"></i>
+                    </button>
+                    <button onclick="toggleSpotlightModal()" title="Classroom Spotlight Zoom"
+                      class="w-11 h-11 rounded-2xl bg-indigo-100 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition shadow-sm">
+                      <i class="ph-bold ph-corners-out text-xl"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Back Center Content (Left = Words, Right = Picture when both present) -->
+                <div id="backContentBody" class="flex-1 min-h-0 w-full my-3 flex items-center justify-center overflow-hidden">
+                  <!-- Populated dynamically -->
+                </div>
+
+                <!-- Back Bottom Footer -->
+                <div class="flex items-center justify-between text-xs sm:text-sm text-slate-500 pt-3 border-t border-indigo-100 z-10 shrink-0">
+                  <span id="backCardIndexLabel" class="font-extrabold text-indigo-400">#1</span>
+                  <span class="font-bold text-indigo-600 flex items-center gap-1.5">
+                    <i class="ph-bold ph-arrows-clockwise text-base"></i> Click card to Flip to Front
+                  </span>
+                  <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+                    <button onclick="requeueCurrentCard()" title="Put card back in deck to review later"
+                      class="px-3.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition">
+                      <i class="ph-bold ph-arrow-counter-clockwise"></i> Review Again
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BOTTOM CONTROL DOCK (INSPIRED BY REFERENCE SCREENSHOT + UPGRADED) -->
+    <footer class="relative z-20 px-4 sm:px-8 pb-4 pt-2 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-t from-black/65 via-black/30 to-transparent">
+      
+      <!-- Left: Pause & Classroom Timer -->
+      <div class="flex items-center gap-2">
+        <button onclick="togglePauseTimer()" id="btnPauseGame" title="Pause / Classroom Timer"
+          class="w-11 h-11 rounded-full bg-white text-slate-900 hover:bg-slate-200 shadow-lg flex items-center justify-center transition transform active:scale-95">
+          <i id="pauseIcon" class="ph-fill ph-pause text-xl"></i>
+        </button>
+        <div class="px-3 py-1.5 rounded-xl bg-slate-900/60 backdrop-blur-md border border-white/20 text-white text-xs font-mono font-bold tracking-wider">
+          <span id="gameTimerDisplay">00:00</span>
+        </div>
+      </div>
+
+      <!-- Center: Main Dealer Controls (Shuffle | Undo | Flip | Deal) -->
+      <div class="flex items-center gap-2 sm:gap-3 mx-auto">
+        <button onclick="shuffleDeckInGame()"
+          class="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border-2 border-white/60 shadow-lg backdrop-blur-md transition transform active:scale-95 flex items-center gap-2">
+          <i class="ph-bold ph-shuffle text-lg"></i>
+          <span>Shuffle</span>
+        </button>
+
+        <button id="btnUndoDeal" onclick="undoLastDeal()"
+          class="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border-2 border-white/60 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2">
+          <i class="ph-bold ph-arrow-u-up-left text-lg"></i>
+          <span>Undo</span>
+        </button>
+
+        <button id="btnFlipDock" onclick="flipCurrentCard()"
+          class="px-5 sm:px-7 py-2.5 rounded-xl bg-indigo-600/85 hover:bg-indigo-500 text-white font-semibold text-sm sm:text-base border-2 border-indigo-200/80 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2">
+          <i class="ph-bold ph-arrows-clockwise text-lg"></i>
+          <span>Flip</span>
+        </button>
+
+        <button id="btnDealDock" onclick="dealNextCard()"
+          class="px-6 sm:px-9 py-2.5 rounded-xl bg-slate-900/80 hover:bg-emerald-600 text-white font-bold text-sm sm:text-base border-2 border-white shadow-xl backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2">
+          <span>Deal</span>
+          <i class="ph-bold ph-cards text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Right: Quick Theme Switcher, Audio Toggle, Fullscreen -->
+      <div class="flex items-center gap-2">
+        <!-- Quick In-Game Theme Switcher -->
+        <select id="inGameThemeSelect" onchange="changeTheme(this.value)" title="Switch Theme Instantly"
+          class="px-3 py-2 rounded-xl bg-slate-900/65 text-white text-xs font-bold border border-white/30 backdrop-blur-md outline-none cursor-pointer hidden sm:block">
+          <option value="london">🇬🇧 London Fog</option>
+          <option value="cyber">⚡ Cyber Neon</option>
+          <option value="jungle">🌴 Jungle Safari</option>
+          <option value="space">🚀 Space Odyssey</option>
+          <option value="classroom">🏫 Chalkboard</option>
+        </select>
+
+        <button onclick="toggleSoundFx()" id="btnSoundToggle" title="Toggle Sound Effects"
+          class="w-10 h-10 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-white border border-white/25 flex items-center justify-center transition">
+          <i id="soundIcon" class="ph-fill ph-speaker-high text-xl"></i>
+        </button>
+
+        <button onclick="toggleFullscreenMode()" title="Toggle Fullscreen"
+          class="w-10 h-10 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-white border border-white/25 flex items-center justify-center transition">
+          <i id="fullscreenIcon" class="ph-bold ph-corners-out text-xl"></i>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODAL 1: MEDIA / PICTURE / EMOJI PICKER                   -->
+  <!-- ========================================================= -->
+  <div id="mediaPickerModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-scaleIn">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+          <i class="ph-fill ph-image text-purple-600 text-2xl"></i>
+          <span>Add Picture or Illustration</span>
+        </h3>
+        <button onclick="closeMediaPickerModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600">
+          <i class="ph-bold ph-x"></i>
+        </button>
+      </div>
+
+      <!-- Tab 1: Expressive Emoji / SVG Sticker Grid -->
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Quick Classroom Stickers & Illustrations</label>
+        <div id="emojiStickerGrid" class="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Tab 2: Upload Local Image File -->
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Or Upload Picture from Computer</label>
+        <label class="flex flex-col items-center justify-center border-2 border-dashed border-purple-300 hover:border-purple-500 bg-purple-50/40 rounded-2xl p-4 cursor-pointer transition">
+          <i class="ph-duotone ph-upload-simple text-3xl text-purple-600 mb-1"></i>
+          <span class="text-xs font-bold text-purple-700">Click to choose PNG, JPG, GIF</span>
+          <input type="file" id="mediaFileInput" accept="image/*" class="hidden" onchange="handleLocalImageUpload(event)" />
+        </label>
+      </div>
+
+      <!-- Tab 3: Direct Image URL -->
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Or Paste Image URL</label>
+        <div class="flex gap-2">
+          <input id="mediaUrlInput" type="url" placeholder="https://example.com/photo.jpg"
+            class="flex-1 px-3.5 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-500" />
+          <button onclick="applyMediaUrl()" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs">Apply URL</button>
+        </div>
+      </div>
+
+      <div class="flex justify-between pt-2 border-t border-slate-100">
+        <button onclick="clearCurrentMediaSlot()" class="text-xs font-bold text-rose-600 hover:underline">Remove Current Media</button>
+        <button onclick="closeMediaPickerModal()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODAL 2: BULK PASTE MODAL                                 -->
+  <!-- ========================================================= -->
+  <div id="bulkPasteModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+            <i class="ph-fill ph-clipboard-text text-blue-600 text-2xl"></i>
+            <span>Bulk Paste Flashcards</span>
+          </h3>
+          <p class="text-xs text-slate-500">Paste one card per line. Use <code class="px-1.5 py-0.5 bg-slate-100 rounded font-mono text-slate-800">|</code> or <code class="px-1.5 py-0.5 bg-slate-100 rounded font-mono text-slate-800">Tab</code> to separate Front, Back, and Emoji/Image URL.</p>
+        </div>
+        <button onclick="closeBulkPasteModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600">
+          <i class="ph-bold ph-x"></i>
+        </button>
+      </div>
+
+      <textarea id="bulkPasteTextarea" rows="8"
+        placeholder="Miserable | Khổ sở, vô cùng buồn bã | 😭&#10;Ecstatic | Vô cùng hạnh phúc | 🤩&#10;Exhausted | Kiệt sức, mệt nhoài | 🥵&#10;Furious | Giận dữ, nổi trận lôi đình | 🤬"
+        class="w-full p-4 rounded-2xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none font-mono text-xs sm:text-sm text-slate-800"></textarea>
+
+      <div class="flex items-center justify-between flex-wrap gap-3 pt-2">
+        <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+          <input type="checkbox" id="bulkReplaceCheckbox" class="rounded text-blue-600 focus:ring-blue-500" />
+          <span>Replace existing cards (unchecked = append to list)</span>
+        </label>
+
+        <div class="flex gap-2">
+          <button onclick="closeBulkPasteModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">Cancel</button>
+          <button onclick="processBulkPaste()" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20">
+            Import Cards Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODAL 3: HOW TO BULK PASTE GUIDE                          -->
+  <!-- ========================================================= -->
+  <div id="howToBulkModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+          <i class="ph-fill ph-sparkle text-purple-600 text-2xl"></i>
+          <span>How to Bulk Paste from Excel / Word / Notion</span>
+        </h3>
+        <button onclick="closeHowToBulkModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600">
+          <i class="ph-bold ph-x"></i>
+        </button>
+      </div>
+      <div class="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+          <p class="font-bold text-slate-800 mb-1">1. For Double-Sided (Flip) Cards:</p>
+          <code class="block bg-white p-2.5 rounded-xl border border-slate-200 font-mono text-xs text-indigo-700">
+            Front Word | Back Meaning | Emoji or Image URL
+          </code>
+        </div>
+        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+          <p class="font-bold text-slate-800 mb-1">2. Copy-Pasting Directly from Excel / Google Sheets:</p>
+          <p>Highlight 2 or 3 columns in your spreadsheet and paste directly into the Bulk Paste box! Tabs are automatically detected.</p>
+        </div>
+      </div>
+      <div class="flex justify-end">
+        <button onclick="closeHowToBulkModal(); openBulkPasteModal();" class="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold">
+          Try Bulk Paste Now
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODAL 4: SAVED LIBRARY DRAWER / MODAL                     -->
+  <!-- ========================================================= -->
+  <div id="libraryModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+            <i class="ph-fill ph-books text-indigo-600 text-2xl"></i>
+            <span>My Saved Flashcard Library</span>
+          </h3>
+          <p class="text-xs text-slate-500">Decks saved in your browser's local library</p>
+        </div>
+        <button onclick="closeLibraryModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600">
+          <i class="ph-bold ph-x"></i>
+        </button>
+      </div>
+
+      <div id="savedDecksContainer" class="flex-1 overflow-y-auto space-y-2.5 pr-1">
+        <!-- Populated dynamically -->
+      </div>
+
+      <div class="flex justify-end pt-2 border-t border-slate-100">
+        <button onclick="closeLibraryModal()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODAL 5: NEW FOLDER MODAL                                 -->
+  <!-- ========================================================= -->
+  <div id="newFolderModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+        <i class="ph-fill ph-folder-plus text-amber-500 text-xl"></i>
+        <span>Create New Library Folder</span>
+      </h3>
+      <input id="newFolderNameInput" type="text" placeholder="e.g. IELTS Speaking Part 2"
+        class="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-blue-500" />
+      <div class="flex justify-end gap-2">
+        <button onclick="closeNewFolderModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Cancel</button>
+        <button onclick="confirmAddFolder()" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">Create Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODAL 6: CLASSROOM SPOTLIGHT FULLSCREEN ZOOM              -->
+  <!-- ========================================================= -->
+  <div id="spotlightModal" onclick="toggleSpotlightModal()" class="fixed inset-0 z-50 hidden bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-8 cursor-zoom-out">
+    <div id="spotlightContent" class="bg-white rounded-[2.5rem] max-w-6xl w-full h-[78vh] p-8 sm:p-14 shadow-2xl border-8 border-indigo-400 flex items-center justify-center overflow-hidden">
+      <!-- Populated dynamically -->
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- APPLICATION LOGIC & SYNTHESIZED WEB AUDIO                 -->
+  <!-- ========================================================= -->
+  <script>
+    /*************************************************************
+     * 1. THEME DEFINITIONS (5 ILLUSTRATED STAGE THEMES)
+     *************************************************************/
+    const THEMES = {
+      london: {
+        id: 'london',
+        name: 'London Fog',
+        subtitle: 'Big Ben, Red Bus & Crown',
+        badge: '🇬🇧 London Fog',
+        cardFont: 'font-clean',
+        previewBg: 'linear-gradient(135deg, #64748b 0%, #94a3b8 50%, #ef4444 100%)',
+        deckCardBg: 'bg-gradient-to-b from-slate-200 to-slate-300 border-slate-400 text-slate-600',
+        emblemSvg: `
+          <svg viewBox="0 0 120 100" class="w-32 h-28 sm:w-40 sm:h-36 text-slate-500/75 fill-current drop-shadow">
+            <rect x="53" y="6" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="4"/>
+            <path d="M56 20 H64 V30 H56 Z"/>
+            <path d="M22 65 C18 42, 35 30, 58 34 C45 42, 42 54, 45 65 Z" opacity="0.85"/>
+            <path d="M98 65 C102 42, 85 30, 62 34 C75 42, 78 54, 75 65 Z" opacity="0.85"/>
+            <path d="M25 65 H95 L88 84 H32 Z"/>
+            <rect x="28" y="87" width="64" height="7" rx="3"/>
+            <circle cx="32" cy="48" r="4"/><circle cx="60" cy="44" r="5"/><circle cx="88" cy="48" r="4"/>
+          </svg>
+        `,
+        stageSvg: `
+          <div class="absolute inset-0 bg-gradient-to-b from-[#6993c7] via-[#9ab5d6] to-[#cbd5e1]"></div>
+          <!-- Mist & London Skyline SVG -->
+          <svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" class="absolute inset-0 w-full h-full">
+            <defs>
+              <linearGradient id="fogGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="0.05"/>
+                <stop offset="70%" stop-color="#e2e8f0" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#cbd5e1" stop-opacity="0.85"/>
+              </linearGradient>
+            </defs>
+            <!-- Distant White Tower -->
+            <g opacity="0.55" transform="translate(610, 60)">
+              <path d="M40 90 C40 30, 120 30, 120 90 Z" fill="#e2e8f0"/>
+              <rect x="35" y="90" width="90" height="580" fill="#cbd5e1"/>
+              <rect x="48" y="130" width="22" height="40" rx="11" fill="#94a3b8"/>
+              <rect x="90" y="130" width="22" height="40" rx="11" fill="#94a3b8"/>
+              <rect x="48" y="210" width="22" height="40" rx="11" fill="#94a3b8"/>
+              <rect x="90" y="210" width="22" height="40" rx="11" fill="#94a3b8"/>
+              <rect x="48" y="290" width="22" height="40" rx="11" fill="#94a3b8"/>
+              <rect x="90" y="290" width="22" height="40" rx="11" fill="#94a3b8"/>
+            </g>
+            <!-- Big Ben Clock Tower -->
+            <g opacity="0.75" transform="translate(960, -20)">
+              <polygon points="90,0 45,120 135,120" fill="#94a3b8"/>
+              <rect x="40" y="120" width="100" height="580" fill="#cbd5e1" stroke="#94a3b8" stroke-width="3"/>
+              <rect x="30" y="160" width="120" height="110" fill="#e2e8f0" stroke="#64748b" stroke-width="4"/>
+              <circle cx="90" cy="215" r="38" fill="#f8fafc" stroke="#475569" stroke-width="5"/>
+              <line x1="90" y1="215" x2="90" y2="190" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+              <line x1="90" y1="215" x2="110" y2="225" stroke="#1e293b" stroke-width="3" stroke-linecap="round"/>
+            </g>
+            <!-- Classic Red Telephone Booth (Left Foreground) -->
+            <g opacity="0.65" transform="translate(45, 75)">
+              <path d="M20 75 C20 15, 290 15, 290 75 Z" fill="#b91c1c"/>
+              <rect x="15" y="75" width="280" height="680" rx="8" fill="#dc2626" stroke="#991b1b" stroke-width="6"/>
+              <rect x="45" y="150" width="95" height="520" fill="#7dd3fc" opacity="0.45"/>
+              <rect x="165" y="150" width="95" height="520" fill="#7dd3fc" opacity="0.45"/>
+            </g>
+            <!-- Double Decker Red Bus -->
+            <g class="bus-bob" opacity="0.7" transform="translate(680, 460)">
+              <rect x="0" y="0" width="330" height="220" rx="18" fill="#dc2626"/>
+              <rect x="15" y="20" width="65" height="55" rx="6" fill="#93c5fd"/>
+              <rect x="92" y="20" width="65" height="55" rx="6" fill="#93c5fd"/>
+              <rect x="170" y="20" width="65" height="55" rx="6" fill="#93c5fd"/>
+              <rect x="248" y="20" width="65" height="55" rx="6" fill="#93c5fd"/>
+              <rect x="10" y="95" width="310" height="16" fill="#fef08a" opacity="0.8"/>
+              <rect x="90" y="125" width="145" height="65" rx="6" fill="#93c5fd"/>
+              <circle cx="65" cy="220" r="28" fill="#1e293b"/><circle cx="65" cy="220" r="14" fill="#64748b"/>
+              <circle cx="265" cy="220" r="28" fill="#1e293b"/><circle cx="265" cy="220" r="14" fill="#64748b"/>
+            </g>
+            <!-- Victorian Street Lamp -->
+            <g opacity="0.7" transform="translate(1250, 70)">
+              <path d="M40 0 L65 35 L15 35 Z" fill="#334155"/>
+              <polygon points="15,35 65,35 55,95 25,95" fill="#fef9c3" opacity="0.7" stroke="#334155" stroke-width="4"/>
+              <rect x="34" y="95" width="12" height="600" fill="#334155"/>
+            </g>
+            <rect width="1440" height="800" fill="url(#fogGrad)"/>
+          </svg>
+        `
+      },
+
+      cyber: {
+        id: 'cyber',
+        name: 'Cyber Neon',
+        subtitle: 'Synthwave Grid & Neon Pulse',
+        badge: '⚡ Cyber Neon',
+        cardFont: 'font-clean',
+        previewBg: 'linear-gradient(135deg, #0f172a 0%, #4c1d95 55%, #ec4899 100%)',
+        deckCardBg: 'bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 border-cyan-400 text-cyan-400',
+        emblemSvg: `
+          <svg viewBox="0 0 120 120" class="w-32 h-32 sm:w-40 sm:h-40 text-cyan-400 fill-none stroke-current drop-shadow-[0_0_12px_rgba(34,211,238,0.8)]" stroke-width="4">
+            <polygon points="60,8 106,34 106,86 60,112 14,86 14,34"/>
+            <polygon points="60,22 92,40 92,80 60,98 28,80 28,40" stroke="#f472b6"/>
+            <path d="M64 36 L44 64 H62 L56 86 L78 56 H60 Z" fill="currentColor"/>
+          </svg>
+        `,
+        stageSvg: `
+          <div class="absolute inset-0 bg-gradient-to-b from-[#090418] via-[#1e0b36] to-[#3b0764]"></div>
+          <svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" class="absolute inset-0 w-full h-full">
+            <defs>
+              <linearGradient id="sunGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#f43f5e"/>
+                <stop offset="50%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#a855f7"/>
+              </linearGradient>
+            </defs>
+            <!-- Retro Synth Sun -->
+            <circle cx="720" cy="390" r="185" fill="url(#sunGrad)" opacity="0.8"/>
+            <!-- Horizon Mountain Silhouette -->
+            <polygon points="0,480 220,370 430,450 670,350 920,460 1190,360 1440,480 1440,800 0,800" fill="#090418"/>
+            <!-- Perspective Neon Grid -->
+            <g stroke="#22d3ee" stroke-width="1.5" opacity="0.45">
+              <line x1="0" y1="480" x2="1440" y2="480"/>
+              <line x1="0" y1="520" x2="1440" y2="520"/>
+              <line x1="0" y1="570" x2="1440" y2="570"/>
+              <line x1="0" y1="635" x2="1440" y2="635"/>
+              <line x1="0" y1="715" x2="1440" y2="715"/>
+              <line x1="720" y1="480" x2="-200" y2="800"/>
+              <line x1="720" y1="480" x2="150" y2="800"/>
+              <line x1="720" y1="480" x2="460" y2="800"/>
+              <line x1="720" y1="480" x2="720" y2="800"/>
+              <line x1="720" y1="480" x2="980" y2="800"/>
+              <line x1="720" y1="480" x2="1290" y2="800"/>
+              <line x1="720" y1="480" x2="1640" y2="800"/>
+            </g>
+          </svg>
+        `
+      },
+
+      jungle: {
+        id: 'jungle',
+        name: 'Jungle Safari',
+        subtitle: 'Tropical Leaves & Explorer Compass',
+        badge: '🌴 Jungle Safari',
+        cardFont: 'font-playful',
+        previewBg: 'linear-gradient(135deg, #065f46 0%, #10b981 55%, #f59e0b 100%)',
+        deckCardBg: 'bg-gradient-to-b from-amber-100 to-amber-200 border-amber-700 text-amber-800',
+        emblemSvg: `
+          <svg viewBox="0 0 120 120" class="w-32 h-32 sm:w-40 sm:h-40 text-amber-800/75 fill-current">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="currentColor" stroke-width="6"/>
+            <polygon points="60,18 70,50 102,60 70,70 60,102 50,70 18,60 50,50"/>
+            <circle cx="60" cy="60" r="8" fill="#fef3c7"/>
+          </svg>
+        `,
+        stageSvg: `
+          <div class="absolute inset-0 bg-gradient-to-b from-[#064e3b] via-[#047857] to-[#065f46]"></div>
+          <svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" class="absolute inset-0 w-full h-full">
+            <!-- Sunbeams -->
+            <polygon points="200,0 450,0 900,800 400,800" fill="#fef08a" opacity="0.08"/>
+            <polygon points="700,0 950,0 1350,800 950,800" fill="#fef08a" opacity="0.08"/>
+            <!-- Lush Jungle Hills -->
+            <path d="M0 560 Q360 450 720 550 T1440 520 L1440 800 L0 800 Z" fill="#065f46" opacity="0.8"/>
+            <path d="M0 640 Q420 540 860 640 T1440 600 L1440 800 L0 800 Z" fill="#022c22" opacity="0.7"/>
+            <!-- Hanging Vines & Leaves -->
+            <path d="M120,0 Q150,180 90,320" stroke="#10b981" stroke-width="8" fill="none" opacity="0.5"/>
+            <path d="M1320,0 Q1260,210 1340,360" stroke="#10b981" stroke-width="8" fill="none" opacity="0.5"/>
+          </svg>
+        `
+      },
+
+      space: {
+        id: 'space',
+        name: 'Space Odyssey',
+        subtitle: 'Galactic Planets & Starfleet Rocket',
+        badge: '🚀 Space Odyssey',
+        cardFont: 'font-clean',
+        previewBg: 'linear-gradient(135deg, #090d16 0%, #1e3a8a 55%, #38bdf8 100%)',
+        deckCardBg: 'bg-gradient-to-b from-indigo-950 to-slate-900 border-sky-400 text-sky-400',
+        emblemSvg: `
+          <svg viewBox="0 0 120 120" class="w-32 h-32 sm:w-40 sm:h-40 text-sky-400 fill-current drop-shadow">
+            <path d="M60 14 C78 34, 82 62, 78 82 L94 96 L76 96 L60 88 L44 96 L26 96 L42 82 C38 62, 42 34, 60 14 Z"/>
+            <circle cx="60" cy="52" r="10" fill="#0f172a"/>
+          </svg>
+        `,
+        stageSvg: `
+          <div class="absolute inset-0 bg-gradient-to-b from-[#030712] via-[#0f172a] to-[#1e1b4b]"></div>
+          <svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" class="absolute inset-0 w-full h-full">
+            <!-- Stars -->
+            <g fill="#ffffff" opacity="0.8">
+              <circle cx="150" cy="120" r="2"/><circle cx="380" cy="80" r="3"/><circle cx="620" cy="160" r="1.5"/>
+              <circle cx="890" cy="95" r="2.5"/><circle cx="1180" cy="150" r="2"/><circle cx="1350" cy="70" r="3"/>
+              <circle cx="240" cy="340" r="2"/><circle cx="1060" cy="310" r="2.5"/><circle cx="1290" cy="410" r="1.5"/>
+            </g>
+            <!-- Ringed Planet -->
+            <g class="float-slow" transform="translate(1050, 140)">
+              <circle cx="120" cy="120" r="85" fill="#6366f1"/>
+              <ellipse cx="120" cy="125" rx="155" ry="32" fill="none" stroke="#38bdf8" stroke-width="12" opacity="0.65" transform="rotate(-18 120 120)"/>
+            </g>
+            <!-- Red Moon -->
+            <circle cx="210" cy="210" r="55" fill="#f43f5e" opacity="0.65"/>
+          </svg>
+        `
+      },
+
+      classroom: {
+        id: 'classroom',
+        name: 'Classic Chalkboard',
+        subtitle: 'Warm Green Board & Gold Trophy',
+        badge: '🏫 Chalkboard',
+        cardFont: 'font-playful',
+        previewBg: 'linear-gradient(135deg, #14532d 0%, #166534 60%, #ca8a04 100%)',
+        deckCardBg: 'bg-gradient-to-b from-amber-50 to-orange-100 border-amber-400 text-amber-600',
+        emblemSvg: `
+          <svg viewBox="0 0 120 120" class="w-32 h-32 sm:w-40 sm:h-40 text-amber-500 fill-current drop-shadow">
+            <polygon points="60,15 73,44 105,48 81,70 87,102 60,86 33,102 39,70 15,48 47,44"/>
+          </svg>
+        `,
+        stageSvg: `
+          <div class="absolute inset-0 bg-[#1b4332] border-[16px] border-[#92400e]"></div>
+          <svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" class="absolute inset-0 w-full h-full opacity-20">
+            <text x="120" y="160" fill="#ffffff" font-size="42" font-family="serif">A B C • 1 2 3</text>
+            <circle cx="1240" cy="180" r="70" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="10 8"/>
+          </svg>
+        `
+      }
+    };
+
+    /*************************************************************
+     * 2. RICH STICKER / EMOJI PICKER LIBRARY
+     *************************************************************/
+    const STICKER_EMOJIS = [
+      '😭','🤩','🥵','🤬','😨','🥰','🥱','🤯',
+      '🥳','🥶','🤢','😎','🤔','🥺','😇','🤠',
+      '🐶','🐱','🦁','🐼','🦊','🐸','🦄','🐝',
+      '🍎','🍕','🍔','🍦','🍓','🥑','🥐','🎂',
+      '⚽','🏀','🎸','🎨','🚀','✈️','🚗','🏆',
+      '🌞','🌈','⛈️','❄️','🔥','💎','💡','📚'
+    ];
+
+    /*************************************************************
+     * 3. DEFAULT PRE-LOADED DECK (FEELINGS & EMOTIONS EN-VI)
+     *************************************************************/
+    const DEFAULT_CARDS = [
+      { id: 'c1', frontText: 'Khổ sở,\nvô cùng buồn bã', backText: 'Miserable', frontMedia: '😭', backMedia: '🌧️' },
+      { id: 'c2', frontText: 'Vô cùng\nhạnh phúc', backText: 'Ecstatic / Overjoyed', frontMedia: '🤩', backMedia: '🌈' },
+      { id: 'c3', frontText: 'Kiệt sức,\nmệt nhoài', backText: 'Exhausted', frontMedia: '🥵', backMedia: '🔋' },
+      { id: 'c4', frontText: 'Giận dữ,\nnổi trận lôi đình', backText: 'Furious', frontMedia: '🤬', backMedia: '🌋' },
+      { id: 'c5', frontText: 'Lo lắng,\nbồn chồn', backText: 'Anxious / Nervous', frontMedia: '😨', backMedia: '💓' },
+      { id: 'c6', frontText: 'Ngạc nhiên,\nsững sờ', backText: 'Astonished / Amazed', frontMedia: '🤯', backMedia: '⚡' },
+      { id: 'c7', frontText: 'Chán nản,\nbuồn ngủ', backText: 'Bored to tears', frontMedia: '🥱', backMedia: '💤' },
+      { id: 'c8', frontText: 'Tự tin,\nsẵn sàng tỏa sáng', backText: 'Confident', frontMedia: '😎', backMedia: '🏆' }
+    ];
+
+    /*************************************************************
+     * 4. APPLICATION STATE
+     *************************************************************/
+    let appState = {
+      topic: 'Feelings & Emotions (Cảm xúc)',
+      level: 'Movers / Flyers (B1)',
+      folder: 'Vocabulary & Idioms',
+      cardSides: 2,           // 1 = 1-Sided Single Card, 2 = 2-Sided Flip Card
+      contentMode: 'both',    // 'text' | 'photo' | 'both'
+      theme: 'london',        // 'london' | 'cyber' | 'jungle' | 'space' | 'classroom'
+      dealFrontFirst: true,   // Whether dealing shows Front or Back initially
+      soundEnabled: true,
+      cards: JSON.parse(JSON.stringify(DEFAULT_CARDS)),
+
+      // Play Session State
+      undealtDeck: [],
+      dealtHistory: [],
+      currentCard: null,
+      isCurrentFlipped: false,
+      timerSeconds: 0,
+      timerPaused: false,
+      timerInterval: null
+    };
+
+    // Active Media Picker target slot: { cardIndex, side: 'front' | 'back' }
+    let activeMediaTarget = null;
+
+    /*************************************************************
+     * 5. WEB AUDIO API SYNTHESIZER (NO EXTERNAL MP3 REQUIRED)
+     *************************************************************/
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playSound(type) {
+      if (!appState.soundEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        if (type === 'deal') {
+          // Crisp card slide whoosh + snap
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(240, now);
+          osc.frequency.exponentialRampToValueAtTime(580, now + 0.09);
+          osc.frequency.exponentialRampToValueAtTime(180, now + 0.18);
+          gain.gain.setValueAtTime(0.22, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.19);
+        } else if (type === 'flip') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(360, now);
+          osc.frequency.exponentialRampToValueAtTime(720, now + 0.11);
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        } else if (type === 'undo') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(220, now + 0.14);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        } else if (type === 'shuffle') {
+          // Rapid riffle clicks
+          for (let i = 0; i < 6; i++) {
+            const t = now + i * 0.055;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(300 + i * 65, t);
+            gain.gain.setValueAtTime(0.14, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.045);
+          }
+        }
+      } catch (e) {
+        // Ignore audio errors if blocked by browser autoplay policy
+      }
+    }
+
+    /*************************************************************
+     * 6. INITIALIZATION & SETUP VIEW RENDERING
+     *************************************************************/
+    window.addEventListener('DOMContentLoaded', () => {
+      renderThemeSelector();
+      renderStickerGrid();
+      updateConfigUI();
+      renderCardsEditor();
+      updateLibraryBadge();
+
+      // Keyboard Shortcuts for Play View
+      window.addEventListener('keydown', (e) => {
+        const playViewVisible = !document.getElementById('playView').classList.contains('hidden');
+        if (!playViewVisible) return;
+
+        if (e.code === 'Space' || e.code === 'ArrowRight') {
+          e.preventDefault();
+          dealNextCard();
+        } else if (e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'KeyF') {
+          if (appState.cardSides === 2 && appState.currentCard) {
+            e.preventDefault();
+            flipCurrentCard();
+          }
+        } else if (e.code === 'ArrowLeft' || e.code === 'Backspace') {
+          e.preventDefault();
+          undoLastDeal();
+        } else if (e.code === 'KeyS') {
+          e.preventDefault();
+          shuffleDeckInGame();
+        } else if (e.code === 'Escape') {
+          if (!document.getElementById('spotlightModal').classList.contains('hidden')) {
+            toggleSpotlightModal();
+          } else {
+            exitGameToSetup();
+          }
+        }
+      });
+    });
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      const colors = {
+        info: 'bg-slate-900 text-white border-slate-700',
+        success: 'bg-emerald-600 text-white border-emerald-500',
+        warn: 'bg-amber-500 text-white border-amber-400'
+      };
+      el.className = `px-4 py-2.5 rounded-2xl border shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2 pointer-events-auto transition-all duration-300 ${colors[type] || colors.info}`;
+      el.innerHTML = `<i class="ph-fill ph-check-circle text-lg"></i><span>${message}</span>`;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(-8px)';
+        setTimeout(() => el.remove(), 300);
+      }, 2600);
+    }
+
+    function setQuickLevel(val) {
+      document.getElementById('levelInput').value = val;
+      appState.level = val;
+    }
+
+    /*************************************************************
+     * 7. THEME SELECTOR IN SETUP
+     *************************************************************/
+    function renderThemeSelector() {
+      const grid = document.getElementById('themeSelectorGrid');
+      grid.innerHTML = Object.values(THEMES).map(t => {
+        const isSelected = appState.theme === t.id;
+        return `
+          <button type="button" onclick="selectThemeInSetup('${t.id}')"
+            class="group relative rounded-2xl p-3 text-left transition-all border-2 overflow-hidden ${
+              isSelected
+                ? 'border-purple-600 ring-4 ring-purple-500/15 bg-purple-50/40 shadow-md'
+                : 'border-slate-200 hover:border-slate-300 bg-white'
+            }">
+            <div class="h-16 w-full rounded-xl mb-2.5 flex items-center justify-center relative overflow-hidden shadow-inner"
+                 style="background: ${t.previewBg}">
+              <div class="scale-[0.42] opacity-90 text-white">${t.emblemSvg}</div>
+              ${isSelected ? `<span class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white text-purple-600 flex items-center justify-center shadow"><i class="ph-bold ph-check text-xs"></i></span>` : ''}
+            </div>
+            <div class="font-extrabold text-xs text-slate-800 flex items-center justify-between">
+              <span>${t.name}</span>
+            </div>
+            <div class="text-[11px] text-slate-500 line-clamp-1">${t.subtitle}</div>
+          </button>
+        `;
+      }).join('');
+
+      const activeTheme = THEMES[appState.theme];
+      document.getElementById('selectedThemeLabel').textContent = `${activeTheme.badge} — ${activeTheme.subtitle}`;
+      document.getElementById('inGameThemeSelect').value = appState.theme;
+    }
+
+    function selectThemeInSetup(themeId) {
+      appState.theme = themeId;
+      renderThemeSelector();
+      playSound('flip');
+    }
+
+    function changeTheme(themeId) {
+      appState.theme = themeId;
+      renderThemeSelector();
+      renderPlayStageBackground();
+      renderDeckStack();
+      playSound('flip');
+      showToast(`Switched theme to ${THEMES[themeId].name}`, 'info');
+    }
+
+    /*************************************************************
+     * 8. CARD SIDE MODE (1-SIDED VS 2-SIDED) & CONTENT MODE
+     *************************************************************/
+    function setCardSides(sides) {
+      appState.cardSides = sides;
+      updateConfigUI();
+      renderCardsEditor();
+      playSound('flip');
+    }
+
+    function setContentMode(mode) {
+      appState.contentMode = mode;
+      updateConfigUI();
+      renderCardsEditor();
+      playSound('flip');
+    }
+
+    function updateConfigUI() {
+      // 1-Sided vs 2-Sided Buttons
+      const btn1 = document.getElementById('btnSide1');
+      const btn2 = document.getElementById('btnSide2');
+      const activeClass = 'bg-white text-indigo-600 shadow-sm border border-slate-200/60';
+      const inactiveClass = 'text-slate-600 hover:text-slate-900';
+
+      btn1.className = `px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${appState.cardSides === 1 ? activeClass : inactiveClass}`;
+      btn2.className = `px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${appState.cardSides === 2 ? activeClass : inactiveClass}`;
+
+      document.getElementById('sideModeSubtext').textContent =
+        appState.cardSides === 1
+          ? '1-Sided: Deals directly face-up (No flip)'
+          : '2-Sided: Flip between Front prompt & Back answer';
+
+      document.getElementById('btnSwapAllSides').style.display = appState.cardSides === 2 ? 'flex' : 'none';
+
+      // Content Mode Buttons
+      const btnText = document.getElementById('btnContentText');
+      const btnPhoto = document.getElementById('btnContentPhoto');
+      const btnBoth = document.getElementById('btnContentBoth');
+      const activeContentClass = 'bg-white text-amber-600 shadow-sm border border-slate-200/60';
+
+      btnText.className = `px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${appState.contentMode === 'text' ? activeContentClass : inactiveClass}`;
+      btnPhoto.className = `px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${appState.contentMode === 'photo' ? activeContentClass : inactiveClass}`;
+      btnBoth.className = `px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${appState.contentMode === 'both' ? activeContentClass : inactiveClass}`;
+
+      const modeDescriptions = {
+        text: 'Text Only (Large classroom typography)',
+        photo: 'Photos / Stickers Only (Visual prompt)',
+        both: 'Word + Picture on cards'
+      };
+      document.getElementById('contentModeSubtext').textContent = modeDescriptions[appState.contentMode];
+
+      // Editor summary hint
+      const sideLabel = appState.cardSides === 1 ? 'Single-Sided (1-Side)' : 'Double-Sided (Flip)';
+      const contentLabel = appState.contentMode === 'text' ? 'Text Only' : appState.contentMode === 'photo' ? 'Picture Only' : 'Word & Picture';
+      document.getElementById('editorModeHint').innerHTML = `Mode: <strong>${sideLabel}</strong> • <strong>${contentLabel}</strong>`;
+    }
+
+    /*************************************************************
+     * 9. DYNAMIC CARDS EDITOR LIST
+     *************************************************************/
+    function isImageData(str) {
+      if (!str) return false;
+      return str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image');
+    }
+
+    function renderMediaButtonPreview(mediaVal) {
+      if (!mediaVal) {
+        return `<i class="ph-bold ph-image text-base"></i><span>Add Media</span>`;
+      }
+      if (isImageData(mediaVal)) {
+        return `<img src="${mediaVal}" alt="Media" class="w-6 h-6 rounded object-cover border border-purple-300" /><span>Change Pic</span>`;
+      }
+      return `<span class="text-lg leading-none">${mediaVal}</span><span>Media</span>`;
+    }
+
+    function renderCardsEditor() {
+      const container = document.getElementById('cardsEditorList');
+      document.getElementById('cardCountLabel').textContent = appState.cards.length;
+
+      const showTextInput = appState.contentMode === 'text' || appState.contentMode === 'both';
+      const showMediaBtn = appState.contentMode === 'photo' || appState.contentMode === 'both';
+
+      container.innerHTML = appState.cards.map((card, idx) => {
+        if (appState.cardSides === 1) {
+          // 1-SIDED ROW LAYOUT
+          return `
+            <div class="group bg-white rounded-2xl border border-slate-200/90 hover:border-blue-300 p-4 shadow-sm transition flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <!-- Card Number Badge -->
+              <div class="flex items-center justify-between sm:justify-start gap-2">
+                <span class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-extrabold text-xs flex items-center justify-center border border-blue-200 shrink-0">
+                  ${idx + 1}
+                </span>
+                <span class="sm:hidden text-xs font-bold text-slate-400">Single-Sided Card</span>
+              </div>
+
+              <!-- Main Content Input -->
+              <div class="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                ${showTextInput ? `
+                  <input type="text" value="${escapeHtml(card.frontText.replace(/\n/g, ' '))}"
+                    oninput="updateCardField(${idx}, 'frontText', this.value)"
+                    placeholder="Type card word, phrase, or question here..."
+                    class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-semibold text-slate-800" />
+                ` : `
+                  <div class="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-500 flex items-center gap-2">
+                    <i class="ph-fill ph-image text-purple-500 text-base"></i>
+                    <span>Photo-Only Mode enabled — select a picture or emoji sticker on the right</span>
+                  </div>
+                `}
+
+                ${showMediaBtn ? `
+                  <button type="button" onclick="openMediaPickerModal(${idx}, 'front')"
+                    class="px-4 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs flex items-center justify-center gap-2 shrink-0 transition">
+                    ${renderMediaButtonPreview(card.frontMedia)}
+                  </button>
+                ` : ''}
+              </div>
+
+              <!-- Row Actions -->
+              <div class="flex items-center justify-end gap-1 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                <button type="button" onclick="duplicateCard(${idx})" title="Duplicate Card"
+                  class="w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 flex items-center justify-center transition">
+                  <i class="ph-bold ph-copy"></i>
+                </button>
+                <button type="button" onclick="deleteCard(${idx})" title="Delete Card"
+                  class="w-8 h-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition">
+                  <i class="ph-bold ph-trash"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        } else {
+          // 2-SIDED (DOUBLE SIDE FLIP) ROW LAYOUT
+          return `
+            <div class="group bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-300 p-4 shadow-sm transition space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 font-extrabold text-xs flex items-center justify-center border border-indigo-200">
+                    ${idx + 1}
+                  </span>
+                  <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Double-Sided Flip Card</span>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                  <button type="button" onclick="swapSingleCardSides(${idx})" title="Swap Front & Back of this card"
+                    class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 text-xs font-bold flex items-center gap-1 transition">
+                    <i class="ph-bold ph-arrows-left-right"></i> Swap Sides
+                  </button>
+                  <button type="button" onclick="duplicateCard(${idx})" title="Duplicate Card"
+                    class="w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 flex items-center justify-center transition">
+                    <i class="ph-bold ph-copy"></i>
+                  </button>
+                  <button type="button" onclick="deleteCard(${idx})" title="Delete Card"
+                    class="w-8 h-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition">
+                    <i class="ph-bold ph-trash"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Two Columns: Front Side & Back Side -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <!-- FRONT SIDE INPUT -->
+                <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 flex flex-col gap-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Front Side (Word / Prompt)
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    ${showTextInput ? `
+                      <input type="text" value="${escapeHtml(card.frontText.replace(/\n/g, ' '))}"
+                        oninput="updateCardField(${idx}, 'frontText', this.value)"
+                        placeholder="Front text (e.g. Khổ sở, vô cùng buồn bã)..."
+                        class="flex-1 px-3.5 py-2 rounded-xl bg-white border border-slate-200 focus:border-emerald-500 outline-none text-sm font-semibold text-slate-800" />
+                    ` : `
+                      <div class="flex-1 text-xs text-slate-500 italic px-2">Photo-only front side</div>
+                    `}
+                    ${showMediaBtn ? `
+                      <button type="button" onclick="openMediaPickerModal(${idx}, 'front')"
+                        class="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs flex items-center gap-1.5 shrink-0 transition">
+                        ${renderMediaButtonPreview(card.frontMedia)}
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+
+                <!-- BACK SIDE INPUT -->
+                <div class="p-3 rounded-xl bg-indigo-50/40 border border-indigo-200/70 flex flex-col gap-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-600 flex items-center gap-1">
+                      <span class="w-2 h-2 rounded-full bg-indigo-600"></span> Back Side (Flip Answer / Meaning)
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    ${showTextInput ? `
+                      <input type="text" value="${escapeHtml(card.backText.replace(/\n/g, ' '))}"
+                        oninput="updateCardField(${idx}, 'backText', this.value)"
+                        placeholder="Back text (e.g. Miserable)..."
+                        class="flex-1 px-3.5 py-2 rounded-xl bg-white border border-indigo-200 focus:border-indigo-500 outline-none text-sm font-semibold text-slate-800" />
+                    ` : `
+                      <div class="flex-1 text-xs text-indigo-500 italic px-2">Photo-only back side</div>
+                    `}
+                    ${showMediaBtn ? `
+                      <button type="button" onclick="openMediaPickerModal(${idx}, 'back')"
+                        class="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs flex items-center gap-1.5 shrink-0 transition">
+                        ${renderMediaButtonPreview(card.backMedia)}
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function updateCardField(index, field, val) {
+      if (appState.cards[index]) {
+        appState.cards[index][field] = val;
+      }
+    }
+
+    function addNewCard() {
+      if (appState.cards.length >= 50) {
+        showToast('Maximum 50 cards per deck reached', 'warn');
+        return;
+      }
+      appState.cards.push({
+        id: 'c_' + Date.now(),
+        frontText: '',
+        backText: '',
+        frontMedia: '✨',
+        backMedia: ''
+      });
+      renderCardsEditor();
+      playSound('deal');
+    }
+
+    function duplicateCard(index) {
+      const copy = JSON.parse(JSON.stringify(appState.cards[index]));
+      copy.id = 'c_' + Date.now();
+      appState.cards.splice(index + 1, 0, copy);
+      renderCardsEditor();
+      showToast('Card duplicated', 'info');
+    }
+
+    function deleteCard(index) {
+      if (appState.cards.length <= 1) {
+        showToast('Deck must have at least 1 card!', 'warn');
+        return;
+      }
+      appState.cards.splice(index, 1);
+      renderCardsEditor();
+    }
+
+    function swapSingleCardSides(index) {
+      const c = appState.cards[index];
+      const tempText = c.frontText;
+      const tempMedia = c.frontMedia;
+      c.frontText = c.backText;
+      c.frontMedia = c.backMedia;
+      c.backText = tempText;
+      c.backMedia = tempMedia;
+      renderCardsEditor();
+      playSound('flip');
+    }
+
+    function swapAllFrontBack() {
+      appState.cards.forEach(c => {
+        const tempText = c.frontText;
+        const tempMedia = c.frontMedia;
+        c.frontText = c.backText;
+        c.frontMedia = c.backMedia;
+        c.backText = tempText;
+        c.backMedia = tempMedia;
+      });
+      renderCardsEditor();
+      playSound('flip');
+      showToast('Swapped Front & Back for all cards!', 'success');
+    }
+
+    function loadPresetSample() {
+      appState.topic = 'Feelings & Emotions (Cảm xúc)';
+      appState.level = 'Movers / Flyers (B1)';
+      appState.cardSides = 2;
+      appState.contentMode = 'both';
+      appState.theme = 'london';
+      appState.cards = JSON.parse(JSON.stringify(DEFAULT_CARDS));
+      document.getElementById('topicInput').value = appState.topic;
+      document.getElementById('levelInput').value = appState.level;
+      renderThemeSelector();
+      updateConfigUI();
+      renderCardsEditor();
+      showToast('Loaded Sample Emotions Deck!', 'success');
+    }
+
+    /*************************************************************
+     * 10. MEDIA / EMOJI / UPLOAD MODAL FUNCTIONS
+     *************************************************************/
+    function renderStickerGrid() {
+      const grid = document.getElementById('emojiStickerGrid');
+      grid.innerHTML = STICKER_EMOJIS.map(emoji => `
+        <button type="button" onclick="selectEmojiSticker('${emoji}')"
+          class="h-10 rounded-xl bg-white hover:bg-purple-100 border border-slate-200 flex items-center justify-center text-2xl transition transform hover:scale-110">
+          ${emoji}
+        </button>
+      `).join('');
+    }
+
+    function openMediaPickerModal(cardIndex, side) {
+      activeMediaTarget = { cardIndex, side };
+      const currentVal = side === 'front' ? appState.cards[cardIndex].frontMedia : appState.cards[cardIndex].backMedia;
+      document.getElementById('mediaUrlInput').value = isImageData(currentVal) && currentVal.startsWith('http') ? currentVal : '';
+      document.getElementById('mediaPickerModal').classList.remove('hidden');
+    }
+
+    function closeMediaPickerModal() {
+      document.getElementById('mediaPickerModal').classList.add('hidden');
+      activeMediaTarget = null;
+    }
+
+    function selectEmojiSticker(emoji) {
+      if (!activeMediaTarget) return;
+      const { cardIndex, side } = activeMediaTarget;
+      if (side === 'front') appState.cards[cardIndex].frontMedia = emoji;
+      else appState.cards[cardIndex].backMedia = emoji;
+      renderCardsEditor();
+      closeMediaPickerModal();
+      playSound('flip');
+    }
+
+    function handleLocalImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file || !activeMediaTarget) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const { cardIndex, side } = activeMediaTarget;
+        if (side === 'front') appState.cards[cardIndex].frontMedia = e.target.result;
+        else appState.cards[cardIndex].backMedia = e.target.result;
+        renderCardsEditor();
+        closeMediaPickerModal();
+        showToast('Picture added to card!', 'success');
+      };
+      reader.readAsDataURL(file);
+      event.target.value = '';
+    }
+
+    function applyMediaUrl() {
+      const url = document.getElementById('mediaUrlInput').value.trim();
+      if (!url || !activeMediaTarget) return;
+      const { cardIndex, side } = activeMediaTarget;
+      if (side === 'front') appState.cards[cardIndex].frontMedia = url;
+      else appState.cards[cardIndex].backMedia = url;
+      renderCardsEditor();
+      closeMediaPickerModal();
+      showToast('Image URL applied!', 'success');
+    }
+
+    function clearCurrentMediaSlot() {
+      if (!activeMediaTarget) return;
+      const { cardIndex, side } = activeMediaTarget;
+      if (side === 'front') appState.cards[cardIndex].frontMedia = '';
+      else appState.cards[cardIndex].backMedia = '';
+      renderCardsEditor();
+      closeMediaPickerModal();
+    }
+
+    /*************************************************************
+     * 11. BULK PASTE & LIBRARY STORAGE
+     *************************************************************/
+    function openBulkPasteModal() {
+      document.getElementById('bulkPasteModal').classList.remove('hidden');
+    }
+    function closeBulkPasteModal() {
+      document.getElementById('bulkPasteModal').classList.add('hidden');
+    }
+    function openHowToBulkModal() {
+      document.getElementById('howToBulkModal').classList.remove('hidden');
+    }
+    function closeHowToBulkModal() {
+      document.getElementById('howToBulkModal').classList.add('hidden');
+    }
+
+    function processBulkPaste() {
+      const raw = document.getElementById('bulkPasteTextarea').value.trim();
+      if (!raw) {
+        showToast('Please paste some lines first', 'warn');
+        return;
+      }
+      const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const parsedCards = lines.map((line, i) => {
+        const parts = line.includes('|') ? line.split('|') : line.split('\t');
+        return {
+          id: 'bulk_' + Date.now() + '_' + i,
+          frontText: (parts[0] || '').trim(),
+          backText: (parts[1] || '').trim(),
+          frontMedia: (parts[2] || '✨').trim(),
+          backMedia: (parts[3] || '').trim()
+        };
+      });
+
+      const replaceAll = document.getElementById('bulkReplaceCheckbox').checked;
+      if (replaceAll) {
+        appState.cards = parsedCards;
+      } else {
+        appState.cards = [...appState.cards, ...parsedCards].slice(0, 50);
+      }
+
+      renderCardsEditor();
+      closeBulkPasteModal();
+      document.getElementById('bulkPasteTextarea').value = '';
+      showToast(`Imported ${parsedCards.length} flashcards!`, 'success');
+    }
+
+    // Folder & LocalStorage Library
+    function openNewFolderModal() {
+      document.getElementById('newFolderModal').classList.remove('hidden');
+    }
+    function closeNewFolderModal() {
+      document.getElementById('newFolderModal').classList.add('hidden');
+    }
+    function confirmAddFolder() {
+      const name = document.getElementById('newFolderNameInput').value.trim();
+      if (!name) return;
+      const select = document.getElementById('folderSelect');
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      opt.selected = true;
+      select.appendChild(opt);
+      appState.folder = name;
+      document.getElementById('newFolderNameInput').value = '';
+      closeNewFolderModal();
+      showToast(`Folder "${name}" created!`, 'success');
+    }
+
+    function getSavedLibrary() {
+      try {
+        return JSON.parse(localStorage.getItem('cardmaster_decks_v1') || '[]');
+      } catch {
+        return [];
+      }
+    }
+
+    function updateLibraryBadge() {
+      const decks = getSavedLibrary();
+      document.getElementById('libraryCountBadge').textContent = decks.length;
+    }
+
+    function saveDeckToLibrary() {
+      appState.topic = document.getElementById('topicInput').value.trim() || 'Untitled Flashcard Deck';
+      appState.level = document.getElementById('levelInput').value.trim() || 'General';
+      appState.folder = document.getElementById('folderSelect').value;
+
+      const decks = getSavedLibrary();
+      const newEntry = {
+        id: 'deck_' + Date.now(),
+        savedAt: new Date().toLocaleDateString(),
+        topic: appState.topic,
+        level: appState.level,
+        folder: appState.folder,
+        cardSides: appState.cardSides,
+        contentMode: appState.contentMode,
+        theme: appState.theme,
+        cards: appState.cards
+      };
+      decks.unshift(newEntry);
+      localStorage.setItem('cardmaster_decks_v1', JSON.stringify(decks.slice(0, 30)));
+      updateLibraryBadge();
+      playSound('deal');
+      showToast(`Saved "${appState.topic}" to My Library!`, 'success');
+    }
+
+    function openLibraryModal() {
+      const decks = getSavedLibrary();
+      const container = document.getElementById('savedDecksContainer');
+      if (decks.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
+            <i class="ph-duotone ph-books text-4xl mb-2"></i>
+            <p class="font-bold text-sm text-slate-600">No saved decks yet</p>
+            <p class="text-xs mt-1">Click "Save Quiz" in the top bar to store your customized decks here.</p>
+          </div>
+        `;
+      } else {
+        container.innerHTML = decks.map((d, idx) => `
+          <div class="p-4 rounded-2xl border border-slate-200 hover:border-indigo-300 bg-slate-50/70 flex items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="font-extrabold text-sm text-slate-900">${escapeHtml(d.topic)}</span>
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-700 rounded-md">${d.cards.length} cards</span>
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-md">${d.cardSides === 2 ? '2-Sided' : '1-Sided'}</span>
+              </div>
+              <div class="text-xs text-slate-500 mt-0.5">
+                Folder: <strong>${escapeHtml(d.folder)}</strong> • Level: ${escapeHtml(d.level)} • Saved ${d.savedAt}
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="loadDeckFromLibrary(${idx})" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">Load</button>
+              <button onclick="deleteDeckFromLibrary(${idx})" class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center">
+                <i class="ph-bold ph-trash"></i>
+              </button>
+            </div>
+          </div>
+        `).join('');
+      }
+      document.getElementById('libraryModal').classList.remove('hidden');
+    }
+
+    function closeLibraryModal() {
+      document.getElementById('libraryModal').classList.add('hidden');
+    }
+
+    function loadDeckFromLibrary(idx) {
+      const decks = getSavedLibrary();
+      const d = decks[idx];
+      if (!d) return;
+      appState.topic = d.topic;
+      appState.level = d.level;
+      appState.folder = d.folder;
+      appState.cardSides = d.cardSides || 2;
+      appState.contentMode = d.contentMode || 'both';
+      appState.theme = d.theme || 'london';
+      appState.cards = JSON.parse(JSON.stringify(d.cards));
+
+      document.getElementById('topicInput').value = appState.topic;
+      document.getElementById('levelInput').value = appState.level;
+      renderThemeSelector();
+      updateConfigUI();
+      renderCardsEditor();
+      closeLibraryModal();
+      showToast(`Loaded "${d.topic}"!`, 'success');
+    }
+
+    function deleteDeckFromLibrary(idx) {
+      const decks = getSavedLibrary();
+      decks.splice(idx, 1);
+      localStorage.setItem('cardmaster_decks_v1', JSON.stringify(decks));
+      updateLibraryBadge();
+      openLibraryModal();
+    }
+
+    /*************************************************************
+     * 12. PLAY / CARD DEALER VIEW ENGINE
+     *************************************************************/
+    function startGame() {
+      // Sync metadata inputs
+      appState.topic = document.getElementById('topicInput').value.trim() || 'Flashcard Activity';
+      appState.level = document.getElementById('levelInput').value.trim() || 'All Levels';
+
+      // Filter valid cards
+      const validCards = appState.cards.filter(c =>
+        c.frontText.trim() !== '' || c.backText.trim() !== '' || c.frontMedia !== '' || c.backMedia !== ''
+      );
+
+      if (validCards.length === 0) {
+        showToast('Please add content to at least 1 card before playing!', 'warn');
+        return;
+      }
+
+      // Initialize Play Session
+      appState.undealtDeck = JSON.parse(JSON.stringify(validCards));
+      appState.dealtHistory = [];
+      appState.currentCard = null;
+      appState.isCurrentFlipped = !appState.dealFrontFirst;
+
+      // Switch Views
+      document.getElementById('setupView').classList.add('hidden');
+      const playView = document.getElementById('playView');
+      playView.classList.remove('hidden');
+      playView.classList.add('flex');
+
+      // Setup HUD & Theme Background
+      document.getElementById('hudTopicTitle').textContent = appState.topic;
+      document.getElementById('hudLevelBadge').textContent = appState.level;
+      document.getElementById('hudModeBadge').textContent =
+        appState.cardSides === 2 ? '2-Sided Flip' : '1-Sided Direct';
+
+      // Show/Hide 2-Sided specific controls
+      document.getElementById('btnFlipDock').style.display = appState.cardSides === 2 ? 'flex' : 'none';
+      document.getElementById('dealSideToggleWrap').classList.toggle('md:flex', appState.cardSides === 2);
+      document.getElementById('dealSideToggleWrap').classList.toggle('hidden', appState.cardSides === 1);
+
+      renderPlayStageBackground();
+      renderDeckStack();
+      renderActiveDealtCard();
+      startPlayTimer();
+      playSound('shuffle');
+    }
+
+    function exitGameToSetup() {
+      stopPlayTimer();
+      document.getElementById('playView').classList.add('hidden');
+      document.getElementById('playView').classList.remove('flex');
+      document.getElementById('setupView').classList.remove('hidden');
+    }
+
+    function renderPlayStageBackground() {
+      const themeObj = THEMES[appState.theme] || THEMES.london;
+      document.getElementById('themeStageBackground').innerHTML = themeObj.stageSvg;
+      document.getElementById('hudThemeIcon').textContent = themeObj.badge.split(' ')[0];
+      document.getElementById('inGameThemeSelect').value = appState.theme;
+    }
+
+    function renderDeckStack() {
+      const themeObj = THEMES[appState.theme] || THEMES.london;
+      const count = appState.undealtDeck.length;
+      const total = count + appState.dealtHistory.length;
+
+      // Update HUD Progress
+      const dealtCount = appState.dealtHistory.length;
+      document.getElementById('hudDealtCount').textContent = dealtCount;
+      document.getElementById('hudTotalCount').textContent = total;
+      const pct = total > 0 ? Math.round((dealtCount / total) * 100) : 0;
+      document.getElementById('hudProgressBar').style.width = `${pct}%`;
+
+      document.getElementById('deckRemainingLabel').textContent =
+        count > 0 ? `${count} card${count > 1 ? 's' : ''} in deck — Click to Deal` : '0 cards left in deck';
+
+      const container = document.getElementById('deckThicknessContainer');
+      const emptyPlaceholder = document.getElementById('emptyDeckPlaceholder');
+
+      if (count === 0) {
+        container.innerHTML = '';
+        emptyPlaceholder.classList.remove('hidden');
+        document.getElementById('btnDealDock').disabled = true;
+        return;
+      }
+
+      emptyPlaceholder.classList.add('hidden');
+      document.getElementById('btnDealDock').disabled = false;
+
+      // Build realistic 3D stacked layers (up to 6 visible depth slices)
+      const layers = Math.min(count, 6);
+      let html = '';
+
+      // Bottom solid 3D base block (replicates the thick blue-grey block from the screenshot)
+      const stackDepthPx = layers * 7;
+      html += `
+        <div class="absolute inset-x-0 top-3 bottom-0 rounded-3xl bg-slate-500/90 border-2 border-slate-600/80 shadow-[0_24px_45px_rgba(0,0,0,0.55)]"
+             style="transform: translateY(${stackDepthPx}px);"></div>
+      `;
+
+      for (let i = layers - 1; i >= 0; i--) {
+        const offsetY = i * 5;
+        const isTopCard = i === 0;
+        html += `
+          <div class="absolute inset-0 rounded-3xl ${themeObj.deckCardBg} border-4 shadow-md flex items-center justify-center p-4 transition-all"
+               style="transform: translateY(${offsetY}px);">
+            <div class="w-full h-full rounded-2xl border-2 border-current/30 flex flex-col items-center justify-center relative">
+              <!-- Corner ornaments -->
+              <span class="absolute top-2 left-2 w-2.5 h-2.5 border-t-2 border-l-2 border-current/50"></span>
+              <span class="absolute top-2 right-2 w-2.5 h-2.5 border-t-2 border-r-2 border-current/50"></span>
+              <span class="absolute bottom-2 left-2 w-2.5 h-2.5 border-b-2 border-l-2 border-current/50"></span>
+              <span class="absolute bottom-2 right-2 w-2.5 h-2.5 border-b-2 border-r-2 border-current/50"></span>
+              ${isTopCard ? themeObj.emblemSvg : ''}
+            </div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+    }
+
+    function formatCardFaceHTML(text, media) {
+      const showText = appState.contentMode === 'text' || appState.contentMode === 'both';
+      const showPhoto = appState.contentMode === 'photo' || appState.contentMode === 'both';
+      const themeObj = THEMES[appState.theme] || THEMES.london;
+
+      const hasText = Boolean(showText && text && text.trim() !== '');
+      const hasPhoto = Boolean(showPhoto && media && media.trim() !== '');
+
+      // CASE 1: BOTH WORD AND PICTURE PRESENT -> SPLIT HORIZONTAL LAYOUT (LEFT = WORDS, RIGHT = PICTURE)
+      if (hasText && hasPhoto) {
+        const len = text.trim().length;
+        let sizeClass = 'text-4xl sm:text-5xl lg:text-6xl xl:text-7xl';
+        if (len > 55) sizeClass = 'text-2xl sm:text-3xl lg:text-4xl';
+        else if (len > 28) sizeClass = 'text-3xl sm:text-4xl lg:text-5xl';
+
+        const formattedLines = escapeHtml(text).replace(/\n/g, '<br/>');
+
+        let rightVisualHTML = '';
+        if (isImageData(media)) {
+          rightVisualHTML = `
+            <div class="w-full h-full max-h-[420px] rounded-3xl overflow-hidden shadow-lg border-4 border-slate-100 bg-slate-50 flex items-center justify-center p-3">
+              <img src="${media}" alt="Card visual" class="w-full h-full object-contain rounded-2xl" />
+            </div>
+          `;
+        } else {
+          rightVisualHTML = `
+            <div class="w-full h-full max-h-[420px] rounded-3xl bg-slate-100/75 border-2 border-slate-200/80 shadow-inner flex items-center justify-center p-6">
+              <div class="text-[6.5rem] sm:text-[9rem] lg:text-[11.5rem] xl:text-[13rem] leading-none select-none drop-shadow-md transition-transform duration-300 hover:scale-105">
+                ${media}
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="w-full h-full grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-8 items-center">
+            <!-- LEFT SIDE: WORDS -->
+            <div class="md:col-span-7 h-full flex flex-col items-center md:items-start justify-center text-center md:text-left px-2 sm:px-4 overflow-y-auto">
+              <div class="${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight leading-[1.15] break-words w-full">
+                ${formattedLines}
+              </div>
+            </div>
+
+            <!-- RIGHT SIDE: PICTURE / STICKER -->
+            <div class="md:col-span-5 h-full flex items-center justify-center min-h-0">
+              ${rightVisualHTML}
+            </div>
+          </div>
+        `;
+      }
+
+      // CASE 2: ONLY PICTURE PRESENT -> MASSIVE CENTERED PICTURE
+      if (hasPhoto && !hasText) {
+        if (isImageData(media)) {
+          return `
+            <div class="w-full h-full flex items-center justify-center p-2">
+              <img src="${media}" alt="Card visual" class="max-w-full max-h-full object-contain rounded-3xl shadow-lg border-4 border-slate-100" />
+            </div>
+          `;
+        }
+        return `
+          <div class="w-full h-full flex items-center justify-center">
+            <div class="text-[8rem] sm:text-[11rem] lg:text-[14rem] leading-none select-none drop-shadow-md">
+              ${media}
+            </div>
+          </div>
+        `;
+      }
+
+      // CASE 3: ONLY WORDS PRESENT -> MASSIVE CENTERED TYPOGRAPHY
+      if (hasText && !hasPhoto) {
+        const len = text.trim().length;
+        let sizeClass = 'text-4xl sm:text-6xl lg:text-7xl xl:text-8xl';
+        if (len > 60) sizeClass = 'text-2xl sm:text-4xl lg:text-5xl';
+        else if (len > 30) sizeClass = 'text-3xl sm:text-5xl lg:text-6xl';
+
+        const formattedLines = escapeHtml(text).replace(/\n/g, '<br/>');
+        return `
+          <div class="w-full h-full flex items-center justify-center text-center px-4">
+            <div class="${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight leading-tight break-words max-w-full">
+              ${formattedLines}
+            </div>
+          </div>
+        `;
+      }
+
+      return `<div class="text-slate-400 italic text-xl">(Empty Side)</div>`;
+    }
+
+    function renderActiveDealtCard(animationType = 'none') {
+      const noCardEl = document.getElementById('noCardDealtState');
+      const activeStage = document.getElementById('activeCardStage');
+      const flipInner = document.getElementById('activeCardFlipInner');
+
+      // Update Undo & Flip buttons state
+      document.getElementById('btnUndoDeal').disabled = appState.dealtHistory.length === 0;
+      document.getElementById('btnFlipDock').disabled = !appState.currentCard;
+
+      if (!appState.currentCard) {
+        noCardEl.classList.remove('hidden');
+        activeStage.classList.add('hidden');
+        return;
+      }
+
+      noCardEl.classList.add('hidden');
+      activeStage.classList.remove('hidden');
+
+      // Apply Deal or Undo animation
+      activeStage.classList.remove('animate-deal', 'animate-undo');
+      void activeStage.offsetWidth; // Force reflow
+      if (animationType === 'deal') {
+        activeStage.classList.add('animate-deal');
+      }
+
+      // Sync Flip Rotation
+      if (appState.cardSides === 2 && appState.isCurrentFlipped) {
+        flipInner.classList.add('is-flipped');
+      } else {
+        flipInner.classList.remove('is-flipped');
+      }
+
+      // Populate Front & Back content
+      const card = appState.currentCard;
+      const cardNumber = appState.dealtHistory.length;
+
+      document.getElementById('frontContentBody').innerHTML = formatCardFaceHTML(card.frontText, card.frontMedia);
+      document.getElementById('backContentBody').innerHTML = formatCardFaceHTML(card.backText, card.backMedia);
+
+      document.getElementById('frontCardIndexLabel').textContent = `Card #${cardNumber}`;
+      document.getElementById('backCardIndexLabel').textContent = `Card #${cardNumber}`;
+
+      // Update badges based on 1-Sided vs 2-Sided
+      document.getElementById('frontSideBadge').textContent =
+        appState.cardSides === 2 ? 'Front • Prompt' : 'Flashcard';
+      document.getElementById('frontFlipHint').style.display =
+        appState.cardSides === 2 ? 'flex' : 'none';
+    }
+
+    function dealNextCard() {
+      if (appState.undealtDeck.length === 0) {
+        showToast('All cards dealt! Click Shuffle to play again.', 'info');
+        return;
+      }
+
+      const nextCard = appState.undealtDeck.shift();
+      appState.dealtHistory.push(nextCard);
+      appState.currentCard = nextCard;
+      appState.isCurrentFlipped = appState.cardSides === 2 ? !appState.dealFrontFirst : false;
+
+      playSound('deal');
+      renderDeckStack();
+      renderActiveDealtCard('deal');
+    }
+
+    function undoLastDeal() {
+      if (appState.dealtHistory.length === 0) return;
+
+      const activeStage = document.getElementById('activeCardStage');
+      activeStage.classList.remove('animate-deal');
+      activeStage.classList.add('animate-undo');
+      playSound('undo');
+
+      setTimeout(() => {
+        const returnedCard = appState.dealtHistory.pop();
+        appState.undealtDeck.unshift(returnedCard);
+        appState.currentCard = appState.dealtHistory[appState.dealtHistory.length - 1] || null;
+        appState.isCurrentFlipped = appState.cardSides === 2 ? !appState.dealFrontFirst : false;
+
+        renderDeckStack();
+        renderActiveDealtCard('none');
+      }, 280);
+    }
+
+    function flipCurrentCard() {
+      if (appState.cardSides !== 2 || !appState.currentCard) return;
+      appState.isCurrentFlipped = !appState.isCurrentFlipped;
+      const flipInner = document.getElementById('activeCardFlipInner');
+      flipInner.classList.toggle('is-flipped', appState.isCurrentFlipped);
+      playSound('flip');
+    }
+
+    function handleActiveCardClick(event) {
+      if (appState.cardSides === 2 && appState.currentCard) {
+        flipCurrentCard();
+      } else {
+        dealNextCard();
+      }
+    }
+
+    function shuffleDeckInGame() {
+      // Combine all dealt + undealt cards back into the deck and Fisher-Yates shuffle
+      const allCards = [...appState.dealtHistory, ...appState.undealtDeck];
+      for (let i = allCards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
+      }
+
+      appState.undealtDeck = allCards;
+      appState.dealtHistory = [];
+      appState.currentCard = null;
+      appState.isCurrentFlipped = !appState.dealFrontFirst;
+
+      playSound('shuffle');
+      renderDeckStack();
+      renderActiveDealtCard('none');
+
+      const deckWrapper = document.getElementById('deckStackWrapper');
+      deckWrapper.classList.remove('animate-shuffle');
+      void deckWrapper.offsetWidth;
+      deckWrapper.classList.add('animate-shuffle');
+
+      showToast('Deck shuffled!', 'info');
+    }
+
+    function requeueCurrentCard() {
+      if (!appState.currentCard) return;
+      const cardToReview = appState.dealtHistory.pop();
+      // Insert randomly into the remaining undealt deck
+      const insertIdx = Math.floor(Math.random() * (appState.undealtDeck.length + 1));
+      appState.undealtDeck.splice(insertIdx, 0, cardToReview);
+      appState.currentCard = appState.dealtHistory[appState.dealtHistory.length - 1] || null;
+      playSound('undo');
+      renderDeckStack();
+      renderActiveDealtCard('none');
+      showToast('Card shuffled back into the deck for review!', 'warn');
+    }
+
+    function setDealFrontFirst(frontFirst) {
+      appState.dealFrontFirst = frontFirst;
+      const btnFront = document.getElementById('btnDealFrontFirst');
+      const btnBack = document.getElementById('btnDealBackFirst');
+      if (frontFirst) {
+        btnFront.className = 'px-2.5 py-1 rounded-lg font-bold bg-white/20 text-white transition';
+        btnBack.className = 'px-2.5 py-1 rounded-lg font-bold text-white/70 hover:text-white transition';
+      } else {
+        btnBack.className = 'px-2.5 py-1 rounded-lg font-bold bg-white/20 text-white transition';
+        btnFront.className = 'px-2.5 py-1 rounded-lg font-bold text-white/70 hover:text-white transition';
+      }
+      if (appState.currentCard) {
+        appState.isCurrentFlipped = !frontFirst;
+        renderActiveDealtCard('none');
+      }
+    }
+
+    /*************************************************************
+     * 13. CLASSROOM EXTRAS: TTS SPEECH, SPOTLIGHT, TIMER, AUDIO
+     *************************************************************/
+    function speakCardSide(side) {
+      if (!appState.currentCard || !('speechSynthesis' in window)) {
+        showToast('Speech synthesis not supported in this browser', 'warn');
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const text = side === 'front' ? appState.currentCard.frontText : appState.currentCard.backText;
+      if (!text) return;
+
+      const utterance = new SpeechSynthesisUtterance(text.replace(/\n/g, ' '));
+      // Auto-detect Vietnamese diacritics vs English
+      const hasVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(text);
+      utterance.lang = hasVietnamese ? 'vi-VN' : 'en-US';
+      utterance.rate = 0.95;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function toggleSpotlightModal() {
+      const modal = document.getElementById('spotlightModal');
+      if (!modal.classList.contains('hidden')) {
+        modal.classList.add('hidden');
+        return;
+      }
+      if (!appState.currentCard) return;
+      const showingBack = appState.cardSides === 2 && appState.isCurrentFlipped;
+      const text = showingBack ? appState.currentCard.backText : appState.currentCard.frontText;
+      const media = showingBack ? appState.currentCard.backMedia : appState.currentCard.frontMedia;
+
+      document.getElementById('spotlightContent').innerHTML = formatCardFaceHTML(text, media);
+      modal.classList.remove('hidden');
+    }
+
+    function startPlayTimer() {
+      stopPlayTimer();
+      appState.timerSeconds = 0;
+      appState.timerPaused = false;
+      updateTimerUI();
+      appState.timerInterval = setInterval(() => {
+        if (!appState.timerPaused) {
+          appState.timerSeconds++;
+          updateTimerUI();
+        }
+      }, 1000);
+    }
+
+    function stopPlayTimer() {
+      if (appState.timerInterval) {
+        clearInterval(appState.timerInterval);
+        appState.timerInterval = null;
+      }
+    }
+
+    function togglePauseTimer() {
+      appState.timerPaused = !appState.timerPaused;
+      const icon = document.getElementById('pauseIcon');
+      icon.className = appState.timerPaused ? 'ph-fill ph-play text-xl text-emerald-600' : 'ph-fill ph-pause text-xl';
+      showToast(appState.timerPaused ? 'Timer paused' : 'Timer resumed', 'info');
+    }
+
+    function updateTimerUI() {
+      const mins = String(Math.floor(appState.timerSeconds / 60)).padStart(2, '0');
+      const secs = String(appState.timerSeconds % 60).padStart(2, '0');
+      document.getElementById('gameTimerDisplay').textContent = `${mins}:${secs}`;
+    }
+
+    function toggleSoundFx() {
+      appState.soundEnabled = !appState.soundEnabled;
+      const icon = document.getElementById('soundIcon');
+      icon.className = appState.soundEnabled ? 'ph-fill ph-speaker-high text-xl' : 'ph-fill ph-speaker-slash text-xl text-rose-400';
+      showToast(appState.soundEnabled ? 'Sound FX Enabled' : 'Sound FX Muted', 'info');
+    }
+
+    function toggleFullscreenMode() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+        document.getElementById('fullscreenIcon').className = 'ph-bold ph-corners-in text-xl';
+      } else {
+        document.exitFullscreen().catch(() => {});
+        document.getElementById('fullscreenIcon').className = 'ph-bold ph-corners-out text-xl';
+      }
+    }
+  </script>
+</body>
+</html>

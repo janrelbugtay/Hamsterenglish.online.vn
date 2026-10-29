@@ -751,11 +751,13 @@ export function RollerCoasterQuiz({
                               return (
                                 <>
                                   {parsed.imageUrl && (
-                                    <img
-                                      src={parsed.imageUrl}
-                                      alt={parsed.text || 'Option'}
-                                      className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-xl bg-white/90 p-1 shrink-0"
-                                    />
+                                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-white p-2 shadow-xl flex items-center justify-center shrink-0 border-2 border-white/60">
+                                      <img
+                                        src={parsed.imageUrl}
+                                        alt={parsed.text || 'Option'}
+                                        className="w-full h-full object-contain"
+                                      />
+                                    </div>
                                   )}
                                   {parsed.text && <span>{parsed.text}</span>}
                                 </>
@@ -2142,65 +2144,65 @@ function Coaster3DGameplay({
 
     const createAnswerSignTexture = (rawText: string, bgColor: string, accentColor: string, label: string) => {
       const c = document.createElement('canvas');
-      c.width = 512;
-      c.height = 256;
+      c.width = 1024;
+      c.height = 512;
       const ctx = c.getContext('2d')!;
       const parsed = parseOptionContent(rawText);
 
       const drawSign = (loadedImg?: HTMLImageElement) => {
-        ctx.clearRect(0, 0, 512, 256);
-        const grad = ctx.createLinearGradient(0, 0, 0, 256);
+        ctx.clearRect(0, 0, 1024, 512);
+        const grad = ctx.createLinearGradient(0, 0, 0, 512);
         grad.addColorStop(0, bgColor);
         grad.addColorStop(1, accentColor);
         ctx.fillStyle = grad;
         ctx.beginPath();
         if (ctx.roundRect) {
-          ctx.roundRect(12, 12, 488, 232, 36);
+          ctx.roundRect(16, 16, 992, 480, 50);
         } else {
-          ctx.rect(12, 12, 488, 232);
+          ctx.rect(16, 16, 992, 480);
         }
         ctx.fill();
-        ctx.lineWidth = 10;
+        ctx.lineWidth = 18;
         ctx.strokeStyle = '#ffffff';
         ctx.stroke();
 
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.font = '800 30px Inter, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.font = '900 52px Inter, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(label, 256, 56);
+        ctx.fillText(label, 512, 85);
 
-        const cleanStr = String(parsed.text || '').slice(0, 18);
+        const cleanStr = String(parsed.text || '').slice(0, 20);
 
         if (loadedImg && cleanStr) {
-          // Draw both Cartoon PNG and Text side-by-side on the 3D Gate Sign
-          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          // Large picture + clear text side by side
+          ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(38, 76, 136, 136, 22);
-          else ctx.rect(38, 76, 136, 136);
+          if (ctx.roundRect) ctx.roundRect(50, 120, 340, 340, 36);
+          else ctx.rect(50, 120, 340, 340);
           ctx.fill();
-          ctx.drawImage(loadedImg, 46, 84, 120, 120);
+          ctx.drawImage(loadedImg, 65, 135, 310, 310);
 
           ctx.fillStyle = '#ffffff';
-          const fontSize = cleanStr.length > 10 ? 40 : 52;
+          const fontSize = cleanStr.length > 10 ? 68 : 88;
           ctx.font = `900 ${fontSize}px Fredoka, sans-serif`;
           ctx.textAlign = 'center';
-          ctx.fillText(cleanStr, 332, 158);
+          ctx.fillText(cleanStr, 690, 315);
         } else if (loadedImg) {
-          // Picture only
-          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          // Giant centered picture
+          ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(180, 72, 152, 152, 24);
-          else ctx.rect(180, 72, 152, 152);
+          if (ctx.roundRect) ctx.roundRect(332, 115, 360, 360, 40);
+          else ctx.rect(332, 115, 360, 360);
           ctx.fill();
-          ctx.drawImage(loadedImg, 190, 82, 132, 132);
+          ctx.drawImage(loadedImg, 352, 135, 320, 320);
         } else {
-          // Text only
+          // Large text only
           ctx.fillStyle = '#ffffff';
           const displayLabel = cleanStr || ' Picture ';
-          const fontSize = displayLabel.length > 11 ? 46 : 62;
+          const fontSize = displayLabel.length > 11 ? 84 : 108;
           ctx.font = `900 ${fontSize}px Fredoka, sans-serif`;
           ctx.textAlign = 'center';
-          ctx.fillText(displayLabel, 256, 165);
+          ctx.fillText(displayLabel, 512, 325);
         }
       };
 
@@ -2240,31 +2242,31 @@ function Coaster3DGameplay({
         emissiveIntensity: 0.8,
       });
 
-      const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 7.5, 12), pillarMat);
-      leftPost.position.set(-4.6, 2.6, 0);
-      const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 7.5, 12), pillarMat);
-      rightPost.position.set(4.6, 2.6, 0);
+      const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 7.8, 12), pillarMat);
+      leftPost.position.set(-4.9, 2.7, 0);
+      const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 7.8, 12), pillarMat);
+      rightPost.position.set(4.9, 2.7, 0);
 
-      const topBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 9.6, 12), neonRingMat);
+      const topBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 10.2, 12), neonRingMat);
       topBeam.rotation.z = Math.PI / 2;
-      topBeam.position.set(0, 6.2, 0);
+      topBeam.position.set(0, 6.4, 0);
 
       archGroup.add(leftPost, rightPost, topBeam);
 
       const signTexL = createAnswerSignTexture(gateInfo.leftText, '#0284c7', '#1e3a8a', '◀ LEFT TRACK');
       const signL = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.0, 2.1),
+        new THREE.PlaneGeometry(4.4, 2.3),
         new THREE.MeshBasicMaterial({ map: signTexL, side: THREE.DoubleSide })
       );
-      signL.position.set(-2.35, 4.35, 0);
+      signL.position.set(-2.45, 4.4, 0);
       archGroup.add(signL);
 
       const signTexR = createAnswerSignTexture(gateInfo.rightText, '#e11d48', '#881337', 'RIGHT TRACK ▶');
       const signR = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.0, 2.1),
+        new THREE.PlaneGeometry(4.4, 2.3),
         new THREE.MeshBasicMaterial({ map: signTexR, side: THREE.DoubleSide })
       );
-      signR.position.set(2.35, 4.35, 0);
+      signR.position.set(2.45, 4.4, 0);
       archGroup.add(signR);
 
       return archGroup;
@@ -3718,9 +3720,9 @@ function Coaster3DGameplay({
         </div>
       )}
 
-      {/* Active Question Gate HUD Card (Strictly 2 Options: Left Track vs. Right Track, with Dynamic Text Size) */}
+      {/* Active Question Gate HUD Card (Strictly 2 Options: Left Track vs. Right Track) */}
       <div
-        className={`absolute top-16 sm:top-20 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-2xl pointer-events-none transition-all duration-300 ${
+        className={`absolute top-16 sm:top-20 left-1/2 -translate-x-1/2 z-20 w-[96%] max-w-4xl lg:max-w-5xl pointer-events-none transition-all duration-300 ${
           activePrompt ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
         }`}
       >
@@ -3731,17 +3733,18 @@ function Coaster3DGameplay({
           />
         </div>
 
-        <div className="bg-slate-900/88 backdrop-blur-xl border-x border-b border-white/25 rounded-b-3xl px-4 py-3 sm:px-6 sm:py-4 shadow-2xl text-center">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-extrabold uppercase tracking-widest text-amber-400 bg-amber-500/15 border border-amber-400/30 px-3 py-0.5 rounded-full">
+        <div className="bg-slate-900/92 backdrop-blur-xl border-x border-b border-white/25 rounded-b-[2rem] px-4 py-3.5 sm:px-8 sm:py-5 shadow-2xl text-center">
+          {/* Top Header: Track Split Indicator & Timer */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-extrabold uppercase tracking-widest text-amber-400 bg-amber-500/20 border border-amber-400/40 px-3.5 py-1 rounded-full shadow-sm">
               ⚡ Twin Track Split — Tap, Key, or Lean!
             </span>
             {gateSecondsLeft !== null && (
               <span
-                className={`px-2.5 py-0.5 rounded-full text-xs font-black tabular-nums border ${
+                className={`px-3 py-1 rounded-full text-xs sm:text-sm font-black tabular-nums border shadow-sm ${
                   gateSecondsLeft <= 2.0
-                    ? 'bg-rose-500/25 border-rose-400 text-rose-300 animate-pulse'
-                    : 'bg-sky-500/20 border-sky-400/40 text-sky-200'
+                    ? 'bg-rose-500/30 border-rose-400 text-rose-300 animate-pulse'
+                    : 'bg-sky-500/25 border-sky-400/50 text-sky-200'
                 }`}
               >
                 ⏱️ {gateSecondsLeft.toFixed(1)}s
@@ -3749,27 +3752,28 @@ function Coaster3DGameplay({
             )}
           </div>
 
+          {/* Question Prompt: Text & Image (BIGGER and bolder) */}
           {(() => {
             const parsedPromptQ = parseOptionContent(activePrompt?.question || '');
             return (
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 my-1">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 my-2 sm:my-3">
                 {parsedPromptQ.imageUrl && (
                   <img
                     src={parsedPromptQ.imageUrl}
                     alt={parsedPromptQ.text || 'Question Media'}
-                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white/95 p-1.5 object-contain shrink-0 shadow-lg border-2 border-amber-400/50"
+                    className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-3xl bg-white/95 p-2 object-contain shrink-0 shadow-2xl border-3 border-amber-400"
                   />
                 )}
                 {parsedPromptQ.text && (
                   <h2
-                    className={`font-black text-white tracking-wide drop-shadow-md ${
+                    className={`font-black text-white tracking-wide drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)] text-center ${
                       textSize === 'sm'
-                        ? 'text-base sm:text-xl'
+                        ? 'text-xl sm:text-3xl'
                         : textSize === 'md'
-                        ? 'text-lg sm:text-2xl'
+                        ? 'text-2xl sm:text-4xl md:text-5xl'
                         : textSize === 'xl'
-                        ? 'text-2xl sm:text-4xl md:text-5xl leading-tight'
-                        : 'text-xl sm:text-3xl md:text-4xl'
+                        ? 'text-4xl sm:text-5xl md:text-6xl leading-tight'
+                        : 'text-3xl sm:text-4xl md:text-5xl'
                     }`}
                   >
                     {parsedPromptQ.text}
@@ -3779,119 +3783,168 @@ function Coaster3DGameplay({
             );
           })()}
 
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-3 pointer-events-auto">
-            {/* Option 1: Left Track */}
-            <button
-              onClick={() => actionsRef.current.selectSteer(-1)}
-              className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/95 to-blue-700/95 border-2 p-3 sm:p-3.5 text-left shadow-xl flex items-center justify-between cursor-pointer transition-transform ${
-                steeringChoice === -1
-                  ? 'border-white scale-[1.05] -translate-y-1 shadow-[0_0_25px_rgba(56,189,248,0.7)]'
-                  : 'border-sky-300/70 hover:scale-[1.02]'
-              }`}
-            >
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <span className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-950/45 border border-white/25 flex items-center justify-center text-white text-base sm:text-lg font-black shrink-0">
-                  ◀
-                </span>
-                <div className="min-w-0 flex items-center gap-2">
-                  {(() => {
-                    const parsedL = parseOptionContent(activePrompt?.leftText || '');
-                    return (
-                      <>
-                        {parsedL.imageUrl && (
+          {/* 2 Track Options (Optimized & Much Bigger when Pictures are Options) */}
+          {(() => {
+            const parsedL = parseOptionContent(activePrompt?.leftText || '');
+            const parsedR = parseOptionContent(activePrompt?.rightText || '');
+            const hasPictures = Boolean(parsedL.imageUrl || parsedR.imageUrl);
+
+            return (
+              <div className="grid grid-cols-2 gap-3 sm:gap-6 mt-3 sm:mt-4 pointer-events-auto items-stretch">
+                {/* Left Track Option Button */}
+                <button
+                  onClick={() => actionsRef.current.selectSteer(-1)}
+                  className={`group relative overflow-hidden rounded-3xl bg-gradient-to-br from-sky-500/95 via-blue-600/95 to-blue-800/95 border-3 transition-all duration-200 cursor-pointer shadow-2xl flex flex-col justify-between ${
+                    hasPictures ? 'p-3.5 sm:p-5 min-h-[160px] sm:min-h-[220px] md:min-h-[260px]' : 'p-4 sm:p-6 min-h-[90px] sm:min-h-[120px]'
+                  } ${
+                    steeringChoice === -1
+                      ? 'border-white scale-[1.04] -translate-y-1.5 shadow-[0_0_35px_rgba(56,189,248,0.85)] ring-4 ring-sky-300/60'
+                      : 'border-sky-300/60 hover:scale-[1.02] hover:border-sky-200'
+                  }`}
+                >
+                  {/* Top Bar inside Left Option: Arrow, Track Label, and Locked Badge */}
+                  <div className="flex items-center justify-between w-full mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-9 h-9 sm:w-12 sm:h-12 rounded-2xl bg-black/45 border-2 border-white/30 flex items-center justify-center text-white text-lg sm:text-2xl font-black shrink-0 shadow-md">
+                        ◀
+                      </span>
+                      <span className="text-xs sm:text-sm md:text-base font-black uppercase tracking-wider text-sky-100 drop-shadow">
+                        Left Track
+                      </span>
+                    </div>
+                    {steeringChoice === -1 && (
+                      <span className="text-[10px] sm:text-xs font-black uppercase bg-white text-blue-950 px-2.5 py-1 rounded-full shadow-lg border border-sky-200 animate-pulse">
+                        LOCKED 🔒
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Center Body: Big Picture or Prominent Text */}
+                  {hasPictures ? (
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 my-auto w-full">
+                      {parsedL.imageUrl && (
+                        <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl sm:rounded-3xl bg-white p-2 sm:p-3 shadow-xl border-2 sm:border-3 border-white/80 flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
                           <img
                             src={parsedL.imageUrl}
                             alt={parsedL.text || 'Left option'}
-                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/95 p-1 object-contain shrink-0 shadow"
+                            className="w-full h-full object-contain filter drop-shadow-md"
                           />
-                        )}
-                        <div className="min-w-0">
-                          <div className="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-sky-100/90">
-                            Left Track
-                          </div>
-                          {parsedL.text && (
-                            <div
-                              className={`font-black text-white truncate ${
-                                textSize === 'sm'
-                                  ? 'text-xs sm:text-base'
-                                  : textSize === 'md'
-                                  ? 'text-sm sm:text-lg'
-                                  : textSize === 'xl'
-                                  ? 'text-lg sm:text-2xl md:text-3xl'
-                                  : 'text-base sm:text-xl md:text-2xl'
-                              }`}
-                            >
-                              {parsedL.text}
-                            </div>
-                          )}
                         </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-              {steeringChoice === -1 && (
-                <span className="text-[9px] sm:text-[10px] font-extrabold uppercase bg-white text-blue-900 px-1.5 py-0.5 rounded-md shadow shrink-0">
-                  LOCKED
-                </span>
-              )}
-            </button>
-
-            {/* Option 2: Right Track */}
-            <button
-              onClick={() => actionsRef.current.selectSteer(1)}
-              className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-500/95 to-red-700/95 border-2 p-3 sm:p-3.5 text-right shadow-xl flex items-center justify-between cursor-pointer transition-transform ${
-                steeringChoice === 1
-                  ? 'border-white scale-[1.05] -translate-y-1 shadow-[0_0_25px_rgba(244,63,94,0.7)]'
-                  : 'border-rose-300/70 hover:scale-[1.02]'
-              }`}
-            >
-              {steeringChoice === 1 && (
-                <span className="text-[9px] sm:text-[10px] font-extrabold uppercase bg-white text-rose-900 px-1.5 py-0.5 rounded-md shadow shrink-0">
-                  LOCKED
-                </span>
-              )}
-              <div className="flex items-center gap-2 sm:gap-3 ml-auto min-w-0">
-                {(() => {
-                  const parsedR = parseOptionContent(activePrompt?.rightText || '');
-                  return (
-                    <>
-                      <div className="min-w-0">
-                        <div className="text-[9px] sm:text-[11px] uppercase font-bold tracking-wider text-rose-100/90">
-                          Right Track
-                        </div>
-                        {parsedR.text && (
-                          <div
-                            className={`font-black text-white truncate ${
-                              textSize === 'sm'
-                                ? 'text-xs sm:text-base'
-                                : textSize === 'md'
-                                ? 'text-sm sm:text-lg'
-                                : textSize === 'xl'
-                                ? 'text-lg sm:text-2xl md:text-3xl'
-                                : 'text-base sm:text-xl md:text-2xl'
-                            }`}
-                          >
-                            {parsedR.text}
-                          </div>
-                        )}
-                      </div>
-                      {parsedR.imageUrl && (
-                        <img
-                          src={parsedR.imageUrl}
-                          alt={parsedR.text || 'Right option'}
-                          className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/95 p-1 object-contain shrink-0 shadow"
-                        />
                       )}
-                    </>
-                  );
-                })()}
-                <span className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-950/45 border border-white/25 flex items-center justify-center text-white text-base sm:text-lg font-black shrink-0">
-                  ▶
-                </span>
+                      {parsedL.text && (
+                        <div
+                          className={`font-black text-white text-center sm:text-left drop-shadow-md break-words ${
+                            textSize === 'sm'
+                              ? 'text-base sm:text-xl'
+                              : textSize === 'md'
+                              ? 'text-lg sm:text-2xl md:text-3xl'
+                              : textSize === 'xl'
+                              ? 'text-2xl sm:text-3xl md:text-4xl'
+                              : 'text-xl sm:text-2xl md:text-3xl'
+                          }`}
+                        >
+                          {parsedL.text}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="my-auto w-full text-center">
+                      <div
+                        className={`font-black text-white drop-shadow-md ${
+                          textSize === 'sm'
+                            ? 'text-lg sm:text-2xl'
+                            : textSize === 'md'
+                            ? 'text-xl sm:text-3xl'
+                            : textSize === 'xl'
+                            ? 'text-2xl sm:text-4xl md:text-5xl'
+                            : 'text-xl sm:text-3xl md:text-4xl'
+                        }`}
+                      >
+                        {parsedL.text || 'Left Option'}
+                      </div>
+                    </div>
+                  )}
+                </button>
+
+                {/* Right Track Option Button */}
+                <button
+                  onClick={() => actionsRef.current.selectSteer(1)}
+                  className={`group relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-500/95 via-red-600/95 to-red-800/95 border-3 transition-all duration-200 cursor-pointer shadow-2xl flex flex-col justify-between ${
+                    hasPictures ? 'p-3.5 sm:p-5 min-h-[160px] sm:min-h-[220px] md:min-h-[260px]' : 'p-4 sm:p-6 min-h-[90px] sm:min-h-[120px]'
+                  } ${
+                    steeringChoice === 1
+                      ? 'border-white scale-[1.04] -translate-y-1.5 shadow-[0_0_35px_rgba(244,63,94,0.85)] ring-4 ring-rose-300/60'
+                      : 'border-rose-300/60 hover:scale-[1.02] hover:border-rose-200'
+                  }`}
+                >
+                  {/* Top Bar inside Right Option: Track Label, Locked Badge, and Arrow */}
+                  <div className="flex items-center justify-between w-full mb-2">
+                    {steeringChoice === 1 ? (
+                      <span className="text-[10px] sm:text-xs font-black uppercase bg-white text-rose-950 px-2.5 py-1 rounded-full shadow-lg border border-rose-200 animate-pulse">
+                        LOCKED 🔒
+                      </span>
+                    ) : (
+                      <div />
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm md:text-base font-black uppercase tracking-wider text-rose-100 drop-shadow">
+                        Right Track
+                      </span>
+                      <span className="w-9 h-9 sm:w-12 sm:h-12 rounded-2xl bg-black/45 border-2 border-white/30 flex items-center justify-center text-white text-lg sm:text-2xl font-black shrink-0 shadow-md">
+                        ▶
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Center Body: Big Picture or Prominent Text */}
+                  {hasPictures ? (
+                    <div className="flex flex-col sm:flex-row-reverse items-center justify-center gap-3 sm:gap-4 my-auto w-full">
+                      {parsedR.imageUrl && (
+                        <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl sm:rounded-3xl bg-white p-2 sm:p-3 shadow-xl border-2 sm:border-3 border-white/80 flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+                          <img
+                            src={parsedR.imageUrl}
+                            alt={parsedR.text || 'Right option'}
+                            className="w-full h-full object-contain filter drop-shadow-md"
+                          />
+                        </div>
+                      )}
+                      {parsedR.text && (
+                        <div
+                          className={`font-black text-white text-center sm:text-right drop-shadow-md break-words ${
+                            textSize === 'sm'
+                              ? 'text-base sm:text-xl'
+                              : textSize === 'md'
+                              ? 'text-lg sm:text-2xl md:text-3xl'
+                              : textSize === 'xl'
+                              ? 'text-2xl sm:text-3xl md:text-4xl'
+                              : 'text-xl sm:text-2xl md:text-3xl'
+                          }`}
+                        >
+                          {parsedR.text}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="my-auto w-full text-center">
+                      <div
+                        className={`font-black text-white drop-shadow-md ${
+                          textSize === 'sm'
+                            ? 'text-lg sm:text-2xl'
+                            : textSize === 'md'
+                            ? 'text-xl sm:text-3xl'
+                            : textSize === 'xl'
+                            ? 'text-2xl sm:text-4xl md:text-5xl'
+                            : 'text-xl sm:text-3xl md:text-4xl'
+                        }`}
+                      >
+                        {parsedR.text || 'Right Option'}
+                      </div>
+                    </div>
+                  )}
+                </button>
               </div>
-            </button>
-          </div>
+            );
+          })()}
         </div>
       </div>
 
