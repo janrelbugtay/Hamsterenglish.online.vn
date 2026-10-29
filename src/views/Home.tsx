@@ -57,14 +57,24 @@ function FeaturedGamesSection({
 }) {
   const { user } = useAuth();
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
-  const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>({});
+  const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
+    try {
+      const cached = localStorage.getItem('publishedGames');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return {};
+  });
 
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, "settings", "general"), 
       (doc) => {
         if (doc.exists()) {
-          setPublishedGames(doc.data().publishedGames || {});
+          const pub = doc.data().publishedGames || {};
+          setPublishedGames(pub);
+          try {
+            localStorage.setItem('publishedGames', JSON.stringify(pub));
+          } catch (e) {}
         }
       },
       (err) => {

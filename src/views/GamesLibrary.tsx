@@ -33,6 +33,17 @@ export const GamesLibrary = ({
   const [interchangeableGameModal, setInterchangeableGameModal] = useState<any | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  const effectivePublishedGames = React.useMemo(() => {
+    if (publishedGames && Object.keys(publishedGames).length > 0) {
+      return publishedGames;
+    }
+    try {
+      const cached = localStorage.getItem('publishedGames');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return publishedGames || {};
+  }, [publishedGames]);
+
   const isInterchangeableGame = (game: any) => {
     if (!game) return false;
     const gameType = typeof game === 'string' ? game : (game.gameType || '');
@@ -111,7 +122,7 @@ export const GamesLibrary = ({
     { id: "phonemic-master", title: "Phonemic Master", icon: "https://images.unsplash.com/photo-1546410531-bf4caa381ce6?q=80&w=1000&auto=format&fit=crop", color: "bg-emerald-100 text-emerald-600" },
   ];
 
-  const gameTemplates = allGameTemplates.filter(g => isAdmin || publishedGames[g.id] !== false);
+  const gameTemplates = allGameTemplates.filter(g => isAdmin || effectivePublishedGames[g.id] !== false);
 
   useEffect(() => {
     if (user) {
@@ -427,7 +438,7 @@ export const GamesLibrary = ({
     ? games.filter(g => g.folderId === selectedFolderId)
     : games.filter(g => !g.folderId);
 
-  const filteredGames = baseFilteredGames.filter(g => isAdmin || publishedGames[g.gameType || "mystery-box"] !== false);
+  const filteredGames = baseFilteredGames.filter(g => isAdmin || effectivePublishedGames[g.gameType || "mystery-box"] !== false);
 
   const getFolderTree = (parentId: string | null = null, depth = 0): {folder: any, depth: number}[] => {
     const children = folders.filter(f => (f.parentId || null) === parentId);
@@ -930,6 +941,7 @@ export const GamesLibrary = ({
       <GameModeModal
         isOpen={Boolean(interchangeableGameModal)}
         gameData={interchangeableGameModal}
+        publishedGames={effectivePublishedGames}
         onClose={() => setInterchangeableGameModal(null)}
         onSelectMode={(mode, adaptedData) => {
           setInterchangeableGameModal(null);

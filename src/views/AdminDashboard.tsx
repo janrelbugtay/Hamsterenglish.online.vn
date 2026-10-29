@@ -105,6 +105,7 @@ const APP_GAMES = [
   { id: "neon-chain", title: "Neon Chain", icon: "🔗" },
   { id: "bubble-pop", title: "Bubble Pop", icon: "🫧" },
   { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "🎢" },
+  { id: "slap-and-chop", title: "Slap & Chop", icon: "🥊" },
   { id: "shark-attack", title: "Shark Attack", icon: "🦈" },
   { id: "flashcards-match", title: "Flashcards Match", icon: "🃏" },
   { id: "bubble-sentence-pro", title: "Bubble Island", icon: "🏝️" },
@@ -1542,7 +1543,12 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       doc(db, 'settings', 'general'), 
       (doc) => {
         if (doc.exists()) {
-          setPublishedGames(doc.data().publishedGames || {});
+          const pub = doc.data().publishedGames || {};
+          setPublishedGames(pub);
+          try {
+            localStorage.setItem('publishedGames', JSON.stringify(pub));
+            window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: pub }));
+          } catch (e) {}
           setPageVisits(doc.data().pageVisits || 0);
         }
       },
@@ -1556,11 +1562,18 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
   const toggleGamePublish = async (gameId: string) => {
     try {
       const isCurrentlyPublished = publishedGames[gameId] !== false;
+      const updated = {
+        ...publishedGames,
+        [gameId]: !isCurrentlyPublished
+      };
+      setPublishedGames(updated);
+      try {
+        localStorage.setItem('publishedGames', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: updated }));
+      } catch (e) {}
+
       await setDoc(doc(db, 'settings', 'general'), { 
-        publishedGames: {
-          ...publishedGames,
-          [gameId]: !isCurrentlyPublished
-        }
+        publishedGames: updated
       }, { merge: true });
     } catch (error) {
       console.error('Error toggling game status', error);

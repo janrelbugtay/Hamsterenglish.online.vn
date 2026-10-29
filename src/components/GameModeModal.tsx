@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { X, Play, Sparkles, Users, Gamepad2, Layers, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Play, Sparkles, Users, Gamepad2, Layers, CheckCircle2, AlertCircle } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { ViewState } from '../types';
 
 export type PlayableGameMode =
@@ -21,6 +23,7 @@ export interface GameModeSelectionModalProps {
   onClose: () => void;
   gameData: any;
   onSelectMode: (mode: PlayableGameMode, adaptedGameData: any) => void;
+  publishedGames?: Record<string, boolean>;
 }
 
 interface GameOptionConfig {
@@ -258,6 +261,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
 
   if (normalized === 'bubblepop') return 'bubble-pop';
   if (normalized === 'rollercoasterquiz' || normalized === 'coasterquiz') return 'roller-coaster-quiz';
+  if (normalized === 'slapandchop' || normalized === 'slapchop') return 'slap-and-chop';
   if (normalized === 'sharkattack' || normalized === 'sharkstairs') return 'shark-attack';
   if (normalized === 'sumo' || normalized === 'sumotags' || normalized === 'sumoshowdown') return 'sumo';
   if (normalized === 'yoga' || normalized === 'yogaquiz') return 'yoga-quiz';
@@ -271,6 +275,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   // Fallback check on title/name if gameType was generic
   const title = (gameData.name || gameData.title || gameData.topic || '').toLowerCase();
   if (title.includes('bubble pop')) return 'bubble-pop';
+  if (title.includes('slap') || title.includes('chop')) return 'slap-and-chop';
   if (title.includes('shark')) return 'shark-attack';
   if (title.includes('sumo')) return 'sumo';
   if (title.includes('yoga')) return 'yoga-quiz';
@@ -283,13 +288,110 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   return 'mystery-box';
 }
 
+export function isGameModePublished(
+  modeId: PlayableGameMode,
+  publishedMap: Record<string, boolean>
+): boolean {
+  if (!publishedMap || Object.keys(publishedMap).length === 0) return true;
+  if (publishedMap[modeId] === false) return false;
+
+  // Aliases check to ensure exact compatibility with AdminDashboard IDs
+  if (modeId === 'sumo' && (publishedMap['sumo-tags'] === false || publishedMap['sumo-showdown'] === false)) {
+    return false;
+  }
+  if (modeId === 'bubble-sentence-pro' && (publishedMap['bubble-island'] === false || publishedMap['bubblesentencepro'] === false)) {
+    return false;
+  }
+  if (modeId === 'tic-tac-toe' && (publishedMap['tic-tac-toe-battle'] === false || publishedMap['tictactoe'] === false)) {
+    return false;
+  }
+  if (modeId === 'yoga-quiz' && (publishedMap['yoga'] === false || publishedMap['yogaquiz'] === false)) {
+    return false;
+  }
+  if (modeId === 'slap-and-chop' && (publishedMap['slap-chop'] === false || publishedMap['slapandchop'] === false)) {
+    return false;
+  }
+  if (modeId === 'roller-coaster-quiz' && (publishedMap['coasterquiz'] === false || publishedMap['rollercoasterquiz'] === false)) {
+    return false;
+  }
+  if (modeId === 'flashcards-match' && (publishedMap['flashmatch'] === false || publishedMap['flashcardsmatch'] === false)) {
+    return false;
+  }
+  if (modeId === 'hamster-pop-quiz' && (publishedMap['hamsterpop'] === false || publishedMap['hamsterpopquiz'] === false)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function GameModeModal({
   isOpen,
   onClose,
   gameData,
   onSelectMode,
+  publishedGames: propPublishedGames,
 }: GameModeSelectionModalProps) {
   const [activeFilter, setActiveFilter] = useState<'all' | 'battle' | 'camera' | 'board' | 'cards'>('all');
+
+  const [livePublishedGames, setLivePublishedGames] = useState<Record<string, boolean>>(() => {
+    if (propPublishedGames && Object.keys(propPublishedGames).length > 0) {
+      return propPublishedGames;
+    }
+    try {
+      const cached = localStorage.getItem('publishedGames');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return {};
+  });
+
+  useEffect(() => {
+    if (propPublishedGames && Object.keys(propPublishedGames).length > 0) {
+      setLivePublishedGames(propPublishedGames);
+    }
+  }, [propPublishedGames]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'settings', 'general'),
+      (snap) => {
+        if (snap.exists()) {
+          const pub = snap.data().publishedGames || {};
+          setLivePublishedGames(pub);
+          try {
+            localStorage.setItem('publishedGames', JSON.stringify(pub));
+          } catch (e) {}
+        }
+      },
+      (err) => {
+        console.warn('GameModeModal settings listener notice:', err?.message || err);
+      }
+    );
+
+    const handleSync = (e: any) => {
+      if (e.detail) {
+        setLivePublishedGames(e.detail);
+      } else {
+        try {
+          const cached = localStorage.getItem('publishedGames');
+          if (cached) setLivePublishedGames(JSON.parse(cached));
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener('publishedGamesChanged', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      unsub();
+      window.removeEventListener('publishedGamesChanged', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
+  // Filter PLAYABLE_GAME_OPTIONS by published status
+  const publishedOptions = useMemo(() => {
+    return PLAYABLE_GAME_OPTIONS.filter((opt) => isGameModePublished(opt.id, livePublishedGames));
+  }, [livePublishedGames]);
 
   if (!isOpen || !gameData) return null;
 
@@ -301,8 +403,16 @@ export function GameModeModal({
   const originalModeId = detectOriginalGameMode(gameData);
   const originalOption = PLAYABLE_GAME_OPTIONS.find((opt) => opt.id === originalModeId) || PLAYABLE_GAME_OPTIONS[0];
 
-  // Prioritize the original game first, followed by all other game options
-  const otherOptions = PLAYABLE_GAME_OPTIONS.filter((opt) => opt.id !== originalOption.id);
+  // Check if original mode is currently published
+  const isOriginalPublished = isGameModePublished(originalOption.id, livePublishedGames);
+
+  // If original mode is published, prioritize it. If not, pick the first published option (or fallback to originalOption)
+  const activePrioritizedOption = isOriginalPublished
+    ? originalOption
+    : (publishedOptions[0] || originalOption);
+
+  // Other options: strictly only published games, excluding the active prioritized one
+  const otherOptions = publishedOptions.filter((opt) => opt.id !== activePrioritizedOption.id);
   const filteredOtherOptions =
     activeFilter === 'all'
       ? otherOptions
@@ -485,13 +595,18 @@ export function GameModeModal({
               <Gamepad2 className="w-4 h-4" />
               <span>Choose How to Play</span>
               <span aria-hidden="true">·</span>
-              <span>{PLAYABLE_GAME_OPTIONS.length} Game Modes Ready</span>
+              <span>{publishedOptions.length} Game Modes Ready</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               {gameTitle}
             </h2>
             <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-semibold mt-1">
               <span>Created in {originalOption.title}</span>
+              {!isOriginalPublished && (
+                <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full text-[11px]">
+                  <AlertCircle className="w-3 h-3" /> Unpublished in Manage Apps
+                </span>
+              )}
               <span aria-hidden="true">·</span>
               <span>{questionCount} {questionCount === 1 ? 'Question' : 'Questions'}</span>
               <span aria-hidden="true">·</span>
@@ -510,73 +625,75 @@ export function GameModeModal({
 
         {/* Scrollable Content Body */}
         <div className="p-5 sm:p-8 overflow-y-auto custom-scrollbar space-y-7">
-          {/* 1. PRIORITIZED ORIGINAL GAME HERO CARD */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                1. Prioritized Mode — Made for {originalOption.title}
-              </span>
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Best Match for This Set
-              </span>
-            </div>
+          {/* 1. PRIORITIZED GAME HERO CARD */}
+          {activePrioritizedOption && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  1. Prioritized Mode — {isOriginalPublished ? `Made for ${activePrioritizedOption.title}` : `Active Alternate for ${originalOption.title}`}
+                </span>
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Best Match for This Set
+                </span>
+              </div>
 
-            <div
-              onClick={() => handlePlayInterchangeable(originalOption.id)}
-              className={`group relative rounded-3xl p-5 sm:p-6 border-2 ${originalOption.cardBorder} ${originalOption.cardBg} transition-all duration-200 hover:shadow-xl cursor-pointer flex flex-col md:flex-row items-center gap-5 sm:gap-6`}
-            >
-              {/* Featured Thumbnail */}
               <div
-                className={`relative w-full md:w-64 aspect-[16/10] rounded-2xl overflow-hidden bg-gradient-to-br ${originalOption.gradient} shadow-md shrink-0 flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-300`}
+                onClick={() => handlePlayInterchangeable(activePrioritizedOption.id)}
+                className={`group relative rounded-3xl p-5 sm:p-6 border-2 ${activePrioritizedOption.cardBorder} ${activePrioritizedOption.cardBg} transition-all duration-200 hover:shadow-xl cursor-pointer flex flex-col md:flex-row items-center gap-5 sm:gap-6`}
               >
-                <img
-                  src={originalOption.image}
-                  alt={originalOption.title}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover absolute inset-0 z-10"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (originalOption.fallbackImage && target.src !== originalOption.fallbackImage) {
-                      target.src = originalOption.fallbackImage;
-                    } else {
-                      target.style.display = 'none';
-                    }
-                  }}
-                />
-                <div className="text-center z-0 p-4">
-                  <span className="text-6xl drop-shadow-md block">{originalOption.emoji}</span>
-                </div>
-              </div>
-
-              {/* Featured Details */}
-              <div className="flex-1 text-center md:text-left">
-                <div className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                  Original Game Mode · {originalOption.players}
-                </div>
-                <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mb-1.5">
-                  {originalOption.title}
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 font-medium max-w-2xl leading-relaxed">
-                  {originalOption.description}
-                </p>
-              </div>
-
-              {/* Primary Play Action */}
-              <div className="w-full md:w-auto shrink-0 flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePlayInterchangeable(originalOption.id);
-                  }}
-                  className={`w-full md:w-auto px-7 py-4 ${originalOption.btnBg} text-white font-black text-base sm:text-lg rounded-2xl ${originalOption.btnShadow} active:translate-y-[3px] active:shadow-none transition-all flex items-center justify-center gap-2.5 cursor-pointer`}
+                {/* Featured Thumbnail */}
+                <div
+                  className={`relative w-full md:w-64 aspect-[16/10] rounded-2xl overflow-hidden bg-gradient-to-br ${activePrioritizedOption.gradient} shadow-md shrink-0 flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-300`}
                 >
-                  <Play className="w-5 h-5 fill-current" />
-                  <span>{originalOption.shortAction}</span>
-                </button>
+                  <img
+                    src={activePrioritizedOption.image}
+                    alt={activePrioritizedOption.title}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover absolute inset-0 z-10"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (activePrioritizedOption.fallbackImage && target.src !== activePrioritizedOption.fallbackImage) {
+                        target.src = activePrioritizedOption.fallbackImage;
+                      } else {
+                        target.style.display = 'none';
+                      }
+                    }}
+                  />
+                  <div className="text-center z-0 p-4">
+                    <span className="text-6xl drop-shadow-md block">{activePrioritizedOption.emoji}</span>
+                  </div>
+                </div>
+
+                {/* Featured Details */}
+                <div className="flex-1 text-center md:text-left">
+                  <div className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                    {isOriginalPublished ? 'Original Game Mode' : 'Recommended Active Mode'} · {activePrioritizedOption.players}
+                  </div>
+                  <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mb-1.5">
+                    {activePrioritizedOption.title}
+                  </h3>
+                  <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 font-medium max-w-2xl leading-relaxed">
+                    {activePrioritizedOption.description}
+                  </p>
+                </div>
+
+                {/* Primary Play Action */}
+                <div className="w-full md:w-auto shrink-0 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePlayInterchangeable(activePrioritizedOption.id);
+                    }}
+                    className={`w-full md:w-auto px-7 py-4 ${activePrioritizedOption.btnBg} text-white font-black text-base sm:text-lg rounded-2xl ${activePrioritizedOption.btnShadow} active:translate-y-[3px] active:shadow-none transition-all flex items-center justify-center gap-2.5 cursor-pointer`}
+                  >
+                    <Play className="w-5 h-5 fill-current" />
+                    <span>{activePrioritizedOption.shortAction}</span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* 2. PLAY WITH OTHER GAME OPTIONS SECTION */}
           <div>
@@ -586,89 +703,105 @@ export function GameModeModal({
                   Or Play This Set in Another Game Mode
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
-                  Your {questionCount} questions automatically adapt to any of these {otherOptions.length} classroom games:
+                  {otherOptions.length > 0 ? (
+                    <>Your {questionCount} questions automatically adapt to any of these {otherOptions.length} classroom games:</>
+                  ) : (
+                    <>No other published game modes are currently active in Manage Apps.</>
+                  )}
                 </p>
               </div>
 
               {/* Category Filter Tabs */}
-              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start sm:self-auto overflow-x-auto max-w-full">
-                {[
-                  { id: 'all', label: `All (${otherOptions.length})` },
-                  { id: 'battle', label: 'Team Battles' },
-                  { id: 'camera', label: 'Active & Arcade' },
-                  { id: 'board', label: 'Game Shows' },
-                  { id: 'cards', label: 'Cards & Video' },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveFilter(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                      activeFilter === tab.id
-                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              {otherOptions.length > 0 && (
+                <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start sm:self-auto overflow-x-auto max-w-full">
+                  {[
+                    { id: 'all', label: `All (${otherOptions.length})` },
+                    { id: 'battle', label: 'Team Battles' },
+                    { id: 'camera', label: 'Active & Arcade' },
+                    { id: 'board', label: 'Game Shows' },
+                    { id: 'cards', label: 'Cards & Video' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveFilter(tab.id as any)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                        activeFilter === tab.id
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Grid of Other Game Modes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {filteredOtherOptions.map((option) => (
-                <div
-                  key={option.id}
-                  onClick={() => handlePlayInterchangeable(option.id)}
-                  className={`group relative flex flex-col ${option.cardBg} border-2 ${option.cardBorder} rounded-3xl p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl cursor-pointer text-left`}
-                >
+            {filteredOtherOptions.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {filteredOtherOptions.map((option) => (
                   <div
-                    className={`relative w-full aspect-[16/10] rounded-2xl overflow-hidden mb-3.5 bg-gradient-to-br ${option.gradient} shadow-sm flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-300`}
+                    key={option.id}
+                    onClick={() => handlePlayInterchangeable(option.id)}
+                    className={`group relative flex flex-col ${option.cardBg} border-2 ${option.cardBorder} rounded-3xl p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl cursor-pointer text-left`}
                   >
-                    <img
-                      src={option.image}
-                      alt={option.title}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover absolute inset-0 z-10"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        if (option.fallbackImage && target.src !== option.fallbackImage) {
-                          target.src = option.fallbackImage;
-                        } else {
-                          target.style.display = 'none';
-                        }
-                      }}
-                    />
-                    <div className="text-center z-0 p-3">
-                      <span className="text-5xl drop-shadow-md block">{option.emoji}</span>
+                    <div
+                      className={`relative w-full aspect-[16/10] rounded-2xl overflow-hidden mb-3.5 bg-gradient-to-br ${option.gradient} shadow-sm flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-300`}
+                    >
+                      <img
+                        src={option.image}
+                        alt={option.title}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover absolute inset-0 z-10"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (option.fallbackImage && target.src !== option.fallbackImage) {
+                            target.src = option.fallbackImage;
+                          } else {
+                            target.style.display = 'none';
+                          }
+                        }}
+                      />
+                      <div className="text-center z-0 p-3">
+                        <span className="text-5xl drop-shadow-md block">{option.emoji}</span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">
-                    {option.players}
-                  </div>
-                  <h4 className="font-black text-lg text-slate-900 dark:text-white mb-1">
-                    {option.title}
-                  </h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 mb-4 flex-1 leading-relaxed">
-                    {option.description}
-                  </p>
+                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">
+                      {option.players}
+                    </div>
+                    <h4 className="font-black text-lg text-slate-900 dark:text-white mb-1">
+                      {option.title}
+                    </h4>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mb-4 flex-1 leading-relaxed">
+                      {option.description}
+                    </p>
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePlayInterchangeable(option.id);
-                    }}
-                    className={`w-full py-2.5 px-3 ${option.btnBg} text-white font-black text-xs sm:text-sm rounded-xl ${option.btnShadow} active:translate-y-[3px] active:shadow-none transition-all flex items-center justify-center gap-1.5 cursor-pointer`}
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>{option.shortAction}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePlayInterchangeable(option.id);
+                      }}
+                      className={`w-full py-2.5 px-3 ${option.btnBg} text-white font-black text-xs sm:text-sm rounded-xl ${option.btnShadow} active:translate-y-[3px] active:shadow-none transition-all flex items-center justify-center gap-1.5 cursor-pointer`}
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>{option.shortAction}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                  {otherOptions.length === 0
+                    ? 'No other game modes are currently published in Manage Apps.'
+                    : 'No published game modes match this category filter.'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

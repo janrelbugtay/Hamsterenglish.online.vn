@@ -1216,26 +1216,35 @@ function Coaster3DGameplay({
   };
 
   // Distinct Sound Effects for Each Power-Up Type!
+  const playCrossTrackCollectSound = () => {
+    if (isMutedRef.current) return;
+    ensureAudio();
+    playTone(659.25, 'triangle', 0.12, 0.22, 987.77);
+    setTimeout(() => playTone(1318.51, 'sine', 0.2, 0.26, 1760), 55);
+    setTimeout(() => playTone(1975.53, 'triangle', 0.16, 0.22), 110);
+  };
+
   const playPowerUpSound = (type: PowerUpType) => {
     if (isMutedRef.current) return;
+    ensureAudio();
     if (type === 'magnet') {
-      playTone(330, 'sawtooth', 0.12, 0.16, 660);
-      setTimeout(() => playTone(660, 'triangle', 0.18, 0.2, 990), 90);
-      setTimeout(() => playTone(1320, 'sine', 0.25, 0.22), 180);
+      playTone(330, 'sawtooth', 0.12, 0.2, 660);
+      setTimeout(() => playTone(660, 'triangle', 0.18, 0.22, 990), 80);
+      setTimeout(() => playTone(1320, 'sine', 0.3, 0.26, 1760), 160);
     } else if (type === 'slow') {
-      playTone(880, 'sine', 0.18, 0.2, 440);
-      setTimeout(() => playTone(587.33, 'triangle', 0.28, 0.2, 293.66), 120);
+      playTone(880, 'sine', 0.2, 0.22, 440);
+      setTimeout(() => playTone(587.33, 'triangle', 0.32, 0.22, 293.66), 110);
     } else if (type === 'boost') {
-      playTone(220, 'sawtooth', 0.15, 0.22, 880);
-      setTimeout(() => playTone(523.25, 'sawtooth', 0.22, 0.24, 1567.98), 80);
-      setTimeout(() => playTone(1046.5, 'triangle', 0.3, 0.25, 2093.0), 160);
+      playTone(180, 'sawtooth', 0.22, 0.28, 720);
+      setTimeout(() => playTone(440, 'sawtooth', 0.25, 0.26, 1320), 70);
+      setTimeout(() => playTone(880, 'triangle', 0.35, 0.28, 2093.0), 150);
     } else if (type === 'double') {
-      [523.25, 659.25, 783.99, 1046.5, 1318.51].forEach((f, idx) => {
-        setTimeout(() => playTone(f, 'triangle', 0.12, 0.2), idx * 55);
+      [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98].forEach((f, idx) => {
+        setTimeout(() => playTone(f, 'triangle', 0.12, 0.22), idx * 50);
       });
     } else if (type === 'shield') {
-      playTone(440, 'sine', 0.15, 0.2, 880);
-      setTimeout(() => playTone(880, 'triangle', 0.3, 0.24, 1174.66), 110);
+      playTone(440, 'sine', 0.18, 0.22, 880);
+      setTimeout(() => playTone(880, 'triangle', 0.35, 0.26, 1318.51), 100);
     }
   };
 
@@ -2297,6 +2306,9 @@ function Coaster3DGameplay({
       worldPos: THREE.Vector3;
       collected: boolean;
       laneOffset: number;
+      isBranchCoin?: boolean;
+      branchSide?: number;
+      gateIndex?: number;
     }
 
     interface PowerUpItem {
@@ -2643,19 +2655,28 @@ function Coaster3DGameplay({
         trackMeshGroup.add(createBranchPortalRing(leftPortalPos, true));
         trackMeshGroup.add(createBranchPortalRing(rightPortalPos, false));
 
-        // Also place symmetric coins on BOTH Left and Right branches so coins never give away the answer!
+        // Place symmetric coins on BOTH Left and Right branches so coins never give away the answer!
+        // When Super Magnet is active, all coins from BOTH the active and opposite tracks are pulled dynamically into the cart!
         [-1, 1].forEach((sideDir) => {
-          for (let cStep = 1; cStep <= 3; cStep++) {
-            const frac = cStep * 0.25;
+          for (let cStep = 1; cStep <= 5; cStep++) {
+            const frac = cStep * 0.165;
             const cPos = new THREE.Vector3(
               curX + sideDir * (6.8 * frac),
-              THREE.MathUtils.lerp(curY - 1.2, peakOrDipY, frac) + 1.05,
+              THREE.MathUtils.lerp(curY - 1.2, peakOrDipY, frac) + 1.1,
               THREE.MathUtils.lerp(forkZ, postForkZ, frac)
             );
             const cMesh = create3DCoinMesh();
             cMesh.position.copy(cPos);
             collectiblesGroup.add(cMesh);
-            coinItems.push({ mesh: cMesh, worldPos: cPos, collected: false, laneOffset: 0 });
+            coinItems.push({
+              mesh: cMesh,
+              worldPos: cPos,
+              collected: false,
+              laneOffset: 0,
+              isBranchCoin: true,
+              branchSide: sideDir,
+              gateIndex: g,
+            });
           }
         });
 
@@ -2710,8 +2731,8 @@ function Coaster3DGameplay({
         trackMeshGroup.add(arch);
       });
 
-      // Spawn 3D Spinning Golden Coins & Special Power-Ups along the main coaster approaches
-      const numApproachSamples = deck.length * 14;
+      // Spawn 3D Golden Coins & Frequent Special Power-Ups along the main coaster approaches
+      const numApproachSamples = deck.length * 16;
       for (let s = 3; s < numApproachSamples; s++) {
         const t = s / (numApproachSamples + 2);
         // Skip spawning right on top of a fork arch
@@ -2722,10 +2743,10 @@ function Coaster3DGameplay({
         const tan = mainCurve.getTangentAt(t).normalize();
         const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
-        // Every 9th slot spawns a Special Power-Up Orb!
-        if (s % 9 === 0) {
-          const pType = powerUpOrder[Math.floor(s / 9) % powerUpOrder.length];
-          const lane = (s % 18 === 0 ? -1 : 1) * 0.45;
+        // Every 6th slot spawns a Special Power-Up Orb (Magnet, Boost, Slow, 2X, Shield)!
+        if (s % 6 === 0) {
+          const pType = powerUpOrder[Math.floor(s / 6) % powerUpOrder.length];
+          const lane = (s % 12 === 0 ? -1 : 1) * 0.45;
           const pPos = pt.clone().addScaledVector(side, lane).add(new THREE.Vector3(0, 1.35, 0));
           const pMesh = create3DPowerUpMesh(pType);
           pMesh.position.copy(pPos);
@@ -2805,27 +2826,100 @@ function Coaster3DGameplay({
     const fallVelocity = new THREE.Vector3();
     let fallTimer = 0;
 
-    // 3D Magnet Aura Ring around the Hamster Hood
-    const magnetAura = new THREE.Mesh(
-      new THREE.RingGeometry(0.65, 0.82, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0xef4444,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.0,
-      })
-    );
-    magnetAura.rotation.x = Math.PI / 2;
-    magnetAura.position.set(0, 0.05, -0.2);
-    carHoodGroup.add(magnetAura);
+    let lastBoostThrustSec = -1;
+    let lastClockTickSec = -1;
 
-    // 3D Shield Bubble around the Hamster Hood
+    // 1. 3D High-Tech Electromagnetic Field & Horseshoe Hood Badge (Magnet)
+    const magnetFieldGroup = new THREE.Group();
+    magnetFieldGroup.position.set(0, 0.08, -0.25);
+    carHoodGroup.add(magnetFieldGroup);
+
+    const magnetRingMat = new THREE.MeshBasicMaterial({
+      color: 0xf43f5e,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.0,
+    });
+    const magnetAura = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.065, 12, 36), magnetRingMat);
+    magnetAura.rotation.x = Math.PI / 2;
+    magnetFieldGroup.add(magnetAura);
+
+    const magnetWaveRingMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.0,
+    });
+    const magnetWaveRing = new THREE.Mesh(new THREE.TorusGeometry(0.74, 0.045, 12, 32), magnetWaveRingMat);
+    magnetFieldGroup.add(magnetWaveRing);
+
+    const hoodMagnetBadgeMat = new THREE.MeshPhysicalMaterial({
+      color: 0xef4444,
+      emissive: 0xdc2626,
+      emissiveIntensity: 0.6,
+      metalness: 0.85,
+      roughness: 0.2,
+      transparent: true,
+      opacity: 0.0,
+    });
+    const hoodMagnetBadge = new THREE.Mesh(
+      new THREE.TorusGeometry(0.25, 0.055, 8, 18, Math.PI),
+      hoodMagnetBadgeMat
+    );
+    hoodMagnetBadge.rotation.x = -Math.PI / 2;
+    hoodMagnetBadge.position.set(0, 0.1, -0.58);
+    magnetFieldGroup.add(hoodMagnetBadge);
+
+    // 2. 3D Dual Rocket Booster Thruster Nacelles & Animated Plasma Flames (Turbo Boost)
+    const thrusterGroup = new THREE.Group();
+    carHoodGroup.add(thrusterGroup);
+
+    const thrusterNozzleMat = new THREE.MeshPhysicalMaterial({
+      color: 0x1e293b,
+      metalness: 0.95,
+      roughness: 0.2,
+      clearcoat: 1.0,
+    });
+    const thrusterFlameOuterMat = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.0,
+    });
+    const thrusterFlameInnerMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.0,
+    });
+
+    const flameMeshes: THREE.Mesh[] = [];
+    [-0.58, 0.58].forEach((tx) => {
+      const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.3, 16), thrusterNozzleMat);
+      nozzle.rotation.x = Math.PI / 2;
+      nozzle.position.set(tx, -0.22, 0.28);
+      thrusterGroup.add(nozzle);
+
+      // Outer orange flame cone pointing back towards camera / rear
+      const outerFlame = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.85, 14), thrusterFlameOuterMat);
+      outerFlame.rotation.x = -Math.PI / 2;
+      outerFlame.position.set(tx, -0.22, 0.72);
+      thrusterGroup.add(outerFlame);
+      flameMeshes.push(outerFlame);
+
+      // Inner cyan plasma cone
+      const innerFlame = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.55, 12), thrusterFlameInnerMat);
+      innerFlame.rotation.x = -Math.PI / 2;
+      innerFlame.position.set(tx, -0.22, 0.6);
+      thrusterGroup.add(innerFlame);
+      flameMeshes.push(innerFlame);
+    });
+
+    // 3. 3D Shield Bubble with Rotating Orbital Rings (Shield)
     const shieldBubble = new THREE.Mesh(
-      new THREE.SphereGeometry(0.62, 20, 16),
+      new THREE.SphereGeometry(0.64, 20, 16),
       new THREE.MeshPhysicalMaterial({
         color: 0x10b981,
         emissive: 0x059669,
-        emissiveIntensity: 0.4,
+        emissiveIntensity: 0.45,
         transparent: true,
         opacity: 0.0,
         roughness: 0.1,
@@ -2834,6 +2928,18 @@ function Coaster3DGameplay({
     );
     shieldBubble.position.set(0, 0.12, -0.2);
     carHoodGroup.add(shieldBubble);
+
+    const shieldOrbitalRingMat = new THREE.MeshBasicMaterial({
+      color: 0x34d399,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.0,
+    });
+    const shieldOrbitalRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.78, 0.04, 12, 32),
+      shieldOrbitalRingMat
+    );
+    shieldBubble.add(shieldOrbitalRing);
 
     const positionCameraOnCurve = (curve: THREE.CatmullRomCurve3, t: number, extraRoll = 0) => {
       const clampedT = Math.max(0, Math.min(0.999, t));
@@ -3045,12 +3151,63 @@ function Coaster3DGameplay({
         }
       });
 
-      // Update Visual Auras on Coaster Hood
-      (magnetAura.material as THREE.MeshBasicMaterial).opacity =
-        magnetTimer > 0 ? 0.55 + Math.sin(now * 0.015) * 0.25 : 0;
-      magnetAura.scale.setScalar(1 + Math.sin(now * 0.012) * 0.15);
+      // Update Visual Auras & Thruster Flames on Coaster Hood
+      const isMagnetActive = magnetTimer > 0;
+      const isBoostActive = boostTimer > 0;
+      const isSlowActive = slowTimer > 0;
+      const isDoubleActive = doubleTimer > 0;
+
+      // 1. Magnet Electromagnetic Field Animation
+      magnetRingMat.opacity = isMagnetActive ? 0.78 + Math.sin(now * 0.018) * 0.22 : 0;
+      magnetAura.scale.setScalar(1 + Math.sin(now * 0.015) * 0.22);
+      magnetAura.rotation.z += 2.8 * dt;
+
+      magnetWaveRingMat.opacity = isMagnetActive ? 0.58 + Math.cos(now * 0.02) * 0.28 : 0;
+      magnetWaveRing.scale.setScalar(0.95 + Math.cos(now * 0.018) * 0.2);
+      magnetWaveRing.rotation.y += 3.6 * dt;
+      magnetWaveRing.rotation.x = Math.PI / 2 + Math.sin(now * 0.012) * 0.35;
+
+      hoodMagnetBadgeMat.opacity = isMagnetActive ? 1.0 : 0.0;
+      hoodMagnetBadgeMat.emissiveIntensity = isMagnetActive ? 1.6 + Math.sin(now * 0.022) * 0.8 : 0;
+
+      // 2. Turbo Boost Rocket Thruster Plumes & Ember Sparks
+      thrusterFlameOuterMat.opacity = isBoostActive ? 0.88 + Math.random() * 0.12 : 0;
+      thrusterFlameInnerMat.opacity = isBoostActive ? 0.95 : 0;
+      flameMeshes.forEach((flame, idx) => {
+        if (isBoostActive) {
+          const jitter = Math.sin(now * 0.05 + idx * 1.5) * 0.22;
+          flame.scale.set(1 + Math.random() * 0.18, 1 + Math.random() * 0.18, 1.9 + jitter + Math.random() * 0.45);
+        }
+      });
+
+      if (isBoostActive && Math.random() < 0.38) {
+        [-0.58, 0.58].forEach((tx) => {
+          const sparkMat = new THREE.MeshBasicMaterial({ color: Math.random() < 0.6 ? 0xf97316 : 0xfacc15 });
+          const spark = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), sparkMat);
+          spark.position.copy(camera.position).add(new THREE.Vector3(tx, -0.28, 0.5));
+          const vel = new THREE.Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3, 26 + Math.random() * 14);
+          scene.add(spark);
+          particles.push({ mesh: spark, vel, life: 0.35 });
+        });
+      }
+
+      // 3. Shield Bubble & Rotating Energy Rings
       (shieldBubble.material as THREE.MeshPhysicalMaterial).opacity =
-        hasShield ? 0.32 + Math.sin(now * 0.008) * 0.1 : 0;
+        hasShield ? 0.38 + Math.sin(now * 0.008) * 0.12 : 0;
+      shieldOrbitalRing.rotation.y += 2.2 * dt;
+      shieldOrbitalRing.rotation.x += 1.6 * dt;
+      shieldOrbitalRingMat.opacity = hasShield ? 0.68 + Math.sin(now * 0.015) * 0.25 : 0;
+
+      // 4. Double Points Coin Glow
+      coinGoldMat.emissiveIntensity = isDoubleActive ? 0.9 + Math.sin(now * 0.015) * 0.4 : 0.35;
+      coinGoldMat.emissive.setHex(isDoubleActive ? 0xc084fc : 0xd97706);
+
+      // 5. Dynamic Camera FOV (Warp Speed Sensation)
+      const targetFov = isBoostActive ? 82 : isSlowActive ? 62 : 68;
+      if (Math.abs(camera.fov - targetFov) > 0.08) {
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 9 * dt);
+        camera.updateProjectionMatrix();
+      }
 
       // Update Confetti / Sparks
       for (let i = particles.length - 1; i >= 0; i--) {
@@ -3070,13 +3227,15 @@ function Coaster3DGameplay({
 
       // Compute Effective Speed Multiplier (Difficulty + Slow-Mo + Turbo Boost)
       const activeDiffMult = speedMultRef.current;
-      const powerSpeedMod = boostTimer > 0 ? 1.55 : slowTimer > 0 ? 0.56 : 1.0;
+      const powerSpeedMod = isBoostActive ? 1.85 : isSlowActive ? 0.58 : 1.0;
       const effectiveSpeedMult = activeDiffMult * powerSpeedMod;
       const baseSpeedT = (0.21 / Math.max(6, questions.length)) * effectiveSpeedMult;
 
       // Animate 3D Speed Streaks
+      streakMat.color.setHex(isBoostActive ? 0xfba524 : isSlowActive ? 0x38bdf8 : 0xffffff);
+      streakMat.opacity = isBoostActive ? 0.85 : isSlowActive ? 0.45 : 0.35;
       speedLineMeshes.forEach((line) => {
-        line.position.z += 28 * effectiveSpeedMult * dt;
+        line.position.z += (isBoostActive ? 55 : 28) * effectiveSpeedMult * dt;
         if (line.position.z > 0.5) {
           line.position.z = -8 - Math.random() * 4;
         }
@@ -3108,6 +3267,19 @@ function Coaster3DGameplay({
         if (slowTimer > 0) slowTimer = Math.max(0, slowTimer - dt);
         if (boostTimer > 0) boostTimer = Math.max(0, boostTimer - dt);
         if (doubleTimer > 0) doubleTimer = Math.max(0, doubleTimer - dt);
+
+        if (isBoostActive && Math.floor(rideTimeSec * 3.5) !== lastBoostThrustSec) {
+          lastBoostThrustSec = Math.floor(rideTimeSec * 3.5);
+          if (!isMutedRef.current) {
+            playTone(190 + Math.random() * 40, 'sawtooth', 0.08, 0.12, 360);
+          }
+        }
+        if (isSlowActive && Math.floor(rideTimeSec * 2.2) !== lastClockTickSec) {
+          lastClockTickSec = Math.floor(rideTimeSec * 2.2);
+          if (!isMutedRef.current) {
+            playTone(784, 'triangle', 0.03, 0.06);
+          }
+        }
 
         const totalAllowedSec = timerMinutesRef.current * 60;
         const remSec = Math.max(0, Math.ceil(totalAllowedSec - rideTimeSec));
@@ -3162,29 +3334,79 @@ function Coaster3DGameplay({
 
         const coinMultiplier = doubleTimer > 0 ? 2 : 1;
 
-        // 2. Check 3D Coin Pickups & Magnet Pull
-        const coasterPos = mainCurve.getPointAt(Math.min(0.999, trackProgressT));
-        const magnetRadius = magnetTimer > 0 ? 19.0 : 2.9;
+        // 2. Check 3D Coin Pickups & Cross-Track Magnet Pull
+        // Uses the real camera/cockpit position so it reaches across twin branches and hills seamlessly
+        const cartTarget = camera.position.clone().addScaledVector(tangent, 1.1).add(new THREE.Vector3(0, -0.22, 0));
+        const magnetRadius = isMagnetActive ? 65.0 : 3.1;
+        const currentSteerSide = steeringRef.current;
 
         for (let i = 0; i < coinItems.length; i++) {
           const c = coinItems[i];
           if (c.collected) continue;
-          const dist = c.mesh.position.distanceTo(coasterPos);
 
-          if (magnetTimer > 0 && dist < magnetRadius && dist > 1.8) {
-            // Pull coin flying smoothly toward the coaster cart!
-            c.mesh.position.lerp(coasterPos.clone().add(new THREE.Vector3(0, 1.1, -1.2)), Math.min(1, 14 * dt));
+          const toCart = cartTarget.clone().sub(c.mesh.position);
+          const dist = toCart.length();
+
+          if (isMagnetActive && dist < magnetRadius) {
+            toCart.normalize();
+            // Pull coin swiftly towards the coaster cart so coins on the other track catch up effortlessly!
+            const pullSpeed = Math.max(48, 72 - dist * 0.32) * (isBoostActive ? 1.35 : 1.0);
+            c.mesh.position.addScaledVector(toCart, pullSpeed * dt);
+            
+            // Graceful magnetic arch lift over tracks & cross gaps
+            c.mesh.position.y += Math.sin(Math.min(Math.PI, (1 - dist / magnetRadius) * Math.PI)) * 0.28;
+            
+            // Frenetic magnetic spin
+            c.mesh.rotation.y += 26 * dt;
+            c.mesh.rotation.x += 16 * dt;
+            c.mesh.scale.setScalar(1.28);
+
+            // Subtle electromagnetic spark tether between coin and cart
+            if (Math.random() < 0.22) {
+              const sparkMat = new THREE.MeshBasicMaterial({
+                color: c.isBranchCoin && c.branchSide !== currentSteerSide ? 0xf43f5e : 0xfacc15,
+              });
+              const spark = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), sparkMat);
+              spark.position.copy(c.mesh.position).add(
+                new THREE.Vector3(
+                  (Math.random() - 0.5) * 0.4,
+                  (Math.random() - 0.5) * 0.4,
+                  (Math.random() - 0.5) * 0.4
+                )
+              );
+              const vel = toCart.clone().multiplyScalar(16 + Math.random() * 8);
+              scene.add(spark);
+              particles.push({ mesh: spark, vel, life: 0.35 });
+            }
           }
 
-          if (dist < 2.75) {
+          // Collection threshold: generous when magnet is active so high-velocity cross-track coins are always captured!
+          const pickupThreshold = isMagnetActive ? 5.2 : 2.85;
+          if (dist < pickupThreshold) {
             c.collected = true;
             c.mesh.visible = false;
-            const addedCoins = 1 * coinMultiplier;
+
+            const isOtherTrack = Boolean(
+              c.isBranchCoin &&
+              c.branchSide !== undefined &&
+              currentSteerSide !== 0 &&
+              c.branchSide !== currentSteerSide
+            );
+
+            const baseGain = isOtherTrack ? 2 : 1;
+            const addedCoins = baseGain * coinMultiplier;
             localCoins += addedCoins;
             setCoinsCount(localCoins);
-            playCoinCollectSound();
-            spawnCelebrationSparks(c.mesh.position, 10);
-            pushScorePopup(`+${addedCoins} 🪙`, 'text-amber-300', doubleTimer > 0 ? '2X COINS!' : undefined);
+
+            if (isOtherTrack) {
+              playCrossTrackCollectSound();
+              spawnCelebrationSparks(c.mesh.position, 16);
+              pushScorePopup(`🧲 OTHER TRACK COIN +${addedCoins} 🪙`, 'text-rose-300', 'Cross-Track Magnetic Pull!');
+            } else {
+              playCoinCollectSound();
+              spawnCelebrationSparks(c.mesh.position, 10);
+              pushScorePopup(`+${addedCoins} 🪙`, 'text-amber-300', doubleTimer > 0 ? '2X COINS!' : undefined);
+            }
           }
         }
 
@@ -3192,31 +3414,38 @@ function Coaster3DGameplay({
         for (let i = 0; i < powerUpItems.length; i++) {
           const p = powerUpItems[i];
           if (p.collected) continue;
-          const dist = p.mesh.position.distanceTo(coasterPos);
-          if (dist < (magnetTimer > 0 ? 5.5 : 3.1)) {
+
+          const toCart = cartTarget.clone().sub(p.mesh.position);
+          const dist = toCart.length();
+          if (isMagnetActive && dist < 24.0 && dist > 2.0) {
+            toCart.normalize();
+            p.mesh.position.addScaledVector(toCart, 25 * dt);
+          }
+
+          if (dist < (isMagnetActive ? 5.8 : 3.2)) {
             p.collected = true;
             p.mesh.visible = false;
             const bonusCoins = 3 * coinMultiplier;
             localCoins += bonusCoins;
             setCoinsCount(localCoins);
             playPowerUpSound(p.type);
-            spawnCelebrationSparks(p.mesh.position, 22);
+            spawnCelebrationSparks(p.mesh.position, 28);
 
             if (p.type === 'magnet') {
-              magnetTimer = 10.0;
-              pushScorePopup('🧲 MAGNET ACTIVE!', 'text-rose-300', `Pulls all coins +${bonusCoins} 🪙`);
+              magnetTimer = 11.0;
+              pushScorePopup('🧲 SUPER MAGNET ACTIVE!', 'text-rose-300', `Pulls all coins from BOTH tracks! +${bonusCoins} 🪙`);
             } else if (p.type === 'slow') {
-              slowTimer = 8.0;
-              pushScorePopup('⏳ SLOW-MO ACTIVE!', 'text-cyan-300', `Extra time to read +${bonusCoins} 🪙`);
+              slowTimer = 9.0;
+              pushScorePopup('⏳ SLOW-MO MATRIX!', 'text-cyan-300', `Time Dilation +${bonusCoins} 🪙`);
             } else if (p.type === 'boost') {
-              boostTimer = 6.0;
-              pushScorePopup('🚀 TURBO BOOST!', 'text-orange-300', `Auto-Pilot +${bonusCoins} 🪙`);
+              boostTimer = 7.0;
+              pushScorePopup('🚀 HYPER TURBO BOOST!', 'text-orange-300', `Warp Speed & Auto-Pilot +${bonusCoins} 🪙`);
             } else if (p.type === 'double') {
-              doubleTimer = 12.0;
-              pushScorePopup('⚡ 2X COINS!', 'text-purple-300', `Double Coins for 12s!`);
+              doubleTimer = 14.0;
+              pushScorePopup('⚡ 2X COINS ACTIVE!', 'text-purple-300', `Double Value for 14s!`);
             } else if (p.type === 'shield') {
               hasShield = true;
-              pushScorePopup('🛡️ SAFETY SHIELD!', 'text-emerald-300', `Saves you from 1 wrong rail!`);
+              pushScorePopup('🛡️ SAFETY FORCE SHIELD!', 'text-emerald-300', `Invulnerable to 1 wrong turn!`);
             }
             syncPowerUpsToUI();
           }
@@ -3251,11 +3480,12 @@ function Coaster3DGameplay({
             setGateSecondsLeft(Number(approxSecLeft.toFixed(1)));
 
             // If Turbo Boost is active near the fork and player hasn't locked correct side, auto-pilot!
-            if (boostTimer > 0 && remaining < 0.35 && steeringRef.current !== gate.correctSide) {
+            if (boostTimer > 0 && remaining < 0.48 && steeringRef.current !== gate.correctSide) {
               steeringRef.current = gate.correctSide;
               smoothSteerRef.current = gate.correctSide;
               setSteeringChoice(gate.correctSide);
               setSmoothSteerPct(50 + gate.correctSide * 38);
+              pushScorePopup('🚀 BOOST AUTO-PILOT!', 'text-amber-300', `Locked onto ${gate.correctAnswer}!`);
             }
           }
 
@@ -3264,17 +3494,27 @@ function Coaster3DGameplay({
             setActivePrompt(null);
             setGateSecondsLeft(null);
 
-            if (steeringRef.current === gate.correctSide) {
-              // CORRECT RAIL! Award bonus coins!
+            if (steeringRef.current === gate.correctSide || boostTimer > 0) {
+              // CORRECT RAIL OR TURBO OVERDRIVE!
+              if (steeringRef.current !== gate.correctSide) {
+                steeringRef.current = gate.correctSide;
+                smoothSteerRef.current = gate.correctSide;
+                setSteeringChoice(gate.correctSide);
+                setSmoothSteerPct(50 + gate.correctSide * 38);
+              }
               localStreak += 1;
               maxStreak = Math.max(maxStreak, localStreak);
-              const gateCoins = 5 * coinMultiplier;
+              const gateCoins = (5 + (boostTimer > 0 ? 5 : 0)) * coinMultiplier;
               localCoins += gateCoins;
               setCoinsCount(localCoins);
               setStreak(localStreak);
               playCorrectFanfare(localStreak);
               spawnCelebrationSparks(camera.position, 40);
-              pushScorePopup(`+${gateCoins} 🪙 GATE CLEAR!`, 'text-emerald-300', `${localStreak}x Streak 🔥`);
+              pushScorePopup(
+                `+${gateCoins} 🪙 GATE CLEAR!`,
+                'text-emerald-300',
+                boostTimer > 0 ? '🚀 TURBO OVERDRIVE BONUS!' : `${localStreak}x Streak 🔥`
+              );
               activeGateIdx++;
             } else if (hasShield) {
               // SHIELD SAVES PLAYER FROM WRONG TRACK!
@@ -3528,6 +3768,33 @@ function Coaster3DGameplay({
         }}
       />
 
+      {/* Turbo Boost Screen Speed Warp Vignette & Banner */}
+      {activePowerUps.boost > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300 border-4 border-orange-500/40 shadow-[inset_0_0_80px_rgba(249,115,22,0.38)]">
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-gradient-to-r from-orange-600 via-amber-500 to-orange-600 backdrop-blur-md border border-yellow-200/80 px-4 py-1.5 rounded-full text-slate-950 font-black text-xs sm:text-sm shadow-2xl flex items-center gap-2 animate-bounce">
+            <span>🚀</span>
+            <span className="tracking-wide">HYPER TURBO BOOST ENGAGED</span>
+            <span className="bg-slate-950/20 px-2 py-0.5 rounded-full text-[11px] font-mono text-white font-bold">Auto-Pilot Active</span>
+          </div>
+        </div>
+      )}
+
+      {/* Super Magnet Screen Aura & Cross-Track Banner */}
+      {activePowerUps.magnet > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300 border-4 border-rose-500/35 shadow-[inset_0_0_75px_rgba(244,63,94,0.32)]">
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-gradient-to-r from-rose-700 via-pink-600 to-rose-700 backdrop-blur-md border border-rose-300/80 px-4 py-1.5 rounded-full text-white font-black text-xs sm:text-sm shadow-2xl flex items-center gap-2 animate-pulse">
+            <span>🧲</span>
+            <span className="tracking-wide">SUPER MAGNET ACTIVE</span>
+            <span className="bg-black/30 px-2 py-0.5 rounded-full text-[11px] font-medium text-pink-200">Attracting Coins from ALL Tracks</span>
+          </div>
+        </div>
+      )}
+
+      {/* Slow-Mo Matrix Vignette */}
+      {activePowerUps.slow > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300 border-4 border-cyan-500/30 shadow-[inset_0_0_65px_rgba(6,182,212,0.25)]" />
+      )}
+
       {/* Top HUD Bar (Big Coins Counter, Hearts Lives Indicator, Countdown Timer & Gate Progress — No LIVE PTS or km/h) */}
       <header className="absolute top-0 left-0 right-0 z-40 flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 sm:px-5 pointer-events-none">
         <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
@@ -3610,34 +3877,39 @@ function Coaster3DGameplay({
           </div>
 
           {/* Active Power-Up Status Badges */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {activePowerUps.magnet > 0 && (
-              <div className="px-2.5 py-1 rounded-xl bg-rose-600/90 border border-rose-300 text-white text-xs font-black flex items-center gap-1 shadow-lg animate-pulse">
+              <div className="px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 border border-rose-300 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-rose-900/40 animate-pulse">
                 <span>🧲</span>
-                <span>{activePowerUps.magnet}s</span>
-              </div>
-            )}
-            {activePowerUps.slow > 0 && (
-              <div className="px-2.5 py-1 rounded-xl bg-cyan-600/90 border border-cyan-300 text-white text-xs font-black flex items-center gap-1 shadow-lg animate-pulse">
-                <span>⏳</span>
-                <span>{activePowerUps.slow}s</span>
+                <span className="hidden sm:inline tracking-wider">MAGNET</span>
+                <span className="bg-black/35 px-1.5 py-0.5 rounded-md font-mono text-[11px]">{activePowerUps.magnet}s</span>
               </div>
             )}
             {activePowerUps.boost > 0 && (
-              <div className="px-2.5 py-1 rounded-xl bg-orange-500/95 border border-yellow-300 text-slate-950 text-xs font-black flex items-center gap-1 shadow-lg animate-bounce">
+              <div className="px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 border border-yellow-200 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-orange-900/40 animate-bounce">
                 <span>🚀</span>
-                <span>{activePowerUps.boost}s</span>
+                <span className="hidden sm:inline tracking-wider">BOOST</span>
+                <span className="bg-slate-950/25 px-1.5 py-0.5 rounded-md font-mono text-[11px] text-white">{activePowerUps.boost}s</span>
+              </div>
+            )}
+            {activePowerUps.slow > 0 && (
+              <div className="px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-cyan-600 to-sky-600 border border-cyan-300 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-cyan-900/40 animate-pulse">
+                <span>⏳</span>
+                <span className="hidden sm:inline tracking-wider">SLOW-MO</span>
+                <span className="bg-black/35 px-1.5 py-0.5 rounded-md font-mono text-[11px]">{activePowerUps.slow}s</span>
               </div>
             )}
             {activePowerUps.double > 0 && (
-              <div className="px-2.5 py-1 rounded-xl bg-purple-600/90 border border-purple-300 text-white text-xs font-black flex items-center gap-1 shadow-lg animate-pulse">
-                <span>⚡ 2X</span>
-                <span>{activePowerUps.double}s</span>
+              <div className="px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 border border-purple-300 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-purple-900/40 animate-pulse">
+                <span>⚡</span>
+                <span className="hidden sm:inline tracking-wider">2X COINS</span>
+                <span className="bg-black/35 px-1.5 py-0.5 rounded-md font-mono text-[11px]">{activePowerUps.double}s</span>
               </div>
             )}
             {activePowerUps.shield && (
-              <div className="px-2.5 py-1 rounded-xl bg-emerald-600/90 border border-emerald-300 text-white text-xs font-black flex items-center gap-1 shadow-lg">
-                <span>🛡️ SHIELD</span>
+              <div className="px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 border border-emerald-300 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-900/40">
+                <span>🛡️</span>
+                <span className="tracking-wider">SHIELD</span>
               </div>
             )}
           </div>

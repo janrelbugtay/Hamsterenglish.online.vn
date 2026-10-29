@@ -50,10 +50,37 @@ export default function App() {
   const [googleAuthFeature, setGoogleAuthFeature] = useState<string>("Account Area");
   const [initialRoomCode, setInitialRoomCode] = useState<string>('');
   const [joinData, setJoinData] = useState<{code: string, nickname: string, gameType: string} | null>(null);
+  const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
+    try {
+      const cached = localStorage.getItem('publishedGames');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return {};
+  });
   const prevUserRef = useRef<any>(null);
   const { user, loading, isAuthenticating, authError, signInWithGoogle } = useAuth();
   
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
+
+  // Listen to publishedGames from settings/general
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'settings', 'general'),
+      (snap) => {
+        if (snap.exists()) {
+          const pub = snap.data().publishedGames || {};
+          setPublishedGames(pub);
+          try {
+            localStorage.setItem('publishedGames', JSON.stringify(pub));
+          } catch (e) {}
+        }
+      },
+      (err) => {
+        console.warn("Notice in App settings listener:", err?.message || err);
+      }
+    );
+    return () => unsub();
+  }, []);
 
   const openGoogleAuthModal = (feature: string = "Account Area") => {
     setGoogleAuthFeature(feature);
@@ -342,7 +369,7 @@ export default function App() {
       case "public-dashboard":
         return <PublicDashboard onViewChange={handleViewChange} />;
       case "games":
-        return <GamesLibrary onViewChange={handleViewChange} isAdmin={isAdmin} />;
+        return <GamesLibrary onViewChange={handleViewChange} isAdmin={isAdmin} publishedGames={publishedGames} />;
       case "leaderboard":
         // Fallback for demo purposes
         return (
