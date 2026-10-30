@@ -319,6 +319,11 @@ export function FlashcardsMatch({
   // Modals & UI Helpers
   const [showModeModal, setShowModeModal] = useState<boolean>(false);
   const [showPlayThemeModal, setShowPlayThemeModal] = useState<boolean>(false);
+  const [showPublishModal, setShowPublishModal] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [gameId, setGameId] = useState<string | null>(
+    initialGame?.id && !String(initialGame.id).startsWith('sample-') ? initialGame.id : null
+  );
   const [shuffleBeforeDeal, setShuffleBeforeDeal] = useState<boolean>(true);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState<boolean>(false);
   const [showHowToBulkModal, setShowHowToBulkModal] = useState<boolean>(false);
@@ -347,6 +352,9 @@ export function FlashcardsMatch({
   // Convert incoming initialGame
   useEffect(() => {
     if (initialGame) {
+      if (initialGame.id && !String(initialGame.id).startsWith('sample-')) {
+        setGameId(initialGame.id);
+      }
       const gTopic = initialGame.topic || initialGame.name || initialGame.title || 'Flashcards';
       setTopic(gTopic);
       if (initialGame.className || initialGame.classLevel) {
@@ -628,59 +636,177 @@ export function FlashcardsMatch({
     window.speechSynthesis.speak(u);
   };
 
-  // Save to Firebase
-  const saveDeck = async () => {
-    const valid = cards.filter(
-      (c) =>
-        (c.frontText && c.frontText.trim()) ||
-        (c.backText && c.backText.trim()) ||
-        c.frontMedia ||
-        c.backMedia
-    );
-    if (!user) {
-      showToast('Game ready to play! Log in to save to your cloud account.');
-      handleStartPlay();
+  // Save to Firebase with Publish / Private prompt
+  const handleSaveClick = () => {
+    const valid = cards.filter((c) => {
+      if (cardSides === 1) {
+        return Boolean(c.frontText?.trim() || c.frontMedia?.trim());
+      }
+      return Boolean(
+        c.frontText?.trim() ||
+        c.backText?.trim() ||
+        c.frontMedia?.trim() ||
+        c.backMedia?.trim()
+      );
+    });
+
+    if (valid.length === 0) {
+      showToast('⚠️ Please add at least one complete card before saving.');
       return;
     }
+
+    if (!user) {
+      showToast('⚠️ Please log in to save your game to your account.');
+      return;
+    }
+
+    setShowPublishModal(true);
+  };
+
+  const confirmSave = async (isPublic: boolean) => {
+    setShowPublishModal(false);
+    setIsSaving(true);
+
+    const valid = cards.filter((c) => {
+      if (cardSides === 1) {
+        return Boolean(c.frontText?.trim() || c.frontMedia?.trim());
+      }
+      return Boolean(
+        c.frontText?.trim() ||
+        c.backText?.trim() ||
+        c.frontMedia?.trim() ||
+        c.backMedia?.trim()
+      );
+    });
+
+    if (valid.length === 0) {
+      setIsSaving(false);
+      showToast('⚠️ Please add at least one card.');
+      return;
+    }
+
+    if (!user) {
+      setIsSaving(false);
+      showToast('⚠️ Please sign in to save your game to the cloud.');
+      return;
+    }
+
     try {
       const now = new Date().toISOString();
+      const isPublicBool = Boolean(isPublic);
+
+      // Build questions for full multi-mode compatibility (Bubble Pop, Roller Coaster, Shark Attack, etc.)
+      const optMode = contentMode === 'photo' ? 'photos_gifs' : contentMode === 'text' ? 'words' : 'both';
+      const formattedQuestions = valid.map((c, i) => {
+        const id = c.id || `q_${i + 1}`;
+        if (cardSides === 1) {
+          // 1-Side Card
+          const text = c.frontText?.trim() || topic || 'Flashcard';
+          const directImg = isDirectMediaUrl(c.frontMedia || '') ? c.frontMedia : undefined;
+
+          const correctOpt = formatOptionContent(
+            text,
+            directImg ? c.frontMedia : null,
+            optMode
+          );
+
+          const otherCards = valid.filter((_, idx) => idx !== i);
+          const distractors = otherCards.slice(0, 3).map((oc) => {
+            const ocImg = isDirectMediaUrl(oc.frontMedia || '') ? oc.frontMedia : null;
+            return formatOptionContent(
+              oc.frontText?.trim() || 'Option',
+              ocImg,
+              optMode
+            );
+          });
+
+          while (distractors.length < 1) {
+            distractors.push('Other Option');
+          }
+
+          return {
+            id,
+            text,
+            image: directImg,
+            options: [correctOpt, ...distractors],
+            answerIndex: 0,
+          };
+        } else {
+          // 2-Side Card
+          const promptText = c.frontText?.trim() || 'Question';
+          const promptImg = isDirectMediaUrl(c.frontMedia || '') ? c.frontMedia : undefined;
+
+          const answerText = c.backText?.trim() || promptText;
+          const answerImg = isDirectMediaUrl(c.backMedia || '') ? c.backMedia : null;
+          const correctOpt = formatOptionContent(
+            answerText,
+            answerImg,
+            optMode
+          );
+
+          const otherCards = valid.filter((_, idx) => idx !== i);
+          const distractors = otherCards.slice(0, 3).map((oc) => {
+            const ocAns = oc.backText?.trim() || oc.frontText?.trim() || 'Option';
+            const ocImg = isDirectMediaUrl(oc.backMedia || '') ? oc.backMedia : null;
+            return formatOptionContent(
+              ocAns,
+              ocImg,
+              optMode
+            );
+          });
+
+          while (distractors.length < 1) {
+            distractors.push('Other Option');
+          }
+
+          return {
+            id,
+            text: promptText,
+            image: promptImg,
+            options: [correctOpt, ...distractors],
+            answerIndex: 0,
+          };
+        }
+      });
+
       const payload: any = {
         name: topic || 'Flashcard Deck',
         title: topic || 'Flashcard Deck',
         topic: topic || '',
         className: classLevel || '',
+        classLevel: classLevel || '',
         folderId: folderId || '',
         gameType: 'flashcards-match',
         cardSides,
         contentMode,
         theme,
         cards: valid,
-        customQuestions: valid.map((c, i) => ({
-          id: c.id || i + 1,
-          text: c.frontText,
-          image: isDirectMediaUrl(c.frontMedia || '') ? c.frontMedia : undefined,
-          options: [
-            formatOptionContent(c.backText, isDirectMediaUrl(c.backMedia || '') ? c.backMedia : null),
-            'Sample Option B',
-          ],
-          answerIndex: 0,
-        })),
+        questions: formattedQuestions,
+        customQuestions: formattedQuestions,
+        isPublic: isPublicBool,
+        publishedAt: isPublicBool ? (initialGame?.publishedAt || now) : null,
         userId: user.uid,
         creatorName: user.displayName || user.email?.split('@')[0] || 'Teacher',
         creatorEmail: user.email || '',
         updatedAt: now,
       };
 
-      if (initialGame?.id && !String(initialGame.id).startsWith('sample-')) {
-        await updateDoc(doc(db, 'mysteryBoxGames', initialGame.id), payload);
+      const targetId = gameId || (initialGame?.id && !String(initialGame.id).startsWith('sample-') ? initialGame.id : null);
+
+      if (targetId) {
+        await updateDoc(doc(db, 'mysteryBoxGames', targetId), payload);
+        showToast(isPublicBool ? '🚀 Published flashcards to Community!' : '🔒 Saved private flashcard deck!');
       } else {
         payload.createdAt = now;
-        await addDoc(collection(db, 'mysteryBoxGames'), payload);
+        const docRef = await addDoc(collection(db, 'mysteryBoxGames'), payload);
+        setGameId(docRef.id);
+        showToast(isPublicBool ? '🚀 Published flashcards to Community!' : '🔒 Saved private flashcard deck!');
       }
-      showToast('✨ Saved flashcards to your library!');
     } catch (err: any) {
-      console.warn('Could not save deck:', err);
-      showToast('Saved locally!');
+      console.error('Could not save flashcard deck:', err);
+      showToast('⚠️ Could not save deck to cloud. Check network or log in again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -964,11 +1090,12 @@ export function FlashcardsMatch({
                       <span>Switch Mode</span>
                     </button>
                     <button
-                      onClick={saveDeck}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm"
+                      onClick={handleSaveClick}
+                      disabled={isSaving}
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm disabled:opacity-60"
                     >
                       <Save size={18} />
-                      <span>Save Quiz</span>
+                      <span>{isSaving ? 'Saving...' : 'Save Quiz'}</span>
                     </button>
                     <button
                       onClick={handlePlayButtonClick}
@@ -2237,15 +2364,62 @@ export function FlashcardsMatch({
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 7: GAME MODE SWITCHER MODAL                         */}
+      {/* MODAL 7: PUBLISH CONFIRMATION MODAL (COMMUNITY / PRIVATE) */}
+      {/* ========================================================= */}
+      {showPublishModal && (
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setShowPublishModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md p-8 shadow-2xl border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transform scale-100 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-2xl bg-blue-500/10 dark:bg-blue-950/40 text-blue-500 dark:text-blue-400 flex items-center justify-center mb-4">
+              <BookOpen size={32} />
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Publish Game?</h3>
+            <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium text-sm leading-relaxed">
+              Would you like to publish this flashcard deck to the Community so other teachers can discover and use it?
+            </p>
+            <div className="flex flex-col gap-3 w-full">
+              <button
+                onClick={() => confirmSave(true)}
+                disabled={isSaving}
+                className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer text-base flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <span>Yes, Publish (Public)</span>
+              </button>
+              <button
+                onClick={() => confirmSave(false)}
+                disabled={isSaving}
+                className="w-full py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer text-base disabled:opacity-50"
+              >
+                <span>No, Keep Private</span>
+              </button>
+              <button
+                onClick={() => setShowPublishModal(false)}
+                disabled={isSaving}
+                className="w-full py-2 mt-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold text-sm transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 8: GAME MODE SWITCHER MODAL                         */}
       {/* ========================================================= */}
       <GameModeModal
         isOpen={showModeModal}
         gameData={{
-          id: initialGame?.id,
+          id: gameId || initialGame?.id,
           name: topic,
           topic: topic,
           className: classLevel,
+          classLevel: classLevel,
           gameType: 'flashcards-match',
           customQuestions: cards.map((c, i) => ({
             id: c.id || i + 1,

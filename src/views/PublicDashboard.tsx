@@ -3,9 +3,173 @@ import { collection, query, where, getDocs, onSnapshot, doc, getDoc } from "fire
 import { db } from "../lib/firebase";
 import { ViewState } from "../types";
 import { GameThumbnail } from "../components/GameThumbnail";
-import { Gamepad2, Play, Search, Users, Filter, Sparkles, RefreshCw, UserCheck, Flame, Layers } from "lucide-react";
+import { 
+  Gamepad2, 
+  Play, 
+  Search, 
+  Users, 
+  Filter, 
+  Sparkles, 
+  RefreshCw, 
+  UserCheck, 
+  Flame, 
+  GraduationCap, 
+  ArrowUpDown, 
+  X,
+  Award
+} from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
+
+export type CambridgeType = 'Starters' | 'Movers' | 'Flyers' | 'KET' | 'PET' | 'IELTS';
+export type GradeType = 
+  | 'Grade 1' | 'Grade 2' | 'Grade 3' | 'Grade 4' 
+  | 'Grade 5' | 'Grade 6' | 'Grade 7' | 'Grade 8' 
+  | 'Grade 9' | 'Grade 10' | 'Grade 11' | 'Grade 12';
+
+export const CAMBRIDGE_COURSES: { id: CambridgeType; label: string; badgeClass: string }[] = [
+  { id: 'Starters', label: 'Starters', badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' },
+  { id: 'Movers', label: 'Movers', badgeClass: 'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border-sky-300 dark:border-sky-700' },
+  { id: 'Flyers', label: 'Flyers', badgeClass: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' },
+  { id: 'KET', label: 'KET', badgeClass: 'bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border-purple-300 dark:border-purple-700' },
+  { id: 'PET', label: 'PET', badgeClass: 'bg-pink-50 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300 border-pink-300 dark:border-pink-700' },
+  { id: 'IELTS', label: 'IELTS', badgeClass: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border-rose-300 dark:border-rose-700' },
+];
+
+export const ALL_GRADES: GradeType[] = [
+  'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4',
+  'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8',
+  'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'
+];
+
+export type SortMode = 
+  | 'latest'
+  | 'grade-asc'
+  | 'cambridge-asc'
+  | 'questions-desc'
+  | 'title-asc'
+  | 'oldest';
+
+/**
+ * Accurately extracts school grade number (1 to 12) from game metadata.
+ * NOTE: Lesson units (e.g. "Unit 2") are lessons, NOT grades.
+ */
+export function extractGradeNumber(game: any): number | null {
+  if (!game) return null;
+  const classText = `${game.classLevel || ''} ${game.className || ''}`.trim();
+  const titleText = `${game.topic || ''} ${game.name || ''} ${game.title || ''}`.trim();
+
+  // 1. Direct match on classLevel / className: e.g. "Grade 9", "Gr 9", "9", "Class 9", "Lớp 9"
+  if (/^0?([1-9]|1[0-2])$/.test(classText)) {
+    return parseInt(classText, 10);
+  }
+
+  const classGradeMatch = classText.match(/\b(?:grade|gr\.?|class|lớp|lop|g)\s*0?([1-9]|1[0-2])\b/i);
+  if (classGradeMatch) {
+    return parseInt(classGradeMatch[1], 10);
+  }
+
+  // 2. Explicit Grade in title/topic: e.g. "Grade 9", "Gr 9", "Class 9", "Lớp 9"
+  const titleGradeMatch = titleText.match(/\b(?:grade|gr\.?|class|lớp|lop)\s*0?([1-9]|1[0-2])\b/i);
+  if (titleGradeMatch) {
+    return parseInt(titleGradeMatch[1], 10);
+  }
+
+  // 3. Curriculum textbook series + Grade number in title:
+  // e.g. "Global Success 9 Unit 2" -> Grade 9! (Never matches Unit 2 as a grade)
+  const curriculumMatch = titleText.match(
+    /\b(?:global\s*success|gs|tiếng\s*anh|english|smart\s*start|smart\s*world|family\s*and\s*friends|friends\s*plus|i-?learn(?:\s*smart\s*(?:start|world))?|explore\s*(?:english|our\s*world)?|bright)\s*0?([1-9]|1[0-2])\b/i
+  );
+  if (curriculumMatch) {
+    return parseInt(curriculumMatch[1], 10);
+  }
+
+  return null;
+}
+
+/**
+ * Extracts Cambridge course (Starters, Movers, Flyers, KET, PET, IELTS).
+ */
+export function extractCambridgeCourse(game: any): CambridgeType | null {
+  if (!game) return null;
+  const classText = `${game.classLevel || ''} ${game.className || ''}`.toLowerCase();
+  const titleText = `${game.topic || ''} ${game.name || ''} ${game.title || ''}`.toLowerCase();
+  const combined = `${classText} ${titleText}`;
+
+  if (/\bielts\b/i.test(combined)) return 'IELTS';
+  if (/\b(?:pet\b|b1\s*preliminary\b|preliminary\s*english)/i.test(combined)) return 'PET';
+  if (/\b(?:ket\b|a2\s*key\b|key\s*english)/i.test(combined)) return 'KET';
+  if (/\b(?:flyers?|yle\s*flyers?|a2\s*flyers?)\b/i.test(combined)) return 'Flyers';
+  if (/\b(?:movers?|yle\s*movers?|a1\s*movers?)\b/i.test(combined)) return 'Movers';
+  if (/\b(?:starters?|yle\s*starters?|pre-?a1)\b/i.test(combined)) return 'Starters';
+
+  return null;
+}
+
+export function matchGameGrade(game: any, gradeNumber: number): boolean {
+  return extractGradeNumber(game) === gradeNumber;
+}
+
+export function matchGameCambridge(game: any, course: CambridgeType): boolean {
+  return extractCambridgeCourse(game) === course;
+}
+
+export function getGameCambridgeRank(game: any): number {
+  const course = extractCambridgeCourse(game);
+  if (course === 'Starters') return 1;
+  if (course === 'Movers') return 2;
+  if (course === 'Flyers') return 3;
+  if (course === 'KET') return 4;
+  if (course === 'PET') return 5;
+  if (course === 'IELTS') return 6;
+  return 999;
+}
+
+export function getGameQuestionCount(game: any): number {
+  return (
+    game.customQuestions?.length ||
+    game.questions?.length ||
+    game.customSentences?.length ||
+    game.sentences?.length ||
+    0
+  );
+}
+
+export function getGameDisplayBadge(game: any) {
+  const raw = (game.classLevel || game.className || '').trim();
+
+  // 1. Check Cambridge course
+  const cambridge = extractCambridgeCourse(game);
+  if (cambridge) {
+    const info = CAMBRIDGE_COURSES.find(c => c.id === cambridge);
+    return {
+      label: cambridge,
+      badgeClass: info?.badgeClass || 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700',
+      type: 'cambridge' as const,
+    };
+  }
+
+  // 2. Check Grade 1 to 12
+  const gradeNum = extractGradeNumber(game);
+  if (gradeNum !== null && gradeNum >= 1 && gradeNum <= 12) {
+    return {
+      label: `Grade ${gradeNum}`,
+      badgeClass: 'bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-700',
+      type: 'grade' as const,
+    };
+  }
+
+  // 3. Fallback to raw non-empty classLevel
+  if (raw) {
+    return {
+      label: raw,
+      badgeClass: 'bg-brand-yellow/20 text-yellow-800 dark:text-yellow-500 border-yellow-300/40',
+      type: 'other' as const,
+    };
+  }
+
+  return null;
+}
 
 export function PublicDashboard({
   onViewChange,
@@ -19,7 +183,8 @@ export function PublicDashboard({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<'newest' | 'variety'>('newest');
+  const [selectedLevel, setSelectedLevel] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<SortMode>('latest');
   const [onlyMyGames, setOnlyMyGames] = useState(false);
   const [modeModalGame, setModeModalGame] = useState<any | null>(null);
 
@@ -39,7 +204,7 @@ export function PublicDashboard({
     return getTime(g.publishedAt) || getTime(g.updatedAt) || getTime(g.createdAt) || 0;
   };
 
-  // Helper to fetch and merge all public games (including both boolean true, string 'true', and user's own published games)
+  // Helper to fetch and merge all public games
   const fetchAllPublicGames = async () => {
     try {
       const gamesMap = new Map<string, any>();
@@ -58,7 +223,7 @@ export function PublicDashboard({
         console.warn("Public games boolean query notice:", e);
       }
 
-      // 2. Secondary query: string isPublic == "true" (wrapped safely in case of rule restrictions)
+      // 2. Secondary query: string isPublic == "true"
       try {
         const qStr = query(
           collection(db, "mysteryBoxGames"),
@@ -69,10 +234,10 @@ export function PublicDashboard({
           gamesMap.set(doc.id, { id: doc.id, ...doc.data() });
         });
       } catch (e) {
-        // String query might be rejected by rules if rules strictly require boolean for unauthenticated visitors
+        // String query fallback
       }
 
-      // 3. User's own published games guarantee: if logged in, ensure all user's published games are present
+      // 3. User's own published games guarantee
       if (user && user.uid) {
         try {
           const qUser = query(
@@ -102,7 +267,7 @@ export function PublicDashboard({
     }
   };
 
-  // Setup real-time listener for public games so newly published games appear instantly!
+  // Setup real-time listener for public games
   useEffect(() => {
     setLoading(true);
     fetchAllPublicGames();
@@ -116,7 +281,6 @@ export function PublicDashboard({
       unsubscribe = onSnapshot(qLive, (snapshot) => {
         setGames((prev) => {
           const map = new Map<string, any>();
-          // keep previous user games that might have been merged
           prev.forEach((g) => map.set(g.id, g));
           snapshot.forEach((doc) => {
             map.set(doc.id, { id: doc.id, ...doc.data() });
@@ -125,7 +289,7 @@ export function PublicDashboard({
         });
         setLoading(false);
       }, (err) => {
-        console.warn("Realtime listener notice (falling back to manual polling):", err);
+        console.warn("Realtime listener notice:", err);
       });
     } catch (e) {
       console.warn("Failed to attach snapshot listener:", e);
@@ -136,7 +300,7 @@ export function PublicDashboard({
     };
   }, [user]);
 
-  // Listen to platform users count (pageVisits in settings/general)
+  // Listen to platform users count
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) {
@@ -227,7 +391,7 @@ export function PublicDashboard({
     }
 
     if (typeof game === 'object') {
-      const title = (game.name || game.title || game.topic || '').toLowerCase();
+      const title = (game.topic || game.name || game.title || '').toLowerCase();
       if (title.includes('bubble pop') || title.includes('shark') || title.includes('sumo') || title.includes('yoga') || title.includes('mystery box') || title.includes('family feud')) {
         return true;
       }
@@ -252,53 +416,7 @@ export function PublicDashboard({
     return allGameTemplates.find(t => t.id === templateId || t.id === normalized) || { title: "Custom Game", color: "text-slate-600", icon: "" };
   };
 
-  // Process sorting & filtering
-  const processedGames = useMemo(() => {
-    // 1. Sort games by latest timestamp (publishedAt || updatedAt || createdAt)
-    const sorted = [...games].sort((a, b) => getGameTime(b) - getGameTime(a));
-
-    if (sortBy === 'variety') {
-      // Interleave by gameType to show variety
-      const grouped = sorted.reduce((acc, game) => {
-        const type = normalizeGameType(game.gameType) || 'unknown';
-        if (!acc[type]) acc[type] = [];
-        acc[type].push(game);
-        return acc;
-      }, {} as Record<string, any[]>);
-
-      const interleaved: any[] = [];
-      let added = true;
-      while (added) {
-        added = false;
-        for (const type in grouped) {
-          if (grouped[type].length > 0) {
-            interleaved.push(grouped[type].shift());
-            added = true;
-          }
-        }
-      }
-      return interleaved;
-    }
-
-    // Default newest order: freshly published games are at the very top!
-    return sorted;
-  }, [games, sortBy]);
-
-  const filteredGames = useMemo(() => {
-    return processedGames.filter((game) => {
-      const titleStr = (game.topic || game.name || game.title || "").toLowerCase();
-      const creatorStr = (game.creatorName || "").toLowerCase();
-      const classStr = (game.className || game.classLevel || "").toLowerCase();
-      const q = searchTerm.toLowerCase().trim();
-
-      const matchesSearch = !q || titleStr.includes(q) || creatorStr.includes(q) || classStr.includes(q);
-      const matchesType = filterType === "all" || normalizeGameType(game.gameType) === normalizeGameType(filterType);
-      const matchesMyGames = !onlyMyGames || (user && game.userId === user.uid);
-
-      return matchesSearch && matchesType && matchesMyGames;
-    });
-  }, [processedGames, searchTerm, filterType, onlyMyGames, user]);
-
+  // Available game types for select dropdown
   const availableTypes = useMemo(() => {
     const types = new Set<string>();
     games.forEach((g) => {
@@ -312,7 +430,86 @@ export function PublicDashboard({
     return games.filter((g) => g.userId === user.uid).length;
   }, [games, user]);
 
-  // Is a game freshly published (within last 48 hours)?
+  // Filtered games
+  const filteredGames = useMemo(() => {
+    return games.filter((game) => {
+      const titleStr = (game.topic || game.name || game.title || "").toLowerCase();
+      const creatorStr = (game.creatorName || "").toLowerCase();
+      const classStr = (game.className || game.classLevel || "").toLowerCase();
+      const q = searchTerm.toLowerCase().trim();
+
+      const matchesSearch = !q || titleStr.includes(q) || creatorStr.includes(q) || classStr.includes(q);
+      const matchesType = filterType === "all" || normalizeGameType(game.gameType) === normalizeGameType(filterType);
+      const matchesMyGames = !onlyMyGames || (user && game.userId === user.uid);
+
+      let matchesLevel = true;
+      if (selectedLevel !== 'all') {
+        if (selectedLevel.startsWith('Grade ')) {
+          const gradeNum = parseInt(selectedLevel.replace('Grade ', ''), 10);
+          matchesLevel = matchGameGrade(game, gradeNum);
+        } else {
+          matchesLevel = matchGameCambridge(game, selectedLevel as CambridgeType);
+        }
+      }
+
+      return matchesSearch && matchesType && matchesMyGames && matchesLevel;
+    });
+  }, [games, searchTerm, filterType, onlyMyGames, selectedLevel, user]);
+
+  // Sorted games
+  const sortedGames = useMemo(() => {
+    const list = [...filteredGames];
+
+    switch (sortBy) {
+      case 'latest':
+        return list.sort((a, b) => getGameTime(b) - getGameTime(a));
+
+      case 'grade-asc':
+        return list.sort((a, b) => {
+          const ga = extractGradeNumber(a) ?? 999;
+          const gb = extractGradeNumber(b) ?? 999;
+          if (ga !== gb) return ga - gb;
+          const ca = getGameCambridgeRank(a);
+          const cb = getGameCambridgeRank(b);
+          if (ca !== cb) return ca - cb;
+          return getGameTime(b) - getGameTime(a);
+        });
+
+      case 'cambridge-asc':
+        return list.sort((a, b) => {
+          const ca = getGameCambridgeRank(a);
+          const cb = getGameCambridgeRank(b);
+          if (ca !== cb) return ca - cb;
+          const ga = extractGradeNumber(a) ?? 999;
+          const gb = extractGradeNumber(b) ?? 999;
+          if (ga !== gb) return ga - gb;
+          return getGameTime(b) - getGameTime(a);
+        });
+
+      case 'questions-desc':
+        return list.sort((a, b) => {
+          const qa = getGameQuestionCount(a);
+          const qb = getGameQuestionCount(b);
+          if (qa !== qb) return qb - qa;
+          return getGameTime(b) - getGameTime(a);
+        });
+
+      case 'title-asc':
+        return list.sort((a, b) => {
+          const ta = (a.topic || a.name || a.title || "").toLowerCase();
+          const tb = (b.topic || b.name || b.title || "").toLowerCase();
+          return ta.localeCompare(tb);
+        });
+
+      case 'oldest':
+        return list.sort((a, b) => getGameTime(a) - getGameTime(b));
+
+      default:
+        return list.sort((a, b) => getGameTime(b) - getGameTime(a));
+    }
+  }, [filteredGames, sortBy]);
+
+  // Freshly published (within last 48 hours)?
   const isRecentGame = (game: any) => {
     const time = getGameTime(game);
     if (!time) return false;
@@ -320,9 +517,18 @@ export function PublicDashboard({
     return time > fortyEightHoursAgo;
   };
 
+  const hasActiveFilters = Boolean(searchTerm || filterType !== 'all' || selectedLevel !== 'all' || onlyMyGames);
+
+  const clearAllFilters = () => {
+    setSearchTerm("");
+    setFilterType("all");
+    setSelectedLevel("all");
+    setOnlyMyGames(false);
+  };
+
   return (
     <div className="max-w-6xl mx-auto py-8 px-4 flex flex-col gap-8">
-      {/* Header */}
+      {/* Header Banner */}
       <div className="bg-gradient-to-br from-brand-purple to-indigo-600 p-8 rounded-[32px] shadow-lg text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-brand-yellow/20 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2"></div>
@@ -373,70 +579,148 @@ export function PublicDashboard({
         </div>
       </div>
 
-      {/* Filters and Controls */}
+      {/* Filter and Sort Control Center */}
       <div className="flex flex-col gap-4 bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
-        <div className="flex flex-col md:flex-row gap-4 items-center">
-          <div className="relative w-full md:flex-1">
+        {/* Row 1: Search & Dropdowns */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+          <div className="relative md:col-span-6">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input
               type="text"
               placeholder="Search topics, game titles, class levels, or creators..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-purple/50 focus:border-brand-purple transition-all font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+              className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-purple/50 focus:border-brand-purple transition-all font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 text-sm"
             />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
           
-          <div className="relative w-full md:w-64 shrink-0 flex items-center">
-            <Filter className="absolute left-4 text-slate-400" size={18} />
+          <div className="relative md:col-span-3">
+            <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={17} />
             <select 
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="w-full pl-11 pr-10 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-purple/50 appearance-none font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+              className="w-full pl-10 pr-8 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-purple/50 appearance-none font-semibold text-slate-700 dark:text-slate-200 cursor-pointer text-sm"
             >
               <option value="all">All Game Types</option>
               {availableTypes.map(type => {
                 const info = getTemplateInfo(type);
-                return <option key={type} value={type}>{info.title}</option>
+                return <option key={type} value={type}>{info.title}</option>;
               })}
+            </select>
+          </div>
+
+          <div className="relative md:col-span-3">
+            <GraduationCap className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={17} />
+            <select
+              value={selectedLevel}
+              onChange={(e) => setSelectedLevel(e.target.value)}
+              className="w-full pl-10 pr-8 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-purple/50 appearance-none font-semibold text-slate-700 dark:text-slate-200 cursor-pointer text-sm"
+            >
+              <option value="all">All Grades & Courses</option>
+              <optgroup label="Cambridge Courses">
+                {CAMBRIDGE_COURSES.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="School Grades">
+                {ALL_GRADES.map(g => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
         </div>
 
-        {/* View toggles: Newest First vs Variety Mix & My Games Filter */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-xs uppercase tracking-wider text-slate-400 mr-1">Sort:</span>
+        {/* Row 2: Sort Actions Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-extrabold text-xs uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+              <ArrowUpDown size={13} /> Sort:
+            </span>
+            
+            {/* Latest Published */}
             <button
-              onClick={() => setSortBy('newest')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-                sortBy === 'newest'
-                  ? 'bg-brand-purple text-white shadow-sm shadow-purple-500/20'
+              onClick={() => setSortBy('latest')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs md:text-sm shadow-sm ${
+                sortBy === 'latest'
+                  ? 'bg-brand-purple text-white shadow-purple-500/25 ring-2 ring-brand-purple/30'
                   : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
               }`}
             >
-              <Flame size={15} className={sortBy === 'newest' ? 'text-amber-300' : ''} />
+              <Flame size={15} className={sortBy === 'latest' ? 'text-amber-300 fill-amber-300' : 'text-slate-400'} />
               <span>Latest Published</span>
             </button>
 
+            {/* Sort by Grade 1 to 12 */}
             <button
-              onClick={() => setSortBy('variety')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-                sortBy === 'variety'
-                  ? 'bg-brand-purple text-white shadow-sm shadow-purple-500/20'
+              onClick={() => setSortBy('grade-asc')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs md:text-sm shadow-sm ${
+                sortBy === 'grade-asc'
+                  ? 'bg-amber-600 text-white shadow-amber-500/25 ring-2 ring-amber-500/30'
                   : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
               }`}
             >
-              <Layers size={15} />
-              <span>Variety Mix</span>
+              <GraduationCap size={15} className={sortBy === 'grade-asc' ? 'text-amber-200' : 'text-slate-400'} />
+              <span>Grade 1 → 12</span>
             </button>
+
+            {/* Sort by Cambridge Course */}
+            <button
+              onClick={() => setSortBy('cambridge-asc')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs md:text-sm shadow-sm ${
+                sortBy === 'cambridge-asc'
+                  ? 'bg-indigo-600 text-white shadow-indigo-500/25 ring-2 ring-indigo-500/30'
+                  : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <Award size={15} className={sortBy === 'cambridge-asc' ? 'text-indigo-200' : 'text-slate-400'} />
+              <span>Cambridge (Starters → IELTS)</span>
+            </button>
+
+            {/* Additional sorting options dropdown */}
+            <div className="relative inline-flex items-center">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortMode)}
+                className="pl-2.5 pr-6 py-1.5 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl font-semibold text-xs text-slate-700 dark:text-slate-200 cursor-pointer appearance-none outline-none border border-slate-200/50 dark:border-slate-600"
+              >
+                <option value="latest">Sort: Latest Published</option>
+                <option value="grade-asc">Sort: Grade (1 to 12)</option>
+                <option value="cambridge-asc">Sort: Cambridge (Starters to IELTS)</option>
+                <option value="questions-desc">Sort: Most Questions</option>
+                <option value="title-asc">Sort: Title (A - Z)</option>
+                <option value="oldest">Sort: Oldest Published</option>
+              </select>
+            </div>
           </div>
 
-          {user && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {hasActiveFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition cursor-pointer"
+              >
+                <X size={14} />
+                <span>Reset Filters</span>
+              </button>
+            )}
+
+            {user && (
               <button
                 onClick={() => setOnlyMyGames(!onlyMyGames)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs md:text-sm ${
                   onlyMyGames
                     ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
                     : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-100'
@@ -445,8 +729,89 @@ export function PublicDashboard({
                 <UserCheck size={15} />
                 <span>My Published Games ({myGamesCount})</span>
               </button>
-            </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 3: Quick Filter Pills - Cambridge & School Grades without numbers */}
+        <div className="flex flex-col gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-700/60">
+          {/* Cambridge Course Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-500 dark:text-indigo-400 shrink-0 flex items-center gap-1 min-w-[76px]">
+              <Award size={13} /> Cambridge:
+            </span>
+            <button
+              onClick={() => setSelectedLevel('all')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 ${
+                selectedLevel === 'all'
+                  ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              All
+            </button>
+            {CAMBRIDGE_COURSES.map((c) => {
+              const isSelected = selectedLevel === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedLevel(isSelected ? 'all' : c.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 border ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-indigo-50/70 hover:bg-indigo-100/80 dark:bg-indigo-950/30 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-800/40'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* School Grade Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 shrink-0 flex items-center gap-1 min-w-[76px]">
+              <GraduationCap size={13} /> Grades:
+            </span>
+            {ALL_GRADES.map((grade) => {
+              const isSelected = selectedLevel === grade;
+              return (
+                <button
+                  key={grade}
+                  onClick={() => setSelectedLevel(isSelected ? 'all' : grade)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 border ${
+                    isSelected
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                      : 'bg-amber-50/70 hover:bg-amber-100/80 dark:bg-amber-950/30 dark:hover:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/40'
+                  }`}
+                >
+                  {grade}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Results Header Info */}
+      <div className="flex items-center justify-between text-xs sm:text-sm text-slate-500 dark:text-slate-400 px-1 font-semibold">
+        <div>
+          Showing <span className="font-bold text-slate-800 dark:text-slate-100">{sortedGames.length}</span> {sortedGames.length === 1 ? 'game' : 'games'}
+          {selectedLevel !== 'all' && (
+            <span> in <span className="text-brand-purple font-bold">{selectedLevel}</span></span>
           )}
+          {filterType !== 'all' && (
+            <span> · {getTemplateInfo(filterType).title}</span>
+          )}
+        </div>
+        <div className="text-slate-400">
+          Sorted by: <span className="text-slate-700 dark:text-slate-200 font-bold capitalize">
+            {sortBy === 'latest' ? 'Latest Published' :
+             sortBy === 'grade-asc' ? 'Grade (1 to 12)' :
+             sortBy === 'cambridge-asc' ? 'Cambridge (Starters to IELTS)' :
+             sortBy === 'questions-desc' ? 'Most Questions' :
+             sortBy === 'title-asc' ? 'Title (A - Z)' : 'Oldest'}
+          </span>
         </div>
       </div>
 
@@ -456,7 +821,7 @@ export function PublicDashboard({
           <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-brand-purple"></div>
           <p className="mt-4 text-slate-500 font-semibold">Loading community games...</p>
         </div>
-      ) : filteredGames.length === 0 ? (
+      ) : sortedGames.length === 0 ? (
         <div className="bg-white dark:bg-slate-800 rounded-[28px] p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700">
           <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-6">
             <Search className="w-10 h-10 text-slate-400" />
@@ -465,24 +830,27 @@ export function PublicDashboard({
           <p className="text-slate-500 max-w-md mx-auto mb-6">
             {onlyMyGames 
               ? "You haven't published any games to the Community yet. Go to 'My Games' and toggle 'Publish to Community' to share your work!"
+              : selectedLevel !== 'all'
+              ? `No games found matching ${selectedLevel}. Try switching to another grade, Cambridge course, or clear filters.`
               : "Try adjusting your search terms or filters to find what you're looking for."}
           </p>
-          {onlyMyGames && (
+          {hasActiveFilters && (
             <button
-              onClick={() => onViewChange("games")}
+              onClick={clearAllFilters}
               className="px-6 py-2.5 bg-brand-purple text-white font-bold rounded-xl hover:bg-purple-700 transition cursor-pointer"
             >
-              Open My Games
+              Show All Community Games
             </button>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredGames.map((game) => {
+          {sortedGames.map((game) => {
             const info = getTemplateInfo(game.gameType);
             const isMultiModeCompatible = isInterchangeableGame(game);
             const isOwner = Boolean(user && game.userId === user.uid);
             const isFresh = isRecentGame(game);
+            const badge = getGameDisplayBadge(game);
 
             return (
               <div
@@ -528,9 +896,11 @@ export function PublicDashboard({
                       <h3 className="font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100 line-clamp-1" title={game.topic || game.name || game.title}>
                         {game.topic || game.name || game.title || "Untitled Game"}
                       </h3>
-                      {(game.classLevel || game.className) && (
-                        <span className="px-2 py-0.5 bg-brand-yellow/20 text-yellow-800 dark:text-yellow-500 rounded-md text-xs font-bold whitespace-nowrap shrink-0">
-                          {game.classLevel || game.className}
+                      {badge && (
+                        <span 
+                          className={`px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 border ${badge.badgeClass}`}
+                        >
+                          {badge.label}
                         </span>
                       )}
                     </div>
@@ -556,7 +926,7 @@ export function PublicDashboard({
         </div>
       )}
 
-      {/* 3-Game Mode Selection Modal */}
+      {/* Game Mode Selection Modal */}
       <GameModeModal 
         isOpen={Boolean(modeModalGame)}
         gameData={modeModalGame}
