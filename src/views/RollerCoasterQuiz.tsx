@@ -125,12 +125,12 @@ export function RollerCoasterQuiz({
 
   // Setup & Ride Configuration State
   const [riderName, setRiderName] = useState('Captain Hammy');
-  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1); // 0.7 = Slow, 1 = Normal, 1.45 = Fast
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1); // 0.7 = Easy, 1 = Medium, 1.45 = Hard
   const [timerMinutes, setTimerMinutes] = useState<number>(3); // 1 to 10 minutes countdown timer
   const [initialLives, setInitialLives] = useState<number>(3); // 1 to 5 heart lives for revive
   const [parkTheme, setParkTheme] = useState<'sunny' | 'sunset' | 'neon'>('sunny');
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
-  const [cameraLeanEnabled, setCameraLeanEnabled] = useState<boolean>(false);
+  const [cameraLeanEnabled, setCameraLeanEnabled] = useState<boolean>(true); // Webcam Always-On Mode by default
   const [cameraMode, setCameraMode] = useState<'group' | 'solo'>('group');
   const [studyIndex, setStudyIndex] = useState<number>(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
@@ -479,27 +479,34 @@ export function RollerCoasterQuiz({
                       </div>
                     </div>
 
-                    {/* 3. Difficulty Level (Slow to Fast) */}
-                    <div className="flex flex-wrap justify-between items-center gap-2 text-white pb-3 border-b border-white/10">
+                    {/* 3. Difficulty Level (Easy, Medium, Hard) */}
+                    <div className="flex flex-col gap-2 text-white pb-3 border-b border-white/10">
                       <span className="font-bold flex items-center gap-2 text-sm sm:text-base">
-                        <Gauge size={18} className="text-amber-400" /> Difficulty (Slow to Fast)
+                        <Gauge size={18} className="text-amber-400" /> Difficulty (Speed &amp; Track Obstacles)
                       </span>
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         {[
-                          { label: 'Slow', val: 0.7 },
-                          { label: 'Normal', val: 1 },
-                          { label: 'Fast', val: 1.45 },
+                          { label: 'Easy', sub: 'Slow · Few Obstacles', val: 0.7 },
+                          { label: 'Medium', sub: 'Bit Fast · Obstacles', val: 1 },
+                          { label: 'Hard', sub: 'Fast · Many Obstacles', val: 1.45 },
                         ].map((s) => (
                           <button
                             key={s.label}
                             onClick={() => setSpeedMultiplier(s.val)}
-                            className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black transition-all cursor-pointer ${
+                            className={`px-3 py-2 rounded-2xl text-center transition-all cursor-pointer border ${
                               speedMultiplier === s.val
-                                ? 'bg-amber-400 text-slate-950 shadow-[0_0_15px_rgba(251,191,36,0.6)] scale-105'
-                                : 'bg-white/15 text-white hover:bg-white/25'
+                                ? 'bg-amber-400 text-slate-950 border-white shadow-[0_0_15px_rgba(251,191,36,0.6)] scale-[1.03]'
+                                : 'bg-white/15 text-white border-white/15 hover:bg-white/25'
                             }`}
                           >
-                            {s.label}
+                            <div className="text-xs sm:text-sm font-black">{s.label}</div>
+                            <div
+                              className={`text-[10px] font-bold leading-tight mt-0.5 ${
+                                speedMultiplier === s.val ? 'text-slate-900' : 'text-white/75'
+                              }`}
+                            >
+                              {s.sub}
+                            </div>
                           </button>
                         ))}
                       </div>
@@ -534,19 +541,24 @@ export function RollerCoasterQuiz({
                       </div>
                     </div>
 
-                    {/* 5. Optional Webcam Head-Tilt Steering */}
+                    {/* 5. Webcam Always-On Mode (Lean Left/Right & Jump for Power-Ups) */}
                     <div className="text-white space-y-2">
                       <div className="flex justify-between items-center">
                         <div>
-                          <span className="font-bold text-sm sm:text-base block">Webcam Head-Tilt Steering</span>
-                          <span className="text-[11px] text-white/70">
-                            Shows live camera above hamster &amp; steers when you lean Left/Right
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm sm:text-base">Webcam Motion &amp; Jump Tracking</span>
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-400/25 border border-emerald-300/60 text-emerald-200 text-[10px] font-black uppercase tracking-wider">
+                              Always On Mode
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-white/75 block mt-0.5">
+                            Lean Left/Right to steer &amp; Jump up to grab high Power-Ups!
                           </span>
                         </div>
                         <button
                           onClick={() => setCameraLeanEnabled(!cameraLeanEnabled)}
                           className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                            cameraLeanEnabled ? 'bg-sky-400' : 'bg-white/30'
+                            cameraLeanEnabled ? 'bg-emerald-400' : 'bg-white/30'
                           }`}
                         >
                           <div
@@ -560,7 +572,7 @@ export function RollerCoasterQuiz({
                       {cameraLeanEnabled && (
                         <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-xs font-bold text-amber-300">
-                            Tracking Mode:
+                            Player Tracking:
                           </span>
                           <div className="flex gap-2">
                             <button
@@ -572,7 +584,7 @@ export function RollerCoasterQuiz({
                               }`}
                             >
                               <Users size={13} />
-                              <span>Group Line Mode (3+ in Line)</span>
+                              <span>1-2-3 Players Mode</span>
                             </button>
                             <button
                               onClick={() => setCameraMode('solo')}
@@ -583,7 +595,7 @@ export function RollerCoasterQuiz({
                               }`}
                             >
                               <User size={13} />
-                              <span>Solo Pilot</span>
+                              <span>Solo Player</span>
                             </button>
                           </div>
                         </div>
@@ -903,13 +915,18 @@ function Coaster3DGameplay({
   const [isMuted, setIsMuted] = useState(false);
   const [musicEnabled, setMusicEnabled] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
+  const [isJumping, setIsJumping] = useState(false);
+  const [obstacleWarning, setObstacleWarning] = useState<{
+    brokenSide: -1 | 1;
+    safeSide: -1 | 1;
+  } | null>(null);
 
-  // Group Line & Multi-Person Motion Tracking State
+  // Group Line (1-2-3 Players) & Solo Motion Tracking State
   const [activeCameraMode, setActiveCameraMode] = useState<'group' | 'solo'>(cameraMode || 'group');
   const cameraModeRef = useRef<'group' | 'solo'>(cameraMode || 'group');
   const [detectedPeopleCount, setDetectedPeopleCount] = useState<number>(0);
   const [personMarkers, setPersonMarkers] = useState<
-    Array<{ x: number; y: number; lean: number; id: number }>
+    Array<{ x: number; y: number; lean: number; id: number; jumping?: boolean }>
   >([]);
   const [groupLeanStatus, setGroupLeanStatus] = useState<string>('');
   const [showEndNowConfirm, setShowEndNowConfirm] = useState(false);
@@ -1020,11 +1037,13 @@ function Coaster3DGameplay({
     retryCheckpoint: () => void;
     restartFullRide: () => void;
     selectSteer: (dir: -1 | 1) => void;
+    triggerJump: () => void;
     endRideNow: () => void;
   }>({
     retryCheckpoint: () => {},
     restartFullRide: () => {},
     selectSteer: () => {},
+    triggerJump: () => {},
     endRideNow: () => {},
   });
 
@@ -1291,7 +1310,7 @@ function Coaster3DGameplay({
     }
   };
 
-  // Webcam Head-Tilt Steering (Placed directly above the hamster's head when enabled!)
+  // Webcam Always-On Steering & Jump Detection (Tracks 1-2-3 Players in Line or Solo Pilot!)
   useEffect(() => {
     if (!cameraLeanEnabled) {
       setCameraActive(false);
@@ -1301,6 +1320,12 @@ function Coaster3DGameplay({
     let stream: MediaStream | null = null;
     let faceMesh: any = null;
     let animId: number | null = null;
+    const playerBaselines: Array<{ x: number; y: number }> = [
+      { x: 0.5, y: 0.55 },
+      { x: 0.5, y: 0.55 },
+      { x: 0.5, y: 0.55 },
+    ];
+    let lastJumpDetectedTime = 0;
 
     const initHeadTiltCamera = async () => {
       try {
@@ -1327,101 +1352,140 @@ function Coaster3DGameplay({
             locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
           });
           faceMesh.setOptions({
-            maxNumFaces: 6, // Detect up to 6 people standing in line / group!
+            maxNumFaces: 3, // Track Players 1, 2, 3 clearly!
             refineLandmarks: false,
             minDetectionConfidence: 0.45,
             minTrackingConfidence: 0.45,
           });
           faceMesh.onResults((results: any) => {
             if (!active) return;
-            const faces = results?.multiFaceLandmarks;
-            if (!faces || faces.length === 0) {
+            const rawFaces = results?.multiFaceLandmarks;
+            if (!rawFaces || rawFaces.length === 0) {
               setDetectedPeopleCount(0);
               setPersonMarkers([]);
-              setGroupLeanStatus('');
+              setGroupLeanStatus('👀 READY — LEAN ◀/▶ OR JUMP ⬆️');
               return;
             }
 
-            const faceCount = faces.length;
+            const isGroup = cameraModeRef.current === 'group';
+            // Sort faces left-to-right on mirrored screen (0 = left, 1 = right) so P1, P2, P3 stay consistent!
+            const sortedFaces = [...rawFaces]
+              .map((f: any) => ({
+                face: f,
+                mxNose: f[1] ? 1.0 - f[1].x : 0.5,
+              }))
+              .sort((a, b) => a.mxNose - b.mxNose)
+              .slice(0, isGroup ? 3 : 1);
+
+            const faceCount = sortedFaces.length;
             setDetectedPeopleCount(faceCount);
 
-            // Calculate lean metric for each person in line
-            const markers: Array<{ x: number; y: number; lean: number; id: number }> = [];
+            const markers: Array<{ x: number; y: number; lean: number; id: number; jumping?: boolean }> = [];
             const tilts: number[] = [];
+            let anyRiderJumped = false;
 
             for (let i = 0; i < faceCount; i++) {
-              const face = faces[i];
+              const { face, mxNose } = sortedFaces[i];
               const nose = face[1];
               const topHead = face[10];
               const chin = face[152];
               const leftEye = face[33];
               const rightEye = face[263];
 
-              // Mirrored horizontal coordinates (0 = left, 1 = right of viewer's screen)
-              const mxNose = nose ? 1.0 - nose.x : 0.5;
+              const noseY = nose ? nose.y : 0.55;
               const mxTop = topHead ? 1.0 - topHead.x : mxNose;
               const mxChin = chin ? 1.0 - chin.x : mxNose;
 
-              // 1. Head Roll/Tilt angle (when leaning left on screen, top of head is left of chin)
-              const headTilt = (mxTop - mxChin) * 4.6;
+              // Initialize or slowly adapt each player's neutral standing position (P1, P2, P3)
+              const slotDefaultX = faceCount === 1 ? 0.5 : (i + 0.5) / faceCount;
+              if (!playerBaselines[i]) {
+                playerBaselines[i] = { x: slotDefaultX, y: noseY };
+              }
 
-              // 2. Eye tilt angle (eye line slope)
-              const eyeSlope = leftEye && rightEye ? (rightEye.y - leftEye.y) * 3.8 : 0;
+              // 1. Head Roll/Tilt angle: when leaning left on mirrored screen, topHead is left of chin (mxTop < mxChin -> negative)
+              const headTilt = (mxTop - mxChin) * 4.8;
 
-              // 3. Body horizontal shift relative to center
-              const lateralPos = (mxNose - 0.5) * 2.6;
+              // 2. Eye line slope: when tilting head left, leftEye.y < rightEye.y -> negative!
+              const eyeSlope = leftEye && rightEye ? (leftEye.y - rightEye.y) * 3.6 : 0;
 
-              // Combined person tilt: positive = right, negative = left
-              const combinedLean = Math.max(-1, Math.min(1, headTilt * 0.65 + eyeSlope * 0.2 + lateralPos * 0.35));
+              // 3. Body horizontal shift relative to this rider's own lane baseline
+              const shiftFromBaseX = (mxNose - playerBaselines[i].x) * 2.2;
+              // Gently drift baseline toward current X when head is upright so standing in lane P1/P2/P3 never pulls steering
+              if (Math.abs(headTilt) < 0.14) {
+                playerBaselines[i].x = playerBaselines[i].x * 0.92 + mxNose * 0.08;
+              } else {
+                playerBaselines[i].x = playerBaselines[i].x * 0.985 + slotDefaultX * 0.015;
+              }
+
+              // Detect upward JUMP motion (noseY decreases when jumping up in camera frame)
+              const upwardDelta = playerBaselines[i].y - noseY;
+              const riderJumping = upwardDelta > 0.055 || noseY < 0.27;
+              if (riderJumping) {
+                anyRiderJumped = true;
+              } else {
+                playerBaselines[i].y = playerBaselines[i].y * 0.92 + noseY * 0.08;
+              }
+
+              // Combined person tilt: negative = LEFT, positive = RIGHT
+              const combinedLean = Math.max(
+                -1,
+                Math.min(1, headTilt * 0.65 + eyeSlope * 0.22 + shiftFromBaseX * 0.35)
+              );
               tilts.push(combinedLean);
 
               markers.push({
                 x: mxNose,
-                y: nose ? nose.y : 0.5,
+                y: noseY,
                 lean: combinedLean,
                 id: i + 1,
+                jumping: riderJumping,
               });
             }
 
             setPersonMarkers(markers);
 
-            // Group Consensus vs Solo mode:
-            // Example: 3 people standing in line, when lean left all of them should lean
-            let consensusSteer = 0;
-            const isGroup = cameraModeRef.current === 'group';
+            const nowMs = performance.now();
+            if (anyRiderJumped && nowMs - lastJumpDetectedTime > 650) {
+              lastJumpDetectedTime = nowMs;
+              actionsRef.current.triggerJump();
+            }
 
+            let consensusSteer = 0;
             if (!isGroup || faceCount === 1) {
-              // Solo Pilot mode: track the primary person
               consensusSteer = tilts[0];
               setGroupLeanStatus(
-                tilts[0] < -0.2 ? 'LEANING LEFT ◀' : tilts[0] > 0.2 ? 'LEANING RIGHT ▶' : 'CENTERED'
+                anyRiderJumped
+                  ? '⬆️ JUMPING FOR POWER-UP!'
+                  : tilts[0] < -0.18
+                  ? '◀ P1 LEANING LEFT'
+                  : tilts[0] > 0.18
+                  ? 'P1 LEANING RIGHT ▶'
+                  : 'P1 CENTERED'
               );
             } else {
-              // Group mode with 2, 3 or more people standing in line
               const avgTilt = tilts.reduce((a, b) => a + b, 0) / tilts.length;
-              const leaningLeftCount = tilts.filter((t) => t < -0.16).length;
-              const leaningRightCount = tilts.filter((t) => t > 0.16).length;
+              const leaningLeftCount = tilts.filter((t) => t < -0.15).length;
+              const leaningRightCount = tilts.filter((t) => t > 0.15).length;
               const majorityNeeded = Math.ceil(faceCount / 2);
 
-              if (leaningLeftCount === faceCount) {
-                // ALL of them are leaning left! Strong group consensus steer!
+              if (anyRiderJumped) {
+                consensusSteer = avgTilt;
+                setGroupLeanStatus('⬆️ TEAM JUMP! GRABBING POWER-UP!');
+              } else if (leaningLeftCount === faceCount) {
                 consensusSteer = Math.min(-0.35, avgTilt * 1.35);
-                setGroupLeanStatus(`🔥 ALL ${faceCount} LEANING LEFT! ◀`);
+                setGroupLeanStatus(`🔥 ALL ${faceCount} PLAYERS LEFT ◀`);
               } else if (leaningRightCount === faceCount) {
-                // ALL of them are leaning right! Strong group consensus steer!
                 consensusSteer = Math.max(0.35, avgTilt * 1.35);
-                setGroupLeanStatus(`🔥 ALL ${faceCount} LEANING RIGHT! ▶`);
+                setGroupLeanStatus(`🔥 ALL ${faceCount} PLAYERS RIGHT ▶`);
               } else if (leaningLeftCount >= majorityNeeded && leaningLeftCount > leaningRightCount) {
-                // Majority leaning left
                 consensusSteer = Math.min(-0.25, avgTilt);
-                setGroupLeanStatus(`◀ ${leaningLeftCount}/${faceCount} LEANING LEFT`);
+                setGroupLeanStatus(`◀ ${leaningLeftCount}/${faceCount} PLAYERS LEFT`);
               } else if (leaningRightCount >= majorityNeeded && leaningRightCount > leaningLeftCount) {
-                // Majority leaning right
                 consensusSteer = Math.max(0.25, avgTilt);
-                setGroupLeanStatus(`▶ ${leaningRightCount}/${faceCount} LEANING RIGHT`);
+                setGroupLeanStatus(`▶ ${leaningRightCount}/${faceCount} PLAYERS RIGHT`);
               } else {
                 consensusSteer = avgTilt;
-                setGroupLeanStatus(`👥 ${faceCount} RIDERS IN LINE`);
+                setGroupLeanStatus(`👥 P1–P${faceCount} TRACKED`);
               }
             }
 
@@ -1429,9 +1493,9 @@ function Coaster3DGameplay({
             smoothSteerRef.current = clamped;
             setSmoothSteerPct(50 + clamped * 38);
 
-            if (clamped < -0.22 && steeringRef.current !== -1) {
+            if (clamped < -0.2 && steeringRef.current !== -1) {
               actionsRef.current.selectSteer(-1);
-            } else if (clamped > 0.22 && steeringRef.current !== 1) {
+            } else if (clamped > 0.2 && steeringRef.current !== 1) {
               actionsRef.current.selectSteer(1);
             }
           });
@@ -1449,7 +1513,7 @@ function Coaster3DGameplay({
           };
           animId = requestAnimationFrame(loopFrames);
         } else {
-          // Lightweight 2D Canvas Multi-Zone Motion Tracker when FaceMesh isn't globally loaded
+          // Lightweight 2D Canvas Multi-Zone Motion Tracker (Left/Right + Upper Jump Zone)
           const trackCanvas = document.createElement('canvas');
           trackCanvas.width = 64;
           trackCanvas.height = 48;
@@ -1465,11 +1529,13 @@ function Coaster3DGameplay({
               const imgData = tCtx.getImageData(0, 0, 64, 48).data;
               if (prevFrame) {
                 let weightedX = 0;
+                let weightedY = 0;
                 let totalWeight = 0;
                 let leftWeight = 0;
                 let rightWeight = 0;
+                let topJumpWeight = 0;
 
-                for (let y = 6; y < 42; y++) {
+                for (let y = 3; y < 44; y++) {
                   for (let x = 4; x < 60; x++) {
                     const idx = (y * 64 + x) * 4;
                     const diff =
@@ -1478,36 +1544,57 @@ function Coaster3DGameplay({
                       Math.abs(imgData[idx + 2] - prevFrame[idx + 2]);
                     if (diff > 40) {
                       const mirroredX = 1.0 - x / 64;
+                      const normY = y / 48;
                       weightedX += mirroredX * diff;
+                      weightedY += normY * diff;
                       totalWeight += diff;
 
-                      if (mirroredX < 0.38) leftWeight += diff;
-                      else if (mirroredX > 0.62) rightWeight += diff;
+                      if (mirroredX < 0.4) leftWeight += diff;
+                      else if (mirroredX > 0.6) rightWeight += diff;
+                      if (normY < 0.28) topJumpWeight += diff;
                     }
                   }
                 }
 
-                if (totalWeight > 2800) {
+                if (totalWeight > 2600) {
                   const avgX = weightedX / totalWeight;
+                  const avgY = weightedY / totalWeight;
                   const isGroup = cameraModeRef.current === 'group';
-                  let offset = (avgX - 0.5) * 3.0;
+                  let offset = (avgX - 0.5) * 2.8;
 
-                  if (isGroup && leftWeight > rightWeight * 1.8 && leftWeight > 1200) {
+                  const jumped = topJumpWeight > 1800 && avgY < 0.34;
+                  if (jumped && performance.now() - lastJumpDetectedTime > 650) {
+                    lastJumpDetectedTime = performance.now();
+                    actionsRef.current.triggerJump();
+                  }
+
+                  if (jumped) {
+                    setGroupLeanStatus('⬆️ JUMPING FOR POWER-UP!');
+                  } else if (isGroup && leftWeight > rightWeight * 1.6 && leftWeight > 1100) {
                     offset = -0.38;
-                    setGroupLeanStatus('🔥 GROUP LEAN LEFT! ◀');
-                  } else if (isGroup && rightWeight > leftWeight * 1.8 && rightWeight > 1200) {
+                    setGroupLeanStatus('◀ PLAYERS LEANING LEFT');
+                  } else if (isGroup && rightWeight > leftWeight * 1.6 && rightWeight > 1100) {
                     offset = 0.38;
-                    setGroupLeanStatus('🔥 GROUP LEAN RIGHT! ▶');
+                    setGroupLeanStatus('PLAYERS LEANING RIGHT ▶');
                   } else {
-                    setGroupLeanStatus(avgX < 0.44 ? 'LEANING LEFT ◀' : avgX > 0.56 ? 'LEANING RIGHT ▶' : 'MOTION TRACKING');
+                    setGroupLeanStatus(avgX < 0.44 ? '◀ LEANING LEFT' : avgX > 0.56 ? 'LEANING RIGHT ▶' : 'CENTERED');
                   }
 
                   const clamped = Math.max(-1, Math.min(1, offset));
                   smoothSteerRef.current = clamped;
                   setSmoothSteerPct(50 + clamped * 38);
-                  if (clamped < -0.22 && steeringRef.current !== -1) {
+                  setPersonMarkers([
+                    {
+                      x: Math.max(0.15, Math.min(0.85, avgX)),
+                      y: Math.max(0.2, Math.min(0.8, avgY)),
+                      lean: clamped,
+                      id: 1,
+                      jumping: jumped,
+                    },
+                  ]);
+                  if (clamped < -0.2 && steeringRef.current !== -1) {
                     actionsRef.current.selectSteer(-1);
-                  } else if (clamped > 0.22 && steeringRef.current !== 1) {
+                  } else if (clamped > 0.2 && steeringRef.current !== 1) {
                     actionsRef.current.selectSteer(1);
                   }
                 }
@@ -2369,14 +2456,18 @@ function Coaster3DGameplay({
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
 
-      ctx.font = '95px sans-serif';
+      ctx.font = '84px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(emoji, 128, 110);
+      ctx.fillText(emoji, 128, 96);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 32px Fredoka, sans-serif';
-      ctx.fillText(label, 128, 192);
+      ctx.font = '900 30px Fredoka, sans-serif';
+      ctx.fillText(label, 128, 166);
+
+      ctx.fillStyle = '#fde047';
+      ctx.font = '900 24px Fredoka, sans-serif';
+      ctx.fillText('⬆️ JUMP!', 128, 204);
 
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -2396,11 +2487,11 @@ function Coaster3DGameplay({
       const g = new THREE.Group();
 
       const outerRing = new THREE.Mesh(
-        new THREE.TorusGeometry(0.75, 0.08, 12, 28),
+        new THREE.TorusGeometry(0.82, 0.09, 12, 28),
         new THREE.MeshStandardMaterial({
           color: cfg.color,
           emissive: cfg.color,
-          emissiveIntensity: 0.9,
+          emissiveIntensity: 0.95,
           roughness: 0.15,
         })
       );
@@ -2408,14 +2499,87 @@ function Coaster3DGameplay({
 
       const tex = createPowerUpBadgeTexture(cfg.emoji, cfg.label, cfg.hex);
       const disc = new THREE.Mesh(
-        new THREE.CircleGeometry(0.68, 24),
+        new THREE.CircleGeometry(0.74, 24),
         new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
       );
       g.add(disc);
+
+      // Vertical Jump Guide Ring & Glowing Beacon Beam underneath so players know to JUMP UP!
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: cfg.color,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+      });
+      const jumpBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.55, 2.2, 12, 1, true), beamMat);
+      jumpBeam.position.set(0, -1.35, 0);
+      g.add(jumpBeam);
+
+      const baseTargetRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.62, 0.05, 8, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfde047 })
+      );
+      baseTargetRing.rotation.x = Math.PI / 2;
+      baseTargetRing.position.set(0, -2.35, 0);
+      g.add(baseTargetRing);
+
       return g;
     };
 
-    // Builds the dramatic 3D Collapsed Trap Track (kept hidden until the player actually enters the wrong branch!)
+    // Overhead 3D Hazard Arch for Broken Track Obstacle Splits (No Question Modal — Pure Dodge!)
+    const createObstacleWarningArch = (pos: THREE.Vector3, brokenSide: -1 | 1) => {
+      const archGroup = new THREE.Group();
+      archGroup.position.copy(pos);
+
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.7, roughness: 0.3 });
+      const hazardMat = new THREE.MeshStandardMaterial({
+        color: 0xef4444,
+        emissive: 0xdc2626,
+        emissiveIntensity: 0.85,
+      });
+
+      const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 7.2, 10), pillarMat);
+      leftPost.position.set(-4.8, 2.5, 0);
+      const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 7.2, 10), pillarMat);
+      rightPost.position.set(4.8, 2.5, 0);
+      const topBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 10.0, 10), hazardMat);
+      topBeam.rotation.z = Math.PI / 2;
+      topBeam.position.set(0, 6.0, 0);
+      archGroup.add(leftPost, rightPost, topBeam);
+
+      const leftLabel = brokenSide === -1 ? '⚠️ BROKEN RAIL!' : '✅ SAFE TRACK';
+      const rightLabel = brokenSide === 1 ? '⚠️ BROKEN RAIL!' : '✅ SAFE TRACK';
+
+      const signTexL = createAnswerSignTexture(
+        leftLabel,
+        brokenSide === -1 ? '#dc2626' : '#10b981',
+        brokenSide === -1 ? '#7f1d1d' : '#064e3b',
+        brokenSide === -1 ? '❌ DANGER LEFT' : '◀ DODGE LEFT'
+      );
+      const signL = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.2, 2.0),
+        new THREE.MeshBasicMaterial({ map: signTexL, side: THREE.DoubleSide })
+      );
+      signL.position.set(-2.4, 4.2, 0);
+      archGroup.add(signL);
+
+      const signTexR = createAnswerSignTexture(
+        rightLabel,
+        brokenSide === 1 ? '#dc2626' : '#10b981',
+        brokenSide === 1 ? '#7f1d1d' : '#064e3b',
+        brokenSide === 1 ? 'DANGER RIGHT ❌' : 'DODGE RIGHT ▶'
+      );
+      const signR = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.2, 2.0),
+        new THREE.MeshBasicMaterial({ map: signTexR, side: THREE.DoubleSide })
+      );
+      signR.position.set(2.4, 4.2, 0);
+      archGroup.add(signR);
+
+      return archGroup;
+    };
+
+    // Builds the dramatic 3D Collapsed Trap Track (kept hidden for Question gates until wrong choice, or visible immediately for Obstacle Splits!)
     const buildBrokenTrapBranchMesh = (
       forkPt: THREE.Vector3,
       midPt: THREE.Vector3,
@@ -2423,10 +2587,10 @@ function Coaster3DGameplay({
       wrongSide: number
     ) => {
       const trapGroup = new THREE.Group();
-      trapGroup.visible = false; // Hidden until player crosses the gate onto the wrong track!
+      trapGroup.visible = false;
 
       // 1. Intact spur up to the cliff break point
-      const breakPt = midPt.clone().lerp(endPt, 0.42);
+      const breakPt = midPt.clone().lerp(endPt, 0.35);
       const spurCurve = new THREE.CatmullRomCurve3([forkPt.clone(), midPt.clone(), breakPt.clone()]);
       const spurMesh = buildDetailedTrackSegment(spurCurve, 22, false, [forkPt]);
       trapGroup.add(spurMesh);
@@ -2543,20 +2707,28 @@ function Coaster3DGameplay({
 
     interface GateCheckpoint {
       index: number;
+      questionIndex: number;
+      kind: 'question' | 'obstacle';
       question: string;
       correctAnswer: string;
       wrongAnswer: string;
       leftText: string;
       rightText: string;
       correctSide: -1 | 1;
+      chosenSide: -1 | 1;
       forkWorldPos: THREE.Vector3;
+      rejoinWorldPos: THREE.Vector3;
+      leftBranchCurve: THREE.CatmullRomCurve3;
+      rightBranchCurve: THREE.CatmullRomCurve3;
       wrongCurve: THREE.CatmullRomCurve3;
-      decoyMesh: THREE.Group;
+      wrongBranchMesh: THREE.Group;
       trapBreakGroup: THREE.Group;
       forkT: number;
+      rejoinT: number;
       promptStartT: number;
       resolved: boolean;
       promptShown: boolean;
+      autoPilotNotified?: boolean;
     }
 
     let mainCurve: THREE.CatmullRomCurve3;
@@ -2575,96 +2747,156 @@ function Coaster3DGameplay({
       powerUpItems = [];
 
       const pts: THREE.Vector3[] = [];
-      const forkPositions: THREE.Vector3[] = [];
-      let curX = 0;
+      const straightSpineCurves: THREE.CatmullRomCurve3[] = [];
       let curY = 13.8;
       let curZ = -22;
 
-      // Initial Lift Hill Climb
-      pts.push(new THREE.Vector3(0, 3.8, 28));
-      pts.push(new THREE.Vector3(0, 6.2, 12));
-      pts.push(new THREE.Vector3(0, 10.5, -6));
-      pts.push(new THREE.Vector3(0, 13.8, -22));
+      // Initial Straight Lift Hill Climb along X = 0
+      const startPts = [
+        new THREE.Vector3(0, 3.8, 28),
+        new THREE.Vector3(0, 6.2, 12),
+        new THREE.Vector3(0, 10.5, -6),
+        new THREE.Vector3(0, 13.8, -22),
+      ];
+      startPts.forEach((p) => pts.push(p));
 
       const deck = questions.length > 0 ? questions : SAMPLE_COASTER_QUESTIONS;
       const powerUpOrder: PowerUpType[] = ['magnet', 'slow', 'boost', 'double', 'shield'];
 
+      // Build interleaved sequence of Question Gates & Broken Track Obstacles based on Difficulty!
+      // Easy (0.7): Slow, few obstacles (1 obstacle every 3 questions)
+      // Medium (1.0): Bit fast, moderate obstacles (1 obstacle every 2 questions)
+      // Hard (1.45): Fast, many obstacles (1 obstacle after every question + extra obstacle every 2nd question!)
+      const diffMult = speedMultRef.current;
+      const courseNodes: Array<{ kind: 'question' | 'obstacle'; qItem: Question; qIdx: number }> = [];
       for (let g = 0; g < deck.length; g++) {
-        const qItem = deck[g];
-        const correctAns = qItem.options[qItem.answerIndex] || qItem.options[0] || 'Correct';
-        const wrongAns =
+        courseNodes.push({ kind: 'question', qItem: deck[g], qIdx: g });
+        if (diffMult <= 0.8) {
+          if ((g + 1) % 3 === 0) {
+            courseNodes.push({ kind: 'obstacle', qItem: deck[g], qIdx: g });
+          }
+        } else if (diffMult <= 1.15) {
+          if ((g + 1) % 2 === 0) {
+            courseNodes.push({ kind: 'obstacle', qItem: deck[g], qIdx: g });
+          }
+        } else {
+          courseNodes.push({ kind: 'obstacle', qItem: deck[g], qIdx: g });
+          if (g % 2 === 1) {
+            courseNodes.push({ kind: 'obstacle', qItem: deck[g], qIdx: g });
+          }
+        }
+      }
+
+      let lastSpinePt = startPts[startPts.length - 1].clone();
+
+      for (let nIdx = 0; nIdx < courseNodes.length; nIdx++) {
+        const node = courseNodes[nIdx];
+        const qItem = node.qItem;
+        const isObstacle = node.kind === 'obstacle';
+
+        const rawCorrect = qItem.options[qItem.answerIndex] || qItem.options[0] || 'Correct';
+        const rawWrong =
           qItem.options[qItem.answerIndex === 0 ? 1 : 0] || qItem.options[1] || 'Wrong';
 
         const correctSide: -1 | 1 = Math.random() < 0.5 ? -1 : 1;
-        const leftText = correctSide === -1 ? correctAns : wrongAns;
-        const rightText = correctSide === 1 ? correctAns : wrongAns;
+        const leftText = isObstacle
+          ? correctSide === -1
+            ? '✅ SAFE LEFT RAIL'
+            : '⚠️ BROKEN RAIL'
+          : correctSide === -1
+          ? rawCorrect
+          : rawWrong;
+        const rightText = isObstacle
+          ? correctSide === 1
+            ? '✅ SAFE RIGHT RAIL'
+            : '⚠️ BROKEN RAIL'
+          : correctSide === 1
+          ? rawCorrect
+          : rawWrong;
 
-        const approachZ = curZ - 19;
-        const approachPt = new THREE.Vector3(curX, curY, approachZ);
+        // Straight approach along X = 0 so the track NEVER curves toward the answer before the split!
+        const approachZ = curZ - 18;
+        const approachPt = new THREE.Vector3(0, curY, approachZ);
         pts.push(approachPt);
 
-        const forkZ = approachZ - 15;
-        const forkPt = new THREE.Vector3(curX, curY - 1.2, forkZ);
+        const forkZ = approachZ - 14;
+        const forkY = curY - 1.0;
+        const forkPt = new THREE.Vector3(0, forkY, forkZ);
         pts.push(forkPt);
-        forkPositions.push(forkPt.clone());
 
-        const branchX = curX + correctSide * 6.8;
-        const peakOrDipY = g % 2 === 0 ? Math.max(5.5, curY - 4.8) : Math.min(19, curY + 4.8);
-        const postForkZ = forkZ - 21;
-        const intactPt = new THREE.Vector3(branchX, peakOrDipY, postForkZ);
-        pts.push(intactPt);
+        // Render straight approach spine up to forkPt
+        const spineSegPts =
+          nIdx === 0
+            ? [...startPts, approachPt.clone(), forkPt.clone()]
+            : [lastSpinePt.clone(), approachPt.clone(), forkPt.clone()];
+        straightSpineCurves.push(new THREE.CatmullRomCurve3(spineSegPts));
 
-        // SYMMETRIC DECOY WRONG BRANCH:
-        // Matches the exact same elevation (peakOrDipY), lateral spread, support pillars, and continues far ahead
-        // so it is 100% indistinguishable from the correct branch before the player passes the gate!
-        const wrongSide = -correctSide;
-        const wrongBranchX = curX + wrongSide * 6.8;
-        const nextDecoyY = (g + 1) % 2 === 0 ? Math.max(5.5, peakOrDipY - 4.5) : Math.min(19, peakOrDipY + 4.5);
+        // 100% SYMMETRIC DIAMOND SPLIT & REJOIN:
+        // Both Left (-5.4) and Right (+5.4) branches have identical elevation, length, curvature, and rejoin at (0, rejoinY, rejoinZ)!
+        const branchSpreadX = 5.4;
+        const midForkZ = forkZ - 13;
+        const rejoinZ = forkZ - 26;
+        const peakOrDipY = nIdx % 2 === 0 ? Math.max(5.8, forkY - 4.2) : Math.min(18.5, forkY + 4.2);
+        const rejoinY = peakOrDipY;
 
-        const wrongMidPt = new THREE.Vector3(
-          curX + wrongSide * 3.4,
-          (curY - 1.2 + peakOrDipY) * 0.5,
-          forkZ - 10.5
-        );
-        const wrongEndPt = new THREE.Vector3(wrongBranchX, peakOrDipY, postForkZ);
+        const leftMidPt = new THREE.Vector3(-branchSpreadX, (forkY + peakOrDipY) * 0.5, midForkZ);
+        const rightMidPt = new THREE.Vector3(branchSpreadX, (forkY + peakOrDipY) * 0.5, midForkZ);
+        const rejoinPt = new THREE.Vector3(0, rejoinY, rejoinZ);
 
-        // Short curve used for riding along the wrong branch right before derailing off the snapped rails
-        const wrongRidePts = [forkPt.clone(), wrongMidPt.clone(), wrongEndPt.clone()];
-        const wrongCurve = new THREE.CatmullRomCurve3(wrongRidePts);
+        // Center spine reference points for global parameter t
+        const centerMidPt = new THREE.Vector3(0, (forkY + peakOrDipY) * 0.5, midForkZ);
+        pts.push(centerMidPt);
+        pts.push(rejoinPt);
 
-        // Visual decoy track continues far ahead (forkZ - 64) with pillars so it never looks short or broken before answering!
-        const visualDecoyPts = [
+        const leftBranchCurve = new THREE.CatmullRomCurve3([
           forkPt.clone(),
-          wrongMidPt.clone(),
-          wrongEndPt.clone(),
-          new THREE.Vector3(wrongBranchX, peakOrDipY, postForkZ - 19),
-          new THREE.Vector3(wrongBranchX + wrongSide * 2.5, nextDecoyY, postForkZ - 42),
-        ];
-        const visualDecoyCurve = new THREE.CatmullRomCurve3(visualDecoyPts);
-        const decoyMesh = buildDetailedTrackSegment(visualDecoyCurve, 65, true, [forkPt]);
-        trackMeshGroup.add(decoyMesh);
+          new THREE.Vector3(-branchSpreadX * 0.65, THREE.MathUtils.lerp(forkY, peakOrDipY, 0.25), forkZ - 6.5),
+          leftMidPt.clone(),
+          new THREE.Vector3(-branchSpreadX * 0.65, THREE.MathUtils.lerp(forkY, peakOrDipY, 0.75), forkZ - 19.5),
+          rejoinPt.clone(),
+        ]);
 
-        // Dramatic 3D Broken Trap Track (revealed dynamically the instant the player steers onto the wrong track!)
+        const rightBranchCurve = new THREE.CatmullRomCurve3([
+          forkPt.clone(),
+          new THREE.Vector3(branchSpreadX * 0.65, THREE.MathUtils.lerp(forkY, peakOrDipY, 0.25), forkZ - 6.5),
+          rightMidPt.clone(),
+          new THREE.Vector3(branchSpreadX * 0.65, THREE.MathUtils.lerp(forkY, peakOrDipY, 0.75), forkZ - 19.5),
+          rejoinPt.clone(),
+        ]);
+
+        const leftBranchMesh = buildDetailedTrackSegment(leftBranchCurve, 38, true, [forkPt, rejoinPt]);
+        const rightBranchMesh = buildDetailedTrackSegment(rightBranchCurve, 38, true, [forkPt, rejoinPt]);
+        trackMeshGroup.add(leftBranchMesh);
+        trackMeshGroup.add(rightBranchMesh);
+
+        // Wrong branch curve & broken trap mesh
+        const wrongSide: -1 | 1 = correctSide === -1 ? 1 : -1;
+        const wrongMidPt = wrongSide === -1 ? leftMidPt : rightMidPt;
+        const wrongEndPt = new THREE.Vector3(wrongSide * branchSpreadX * 0.7, rejoinY, rejoinZ);
+        const wrongCurve = new THREE.CatmullRomCurve3([forkPt.clone(), wrongMidPt.clone(), wrongEndPt.clone()]);
+        const wrongBranchMesh = wrongSide === -1 ? leftBranchMesh : rightBranchMesh;
+
         const trapBreakGroup = buildBrokenTrapBranchMesh(forkPt, wrongMidPt, wrongEndPt, wrongSide);
         trackMeshGroup.add(trapBreakGroup);
 
-        // Add Twin Mystery Portal Rings on BOTH Left and Right branches at forkZ - 10.5
-        const midBranchY = (curY - 1.2 + peakOrDipY) * 0.5;
-        const leftPortalPos = new THREE.Vector3(curX - 3.4, midBranchY, forkZ - 10.5);
-        const rightPortalPos = new THREE.Vector3(curX + 3.4, midBranchY, forkZ - 10.5);
-        trackMeshGroup.add(createBranchPortalRing(leftPortalPos, true));
-        trackMeshGroup.add(createBranchPortalRing(rightPortalPos, false));
+        if (isObstacle) {
+          // For Broken Track Obstacles, show the broken rail & hazard barrier ahead so players see it and dodge!
+          wrongBranchMesh.visible = false;
+          trapBreakGroup.visible = true;
+        } else {
+          // For Question Gates, BOTH tracks look 100% intact and symmetrical so the answer is never obvious!
+          trackMeshGroup.add(createBranchPortalRing(leftMidPt, true));
+          trackMeshGroup.add(createBranchPortalRing(rightMidPt, false));
+        }
 
-        // Place symmetric coins on BOTH Left and Right branches so coins never give away the answer!
-        // When Super Magnet is active, all coins from BOTH the active and opposite tracks are pulled dynamically into the cart!
+        // Place symmetric coins on BOTH Left and Right diamond branches
         [-1, 1].forEach((sideDir) => {
+          // Don't place coins past the break on a visibly broken obstacle rail
+          if (isObstacle && sideDir === wrongSide) return;
+          const bCurve = sideDir === -1 ? leftBranchCurve : rightBranchCurve;
           for (let cStep = 1; cStep <= 5; cStep++) {
-            const frac = cStep * 0.165;
-            const cPos = new THREE.Vector3(
-              curX + sideDir * (6.8 * frac),
-              THREE.MathUtils.lerp(curY - 1.2, peakOrDipY, frac) + 1.1,
-              THREE.MathUtils.lerp(forkZ, postForkZ, frac)
-            );
+            const frac = cStep / 6;
+            const cPos = bCurve.getPointAt(frac).add(new THREE.Vector3(0, 1.12, 0));
             const cMesh = create3DCoinMesh();
             cMesh.position.copy(cPos);
             collectiblesGroup.add(cMesh);
@@ -2675,86 +2907,123 @@ function Coaster3DGameplay({
               laneOffset: 0,
               isBranchCoin: true,
               branchSide: sideDir,
-              gateIndex: g,
+              gateIndex: nIdx,
             });
           }
         });
 
         gateCheckpoints.push({
-          index: g,
-          question: qItem.text,
-          correctAnswer: correctAns,
-          wrongAnswer: wrongAns,
+          index: nIdx,
+          questionIndex: node.qIdx,
+          kind: node.kind,
+          question: isObstacle ? '⚠️ Broken Track Ahead! Dodge to the intact rail!' : qItem.text,
+          correctAnswer: isObstacle
+            ? correctSide === -1
+              ? 'Left Intact Track'
+              : 'Right Intact Track'
+            : parseOptionContent(rawCorrect).text || rawCorrect,
+          wrongAnswer: isObstacle
+            ? wrongSide === -1
+              ? 'Left Broken Track'
+              : 'Right Broken Track'
+            : parseOptionContent(rawWrong).text || rawWrong,
           leftText,
           rightText,
           correctSide,
+          chosenSide: correctSide,
           forkWorldPos: forkPt.clone(),
+          rejoinWorldPos: rejoinPt.clone(),
+          leftBranchCurve,
+          rightBranchCurve,
           wrongCurve,
-          decoyMesh,
+          wrongBranchMesh,
           trapBreakGroup,
           forkT: 0,
+          rejoinT: 0,
           promptStartT: 0,
           resolved: false,
           promptShown: false,
+          autoPilotNotified: false,
         });
 
-        curX = branchX;
-        curY = peakOrDipY;
-        curZ = postForkZ;
+        lastSpinePt = rejoinPt.clone();
+        curY = rejoinY;
+        curZ = rejoinZ;
       }
 
-      pts.push(new THREE.Vector3(curX, curY + 3.2, curZ - 25));
-      pts.push(new THREE.Vector3(curX, curY, curZ - 52));
+      const endPt1 = new THREE.Vector3(0, curY + 3.2, curZ - 25);
+      const endPt2 = new THREE.Vector3(0, curY, curZ - 52);
+      pts.push(endPt1, endPt2);
+      straightSpineCurves.push(new THREE.CatmullRomCurve3([lastSpinePt.clone(), endPt1, endPt2]));
+
+      // Render all straight approach spine segments (while the diamond splits are rendered by leftBranchMesh & rightBranchMesh)
+      straightSpineCurves.forEach((sCurve, idx) => {
+        const segSteps = idx === 0 ? 55 : 28;
+        trackMeshGroup.add(buildDetailedTrackSegment(sCurve, segSteps, true));
+      });
 
       mainCurve = new THREE.CatmullRomCurve3(pts);
-      const totalCurveSteps = Math.max(320, deck.length * 45);
-      const mainTrackMesh = buildDetailedTrackSegment(mainCurve, totalCurveSteps, true, forkPositions);
-      trackMeshGroup.add(mainTrackMesh);
 
-      const totalSamples = 700;
+      const totalSamples = 900;
       gateCheckpoints.forEach((gate) => {
-        let bestT = 0;
-        let bestDist = Infinity;
+        let bestForkT = 0;
+        let bestForkDist = Infinity;
+        let bestRejoinT = 0;
+        let bestRejoinDist = Infinity;
         for (let s = 0; s <= totalSamples; s++) {
           const t = s / totalSamples;
           const p = mainCurve.getPointAt(t);
-          const dist = p.distanceTo(gate.forkWorldPos);
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestT = t;
+          const dFork = p.distanceTo(gate.forkWorldPos);
+          if (dFork < bestForkDist) {
+            bestForkDist = dFork;
+            bestForkT = t;
+          }
+          const dRejoin = p.distanceTo(gate.rejoinWorldPos);
+          if (dRejoin < bestRejoinDist) {
+            bestRejoinDist = dRejoin;
+            bestRejoinT = t;
           }
         }
-        gate.forkT = bestT;
-        gate.promptStartT = Math.max(0.02, bestT - 0.6 / Math.max(6, deck.length));
+        gate.forkT = bestForkT;
+        gate.rejoinT = Math.max(bestForkT + 0.015, bestRejoinT);
+        gate.promptStartT = Math.max(0.02, bestForkT - 0.52 / Math.max(6, courseNodes.length));
 
-        const arch = create3DGateArch(gate.forkWorldPos, gate);
-        trackMeshGroup.add(arch);
+        if (gate.kind === 'obstacle') {
+          const obsArch = createObstacleWarningArch(
+            gate.forkWorldPos,
+            gate.correctSide === -1 ? 1 : -1
+          );
+          trackMeshGroup.add(obsArch);
+        } else {
+          const arch = create3DGateArch(gate.forkWorldPos, gate);
+          trackMeshGroup.add(arch);
+        }
       });
 
-      // Spawn 3D Golden Coins & Frequent Special Power-Ups along the main coaster approaches
-      const numApproachSamples = deck.length * 16;
+      // Spawn 3D Golden Coins (rail height) & Elevated Power-Up Orbs (HIGH UP so players must JUMP to collect!)
+      const numApproachSamples = courseNodes.length * 14;
       for (let s = 3; s < numApproachSamples; s++) {
         const t = s / (numApproachSamples + 2);
-        // Skip spawning right on top of a fork arch
-        const nearAnyFork = gateCheckpoints.some((g) => Math.abs(t - g.forkT) < 0.022);
-        if (nearAnyFork) continue;
+        // Skip spawning inside diamond splits or right on top of a fork arch
+        const insideOrNearSplit = gateCheckpoints.some(
+          (g) => (t >= g.forkT - 0.018 && t <= g.rejoinT + 0.01)
+        );
+        if (insideOrNearSplit) continue;
 
         const pt = mainCurve.getPointAt(t);
         const tan = mainCurve.getTangentAt(t).normalize();
         const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
-        // Every 6th slot spawns a Special Power-Up Orb (Magnet, Boost, Slow, 2X, Shield)!
-        if (s % 6 === 0) {
-          const pType = powerUpOrder[Math.floor(s / 6) % powerUpOrder.length];
-          const lane = (s % 12 === 0 ? -1 : 1) * 0.45;
-          const pPos = pt.clone().addScaledVector(side, lane).add(new THREE.Vector3(0, 1.35, 0));
+        // Every 5th slot on straightaways spawns an Elevated Power-Up Orb HIGH ABOVE the rails (+3.55 Y)!
+        if (s % 5 === 0) {
+          const pType = powerUpOrder[Math.floor(s / 5) % powerUpOrder.length];
+          const pPos = pt.clone().add(new THREE.Vector3(0, 3.55, 0));
           const pMesh = create3DPowerUpMesh(pType);
           pMesh.position.copy(pPos);
           collectiblesGroup.add(pMesh);
           powerUpItems.push({ mesh: pMesh, worldPos: pPos, type: pType, collected: false });
         } else {
-          // Spawn a gleaming 3D Gold Coin!
-          const waveLane = Math.sin(s * 0.7) * 0.55;
+          const waveLane = Math.sin(s * 0.7) * 0.45;
           const cPos = pt.clone().addScaledVector(side, waveLane).add(new THREE.Vector3(0, 1.12, 0));
           const cMesh = create3DCoinMesh();
           cMesh.position.copy(cPos);
@@ -2813,6 +3082,10 @@ function Coaster3DGameplay({
     let maxStreak = 0;
     let rideTimeSec = 0;
     let lastTimerUiUpdate = 0;
+
+    // Jump Physics State (Players jump up to grab elevated Power-Ups!)
+    let jumpOffsetY = 0;
+    let jumpVelY = 0;
 
     // Active Power-Up state inside 60fps loop
     let magnetTimer = 0;
@@ -2941,33 +3214,60 @@ function Coaster3DGameplay({
     );
     shieldBubble.add(shieldOrbitalRing);
 
-    const positionCameraOnCurve = (curve: THREE.CatmullRomCurve3, t: number, extraRoll = 0) => {
+    const positionCameraOnCurve = (curve: THREE.CatmullRomCurve3, t: number, steerAmount = 0) => {
       const clampedT = Math.max(0, Math.min(0.999, t));
-      const pos = curve.getPointAt(clampedT);
-      const tangent = curve.getTangentAt(clampedT).normalize();
 
-      const eyePos = pos.clone().add(new THREE.Vector3(0, 1.48, 0));
+      // Check if we are currently riding along a resolved diamond split branch (Left or Right track)!
+      let pos: THREE.Vector3;
+      let tangent: THREE.Vector3;
+      const activeSplitGate =
+        curve === mainCurve
+          ? gateCheckpoints.find((g) => g.resolved && clampedT >= g.forkT && clampedT <= g.rejoinT)
+          : undefined;
+
+      if (activeSplitGate) {
+        const span = Math.max(0.001, activeSplitGate.rejoinT - activeSplitGate.forkT);
+        const branchFrac = Math.max(0, Math.min(0.999, (clampedT - activeSplitGate.forkT) / span));
+        const bCurve =
+          activeSplitGate.chosenSide === -1
+            ? activeSplitGate.leftBranchCurve
+            : activeSplitGate.rightBranchCurve;
+        pos = bCurve.getPointAt(branchFrac);
+        tangent = bCurve.getTangentAt(branchFrac).normalize();
+      } else {
+        pos = curve.getPointAt(clampedT);
+        tangent = curve.getTangentAt(clampedT).normalize();
+        // Shift coaster laterally in the EXACT direction of player lean/steer (Left < 0 moves Left, Right > 0 moves Right)!
+        const rightVec = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+        pos.addScaledVector(rightVec, steerAmount * 1.45);
+      }
+
+      const eyePos = pos.clone().add(new THREE.Vector3(0, 1.48 + jumpOffsetY, 0));
       camera.position.copy(eyePos);
 
+      const lookRightVec = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
       const lookTarget = eyePos
         .clone()
         .add(tangent.clone().multiplyScalar(12))
-        .add(new THREE.Vector3(0, -0.82, 0));
+        .addScaledVector(lookRightVec, steerAmount * 1.85)
+        .add(new THREE.Vector3(0, -0.82 - jumpOffsetY * 0.25, 0));
       camera.lookAt(lookTarget);
 
-      // Banking roll
-      camera.rotateZ(-extraRoll * 0.24);
+      // Subtle banking roll & physical character shift matching player lean direction!
+      camera.rotateZ(-steerAmount * 0.14);
 
-      // Animate Cute Hamster Co-Pilot leaning & waving paws!
-      hamsterGroup.rotation.z = -extraRoll * 0.38;
-      hamsterGroup.rotation.y = -extraRoll * 0.25;
-      const pawWave = Math.sin(performance.now() * 0.014) * 0.12;
+      hamsterGroup.position.x = steerAmount * 0.18;
+      hamsterGroup.position.y = -0.34 + jumpOffsetY * 0.12;
+      hamsterGroup.rotation.z = -steerAmount * 0.36;
+      hamsterGroup.rotation.y = -steerAmount * 0.25;
+      const pawWave = Math.sin(performance.now() * 0.014) * 0.12 + (jumpOffsetY > 0.2 ? 0.22 : 0);
       leftPaw.position.y = 0.11 + pawWave + (tangent.y < -0.1 ? 0.08 : 0);
       rightPaw.position.y = 0.11 - pawWave + (tangent.y < -0.1 ? 0.08 : 0);
-      carHoodGroup.rotation.z = -extraRoll * 0.08;
+      carHoodGroup.position.x = steerAmount * 0.12;
+      carHoodGroup.rotation.z = -steerAmount * 0.08;
 
       if (bumperRef.current) {
-        bumperRef.current.style.transform = `rotate(${-extraRoll * 3.5}deg) translateY(6px)`;
+        bumperRef.current.style.transform = `translateX(${steerAmount * 14}px) rotate(${steerAmount * 2.5}deg) translateY(6px)`;
       }
     };
 
@@ -2985,8 +3285,12 @@ function Coaster3DGameplay({
       ridePhase = 'COUNTDOWN';
       countdownTimer = 4.0;
       lastCountdownInt = 5;
+      jumpOffsetY = 0;
+      jumpVelY = 0;
+      setIsJumping(false);
       setCountdownNum(4);
       setActivePrompt(null);
+      setObstacleWarning(null);
       setGateSecondsLeft(null);
       setDangerVignette(false);
       setCrashModal(null);
@@ -3017,16 +3321,26 @@ function Coaster3DGameplay({
       if (localLives <= 0) return;
       setCrashModal(null);
       setDangerVignette(false);
+      setObstacleWarning(null);
       const gate = gateCheckpoints[activeGateIdx];
       if (gate) {
         gate.resolved = false;
         gate.promptShown = false;
-        gate.decoyMesh.visible = true;
-        gate.trapBreakGroup.visible = false;
+        gate.autoPilotNotified = false;
+        if (gate.kind === 'question') {
+          gate.wrongBranchMesh.visible = true;
+          gate.trapBreakGroup.visible = false;
+        } else {
+          gate.wrongBranchMesh.visible = false;
+          gate.trapBreakGroup.visible = true;
+        }
         trackProgressT = Math.max(0.01, gate.promptStartT - 0.018);
       } else {
         trackProgressT = 0;
       }
+      jumpOffsetY = 0;
+      jumpVelY = 0;
+      setIsJumping(false);
       steeringRef.current = 0;
       smoothSteerRef.current = 0;
       setSteeringChoice(0);
@@ -3047,12 +3361,16 @@ function Coaster3DGameplay({
       hasShield = false;
       activeGateIdx = 0;
       trackProgressT = 0;
+      jumpOffsetY = 0;
+      jumpVelY = 0;
+      setIsJumping(false);
       steeringRef.current = 0;
       smoothSteerRef.current = 0;
       setCoinsCount(0);
       setLivesLeft(initialLives);
       setRemainingSeconds(timerMinutesRef.current * 60);
       setGateSecondsLeft(null);
+      setObstacleWarning(null);
       setStreak(0);
       setCurrentGateIdx(0);
       setSteeringChoice(0);
@@ -3071,20 +3389,34 @@ function Coaster3DGameplay({
       playRailSwitchClick(dir);
     };
 
+    const triggerJump = () => {
+      if (ridePhase !== 'RIDING' && ridePhase !== 'COUNTDOWN') return;
+      if (jumpOffsetY > 0.35) return; // Already airborne
+      ensureAudio();
+      jumpVelY = 13.8;
+      setIsJumping(true);
+      playTone(392, 'sine', 0.12, 0.22, 784);
+      setTimeout(() => playTone(784, 'triangle', 0.16, 0.2, 1174.66), 60);
+    };
+
     const triggerEndRideNow = () => {
       ridePhase = 'VICTORY';
       updateContinuousCoasterSound(0, false, 0);
       playCorrectFanfare(4);
       spawnCelebrationSparks(camera.position, 55);
       setActivePrompt(null);
+      setObstacleWarning(null);
       setGateSecondsLeft(null);
+      const questionsCleared = gateCheckpoints
+        .slice(0, activeGateIdx)
+        .filter((g) => g.kind === 'question').length;
       setVictoryModal({
         maxStreak,
         coins: localCoins,
         timeSec: Math.round(rideTimeSec),
         livesRemaining: localLives,
-        gatesCleared: activeGateIdx,
-        totalGates: gateCheckpoints.length || questions.length,
+        gatesCleared: questionsCleared,
+        totalGates: questions.length,
         endedEarly: true,
       });
     };
@@ -3093,6 +3425,7 @@ function Coaster3DGameplay({
       retryCheckpoint: triggerRetryCheckpoint,
       restartFullRide: triggerFullRestart,
       selectSteer,
+      triggerJump,
       endRideNow: triggerEndRideNow,
     };
 
@@ -3100,12 +3433,15 @@ function Coaster3DGameplay({
     buildCourseFromQuestions();
     startCountdown();
 
-    // Keyboard & Resize Listeners
+    // Keyboard & Resize Listeners (Left/Right to Steer, Space/Up/W to Jump for Power-Ups!)
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         selectSteer(-1);
       } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         selectSteer(1);
+      } else if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        triggerJump();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -3138,7 +3474,18 @@ function Coaster3DGameplay({
       if (ferrisWheelRotor) ferrisWheelRotor.rotation.z += 0.16 * dt;
       if (carouselRotor) carouselRotor.rotation.y += 0.48 * dt;
 
-      // Spin 3D Coins & Power-Ups
+      // Update Coaster Jump Physics (Gravity & Landing)
+      if (jumpOffsetY > 0 || jumpVelY !== 0) {
+        jumpOffsetY += jumpVelY * dt;
+        jumpVelY -= 32.0 * dt;
+        if (jumpOffsetY <= 0) {
+          jumpOffsetY = 0;
+          jumpVelY = 0;
+          setIsJumping(false);
+        }
+      }
+
+      // Spin 3D Coins & Elevated Power-Ups
       coinItems.forEach((c) => {
         if (!c.collected) {
           c.mesh.rotation.y += 3.4 * dt;
@@ -3229,7 +3576,7 @@ function Coaster3DGameplay({
       const activeDiffMult = speedMultRef.current;
       const powerSpeedMod = isBoostActive ? 1.85 : isSlowActive ? 0.58 : 1.0;
       const effectiveSpeedMult = activeDiffMult * powerSpeedMod;
-      const baseSpeedT = (0.21 / Math.max(6, questions.length)) * effectiveSpeedMult;
+      const baseSpeedT = (0.19 / Math.max(6, gateCheckpoints.length)) * effectiveSpeedMult;
 
       // Animate 3D Speed Streaks
       streakMat.color.setHex(isBoostActive ? 0xfba524 : isSlowActive ? 0x38bdf8 : 0xffffff);
@@ -3298,6 +3645,7 @@ function Coaster3DGameplay({
           setRemainingSeconds(0);
           ridePhase = 'CRASHED';
           setActivePrompt(null);
+          setObstacleWarning(null);
           setGateSecondsLeft(null);
           updateContinuousCoasterSound(0, false, 0);
           playDerailmentAlarmAndCrash();
@@ -3308,8 +3656,8 @@ function Coaster3DGameplay({
             question: gate?.question || 'Course Timer Expired',
             wrongAnswer: 'Ran Out of Time (00:00)',
             correctAnswer: gate?.correctAnswer || 'Complete all gates before the timer ends!',
-            gateNumber: (gate?.index ?? activeGateIdx) + 1,
-            totalGates: gateCheckpoints.length || questions.length,
+            gateNumber: (gate?.questionIndex ?? activeGateIdx) + 1,
+            totalGates: questions.length,
             wasTimeout: true,
             livesRemaining: 0,
             isGameOver: true,
@@ -3335,7 +3683,6 @@ function Coaster3DGameplay({
         const coinMultiplier = doubleTimer > 0 ? 2 : 1;
 
         // 2. Check 3D Coin Pickups & Cross-Track Magnet Pull
-        // Uses the real camera/cockpit position so it reaches across twin branches and hills seamlessly
         const cartTarget = camera.position.clone().addScaledVector(tangent, 1.1).add(new THREE.Vector3(0, -0.22, 0));
         const magnetRadius = isMagnetActive ? 65.0 : 3.1;
         const currentSteerSide = steeringRef.current;
@@ -3349,19 +3696,13 @@ function Coaster3DGameplay({
 
           if (isMagnetActive && dist < magnetRadius) {
             toCart.normalize();
-            // Pull coin swiftly towards the coaster cart so coins on the other track catch up effortlessly!
             const pullSpeed = Math.max(48, 72 - dist * 0.32) * (isBoostActive ? 1.35 : 1.0);
             c.mesh.position.addScaledVector(toCart, pullSpeed * dt);
-            
-            // Graceful magnetic arch lift over tracks & cross gaps
             c.mesh.position.y += Math.sin(Math.min(Math.PI, (1 - dist / magnetRadius) * Math.PI)) * 0.28;
-            
-            // Frenetic magnetic spin
             c.mesh.rotation.y += 26 * dt;
             c.mesh.rotation.x += 16 * dt;
             c.mesh.scale.setScalar(1.28);
 
-            // Subtle electromagnetic spark tether between coin and cart
             if (Math.random() < 0.22) {
               const sparkMat = new THREE.MeshBasicMaterial({
                 color: c.isBranchCoin && c.branchSide !== currentSteerSide ? 0xf43f5e : 0xfacc15,
@@ -3380,7 +3721,6 @@ function Coaster3DGameplay({
             }
           }
 
-          // Collection threshold: generous when magnet is active so high-velocity cross-track coins are always captured!
           const pickupThreshold = isMagnetActive ? 5.2 : 2.85;
           if (dist < pickupThreshold) {
             c.collected = true;
@@ -3410,19 +3750,25 @@ function Coaster3DGameplay({
           }
         }
 
-        // 3. Check 3D Special Power-Up Pickups
+        // 3. Check Elevated 3D Special Power-Up Pickups (Requires JUMPING UP to reach, or active Magnet!)
         for (let i = 0; i < powerUpItems.length; i++) {
           const p = powerUpItems[i];
           if (p.collected) continue;
 
           const toCart = cartTarget.clone().sub(p.mesh.position);
           const dist = toCart.length();
+          const horizDist = Math.hypot(cartTarget.x - p.mesh.position.x, cartTarget.z - p.mesh.position.z);
+
           if (isMagnetActive && dist < 24.0 && dist > 2.0) {
             toCart.normalize();
             p.mesh.position.addScaledVector(toCart, 25 * dt);
           }
 
-          if (dist < (isMagnetActive ? 5.8 : 3.2)) {
+          // Players must JUMP UP (jumpOffsetY > 0.95) or have Magnet active to grab the high Power-Up!
+          const reachedHighOrb =
+            (jumpOffsetY > 0.95 && horizDist < 3.6) || (isMagnetActive && dist < 5.6);
+
+          if (reachedHighOrb) {
             p.collected = true;
             p.mesh.visible = false;
             const bonusCoins = 3 * coinMultiplier;
@@ -3451,7 +3797,7 @@ function Coaster3DGameplay({
           }
         }
 
-        // 4. Question Gate Approach & Fork Resolution
+        // 4. Question Gate OR Broken Track Obstacle Split Resolution
         const gate = gateCheckpoints[activeGateIdx];
         if (gate && !gate.resolved) {
           if (!gate.promptShown && trackProgressT >= gate.promptStartT) {
@@ -3460,16 +3806,28 @@ function Coaster3DGameplay({
             smoothSteerRef.current = 0;
             setSteeringChoice(0);
             setSmoothSteerPct(50);
-            setCurrentGateIdx(gate.index);
-            setActivePrompt({
-              index: gate.index,
-              total: gateCheckpoints.length,
-              question: gate.question,
-              leftText: gate.leftText,
-              rightText: gate.rightText,
-              correctSide: gate.correctSide,
-            });
-            speakQuestion(gate.question);
+            setCurrentGateIdx(gate.questionIndex);
+
+            if (gate.kind === 'obstacle') {
+              // Broken Track Obstacle Split — NO question modal! Players see the broken track and dodge!
+              setActivePrompt(null);
+              setObstacleWarning({
+                brokenSide: gate.correctSide === -1 ? 1 : -1,
+                safeSide: gate.correctSide,
+              });
+              playTone(310, 'triangle', 0.16, 0.18, 440);
+            } else {
+              setObstacleWarning(null);
+              setActivePrompt({
+                index: gate.questionIndex,
+                total: questions.length,
+                question: gate.question,
+                leftText: gate.leftText,
+                rightText: gate.rightText,
+                correctSide: gate.correctSide,
+              });
+              speakQuestion(parseOptionContent(gate.question).text || gate.question);
+            }
           }
 
           if (gate.promptShown) {
@@ -3479,60 +3837,68 @@ function Coaster3DGameplay({
             const approxSecLeft = Math.max(0, (gate.forkT - trackProgressT) / Math.max(0.001, currentSpeed));
             setGateSecondsLeft(Number(approxSecLeft.toFixed(1)));
 
-            // If Turbo Boost is active near the fork and player hasn't locked correct side, auto-pilot!
+            // If Turbo Boost is active near the fork and player hasn't locked correct side, auto-pilot (once per gate, clean text)!
             if (boostTimer > 0 && remaining < 0.48 && steeringRef.current !== gate.correctSide) {
               steeringRef.current = gate.correctSide;
               smoothSteerRef.current = gate.correctSide;
               setSteeringChoice(gate.correctSide);
               setSmoothSteerPct(50 + gate.correctSide * 38);
-              pushScorePopup('🚀 BOOST AUTO-PILOT!', 'text-amber-300', `Locked onto ${gate.correctAnswer}!`);
+              if (!gate.autoPilotNotified) {
+                gate.autoPilotNotified = true;
+                const cleanAns = parseOptionContent(gate.correctAnswer).text || 'Safe Track';
+                pushScorePopup('🚀 BOOST AUTO-PILOT!', 'text-amber-300', `Locked onto ${cleanAns}!`);
+              }
             }
           }
 
           if (trackProgressT >= gate.forkT) {
             gate.resolved = true;
             setActivePrompt(null);
+            setObstacleWarning(null);
             setGateSecondsLeft(null);
 
             if (steeringRef.current === gate.correctSide || boostTimer > 0) {
-              // CORRECT RAIL OR TURBO OVERDRIVE!
+              // CORRECT RAIL OR OBSTACLE DODGED!
               if (steeringRef.current !== gate.correctSide) {
                 steeringRef.current = gate.correctSide;
                 smoothSteerRef.current = gate.correctSide;
                 setSteeringChoice(gate.correctSide);
                 setSmoothSteerPct(50 + gate.correctSide * 38);
               }
+              gate.chosenSide = gate.correctSide;
               localStreak += 1;
               maxStreak = Math.max(maxStreak, localStreak);
-              const gateCoins = (5 + (boostTimer > 0 ? 5 : 0)) * coinMultiplier;
+              const gateCoins = (gate.kind === 'obstacle' ? 4 : 5 + (boostTimer > 0 ? 5 : 0)) * coinMultiplier;
               localCoins += gateCoins;
               setCoinsCount(localCoins);
               setStreak(localStreak);
               playCorrectFanfare(localStreak);
-              spawnCelebrationSparks(camera.position, 40);
+              spawnCelebrationSparks(camera.position, 36);
               pushScorePopup(
-                `+${gateCoins} 🪙 GATE CLEAR!`,
+                gate.kind === 'obstacle' ? `+${gateCoins} 🪙 OBSTACLE DODGED!` : `+${gateCoins} 🪙 GATE CLEAR!`,
                 'text-emerald-300',
                 boostTimer > 0 ? '🚀 TURBO OVERDRIVE BONUS!' : `${localStreak}x Streak 🔥`
               );
               activeGateIdx++;
             } else if (hasShield) {
-              // SHIELD SAVES PLAYER FROM WRONG TRACK!
+              // SHIELD SAVES PLAYER FROM WRONG TRACK OR BROKEN OBSTACLE!
               hasShield = false;
               syncPowerUpsToUI();
               steeringRef.current = gate.correctSide;
               smoothSteerRef.current = gate.correctSide;
               setSteeringChoice(gate.correctSide);
               setSmoothSteerPct(50 + gate.correctSide * 38);
+              gate.chosenSide = gate.correctSide;
               playPowerUpSound('shield');
               spawnCelebrationSparks(camera.position, 32);
-              pushScorePopup('🛡️ SHIELD SAVED YOU!', 'text-emerald-300', `Auto-Switched to ${gate.correctAnswer}!`);
+              const cleanAns = parseOptionContent(gate.correctAnswer).text || 'Safe Track';
+              pushScorePopup('🛡️ SHIELD SAVED YOU!', 'text-emerald-300', `Auto-Switched to ${cleanAns}!`);
               activeGateIdx++;
             } else {
-              // WRONG RAIL — Dynamically reveal the 3D broken trap track ahead as the coaster enters the wrong branch!
+              // WRONG RAIL OR HIT BROKEN OBSTACLE TRACK!
               localStreak = 0;
               setStreak(0);
-              gate.decoyMesh.visible = false;
+              gate.wrongBranchMesh.visible = false;
               gate.trapBreakGroup.visible = true;
               ridePhase = 'WRONG_BRANCH';
               wrongBranchCurve = gate.wrongCurve;
@@ -3553,6 +3919,8 @@ function Coaster3DGameplay({
             coins: localCoins,
             timeSec: Math.round(rideTimeSec),
             livesRemaining: localLives,
+            gatesCleared: questions.length,
+            totalGates: questions.length,
           });
         }
       } else if (ridePhase === 'WRONG_BRANCH' && wrongBranchCurve) {
@@ -3588,22 +3956,27 @@ function Coaster3DGameplay({
 
           const gate = gateCheckpoints[activeGateIdx];
           const wasTimeout = steeringRef.current === 0;
+          const isObs = gate?.kind === 'obstacle';
           setCrashModal({
             title: isOutOfLives
               ? '💔 OUT OF LIVES! GAME OVER!'
+              : isObs
+              ? '⚠️ HIT BROKEN TRACK OBSTACLE!'
               : wasTimeout
               ? 'TIME RAN OUT! TRACK SPLIT MISSED!'
               : 'WRONG TRACK! YOU FELL!',
             reason: isOutOfLives
               ? 'You lost all your hearts! Start a new ride to try again.'
+              : isObs
+              ? 'Watch the rails ahead! When you see a broken track barrier, steer to the intact side!'
               : wasTimeout
               ? "You didn't lean or steer Left/Right before reaching the track junction!"
               : 'Your coaster smashed through the hazard barrier onto the snapped trap rail!',
             question: gate?.question || '',
             wrongAnswer: wasTimeout ? 'No Track Selected (Center)' : gate?.wrongAnswer || 'Wrong Track',
             correctAnswer: gate?.correctAnswer || '',
-            gateNumber: (gate?.index ?? activeGateIdx) + 1,
-            totalGates: gateCheckpoints.length || questions.length,
+            gateNumber: (gate?.questionIndex ?? activeGateIdx) + 1,
+            totalGates: questions.length,
             wasTimeout,
             livesRemaining: localLives,
             isGameOver: isOutOfLives,
@@ -3992,6 +4365,53 @@ function Coaster3DGameplay({
         </div>
       )}
 
+      {/* Broken Track Obstacle HUD Alert Banner (When no question is shown — players must dodge the broken rail!) */}
+      {obstacleWarning && !activePrompt && (
+        <div className="absolute top-16 sm:top-20 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-xl pointer-events-none transition-all duration-200 animate-bounce">
+          <div className="bg-gradient-to-r from-red-950/95 via-slate-900/95 to-red-950/95 backdrop-blur-xl border-2 border-amber-400 rounded-3xl px-5 py-3.5 shadow-[0_0_35px_rgba(239,68,68,0.65)] text-center">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-amber-300 bg-red-500/30 border border-amber-400/50 px-3 py-0.5 rounded-full">
+                ⚠️ BROKEN TRACK OBSTACLE AHEAD!
+              </span>
+              {gateSecondsLeft !== null && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black tabular-nums bg-rose-500/30 border border-rose-400 text-rose-200">
+                  ⏱️ {gateSecondsLeft.toFixed(1)}s
+                </span>
+              )}
+            </div>
+            <div className="text-lg sm:text-2xl font-black text-white tracking-wide">
+              {obstacleWarning.brokenSide === -1
+                ? '❌ LEFT RAIL BROKEN — LEAN RIGHT ▶ TO DODGE!'
+                : '❌ RIGHT RAIL BROKEN — ◀ LEAN LEFT TO DODGE!'}
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-2.5 pointer-events-auto">
+              <button
+                onClick={() => actionsRef.current.selectSteer(-1)}
+                className={`py-2 px-3 rounded-2xl font-black text-xs sm:text-sm border-2 transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  obstacleWarning.safeSide === -1
+                    ? 'bg-emerald-600/90 border-emerald-300 text-white shadow-lg'
+                    : 'bg-rose-950/80 border-rose-500/60 text-rose-200'
+                } ${steeringChoice === -1 ? 'ring-4 ring-white scale-105' : ''}`}
+              >
+                <span>◀</span>
+                <span>{obstacleWarning.safeSide === -1 ? 'SAFE LEFT RAIL' : 'BROKEN RAIL ⚠️'}</span>
+              </button>
+              <button
+                onClick={() => actionsRef.current.selectSteer(1)}
+                className={`py-2 px-3 rounded-2xl font-black text-xs sm:text-sm border-2 transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  obstacleWarning.safeSide === 1
+                    ? 'bg-emerald-600/90 border-emerald-300 text-white shadow-lg'
+                    : 'bg-rose-950/80 border-rose-500/60 text-rose-200'
+                } ${steeringChoice === 1 ? 'ring-4 ring-white scale-105' : ''}`}
+              >
+                <span>{obstacleWarning.safeSide === 1 ? 'SAFE RIGHT RAIL' : '⚠️ BROKEN RAIL'}</span>
+                <span>▶</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active Question Gate HUD Card (Strictly 2 Options: Left Track vs. Right Track) */}
       <div
         className={`absolute top-16 sm:top-20 left-1/2 -translate-x-1/2 z-20 w-[96%] max-w-4xl lg:max-w-5xl pointer-events-none transition-all duration-300 ${
@@ -4234,17 +4654,19 @@ function Coaster3DGameplay({
         <div className="mx-auto mt-2.5 w-44 sm:w-60 h-2.5 rounded-full bg-zinc-800 border border-zinc-600/50 shadow-inner" />
       </div>
 
-      {/* Webcam Camera Feed Above the Hamster's Head (Replaces the removed L-R sign when Webcam Head-Tilt Steering is ON!) */}
+      {/* Sleek Coaster Cockpit Rider Cam (Docked cleanly in bumper below Captain Hammy so it fits characters & tracks P1-P2-P3 or Solo!) */}
       <div
-        className={`absolute bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-none transition-all duration-300 ${
+        className={`absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-end gap-2.5 pointer-events-none transition-all duration-300 ${
           cameraLeanEnabled
             ? 'opacity-100 scale-100'
             : 'opacity-0 scale-75 pointer-events-none'
         }`}
       >
         <div
-          className={`relative rounded-2xl overflow-hidden border-2 shadow-2xl bg-slate-950/90 ${
-            steeringChoice === -1
+          className={`relative rounded-2xl overflow-hidden border-2 shadow-2xl bg-slate-950/95 transition-all ${
+            isJumping
+              ? 'border-yellow-300 shadow-[0_0_30px_rgba(253,224,71,0.9)] -translate-y-2'
+              : steeringChoice === -1
               ? 'border-sky-400 shadow-[0_0_25px_rgba(56,189,248,0.8)]'
               : steeringChoice === 1
               ? 'border-rose-400 shadow-[0_0_25px_rgba(244,63,94,0.8)]'
@@ -4253,47 +4675,68 @@ function Coaster3DGameplay({
         >
           <video
             ref={webcamVideoRef}
-            className="w-36 h-26 sm:w-48 sm:h-34 object-cover scale-x-[-1] block"
+            className="w-52 h-26 sm:w-68 sm:h-32 object-cover scale-x-[-1] block"
             autoPlay
             playsInline
             muted
           />
 
-          {/* Center Guide Line */}
-          <div className="absolute inset-y-0 left-1/2 w-0.5 bg-white/30 -translate-x-1/2 pointer-events-none" />
+          {/* 1-2-3 Player Lane Guides vs Solo Guide */}
+          {activeCameraMode === 'group' ? (
+            <div className="absolute inset-0 grid grid-cols-3 pointer-events-none">
+              {[1, 2, 3].map((slot) => (
+                <div
+                  key={slot}
+                  className="border-x border-white/15 flex flex-col justify-between p-1"
+                >
+                  <span className="self-center mt-4 px-1.5 py-0.2 rounded bg-black/45 text-[8px] font-black text-white/70">
+                    P{slot}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="absolute inset-y-0 left-1/2 w-0.5 bg-sky-300/35 -translate-x-1/2 pointer-events-none" />
+          )}
 
-          {/* Live Detected People Tracking Reticles */}
+          {/* Live Detected Player Tracking Badges (P1, P2, P3 or Solo P1) */}
           {personMarkers.map((p) => (
             <div
               key={p.id}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 px-1 py-0.5 rounded-md text-[8px] font-black pointer-events-none border transition-all duration-75 flex items-center gap-0.5 shadow-md ${
-                p.lean < -0.16
-                  ? 'bg-sky-500/85 border-sky-300 text-white shadow-[0_0_8px_rgba(56,189,248,0.8)]'
-                  : p.lean > 0.16
-                  ? 'bg-rose-500/85 border-rose-300 text-white shadow-[0_0_8px_rgba(244,63,94,0.8)]'
-                  : 'bg-black/70 border-white/40 text-amber-300'
+              className={`absolute -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded-lg text-[9px] font-black pointer-events-none border transition-all duration-75 flex items-center gap-0.5 shadow-lg ${
+                p.jumping
+                  ? 'bg-yellow-400 border-white text-slate-950 scale-110 shadow-[0_0_12px_rgba(250,204,21,0.9)]'
+                  : p.lean < -0.15
+                  ? 'bg-sky-500/90 border-sky-200 text-white shadow-[0_0_8px_rgba(56,189,248,0.8)]'
+                  : p.lean > 0.15
+                  ? 'bg-rose-500/90 border-rose-200 text-white shadow-[0_0_8px_rgba(244,63,94,0.8)]'
+                  : 'bg-slate-900/85 border-amber-300/70 text-amber-300'
               }`}
               style={{
-                left: `${Math.max(10, Math.min(90, p.x * 100))}%`,
-                top: `${Math.max(12, Math.min(78, p.y * 100))}%`,
+                left: `${Math.max(12, Math.min(88, p.x * 100))}%`,
+                top: `${Math.max(20, Math.min(74, p.y * 100))}%`,
               }}
             >
-              <span>{p.lean < -0.16 ? '◀' : ''}</span>
-              <span>P{p.id}</span>
-              <span>{p.lean > 0.16 ? '▶' : ''}</span>
+              <span>{p.jumping ? '⬆️' : p.lean < -0.15 ? '◀' : ''}</span>
+              <span>{activeCameraMode === 'solo' ? 'SOLO' : `P${p.id}`}</span>
+              <span>{!p.jumping && p.lean > 0.15 ? '▶' : ''}</span>
             </div>
           ))}
 
-          {/* Top Status Banner (Group Consensus Banner) */}
-          {groupLeanStatus && (
-            <div className="absolute top-1 inset-x-1 text-center py-0.5 px-1 rounded-md bg-slate-950/85 backdrop-blur-sm border border-amber-400/40 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-amber-300 truncate pointer-events-none">
-              {groupLeanStatus}
-            </div>
-          )}
+          {/* Top Status Bar with Always-On Indicator & Lean/Jump Readout */}
+          <div className="absolute top-1 inset-x-1 flex items-center justify-between gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/85 backdrop-blur-sm border border-white/15 text-[8px] sm:text-[9px] font-black uppercase tracking-wider pointer-events-none">
+            <span className="inline-flex items-center gap-1 text-emerald-300 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <span>CAM ON</span>
+            </span>
+            <span className="text-amber-300 truncate">
+              {groupLeanStatus || (activeCameraMode === 'group' ? '1-2-3 PLAYERS' : 'SOLO PILOT')}
+            </span>
+          </div>
 
-          {/* Bottom Bar: Steer Indicators & Quick Mode Toggle */}
-          <div className="absolute bottom-1 inset-x-1 flex items-center justify-between px-1.5 py-0.5 rounded-lg bg-slate-950/85 backdrop-blur-sm text-[9px] font-black uppercase tracking-wider text-white">
-            <span className={steeringChoice === -1 ? 'text-sky-300 font-extrabold' : 'text-white/50'}>◀ L</span>
+          {/* Bottom Bar: Left/Right Steer Gauge & 1-2-3 Players / Solo Toggle */}
+          <div className="absolute bottom-1 inset-x-1 flex items-center justify-between px-1.5 py-0.5 rounded-lg bg-slate-950/90 backdrop-blur-sm text-[9px] font-black uppercase tracking-wider text-white">
+            <span className={steeringChoice === -1 ? 'text-sky-300 font-extrabold' : 'text-white/50'}>◀ LEFT</span>
             <button
               onClick={() => {
                 const next = activeCameraMode === 'group' ? 'solo' : 'group';
@@ -4301,31 +4744,46 @@ function Coaster3DGameplay({
                 cameraModeRef.current = next;
                 onChangeCameraMode?.(next);
               }}
-              className="pointer-events-auto px-1.5 py-0.5 rounded bg-white/15 hover:bg-white/25 text-amber-300 flex items-center gap-1 transition cursor-pointer"
-              title="Click to switch between Group Mode (3+ people in line) and Solo Pilot"
+              className="pointer-events-auto px-2 py-0.5 rounded-md bg-white/15 hover:bg-white/25 text-amber-300 flex items-center gap-1 transition cursor-pointer border border-white/15"
+              title="Switch between 1-2-3 Players Mode and Solo Player Mode"
             >
               {activeCameraMode === 'group' ? (
                 <>
                   <Users size={11} className="text-amber-400" />
-                  <span>GROUP ({detectedPeopleCount > 0 ? detectedPeopleCount : '3+'})</span>
+                  <span>1-2-3 P ({detectedPeopleCount || 1})</span>
                 </>
               ) : (
                 <>
                   <User size={11} className="text-sky-300" />
-                  <span>SOLO</span>
+                  <span>SOLO P1</span>
                 </>
               )}
             </button>
-            <span className={steeringChoice === 1 ? 'text-rose-300 font-extrabold' : 'text-white/50'}>R ▶</span>
+            <span className={steeringChoice === 1 ? 'text-rose-300 font-extrabold' : 'text-white/50'}>RIGHT ▶</span>
           </div>
         </div>
+
+        {/* Dedicated JUMP Button right next to the Cockpit Cam so players can also tap/click to grab high Power-Ups! */}
+        <button
+          onPointerDown={() => actionsRef.current.triggerJump()}
+          className={`pointer-events-auto h-20 w-16 sm:h-24 sm:w-20 rounded-2xl border-2 font-black flex flex-col items-center justify-center gap-0.5 shadow-2xl transition-all active:scale-90 cursor-pointer ${
+            isJumping
+              ? 'bg-gradient-to-t from-amber-500 to-yellow-300 text-slate-950 border-white scale-105 shadow-[0_0_25px_rgba(250,204,21,0.85)]'
+              : 'bg-slate-900/90 hover:bg-slate-800 text-yellow-300 border-yellow-400/70 shadow-lg'
+          }`}
+          title="Jump up to collect elevated Power-Ups! (Or jump on camera / press Space or Up Arrow)"
+        >
+          <span className="text-xl sm:text-2xl leading-none">⬆️</span>
+          <span className="text-[10px] sm:text-xs tracking-wider uppercase">JUMP</span>
+          <span className="text-[8px] font-bold opacity-80">POWER-UP</span>
+        </button>
       </div>
 
       {/* Dashed Circular Touch Steering Wheels on Bottom Left & Right */}
-      <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-20 flex items-center justify-between px-5 sm:px-14 md:px-24 pointer-events-none">
+      <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-20 flex items-center justify-between px-4 sm:px-10 md:px-16 pointer-events-none">
         <button
           onPointerDown={() => actionsRef.current.selectSteer(-1)}
-          className={`coaster-touch-wheel pointer-events-auto w-28 h-28 sm:w-36 sm:h-36 rounded-full flex flex-col items-center justify-center text-white/95 active:scale-95 cursor-pointer group ${
+          className={`coaster-touch-wheel pointer-events-auto w-24 h-24 sm:w-32 sm:h-32 rounded-full flex flex-col items-center justify-center text-white/95 active:scale-95 cursor-pointer group ${
             steeringChoice === -1 ? 'active-left' : ''
           }`}
         >
@@ -4337,7 +4795,7 @@ function Coaster3DGameplay({
 
         <button
           onPointerDown={() => actionsRef.current.selectSteer(1)}
-          className={`coaster-touch-wheel pointer-events-auto w-28 h-28 sm:w-36 sm:h-36 rounded-full flex flex-col items-center justify-center text-white/95 active:scale-95 cursor-pointer group ${
+          className={`coaster-touch-wheel pointer-events-auto w-24 h-24 sm:w-32 sm:h-32 rounded-full flex flex-col items-center justify-center text-white/95 active:scale-95 cursor-pointer group ${
             steeringChoice === 1 ? 'active-right' : ''
           }`}
         >
@@ -4355,13 +4813,13 @@ function Coaster3DGameplay({
           setIsMuted(next);
           isMutedRef.current = next;
         }}
-        className="absolute bottom-4 right-5 z-30 w-11 h-11 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-white/20 text-white flex items-center justify-center shadow-xl transition active:scale-90 cursor-pointer"
+        className="absolute bottom-4 right-4 z-30 w-10 h-10 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-white/20 text-white flex items-center justify-center shadow-xl transition active:scale-90 cursor-pointer"
         title="Toggle Coaster Sound & Ride Music"
       >
-        {isMuted ? <VolumeX size={20} className="text-rose-400" /> : <Volume2 size={20} />}
+        {isMuted ? <VolumeX size={18} className="text-rose-400" /> : <Volume2 size={18} />}
       </button>
 
-      {/* IN-GAME SETTINGS MODAL (Difficulty Slow to Fast, Voice On/Off, Text Size, Ride Timer, Webcam Camera, Tablet Mode) */}
+      {/* IN-GAME SETTINGS MODAL (Difficulty Easy/Medium/Hard, Voice On/Off, Text Size, Ride Timer, Webcam Always-On, Tablet Mode) */}
       {showSettingsModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="bg-slate-900 border-2 border-amber-400/50 rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl text-white max-h-[90vh] overflow-y-auto">
@@ -4389,20 +4847,24 @@ function Coaster3DGameplay({
             </div>
 
             <div className="space-y-4 mt-5">
-              {/* 1. Difficulty Level (Slow to Fast) */}
+              {/* 1. Difficulty Level (Easy, Medium, Hard) */}
               <div className="bg-slate-800/75 border border-white/10 rounded-2xl p-4">
                 <label className="text-xs font-black uppercase tracking-wider text-amber-300 block mb-2.5">
-                  1. Difficulty Level (Slow to Fast)
+                  1. Difficulty (Speed &amp; Broken Track Obstacles)
                 </label>
                 <div className="grid grid-cols-3 gap-2.5">
                   {[
-                    { label: '🐢 Slow', val: 0.7, desc: 'Relaxed pace' },
-                    { label: '🎢 Normal', val: 1.0, desc: 'Balanced speed' },
-                    { label: '🚀 Fast', val: 1.45, desc: 'High-speed thrill!' },
+                    { label: '🐢 Easy', val: 0.7, desc: 'Slow · Few obstacles' },
+                    { label: '🎢 Medium', val: 1.0, desc: 'Bit fast · Obstacles' },
+                    { label: '🚀 Hard', val: 1.45, desc: 'Fast · Many obstacles!' },
                   ].map((d) => (
                     <button
                       key={d.label}
-                      onClick={() => onChangeSpeedMultiplier(d.val)}
+                      onClick={() => {
+                        onChangeSpeedMultiplier(d.val);
+                        speedMultRef.current = d.val;
+                        setTimeout(() => actionsRef.current.restartFullRide(), 30);
+                      }}
                       className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
                         speedMultiplier === d.val
                           ? 'bg-amber-400 text-slate-950 border-white font-black shadow-lg scale-[1.02]'
@@ -4500,7 +4962,7 @@ function Coaster3DGameplay({
                 </div>
               </div>
 
-              {/* 4. Ride Timer Slider (1 to 10 Minutes) & Webcam Head-Tilt Camera Toggle */}
+              {/* 4. Ride Timer Slider (1 to 10 Minutes) & Webcam Always-On Mode */}
               <div className="bg-slate-800/75 border border-white/10 rounded-2xl p-4 space-y-3.5">
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
@@ -4524,15 +4986,20 @@ function Coaster3DGameplay({
 
                 <div className="flex items-center justify-between pt-3 border-t border-white/10">
                   <div>
-                    <div className="text-sm font-black text-white">Webcam Head-Tilt Steering</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-white">Webcam Motion &amp; Jump Camera</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-400/20 border border-emerald-400/50 text-emerald-300 text-[10px] font-black uppercase">
+                        Always On
+                      </span>
+                    </div>
                     <div className="text-xs text-slate-400">
-                      Shows camera above hamster&apos;s head &amp; steers when you lean Left/Right
+                      Tracks 1-2-3 players or Solo &amp; jumps for elevated Power-Ups
                     </div>
                   </div>
                   <button
                     onClick={() => onChangeCameraLeanEnabled(!cameraLeanEnabled)}
                     className={`w-13 h-7 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                      cameraLeanEnabled ? 'bg-sky-400' : 'bg-slate-700'
+                      cameraLeanEnabled ? 'bg-emerald-400' : 'bg-slate-700'
                     }`}
                   >
                     <div
@@ -4546,8 +5013,8 @@ function Coaster3DGameplay({
                 {cameraLeanEnabled && (
                   <div className="pt-2 border-t border-white/10 flex items-center justify-between">
                     <div>
-                      <div className="text-xs font-bold text-amber-300">Tracking Mode:</div>
-                      <div className="text-[11px] text-slate-400">Detect 1 rider or group in line</div>
+                      <div className="text-xs font-bold text-amber-300">Player Tracking Mode:</div>
+                      <div className="text-[11px] text-slate-400">Track 1-2-3 players in lanes or 1 solo player</div>
                     </div>
                     <div className="flex gap-1.5">
                       <button
@@ -4563,7 +5030,7 @@ function Coaster3DGameplay({
                         }`}
                       >
                         <Users size={12} />
-                        <span>Group Line (3+)</span>
+                        <span>1-2-3 Players</span>
                       </button>
                       <button
                         onClick={() => {
