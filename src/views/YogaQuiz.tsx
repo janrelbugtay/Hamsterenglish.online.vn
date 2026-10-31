@@ -40,6 +40,7 @@ import { GameModeModal } from "../components/GameModeModal";
 import { drawSuperheroHands } from "../utils/superheroHands";
 import { SetupCurriculumHeader } from "../components/SetupSmartControls";
 import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng } from "../utils/mediaAndPresets";
+import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay, normalizeChaseQuestions } from "./CityPoseChase";
 
 export interface Question {
   id: number | string;
@@ -1590,7 +1591,7 @@ function getInitialCameraHandPoses(): string[] {
 
 function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => void, onSwitchMode?: () => void }) {
   const [gameState, setGameState] = useState<'start' | 'playing' | 'end'>('start');
-  const [playMode, setPlayMode] = useState<'studio' | 'camera'>('camera');
+  const [playMode, setPlayMode] = useState<'studio' | 'camera' | 'pose-chase'>('camera');
 
   // Persisted pose selections: Classic Mode uses previous yoga poses; Camera Mode uses pure hand gestures
   const [classicPoses, setClassicPoses] = useState<string[]>(getInitialClassicPoses);
@@ -1643,6 +1644,8 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
     { id: '1', name: 'Player 1', score: 0, colorIdx: 0 },
     { id: '2', name: 'Player 2', score: 0, colorIdx: 1 },
   ]);
+  const [chaseSpeedMultiplier, setChaseSpeedMultiplier] = useState<number>(1.0);
+  const [chaseVoiceEnabled, setChaseVoiceEnabled] = useState<boolean>(true);
 
   const teamColors = [
     { bg: 'bg-blue-500', border: 'border-blue-600', borderLight: 'border-blue-200', text: 'text-blue-600', hex: '#3b82f6' },
@@ -2653,54 +2656,86 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
               <p className="text-teal-700 font-bold text-xs sm:text-base mb-6 text-center max-w-lg">
                 {playMode === 'studio'
                   ? 'Classic Yoga Mode: Follow the classic full-body yoga poses and click to answer!'
+                  : playMode === 'pose-chase'
+                  ? 'Single-Player 3D Pose & Action Chase: Jump & match the pose wall of the correct option, punch the right enemy, wall kick & dodge obstacles with Head-to-Feet body detection!'
                   : 'Camera Hand Mode: Show hand gestures (1 finger, 2 fingers, 3 fingers, fist, rock) to answer!'}
               </p>
 
-              {/* Mode Selector: Camera Mode vs Classic Studio Mode */}
-              <div className="w-full max-w-xl grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+              {/* Mode Selector: Camera Mode vs Classic Studio Mode vs 3D Pose & Action Chase */}
+              <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <button
                   onClick={() => setPlayMode('camera')}
-                  className={`p-4 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3.5 ${
+                  className={`p-3.5 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
                     playMode === 'camera'
                       ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-teal-600 shadow-lg scale-[1.02]'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-teal-300 hover:bg-teal-50/40'
                   }`}
                 >
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${playMode === 'camera' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>
-                    <Camera size={26} />
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${playMode === 'camera' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>
+                    <Camera size={24} />
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-black text-base sm:text-lg">Camera Hand Mode</span>
-                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${playMode === 'camera' ? 'bg-amber-300 text-slate-900' : 'bg-teal-100 text-teal-800'}`}>
+                      <span className="font-black text-sm sm:text-base">Camera Hand Mode</span>
+                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${playMode === 'camera' ? 'bg-amber-300 text-slate-900' : 'bg-teal-100 text-teal-800'}`}>
                         HAND AI
                       </span>
                     </div>
-                    <p className={`text-xs font-semibold leading-snug mt-0.5 ${playMode === 'camera' ? 'text-teal-50' : 'text-slate-500'}`}>
-                      Only hand gestures! 1 finger, 2 fingers, 3 fingers, fist, rock & more.
+                    <p className={`text-[11px] font-semibold leading-snug mt-0.5 ${playMode === 'camera' ? 'text-teal-50' : 'text-slate-500'}`}>
+                      1 finger, 2 fingers, 3 fingers, fist & rock gestures.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setPlayMode('pose-chase')}
+                  className={`p-3.5 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
+                    playMode === 'pose-chase'
+                      ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white border-amber-300 shadow-lg scale-[1.02]'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-amber-300 hover:bg-amber-50/40'
+                  }`}
+                >
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-xl ${playMode === 'pose-chase' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-600'}`}>
+                    🏃‍♂️
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-black text-sm sm:text-base">3D Pose & Action Chase</span>
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-emerald-300 text-slate-950">
+                        HEAD-TO-FEET
+                      </span>
+                    </div>
+                    <p className={`text-[11px] font-semibold leading-snug mt-0.5 ${playMode === 'pose-chase' ? 'text-amber-50' : 'text-slate-500'}`}>
+                      Jump & pose wall, punch correct enemy, wall kick & dodge!
                     </p>
                   </div>
                 </button>
 
                 <button
                   onClick={() => setPlayMode('studio')}
-                  className={`p-4 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3.5 ${
+                  className={`p-3.5 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
                     playMode === 'studio'
                       ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-teal-600 shadow-lg scale-[1.02]'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-teal-300 hover:bg-teal-50/40'
                   }`}
                 >
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${playMode === 'studio' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>
-                    <Sparkles size={26} />
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${playMode === 'studio' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>
+                    <Sparkles size={24} />
                   </div>
                   <div>
-                    <div className="font-black text-base sm:text-lg">Classic Studio Mode</div>
-                    <p className={`text-xs font-semibold leading-snug mt-0.5 ${playMode === 'studio' ? 'text-teal-50' : 'text-slate-500'}`}>
-                      Uses classic yoga poses (Tree, Warrior, Star, Chair, Airplane) & click to answer.
+                    <div className="font-black text-sm sm:text-base">Classic Studio Mode</div>
+                    <p className={`text-[11px] font-semibold leading-snug mt-0.5 ${playMode === 'studio' ? 'text-teal-50' : 'text-slate-500'}`}>
+                      Classic yoga poses (Tree, Warrior, Star) & click to answer.
                     </p>
                   </div>
                 </button>
               </div>
+
+              {playMode === 'pose-chase' && (
+                <div className="w-full max-w-2xl mb-6">
+                  <BodyHeadToFeetSetupScanner compact />
+                </div>
+              )}
 
               {/* Players Setup */}
               <div className="w-full max-w-xl bg-teal-50/70 rounded-3xl p-4 sm:p-5 border-2 border-teal-200/80 mb-6">
@@ -2817,8 +2852,23 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
           </div>
         )}
 
+        {/* PLAYING SCREEN: 3D POSE & ACTION CHASE */}
+        {gameState === 'playing' && playMode === 'pose-chase' && (
+          <CityPoseChase3DGameplay
+            questions={normalizeChaseQuestions(quiz.questions)}
+            riderName={teams[0]?.name || 'Player 1'}
+            speedMultiplier={chaseSpeedMultiplier}
+            onChangeSpeedMultiplier={setChaseSpeedMultiplier}
+            timerMinutes={3}
+            initialLives={3}
+            voiceEnabled={chaseVoiceEnabled}
+            onChangeVoiceEnabled={setChaseVoiceEnabled}
+            onExitToSetup={() => setGameState('start')}
+          />
+        )}
+
         {/* PLAYING SCREEN */}
-        {gameState === 'playing' && (
+        {gameState === 'playing' && playMode !== 'pose-chase' && (
           <div className="flex flex-col h-full flex-grow relative animate-fade-in min-h-0 overflow-hidden z-10 justify-between">
             {/* Fullscreen Camera Backdrop for Camera Mode */}
             {playMode === 'camera' && (

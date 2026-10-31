@@ -9,6 +9,7 @@ import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { GameModeModal } from '../components/GameModeModal';
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
 import { parseOptionContent, formatOptionContent, AnswerContentMode } from '../utils/mediaAndPresets';
+import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay } from './CityPoseChase';
 import {
   ArrowLeft,
   Trash2,
@@ -132,6 +133,7 @@ export function RollerCoasterQuiz({
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
   const [cameraLeanEnabled, setCameraLeanEnabled] = useState<boolean>(true); // Webcam Always-On Mode by default
   const [cameraMode, setCameraMode] = useState<'group' | 'solo'>('group');
+  const [playRideMode, setPlayRideMode] = useState<'coaster' | 'pose-chase'>('coaster');
   const [studyIndex, setStudyIndex] = useState<number>(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
 
@@ -405,6 +407,72 @@ export function RollerCoasterQuiz({
                     </button>
                   </div>
 
+                  {/* Game Mode Selector: 3D Coaster Track vs Single-Player 3D Pose & Action Chase */}
+                  <div className="mb-5">
+                    <label className="text-xs font-black uppercase tracking-wider text-amber-300 block mb-2">
+                      Select 3D Game Mode
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPlayRideMode('coaster')}
+                        className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3 ${
+                          playRideMode === 'coaster'
+                            ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 border-white shadow-[0_0_20px_rgba(251,191,36,0.5)] scale-[1.02]'
+                            : 'bg-black/30 text-white border-white/20 hover:bg-black/45'
+                        }`}
+                      >
+                        <span className="text-2xl shrink-0">🎢</span>
+                        <div>
+                          <div className="font-black text-sm sm:text-base">3D Coaster Track Mode</div>
+                          <div
+                            className={`text-[11px] font-bold leading-snug mt-0.5 ${
+                              playRideMode === 'coaster' ? 'text-slate-900' : 'text-white/75'
+                            }`}
+                          >
+                            1-2-3 Players or Solo · Lean Left/Right at track splits &amp; Jump for Power-Ups!
+                          </div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPlayRideMode('pose-chase')}
+                        className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3 ${
+                          playRideMode === 'pose-chase'
+                            ? 'bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400 text-slate-950 border-white shadow-[0_0_20px_rgba(56,189,248,0.55)] scale-[1.02]'
+                            : 'bg-black/30 text-white border-white/20 hover:bg-black/45'
+                        }`}
+                      >
+                        <span className="text-2xl shrink-0">🏃‍♂️</span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-black text-sm sm:text-base">
+                              Single Player Pose &amp; Action Chase
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 text-[9px] font-black uppercase">
+                              HEAD-TO-FEET AI
+                            </span>
+                          </div>
+                          <div
+                            className={`text-[11px] font-bold leading-snug mt-0.5 ${
+                              playRideMode === 'pose-chase' ? 'text-slate-900' : 'text-white/75'
+                            }`}
+                          >
+                            Jump &amp; Follow Pose of Correct Option, Punch Enemy, Wall Kick &amp; Dodge Left/Right!
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Full-Body Head-to-Feet Detection Setup Scanner when Single-Player Pose & Action Chase is selected */}
+                  {playRideMode === 'pose-chase' && (
+                    <div className="mb-5">
+                      <BodyHeadToFeetSetupScanner compact />
+                    </div>
+                  )}
+
                   {/* Rider Name */}
                   <div className="mb-4">
                     <label className="text-xs font-black uppercase tracking-wider text-sky-100 block mb-2">
@@ -609,7 +677,11 @@ export function RollerCoasterQuiz({
                   className="w-full py-4 sm:py-5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-300 hover:to-rose-400 text-slate-950 font-black text-xl sm:text-2xl rounded-2xl shadow-[0_10px_30px_rgba(245,158,11,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-3"
                 >
                   <Play className="w-6 h-6 fill-current" />
-                  <span>START COASTER RIDE!</span>
+                  <span>
+                    {playRideMode === 'pose-chase'
+                      ? 'START 3D POSE & ACTION CHASE!'
+                      : 'START COASTER RIDE!'}
+                  </span>
                 </button>
               </div>
 
@@ -807,27 +879,40 @@ export function RollerCoasterQuiz({
         </div>
       )}
 
-      {/* SCREEN 4: 3D ROLLER COASTER GAMEPLAY VIEWPORT */}
-      {screen === 'game' && (
-        <Coaster3DGameplay
-          questions={getPlayableQuestions()}
-          riderName={riderName}
-          speedMultiplier={speedMultiplier}
-          onChangeSpeedMultiplier={setSpeedMultiplier}
-          timerMinutes={timerMinutes}
-          onChangeTimerMinutes={setTimerMinutes}
-          initialLives={initialLives}
-          parkTheme={parkTheme}
-          voiceEnabled={voiceEnabled}
-          onChangeVoiceEnabled={setVoiceEnabled}
-          cameraLeanEnabled={cameraLeanEnabled}
-          onChangeCameraLeanEnabled={setCameraLeanEnabled}
-          cameraMode={cameraMode}
-          onChangeCameraMode={setCameraMode}
-          onExitToSetup={() => setScreen('setup')}
-          onEditQuestions={() => setScreen('editor')}
-        />
-      )}
+      {/* SCREEN 4: 3D ROLLER COASTER OR SINGLE-PLAYER POSE & ACTION CHASE VIEWPORT */}
+      {screen === 'game' &&
+        (playRideMode === 'pose-chase' ? (
+          <CityPoseChase3DGameplay
+            questions={getPlayableQuestions()}
+            riderName={riderName}
+            speedMultiplier={speedMultiplier}
+            onChangeSpeedMultiplier={setSpeedMultiplier}
+            timerMinutes={timerMinutes}
+            initialLives={initialLives}
+            voiceEnabled={voiceEnabled}
+            onChangeVoiceEnabled={setVoiceEnabled}
+            onExitToSetup={() => setScreen('setup')}
+          />
+        ) : (
+          <Coaster3DGameplay
+            questions={getPlayableQuestions()}
+            riderName={riderName}
+            speedMultiplier={speedMultiplier}
+            onChangeSpeedMultiplier={setSpeedMultiplier}
+            timerMinutes={timerMinutes}
+            onChangeTimerMinutes={setTimerMinutes}
+            initialLives={initialLives}
+            parkTheme={parkTheme}
+            voiceEnabled={voiceEnabled}
+            onChangeVoiceEnabled={setVoiceEnabled}
+            cameraLeanEnabled={cameraLeanEnabled}
+            onChangeCameraLeanEnabled={setCameraLeanEnabled}
+            cameraMode={cameraMode}
+            onChangeCameraMode={setCameraMode}
+            onExitToSetup={() => setScreen('setup')}
+            onEditQuestions={() => setScreen('editor')}
+          />
+        ))}
 
       {/* Mode Switcher Modal */}
       <GameModeModal
@@ -849,7 +934,29 @@ export function RollerCoasterQuiz({
   );
 }
 
-type PowerUpType = 'magnet' | 'slow' | 'boost' | 'double' | 'shield';
+export type PowerUpType =
+  | 'magnet'
+  | 'slow'
+  | 'boost'
+  | 'double'
+  | 'shield'
+  | 'heart'
+  | 'star'
+  | 'frenzy';
+
+export const POWER_UP_CONFIGS: Record<
+  PowerUpType,
+  { emoji: string; label: string; color: number; hex: string; desc: string }
+> = {
+  double: { emoji: '⚡', label: '2X PTS', color: 0xa855f7, hex: '#a855f7', desc: 'Double Coins for 16s!' },
+  boost: { emoji: '🚀', label: 'BOOST', color: 0xf97316, hex: '#f97316', desc: 'Hyper Rocket Warp Speed!' },
+  slow: { emoji: '⏳', label: 'SLOW-MO', color: 0x06b6d4, hex: '#06b6d4', desc: 'Time Dilation & Easy Steer!' },
+  magnet: { emoji: '🧲', label: 'MAGNET', color: 0xef4444, hex: '#ef4444', desc: 'Pulls Coins from BOTH Tracks!' },
+  shield: { emoji: '🛡️', label: 'SHIELD', color: 0x10b981, hex: '#10b981', desc: 'Invulnerable to 1 wrong turn!' },
+  heart: { emoji: '❤️', label: '+1 LIFE', color: 0xf43f5e, hex: '#f43f5e', desc: 'Restores 1 Lost Heart Life!' },
+  star: { emoji: '⭐', label: 'STAR RUSH', color: 0xfacc15, hex: '#facc15', desc: '3X Coins & Rainbow Invincible!' },
+  frenzy: { emoji: '🎉', label: 'FRENZY', color: 0x3b82f6, hex: '#3b82f6', desc: 'Instant +15 Coin Jackpot!' },
+};
 
 /********************************************************************
  * ULTRA-HIGH-GRAPHICS 3D ROLLER COASTER GAMEPLAY ENGINE
@@ -953,13 +1060,17 @@ function Coaster3DGameplay({
     boost: number;
     double: number;
     shield: boolean;
+    star: number;
   }>({
     magnet: 0,
     slow: 0,
     boost: 0,
     double: 0,
     shield: false,
+    star: 0,
   });
+
+  const [approachingPowerUp, setApproachingPowerUp] = useState<PowerUpType | null>(null);
 
   const [floatingPopups, setFloatingPopups] = useState<
     { id: number; text: string; color: string; sub?: string }[]
@@ -1264,6 +1375,18 @@ function Coaster3DGameplay({
     } else if (type === 'shield') {
       playTone(440, 'sine', 0.18, 0.22, 880);
       setTimeout(() => playTone(880, 'triangle', 0.35, 0.26, 1318.51), 100);
+    } else if (type === 'heart') {
+      playTone(523.25, 'triangle', 0.14, 0.22, 659.25);
+      setTimeout(() => playTone(659.25, 'sine', 0.22, 0.26, 1046.5), 90);
+      setTimeout(() => playTone(1046.5, 'triangle', 0.32, 0.24, 1318.5), 180);
+    } else if (type === 'star') {
+      [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98, 2093.0].forEach((f, idx) => {
+        setTimeout(() => playTone(f, 'sine', 0.14, 0.24), idx * 45);
+      });
+    } else if (type === 'frenzy') {
+      [784, 987.77, 1174.66, 1567.98, 1975.53].forEach((f, idx) => {
+        setTimeout(() => playTone(f, 'triangle', 0.1, 0.18), idx * 55);
+      });
     }
   };
 
@@ -2369,19 +2492,82 @@ function Coaster3DGameplay({
     };
 
     // Twin Mystery Coaster Arches placed identically on both Left and Right branches past the split
-    const createBranchPortalRing = (pos: THREE.Vector3, isLeft: boolean) => {
+    const createBranchPortalRing = (pos: THREE.Vector3, isLeft: boolean, powerType?: PowerUpType) => {
       const ringGroup = new THREE.Group();
       ringGroup.position.copy(pos);
       const ringMat = new THREE.MeshStandardMaterial({
         color: isLeft ? 0x38bdf8 : 0xf43f5e,
         emissive: isLeft ? 0x0284c7 : 0xe11d48,
-        emissiveIntensity: 0.75,
+        emissiveIntensity: 0.85,
         roughness: 0.2,
       });
-      const torus = new THREE.Mesh(new THREE.TorusGeometry(2.35, 0.16, 12, 28, Math.PI), ringMat);
+      const torus = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.18, 12, 28, Math.PI), ringMat);
       torus.position.y = 0.2;
       ringGroup.add(torus);
+
+      // Support Footings
+      const footMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.3 });
+      const leftFoot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.2, 8), footMat);
+      leftFoot.position.set(-2.4, 0.6, 0);
+      const rightFoot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.2, 8), footMat);
+      rightFoot.position.set(2.4, 0.6, 0);
+      ringGroup.add(leftFoot, rightFoot);
+
+      // Mount 3D Power-Up ON TOP of this Arch!
+      if (powerType) {
+        const pPos = pos.clone().add(new THREE.Vector3(0, 2.85, 0));
+        const pMesh = create3DPowerUpMesh(powerType);
+        pMesh.position.copy(pPos);
+        collectiblesGroup.add(pMesh);
+        powerUpItems.push({ mesh: pMesh, worldPos: pPos, type: powerType, collected: false });
+      }
+
       return ringGroup;
+    };
+
+    // Dedicated 3D Overhead Arch for Power-Ups spanning across the coaster rails!
+    const createPowerUpOverheadArch = (pos: THREE.Vector3, tangent: THREE.Vector3, type: PowerUpType) => {
+      const cfg = POWER_UP_CONFIGS[type];
+      const archGroup = new THREE.Group();
+      archGroup.position.copy(pos);
+
+      const forward = tangent.clone().setY(0).normalize();
+      if (forward.lengthSq() > 0.001) {
+        archGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), forward);
+      }
+
+      const archMat = new THREE.MeshStandardMaterial({
+        color: cfg.color,
+        emissive: cfg.color,
+        emissiveIntensity: 0.85,
+        metalness: 0.6,
+        roughness: 0.2,
+      });
+      const pillarMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        metalness: 0.85,
+        roughness: 0.25,
+      });
+
+      // Left & Right Support Pillars spanning across the track rails
+      const leftPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 3.4, 10), pillarMat);
+      leftPillar.position.set(-2.4, 1.6, 0);
+      const rightPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 3.4, 10), pillarMat);
+      rightPillar.position.set(2.4, 1.6, 0);
+      archGroup.add(leftPillar, rightPillar);
+
+      // Glowing Neon Arch spanning overhead
+      const archTorus = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.16, 10, 24, Math.PI), archMat);
+      archTorus.position.set(0, 1.6, 0);
+      archGroup.add(archTorus);
+
+      // Overhead Crown Badge with "⬆️ JUMP!"
+      const crownMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+      const crown = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.26, 0.08), crownMat);
+      crown.position.set(0, 4.15, 0);
+      archGroup.add(crown);
+
+      return archGroup;
     };
 
     // 7B. 3D Spinning Golden Coins & Special Power-Ups on the Rails
@@ -2474,16 +2660,8 @@ function Coaster3DGameplay({
       return tex;
     };
 
-    const powerUpConfigs: Record<PowerUpType, { emoji: string; label: string; color: number; hex: string }> = {
-      magnet: { emoji: '🧲', label: 'MAGNET', color: 0xef4444, hex: '#ef4444' },
-      slow: { emoji: '⏳', label: 'SLOW-MO', color: 0x06b6d4, hex: '#06b6d4' },
-      boost: { emoji: '🚀', label: 'BOOST', color: 0xf97316, hex: '#f97316' },
-      double: { emoji: '⚡', label: '2X PTS', color: 0xa855f7, hex: '#a855f7' },
-      shield: { emoji: '🛡️', label: 'SHIELD', color: 0x10b981, hex: '#10b981' },
-    };
-
     const create3DPowerUpMesh = (type: PowerUpType) => {
-      const cfg = powerUpConfigs[type];
+      const cfg = POWER_UP_CONFIGS[type];
       const g = new THREE.Group();
 
       const outerRing = new THREE.Mesh(
@@ -2761,7 +2939,7 @@ function Coaster3DGameplay({
       startPts.forEach((p) => pts.push(p));
 
       const deck = questions.length > 0 ? questions : SAMPLE_COASTER_QUESTIONS;
-      const powerUpOrder: PowerUpType[] = ['magnet', 'slow', 'boost', 'double', 'shield'];
+      const powerUpOrder: PowerUpType[] = ['double', 'boost', 'slow', 'magnet', 'shield', 'heart', 'star', 'frenzy'];
 
       // Build interleaved sequence of Question Gates & Broken Track Obstacles based on Difficulty!
       // Easy (0.7): Slow, few obstacles (1 obstacle every 3 questions)
@@ -2884,9 +3062,11 @@ function Coaster3DGameplay({
           wrongBranchMesh.visible = false;
           trapBreakGroup.visible = true;
         } else {
-          // For Question Gates, BOTH tracks look 100% intact and symmetrical so the answer is never obvious!
-          trackMeshGroup.add(createBranchPortalRing(leftMidPt, true));
-          trackMeshGroup.add(createBranchPortalRing(rightMidPt, false));
+          // For Question Gates, BOTH tracks look 100% intact and have an exciting Power-Up mounted ON TOP of the Arch!
+          const leftPType = powerUpOrder[(nIdx * 2) % powerUpOrder.length];
+          const rightPType = powerUpOrder[(nIdx * 2 + 1) % powerUpOrder.length];
+          trackMeshGroup.add(createBranchPortalRing(leftMidPt, true, leftPType));
+          trackMeshGroup.add(createBranchPortalRing(rightMidPt, false, rightPType));
         }
 
         // Place symmetric coins on BOTH Left and Right diamond branches
@@ -3014,14 +3194,18 @@ function Coaster3DGameplay({
         const tan = mainCurve.getTangentAt(t).normalize();
         const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
-        // Every 5th slot on straightaways spawns an Elevated Power-Up Orb HIGH ABOVE the rails (+3.55 Y)!
-        if (s % 5 === 0) {
-          const pType = powerUpOrder[Math.floor(s / 5) % powerUpOrder.length];
-          const pPos = pt.clone().add(new THREE.Vector3(0, 3.55, 0));
+        // Every 4th slot on straightaways spawns an Overhead Arch with a Power-Up ON TOP (Requires JUMPING UP to catch!)
+        if (s % 4 === 0) {
+          const pType = powerUpOrder[Math.floor(s / 4) % powerUpOrder.length];
+          const pPos = pt.clone().add(new THREE.Vector3(0, 3.1, 0));
           const pMesh = create3DPowerUpMesh(pType);
           pMesh.position.copy(pPos);
           collectiblesGroup.add(pMesh);
           powerUpItems.push({ mesh: pMesh, worldPos: pPos, type: pType, collected: false });
+
+          // Overhead neon coaster arch over rails
+          const arch = createPowerUpOverheadArch(pt, tan, pType);
+          trackMeshGroup.add(arch);
         } else {
           const waveLane = Math.sin(s * 0.7) * 0.45;
           const cPos = pt.clone().addScaledVector(side, waveLane).add(new THREE.Vector3(0, 1.12, 0));
@@ -3092,6 +3276,7 @@ function Coaster3DGameplay({
     let slowTimer = 0;
     let boostTimer = 0;
     let doubleTimer = 0;
+    let starTimer = 0;
     let hasShield = false;
     let lastPowerUpUiSync = 0;
 
@@ -3278,6 +3463,7 @@ function Coaster3DGameplay({
         boost: Math.ceil(boostTimer),
         double: Math.ceil(doubleTimer),
         shield: hasShield,
+        star: Math.ceil(starTimer),
       });
     };
 
@@ -3358,6 +3544,7 @@ function Coaster3DGameplay({
       slowTimer = 0;
       boostTimer = 0;
       doubleTimer = 0;
+      starTimer = 0;
       hasShield = false;
       activeGateIdx = 0;
       trackProgressT = 0;
@@ -3482,6 +3669,9 @@ function Coaster3DGameplay({
           jumpOffsetY = 0;
           jumpVelY = 0;
           setIsJumping(false);
+        } else if (Math.random() < 0.4) {
+          // Dynamic golden spark thruster trail beneath airborne cart
+          spawnCelebrationSparks(camera.position.clone().add(new THREE.Vector3(0, -1.1, -0.6)), 2);
         }
       }
 
@@ -3614,6 +3804,7 @@ function Coaster3DGameplay({
         if (slowTimer > 0) slowTimer = Math.max(0, slowTimer - dt);
         if (boostTimer > 0) boostTimer = Math.max(0, boostTimer - dt);
         if (doubleTimer > 0) doubleTimer = Math.max(0, doubleTimer - dt);
+        if (starTimer > 0) starTimer = Math.max(0, starTimer - dt);
 
         if (isBoostActive && Math.floor(rideTimeSec * 3.5) !== lastBoostThrustSec) {
           lastBoostThrustSec = Math.floor(rideTimeSec * 3.5);
@@ -3680,7 +3871,8 @@ function Coaster3DGameplay({
         trackProgressT += currentSpeed * dt;
         positionCameraOnCurve(mainCurve, trackProgressT, smoothSteerRef.current);
 
-        const coinMultiplier = doubleTimer > 0 ? 2 : 1;
+        const isStarActive = starTimer > 0;
+        const coinMultiplier = (doubleTimer > 0 ? 2 : 1) * (isStarActive ? 3 : 1);
 
         // 2. Check 3D Coin Pickups & Cross-Track Magnet Pull
         const cartTarget = camera.position.clone().addScaledVector(tangent, 1.1).add(new THREE.Vector3(0, -0.22, 0));
@@ -3751,6 +3943,7 @@ function Coaster3DGameplay({
         }
 
         // 3. Check Elevated 3D Special Power-Up Pickups (Requires JUMPING UP to reach, or active Magnet!)
+        let nearestAheadPowerUp: PowerUpType | null = null;
         for (let i = 0; i < powerUpItems.length; i++) {
           const p = powerUpItems[i];
           if (p.collected) continue;
@@ -3759,43 +3952,67 @@ function Coaster3DGameplay({
           const dist = toCart.length();
           const horizDist = Math.hypot(cartTarget.x - p.mesh.position.x, cartTarget.z - p.mesh.position.z);
 
-          if (isMagnetActive && dist < 24.0 && dist > 2.0) {
-            toCart.normalize();
-            p.mesh.position.addScaledVector(toCart, 25 * dt);
+          // Detect power-up in front of cart within 28m
+          if (dist < 28.0 && dist > 1.2 && !nearestAheadPowerUp) {
+            const forwardDot = toCart.clone().negate().dot(tangent);
+            if (forwardDot > 0.05) {
+              nearestAheadPowerUp = p.type;
+            }
           }
 
-          // Players must JUMP UP (jumpOffsetY > 0.95) or have Magnet active to grab the high Power-Up!
+          if (isMagnetActive && dist < 32.0 && dist > 2.0) {
+            toCart.normalize();
+            p.mesh.position.addScaledVector(toCart, 28 * dt);
+          }
+
+          // Players must JUMP UP (jumpOffsetY > 0.85) or have Magnet active to grab the high Power-Up!
           const reachedHighOrb =
-            (jumpOffsetY > 0.95 && horizDist < 3.6) || (isMagnetActive && dist < 5.6);
+            (jumpOffsetY > 0.85 && horizDist < 3.8) || (isMagnetActive && dist < 5.8);
 
           if (reachedHighOrb) {
             p.collected = true;
             p.mesh.visible = false;
-            const bonusCoins = 3 * coinMultiplier;
+            const bonusCoins = 4 * coinMultiplier;
             localCoins += bonusCoins;
             setCoinsCount(localCoins);
             playPowerUpSound(p.type);
-            spawnCelebrationSparks(p.mesh.position, 28);
+            spawnCelebrationSparks(p.mesh.position, 34);
 
             if (p.type === 'magnet') {
-              magnetTimer = 11.0;
+              magnetTimer = 12.0;
               pushScorePopup('🧲 SUPER MAGNET ACTIVE!', 'text-rose-300', `Pulls all coins from BOTH tracks! +${bonusCoins} 🪙`);
             } else if (p.type === 'slow') {
-              slowTimer = 9.0;
-              pushScorePopup('⏳ SLOW-MO MATRIX!', 'text-cyan-300', `Time Dilation +${bonusCoins} 🪙`);
+              slowTimer = 10.0;
+              pushScorePopup('⏳ SLOW-MO MATRIX!', 'text-cyan-300', `Time Dilation & Easy Steer +${bonusCoins} 🪙`);
             } else if (p.type === 'boost') {
-              boostTimer = 7.0;
+              boostTimer = 8.0;
               pushScorePopup('🚀 HYPER TURBO BOOST!', 'text-orange-300', `Warp Speed & Auto-Pilot +${bonusCoins} 🪙`);
             } else if (p.type === 'double') {
-              doubleTimer = 14.0;
-              pushScorePopup('⚡ 2X COINS ACTIVE!', 'text-purple-300', `Double Value for 14s!`);
+              doubleTimer = 16.0;
+              pushScorePopup('⚡ 2X COINS ACTIVE!', 'text-purple-300', `Double Points for 16s! +${bonusCoins} 🪙`);
             } else if (p.type === 'shield') {
               hasShield = true;
-              pushScorePopup('🛡️ SAFETY FORCE SHIELD!', 'text-emerald-300', `Invulnerable to 1 wrong turn!`);
+              pushScorePopup('🛡️ SAFETY FORCE SHIELD!', 'text-emerald-300', `Invulnerable to 1 wrong turn! +${bonusCoins} 🪙`);
+            } else if (p.type === 'heart') {
+              localLives = Math.min(initialLives, localLives + 1);
+              setLivesLeft(localLives);
+              pushScorePopup('❤️ +1 EXTRA LIFE!', 'text-rose-400', `Life Restored (${localLives}/${initialLives} Hearts) +${bonusCoins} 🪙`);
+            } else if (p.type === 'star') {
+              starTimer = 9.0;
+              pushScorePopup('⭐ STAR RUSH INVINCIBLE!', 'text-amber-300', `3X Coins & Rainbow Speed for 9s! +${bonusCoins} 🪙`);
+            } else if (p.type === 'frenzy') {
+              const frenzyCoins = 15 * coinMultiplier;
+              localCoins += frenzyCoins;
+              setCoinsCount(localCoins);
+              for (let k = 0; k < 6; k++) {
+                setTimeout(() => playCoinCollectSound(), k * 65);
+              }
+              pushScorePopup('🎉 COIN FRENZY JACKPOT!', 'text-yellow-300', `+${frenzyCoins} Golden Coins Shower!`);
             }
             syncPowerUpsToUI();
           }
         }
+        setApproachingPowerUp(nearestAheadPowerUp);
 
         // 4. Question Gate OR Broken Track Obstacle Split Resolution
         const gate = gateCheckpoints[activeGateIdx];
@@ -3857,7 +4074,7 @@ function Coaster3DGameplay({
             setObstacleWarning(null);
             setGateSecondsLeft(null);
 
-            if (steeringRef.current === gate.correctSide || boostTimer > 0) {
+            if (steeringRef.current === gate.correctSide || boostTimer > 0 || isStarActive) {
               // CORRECT RAIL OR OBSTACLE DODGED!
               if (steeringRef.current !== gate.correctSide) {
                 steeringRef.current = gate.correctSide;
@@ -4168,6 +4385,16 @@ function Coaster3DGameplay({
         <div className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300 border-4 border-cyan-500/30 shadow-[inset_0_0_65px_rgba(6,182,212,0.25)]" />
       )}
 
+      {/* Star Rush Rainbow Speed Vignette */}
+      {activePowerUps.star > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300 border-4 border-amber-400/50 shadow-[inset_0_0_80px_rgba(250,204,21,0.38)]">
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 via-pink-500 to-indigo-500 backdrop-blur-md border border-yellow-200 px-4 py-1.5 rounded-full text-slate-950 font-black text-xs sm:text-sm shadow-2xl flex items-center gap-2 animate-bounce">
+            <span>⭐</span>
+            <span className="tracking-wide text-white">STAR RUSH ACTIVE · 3X COINS &amp; INVINCIBLE</span>
+          </div>
+        </div>
+      )}
+
       {/* Top HUD Bar (Big Coins Counter, Hearts Lives Indicator, Countdown Timer & Gate Progress — No LIVE PTS or km/h) */}
       <header className="absolute top-0 left-0 right-0 z-40 flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 sm:px-5 pointer-events-none">
         <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
@@ -4283,6 +4510,13 @@ function Coaster3DGameplay({
               <div className="px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 border border-emerald-300 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-900/40">
                 <span>🛡️</span>
                 <span className="tracking-wider">SHIELD</span>
+              </div>
+            )}
+            {activePowerUps.star > 0 && (
+              <div className="px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 border border-yellow-100 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-900/40 animate-pulse">
+                <span>⭐</span>
+                <span className="hidden sm:inline tracking-wider">STAR RUSH</span>
+                <span className="bg-slate-950/25 px-1.5 py-0.5 rounded-md font-mono text-[11px] text-white">{activePowerUps.star}s</span>
               </div>
             )}
           </div>
@@ -4763,19 +4997,36 @@ function Coaster3DGameplay({
           </div>
         </div>
 
+        {/* Approaching Overhead Power-Up Alert Banner */}
+        {approachingPowerUp && (
+          <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 z-30 animate-bounce whitespace-nowrap">
+            <div className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-slate-950 font-black px-4 py-1.5 rounded-2xl shadow-2xl border-2 border-white flex items-center gap-2 text-xs sm:text-sm">
+              <span className="text-base sm:text-lg animate-pulse">⬆️</span>
+              <span className="tracking-wide">JUMP TO CATCH {POWER_UP_CONFIGS[approachingPowerUp]?.label || 'POWER-UP'}!</span>
+              <span className="text-base sm:text-lg">{POWER_UP_CONFIGS[approachingPowerUp]?.emoji}</span>
+            </div>
+          </div>
+        )}
+
         {/* Dedicated JUMP Button right next to the Cockpit Cam so players can also tap/click to grab high Power-Ups! */}
         <button
           onPointerDown={() => actionsRef.current.triggerJump()}
           className={`pointer-events-auto h-20 w-16 sm:h-24 sm:w-20 rounded-2xl border-2 font-black flex flex-col items-center justify-center gap-0.5 shadow-2xl transition-all active:scale-90 cursor-pointer ${
             isJumping
               ? 'bg-gradient-to-t from-amber-500 to-yellow-300 text-slate-950 border-white scale-105 shadow-[0_0_25px_rgba(250,204,21,0.85)]'
+              : approachingPowerUp
+              ? 'bg-gradient-to-t from-amber-500 via-orange-500 to-yellow-300 text-slate-950 border-white animate-pulse shadow-[0_0_24px_rgba(250,204,21,0.9)] scale-105'
               : 'bg-slate-900/90 hover:bg-slate-800 text-yellow-300 border-yellow-400/70 shadow-lg'
           }`}
           title="Jump up to collect elevated Power-Ups! (Or jump on camera / press Space or Up Arrow)"
         >
           <span className="text-xl sm:text-2xl leading-none">⬆️</span>
-          <span className="text-[10px] sm:text-xs tracking-wider uppercase">JUMP</span>
-          <span className="text-[8px] font-bold opacity-80">POWER-UP</span>
+          <span className="text-[10px] sm:text-xs tracking-wider uppercase">
+            {approachingPowerUp ? 'JUMP!' : 'JUMP'}
+          </span>
+          <span className="text-[8px] font-bold opacity-80">
+            {approachingPowerUp ? POWER_UP_CONFIGS[approachingPowerUp]?.label : 'POWER-UP'}
+          </span>
         </button>
       </div>
 
