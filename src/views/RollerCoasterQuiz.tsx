@@ -1443,10 +1443,16 @@ function Coaster3DGameplay({
     let stream: MediaStream | null = null;
     let faceMesh: any = null;
     let animId: number | null = null;
-    const playerBaselines: Array<{ x: number; y: number }> = [
-      { x: 0.5, y: 0.55 },
-      { x: 0.5, y: 0.55 },
-      { x: 0.5, y: 0.55 },
+    const playerBaselines: Array<{
+      x: number;
+      y: number;
+      prevNoseY: number;
+      isAirborne: boolean;
+      settledFrames: number;
+    }> = [
+      { x: 0.5, y: 0.55, prevNoseY: 0.55, isAirborne: false, settledFrames: 0 },
+      { x: 0.5, y: 0.55, prevNoseY: 0.55, isAirborne: false, settledFrames: 0 },
+      { x: 0.5, y: 0.55, prevNoseY: 0.55, isAirborne: false, settledFrames: 0 },
     ];
     let lastJumpDetectedTime = 0;
 
@@ -1522,8 +1528,16 @@ function Coaster3DGameplay({
               // Initialize or slowly adapt each player's neutral standing position (P1, P2, P3)
               const slotDefaultX = faceCount === 1 ? 0.5 : (i + 0.5) / faceCount;
               if (!playerBaselines[i]) {
-                playerBaselines[i] = { x: slotDefaultX, y: noseY };
+                playerBaselines[i] = {
+                  x: slotDefaultX,
+                  y: noseY,
+                  prevNoseY: noseY,
+                  isAirborne: false,
+                  settledFrames: 0,
+                };
               }
+              const pBase = playerBaselines[i];
+              pBase.settledFrames = (pBase.settledFrames || 0) + 1;
 
               // 1. Head Roll/Tilt angle: when leaning left on mirrored screen, topHead is left of chin (mxTop < mxChin -> negative)
               const headTilt = (mxTop - mxChin) * 4.8;
@@ -1532,21 +1546,39 @@ function Coaster3DGameplay({
               const eyeSlope = leftEye && rightEye ? (leftEye.y - rightEye.y) * 3.6 : 0;
 
               // 3. Body horizontal shift relative to this rider's own lane baseline
-              const shiftFromBaseX = (mxNose - playerBaselines[i].x) * 2.2;
+              const shiftFromBaseX = (mxNose - pBase.x) * 2.2;
               // Gently drift baseline toward current X when head is upright so standing in lane P1/P2/P3 never pulls steering
               if (Math.abs(headTilt) < 0.14) {
-                playerBaselines[i].x = playerBaselines[i].x * 0.92 + mxNose * 0.08;
+                pBase.x = pBase.x * 0.92 + mxNose * 0.08;
               } else {
-                playerBaselines[i].x = playerBaselines[i].x * 0.985 + slotDefaultX * 0.015;
+                pBase.x = pBase.x * 0.985 + slotDefaultX * 0.015;
               }
 
-              // Detect upward JUMP motion (noseY decreases when jumping up in camera frame)
-              const upwardDelta = playerBaselines[i].y - noseY;
-              const riderJumping = upwardDelta > 0.055 || noseY < 0.27;
-              if (riderJumping) {
+              // Detect true upward physical JUMP motion (noseY decreases when leaping upward)
+              const upwardDelta = pBase.y - noseY;
+              const upwardVel = pBase.prevNoseY - noseY;
+              pBase.prevNoseY = noseY;
+
+              // Physical jump strictly requires:
+              // - Settled tracker baseline (at least 6 frames)
+              // - Sudden rapid upward launch velocity (upwardVel > 0.035)
+              // - Noticeable upward displacement above neutral baseline (upwardDelta > 0.085)
+              // - NOT already registered as airborne
+              let riderJumping = false;
+              if (pBase.settledFrames > 6 && !pBase.isAirborne && upwardVel > 0.035 && upwardDelta > 0.085) {
+                riderJumping = true;
+                pBase.isAirborne = true;
                 anyRiderJumped = true;
-              } else {
-                playerBaselines[i].y = playerBaselines[i].y * 0.92 + noseY * 0.08;
+              } else if (pBase.isAirborne) {
+                // Once player descends back towards baseline, reset airborne state
+                if (upwardDelta < 0.04) {
+                  pBase.isAirborne = false;
+                }
+              }
+
+              // Smoothly calibrate resting baseline only when grounded and stationary
+              if (!pBase.isAirborne && upwardDelta < 0.05) {
+                pBase.y = pBase.y * 0.95 + noseY * 0.05;
               }
 
               // Combined person tilt: negative = LEFT, positive = RIGHT
@@ -1561,14 +1593,14 @@ function Coaster3DGameplay({
                 y: noseY,
                 lean: combinedLean,
                 id: i + 1,
-                jumping: riderJumping,
+                jumping: riderJumping || pBase.isAirborne,
               });
             }
 
             setPersonMarkers(markers);
 
             const nowMs = performance.now();
-            if (anyRiderJumped && nowMs - lastJumpDetectedTime > 650) {
+            if (anyRiderJumped && nowMs - lastJumpDetectedTime > 800) {
               lastJumpDetectedTime = nowMs;
               actionsRef.current.triggerJump();
             }
@@ -1643,6 +1675,10 @@ function Coaster3DGameplay({
           const tCtx = trackCanvas.getContext('2d', { willReadFrequently: true });
           let prevFrame: Uint8ClampedArray | null = null;
           let lastSample = 0;
+          let prevCanvasAvgY = 0.5;
+          let canvasBaseY = 0.5;
+          let canvasIsAirborne = false;
+          let canvasSettledFrames = 0;
 
           const loopCanvasTracker = (t: number) => {
             if (!active) return;
@@ -1685,13 +1721,32 @@ function Coaster3DGameplay({
                   const isGroup = cameraModeRef.current === 'group';
                   let offset = (avgX - 0.5) * 2.8;
 
-                  const jumped = topJumpWeight > 1800 && avgY < 0.34;
-                  if (jumped && performance.now() - lastJumpDetectedTime > 650) {
+                  canvasSettledFrames++;
+                  const upwardDelta = canvasBaseY - avgY;
+                  const upwardVel = prevCanvasAvgY - avgY;
+                  prevCanvasAvgY = avgY;
+
+                  // True physical jump requires rapid upward motion velocity & displacement, not static sitting height!
+                  const jumped =
+                    canvasSettledFrames > 5 &&
+                    !canvasIsAirborne &&
+                    topJumpWeight > 2400 &&
+                    upwardVel > 0.045 &&
+                    upwardDelta > 0.08;
+
+                  if (jumped && performance.now() - lastJumpDetectedTime > 800) {
+                    canvasIsAirborne = true;
                     lastJumpDetectedTime = performance.now();
                     actionsRef.current.triggerJump();
+                  } else if (canvasIsAirborne && upwardDelta < 0.035) {
+                    canvasIsAirborne = false;
                   }
 
-                  if (jumped) {
+                  if (!canvasIsAirborne && upwardDelta < 0.045) {
+                    canvasBaseY = canvasBaseY * 0.95 + avgY * 0.05;
+                  }
+
+                  if (jumped || canvasIsAirborne) {
                     setGroupLeanStatus('⬆️ JUMPING FOR POWER-UP!');
                   } else if (isGroup && leftWeight > rightWeight * 1.6 && leftWeight > 1100) {
                     offset = -0.38;
@@ -2473,20 +2528,28 @@ function Coaster3DGameplay({
       archGroup.add(leftPost, rightPost, topBeam);
 
       const signTexL = createAnswerSignTexture(gateInfo.leftText, '#0284c7', '#1e3a8a', '◀ LEFT TRACK');
-      const signL = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.4, 2.3),
-        new THREE.MeshBasicMaterial({ map: signTexL, side: THREE.DoubleSide })
-      );
+      const freeTexL = createAnswerSignTexture('⭐ POWER-UP RUSH!', '#f59e0b', '#78350f', '◀ FREE RIDE');
+      const signMatL = new THREE.MeshBasicMaterial({ map: signTexL, side: THREE.DoubleSide });
+      const signL = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.3), signMatL);
       signL.position.set(-2.45, 4.4, 0);
       archGroup.add(signL);
 
       const signTexR = createAnswerSignTexture(gateInfo.rightText, '#e11d48', '#881337', 'RIGHT TRACK ▶');
-      const signR = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.4, 2.3),
-        new THREE.MeshBasicMaterial({ map: signTexR, side: THREE.DoubleSide })
-      );
+      const freeTexR = createAnswerSignTexture('🚀 TURBO CLEAR!', '#f59e0b', '#78350f', 'FREE RIDE ▶');
+      const signMatR = new THREE.MeshBasicMaterial({ map: signTexR, side: THREE.DoubleSide });
+      const signR = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.3), signMatR);
       signR.position.set(2.45, 4.4, 0);
       archGroup.add(signR);
+
+      archGroup.userData = {
+        signMatL,
+        signMatR,
+        signTexL,
+        signTexR,
+        freeTexL,
+        freeTexR,
+        isFreeRideShowing: false,
+      };
 
       return archGroup;
     };
@@ -2907,6 +2970,7 @@ function Coaster3DGameplay({
       resolved: boolean;
       promptShown: boolean;
       autoPilotNotified?: boolean;
+      archMesh?: THREE.Group;
     }
 
     let mainCurve: THREE.CatmullRomCurve3;
@@ -3174,9 +3238,11 @@ function Coaster3DGameplay({
             gate.correctSide === -1 ? 1 : -1
           );
           trackMeshGroup.add(obsArch);
+          gate.archMesh = obsArch;
         } else {
           const arch = create3DGateArch(gate.forkWorldPos, gate);
           trackMeshGroup.add(arch);
+          gate.archMesh = arch;
         }
       });
 
@@ -3184,9 +3250,9 @@ function Coaster3DGameplay({
       const numApproachSamples = courseNodes.length * 14;
       for (let s = 3; s < numApproachSamples; s++) {
         const t = s / (numApproachSamples + 2);
-        // Skip spawning inside diamond splits or right on top of a fork arch
+        // Skip spawning inside diamond splits, right on top of a fork arch, or inside question decision zones
         const insideOrNearSplit = gateCheckpoints.some(
-          (g) => (t >= g.forkT - 0.018 && t <= g.rejoinT + 0.01)
+          (g) => t >= g.promptStartT - 0.005 && t <= g.rejoinT + 0.01
         );
         if (insideOrNearSplit) continue;
 
@@ -3868,15 +3934,17 @@ function Coaster3DGameplay({
         updateContinuousCoasterSound(slopeFactor * effectiveSpeedMult, true, smoothSteerRef.current);
         updateRideMusic(now, true, effectiveSpeedMult);
 
+        const isStarActive = starTimer > 0;
+        const isAnyPowerUpActive = magnetTimer > 0 || boostTimer > 0 || doubleTimer > 0 || slowTimer > 0 || starTimer > 0;
+        // The roller coaster and character ALWAYS move forward with continuous physical velocity — NEVER stop or freeze!
         trackProgressT += currentSpeed * dt;
         positionCameraOnCurve(mainCurve, trackProgressT, smoothSteerRef.current);
 
-        const isStarActive = starTimer > 0;
         const coinMultiplier = (doubleTimer > 0 ? 2 : 1) * (isStarActive ? 3 : 1);
 
-        // 2. Check 3D Coin Pickups & Cross-Track Magnet Pull
+        // 2. Check 3D Coin Pickups & Cross-Track Magnet Pull (Super Magnet pulls all coins across BOTH tracks!)
         const cartTarget = camera.position.clone().addScaledVector(tangent, 1.1).add(new THREE.Vector3(0, -0.22, 0));
-        const magnetRadius = isMagnetActive ? 65.0 : 3.1;
+        const magnetRadius = isMagnetActive ? 120.0 : 3.5;
         const currentSteerSide = steeringRef.current;
 
         for (let i = 0; i < coinItems.length; i++) {
@@ -3888,18 +3956,18 @@ function Coaster3DGameplay({
 
           if (isMagnetActive && dist < magnetRadius) {
             toCart.normalize();
-            const pullSpeed = Math.max(48, 72 - dist * 0.32) * (isBoostActive ? 1.35 : 1.0);
+            const pullSpeed = Math.max(75, 125 - dist * 0.35) * (isBoostActive ? 1.45 : 1.0);
             c.mesh.position.addScaledVector(toCart, pullSpeed * dt);
-            c.mesh.position.y += Math.sin(Math.min(Math.PI, (1 - dist / magnetRadius) * Math.PI)) * 0.28;
-            c.mesh.rotation.y += 26 * dt;
-            c.mesh.rotation.x += 16 * dt;
-            c.mesh.scale.setScalar(1.28);
+            c.mesh.position.y += Math.sin(Math.min(Math.PI, (1 - dist / magnetRadius) * Math.PI)) * 0.32;
+            c.mesh.rotation.y += 32 * dt;
+            c.mesh.rotation.x += 20 * dt;
+            c.mesh.scale.setScalar(1.4);
 
-            if (Math.random() < 0.22) {
+            if (Math.random() < 0.28) {
               const sparkMat = new THREE.MeshBasicMaterial({
                 color: c.isBranchCoin && c.branchSide !== currentSteerSide ? 0xf43f5e : 0xfacc15,
               });
-              const spark = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), sparkMat);
+              const spark = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), sparkMat);
               spark.position.copy(c.mesh.position).add(
                 new THREE.Vector3(
                   (Math.random() - 0.5) * 0.4,
@@ -3907,13 +3975,13 @@ function Coaster3DGameplay({
                   (Math.random() - 0.5) * 0.4
                 )
               );
-              const vel = toCart.clone().multiplyScalar(16 + Math.random() * 8);
+              const vel = toCart.clone().multiplyScalar(22 + Math.random() * 10);
               scene.add(spark);
               particles.push({ mesh: spark, vel, life: 0.35 });
             }
           }
 
-          const pickupThreshold = isMagnetActive ? 5.2 : 2.85;
+          const pickupThreshold = isMagnetActive ? 6.5 : 2.85;
           if (dist < pickupThreshold) {
             c.collected = true;
             c.mesh.visible = false;
@@ -3942,7 +4010,7 @@ function Coaster3DGameplay({
           }
         }
 
-        // 3. Check Elevated 3D Special Power-Up Pickups (Requires JUMPING UP to reach, or active Magnet!)
+        // 3. Check Elevated 3D Special Power-Up Pickups (STRICTLY requires JUMPING UP into the air to catch!)
         let nearestAheadPowerUp: PowerUpType | null = null;
         for (let i = 0; i < powerUpItems.length; i++) {
           const p = powerUpItems[i];
@@ -3960,18 +4028,15 @@ function Coaster3DGameplay({
             }
           }
 
-          if (isMagnetActive && dist < 32.0 && dist > 2.0) {
-            toCart.normalize();
-            p.mesh.position.addScaledVector(toCart, 28 * dt);
-          }
-
-          // Players must JUMP UP (jumpOffsetY > 0.85) or have Magnet active to grab the high Power-Up!
-          const reachedHighOrb =
-            (jumpOffsetY > 0.85 && horizDist < 3.8) || (isMagnetActive && dist < 5.8);
+          // Overhead Power-Ups stay high on their neon arch.
+          // Magnet NEVER pulls power-ups down! Players MUST physically JUMP UP (jumpOffsetY > 0.65) to grab it!
+          const reachedHighOrb = jumpOffsetY > 0.65 && horizDist < 3.8;
 
           if (reachedHighOrb) {
             p.collected = true;
             p.mesh.visible = false;
+            // When a power-up is activated, immediately hide/pause questions
+            setActivePrompt(null);
             const bonusCoins = 4 * coinMultiplier;
             localCoins += bonusCoins;
             setCoinsCount(localCoins);
@@ -3979,17 +4044,17 @@ function Coaster3DGameplay({
             spawnCelebrationSparks(p.mesh.position, 34);
 
             if (p.type === 'magnet') {
-              magnetTimer = 12.0;
-              pushScorePopup('🧲 SUPER MAGNET ACTIVE!', 'text-rose-300', `Pulls all coins from BOTH tracks! +${bonusCoins} 🪙`);
+              magnetTimer = 6.0;
+              pushScorePopup('🧲 SUPER MAGNET ACTIVE!', 'text-rose-300', `Vacuuming all coins from BOTH tracks! +${bonusCoins} 🪙`);
             } else if (p.type === 'slow') {
-              slowTimer = 10.0;
+              slowTimer = 5.0;
               pushScorePopup('⏳ SLOW-MO MATRIX!', 'text-cyan-300', `Time Dilation & Easy Steer +${bonusCoins} 🪙`);
             } else if (p.type === 'boost') {
-              boostTimer = 8.0;
+              boostTimer = 5.0;
               pushScorePopup('🚀 HYPER TURBO BOOST!', 'text-orange-300', `Warp Speed & Auto-Pilot +${bonusCoins} 🪙`);
             } else if (p.type === 'double') {
-              doubleTimer = 16.0;
-              pushScorePopup('⚡ 2X COINS ACTIVE!', 'text-purple-300', `Double Points for 16s! +${bonusCoins} 🪙`);
+              doubleTimer = 6.0;
+              pushScorePopup('⚡ 2X COINS ACTIVE!', 'text-purple-300', `Double Points for 6s! +${bonusCoins} 🪙`);
             } else if (p.type === 'shield') {
               hasShield = true;
               pushScorePopup('🛡️ SAFETY FORCE SHIELD!', 'text-emerald-300', `Invulnerable to 1 wrong turn! +${bonusCoins} 🪙`);
@@ -3998,8 +4063,8 @@ function Coaster3DGameplay({
               setLivesLeft(localLives);
               pushScorePopup('❤️ +1 EXTRA LIFE!', 'text-rose-400', `Life Restored (${localLives}/${initialLives} Hearts) +${bonusCoins} 🪙`);
             } else if (p.type === 'star') {
-              starTimer = 9.0;
-              pushScorePopup('⭐ STAR RUSH INVINCIBLE!', 'text-amber-300', `3X Coins & Rainbow Speed for 9s! +${bonusCoins} 🪙`);
+              starTimer = 5.0;
+              pushScorePopup('⭐ STAR RUSH INVINCIBLE!', 'text-amber-300', `3X Coins & Rainbow Speed for 5s! +${bonusCoins} 🪙`);
             } else if (p.type === 'frenzy') {
               const frenzyCoins = 15 * coinMultiplier;
               localCoins += frenzyCoins;
@@ -4015,57 +4080,85 @@ function Coaster3DGameplay({
         setApproachingPowerUp(nearestAheadPowerUp);
 
         // 4. Question Gate OR Broken Track Obstacle Split Resolution
+        // Question is asked AFTER the power-up fades!
         const gate = gateCheckpoints[activeGateIdx];
         if (gate && !gate.resolved) {
-          if (!gate.promptShown && trackProgressT >= gate.promptStartT) {
-            gate.promptShown = true;
-            steeringRef.current = 0;
-            smoothSteerRef.current = 0;
-            setSteeringChoice(0);
-            setSmoothSteerPct(50);
-            setCurrentGateIdx(gate.questionIndex);
-
-            if (gate.kind === 'obstacle') {
-              // Broken Track Obstacle Split — NO question modal! Players see the broken track and dodge!
-              setActivePrompt(null);
-              setObstacleWarning({
-                brokenSide: gate.correctSide === -1 ? 1 : -1,
-                safeSide: gate.correctSide,
-              });
-              playTone(310, 'triangle', 0.16, 0.18, 440);
-            } else {
-              setObstacleWarning(null);
-              setActivePrompt({
-                index: gate.questionIndex,
-                total: questions.length,
-                question: gate.question,
-                leftText: gate.leftText,
-                rightText: gate.rightText,
-                correctSide: gate.correctSide,
-              });
-              speakQuestion(parseOptionContent(gate.question).text || gate.question);
+          // Dynamic 3D Arch: During power-up rush, display FREE RIDE on overhead track signs!
+          // When power-up fades, seamlessly swap to the question answer options!
+          if (gate.archMesh?.userData?.signMatL) {
+            const u = gate.archMesh.userData;
+            if (isAnyPowerUpActive && !u.isFreeRideShowing) {
+              u.signMatL.map = u.freeTexL;
+              u.signMatR.map = u.freeTexR;
+              u.signMatL.needsUpdate = true;
+              u.signMatR.needsUpdate = true;
+              u.isFreeRideShowing = true;
+            } else if (!isAnyPowerUpActive && u.isFreeRideShowing) {
+              u.signMatL.map = u.signTexL;
+              u.signMatR.map = u.signTexR;
+              u.signMatL.needsUpdate = true;
+              u.signMatR.needsUpdate = true;
+              u.isFreeRideShowing = false;
             }
           }
 
-          if (gate.promptShown) {
+          // While power-up is active, suppress question prompt HUD and voice until power-up fades
+          if (isAnyPowerUpActive) {
+            if (activePrompt !== null) {
+              setActivePrompt(null);
+            }
+            if (obstacleWarning !== null) {
+              setObstacleWarning(null);
+            }
+            if (gateSecondsLeft !== null) {
+              setGateSecondsLeft(null);
+            }
+          } else {
+            // Power-up has faded (or none active): NOW ASK THE QUESTION!
+            if (!gate.promptShown && trackProgressT >= gate.promptStartT && trackProgressT < gate.forkT) {
+              const remainingApproachDist = gate.forkT - trackProgressT;
+              // Fair runway check: If power-up expired right at the junction (< 0.010),
+              // auto-clear this junction safely so the player gets full approach time on the next question!
+              if (remainingApproachDist >= 0.010) {
+                gate.promptShown = true;
+                steeringRef.current = 0;
+                smoothSteerRef.current = 0;
+                setSteeringChoice(0);
+                setSmoothSteerPct(50);
+                setCurrentGateIdx(gate.questionIndex);
+
+                if (gate.kind === 'obstacle') {
+                  // Broken Track Obstacle Split — NO question modal! Players see the broken track and dodge!
+                  setActivePrompt(null);
+                  setObstacleWarning({
+                    brokenSide: gate.correctSide === -1 ? 1 : -1,
+                    safeSide: gate.correctSide,
+                  });
+                  playTone(310, 'triangle', 0.16, 0.18, 440);
+                } else {
+                  setObstacleWarning(null);
+                  setActivePrompt({
+                    index: gate.questionIndex,
+                    total: questions.length,
+                    question: gate.question,
+                    leftText: gate.leftText,
+                    rightText: gate.rightText,
+                    correctSide: gate.correctSide,
+                  });
+                  speakQuestion(parseOptionContent(gate.question).text || gate.question);
+                }
+              }
+            }
+          }
+
+          if (gate.promptShown && !isAnyPowerUpActive) {
             const totalWindow = Math.max(0.001, gate.forkT - gate.promptStartT);
             const remaining = Math.max(0, Math.min(1, (gate.forkT - trackProgressT) / totalWindow));
             setTimerPct(remaining * 100);
             const approxSecLeft = Math.max(0, (gate.forkT - trackProgressT) / Math.max(0.001, currentSpeed));
             setGateSecondsLeft(Number(approxSecLeft.toFixed(1)));
-
-            // If Turbo Boost is active near the fork and player hasn't locked correct side, auto-pilot (once per gate, clean text)!
-            if (boostTimer > 0 && remaining < 0.48 && steeringRef.current !== gate.correctSide) {
-              steeringRef.current = gate.correctSide;
-              smoothSteerRef.current = gate.correctSide;
-              setSteeringChoice(gate.correctSide);
-              setSmoothSteerPct(50 + gate.correctSide * 38);
-              if (!gate.autoPilotNotified) {
-                gate.autoPilotNotified = true;
-                const cleanAns = parseOptionContent(gate.correctAnswer).text || 'Safe Track';
-                pushScorePopup('🚀 BOOST AUTO-PILOT!', 'text-amber-300', `Locked onto ${cleanAns}!`);
-              }
-            }
+          } else {
+            setGateSecondsLeft(null);
           }
 
           if (trackProgressT >= gate.forkT) {
@@ -4074,8 +4167,9 @@ function Coaster3DGameplay({
             setObstacleWarning(null);
             setGateSecondsLeft(null);
 
-            if (steeringRef.current === gate.correctSide || boostTimer > 0 || isStarActive) {
-              // CORRECT RAIL OR OBSTACLE DODGED!
+            const isPowerUpFreeRide = isAnyPowerUpActive || boostTimer > 0 || isStarActive || !gate.promptShown;
+            if (steeringRef.current === gate.correctSide || isPowerUpFreeRide) {
+              // CORRECT RAIL OR POWER-UP FREE RIDE PASS!
               if (steeringRef.current !== gate.correctSide) {
                 steeringRef.current = gate.correctSide;
                 smoothSteerRef.current = gate.correctSide;
@@ -4092,9 +4186,15 @@ function Coaster3DGameplay({
               playCorrectFanfare(localStreak);
               spawnCelebrationSparks(camera.position, 36);
               pushScorePopup(
-                gate.kind === 'obstacle' ? `+${gateCoins} 🪙 OBSTACLE DODGED!` : `+${gateCoins} 🪙 GATE CLEAR!`,
+                isPowerUpFreeRide
+                  ? `⚡ POWER-UP RUSH CLEAR! +${gateCoins} 🪙`
+                  : gate.kind === 'obstacle'
+                  ? `+${gateCoins} 🪙 OBSTACLE DODGED!`
+                  : `+${gateCoins} 🪙 GATE CLEAR!`,
                 'text-emerald-300',
-                boostTimer > 0 ? '🚀 TURBO OVERDRIVE BONUS!' : `${localStreak}x Streak 🔥`
+                isPowerUpFreeRide
+                  ? 'Auto-Guided Safe Rail 🚀'
+                  : `${localStreak}x Streak 🔥`
               );
               activeGateIdx++;
             } else if (hasShield) {
@@ -4517,6 +4617,16 @@ function Coaster3DGameplay({
                 <span>⭐</span>
                 <span className="hidden sm:inline tracking-wider">STAR RUSH</span>
                 <span className="bg-slate-950/25 px-1.5 py-0.5 rounded-md font-mono text-[11px] text-white">{activePowerUps.star}s</span>
+              </div>
+            )}
+            {(activePowerUps.magnet > 0 ||
+              activePowerUps.boost > 0 ||
+              activePowerUps.slow > 0 ||
+              activePowerUps.double > 0 ||
+              activePowerUps.star > 0) && (
+              <div className="px-3 py-1 rounded-xl bg-gradient-to-r from-amber-400 via-orange-400 to-yellow-300 text-slate-950 text-[10px] sm:text-xs font-black flex items-center gap-1.5 shadow-xl border border-white animate-pulse tracking-wide">
+                <span>⚡</span>
+                <span>POWER-UP ACTIVE · QUESTION UP NEXT!</span>
               </div>
             )}
           </div>
@@ -5007,27 +5117,6 @@ function Coaster3DGameplay({
             </div>
           </div>
         )}
-
-        {/* Dedicated JUMP Button right next to the Cockpit Cam so players can also tap/click to grab high Power-Ups! */}
-        <button
-          onPointerDown={() => actionsRef.current.triggerJump()}
-          className={`pointer-events-auto h-20 w-16 sm:h-24 sm:w-20 rounded-2xl border-2 font-black flex flex-col items-center justify-center gap-0.5 shadow-2xl transition-all active:scale-90 cursor-pointer ${
-            isJumping
-              ? 'bg-gradient-to-t from-amber-500 to-yellow-300 text-slate-950 border-white scale-105 shadow-[0_0_25px_rgba(250,204,21,0.85)]'
-              : approachingPowerUp
-              ? 'bg-gradient-to-t from-amber-500 via-orange-500 to-yellow-300 text-slate-950 border-white animate-pulse shadow-[0_0_24px_rgba(250,204,21,0.9)] scale-105'
-              : 'bg-slate-900/90 hover:bg-slate-800 text-yellow-300 border-yellow-400/70 shadow-lg'
-          }`}
-          title="Jump up to collect elevated Power-Ups! (Or jump on camera / press Space or Up Arrow)"
-        >
-          <span className="text-xl sm:text-2xl leading-none">⬆️</span>
-          <span className="text-[10px] sm:text-xs tracking-wider uppercase">
-            {approachingPowerUp ? 'JUMP!' : 'JUMP'}
-          </span>
-          <span className="text-[8px] font-bold opacity-80">
-            {approachingPowerUp ? POWER_UP_CONFIGS[approachingPowerUp]?.label : 'POWER-UP'}
-          </span>
-        </button>
       </div>
 
       {/* Dashed Circular Touch Steering Wheels on Bottom Left & Right */}

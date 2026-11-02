@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Gamepad2, Plus, Users, Library, ArrowRight, Share2, Edit2, Play, Trash2, FolderPlus, FolderOpen, MoreVertical, X, Sparkles, Star, Flame, Eye, Lock, Globe, GlobeLock, Copy, Folder, MoreHorizontal, Gift } from 'lucide-react';
+import { Gamepad2, Plus, Users, Library, ArrowRight, Share2, Edit2, Play, Trash2, FolderPlus, FolderOpen, MoreVertical, X, Sparkles, Star, Flame, Eye, Lock, Globe, GlobeLock, Copy, Folder, MoreHorizontal, Gift, BookOpen } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, deleteDoc, writeBatch, addDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { ViewState } from '../types';
 import { GameThumbnail } from '../components/GameThumbnail';
 import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '../components/GameModeModal';
+import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
 import { logUserActivity } from '../utils/activityTracker';
 import { getSavedGames, getSavedFolders } from '../lib/gameStore';
 
@@ -32,6 +33,7 @@ export const GamesLibrary = ({
   const [gameToMove, setGameToMove] = useState<string | null>(null);
   const [interchangeableGameModal, setInterchangeableGameModal] = useState<any | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [gameForHomework, setGameForHomework] = useState<any | null>(null);
 
   const effectivePublishedGames = React.useMemo(() => {
     if (publishedGames && Object.keys(publishedGames).length > 0) {
@@ -73,14 +75,14 @@ export const GamesLibrary = ({
     }
 
     // Check direct gameType for other multiple-choice / adaptable quiz games
-    if (['bubblepop', 'rollercoasterquiz', 'slapandchop', 'sharkattack', 'sumo', 'sumotags', 'yoga', 'yogaquiz', 'mysterybox', 'tictactoe', 'flashcardsmatch', 'hamsterpopquiz', 'familyfeud'].includes(normalized)) {
+    if (['bubblepop', 'rollercoasterquiz', 'hamsterpaintball', 'slapandchop', 'sharkattack', 'sumo', 'sumotags', 'yoga', 'yogaquiz', 'mysterybox', 'tictactoe', 'flashcardsmatch', 'hamsterpopquiz', 'familyfeud'].includes(normalized)) {
       return true;
     }
 
     // Check title/topic/name if game object is provided
     if (typeof game === 'object') {
       const title = (game.name || game.title || game.topic || '').toLowerCase();
-      if (title.includes('bubble pop') || title.includes('slap and chop') || title.includes('slap & chop') || title.includes('shark') || title.includes('sumo') || title.includes('yoga') || title.includes('mystery box') || title.includes('family feud')) {
+      if (title.includes('paintball') || title.includes('bubble pop') || title.includes('slap and chop') || title.includes('slap & chop') || title.includes('shark') || title.includes('sumo') || title.includes('yoga') || title.includes('mystery box') || title.includes('family feud')) {
         return true;
       }
       // If it has multiple-choice questions (options array) and isn't another distinct game format
@@ -107,6 +109,7 @@ export const GamesLibrary = ({
     
     { id: "bubble-pop", title: "Bubble Pop", icon: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000", color: "bg-blue-100 text-blue-600" },
     { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "/images/roller-coaster-quiz-card.jpg", color: "bg-amber-100 text-amber-600" },
+    { id: "hamster-paintball", title: "Hamster Paintball", icon: "/images/hamster-paintball-card.jpg", color: "bg-lime-100 text-lime-700" },
     { id: "slap-and-chop", title: "Slap & Chop", icon: "/images/slap-and-chop-card.jpg", color: "bg-purple-100 text-purple-600" },
     { id: "shark-attack", title: "Shark Attack", icon: "/images/shark-attack-card.jpg", color: "bg-cyan-100 text-cyan-600" },
     { id: "flashcards-match", title: "Flashcards Match", icon: "https://drive.google.com/thumbnail?id=1UtaZtVX0onrqj3VorxedOxy1iVXdFAHk&sz=w1000", color: "bg-indigo-100 text-indigo-600" },
@@ -744,23 +747,13 @@ export const GamesLibrary = ({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const rawQuestions = game.customQuestions || game.questions || [];
-                                  const sanitized = (Array.isArray(rawQuestions) ? rawQuestions : []).slice(0, 30);
-                                  onViewChange("mystery-box", {
-                                    ...game,
-                                    title: `${game.topic || game.name || 'Game'}`,
-                                    topic: `${game.topic || game.name || 'Game'}`,
-                                    gameType: 'mystery-box',
-                                    customQuestions: sanitized,
-                                    questions: sanitized,
-                                    editMode: false,
-                                  });
+                                  setGameForHomework(game);
                                   setOpenMenuId(null);
                                 }}
-                                className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors"
+                                className="w-full text-left px-4 py-2.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-sm font-medium text-purple-700 dark:text-purple-300 flex items-center gap-3 transition-colors"
                               >
-                                <Gift className="w-4 h-4 text-amber-500" />
-                                Play in Mystery Box (1-30)
+                                <BookOpen className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                Create Homework
                               </button>
                               <div className="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>
                               <button
@@ -946,6 +939,17 @@ export const GamesLibrary = ({
         onSelectMode={(mode, adaptedData) => {
           setInterchangeableGameModal(null);
           onViewChange(mode as ViewState, adaptedData);
+        }}
+      />
+
+      {/* Create Homework Modal */}
+      <CreateHomeworkModal
+        isOpen={Boolean(gameForHomework)}
+        game={gameForHomework}
+        onClose={() => setGameForHomework(null)}
+        onNavigateToHomework={() => {
+          setGameForHomework(null);
+          onViewChange("homework");
         }}
       />
     </div>

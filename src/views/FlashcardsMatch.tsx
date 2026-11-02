@@ -39,6 +39,7 @@ import {
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { saveGameRecord } from '../lib/gameStore';
 
 /*************************************************************
  * 1. THEMES DEFINITION (5 ILLUSTRATED STAGE THEMES)
@@ -655,11 +656,6 @@ export function FlashcardsMatch({
       return;
     }
 
-    if (!user) {
-      showToast('⚠️ Please log in to save your game to your account.');
-      return;
-    }
-
     setShowPublishModal(true);
   };
 
@@ -685,36 +681,39 @@ export function FlashcardsMatch({
       return;
     }
 
-    if (!user) {
-      setIsSaving(false);
-      showToast('⚠️ Please sign in to save your game to the cloud.');
-      return;
-    }
-
     try {
       const now = new Date().toISOString();
       const isPublicBool = Boolean(isPublic);
 
+      // Sanitize cards so NO property is undefined (Firestore rejects undefined)
+      const cleanCards = valid.map((c, i) => ({
+        id: c.id || `card_${Date.now()}_${i + 1}`,
+        frontText: (c.frontText || '').trim(),
+        frontMedia: c.frontMedia || '',
+        backText: (c.backText || '').trim(),
+        backMedia: c.backMedia || '',
+      }));
+
       // Build questions for full multi-mode compatibility (Bubble Pop, Roller Coaster, Shark Attack, etc.)
       const optMode = contentMode === 'photo' ? 'photos_gifs' : contentMode === 'text' ? 'words' : 'both';
-      const formattedQuestions = valid.map((c, i) => {
+      const formattedQuestions = cleanCards.map((c, i) => {
         const id = c.id || `q_${i + 1}`;
         if (cardSides === 1) {
           // 1-Side Card
-          const text = c.frontText?.trim() || topic || 'Flashcard';
-          const directImg = isDirectMediaUrl(c.frontMedia || '') ? c.frontMedia : undefined;
+          const text = c.frontText || topic || 'Flashcard';
+          const directImg = isDirectMediaUrl(c.frontMedia) ? c.frontMedia : null;
 
           const correctOpt = formatOptionContent(
             text,
-            directImg ? c.frontMedia : null,
+            directImg,
             optMode
           );
 
-          const otherCards = valid.filter((_, idx) => idx !== i);
+          const otherCards = cleanCards.filter((_, idx) => idx !== i);
           const distractors = otherCards.slice(0, 3).map((oc) => {
-            const ocImg = isDirectMediaUrl(oc.frontMedia || '') ? oc.frontMedia : null;
+            const ocImg = isDirectMediaUrl(oc.frontMedia) ? oc.frontMedia : null;
             return formatOptionContent(
-              oc.frontText?.trim() || 'Option',
+              oc.frontText || 'Option',
               ocImg,
               optMode
             );
@@ -727,27 +726,27 @@ export function FlashcardsMatch({
           return {
             id,
             text,
-            image: directImg,
+            image: directImg || null,
             options: [correctOpt, ...distractors],
             answerIndex: 0,
           };
         } else {
           // 2-Side Card
-          const promptText = c.frontText?.trim() || 'Question';
-          const promptImg = isDirectMediaUrl(c.frontMedia || '') ? c.frontMedia : undefined;
+          const promptText = c.frontText || 'Question';
+          const promptImg = isDirectMediaUrl(c.frontMedia) ? c.frontMedia : null;
 
-          const answerText = c.backText?.trim() || promptText;
-          const answerImg = isDirectMediaUrl(c.backMedia || '') ? c.backMedia : null;
+          const answerText = c.backText || promptText;
+          const answerImg = isDirectMediaUrl(c.backMedia) ? c.backMedia : null;
           const correctOpt = formatOptionContent(
             answerText,
             answerImg,
             optMode
           );
 
-          const otherCards = valid.filter((_, idx) => idx !== i);
+          const otherCards = cleanCards.filter((_, idx) => idx !== i);
           const distractors = otherCards.slice(0, 3).map((oc) => {
-            const ocAns = oc.backText?.trim() || oc.frontText?.trim() || 'Option';
-            const ocImg = isDirectMediaUrl(oc.backMedia || '') ? oc.backMedia : null;
+            const ocAns = oc.backText || oc.frontText || 'Option';
+            const ocImg = isDirectMediaUrl(oc.backMedia) ? oc.backMedia : null;
             return formatOptionContent(
               ocAns,
               ocImg,
@@ -762,49 +761,102 @@ export function FlashcardsMatch({
           return {
             id,
             text: promptText,
-            image: promptImg,
+            image: promptImg || null,
             options: [correctOpt, ...distractors],
             answerIndex: 0,
           };
         }
       });
 
-      const payload: any = {
-        name: topic || 'Flashcard Deck',
-        title: topic || 'Flashcard Deck',
-        topic: topic || '',
-        className: classLevel || '',
-        classLevel: classLevel || '',
+      const rawPayload: any = {
+        name: topic?.trim() || 'Flashcard Deck',
+        title: topic?.trim() || 'Flashcard Deck',
+        topic: topic?.trim() || '',
+        className: classLevel?.trim() || '',
+        classLevel: classLevel?.trim() || '',
         folderId: folderId || '',
         gameType: 'flashcards-match',
+        originalGameType: 'flashcards-match',
         cardSides,
         contentMode,
         theme,
-        cards: valid,
+        cards: cleanCards,
         questions: formattedQuestions,
         customQuestions: formattedQuestions,
         isPublic: isPublicBool,
         publishedAt: isPublicBool ? (initialGame?.publishedAt || now) : null,
-        userId: user.uid,
-        creatorName: user.displayName || user.email?.split('@')[0] || 'Teacher',
-        creatorEmail: user.email || '',
+        userId: user ? user.uid : 'guest-user',
+        creatorName: user?.displayName || user?.email?.split('@')[0] || 'Teacher',
+        creatorEmail: user?.email || '',
         updatedAt: now,
       };
 
-      const targetId = gameId || (initialGame?.id && !String(initialGame.id).startsWith('sample-') ? initialGame.id : null);
+      // Strip any possible undefined values so Firestore does not reject with "Unsupported field value: undefined"
+      const cleanPayload = JSON.parse(JSON.stringify(rawPayload));
 
-      if (targetId) {
-        await updateDoc(doc(db, 'mysteryBoxGames', targetId), payload);
+      const candidateId = gameId || (initialGame?.id && !String(initialGame.id).startsWith('sample-') ? initialGame.id : null);
+      const isOwnExistingGame = Boolean(
+        user &&
+        candidateId &&
+        (!initialGame?.userId || initialGame.userId === user.uid)
+      );
+
+      // Always save to local game store as an instant reliable fallback
+      const localRecord = saveGameRecord({
+        ...cleanPayload,
+        id: candidateId || undefined,
+      });
+
+      let finalId = localRecord.id;
+
+      // If user is authenticated, sync to Firestore
+      if (user) {
+        if (isOwnExistingGame && candidateId) {
+          try {
+            await updateDoc(doc(db, 'mysteryBoxGames', candidateId), cleanPayload);
+            finalId = candidateId;
+          } catch (updateErr: any) {
+            if (updateErr?.code === 'not-found' || updateErr?.code === 'permission-denied') {
+              cleanPayload.createdAt = now;
+              const docRef = await addDoc(collection(db, 'mysteryBoxGames'), cleanPayload);
+              finalId = docRef.id;
+              setGameId(docRef.id);
+            } else {
+              throw updateErr;
+            }
+          }
+        } else {
+          cleanPayload.createdAt = now;
+          const docRef = await addDoc(collection(db, 'mysteryBoxGames'), cleanPayload);
+          finalId = docRef.id;
+          setGameId(docRef.id);
+        }
+
+        // Sync final Firestore ID to local game store & cache
+        if (finalId) {
+          saveGameRecord({ ...cleanPayload, id: finalId });
+          try {
+            const cached = localStorage.getItem('hamster_cached_user_games');
+            const list = cached ? JSON.parse(cached) : [];
+            const existingIdx = list.findIndex((g: any) => String(g.id) === String(finalId));
+            if (existingIdx >= 0) {
+              list[existingIdx] = { ...cleanPayload, id: finalId };
+            } else {
+              list.unshift({ ...cleanPayload, id: finalId });
+            }
+            localStorage.setItem('hamster_cached_user_games', JSON.stringify(list));
+          } catch (e) {}
+        }
+
         showToast(isPublicBool ? '🚀 Published flashcards to Community!' : '🔒 Saved private flashcard deck!');
       } else {
-        payload.createdAt = now;
-        const docRef = await addDoc(collection(db, 'mysteryBoxGames'), payload);
-        setGameId(docRef.id);
-        showToast(isPublicBool ? '🚀 Published flashcards to Community!' : '🔒 Saved private flashcard deck!');
+        // Guest user saved locally
+        setGameId(localRecord.id);
+        showToast('💾 Saved flashcard deck to local library! (Log in anytime to sync to Cloud)');
       }
     } catch (err: any) {
-      console.error('Could not save flashcard deck:', err);
-      showToast('⚠️ Could not save deck to cloud. Check network or log in again.');
+      console.error('Could not save flashcard deck to cloud:', err);
+      showToast('💾 Saved to local library! (Cloud sync issue: ' + (err?.message || 'Offline') + ')');
     } finally {
       setIsSaving(false);
     }

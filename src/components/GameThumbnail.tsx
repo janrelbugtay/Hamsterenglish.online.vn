@@ -408,7 +408,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
   // Compact 64x64 mode for small icons in My Games folder list
   if (compact) {
-    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
+    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box' || normalizedType === 'hamster-paintball')) {
       return (
         <img
           src={info.icon}
@@ -428,8 +428,8 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     );
   }
 
-  // Template card mode (no custom game object passed) for Roller Coaster Quiz, Slap & Chop, Shark Attack, Name Picker, and Mystery Box
-  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
+  // Template card mode (no custom game object passed) for Roller Coaster Quiz, Slap & Chop, Shark Attack, Name Picker, Mystery Box, and Hamster Paintball
+  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box' || normalizedType === 'hamster-paintball')) {
     return (
       <img
         src={info.icon}
@@ -1045,6 +1045,40 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
         <div className="grid grid-cols-2 gap-1.5">
           {options.slice(0, 2).map((opt, idx) => (
             <div key={idx} className="bg-sky-900/90 text-white rounded-lg px-2 py-1 text-[10px] font-bold truncate text-center">
+              {opt}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 8.5. HAMSTER PAINTBALL (hamster-paintball)
+  if (normalizedType === 'hamster-paintball') {
+    return (
+      <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-slate-950 via-slate-900 to-lime-950 flex flex-col justify-between p-3 pointer-events-none select-none overflow-hidden border border-lime-500/20">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 bg-lime-400 text-slate-950 font-black px-2.5 py-0.5 rounded-full shadow-sm text-[10px] tracking-wider uppercase">
+            <span className="text-sm leading-none">🐹🎯</span>
+            <span>Speedball Park</span>
+          </div>
+          <span className="text-[10px] font-black text-cyan-300 bg-slate-800/90 border border-cyan-400/30 px-2 py-0.5 rounded-full">
+            {totalCount} Qs
+          </span>
+        </div>
+
+        <div className="bg-slate-900/90 rounded-2xl p-2.5 shadow-md border border-lime-400/30 backdrop-blur-sm">
+          <div className="text-[9px] font-black text-lime-400 uppercase tracking-wider truncate mb-0.5">
+            {cleanTitle}
+          </div>
+          <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
+            {firstQuestion}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5">
+          {options.slice(0, 2).map((opt, idx) => (
+            <div key={idx} className="bg-lime-500/20 border border-lime-400/40 text-lime-200 rounded-lg px-2 py-1 text-[10px] font-bold truncate text-center">
               {opt}
             </div>
           ))}

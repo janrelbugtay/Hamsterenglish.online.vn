@@ -1004,50 +1004,65 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           ? { ...rightData, speed: rh.speed, vx: rh.vx, vy: rh.vy, x: rh.x, y: rh.y }
           : { ...leftData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y };
       } else {
-        // 1 hand detected in frame: if 2 hands just merged (< 550ms ago) or rapid chop/slap motion, bring both hands together
+        // ONLY 1 hand detected: Map to strictly ONE glove (Left OR Right) so gloves NEVER touch with 1 hand!
         const hData = handsForPlayer[0];
-        const mergedClap = (now - (player.lastDualHandTime || 0) < 550) &&
-          Math.hypot(player.leftHand.x - player.rightHand.x, player.leftHand.y - player.rightHand.y) < 0.24;
+        const courtCenter = is2P ? (pIdx === 0 ? 0.25 : 0.75) : 0.50;
+        const isLeftHand = hData.handedness === 'Left' || (hData.clampedX < courtCenter);
 
         const rh = player.rightHand;
         const lh = player.leftHand;
 
-        rh.prevX = rh.x;
-        rh.prevY = rh.y;
-        lh.prevX = lh.x;
-        lh.prevY = lh.y;
+        if (isLeftHand) {
+          lh.prevX = lh.detected ? lh.x : hData.clampedX;
+          lh.prevY = lh.detected ? lh.y : hData.clampedY;
+          lh.x = lh.x + (hData.clampedX - lh.x) * 0.80;
+          lh.y = lh.y + (hData.clampedY - lh.y) * 0.80;
+          lh.vx = lh.x - lh.prevX;
+          lh.vy = lh.y - lh.prevY;
+          lh.speed = Math.hypot(lh.vx, lh.vy);
+          lh.angle = hData.gloveAngle;
+          lh.knifeAngle = hData.pointingAngle;
+          lh.scale = lh.scale + (hData.scale - lh.scale) * 0.48;
+          lh.openness = hData.openness;
+          lh.landmarks = hData.landmarks;
+          lh.detected = true;
+          lh.trail.push({ x: lh.x, y: lh.y, life: 1.0 });
+          if (lh.trail.length > 14) lh.trail.shift();
 
-        const moveSpd = Math.hypot(hData.clampedX - rh.x, hData.clampedY - rh.y);
-        const isRapidStrike = mergedClap || moveSpd > 0.022 || hData.openness < 0.68;
-        const halfSpread = isRapidStrike ? 0.012 : 0.066;
+          // Right hand is NOT detected - must NOT appear on this hand or touch gloves!
+          rh.detected = false;
+          rh.vx = 0;
+          rh.vy = 0;
+          rh.speed = 0;
+          fastestHand = { ...hData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y };
+        } else {
+          rh.prevX = rh.detected ? rh.x : hData.clampedX;
+          rh.prevY = rh.detected ? rh.y : hData.clampedY;
+          rh.x = rh.x + (hData.clampedX - rh.x) * 0.80;
+          rh.y = rh.y + (hData.clampedY - rh.y) * 0.80;
+          rh.vx = rh.x - rh.prevX;
+          rh.vy = rh.y - rh.prevY;
+          rh.speed = Math.hypot(rh.vx, rh.vy);
+          rh.angle = hData.gloveAngle;
+          rh.knifeAngle = hData.pointingAngle;
+          rh.scale = rh.scale + (hData.scale - rh.scale) * 0.48;
+          rh.openness = hData.openness;
+          rh.landmarks = hData.landmarks;
+          rh.detected = true;
+          rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
+          if (rh.trail.length > 14) rh.trail.shift();
 
-        lh.x = lh.x + ((hData.clampedX - halfSpread) - lh.x) * 0.76;
-        lh.y = lh.y + (hData.clampedY - lh.y) * 0.76;
-        lh.vx = lh.x - lh.prevX;
-        lh.vy = lh.y - lh.prevY;
-        lh.speed = Math.hypot(lh.vx, lh.vy);
-        lh.angle = -0.22 + (isRapidStrike ? 0.22 : 0);
-        lh.knifeAngle = -0.45 + (isRapidStrike ? 0.35 : 0);
-        lh.scale = lh.scale + (hData.scale - lh.scale) * 0.45;
-        lh.openness = hData.openness;
-        lh.detected = true;
-        lh.trail.push({ x: lh.x, y: lh.y, life: 1.0 });
-        if (lh.trail.length > 14) lh.trail.shift();
+          // Left hand is NOT detected - must NOT appear on this hand or touch gloves!
+          lh.detected = false;
+          lh.vx = 0;
+          lh.vy = 0;
+          lh.speed = 0;
+          fastestHand = { ...hData, speed: rh.speed, vx: rh.vx, vy: rh.vy, x: rh.x, y: rh.y };
+        }
 
-        rh.x = rh.x + ((hData.clampedX + halfSpread) - rh.x) * 0.76;
-        rh.y = rh.y + (hData.clampedY - rh.y) * 0.76;
-        rh.vx = rh.x - rh.prevX;
-        rh.vy = rh.y - rh.prevY;
-        rh.speed = Math.hypot(rh.vx, rh.vy);
-        rh.angle = 0.22 - (isRapidStrike ? 0.22 : 0);
-        rh.knifeAngle = -2.69 - (isRapidStrike ? 0.35 : 0);
-        rh.scale = rh.scale + (hData.scale - rh.scale) * 0.45;
-        rh.openness = hData.openness;
-        rh.detected = true;
-        rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
-        if (rh.trail.length > 14) rh.trail.shift();
-
-        fastestHand = { ...hData, speed: Math.max(lh.speed, rh.speed), vx: rh.vx, vy: rh.vy, x: hData.clampedX, y: hData.clampedY };
+        // STRICT: Clapping/slapping CANNOT happen with one hand!
+        player.isClapping = false;
+        player.clapTimer = 0;
       }
 
       checkHandWeaponCollision(
@@ -1587,11 +1602,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
 
     if (!is2P) {
+      // 1 Player: 4 distinct quadrant zones with gentle organic hover speed
+      const quadrantAnchors = [
+        { x: width * 0.28, y: height * 0.38 }, // A (Top Left)
+        { x: width * 0.72, y: height * 0.38 }, // B (Top Right)
+        { x: width * 0.28, y: height * 0.68 }, // C (Bottom Left)
+        { x: width * 0.72, y: height * 0.68 }, // D (Bottom Right)
+      ];
+
       opts.forEach((optText, i) => {
-        const colX = (i % 2 === 0) ? width * (0.20 + Math.random() * 0.14) : width * (0.66 + Math.random() * 0.14);
-        const rowY = (i < 2) ? height * (0.32 + Math.random() * 0.12) : height * (0.62 + Math.random() * 0.12);
+        const anchor = quadrantAnchors[i % quadrantAnchors.length];
+        const colX = anchor.x + (Math.random() - 0.5) * 28;
+        const rowY = anchor.y + (Math.random() - 0.5) * 20;
         const angle = Math.random() * Math.PI * 2;
-        const baseSpeed = (mode === 'chop' ? 1.85 : 2.1) * curSpd;
+        // Natural organic flight speed: gentle and fair for clapping
+        const baseSpeed = (mode === 'chop' ? 0.85 : 0.75) * curSpd;
 
         targets.push({
           optionIndex: i,
@@ -1602,11 +1627,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           x: colX,
           y: rowY,
           vx: Math.cos(angle) * baseSpeed,
-          vy: Math.sin(angle) * baseSpeed,
+          vy: Math.sin(angle) * baseSpeed * 0.7,
           wobblePhase: Math.random() * 10,
           wingPhase: Math.random() * 10,
           rotation: Math.random() * Math.PI,
-          rotSpeed: (Math.random() - 0.5) * 0.045,
+          rotSpeed: (Math.random() - 0.5) * 0.035,
           radius: mode === 'chop' ? 56 : 58,
           color: OPTION_COLORS[i % OPTION_COLORS.length],
           alive: true,
@@ -1618,12 +1643,27 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         });
       });
     } else {
-      // 2 Players: Team 1 (Left Court) & Team 2 (Right Court) each get A, B, C, D
+      // 2 Players: Team 1 (Left Court) & Team 2 (Right Court) each get A, B, C, D in distinct non-overlapping quadrant slots
+      const p1Quadrants = [
+        { x: width * 0.16, y: height * 0.38 }, // A
+        { x: width * 0.36, y: height * 0.38 }, // B
+        { x: width * 0.16, y: height * 0.68 }, // C
+        { x: width * 0.36, y: height * 0.68 }, // D
+      ];
+
+      const p2Quadrants = [
+        { x: width * 0.64, y: height * 0.38 }, // A
+        { x: width * 0.84, y: height * 0.38 }, // B
+        { x: width * 0.64, y: height * 0.68 }, // C
+        { x: width * 0.84, y: height * 0.68 }, // D
+      ];
+
       opts.forEach((optText, i) => {
-        const colX = width * (0.11 + (i % 2) * 0.21 + Math.random() * 0.04);
-        const rowY = height * (0.32 + Math.floor(i / 2) * 0.32 + Math.random() * 0.05);
+        const anchor = p1Quadrants[i % p1Quadrants.length];
+        const colX = anchor.x + (Math.random() - 0.5) * 18;
+        const rowY = anchor.y + (Math.random() - 0.5) * 16;
         const angle = Math.random() * Math.PI * 2;
-        const baseSpeed = (mode === 'chop' ? 1.7 : 1.9) * curSpd;
+        const baseSpeed = (mode === 'chop' ? 0.85 : 0.75) * curSpd;
 
         targets.push({
           optionIndex: i,
@@ -1634,11 +1674,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           x: colX,
           y: rowY,
           vx: Math.cos(angle) * baseSpeed,
-          vy: Math.sin(angle) * baseSpeed,
+          vy: Math.sin(angle) * baseSpeed * 0.7,
           wobblePhase: Math.random() * 10,
           wingPhase: Math.random() * 10,
           rotation: Math.random() * Math.PI,
-          rotSpeed: (Math.random() - 0.5) * 0.045,
+          rotSpeed: (Math.random() - 0.5) * 0.035,
           radius: mode === 'chop' ? 52 : 54,
           color: OPTION_COLORS[i % OPTION_COLORS.length],
           alive: true,
@@ -1651,10 +1691,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       });
 
       opts.forEach((optText, i) => {
-        const colX = width * (0.59 + (i % 2) * 0.21 + Math.random() * 0.04);
-        const rowY = height * (0.32 + Math.floor(i / 2) * 0.32 + Math.random() * 0.05);
+        const anchor = p2Quadrants[i % p2Quadrants.length];
+        const colX = anchor.x + (Math.random() - 0.5) * 18;
+        const rowY = anchor.y + (Math.random() - 0.5) * 16;
         const angle = Math.random() * Math.PI * 2;
-        const baseSpeed = (mode === 'chop' ? 1.7 : 1.9) * curSpd;
+        const baseSpeed = (mode === 'chop' ? 0.85 : 0.75) * curSpd;
 
         targets.push({
           optionIndex: i,
@@ -1665,11 +1706,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           x: colX,
           y: rowY,
           vx: Math.cos(angle) * baseSpeed,
-          vy: Math.sin(angle) * baseSpeed,
+          vy: Math.sin(angle) * baseSpeed * 0.7,
           wobblePhase: Math.random() * 10 + 5,
           wingPhase: Math.random() * 10 + 5,
           rotation: Math.random() * Math.PI,
-          rotSpeed: (Math.random() - 0.5) * 0.045,
+          rotSpeed: (Math.random() - 0.5) * 0.035,
           radius: mode === 'chop' ? 52 : 54,
           color: OPTION_COLORS[i % OPTION_COLORS.length],
           alive: true,
@@ -1683,7 +1724,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
 
     engineRef.current.targets = targets;
-    engineRef.current.resolved = false;
   };
 
   // Handle interaction hit (Slap or Dual-Knife Chop)
@@ -1936,6 +1976,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       });
     } else {
       // MOSQUITO SLAP MODE: ONLY hit the mosquito when Left Glove and Right Glove touch each other!
+      // When camera tracking is active, STRICTLY REQUIRE 2 HANDS! A single hand must never slap!
+      const bothHandsActive = p.hasDetectedHands
+        ? Boolean(p.leftHand?.detected && p.rightHand?.detected)
+        : true;
+      if (!bothHandsActive) {
+        p.isClapping = false;
+        return;
+      }
+
       const touchThreshold = 116 * avgScale;
 
       if (handDist <= touchThreshold || (p.clapTimer && p.clapTimer > 0)) {
@@ -2253,11 +2302,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           draw3DSplat(ctx, s);
         }
 
-        // 4. Update & Draw Targets with Strict Court Separation + Freeze Support + Adjustable Movement Style & Speed
+        // 4. Update & Draw Targets with Anti-Overlap Physics + Smooth Natural Flight + Court Separation
         const mvStyle = movementStyleRef.current;
-        const moveMult = mvStyle === 'hover' ? 0.14 : mvStyle === 'calm' ? 0.55 : mvStyle === 'zigzag' ? 1.25 : 1.0;
+        const moveMult = mvStyle === 'hover' ? 0.25 : mvStyle === 'calm' ? 0.60 : mvStyle === 'zigzag' ? 1.20 : 0.85;
         const padTop = 152;
-        const padBottom = 92;
+        const padBottom = 88;
+        const is2P = eng.numPlayers === 2;
 
         eng.targets.forEach(t => {
           if (t.cooldown > 0) t.cooldown--;
@@ -2267,37 +2317,95 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             t.frozenTimer = Math.max(0, t.frozenTimer - dt);
           }
 
+          // Smooth bounded flight velocity so mosquitoes never dart frantically
+          const maxSpeed = (eng.roundMode === 'chop' ? 1.45 : 1.15) * (speedRef.current || 1.0);
+          const currentVel = Math.hypot(t.vx, t.vy);
+          if (currentVel > maxSpeed) {
+            t.vx = (t.vx / currentVel) * maxSpeed;
+            t.vy = (t.vy / currentVel) * maxSpeed;
+          }
+
           // Only move targets that are NOT frozen in ice!
           if (!t.frozen && !showSettingsModalRef.current) {
             if (mvStyle === 'zigzag') {
-              t.x += t.vx * moveMult + Math.sin(now * 0.014 + t.wobblePhase) * 3.4;
-              t.y += t.vy * moveMult + Math.cos(now * 0.016 + t.wobblePhase) * 2.8;
+              t.x += t.vx * moveMult + Math.sin(now * 0.012 + t.wobblePhase) * 2.2;
+              t.y += t.vy * moveMult + Math.cos(now * 0.014 + t.wobblePhase) * 1.8;
             } else if (mvStyle === 'hover') {
               t.x += Math.sin(now * 0.003 + t.wobblePhase) * 0.45;
               t.y += Math.cos(now * 0.004 + t.wobblePhase) * 0.55;
             } else {
-              t.x += t.vx * moveMult + Math.sin(now * 0.006 + t.wobblePhase) * 1.15 * moveMult;
-              t.y += t.vy * moveMult + Math.cos(now * 0.007 + t.wobblePhase) * 1.15 * moveMult;
+              // Natural organic insect hover & gentle flight drift
+              t.x += t.vx * moveMult + Math.sin(now * 0.005 + t.wobblePhase) * 0.65;
+              t.y += t.vy * moveMult + Math.cos(now * 0.006 + t.wobblePhase) * 0.65;
             }
             if (eng.roundMode === 'chop') {
               t.rotation = (t.rotation || 0) + (t.rotSpeed || 0.02) * moveMult;
             }
           }
 
+          // Court boundary collision using true card half-width
+          const halfW = (t.cardW || (is2P ? 165 : 210)) / 2 + 14;
           if (t.team === 'p1') {
-            if (t.x < 85) { t.x = 85; t.vx = Math.abs(t.vx); }
-            if (t.x > (cw / 2) - 85) { t.x = (cw / 2) - 85; t.vx = -Math.abs(t.vx); }
+            if (t.x < halfW + 10) { t.x = halfW + 10; t.vx = Math.abs(t.vx); }
+            if (t.x > (cw / 2) - halfW - 10) { t.x = (cw / 2) - halfW - 10; t.vx = -Math.abs(t.vx); }
           } else if (t.team === 'p2') {
-            if (t.x < (cw / 2) + 85) { t.x = (cw / 2) + 85; t.vx = Math.abs(t.vx); }
-            if (t.x > cw - 85) { t.x = cw - 85; t.vx = -Math.abs(t.vx); }
+            if (t.x < (cw / 2) + halfW + 10) { t.x = (cw / 2) + halfW + 10; t.vx = Math.abs(t.vx); }
+            if (t.x > cw - halfW - 10) { t.x = cw - halfW - 10; t.vx = -Math.abs(t.vx); }
           } else {
-            if (t.x < 95) { t.x = 95; t.vx = Math.abs(t.vx); }
-            if (t.x > cw - 95) { t.x = cw - 95; t.vx = -Math.abs(t.vx); }
+            if (t.x < halfW + 16) { t.x = halfW + 16; t.vx = Math.abs(t.vx); }
+            if (t.x > cw - halfW - 16) { t.x = cw - halfW - 16; t.vx = -Math.abs(t.vx); }
           }
 
-          if (t.y < padTop) { t.y = padTop; t.vy = Math.abs(t.vy); }
-          if (t.y > ch - padBottom) { t.y = ch - padBottom; t.vy = -Math.abs(t.vy); }
+          if (t.y < padTop + 24) { t.y = padTop + 24; t.vy = Math.abs(t.vy); }
+          if (t.y > ch - padBottom - 18) { t.y = ch - padBottom - 18; t.vy = -Math.abs(t.vy); }
+        });
 
+        // 4b. Strict Anti-Overlap Physics: Options in the same court push apart so they NEVER overlap!
+        for (let i = 0; i < eng.targets.length; i++) {
+          const t1 = eng.targets[i];
+          if (!t1.alive) continue;
+          const w1 = t1.cardW || (is2P ? 165 : 210);
+          const h1 = t1.cardH || 48;
+
+          for (let j = i + 1; j < eng.targets.length; j++) {
+            const t2 = eng.targets[j];
+            if (!t2.alive) continue;
+            if (t1.team !== t2.team) continue;
+
+            const w2 = t2.cardW || (is2P ? 165 : 210);
+            const h2 = t2.cardH || 48;
+
+            const dx = t2.x - t1.x;
+            const dy = t2.y - t1.y;
+
+            const minSepX = (w1 + w2) * 0.5 + 24;
+            const minSepY = (h1 + h2) * 0.5 + 46;
+
+            const absDx = Math.abs(dx);
+            const absDy = Math.abs(dy);
+
+            if (absDx < minSepX && absDy < minSepY) {
+              const penX = minSepX - absDx;
+              const penY = minSepY - absDy;
+
+              if (penX / minSepX < penY / minSepY) {
+                const signX = dx >= 0 ? 1 : -1;
+                const push = (penX * 0.5 + 2) * signX;
+                if (!t1.frozen) { t1.x -= push; t1.vx = -signX * Math.max(0.5, Math.abs(t1.vx)); }
+                if (!t2.frozen) { t2.x += push; t2.vx = signX * Math.max(0.5, Math.abs(t2.vx)); }
+              } else {
+                const signY = dy >= 0 ? 1 : -1;
+                const push = (penY * 0.5 + 2) * signY;
+                if (!t1.frozen) { t1.y -= push; t1.vy = -signY * Math.max(0.5, Math.abs(t1.vy)); }
+                if (!t2.frozen) { t2.y += push; t2.vy = signY * Math.max(0.5, Math.abs(t2.vy)); }
+              }
+            }
+          }
+        }
+
+        // Draw all resolved targets
+        eng.targets.forEach(t => {
+          if (!t.alive) return;
           if (eng.roundMode === 'mosquito') {
             drawMosquitoTarget(ctx, t, now);
           } else {
@@ -2305,7 +2413,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         });
 
-        // 5. Draw Weapons (Unified 3D Connected Gloves in Slap Mode, or Dual Left & Right 3D Chopping Knives in Chop Mode!)
+        // 5. Draw Weapons (Strict 2-Hand Glove & Cleaver Rendering)
         eng.players.forEach((p, idx) => {
           if (idx === 1 && eng.numPlayers === 1) return;
           p.slapAnim = Math.max(0, p.slapAnim - dt * 3.8);
@@ -2348,39 +2456,52 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const leftScale = baseScale * (p.leftHand?.scale || p.handScale || 1.0);
           const rightScale = baseScale * (p.rightHand?.scale || p.handScale || 1.0);
           const handDist = Math.hypot(rx - lx, ry - ly);
-          const isTouching = handDist <= 125 * ((leftScale + rightScale) * 0.5) || p.isClapping;
+
+          // Strictly require 2 hands: only count touching/clapping if both hands are detected on camera
+          const bothHandsActive = p.hasDetectedHands
+            ? Boolean(p.leftHand?.detected && p.rightHand?.detected)
+            : true;
+          const isTouching = bothHandsActive && (handDist <= 125 * ((leftScale + rightScale) * 0.5) || Boolean(p.clapTimer && p.clapTimer > 0));
 
           if (eng.roundMode === 'mosquito') {
+            // Only draw a glove if that hand is detected (or in virtual mouse mode). Never 2 gloves on 1 hand!
+            const showLeft = p.hasDetectedHands ? Boolean(p.leftHand?.detected) : true;
+            const showRight = p.hasDetectedHands ? Boolean(p.rightHand?.detected) : true;
+
             // Draw Left 3D Connected Glove
-            drawSingleCartoonGlove(
-              ctx,
-              lx,
-              ly,
-              p.hasDetectedHands ? (p.leftHand?.angle || -0.18) : (-0.20 + p.slapAnim * 0.25),
-              leftScale,
-              false,
-              p.theme,
-              isTouching ? Math.max(0.4, p.slapAnim) : 0,
-              p.leftHand?.openness ?? 1.0,
-              p.frozenTimer > 0
-            );
+            if (showLeft) {
+              drawSingleCartoonGlove(
+                ctx,
+                lx,
+                ly,
+                p.hasDetectedHands ? (p.leftHand?.angle || -0.18) : (-0.20 + p.slapAnim * 0.25),
+                leftScale,
+                false,
+                p.theme,
+                isTouching ? Math.max(0.4, p.slapAnim) : 0,
+                p.leftHand?.openness ?? 1.0,
+                p.frozenTimer > 0
+              );
+            }
 
             // Draw Right 3D Connected Glove
-            drawSingleCartoonGlove(
-              ctx,
-              rx,
-              ry,
-              p.hasDetectedHands ? (p.rightHand?.angle || 0.18) : (0.20 - p.slapAnim * 0.25),
-              rightScale,
-              true,
-              p.theme,
-              isTouching ? Math.max(0.4, p.slapAnim) : 0,
-              p.rightHand?.openness ?? 1.0,
-              p.frozenTimer > 0
-            );
+            if (showRight) {
+              drawSingleCartoonGlove(
+                ctx,
+                rx,
+                ry,
+                p.hasDetectedHands ? (p.rightHand?.angle || 0.18) : (0.20 - p.slapAnim * 0.25),
+                rightScale,
+                true,
+                p.theme,
+                isTouching ? Math.max(0.4, p.slapAnim) : 0,
+                p.rightHand?.openness ?? 1.0,
+                p.frozenTimer > 0
+              );
+            }
 
-            // Visual 3D CLAP Burst when Left & Right Gloves touch each other!
-            if (isTouching && p.frozenTimer <= 0) {
+            // Visual 3D CLAP Burst ONLY when BOTH Left & Right Gloves touch each other!
+            if (bothHandsActive && isTouching && p.frozenTimer <= 0) {
               const midX = (lx + rx) * 0.5;
               const midY = (ly + ry) * 0.5;
               if (!showSettingsModalRef.current) {
@@ -2419,6 +2540,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             }
           } else {
             // CHOP MODE: Draw BOTH Left & Right 3D Chopping Knives (Chef's Cleavers)
+            const showLeft = p.hasDetectedHands ? Boolean(p.leftHand?.detected) : true;
+            const showRight = p.hasDetectedHands ? Boolean(p.rightHand?.detected) : true;
+
             const leftKnifeAngle = p.hasDetectedHands
               ? (p.leftHand?.knifeAngle ?? -0.35)
               : (-0.38 + p.slapAnim * 0.45);
@@ -2426,37 +2550,41 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               ? (p.rightHand?.knifeAngle ?? (-Math.PI + 0.35))
               : (-Math.PI + 0.38 - p.slapAnim * 0.45);
 
-            drawSingle3DChoppingKnife(
-              ctx,
-              lx,
-              ly,
-              leftKnifeAngle,
-              leftScale,
-              false,
-              p.theme,
-              p.leftHand?.trail || [],
-              cw,
-              ch,
-              now,
-              p.slapAnim,
-              p.frozenTimer > 0
-            );
+            if (showLeft) {
+              drawSingle3DChoppingKnife(
+                ctx,
+                lx,
+                ly,
+                leftKnifeAngle,
+                leftScale,
+                false,
+                p.theme,
+                p.leftHand?.trail || [],
+                cw,
+                ch,
+                now,
+                p.slapAnim,
+                p.frozenTimer > 0
+              );
+            }
 
-            drawSingle3DChoppingKnife(
-              ctx,
-              rx,
-              ry,
-              rightKnifeAngle,
-              rightScale,
-              true,
-              p.theme,
-              p.rightHand?.trail || [],
-              cw,
-              ch,
-              now,
-              p.slapAnim,
-              p.frozenTimer > 0
-            );
+            if (showRight) {
+              drawSingle3DChoppingKnife(
+                ctx,
+                rx,
+                ry,
+                rightKnifeAngle,
+                rightScale,
+                true,
+                p.theme,
+                p.rightHand?.trail || [],
+                cw,
+                ch,
+                now,
+                p.slapAnim,
+                p.frozenTimer > 0
+              );
+            }
 
             // Check dual-knife chop collision every frame when not frozen
             if (!showSettingsModalRef.current && p.frozenTimer <= 0) {
@@ -3441,18 +3569,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const optImgEl = parsedOpt.imageUrl ? getCachedSlapChopImage(parsedOpt.imageUrl) : null;
     const hasLoadedImg = Boolean(optImgEl && optImgEl.complete && optImgEl.naturalWidth > 0);
 
+    const is2P = engineRef.current.numPlayers === 2;
     const tScale = textSizeRef.current || 1.15;
-    const fontPx = Math.round(15.5 * tScale);
-    const badgeSize = Math.round(38 * Math.max(0.92, tScale * 0.94));
-    const thumbSize = hasLoadedImg ? Math.round(38 * Math.max(0.92, tScale * 0.94)) : 0;
-    const cardH = Math.round(48 * Math.max(0.92, tScale * 0.94));
+    const fontPx = Math.round(15 * tScale);
+    const badgeSize = Math.round(36 * Math.max(0.92, tScale * 0.94));
+    const thumbSize = hasLoadedImg ? Math.round(36 * Math.max(0.92, tScale * 0.94)) : 0;
+    const cardH = Math.round(46 * Math.max(0.92, tScale * 0.94));
+    const maxCardW = is2P ? Math.round(180 * Math.min(1.1, tScale)) : Math.round(270 * tScale);
+    const minCardW = is2P ? Math.round(135 * Math.min(1.1, tScale)) : Math.round(175 * tScale);
     const cardW = Math.max(
-      Math.round(195 * tScale * 0.9),
+      minCardW,
       Math.min(
-        Math.round(340 * tScale),
-        cleanWord.length * (fontPx * 0.62) + badgeSize + thumbSize + (hasLoadedImg ? 48 : 36)
+        maxCardW,
+        cleanWord.length * (fontPx * 0.55) + badgeSize + thumbSize + (hasLoadedImg ? 34 : 26)
       )
     );
+    t.cardW = cardW;
+    t.cardH = cardH;
     const cardY = 34;
 
     ctx.save();
@@ -3508,7 +3641,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ctx.font = `800 ${fontPx}px Inter, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      const maxChars = 22;
+      const maxChars = is2P ? 13 : 22;
       const displayStr = cleanWord.length > maxChars ? cleanWord.slice(0, maxChars - 1) + '…' : cleanWord;
       ctx.fillText(displayStr, textStartX, cardY + cardH / 2);
     }
@@ -3761,18 +3894,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const optImgEl = parsedOpt.imageUrl ? getCachedSlapChopImage(parsedOpt.imageUrl) : null;
     const hasLoadedImg = Boolean(optImgEl && optImgEl.complete && optImgEl.naturalWidth > 0);
 
+    const is2P = engineRef.current.numPlayers === 2;
     const tScale = textSizeRef.current || 1.15;
     const fontPx = Math.round(15 * tScale);
     const badgeSize = Math.round(36 * Math.max(0.92, tScale * 0.94));
     const thumbSize = hasLoadedImg ? Math.round(36 * Math.max(0.92, tScale * 0.94)) : 0;
     const cardH = Math.round(46 * Math.max(0.92, tScale * 0.94));
+    const maxCardW = is2P ? Math.round(180 * Math.min(1.1, tScale)) : Math.round(270 * tScale);
+    const minCardW = is2P ? Math.round(135 * Math.min(1.1, tScale)) : Math.round(175 * tScale);
     const cardW = Math.max(
-      Math.round(185 * tScale * 0.9),
+      minCardW,
       Math.min(
-        Math.round(330 * tScale),
-        cleanWord.length * (fontPx * 0.62) + badgeSize + thumbSize + (hasLoadedImg ? 46 : 34)
+        maxCardW,
+        cleanWord.length * (fontPx * 0.55) + badgeSize + thumbSize + (hasLoadedImg ? 34 : 26)
       )
     );
+    t.cardW = cardW;
+    t.cardH = cardH;
     const cardY = r * 0.45;
 
     ctx.fillStyle = t.frozen ? '#0284c7' : t.color.dark;
@@ -3811,7 +3949,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
       ctx.font = `800 ${fontPx}px Inter, sans-serif`;
       ctx.textAlign = 'left';
-      const displayStr = cleanWord.length > 22 ? cleanWord.slice(0, 20) + '…' : cleanWord;
+      const maxChars = is2P ? 13 : 22;
+      const displayStr = cleanWord.length > maxChars ? cleanWord.slice(0, maxChars - 1) + '…' : cleanWord;
       ctx.fillText(displayStr, textStartX, cardY + cardH / 2);
     }
 
@@ -5112,7 +5251,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                 <FullscreenButton
                   targetId="slap-and-chop-container"
                   showLabel={true}
-                  className="px-5 py-2.5 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-200 border-b-4 border-b-slate-300 text-slate-800 font-black text-sm sm:text-base transition cursor-pointer shadow-sm active:translate-y-0.5 flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-2xl !bg-white hover:!bg-slate-100 border-2 border-slate-300 border-b-4 border-b-slate-400 !text-black font-black text-sm sm:text-base transition cursor-pointer shadow-sm active:translate-y-0.5 flex items-center gap-2"
                 />
               </div>
             </div>
@@ -5142,13 +5281,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   );
                 })()}
 
-                {/* Options - FULL SCREEN WIDE & MASSIVE */}
-                <div className={`w-full max-w-7xl mx-auto grid gap-4 sm:gap-6 ${
+                {/* Options - SQUARE 2x2 ABCD GRID LAYOUT (Never a single straight line; double width, zero overlapping!) */}
+                <div className={`w-full max-w-5xl mx-auto grid gap-4 sm:gap-6 ${
                   studyQ.options.length === 2
                     ? 'grid-cols-1 sm:grid-cols-2'
-                    : studyQ.options.length === 3
-                    ? 'grid-cols-1 sm:grid-cols-3'
-                    : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+                    : 'grid-cols-1 sm:grid-cols-2'
                 }`}>
                   {studyQ.options.map((opt, oIdx) => {
                     const isPicked = studySelectedOption === oIdx;
@@ -5180,9 +5317,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                             playSoundEffect('freeze');
                           }
                         }}
-                        className={`p-5 sm:p-7 md:p-8 rounded-3xl border-3 border-b-[8px] sm:border-b-[10px] text-left font-black transition-all cursor-pointer min-h-[110px] sm:min-h-[140px] md:min-h-[160px] flex items-center gap-4 sm:gap-6 active:translate-y-1 ${btnStyle}`}
+                        className={`p-4 sm:p-5 md:p-6 rounded-3xl border-3 border-b-[6px] sm:border-b-[8px] text-left font-black transition-all cursor-pointer min-h-[90px] sm:min-h-[110px] md:min-h-[120px] flex items-center gap-3 sm:gap-4 active:translate-y-1 ${btnStyle}`}
                       >
-                        <span className={`w-14 h-14 sm:w-18 sm:h-18 md:w-20 md:h-20 rounded-2xl sm:rounded-3xl flex items-center justify-center text-2xl sm:text-3xl md:text-4xl font-black shrink-0 shadow-md ${
+                        <span className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-2xl sm:rounded-3xl flex items-center justify-center text-xl sm:text-2xl md:text-3xl font-black shrink-0 shadow-md ${
                           showResult && isCorrectAnswer
                             ? 'bg-emerald-500 text-white'
                             : showResult && isPicked && !isCorrectAnswer
@@ -5192,32 +5329,32 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                           {OPTION_LETTERS[oIdx]}
                         </span>
 
-                        <div className="flex-1 flex items-center gap-4 min-w-0">
+                        <div className="flex-1 flex items-center gap-3 min-w-0 overflow-hidden">
                           {parsedOpt.imageUrl && (
                             <img
                               src={parsedOpt.imageUrl}
                               alt={parsedOpt.text || `Option ${OPTION_LETTERS[oIdx]}`}
-                              className="w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-2xl object-contain bg-white p-2 border-2 border-sky-200 shrink-0 shadow-md"
+                              className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl object-contain bg-white p-2 border-2 border-sky-200 shrink-0 shadow-md"
                             />
                           )}
                           {parsedOpt.text ? (
-                            <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-slate-900 break-words leading-tight">
+                            <span className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 break-words leading-snug line-clamp-3">
                               {parsedOpt.text}
                             </span>
                           ) : !parsedOpt.imageUrl ? (
-                            <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-slate-900 break-words leading-tight">
+                            <span className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 break-words leading-snug line-clamp-3">
                               {opt}
                             </span>
                           ) : null}
                         </div>
 
                         {showResult && isCorrectAnswer && (
-                          <span className="text-sm sm:text-base md:text-lg font-black px-4 py-2 rounded-2xl bg-emerald-500 text-white shrink-0 shadow-md">
+                          <span className="text-xs sm:text-sm md:text-base font-black px-3.5 py-1.5 rounded-xl bg-emerald-500 text-white shrink-0 shadow-md">
                             ✓ +5 PTS
                           </span>
                         )}
                         {showResult && isPicked && !isCorrectAnswer && (
-                          <span className="text-sm sm:text-base md:text-lg font-black px-4 py-2 rounded-2xl bg-rose-500 text-white shrink-0 shadow-md">
+                          <span className="text-xs sm:text-sm md:text-base font-black px-3.5 py-1.5 rounded-xl bg-rose-500 text-white shrink-0 shadow-md">
                             ✗ -5 PTS
                           </span>
                         )}

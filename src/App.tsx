@@ -33,6 +33,7 @@ import { Homework } from "./views/Homework";
 import { ClassRecord, getBestSavedClasses, isDefaultMockClasses, STORAGE_KEY, sortClassesByName } from "./views/ClassRecord";
 import { PhonemicMaster } from "./views/PhonemicMaster";
 import SquidGamePicker from "./views/SquidGamePicker";
+import { HamsterPaintball } from "./views/HamsterPaintball";
 import { useAuth } from "./contexts/AuthContext";
 import { doc, onSnapshot, getDoc, updateDoc, increment, setDoc } from "firebase/firestore";
 import { db } from "./lib/firebase";
@@ -41,9 +42,41 @@ import { AuthSliderModal } from "./components/AuthSliderModal";
 import { GoogleAuthModal } from "./components/GoogleAuthModal";
 
 export default function App() {
-  // Show Home for visitors and new logins instead of community (public-dashboard)
-  const [currentView, setCurrentView] = useState<ViewState>("home");
-  const [selectedGame, setSelectedGame] = useState<any>(null);
+  // Synchronously detect direct student homework links (?hwPin=... or #homework-...)
+  const getUrlHwPin = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      // 1. Check window.location.search (?hwPin=... or ?pin=...)
+      const params = new URLSearchParams(window.location.search);
+      let pin = params.get('hwPin') || params.get('pin');
+      
+      // 2. Check window.location.hash
+      if (!pin && window.location.hash) {
+        const hash = window.location.hash;
+        if (hash.includes('hwPin=') || hash.includes('pin=')) {
+          const qPart = hash.includes('?') ? hash.split('?')[1] : hash.replace(/^#\/?/, '');
+          const hashParams = new URLSearchParams(qPart);
+          pin = hashParams.get('hwPin') || hashParams.get('pin');
+        } else if (hash.startsWith('#homework-')) {
+          pin = hash.replace('#homework-', '').replace(/^\/+/, '');
+        }
+      }
+
+      // 3. Cache and retrieve from sessionStorage
+      if (pin) {
+        sessionStorage.setItem('active_hw_pin', pin);
+        return pin;
+      }
+      return sessionStorage.getItem('active_hw_pin') || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const initialHwPin = getUrlHwPin();
+
+  const [currentView, setCurrentView] = useState<ViewState>(initialHwPin ? "homework" : "home");
+  const [selectedGame, setSelectedGame] = useState<any>(initialHwPin ? { pinCode: initialHwPin } : null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState(false);
@@ -87,13 +120,14 @@ export default function App() {
     setIsGoogleAuthModalOpen(true);
   };
 
-  // Route new sign-ins directly to "home"
+  // Route new sign-ins directly to "home" while preserving homework
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const justLoggedIn = !prevUserRef.current || prevUserRef.current.isAnonymous;
       if (justLoggedIn) {
-        // Direct to Home instead of community
-        setCurrentView("home");
+        // Never override homework if opened with PIN in URL or already in homework view
+        const hasHwInUrl = Boolean(getUrlHwPin());
+        setCurrentView((prev) => (prev === 'homework' || hasHwInUrl ? 'homework' : 'home'));
       }
     }
     prevUserRef.current = user;
@@ -138,29 +172,44 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('joinCode');
-    if (code) {
-      setInitialRoomCode(code);
-      setIsAuthModalOpen(true);
-      // Remove it from URL so refreshing doesn't keep triggering it
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    const checkUrlParams = () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('joinCode');
+      if (code) {
+        setInitialRoomCode(code);
+        setIsAuthModalOpen(true);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      const hwPin = params.get('hwPin') || params.get('pin') || (window.location.hash?.startsWith('#homework-') ? window.location.hash.replace('#homework-', '') : null);
+      if (hwPin) {
+        setSelectedGame({ pinCode: hwPin });
+        setCurrentView('homework');
+      }
+    };
+
+    checkUrlParams();
+    window.addEventListener('popstate', checkUrlParams);
+    window.addEventListener('hashchange', checkUrlParams);
+    return () => {
+      window.removeEventListener('popstate', checkUrlParams);
+      window.removeEventListener('hashchange', checkUrlParams);
+    };
   }, []);
 
   const [pendingAction, setPendingAction] = useState<{ view: ViewState; data?: any } | null>(null);
 
-  // Name Picker games can be used freely by anyone without signing in
+  // Name Picker games and Homework can be used freely by students without signing in
   const isNamePickerView = (v: ViewState) => v === "squid-game-picker" || v === "student-race";
+  const isPublicStudentView = (v: ViewState) => isNamePickerView(v) || v === "homework" || v === "public-dashboard";
 
   // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {
-    if (!loading && !user && currentView !== "home" && !isNamePickerView(currentView)) {
+    if (!loading && !user && currentView !== "home" && !isPublicStudentView(currentView)) {
       setPendingAction({ view: currentView, data: selectedGame });
       setCurrentView("home");
       setIsAuthModalOpen(true);
     }
-  }, [loading, user]);
+  }, [loading, user, currentView]);
 
   const handleViewChange = (view: ViewState, data?: any) => {
     if (view === "admin-dashboard" && !isAdmin) {
@@ -168,9 +217,9 @@ export default function App() {
       return;
     }
 
-    // Name Picker is completely free and accessible without signing in!
+    // Name Picker and Homework are completely accessible for students without signing in!
     // All other actions, games, and views require signing in or entering a guest name.
-    const isFreeAccess = view === "home" || isNamePickerView(view);
+    const isFreeAccess = view === "home" || isPublicStudentView(view);
     if (!user && !isFreeAccess) {
       setPendingAction({ view, data });
       setIsAuthModalOpen(true);
@@ -206,8 +255,8 @@ export default function App() {
   }, []);
 
   const renderView = () => {
-    // Views that require user authentication or cloud save: Homework, Class rewards, My Games, Generator, Admin
-    const googleRequiredViews = ["games", "homework", "class-rewards", "class-record", "generator", "admin-dashboard"];
+    // Views that require user authentication or cloud save: Class rewards, My Games, Generator, Admin
+    const googleRequiredViews = ["games", "class-rewards", "class-record", "generator", "admin-dashboard"];
 
     if ((!user || user.isAnonymous) && googleRequiredViews.includes(currentView)) {
       const getFeatureInfo = () => {
@@ -333,6 +382,8 @@ export default function App() {
         return <BubblePop onViewChange={handleViewChange} initialGame={selectedGame} />;
       case "roller-coaster-quiz":
         return <RollerCoasterQuiz onViewChange={handleViewChange} initialGame={selectedGame} />;
+      case "hamster-paintball":
+        return <HamsterPaintball onViewChange={handleViewChange} initialGame={selectedGame} />;
       case "slap-and-chop":
         return <SlapAndChop onViewChange={handleViewChange} initialGame={selectedGame} />;
       case "shark-attack":
@@ -358,7 +409,7 @@ export default function App() {
       case "tic-tac-toe":
         return <TicTacToe onViewChange={handleViewChange} initialJoinData={joinData} initialGame={selectedGame} />;
       case "homework":
-        return <Homework onViewChange={handleViewChange} />;
+        return <Homework onViewChange={handleViewChange} initialData={selectedGame} />;
       case "class-rewards":
       case "class-record":
         return <ClassRecord onViewChange={handleViewChange} openAuthModal={() => setIsAuthModalOpen(true)} />;
@@ -394,7 +445,7 @@ export default function App() {
   };
 
   const isGame = [
-    "mystery-box", "bubble-pop", "roller-coaster-quiz", "slap-and-chop", "shark-attack", "yoga-quiz", "bubble-sentence-pro",
+    "mystery-box", "bubble-pop", "roller-coaster-quiz", "hamster-paintball", "slap-and-chop", "shark-attack", "yoga-quiz", "bubble-sentence-pro",
     "family-feud", "sumo", "hamster-pop-quiz", "student-race",
     "squid-game-picker", "letter-lock", "tic-tac-toe", "neon-chain",
     "flashcards-match", "phonemic-master"

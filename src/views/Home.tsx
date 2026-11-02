@@ -161,6 +161,22 @@ function FeaturedGamesSection({
       icon: "🎢",
     },
     {
+      id: "hamster-paintball",
+      title: "Hamster Paintball",
+      description:
+        "3D Outdoor Tactical Speedball Park Arena! Fire glossy paintballs, slide across the duck pond, deploy inflatable air bunkers, and earn ammo through trivia!",
+      difficulty: "Medium",
+      players: "1-5 Players / Bots",
+      time: "5-15m",
+      subject: "ESL & Science Trivia",
+      grade: "All",
+      imageUrl: "/images/hamster-paintball-card.jpg",
+      isNew: true,
+      isAI: false,
+      color: "from-lime-500 to-emerald-600",
+      icon: "🎯",
+    },
+    {
       id: "slap-and-chop",
       title: "Slap & Chop",
       description:
@@ -380,6 +396,11 @@ function GameCard({
             src={game.imageUrl}
             alt={game.title}
             referrerPolicy="no-referrer"
+            onError={(e: any) => {
+              if (game.id === 'hamster-paintball') {
+                e.currentTarget.src = '/images/hamster-paintball-card.png';
+              }
+            }}
             className="w-full h-full object-cover scale-[1.12] group-hover:scale-[1.20] transition-transform duration-700"
           />
           <div className="absolute inset-0 bg-brand-purple/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">

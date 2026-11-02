@@ -27,7 +27,8 @@ export type ViewState =
   | "squid-game-picker"
   | "shark-attack"
   | "slap-and-chop"
-  | "roller-coaster-quiz";
+  | "roller-coaster-quiz"
+  | "hamster-paintball";
 
 export interface Game {
   id: string;

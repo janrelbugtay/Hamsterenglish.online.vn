@@ -104,9 +104,10 @@ export function Navigation({
               <button
                 key={item.id}
                 onClick={() => {
+                  const freeViews = ["home", "homework", "public-dashboard"];
                   if (!user) {
-                    if (item.view === "home") {
-                      onViewChange("home");
+                    if (freeViews.includes(item.view)) {
+                      onViewChange(item.view);
                     } else {
                       if (openAuthModal) {
                         openAuthModal();
@@ -114,7 +115,7 @@ export function Navigation({
                       onViewChange(item.view);
                     }
                   } else {
-                    const googleProtectedViews = ["games", "homework", "class-rewards", "class-record", "admin-dashboard"];
+                    const googleProtectedViews = ["games", "class-rewards", "class-record", "admin-dashboard"];
                     if (user.isAnonymous && googleProtectedViews.includes(item.view)) {
                       if (openGoogleAuthModal) {
                         openGoogleAuthModal(item.label);

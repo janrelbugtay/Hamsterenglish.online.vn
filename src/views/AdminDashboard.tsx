@@ -105,6 +105,7 @@ const APP_GAMES = [
   { id: "neon-chain", title: "Neon Chain", icon: "🔗" },
   { id: "bubble-pop", title: "Bubble Pop", icon: "🫧" },
   { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "🎢" },
+  { id: "hamster-paintball", title: "Hamster Paintball", icon: "🐹🎯" },
   { id: "slap-and-chop", title: "Slap & Chop", icon: "🥊" },
   { id: "shark-attack", title: "Shark Attack", icon: "🦈" },
   { id: "flashcards-match", title: "Flashcards Match", icon: "🃏" },

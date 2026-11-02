@@ -72,18 +72,26 @@ export function FullscreenButton({
     }
   };
 
+  const isLight = className.includes('text-black') || className.includes('text-slate-900') || className.includes('bg-white');
+  const defaultBg = className.includes('bg-') ? '' : 'bg-slate-900/90 hover:bg-slate-800 border-white/25';
+  const defaultText = className.includes('text-') ? '' : 'text-white';
+
   return (
     <button
       type="button"
       onClick={toggle}
       className={`${
-        showLabel ? 'px-3.5 py-2 rounded-2xl gap-1.5' : 'w-11 h-11 rounded-full'
-      } bg-slate-900/90 hover:bg-slate-800 text-white flex items-center justify-center shadow-lg border border-white/25 transition-all active:scale-95 cursor-pointer ${className}`}
+        showLabel ? 'px-4 py-2.5 rounded-2xl gap-2 font-black' : 'w-11 h-11 rounded-full'
+      } ${defaultBg} ${defaultText} flex items-center justify-center shadow-md border transition-all active:scale-95 cursor-pointer ${className}`}
       title={isFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'}
     >
-      {isFullscreen ? <Minimize size={18} className="text-amber-400" /> : <Maximize size={18} className="text-sky-300" />}
+      {isFullscreen ? (
+        <Minimize size={18} className={isLight ? '!text-black shrink-0' : 'text-amber-400 shrink-0'} />
+      ) : (
+        <Maximize size={18} className={isLight ? '!text-black shrink-0' : 'text-sky-300 shrink-0'} />
+      )}
       {showLabel && (
-        <span className="text-xs sm:text-sm font-bold whitespace-nowrap">
+        <span className={`text-xs sm:text-sm font-black whitespace-nowrap ${isLight ? '!text-black' : ''}`}>
           {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
         </span>
       )}

@@ -274,6 +274,9 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const [selectedTheme, setSelectedTheme] = useState('theme-sky');
   const [studyIndex, setStudyIndex] = useState(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
+  const [studyScore, setStudyScore] = useState(0);
+  const [studyStreak, setStudyStreak] = useState(0);
+  const [studyAnswers, setStudyAnswers] = useState<Record<number, boolean>>({});
   const handleSetVoiceEnabled = (val: boolean) => { setVoiceEnabled(val); gameState.current.voice = val; };
   
   // Game engine state refs
@@ -357,52 +360,124 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     }
   };
 
-  const playSound = (type: 'pop' | 'win' | 'lose') => {
-    if (!audioCtxRef.current) return;
-    const osc = audioCtxRef.current.createOscillator();
-    const gainNode = audioCtxRef.current.createGain();
-    osc.connect(gainNode);
-    gainNode.connect(audioCtxRef.current.destination);
-    const now = audioCtxRef.current.currentTime;
-    const comboMultiplier = Math.min(gameState.current.combo || 0, 10);
-    const pitchShift = 1 + (comboMultiplier * 0.1); 
-    
-    if (type === 'pop') {
+  const playSound = (type: 'pop' | 'win' | 'lose' | 'correct' | 'wrong' | 'bubble-click' | 'whoosh' | 'fanfare') => {
+    try {
+      initAudio();
+      if (!audioCtxRef.current) return;
+      const ctx = audioCtxRef.current;
+      const now = ctx.currentTime;
+      const comboMultiplier = Math.min(gameState.current.combo || 0, 10);
+      const pitchShift = 1 + (comboMultiplier * 0.1); 
+      
+      if (type === 'pop') {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
         osc.type = 'sine';
         osc.frequency.setValueAtTime(800 * pitchShift, now);
         osc.frequency.exponentialRampToValueAtTime(100 * pitchShift, now + 0.1);
         gainNode.gain.setValueAtTime(0.5, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
         osc.start(now); osc.stop(now + 0.15);
-    } else if (type === 'win') {
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(440 * pitchShift, now);
-        osc.frequency.setValueAtTime(554.37 * pitchShift, now + 0.1);
-        osc.frequency.setValueAtTime(659.25 * pitchShift, now + 0.2);
-        gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(0.2, now + 0.05);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-        osc.start(now); osc.stop(now + 0.45);
-    } else if (type === 'lose') {
+      } else if (type === 'bubble-click') {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(640, now);
+        osc.frequency.exponentialRampToValueAtTime(1280, now + 0.05);
+        gainNode.gain.setValueAtTime(0.3, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.07);
+        osc.start(now); osc.stop(now + 0.08);
+      } else if (type === 'correct') {
+        // Cheerful sparkling bubble chime
+        const freqs = [523.25, 659.25, 783.99, 1046.50];
+        freqs.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          osc.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          osc.type = 'triangle';
+          const t = now + idx * 0.065;
+          osc.frequency.setValueAtTime(freq, t);
+          gainNode.gain.setValueAtTime(0.28, t);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+          osc.start(t);
+          osc.stop(t + 0.25);
+        });
+      } else if (type === 'wrong') {
+        // Cute comic bloop wobble
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(280, now);
+        osc.frequency.linearRampToValueAtTime(160, now + 0.14);
+        osc.frequency.linearRampToValueAtTime(120, now + 0.28);
+        gainNode.gain.setValueAtTime(0.32, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.32);
+      } else if (type === 'whoosh') {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(840, now + 0.1);
+        gainNode.gain.setValueAtTime(0.2, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.14);
+      } else if (type === 'win' || type === 'fanfare') {
+        const freqs = [440, 554.37, 659.25, 880];
+        freqs.forEach((f, i) => {
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          osc.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          osc.type = 'square';
+          const t = now + i * 0.08;
+          osc.frequency.setValueAtTime(f, t);
+          gainNode.gain.setValueAtTime(0.18, t);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.28);
+          osc.start(t);
+          osc.stop(t + 0.32);
+        });
+      } else if (type === 'lose') {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(150, now);
         osc.frequency.linearRampToValueAtTime(80, now + 0.3);
         gainNode.gain.setValueAtTime(0.3, now);
         gainNode.gain.linearRampToValueAtTime(0.01, now + 0.3);
         osc.start(now); osc.stop(now + 0.35);
-    }
+      }
+    } catch {}
   };
 
-  const speakText = (text: string) => {
-    if (!gameState.current.voice) return;
+  const speakText = (text: string, force = false) => {
+    if (!gameState.current.voice && !force) return;
     if ('speechSynthesis' in window) {
+      try {
         window.speechSynthesis.cancel();
         const cleanedText = text.replace(/_+/g, "blank");
         const utterance = new SpeechSynthesisUtterance(cleanedText);
         
-        // Try to find a natural female voice
-        const voices = window.speechSynthesis.getVoices();
-        const femaleVoices = voices.filter(v => 
+        const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(cleanedText);
+        if (isVietnamese) {
+          utterance.lang = 'vi-VN';
+        } else {
+          utterance.lang = 'en-US';
+          const voices = window.speechSynthesis.getVoices();
+          const femaleVoices = voices.filter(v => 
             v.name.includes('Google US English') || 
             v.name.includes('Samantha') || 
             v.name.includes('Victoria') ||
@@ -410,15 +485,16 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             v.name.includes('Tessa') ||
             (v.name.includes('Female') && v.lang.startsWith('en')) ||
             (v.name.includes('Zira') && v.lang.startsWith('en'))
-        );
-        
-        if (femaleVoices.length > 0) {
+          );
+          if (femaleVoices.length > 0) {
             utterance.voice = femaleVoices[0];
+          }
         }
         
         utterance.rate = 0.95; 
-        utterance.pitch = 1.15; 
+        utterance.pitch = 1.1; 
         window.speechSynthesis.speak(utterance);
+      } catch {}
     }
   };
 
@@ -1703,23 +1779,50 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     if (screen !== 'study' || !activeQuiz) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'ArrowRight') {
+        if (e.key === 'ArrowRight' || (e.code === 'Space' && studySelectedOption !== null)) {
             if (studyIndex < activeQuiz.questions.length - 1) {
+                playSound('whoosh');
                 setStudyIndex(prev => prev + 1);
                 setStudySelectedOption(null);
             } else {
+                playSound('fanfare');
                 setScreen('setup');
                 setStudyIndex(0);
                 setStudySelectedOption(null);
             }
         } else if (e.key === 'ArrowLeft') {
             if (studyIndex > 0) {
+                playSound('whoosh');
                 setStudyIndex(prev => prev - 1);
                 setStudySelectedOption(null);
-            } else {
-                setScreen('setup');
-                setStudyIndex(0);
-                setStudySelectedOption(null);
+            }
+        } else if (['1', '2', '3', '4', 'a', 'b', 'c', 'd', 'A', 'B', 'C', 'D'].includes(e.key)) {
+            const keyMap: Record<string, number> = {
+                '1': 0, 'a': 0, 'A': 0,
+                '2': 1, 'b': 1, 'B': 1,
+                '3': 2, 'c': 2, 'C': 2,
+                '4': 3, 'd': 3, 'D': 3,
+            };
+            const optIdx = keyMap[e.key];
+            const currentQ = activeQuiz.questions[studyIndex];
+            if (optIdx !== undefined && currentQ && optIdx < currentQ.options.length && studySelectedOption === null) {
+                setStudySelectedOption(optIdx);
+                const isHit = optIdx === currentQ.answerIndex;
+                setStudyAnswers(prev => ({ ...prev, [studyIndex]: isHit }));
+                if (isHit) {
+                    playSound('correct');
+                    setStudyScore(prev => prev + 5);
+                    setStudyStreak(prev => prev + 1);
+                } else {
+                    playSound('wrong');
+                    setStudyStreak(0);
+                }
+            }
+        } else if (e.key.toLowerCase() === 'r') {
+            const currentQ = activeQuiz.questions[studyIndex];
+            if (currentQ) {
+                const parsed = parseOptionContent(currentQ.text || '');
+                speakText(parsed.text || currentQ.text, true);
             }
         }
     };
@@ -1811,118 +1914,319 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
       {screen === 'study' && activeQuiz && (
         <div 
-            className="absolute inset-0 z-[100] flex flex-col bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white overflow-hidden" 
-            id="study-container"
+          className="absolute inset-0 z-[100] flex flex-col bg-gradient-to-br from-[#061026] via-[#0b1b3d] to-[#040b1a] text-white overflow-hidden select-none font-['Fredoka',sans-serif]" 
+          id="study-container"
         >
-            <div className="absolute top-4 left-4 z-20">
-                <button 
-                    onClick={() => {
-                        setScreen('setup');
-                        setStudyIndex(0);
+          {/* Animated Ambient Undersea Glow & Floating Bubble Highlights */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-30">
+            <div className="absolute -top-32 -left-32 w-96 h-96 bg-cyan-500/25 rounded-full blur-3xl animate-pulse" />
+            <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-blue-600/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-indigo-500/10 rounded-full blur-[120px]" />
+            {[15, 32, 50, 68, 85].map((pct, idx) => (
+              <div
+                key={idx}
+                className="absolute rounded-full border border-cyan-400/35 bg-cyan-400/10 backdrop-blur-[1px]"
+                style={{
+                  left: `${pct}%`,
+                  bottom: `${-20 + (idx * 18)}px`,
+                  width: `${26 + (idx % 3) * 16}px`,
+                  height: `${26 + (idx % 3) * 16}px`,
+                  animation: `bounce ${4 + idx}s ease-in-out infinite alternate`,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Top Navigation Header: Back, Stepper, Read Aloud, and Fullscreen */}
+          <div className="w-full relative z-20 flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-white/10 bg-slate-950/40 backdrop-blur-md shrink-0">
+            {/* Left: Back Button */}
+            <button 
+              type="button"
+              onClick={() => {
+                playSound('whoosh');
+                setScreen('setup');
+                setStudyIndex(0);
+                setStudySelectedOption(null);
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl shadow-sm text-white font-black text-sm sm:text-base transition cursor-pointer hover:scale-105 active:scale-95"
+            >
+              <ArrowLeft size={20} className="text-cyan-400" />
+              <span>Back to Setup</span>
+            </button>
+
+            {/* Center: Question Stepper Pills */}
+            <div className="flex items-center gap-2 max-w-[50vw] sm:max-w-[45vw] overflow-x-auto py-1 px-1 custom-scrollbar">
+              <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 font-black text-xs sm:text-sm shrink-0">
+                <span>🫧 Question</span>
+                <span className="text-white">{studyIndex + 1}/{activeQuiz.questions.length}</span>
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                {activeQuiz.questions.map((_, idx) => {
+                  const isCurrent = idx === studyIndex;
+                  const isAnswered = studyAnswers[idx] !== undefined;
+                  const wasCorrect = studyAnswers[idx] === true;
+
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        playSound('bubble-click');
+                        setStudyIndex(idx);
                         setStudySelectedOption(null);
-                    }}
-                    className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full shadow-sm text-white font-bold transition-all cursor-pointer hover:scale-105 active:scale-95"
-                >
-                    <ArrowLeft size={24} /> Back
-                </button>
+                      }}
+                      className={`min-w-[2.25rem] h-9 px-2 rounded-xl font-black text-xs sm:text-sm border transition cursor-pointer shrink-0 flex items-center justify-center gap-1 ${
+                        isCurrent
+                          ? 'bg-gradient-to-r from-amber-400 to-yellow-500 border-amber-300 text-slate-950 scale-110 shadow-lg shadow-amber-500/30 ring-2 ring-amber-300'
+                          : isAnswered
+                          ? wasCorrect
+                            ? 'bg-emerald-500/30 border-emerald-400 text-emerald-300 hover:bg-emerald-500/40'
+                            : 'bg-rose-500/30 border-rose-400 text-rose-300 hover:bg-rose-500/40'
+                          : 'bg-white/10 border-white/20 text-white/80 hover:bg-white/20 hover:text-white'
+                      }`}
+                      title={`Go to Question ${idx + 1}`}
+                    >
+                      <span>{idx + 1}</span>
+                      {isAnswered && (
+                        <span className="text-[10px]">{wasCorrect ? '✓' : '•'}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="absolute top-4 right-4 z-20 text-white [&>button]:bg-white/10 [&>button]:hover:bg-white/20 [&>button]:border [&>button]:border-white/20 [&>button]:text-white">
-                <FullscreenButton targetId="study-container" />
+
+            {/* Right: Read Aloud + Fullscreen Button */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  playSound('bubble-click');
+                  const currentStudyQ = activeQuiz.questions[studyIndex];
+                  const qParsed = parseOptionContent(currentStudyQ?.text || '');
+                  speakText(qParsed.text || currentStudyQ?.text, true);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/50 text-cyan-200 text-xs sm:text-sm font-black cursor-pointer transition active:scale-95 shadow-md shadow-cyan-950/30"
+                title="Read question aloud (R)"
+              >
+                <span>🔊 Read Aloud</span>
+              </button>
+
+              <FullscreenButton 
+                targetId="study-container" 
+                showLabel={true}
+                className="px-4 sm:px-5 py-2.5 rounded-2xl !bg-white hover:!bg-slate-100 border-2 border-slate-300 border-b-4 border-b-slate-400 !text-black font-black text-xs sm:text-sm transition cursor-pointer shadow-md active:translate-y-0.5 flex items-center gap-2"
+              />
             </div>
+          </div>
 
-            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 text-cyan-300 font-extrabold text-xl bg-white/10 border border-white/20 px-6 py-2 rounded-full z-10 backdrop-blur-md shadow-md">
-                {studyIndex + 1} / {activeQuiz.questions.length}
-            </div>
+          {/* Main Question & 2x2 Square Options Content */}
+          <div className="flex-1 flex flex-col items-center justify-between p-4 sm:p-6 md:p-8 w-full max-w-5xl mx-auto overflow-y-auto custom-scrollbar relative z-10">
+            {activeQuiz.questions.length > 0 ? (
+              <>
+                {(() => {
+                  const currentStudyQ = activeQuiz.questions[studyIndex];
+                  const parsedStudyQ = parseOptionContent(currentStudyQ?.text || '');
+                  const studyQImg = parsedStudyQ.imageUrl || currentStudyQ?.image || null;
+                  const qDisplayText = parsedStudyQ.text || currentStudyQ?.text;
 
-            <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-12 w-full h-full max-w-5xl mx-auto">
-                {activeQuiz.questions.length > 0 ? (
-                    <>
-                        {(() => {
-                            const currentStudyQ = activeQuiz.questions[studyIndex];
-                            const parsedStudyQ = parseOptionContent(currentStudyQ?.text || '');
-                            const studyQImg = parsedStudyQ.imageUrl || currentStudyQ?.image || null;
-                            return (
-                                <div className="flex flex-col items-center justify-center gap-5 mb-10 max-w-full">
-                                    {studyQImg && (
-                                        <div className="w-36 h-36 sm:w-48 sm:h-48 rounded-3xl bg-white/95 p-3 shadow-2xl border-4 border-cyan-400/50 flex items-center justify-center overflow-hidden">
-                                            <img src={studyQImg} alt={parsedStudyQ.text || 'Question Media'} className="w-full h-full object-contain rounded-2xl" />
-                                        </div>
-                                    )}
-                                    {parsedStudyQ.text && (
-                                        <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight leading-tight text-center max-w-full break-words drop-shadow-lg">
-                                            {parsedStudyQ.text}
-                                        </h1>
-                                    )}
-                                </div>
-                            );
-                        })()}
+                  return (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center px-4 my-auto min-h-[140px] sm:min-h-[180px]">
+                      {studyQImg && (
+                        <div className="w-36 h-36 sm:w-48 sm:h-48 rounded-3xl bg-white/95 p-3 shadow-2xl border-4 border-cyan-400/50 flex items-center justify-center overflow-hidden mb-4">
+                          <img 
+                            src={studyQImg} 
+                            alt={qDisplayText || 'Question Media'} 
+                            className="w-full h-full object-contain rounded-2xl" 
+                          />
+                        </div>
+                      )}
+                      {qDisplayText && (
+                        <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight leading-tight text-center max-w-4xl break-words drop-shadow-lg">
+                          {qDisplayText}
+                        </h1>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-3xl">
-                            {activeQuiz.questions[studyIndex]?.options.map((opt, i) => {
-                                if (!opt || opt.trim() === '') return null;
-                                const isSelected = studySelectedOption === i;
-                                const isCorrect = i === activeQuiz.questions[studyIndex].answerIndex;
-                                const showAsCorrect = studySelectedOption !== null && isCorrect;
-                                const showAsIncorrect = studySelectedOption !== null && isSelected && !isCorrect;
+                {/* Options - SQUARE 2x2 ABCD GRID LAYOUT (Never a single straight line; zero overlapping) */}
+                {(() => {
+                  const currentStudyQ = activeQuiz.questions[studyIndex];
+                  return (
+                    <div className="w-full max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                      {currentStudyQ?.options.map((opt, i) => {
+                        if (!opt || opt.trim() === '') return null;
+                        const isSelected = studySelectedOption === i;
+                        const isCorrect = i === currentStudyQ.answerIndex;
+                        const showAsCorrect = studySelectedOption !== null && isCorrect;
+                        const showAsIncorrect = studySelectedOption !== null && isSelected && !isCorrect;
+                        const parsed = parseOptionContent(opt);
+                        const letter = ['A', 'B', 'C', 'D'][i] || `${i + 1}`;
 
-                                return (
-                                    <button
-                                        key={i}
-                                        onClick={() => {
-                                            if (studySelectedOption === null) {
-                                                setStudySelectedOption(i);
-                                            }
-                                        }}
-                                        disabled={studySelectedOption !== null}
-                                        className={`relative p-6 sm:p-8 rounded-[2rem] text-2xl sm:text-3xl font-bold transition-all duration-300 transform border-2 cursor-pointer ${
-                                            showAsCorrect ? 'bg-emerald-500 border-emerald-300 text-white shadow-[0_0_40px_rgba(16,185,129,0.5)] scale-105 z-10' :
-                                            showAsIncorrect ? 'bg-rose-500 border-rose-300 text-white opacity-90 scale-95 shadow-[0_0_25px_rgba(244,63,94,0.4)]' :
-                                            studySelectedOption !== null ? 'bg-white/5 border-white/10 text-white/40 opacity-40 cursor-not-allowed' :
-                                            'bg-white/10 text-white hover:bg-white/20 hover:scale-105 hover:shadow-xl shadow-lg border-white/20 hover:border-cyan-400'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-center gap-4">
-                                            {(() => {
-                                                const parsed = parseOptionContent(opt);
-                                                return (
-                                                    <>
-                                                        {parsed.imageUrl && (
-                                                            <img src={parsed.imageUrl} alt={parsed.text || 'Option'} className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-xl bg-white/90 p-1 shrink-0" />
-                                                        )}
-                                                        {parsed.text && <span>{parsed.text}</span>}
-                                                    </>
-                                                );
-                                            })()}
-                                            {showAsCorrect && <span className="text-4xl animate-bounce">✅</span>}
-                                            {showAsIncorrect && <span className="text-4xl">❌</span>}
-                                        </div>
-                                    </button>
-                                );
-                            })}
+                        let btnBorder = 'border-white/20 hover:border-cyan-400 bg-white/10 hover:bg-white/20 text-white shadow-lg hover:shadow-cyan-500/20 hover:scale-[1.02]';
+                        if (studySelectedOption !== null) {
+                          if (showAsCorrect) {
+                            btnBorder = 'bg-emerald-500/90 border-emerald-300 text-white shadow-[0_0_35px_rgba(16,185,129,0.55)] scale-[1.02] ring-4 ring-emerald-300/40 z-10';
+                          } else if (showAsIncorrect) {
+                            btnBorder = 'bg-rose-500/90 border-rose-300 text-white shadow-[0_0_25px_rgba(244,63,94,0.45)] ring-2 ring-rose-400/40 animate-pulse';
+                          } else {
+                            btnBorder = 'bg-white/5 border-white/10 text-white/35 opacity-40 cursor-not-allowed';
+                          }
+                        }
+
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => {
+                              if (studySelectedOption === null) {
+                                setStudySelectedOption(i);
+                                const isHit = i === currentStudyQ.answerIndex;
+                                setStudyAnswers(prev => ({ ...prev, [studyIndex]: isHit }));
+                                if (isHit) {
+                                  playSound('correct');
+                                  setStudyScore(prev => prev + 5);
+                                  setStudyStreak(prev => prev + 1);
+                                } else {
+                                  playSound('wrong');
+                                  setStudyStreak(0);
+                                }
+                              }
+                            }}
+                            disabled={studySelectedOption !== null}
+                            className={`relative p-5 sm:p-6 md:p-7 rounded-3xl border-3 border-b-[6px] sm:border-b-[8px] text-left font-black transition-all cursor-pointer min-h-[90px] sm:min-h-[110px] md:min-h-[120px] flex items-center gap-4 active:translate-y-1 ${btnBorder}`}
+                          >
+                            <span className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center text-xl sm:text-2xl md:text-3xl font-black shrink-0 shadow-md ${
+                              showAsCorrect
+                                ? 'bg-emerald-400 text-slate-950 font-black'
+                                : showAsIncorrect
+                                ? 'bg-rose-400 text-slate-950 font-black'
+                                : 'bg-cyan-500/25 border-2 border-cyan-400/50 text-cyan-200'
+                            }`}>
+                              {letter}
+                            </span>
+
+                            <div className="flex-1 flex items-center gap-3.5 min-w-0 overflow-hidden">
+                              {parsed.imageUrl && (
+                                <img
+                                  src={parsed.imageUrl}
+                                  alt={parsed.text || `Option ${letter}`}
+                                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-contain bg-white/95 p-2 border-2 border-cyan-400/40 shrink-0 shadow-md"
+                                />
+                              )}
+                              {parsed.text ? (
+                                <span className="text-xl sm:text-2xl md:text-3xl font-black text-white break-words leading-snug line-clamp-3">
+                                  {parsed.text}
+                                </span>
+                              ) : !parsed.imageUrl ? (
+                                <span className="text-xl sm:text-2xl md:text-3xl font-black text-white break-words leading-snug line-clamp-3">
+                                  {opt}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {showAsCorrect && (
+                              <span className="text-xs sm:text-sm md:text-base font-black px-3.5 py-1.5 rounded-xl bg-emerald-400 text-slate-950 shrink-0 shadow-md animate-bounce">
+                                ✓ +5 PTS
+                              </span>
+                            )}
+                            {showAsIncorrect && (
+                              <span className="text-xs sm:text-sm md:text-base font-black px-3.5 py-1.5 rounded-xl bg-rose-400 text-slate-950 shrink-0 shadow-md">
+                                ✗ INCORRECT
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Feedback Banner & Navigation Controls */}
+                {(() => {
+                  const currentStudyQ = activeQuiz.questions[studyIndex];
+                  return (
+                    <div className="w-full max-w-4xl mx-auto mt-6 flex flex-col items-center gap-4">
+                      {studySelectedOption !== null && (() => {
+                        const isCorrect = studySelectedOption === currentStudyQ.answerIndex;
+                        const correctOptRaw = currentStudyQ.options[currentStudyQ.answerIndex] || '';
+                        const correctParsed = parseOptionContent(correctOptRaw);
+                        const correctLetter = ['A', 'B', 'C', 'D'][currentStudyQ.answerIndex] || 'A';
+
+                        return (
+                          <div className={`w-full p-4 sm:p-5 rounded-3xl border-2 text-center font-black animate-in fade-in duration-200 flex items-center justify-center flex-wrap gap-3 shadow-xl ${
+                            isCorrect
+                              ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 shadow-emerald-500/20'
+                              : 'bg-rose-500/20 border-rose-400 text-rose-200 shadow-rose-500/20'
+                          }`}>
+                            {isCorrect ? (
+                              <span className="text-lg sm:text-2xl">
+                                🎉 Bubble-tastic! Option {correctLetter}{correctParsed.text ? `: "${correctParsed.text}"` : ''} is the correct answer (+5 points)!
+                              </span>
+                            ) : (
+                              <span className="text-lg sm:text-2xl">
+                                💧 Nice try! Option {correctLetter}{correctParsed.text ? `: "${correctParsed.text}"` : ''} is the correct answer!
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      <div className="w-full flex items-center justify-between gap-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (studyIndex > 0) {
+                              playSound('whoosh');
+                              setStudyIndex(studyIndex - 1);
+                              setStudySelectedOption(null);
+                            }
+                          }}
+                          disabled={studyIndex === 0}
+                          className="px-6 py-3 rounded-2xl bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 text-white font-black text-sm sm:text-base transition cursor-pointer"
+                        >
+                          ← Previous
+                        </button>
+
+                        <div className="flex items-center gap-3">
+                          {studyScore > 0 && (
+                            <span className="text-xs sm:text-sm font-black px-4 py-2 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-300">
+                              ⭐ {studyScore} PTS {studyStreak > 1 ? `· 🔥 ${studyStreak} Streak!` : ''}
+                            </span>
+                          )}
                         </div>
 
-                        <div className={`mt-12 h-20 transition-all duration-500 ${studySelectedOption !== null ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-                            <button
-                                onClick={() => {
-                                    if (studyIndex < activeQuiz.questions.length - 1) {
-                                        setStudyIndex(studyIndex + 1);
-                                        setStudySelectedOption(null);
-                                    } else {
-                                        setScreen('setup');
-                                        setStudyIndex(0);
-                                        setStudySelectedOption(null);
-                                    }
-                                }}
-                                className="px-12 py-5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-2xl rounded-full shadow-[0_0_30px_rgba(6,182,212,0.5)] transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-                            >
-                                {studyIndex < activeQuiz.questions.length - 1 ? 'Next Question →' : 'Finish Study'}
-                            </button>
-                        </div>
-                    </>
-                ) : (
-                    <div className="text-slate-500 text-3xl font-bold">No questions in this quiz!</div>
-                )}
-            </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (studyIndex < activeQuiz.questions.length - 1) {
+                              playSound('whoosh');
+                              setStudyIndex(studyIndex + 1);
+                              setStudySelectedOption(null);
+                            } else {
+                              playSound('fanfare');
+                              setScreen('setup');
+                              setStudyIndex(0);
+                              setStudySelectedOption(null);
+                            }
+                          }}
+                          className={`px-8 sm:px-10 py-3 sm:py-3.5 bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-slate-950 font-black text-base sm:text-lg rounded-2xl shadow-[0_0_25px_rgba(6,182,212,0.5)] transition-all transform hover:scale-105 active:scale-95 cursor-pointer ${
+                            studySelectedOption === null ? 'opacity-85' : 'animate-pulse'
+                          }`}
+                        >
+                          {studyIndex < activeQuiz.questions.length - 1 ? 'Next Question →' : 'Finish Study 🏆'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className="text-slate-400 text-2xl font-bold">No questions in this quiz!</div>
+            )}
+          </div>
         </div>
       )}
 

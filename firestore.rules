@@ -78,6 +78,15 @@ service cloud.firestore {
       }
     }
 
+    // Homework Assignments & Submissions
+    match /homework_assignments/{assignmentId} {
+      allow read, write: if true;
+    }
+
+    match /homework_submissions/{submissionId} {
+      allow read, write: if true;
+    }
+
     // Multiplayer Game Rooms
     match /rooms/{roomId} {
       allow get: if isValidId(roomId);

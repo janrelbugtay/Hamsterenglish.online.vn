@@ -1,0 +1,3319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hamster Paintball - 3D Tactical Park Arena</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Fredoka, Rubik & Chakra Petch for Tactical Paintball HUD -->
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,600;0,700;1,700&family=Fredoka:wght@500;600;700&family=Rubik:ital,wght@0,500;0,700;0,800;0,900;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        :root {
+            --glass-dark: rgba(15, 23, 42, 0.82);
+            --glass-border: rgba(255, 255, 255, 0.16);
+            --neon-lime: #a3e635;
+            --neon-pink: #ff2a85;
+            --neon-cyan: #22d3ee;
+            --neon-amber: #fbbf24;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Rubik', sans-serif;
+            background-color: #0f172a;
+        }
+
+        .font-tactical {
+            font-family: 'Chakra Petch', sans-serif;
+        }
+
+        .font-gimkit-logo {
+            font-family: 'Fredoka', sans-serif;
+            letter-spacing: -0.02em;
+        }
+
+        /* Entry screen park tactical pattern */
+        .doodle-bg {
+            background-color: #1e293b;
+            background-image: 
+                radial-gradient(circle at 18% 22%, rgba(163, 230, 53, 0.18) 0%, transparent 28%),
+                radial-gradient(circle at 82% 28%, rgba(255, 42, 133, 0.18) 0%, transparent 30%),
+                radial-gradient(circle at 50% 80%, rgba(34, 211, 238, 0.16) 0%, transparent 35%),
+                url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23334155' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='20' cy='20' r='5'/%3E%3Cpath d='M55 15 l10 6 l-6 10 z'/%3E%3Cpath d='M90 25 l8 -8 m-8 0 l8 8'/%3E%3Cpath d='M15 65 q5 -6 10 0 t10 0 t10 0'/%3E%3Crect x='65' y='55' width='10' height='10' transform='rotate(20 70 60)'/%3E%3Ccircle cx='105' cy='70' r='4'/%3E%3Cpath d='M25 100 l12 -5 l-4 12 z'/%3E%3C/g%3E%3C/svg%3E");
+        }
+
+        /* Outlined HUD text styles */
+        .text-stroke-sm {
+            text-shadow: 
+                -1.5px -1.5px 0 #000,  
+                 1.5px -1.5px 0 #000,
+                -1.5px  1.5px 0 #000,
+                 1.5px  1.5px 0 #000,
+                 0px 2px 4px rgba(0,0,0,0.65);
+        }
+
+        .text-stroke-md {
+            text-shadow: 
+                -2px -2px 0 #000,  
+                 2px -2px 0 #000,
+                -2px  2px 0 #000,
+                 2px  2px 0 #000,
+                 0px 4px 8px rgba(0,0,0,0.75);
+        }
+
+        /* 3D Canvas Container */
+        #canvas-container {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            cursor: none;
+        }
+
+        /* Sleek Tactical Glass Panel */
+        .tactical-panel {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 41, 59, 0.78) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+
+        /* Glossy Liquid Paint Progress Bars */
+        .paint-bar-gloss {
+            position: relative;
+            overflow: hidden;
+        }
+        .paint-bar-gloss::after {
+            content: '';
+            position: absolute;
+            top: 1px;
+            left: 2px;
+            right: 2px;
+            height: 42%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.05) 100%);
+            border-radius: 999px;
+            pointer-events: none;
+        }
+
+        /* Floating Damage Popups */
+        @keyframes floatDamage {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.55) rotate(-6deg);
+            }
+            22% {
+                opacity: 1;
+                transform: translate(-50%, -105%) scale(1.22) rotate(4deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -195%) scale(0.92) rotate(0deg);
+            }
+        }
+
+        .damage-popup {
+            position: absolute;
+            pointer-events: none;
+            font-family: 'Rubik', sans-serif;
+            font-weight: 900;
+            font-style: italic;
+            font-size: 2rem;
+            color: #ff922b;
+            z-index: 30;
+            animation: floatDamage 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            text-shadow:
+                -2.5px -2.5px 0 #000,
+                 2.5px -2.5px 0 #000,
+                -2.5px  2.5px 0 #000,
+                 2.5px  2.5px 0 #000,
+                 0px 5px 10px rgba(0,0,0,0.65);
+        }
+
+        /* Visor Paint Splat Drip Effect when Local Player is Hit */
+        @keyframes visorDrip {
+            0% {
+                opacity: 0.95;
+                transform: scale(0.4) translateY(0);
+            }
+            12% {
+                opacity: 0.92;
+                transform: scale(1.05) translateY(4px);
+            }
+            65% {
+                opacity: 0.75;
+                transform: scale(1.0) translateY(28px);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(0.96) translateY(65px);
+            }
+        }
+
+        .visor-splat {
+            position: absolute;
+            pointer-events: none;
+            animation: visorDrip 2.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            filter: drop-shadow(0 6px 12px rgba(0,0,0,0.45));
+        }
+
+        /* Knockout Feed Alert Animation */
+        @keyframes koPop {
+            0% { transform: scale(0.45) translateY(24px); opacity: 0; }
+            18% { transform: scale(1.08) translateY(0); opacity: 1; }
+            82% { transform: scale(1) translateY(0); opacity: 1; }
+            100% { transform: scale(0.92) translateY(-14px); opacity: 0; }
+        }
+
+        .ko-banner-anim {
+            animation: koPop 2.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        /* Redesigned Tactical Loadout Slot */
+        .loadout-slot {
+            width: 74px;
+            height: 64px;
+            background: rgba(15, 23, 42, 0.78);
+            border: 2px solid rgba(148, 163, 184, 0.32);
+            border-radius: 14px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: pointer;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+        }
+
+        .loadout-slot:hover {
+            transform: translateY(-4px);
+            border-color: rgba(255, 255, 255, 0.6);
+            background: rgba(30, 41, 59, 0.9);
+        }
+
+        .loadout-slot.active {
+            background: linear-gradient(160deg, rgba(34, 211, 238, 0.32) 0%, rgba(59, 130, 246, 0.45) 100%);
+            border: 2.5px solid #a3e635;
+            transform: translateY(-7px) scale(1.05);
+            box-shadow: 0 10px 24px rgba(163, 230, 53, 0.35), inset 0 0 12px rgba(163, 230, 53, 0.25);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
+    </style>
+</head>
+<body class="relative select-none overflow-hidden">
+
+    <!-- 3D THREE.JS GAME CANVAS -->
+    <div id="canvas-container"></div>
+
+    <!-- FIRST-PERSON GOGGLE VISOR PAINT SPLAT OVERLAY -->
+    <div id="visor-splat-layer" class="fixed inset-0 pointer-events-none z-25 overflow-hidden"></div>
+
+    <!-- CUSTOM TACTICAL PAINTBALL AIMING RETICLE -->
+    <div id="aim-reticle" class="fixed pointer-events-none z-30 hidden" style="transform: translate(-50%, -50%);">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Outer dynamic reticle ring -->
+            <circle cx="32" cy="32" r="18" stroke="rgba(0,0,0,0.75)" stroke-width="4" stroke-dasharray="14 8"/>
+            <circle id="reticle-color-ring" cx="32" cy="32" r="18" stroke="#a3e635" stroke-width="2.2" stroke-dasharray="14 8"/>
+            <!-- Inner precision ring -->
+            <circle cx="32" cy="32" r="7" stroke="#ffffff" stroke-width="1.8" fill="rgba(163,230,53,0.15)"/>
+            <!-- Crosshair ticks -->
+            <path d="M32 8 V15 M32 49 V56 M8 32 H15 M49 32 H56" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+            <!-- Center dot -->
+            <circle cx="32" cy="32" r="2.5" fill="#ff2a85"/>
+        </svg>
+    </div>
+
+    <!-- DYNAMIC WORLD LABELS & FLOATING DAMAGE OVERLAY -->
+    <div id="world-labels-layer" class="fixed inset-0 pointer-events-none z-10 overflow-hidden"></div>
+    <div id="damage-popups-layer" class="fixed inset-0 pointer-events-none z-30 overflow-hidden"></div>
+
+    <!-- =====================================================================
+         SCREEN 1: JOIN / ENTRY MODAL (Tactical Park Edition + Gimkit Flow)
+         ===================================================================== -->
+    <div id="join-screen" class="fixed inset-0 z-50 doodle-bg flex flex-col items-center justify-center p-4 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[460px] p-7 flex flex-col items-center border-2 border-slate-200 relative overflow-hidden">
+            <!-- Top glossy paint accent bar -->
+            <div class="absolute top-0 inset-x-0 h-2.5 bg-gradient-to-r from-lime-400 via-pink-500 to-cyan-400"></div>
+
+            <!-- Floating Paint Splat Badge -->
+            <div class="absolute top-4 right-4 w-11 h-11 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 shadow-lg flex items-center justify-center text-white transform rotate-6">
+                <i class="fa-solid fa-crosshairs text-lg"></i>
+            </div>
+
+            <!-- Title Logo -->
+            <div class="text-center mb-4 mt-1">
+                <div class="inline-flex items-center gap-1.5 bg-lime-100 text-lime-800 font-black text-[11px] px-3 py-0.5 rounded-full mb-1 border border-lime-300">
+                    <i class="fa-solid fa-tree text-emerald-600"></i> OUTDOOR SPEEDBALL & WOODSBALL PARK
+                </div>
+                <div class="font-gimkit-logo font-black text-4xl sm:text-5xl tracking-tight text-slate-900 leading-none">
+                    HAMSTER PAINTBALL
+                </div>
+                <p class="text-xs font-bold text-slate-500 mt-1">
+                    3D PBR Glossy Paintballs • Tactical Hamster Gear • Real-Time Park Arena
+                </p>
+            </div>
+
+            <!-- 3D Hamster Character & Mask Selector -->
+            <div class="w-full bg-slate-100 rounded-xl p-3.5 mb-4 border border-slate-200">
+                <div class="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    <span>Select Pro Hamster Rig</span>
+                    <span id="selected-skin-name" class="text-indigo-900 font-extrabold">Choco Commando (Teacher Jan)</span>
+                </div>
+                <div class="grid grid-cols-5 gap-2" id="skin-selector-grid">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+            <!-- Your Name Input -->
+            <div class="w-full mb-3">
+                <label class="block text-[11px] font-extrabold uppercase text-slate-400 mb-1">Hamster Callsign</label>
+                <input
+                    id="player-name-input"
+                    type="text"
+                    maxlength="16"
+                    placeholder="Your Name"
+                    value="Teacher Jan"
+                    class="w-full h-12 px-4 text-center text-lg font-extrabold text-slate-800 bg-white border-2 border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-500 transition"
+                />
+            </div>
+
+            <!-- Room Code Input Row -->
+            <div class="w-full mb-4 flex gap-2">
+                <div class="relative flex-1">
+                    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase text-slate-400">PARK CODE</span>
+                    <input
+                        id="room-code-input"
+                        type="text"
+                        maxlength="6"
+                        value="370741"
+                        placeholder="370741"
+                        class="w-full h-11 pl-20 pr-3 text-center font-black tracking-widest text-slate-800 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-700"
+                    />
+                </div>
+                <button
+                    id="random-code-btn"
+                    type="button"
+                    title="Generate New 6-Digit Room Code"
+                    class="px-3.5 h-11 bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold text-xs rounded-xl transition flex items-center gap-1.5"
+                >
+                    <i class="fa-solid fa-dice"></i> New Code
+                </button>
+            </div>
+
+            <!-- Enter Park Lobby Button -->
+            <button
+                id="join-game-btn"
+                class="w-full h-13 py-3.5 bg-[#160269] hover:bg-[#220699] active:scale-[0.99] text-white font-black text-base rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-[#0c013d]"
+            >
+                <i class="fa-solid fa-gun"></i>
+                <span>Enter Paintball Park</span>
+            </button>
+
+            <div class="w-full mt-3 pt-2.5 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-semibold">
+                <span><i class="fa-solid fa-check-circle text-emerald-500 mr-1"></i>Cloud + Multi-Tab Sync</span>
+                <span><i class="fa-solid fa-robot text-indigo-500 mr-1"></i>Smart Speedball Bots</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         SCREEN 2: PRE-GAME PARK LOBBY OVERLAY (Gimkit Host Banner + Park Preview)
+         ===================================================================== -->
+    <div id="lobby-overlay" class="fixed inset-0 z-30 pointer-events-none hidden flex-col justify-between">
+        <!-- Top Translucent Banner -->
+        <div class="w-full bg-[#2e1f4d]/90 backdrop-blur-md py-4 px-6 flex flex-col items-center justify-center pointer-events-auto shadow-2xl relative border-b border-white/15">
+            <div class="text-white text-base sm:text-xl font-medium tracking-wide text-center flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-lime-400 text-slate-950 font-black text-xs uppercase">LIVE PARK LOBBY</span>
+                <span>Go to <strong class="underline decoration-pink-400">hamsterpaintball.io/join</strong> and enter code</span>
+            </div>
+            <div
+                id="lobby-big-code"
+                class="text-white font-black text-6xl sm:text-8xl tracking-tight leading-none mt-1 cursor-pointer hover:scale-105 transition transform select-all drop-shadow-md"
+                title="Click to toggle QR Code & Copy Link"
+            >
+                370741
+            </div>
+
+            <!-- Top-right floating Lobby Icon Bar -->
+            <div class="absolute right-5 -bottom-14 bg-[#2e1f4d] border-2 border-[#634d8f] rounded-xl p-1.5 flex items-center gap-1.5 shadow-xl">
+                <button id="lobby-add-bot-icon" title="Add AI Speedball Hamster" class="w-9 h-9 rounded-lg bg-[#453073] hover:bg-[#5b4096] text-amber-400 flex items-center justify-center transition">
+                    <i class="fa-solid fa-paw"></i>
+                </button>
+                <button id="lobby-qr-toggle-icon" title="Show/Hide Room QR Code" class="w-9 h-9 rounded-lg bg-[#453073] hover:bg-[#5b4096] text-pink-300 flex items-center justify-center transition">
+                    <i class="fa-solid fa-qrcode"></i>
+                </button>
+                <button id="lobby-audio-toggle-icon" title="Toggle Sound Effects" class="w-9 h-9 rounded-lg bg-[#453073] hover:bg-[#5b4096] text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Center QR Code & Copy Link Modal -->
+        <div id="lobby-qr-modal" class="self-center my-auto pointer-events-auto hidden">
+            <div class="bg-[#3b1578] p-4 rounded-2xl shadow-2xl border-2 border-indigo-400/40 flex flex-col items-center w-[280px] sm:w-[310px]">
+                <div class="bg-white p-3 rounded-xl w-full aspect-square flex items-center justify-center shadow-inner" id="qr-svg-container"></div>
+                <button
+                    id="copy-join-link-btn"
+                    class="w-full mt-3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl shadow transition flex items-center justify-center gap-2"
+                >
+                    <i class="fa-solid fa-link"></i>
+                    <span id="copy-link-text">Copy Join Link</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Bottom Translucent Lobby Control Bar -->
+        <div class="w-full bg-[#2e1f4d]/90 backdrop-blur-md py-5 px-6 flex flex-col items-center justify-center gap-2.5 pointer-events-auto border-t border-white/15">
+            <div class="flex flex-wrap items-center justify-center gap-3">
+                <div class="bg-slate-800/90 border border-white/20 text-white font-bold text-sm px-5 py-2.5 rounded-xl shadow flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-lime-400 animate-ping"></span>
+                    <span id="lobby-status-text">Waiting for players... (5 Hamsters in Park)</span>
+                </div>
+
+                <button
+                    id="start-match-btn"
+                    class="bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 active:scale-95 text-slate-950 font-black text-sm px-7 py-2.5 rounded-xl shadow-lg transition flex items-center gap-2 border-b-4 border-emerald-800"
+                >
+                    <i class="fa-solid fa-play"></i>
+                    <span>START PARK PAINTBALL MATCH!</span>
+                </button>
+
+                <button
+                    id="lobby-add-bot-btn"
+                    class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs px-4 py-2.5 rounded-xl shadow transition flex items-center gap-1.5"
+                >
+                    <i class="fa-solid fa-plus"></i> Add Pro Bot
+                </button>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-center gap-3">
+                <button
+                    id="spectator-toggle-btn"
+                    class="bg-white/10 hover:bg-white/20 text-white/90 text-xs font-semibold px-4 py-1.5 rounded-lg transition"
+                >
+                    Mode: Active Player (Click to Spectate)
+                </button>
+                <span class="text-xs text-purple-200 hidden sm:inline">
+                    Warmup Active: Move with <b>WASD</b>, switch camera with <b>V</b>, and test your Paintball Marker on the inflatable park bunkers!
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         SCREEN 3: REDESIGNED TACTICAL IN-GAME HUD (Sleek Pro Paintball UI)
+         ===================================================================== -->
+    <div id="gameplay-hud" class="fixed inset-0 z-20 pointer-events-none hidden flex-col justify-between p-3 sm:p-4">
+        
+        <!-- TOP ROW: Left Vitals & HPA Air Tank | Center Match Clock & Park Event | Right Killfeed & Controls -->
+        <div class="w-full flex items-start justify-between gap-3">
+
+            <!-- TOP-LEFT: REDESIGNED HAMSTER VITALS, GOGGLE SHIELD & HPA AIR TANK CARD -->
+            <div class="tactical-panel rounded-2xl p-3 w-68 sm:w-80 pointer-events-auto border-l-4 border-l-lime-400">
+                <!-- Header: Hamster Avatar + Callsign + Kill Streak Badge -->
+                <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center gap-2.5">
+                        <div id="hud-avatar-swatch" class="w-9 h-9 rounded-xl bg-amber-600 border-2 border-white/80 shadow flex items-center justify-center text-white relative">
+                            <i class="fa-solid fa-glasses text-xs"></i>
+                            <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-lime-400 border border-slate-900"></span>
+                        </div>
+                        <div>
+                            <div id="hud-player-callsign" class="font-black text-white text-sm leading-tight tracking-wide">TEACHER JAN</div>
+                            <div class="text-[10px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-Burst"></i> Pro Speedball Rig
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Score & Seeds Mini Pill -->
+                    <div class="flex items-center gap-2 bg-slate-950/70 px-2.5 py-1 rounded-xl border border-white/10">
+                        <div class="text-center">
+                            <div class="text-[9px] font-bold text-slate-400 uppercase">Splats</div>
+                            <div id="hud-kos-count" class="font-tactical font-bold text-sm text-pink-400 leading-none">0</div>
+                        </div>
+                        <div class="w-px h-5 bg-white/15"></div>
+                        <div class="text-center">
+                            <div class="text-[9px] font-bold text-slate-400 uppercase">Seeds</div>
+                            <div id="hud-seeds-count" class="font-tactical font-bold text-sm text-amber-300 leading-none">120</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Goggle Shield Bar (Cyan Gloss) -->
+                <div class="mb-2">
+                    <div class="flex items-center justify-between text-[11px] font-extrabold mb-0.5">
+                        <span class="text-cyan-300 flex items-center gap-1"><i class="fa-solid fa-shield-halved"></i> GOGGLE SHIELD</span>
+                        <span id="hud-shield-text" class="font-tactical text-white tabular-nums">100 / 100</span>
+                    </div>
+                    <div class="w-full h-3.5 bg-slate-950/90 rounded-full p-0.5 border border-cyan-500/30">
+                        <div id="hud-shield-bar" class="h-full bg-gradient-to-r from-cyan-500 via-sky-400 to-cyan-300 rounded-full paint-bar-gloss transition-all duration-200" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Hamster Stamina / Health Bar (Neon Lime Gloss) -->
+                <div class="mb-2">
+                    <div class="flex items-center justify-between text-[11px] font-extrabold mb-0.5">
+                        <span class="text-lime-300 flex items-center gap-1"><i class="fa-solid fa-heart-pulse"></i> HAMSTER HEALTH</span>
+                        <span id="hud-hp-text" class="font-tactical text-white tabular-nums">100 / 100</span>
+                    </div>
+                    <div class="w-full h-3.5 bg-slate-950/90 rounded-full p-0.5 border border-lime-500/30">
+                        <div id="hud-hp-bar" class="h-full bg-gradient-to-r from-emerald-500 via-lime-400 to-yellow-300 rounded-full paint-bar-gloss transition-all duration-200" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Bottom Micro Status: HPA Air Pressure & Pond Hydroplane Status -->
+                <div class="flex items-center justify-between text-[10px] font-bold text-slate-300 pt-1 border-t border-white/10">
+                    <span class="flex items-center gap-1">
+                        <i class="fa-solid fa-gauge-high text-amber-400"></i> HPA Tank: <strong id="hud-air-psi" class="text-white">3000 PSI</strong>
+                    </span>
+                    <span id="pond-zone-badge" class="hidden text-cyan-300 font-black animate-pulse">
+                        <i class="fa-solid fa-water"></i> POND HYDROPLANE SPEED!
+                    </span>
+                </div>
+            </div>
+
+            <!-- TOP-CENTER: MATCH CLOCK, ROOM CODE & PARK EVENT PILL -->
+            <div class="hidden lg:flex flex-col items-center gap-1.5 pointer-events-auto">
+                <div class="tactical-panel px-5 py-2 rounded-2xl flex items-center gap-4 border-t-2 border-t-pink-500">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-lime-400 animate-pulse"></span>
+                        <span class="font-gimkit-logo font-black text-white text-lg tracking-tight">HAMSTER PARK</span>
+                    </div>
+                    <div class="h-5 w-px bg-white/15"></div>
+                    <button
+                        id="hud-room-code-badge"
+                        title="Click to Copy Park Room Code"
+                        class="bg-slate-950 hover:bg-slate-900 text-white font-tactical font-bold text-xs px-3 py-1 rounded-lg border border-white/15 flex items-center gap-1.5 transition"
+                    >
+                        <span class="text-slate-400">CODE:</span>
+                        <span id="hud-code-text" class="text-lime-300">370741</span>
+                        <i class="fa-regular fa-copy text-[10px] text-slate-400"></i>
+                    </button>
+                    <div class="h-5 w-px bg-white/15"></div>
+                    <div class="flex items-center gap-1.5 text-white font-tactical font-bold text-lg tabular-nums">
+                        <i class="fa-regular fa-clock text-pink-400 text-sm"></i>
+                        <span id="match-timer">29:44</span>
+                    </div>
+                </div>
+
+                <!-- Dynamic Park Notification Ticker -->
+                <div id="park-event-banner" class="bg-slate-950/80 border border-amber-400/40 text-amber-300 text-[11px] font-extrabold px-3.5 py-0.5 rounded-full shadow">
+                    <i class="fa-solid fa-parachute-box mr-1"></i> Golden Paint Crates active around the Central Gazebo!
+                </div>
+            </div>
+
+            <!-- TOP-RIGHT: ACTION BUTTON BAR + LIVE SPLAT KILLFEED -->
+            <div class="flex flex-col items-end gap-2 pointer-events-auto">
+                <div class="tactical-panel p-1.5 rounded-2xl flex items-center gap-1.5">
+                    <!-- Camera Perspective Switcher (Overhead vs Action Shoulder View) -->
+                    <button
+                        id="toggle-camera-btn"
+                        title="Switch Camera View (Press V)"
+                        class="h-9 px-3 rounded-xl bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow"
+                    >
+                        <i class="fa-solid fa-video text-cyan-300"></i>
+                        <span id="camera-mode-label" class="hidden sm:inline">View: Tactical</span>
+                        <span class="bg-black/30 px-1.5 py-0.5 rounded text-[10px] font-tactical">V</span>
+                    </button>
+
+                    <!-- Upgrade Shop Button -->
+                    <button
+                        id="open-shop-btn"
+                        title="Open Tactical Paintball Pro Shop"
+                        class="h-9 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition shadow"
+                    >
+                        <i class="fa-solid fa-store"></i>
+                        <span class="hidden sm:inline">Pro Shop</span>
+                    </button>
+
+                    <!-- Leaderboard Button -->
+                    <button
+                        id="open-leaderboard-btn"
+                        title="Park Standings"
+                        class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 flex items-center justify-center transition"
+                    >
+                        <i class="fa-solid fa-trophy text-sm"></i>
+                    </button>
+
+                    <!-- Sound SFX Toggle -->
+                    <button
+                        id="toggle-sound-btn"
+                        title="Toggle Audio SFX"
+                        class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition"
+                    >
+                        <i id="sound-icon" class="fa-solid fa-volume-high text-sm"></i>
+                    </button>
+
+                    <!-- Lobby Overlay Return -->
+                    <button
+                        id="back-to-lobby-btn"
+                        title="Return to Park Lobby"
+                        class="w-9 h-9 rounded-xl bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center transition"
+                    >
+                        <i class="fa-solid fa-house text-xs"></i>
+                    </button>
+                </div>
+
+                <!-- Live Paint Splat Feed (Top Right) -->
+                <div id="splat-killfeed" class="flex flex-col items-end gap-1 w-64 pointer-events-none"></div>
+            </div>
+        </div>
+
+        <!-- BOTTOM ROW: Left Hopper & Trivia | Center KO Banner & 5-Slot Loadout | Right Park Radar Minimap -->
+        <div class="w-full flex items-end justify-between gap-3 relative">
+
+            <!-- BOTTOM-LEFT: VISUAL PAINTBALL HOPPER LOADER & TRIVIA POD EARNER -->
+            <div class="tactical-panel rounded-2xl p-3.5 w-64 sm:w-72 pointer-events-auto border-l-4 border-l-pink-500 flex flex-col gap-2.5">
+                <!-- Hopper Readout Header -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div id="hud-weapon-name" class="font-black text-xs text-pink-400 uppercase tracking-wider">
+                            PRO SPEEDBALL MARKER
+                        </div>
+                        <div class="flex items-baseline gap-1.5 mt-0.5">
+                            <span id="hud-ammo-text" class="font-tactical font-bold text-3xl text-white tabular-nums leading-none">16/16</span>
+                            <span class="text-xs font-bold text-slate-400">HOPPER</span>
+                        </div>
+                    </div>
+
+                    <!-- Visual Translucent Hopper Paintball Preview Dots -->
+                    <div class="bg-slate-950/80 border border-white/15 rounded-xl px-2.5 py-1.5 flex flex-col items-end">
+                        <span class="text-[9px] font-extrabold text-slate-400 uppercase">POD BAG</span>
+                        <span class="font-tactical font-bold text-base text-amber-300"><span id="hud-reserve-ammo">24</span> <i class="fa-solid fa-circle text-[9px] text-pink-400"></i></span>
+                    </div>
+                </div>
+
+                <!-- Hopper Visual Capacity Bar -->
+                <div class="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-white/10">
+                    <div id="hud-hopper-bar" class="h-full bg-gradient-to-r from-pink-500 via-amber-400 to-lime-400 transition-all duration-150" style="width: 100%;"></div>
+                </div>
+
+                <!-- Dual Action Buttons: Answer Questions (Q) & Reload Hopper (R) -->
+                <div class="flex items-center gap-2">
+                    <button
+                        id="answer-questions-btn"
+                        class="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:translate-y-0.5 text-white font-black text-xs py-2.5 px-3 rounded-xl shadow-lg border-b-3 border-indigo-900 transition flex items-center justify-between"
+                    >
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-bolt text-amber-300"></i> Earn Pods</span>
+                        <span class="bg-black/30 px-1.5 py-0.5 rounded text-[10px] font-tactical">Q</span>
+                    </button>
+
+                    <button
+                        id="refill-ammo-btn"
+                        class="bg-slate-700 hover:bg-slate-600 active:scale-95 text-white font-extrabold text-xs py-2.5 px-3 rounded-xl shadow border-b-3 border-slate-900 transition flex items-center gap-1.5"
+                        title="Reload Hopper from Reserve Pod Bag (Press R)"
+                    >
+                        <i class="fa-solid fa-rotate"></i>
+                        <span>Reload</span>
+                        <span class="bg-black/30 px-1.5 py-0.5 rounded text-[10px] font-tactical">R</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- BOTTOM-CENTER: SPLATTERED ALERT BANNER & 5-SLOT TACTICAL LOADOUT DOCK -->
+            <div class="flex flex-col items-center pointer-events-auto z-10 mx-auto">
+                <!-- Knockout Notification Banner -->
+                <div id="ko-alert-container" class="h-16 flex flex-col items-center justify-end mb-2 pointer-events-none">
+                    <div id="ko-alert-box" class="hidden flex-col items-center tactical-panel px-6 py-2 rounded-2xl border-2 border-pink-500">
+                        <div class="font-black italic text-xs text-lime-300 tracking-widest uppercase">
+                            DIRECT PAINTBALL ELIMINATION!
+                        </div>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <span class="font-black italic text-lg text-white">SPLATTERED</span>
+                            <span id="ko-victim-name" class="font-black italic text-2xl text-pink-400 uppercase">AN</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5-Slot Tactical Paintball Loadout Bar -->
+                <div class="tactical-panel p-2 rounded-2xl flex items-center gap-2">
+                    <!-- Slot 1: Pro Speedball Marker -->
+                    <div class="loadout-slot active" data-slot="0" title="1: Pro Speedball Marker (High-Velocity Single Paintball)">
+                        <span class="absolute top-1 left-2 text-[10px] font-tactical font-bold text-slate-400">1</span>
+                        <i class="fa-solid fa-gun text-xl text-lime-400 mb-0.5"></i>
+                        <span class="text-[9px] font-extrabold text-white uppercase tracking-tighter">Speedball</span>
+                        <span id="slot-0-count" class="absolute top-1 right-2 font-tactical font-bold text-[10px] text-lime-300">16</span>
+                    </div>
+
+                    <!-- Slot 2: Triple-Burst Brush Blaster -->
+                    <div class="loadout-slot" data-slot="1" title="2: Triple-Burst Electro Marker (3-Paintball Spread)">
+                        <span class="absolute top-1 left-2 text-[10px] font-tactical font-bold text-slate-400">2</span>
+                        <i class="fa-solid fa-spray-can-sparkles text-xl text-cyan-400 mb-0.5"></i>
+                        <span class="text-[9px] font-extrabold text-white uppercase tracking-tighter">Tri-Burst</span>
+                        <span id="slot-1-count" class="absolute top-1 right-2 font-tactical font-bold text-[10px] text-cyan-300">16</span>
+                    </div>
+
+                    <!-- Slot 3: Paint Grenade Pod -->
+                    <div class="loadout-slot" data-slot="2" title="3: Paint Grenade Pod (Heavy Splash Paint Bomb)">
+                        <span class="absolute top-1 left-2 text-[10px] font-tactical font-bold text-slate-400">3</span>
+                        <i class="fa-solid fa-bomb text-xl text-pink-400 mb-0.5"></i>
+                        <span class="text-[9px] font-extrabold text-white uppercase tracking-tighter">Paint Bomb</span>
+                        <span id="slot-2-count" class="absolute top-1 right-2 font-tactical font-bold text-[10px] text-pink-300">5</span>
+                    </div>
+
+                    <!-- Slot 4: Deployable Inflatable Air Bunker -->
+                    <div class="loadout-slot" data-slot="3" title="4: Deployable Air Bunker (Spawns a Glossy PVC Cover Bunker in front of you!)">
+                        <span class="absolute top-1 left-2 text-[10px] font-tactical font-bold text-slate-400">4</span>
+                        <i class="fa-solid fa-tent text-xl text-amber-400 mb-0.5"></i>
+                        <span class="text-[9px] font-extrabold text-white uppercase tracking-tighter">Air Bunker</span>
+                        <span id="slot-3-count" class="absolute top-1 right-2 font-tactical font-bold text-[10px] text-amber-300">2</span>
+                    </div>
+
+                    <!-- Slot 5: Sunflower Energy Shield Brew -->
+                    <div class="loadout-slot" data-slot="4" title="5: Hamster Ball Shield & Energy Surge (+Shield & Deflect Paintballs)">
+                        <span class="absolute top-1 left-2 text-[10px] font-tactical font-bold text-slate-400">5</span>
+                        <i class="fa-solid fa-shield-cat text-xl text-emerald-400 mb-0.5"></i>
+                        <span class="text-[9px] font-extrabold text-white uppercase tracking-tighter">Ball Shield</span>
+                        <span id="slot-4-badge" class="absolute top-1 right-2 font-tactical font-bold text-[10px] text-emerald-300">RDY</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BOTTOM-RIGHT: LIVE TACTICAL PARK RADAR MINIMAP -->
+            <div class="hidden sm:flex flex-col items-end gap-1.5 pointer-events-auto">
+                <div class="tactical-panel p-2 rounded-2xl flex flex-col items-center border-r-4 border-r-cyan-400">
+                    <div class="w-full flex items-center justify-between text-[10px] font-extrabold text-cyan-300 px-1 mb-1">
+                        <span><i class="fa-solid fa-compass mr-1"></i>PARK RADAR</span>
+                        <span id="radar-coords" class="font-tactical text-slate-400">SECTOR A</span>
+                    </div>
+                    <canvas id="radar-canvas" width="136" height="136" class="rounded-xl border border-white/15 bg-slate-950/90"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         MODAL 1: INTERACTIVE QUESTION DECK (EARN PAINTBALL PODS & SEEDS)
+         ===================================================================== -->
+    <div id="question-modal" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border-4 border-indigo-600">
+            <div class="bg-gradient-to-r from-indigo-700 to-purple-800 text-white px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-bolt text-amber-300 text-xl"></i>
+                    <div>
+                        <h3 class="font-black text-lg leading-none">RELOAD PAINT PODS & GOLDEN SEEDS</h3>
+                        <p class="text-xs text-indigo-100 mt-0.5">Answer Streak: <strong id="q-streak-count" class="text-amber-300">0x</strong> (+10 Paintballs, +1 Paint Bomb & +35 Seeds!)</p>
+                    </div>
+                </div>
+                <button id="close-question-modal-btn" class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition">
+                    Return to Park (ESC)
+                </button>
+            </div>
+
+            <div class="p-6">
+                <div id="q-category-badge" class="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-[11px] uppercase px-2.5 py-0.5 rounded-full mb-2">
+                    PAINTBALL & SCIENCE TRIVIA
+                </div>
+                <h2 id="q-prompt-text" class="font-extrabold text-xl sm:text-2xl text-slate-800 mb-5">
+                    What gives inflatable Speedball bunkers their shiny, durable surface in a real paintball park?
+                </h2>
+
+                <div id="q-options-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                <div id="q-feedback-banner" class="hidden mt-4 p-3 rounded-xl font-black text-center text-white text-sm"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         MODAL 2: PRO PAINTBALL PARK UPGRADE SHOP
+         ===================================================================== -->
+    <div id="shop-modal" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="bg-slate-900 text-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border-2 border-amber-400/50">
+            <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-6 py-4 flex items-center justify-between border-b border-white/10">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-store text-2xl text-amber-400"></i>
+                    <div>
+                        <h3 class="font-black text-xl">PRO PAINTBALL PARK RIG UPGRADES</h3>
+                        <p class="text-xs text-slate-300">Upgrade your hamster's marker, hopper, and thermal goggles!</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="bg-slate-950 px-3 py-1.5 rounded-xl border border-amber-400/40 font-black text-amber-300 text-sm">
+                        <i class="fa-solid fa-seedling mr-1"></i> <span id="shop-seeds-balance">120</span> Seeds
+                    </div>
+                    <button id="close-shop-modal-btn" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto" id="shop-items-grid"></div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         MODAL 3: LIVE PARK LEADERBOARD MODAL
+         ===================================================================== -->
+    <div id="leaderboard-modal" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="bg-slate-900 text-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-cyan-500/50">
+            <div class="bg-slate-950 px-6 py-4 flex items-center justify-between border-b border-white/10">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-trophy text-amber-400 text-xl"></i>
+                    <h3 class="font-black text-lg">PARK SPEEDBALL STANDINGS</h3>
+                </div>
+                <button id="close-leaderboard-modal-btn" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-5">
+                <div id="leaderboard-list" class="space-y-2 max-h-[55vh] overflow-y-auto"></div>
+                <div class="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-slate-400">
+                    <span>Park Code: <strong id="lb-room-code" class="text-lime-300">370741</strong></span>
+                    <span id="lb-user-id-display" class="truncate max-w-[240px]"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         JAVASCRIPT: 3D PARK ENGINE, PBR MATERIALS, TACTICAL HAMSTERS & SYNC
+         ===================================================================== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================
+        // 1. WEB AUDIO SYNTHESIZER (CO2 MARKER POP, WET SPLAT, RELOAD & FANFARE)
+        // =========================================================================
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+            playMarkerShot() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Crisp pneumatic paintball marker "THWIP-POP"
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(195, now);
+                osc.frequency.exponentialRampToValueAtTime(520, now + 0.045);
+                osc.frequency.exponentialRampToValueAtTime(90, now + 0.095);
+                gain.gain.setValueAtTime(0.22, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            }
+            playSplat() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(240, now);
+                osc.frequency.exponentialRampToValueAtTime(58, now + 0.13);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.14);
+            }
+            playKO() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+                [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+                    const now = this.ctx.currentTime + idx * 0.055;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.22);
+                });
+            }
+            playCorrect() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+                [587.33, 880].forEach((freq, i) => {
+                    const now = this.ctx.currentTime + i * 0.075;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                });
+            }
+            playWrong() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(98, now + 0.25);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.26);
+            }
+        }
+        const sfx = new SoundFX();
+
+        // =========================================================================
+        // 2. PRO HAMSTER SKINS, GLOSSY PAINT PALETTE, TRIVIA & PRO SHOP DATA
+        // =========================================================================
+        const HAMSTER_SKINS = [
+            { id: 'choco', name: 'Choco Commando (Teacher Jan)', furColor: 0x5c4033, bellyColor: 0xd8c3a5, earInner: 0xf4a298, visorColor: 0x22d3ee, vestColor: 0x1e293b, paintColor: 0xa3e635, badgeBg: '#5c4033' },
+            { id: 'golden', name: 'Golden Speedballer', furColor: 0xe68a00, bellyColor: 0xfff3d1, earInner: 0xffb3ba, visorColor: 0xff2a85, vestColor: 0x0f172a, paintColor: 0xff2a85, badgeBg: '#e68a00' },
+            { id: 'snowy', name: 'Arctic Ghost', furColor: 0xeef2f6, bellyColor: 0xffffff, earInner: 0xffccd5, visorColor: 0xa3e635, vestColor: 0x334155, paintColor: 0x22d3ee, badgeBg: '#cbd5e1' },
+            { id: 'berry', name: 'Neon Viper Berry', furColor: 0x9d4edd, bellyColor: 0xf3d9fa, earInner: 0xff99c8, visorColor: 0xfbbf24, vestColor: 0x1e1b4b, paintColor: 0xfbbf24, badgeBg: '#9d4edd' },
+            { id: 'mint', name: 'Emerald Ranger', furColor: 0x10b981, bellyColor: 0xd1fae5, earInner: 0xfda4af, visorColor: 0xff6b00, vestColor: 0x064e3b, paintColor: 0xff6b00, badgeBg: '#10b981' }
+        ];
+
+        const PAINT_PALETTE = [
+            0xa3e635, // Electric Lime
+            0xff2a85, // Hot Magenta Pink
+            0x22d3ee, // Neon Cyan
+            0xff6b00, // Vivid Orange
+            0xfbbf24, // Solar Yellow
+            0xc084fc  // Ultraviolet Purple
+        ];
+
+        const TRIVIA_QUESTIONS = [
+            { cat: 'PAINTBALL TECH', q: 'What gives real paintballs their glossy shell that bursts on impact?', options: ['Non-toxic water-soluble gelatin capsule', 'Hard solid plastic spheres', 'Frozen colored ice cubes', 'Rubber bouncy balls'], ans: 0 },
+            { cat: 'PARK TACTICS', q: 'What are the colorful inflatable obstacles in a tournament Speedball park made of?', options: ['Heavy-duty glossy PVC vinyl fabric', 'Paper mache & cardboard', 'Solid painted concrete', 'Cotton bedsheets'], ans: 0 },
+            { cat: 'HAMSTER ANATOMY', q: 'Why do hamsters have such stretchy cheek pouches?', options: ['To carry seeds & extra paint pods!', 'To float across duck ponds', 'To whistle ultrasonic tunes', 'To glow in the dark'], ans: 0 },
+            { cat: 'QUICK MATH', q: 'An electronic Hopper holds 16 paintballs. If you fire a 3-shot burst twice, how many remain?', options: ['10 Paintballs', '13 Paintballs', '8 Paintballs', '12 Paintballs'], ans: 0 },
+            { cat: 'PARK HAZARDS', q: 'What happens when your hamster skitters across the Shallow Park Pond on the east side?', options: ['Low-friction hydroplane speed boost!', 'Your paintballs turn into frogs', 'Gravity turns upside down', 'The match ends immediately'], ans: 0 },
+            { cat: 'PAINTBALL GEAR', q: 'What is the most important piece of safety equipment worn on every hamster’s face?', options: ['Thermal Anti-Fog Paintball Goggles', 'A chef hat', 'Sunglasses without lenses', 'Wool mittens'], ans: 0 },
+            { cat: 'QUICK MATH', q: 'Each direct critical splat deals 160 damage. How much total Health + Goggle Shield does a default hamster start with?', options: ['200 Total (100 Health + 100 Shield)', '100 Total', '500 Total', '50 Total'], ans: 0 }
+        ];
+
+        const SHOP_UPGRADES = [
+            { id: 'maxAmmo', name: 'High-Cap Rotor Hopper', desc: '+8 Hopper Paintball capacity & instant reload', cost: 60, icon: 'fa-fill-drip', level: 0, maxLevel: 4 },
+            { id: 'damage', name: 'Carbon Fiber Rifled Barrel', desc: '+25% Paintball Velocity & Splat Damage', cost: 75, icon: 'fa-crosshairs', level: 0, maxLevel: 4 },
+            { id: 'speed', name: 'Turf-Cleat Hamster Paws', desc: '+15% Park Sprint & Pond Hydroplane Speed', cost: 65, icon: 'fa-bolt', level: 0, maxLevel: 3 },
+            { id: 'shield', name: 'Thermal Pro Goggle Visor', desc: 'Restore Full Shield + Increase Max Shield by +25', cost: 50, icon: 'fa-glasses', level: 0, maxLevel: 5 }
+        ];
+
+        // =========================================================================
+        // 3. GAME STATE & CONFIGURATION
+        // =========================================================================
+        const state = {
+            screen: 'join', // 'join' | 'lobby' | 'playing'
+            cameraMode: 'overhead', // 'overhead' | 'shoulder'
+            roomCode: '370741',
+            playerName: 'Teacher Jan',
+            selectedSkinIdx: 0,
+            isSpectator: false,
+            matchSecondsRemaining: 29 * 60 + 44,
+
+            // Local Player Combat & Physics
+            x: -8,
+            z: 6,
+            vx: 0,
+            vz: 0,
+            rotY: 0,
+            hp: 100,
+            maxHp: 100,
+            shield: 100,
+            maxShield: 100,
+            ammo: 16,
+            maxAmmo: 16,
+            reserveAmmo: 24,
+            bombs: 5,
+            airBunkers: 2,
+            seeds: 120,
+            kos: 0,
+            streak: 0,
+            damageMultiplier: 1.0,
+            speedMultiplier: 1.0,
+            activeSlot: 0, // 0: Speedball Marker, 1: Tri-Burst, 2: Paint Bomb, 3: Deployable Air Bunker, 4: Ball Shield
+            hamsterBallActive: false,
+            hamsterBallTimer: 0,
+            lastShotTime: 0,
+            inPond: false,
+
+            // Input
+            keys: {},
+            mouseScreenX: window.innerWidth / 2,
+            mouseScreenY: window.innerHeight / 2,
+            aimWorldX: 0,
+            aimWorldZ: 0,
+            mouseDown: false
+        };
+
+        // =========================================================================
+        // 4. MULTIPLAYER SYNC (FIREBASE FIRESTORE + INSTANT MULTI-TAB BROADCAST)
+        // =========================================================================
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hamster-paintball-3d';
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let playersUnsub = null;
+        let lastSyncTimestamp = 0;
+        const localTabId = 'tab_' + Math.random().toString(36).slice(2, 10);
+        const remotePlayersData = new Map();
+
+        // Instant BroadcastChannel so multiple tabs in the same browser sync at 60fps
+        const parkChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('hamster_paintball_park_sync') : null;
+        if (parkChannel) {
+            parkChannel.onmessage = (ev) => {
+                const msg = ev.data;
+                if (!msg || msg.roomCode !== state.roomCode || msg.uid === localTabId) return;
+                if (msg.type === 'playerState') {
+                    remotePlayersData.set(msg.uid, msg);
+                    updateLobbyPlayerCount();
+                } else if (msg.type === 'paintballShot') {
+                    firePaintball(msg.uid, msg.name, msg.sx, msg.sz, msg.tx, msg.tz, msg.weaponType, 0.5, msg.color, true);
+                }
+            };
+        }
+
+        async function initFirebaseMultiplayer() {
+            try {
+                if (typeof __firebase_config === 'undefined' || !__firebase_config) return;
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    if (user) {
+                        const idEl = document.getElementById('lb-user-id-display');
+                        if (idEl) idEl.textContent = `ID: ${user.uid}`;
+                        subscribeToRoomPlayers();
+                    }
+                });
+            } catch (err) {
+                console.warn("Local + Multi-tab & AI Bot mode active:", err);
+            }
+        }
+
+        function subscribeToRoomPlayers() {
+            if (!db || !currentUser) return;
+            if (playersUnsub) playersUnsub();
+
+            const colName = `rooms_${state.roomCode}_players`;
+            const playersCol = collection(db, 'artifacts', appId, 'public', 'data', colName);
+
+            playersUnsub = onSnapshot(
+                playersCol,
+                (snapshot) => {
+                    const now = Date.now();
+                    snapshot.forEach((docSnap) => {
+                        const data = docSnap.data();
+                        if (!data || docSnap.id === currentUser.uid) return;
+                        if (now - (data.updatedAt || 0) < 30000) {
+                            remotePlayersData.set(docSnap.id, data);
+                        } else {
+                            remotePlayersData.delete(docSnap.id);
+                        }
+                    });
+                    updateLobbyPlayerCount();
+                },
+                (err) => console.warn("Sync notice:", err)
+            );
+        }
+
+        async function broadcastLocalPlayerState() {
+            const now = Date.now();
+            const payload = {
+                type: 'playerState',
+                uid: currentUser ? currentUser.uid : localTabId,
+                roomCode: state.roomCode,
+                name: state.playerName,
+                skinIdx: state.selectedSkinIdx,
+                x: Math.round(state.x * 100) / 100,
+                z: Math.round(state.z * 100) / 100,
+                rotY: Math.round(state.rotY * 100) / 100,
+                hp: state.hp,
+                shield: state.shield,
+                kos: state.kos,
+                seeds: state.seeds,
+                hamsterBall: state.hamsterBallActive,
+                updatedAt: now
+            };
+
+            if (parkChannel) parkChannel.postMessage(payload);
+
+            if (!db || !currentUser || now - lastSyncTimestamp < 180) return;
+            lastSyncTimestamp = now;
+            try {
+                const colName = `rooms_${state.roomCode}_players`;
+                const playerDoc = doc(db, 'artifacts', appId, 'public', 'data', colName, currentUser.uid);
+                await setDoc(playerDoc, payload);
+            } catch (e) {}
+        }
+
+        // =========================================================================
+        // 5. THREE.JS 3D OUTDOOR PAINTBALL PARK & PBR MATERIALS
+        // =========================================================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
+        scene.fog = new THREE.FogExp2(0x9be2f8, 0.0052);
+
+        const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 260);
+        camera.position.set(0, 32, 24);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.08;
+        container.appendChild(renderer.domElement);
+
+        // Realistic Outdoor Sunlight & Sky/Turf Hemisphere Light
+        const hemiLight = new THREE.HemisphereLight(0xdff6ff, 0x3b6e28, 0.68);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfff6e0, 1.15);
+        sunLight.position.set(28, 52, 32);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 5;
+        sunLight.shadow.camera.far = 140;
+        const d = 52;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
+        sunLight.shadow.bias = -0.0005;
+        scene.add(sunLight);
+
+        // Collidable obstacles & splat-receivable meshes
+        const obstacles = [];
+        const splatTargets = [];
+        const pondZones = [{ minX: 14, maxX: 38, minZ: -22, maxZ: 22 }];
+
+        // Procedural Wet Paint Splat Texture Generator (High-Gloss Starburst + Droplets)
+        function createWetPaintSplatTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+
+            // Main organic center splat
+            ctx.beginPath();
+            const rays = 14;
+            for (let i = 0; i <= rays * 2; i++) {
+                const angle = (i / (rays * 2)) * Math.PI * 2;
+                const r = i % 2 === 0 ? 52 + Math.random() * 28 : 30 + Math.random() * 14;
+                const x = 128 + Math.cos(angle) * r;
+                const y = 128 + Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Outer radial paint droplets
+            for (let i = 0; i < 18; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const dist = 56 + Math.random() * 52;
+                const rad = 4 + Math.random() * 10;
+                ctx.beginPath();
+                ctx.arc(128 + Math.cos(a) * dist, 128 + Math.sin(a) * dist, rad, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            return tex;
+        }
+        const sharedSplatAlphaTexture = createWetPaintSplatTexture();
+
+        // Shared PBR Materials for Authentic Paintball Park
+        function createPVCBunkerMaterial(hexColor, stripeHex = 0xffffff) {
+            // Procedural vinyl texture with subtle seam lines & team stripe
+            const c = document.createElement('canvas');
+            c.width = 256;
+            c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#' + hexColor.toString(16).padStart(6, '0');
+            ctx.fillRect(0, 0, 256, 256);
+
+            // Bold tournament accent stripe
+            ctx.fillStyle = '#' + stripeHex.toString(16).padStart(6, '0');
+            ctx.fillRect(0, 95, 256, 42);
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 90, 256, 6);
+            ctx.fillRect(0, 137, 256, 6);
+
+            const tex = new THREE.CanvasTexture(c);
+            return new THREE.MeshPhysicalMaterial({
+                map: tex,
+                roughness: 0.16,
+                metalness: 0.04,
+                clearcoat: 0.92,
+                clearcoatRoughness: 0.12
+            });
+        }
+
+        function createWoodGrainTexture() {
+            const c = document.createElement('canvas');
+            c.width = 256;
+            c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#8d5b34';
+            ctx.fillRect(0, 0, 256, 256);
+            ctx.strokeStyle = '#6e4423';
+            ctx.lineWidth = 3;
+            for (let y = 0; y < 256; y += 32) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(256, y);
+                ctx.stroke();
+            }
+            return new THREE.CanvasTexture(c);
+        }
+        const woodTexture = createWoodGrainTexture();
+
+        // Build the Complete Outdoor Tactical Paintball Park
+        let fountainWaterMesh = null;
+        function createOutdoorPaintballPark() {
+            // 1. Lush Mowed Park Lawn Texture with Dirt Paths & White Boundary Chalk
+            const lawnCanvas = document.createElement('canvas');
+            lawnCanvas.width = 512;
+            lawnCanvas.height = 512;
+            const lctx = lawnCanvas.getContext('2d');
+            lctx.fillStyle = '#3f8f29';
+            lctx.fillRect(0, 0, 512, 512);
+            // Mowed turf stripes
+            lctx.fillStyle = '#479c2f';
+            for (let x = 0; x < 512; x += 64) {
+                lctx.fillRect(x, 0, 32, 512);
+            }
+            // Organic grass blades noise
+            for (let i = 0; i < 3500; i++) {
+                lctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
+                lctx.fillRect(Math.random() * 512, Math.random() * 512, 3, 3);
+            }
+            const lawnTex = new THREE.CanvasTexture(lawnCanvas);
+            lawnTex.wrapS = THREE.RepeatWrapping;
+            lawnTex.wrapT = THREE.RepeatWrapping;
+            lawnTex.repeat.set(14, 14);
+
+            const groundMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(120, 96),
+                new THREE.MeshStandardMaterial({ map: lawnTex, roughness: 0.85, metalness: 0.02 })
+            );
+            groundMesh.rotation.x = -Math.PI / 2;
+            groundMesh.receiveShadow = true;
+            scene.add(groundMesh);
+            splatTargets.push(groundMesh);
+
+            // Park Stone/Gravel Central Walkway Cross
+            const pathMat = new THREE.MeshStandardMaterial({ color: 0xc2b280, roughness: 0.9 });
+            const mainPath = new THREE.Mesh(new THREE.PlaneGeometry(88, 5.2), pathMat);
+            mainPath.rotation.x = -Math.PI / 2;
+            mainPath.position.set(0, 0.015, 0);
+            mainPath.receiveShadow = true;
+            scene.add(mainPath);
+
+            // 2. Central Wooden Park Gazebo / Pavilion (High-value cover & loot hub!)
+            createCentralParkGazebo(0, 0);
+
+            // 3. East-Side Reflective Park Duck Pond & Fountain (Low-Friction Hydroplane Zone)
+            createParkDuckPond(26, 0);
+
+            // 4. Glossy PVC Inflatable Speedball Bunkers (Doritos, Tall Cylinders, X-Bunkers, Bricks)
+            // Blue vs Pink/Yellow Pro Speedball Layout
+            createInflatableDoritoBunker(-14, -7, 0x1d4ed8, 0xfbbf24);
+            createInflatableDoritoBunker(-14, 9, 0x1d4ed8, 0xfbbf24);
+            createInflatableDoritoBunker(11, -9, 0xe11d48, 0xa3e635);
+            createInflatableDoritoBunker(11, 10, 0xe11d48, 0xa3e635);
+
+            createInflatableCylinderBunker(-24, 0, 0xfbbf24, 0x1e293b);
+            createInflatableCylinderBunker(-7, -15, 0x0284c7, 0xffffff);
+            createInflatableCylinderBunker(7, 16, 0xff2a85, 0xffffff);
+
+            createInflatableBrickBunker(-19, -15, 0x10b981, 0xffffff, 0.25);
+            createInflatableBrickBunker(-19, 16, 0x10b981, 0xffffff, -0.25);
+            createInflatableBrickBunker(0, -19, 0x8b5cf6, 0xfbbf24, 0);
+            createInflatableBrickBunker(0, 19, 0x8b5cf6, 0xfbbf24, 0);
+
+            // 5. Industrial Wooden Cable Spools & Stacked Rubber Tire Towers
+            const spoolCoords = [
+                { x: -7, z: 7 },
+                { x: 8, z: -3 },
+                { x: -27, z: -11 },
+                { x: -27, z: 12 },
+                { x: 22, z: -16 },
+                { x: 22, z: 16 }
+            ];
+            spoolCoords.forEach((sc, idx) => {
+                if (idx % 2 === 0) createWoodenCableSpool(sc.x, sc.z);
+                else createTireStackTower(sc.x, sc.z);
+            });
+
+            // 6. Lush 3D Park Trees, Bushes & Park Benches around Perimeter
+            const treePositions = [
+                { x: -38, z: -26, s: 1.2 }, { x: -25, z: -29, s: 1.0 }, { x: -8, z: -29, s: 1.3 },
+                { x: 12, z: -29, s: 1.1 }, { x: 32, z: -28, s: 1.25 }, { x: 41, z: -14, s: 1.15 },
+                { x: 41, z: 14, s: 1.2 }, { x: 32, z: 28, s: 1.1 }, { x: 10, z: 29, s: 1.3 },
+                { x: -12, z: 29, s: 1.0 }, { x: -30, z: 28, s: 1.25 }, { x: -41, z: 12, s: 1.15 },
+                { x: -41, z: -12, s: 1.1 }
+            ];
+            treePositions.forEach((tp) => create3DParkTree(tp.x, tp.z, tp.s));
+
+            // Wooden Park Benches
+            createParkBench(-16, -24, 0);
+            createParkBench(15, -24, 0);
+            createParkBench(-16, 24, Math.PI);
+            createParkBench(15, 24, Math.PI);
+
+            // Perimeter Safety Netting & Wooden Fence Posts
+            createParkPerimeterFence(-44, -31, 44, -31, 18);
+            createParkPerimeterFence(-44, 31, 44, 31, 18);
+            createParkPerimeterFence(-44, -31, -44, 31, 14);
+            createParkPerimeterFence(44, -31, 44, 31, 14);
+
+            // Add Pre-existing Colorful Paint Splatters on Bunkers so it immediately feels like an active Paintball Park!
+            for (let i = 0; i < 22; i++) {
+                const rx = -28 + Math.random() * 54;
+                const rz = -20 + Math.random() * 40;
+                const col = PAINT_PALETTE[i % PAINT_PALETTE.length];
+                createSurfacePaintSplat(
+                    new THREE.Vector3(rx, 0.03, rz),
+                    new THREE.Vector3(0, 1, 0),
+                    col,
+                    0.9 + Math.random() * 0.7
+                );
+            }
+        }
+
+        // Helper: Glossy PVC Inflatable "Dorito" Triangle Bunker
+        function createInflatableDoritoBunker(x, z, colorHex, stripeHex) {
+            const mat = createPVCBunkerMaterial(colorHex, stripeHex);
+            const group = new THREE.Group();
+
+            // Rounded prism using 3-sided cylinder + top/corner bladders
+            const prism = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.5, 3.6, 3), mat);
+            prism.position.y = 1.8;
+            prism.castShadow = true;
+            prism.receiveShadow = true;
+            group.add(prism);
+            splatTargets.push(prism);
+
+            // Rounded inflatable top cap
+            const cap = new THREE.Mesh(new THREE.SphereGeometry(1.75, 16, 12), mat);
+            cap.scale.set(1, 0.45, 1);
+            cap.position.y = 3.5;
+            group.add(cap);
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+            obstacles.push({ x, z, r: 2.35, h: 3.8, type: 'dorito' });
+            return group;
+        }
+
+        // Helper: Glossy PVC Inflatable Tall Cylinder ("Can") Bunker
+        function createInflatableCylinderBunker(x, z, colorHex, stripeHex) {
+            const mat = createPVCBunkerMaterial(colorHex, stripeHex);
+            const group = new THREE.Group();
+
+            const cyl = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 1.9, 3.8, 24), mat);
+            cyl.position.y = 1.9;
+            cyl.castShadow = true;
+            cyl.receiveShadow = true;
+            group.add(cyl);
+            splatTargets.push(cyl);
+
+            const topRing = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.25, 12, 24), mat);
+            topRing.rotation.x = Math.PI / 2;
+            topRing.position.y = 3.8;
+            group.add(topRing);
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+            obstacles.push({ x, z, r: 2.05, h: 4.0, type: 'cylinder' });
+            return group;
+        }
+
+        // Helper: Glossy PVC Inflatable Horizontal Brick / Aztec Barricade
+        function createInflatableBrickBunker(x, z, colorHex, stripeHex, rotY = 0) {
+            const mat = createPVCBunkerMaterial(colorHex, stripeHex);
+            const group = new THREE.Group();
+
+            // Composed of 3 horizontal connected air tubes for realistic tubular look
+            for (let row = 0; row < 3; row++) {
+                const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 4.8, 16), mat);
+                tube.rotation.z = Math.PI / 2;
+                tube.position.y = 0.62 + row * 0.98;
+                tube.castShadow = true;
+                tube.receiveShadow = true;
+                group.add(tube);
+                splatTargets.push(tube);
+            }
+
+            group.position.set(x, 0, z);
+            group.rotation.y = rotY;
+            scene.add(group);
+            obstacles.push({ x, z, r: 2.4, h: 2.9, type: 'brick' });
+            return group;
+        }
+
+        // Helper: Weathered Wooden Cable Spool Table
+        function createWoodenCableSpool(x, z) {
+            const group = new THREE.Group();
+            const woodMat = new THREE.MeshStandardMaterial({ map: woodTexture, roughness: 0.78 });
+            const metalMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.7, roughness: 0.3 });
+
+            const botFlange = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 0.28, 20), woodMat);
+            botFlange.position.y = 0.14;
+            botFlange.castShadow = true;
+            botFlange.receiveShadow = true;
+
+            const core = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 2.1, 16), woodMat);
+            core.position.y = 1.15;
+            core.castShadow = true;
+            core.receiveShadow = true;
+
+            const topFlange = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 0.28, 20), woodMat);
+            topFlange.position.y = 2.25;
+            topFlange.castShadow = true;
+            topFlange.receiveShadow = true;
+
+            const boltHub = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.45, 12), metalMat);
+            boltHub.position.y = 1.22;
+
+            group.add(botFlange, core, topFlange, boltHub);
+            splatTargets.push(core, topFlange);
+            group.position.set(x, 0, z);
+            scene.add(group);
+            obstacles.push({ x, z, r: 2.15, h: 2.5, type: 'spool' });
+        }
+
+        // Helper: Stacked Rubber Tire Tower
+        function createTireStackTower(x, z) {
+            const group = new THREE.Group();
+            const rubberMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85, metalness: 0.1 });
+            for (let i = 0; i < 4; i++) {
+                const tire = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.45, 12, 20), rubberMat);
+                tire.rotation.x = Math.PI / 2;
+                tire.position.set((i % 2) * 0.12, 0.42 + i * 0.72, 0);
+                tire.castShadow = true;
+                tire.receiveShadow = true;
+                group.add(tire);
+                splatTargets.push(tire);
+            }
+            group.position.set(x, 0, z);
+            scene.add(group);
+            obstacles.push({ x, z, r: 1.75, h: 3.1, type: 'tires' });
+        }
+
+        // Helper: Central Wooden Park Gazebo Pavilion
+        function createCentralParkGazebo(x, z) {
+            const group = new THREE.Group();
+            const stoneMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.75 });
+            const woodMat = new THREE.MeshStandardMaterial({ map: woodTexture, roughness: 0.7 });
+            const roofMat = new THREE.MeshPhysicalMaterial({ color: 0x1e3a8a, roughness: 0.35, clearcoat: 0.5 });
+
+            // Octagonal stone base platform (Players can walk across it!)
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(6.2, 6.6, 0.35, 8), stoneMat);
+            base.position.y = 0.175;
+            base.receiveShadow = true;
+            group.add(base);
+            splatTargets.push(base);
+
+            // 4 Outer Corner Pillars (collidable)
+            const pillarOffsets = [
+                { dx: -4.2, dz: -4.2 }, { dx: 4.2, dz: -4.2 },
+                { dx: -4.2, dz: 4.2 }, { dx: 4.2, dz: 4.2 }
+            ];
+            pillarOffsets.forEach((po) => {
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 4.8, 12), woodMat);
+                post.position.set(po.dx, 2.4, po.dz);
+                post.castShadow = true;
+                group.add(post);
+                obstacles.push({ x: x + po.dx, z: z + po.dz, r: 0.65, h: 4.8, type: 'pillar' });
+            });
+
+            // High pitched octagonal roof (Raised high so overhead camera sees inside clearly)
+            const roof = new THREE.Mesh(new THREE.ConeGeometry(6.8, 2.6, 8), roofMat);
+            roof.position.y = 6.1;
+            roof.castShadow = true;
+            group.add(roof);
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+        }
+
+        // Helper: Shallow Reflective Park Duck Pond & Fountain (East Side)
+        function createParkDuckPond(x, z) {
+            const group = new THREE.Group();
+
+            // Stone pond rim
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.8 });
+            const rim = new THREE.Mesh(new THREE.CylinderGeometry(12.2, 12.6, 0.16, 32), rimMat);
+            rim.scale.set(1.0, 1, 1.65);
+            rim.position.set(x, 0.04, z);
+            rim.receiveShadow = true;
+            group.add(rim);
+
+            // Glossy Reflective Water Surface
+            const waterMat = new THREE.MeshPhysicalMaterial({
+                color: 0x06b6d4,
+                emissive: 0x083344,
+                emissiveIntensity: 0.15,
+                roughness: 0.05,
+                metalness: 0.1,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.04,
+                transparent: true,
+                opacity: 0.88
+            });
+            const water = new THREE.Mesh(new THREE.CylinderGeometry(11.4, 11.4, 0.18, 32), waterMat);
+            water.scale.set(1.0, 1, 1.65);
+            water.position.set(x, 0.06, z);
+            water.receiveShadow = true;
+            group.add(water);
+            splatTargets.push(water);
+
+            // Central Park Water Fountain Jet
+            const fountainBase = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 1.2, 16), rimMat);
+            fountainBase.position.set(x, 0.6, z);
+            group.add(fountainBase);
+            obstacles.push({ x, z, r: 1.8, h: 2.0, type: 'fountain' });
+
+            fountainWaterMesh = new THREE.Mesh(
+                new THREE.ConeGeometry(0.9, 2.8, 12),
+                new THREE.MeshPhysicalMaterial({ color: 0xa5f3fc, transparent: true, opacity: 0.65, clearcoat: 1.0 })
+            );
+            fountainWaterMesh.position.set(x, 2.2, z);
+            group.add(fountainWaterMesh);
+
+            scene.add(group);
+        }
+
+        // Helper: 3D Multi-Tiered Lush Park Tree
+        function create3DParkTree(x, z, scale = 1.0) {
+            const group = new THREE.Group();
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+            const leafMat1 = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.75 });
+            const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x40916c, roughness: 0.7 });
+
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * scale, 0.85 * scale, 3.6 * scale, 10), trunkMat);
+            trunk.position.y = 1.8 * scale;
+            trunk.castShadow = true;
+            group.add(trunk);
+
+            const c1 = new THREE.Mesh(new THREE.DodecahedronGeometry(2.6 * scale, 1), leafMat1);
+            c1.position.set(0, 4.4 * scale, 0);
+            c1.castShadow = true;
+            const c2 = new THREE.Mesh(new THREE.DodecahedronGeometry(2.0 * scale, 1), leafMat2);
+            c2.position.set(1.1 * scale, 5.2 * scale, 0.6 * scale);
+            c2.castShadow = true;
+            const c3 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.9 * scale, 1), leafMat2);
+            c3.position.set(-1.1 * scale, 5.0 * scale, -0.5 * scale);
+            c3.castShadow = true;
+
+            group.add(c1, c2, c3);
+            group.position.set(x, 0, z);
+            scene.add(group);
+            obstacles.push({ x, z, r: 1.1 * scale, h: 6.0, type: 'tree' });
+        }
+
+        // Helper: Wooden Park Bench
+        function createParkBench(x, z, rotY = 0) {
+            const group = new THREE.Group();
+            const woodMat = new THREE.MeshStandardMaterial({ map: woodTexture, roughness: 0.75 });
+            const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.3 });
+
+            const seat = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.18, 1.1), woodMat);
+            seat.position.y = 0.85;
+            seat.castShadow = true;
+            const back = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.95, 0.16), woodMat);
+            back.position.set(0, 1.4, -0.48);
+            back.castShadow = true;
+
+            const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85, 1.05), ironMat);
+            legL.position.set(-1.5, 0.425, 0);
+            const legR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85, 1.05), ironMat);
+            legR.position.set(1.5, 0.425, 0);
+
+            group.add(seat, back, legL, legR);
+            group.position.set(x, 0, z);
+            group.rotation.y = rotY;
+            scene.add(group);
+            obstacles.push({ x, z, r: 1.8, h: 1.8, type: 'bench' });
+        }
+
+        // Helper: Park Perimeter Fence & Safety Netting
+        function createParkPerimeterFence(x1, z1, x2, z2, segments) {
+            const postMat = new THREE.MeshStandardMaterial({ map: woodTexture, roughness: 0.8 });
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const x = x1 + (x2 - x1) * t;
+                const z = z1 + (z2 - z1) * t;
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 3.2, 8), postMat);
+                post.position.set(x, 1.6, z);
+                post.castShadow = true;
+                scene.add(post);
+            }
+            const dist = Math.hypot(x2 - x1, z2 - z1);
+            const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, dist, 8), postMat);
+            rail.position.set((x1 + x2) / 2, 2.2, (z1 + z2) / 2);
+            rail.rotation.z = Math.PI / 2;
+            rail.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+            scene.add(rail);
+        }
+
+        // =========================================================================
+        // 6. DETAILED 3D TACTICAL HAMSTER CHARACTER & REAL PAINTBALL MARKER BUILDER
+        // =========================================================================
+        function build3DHamsterMesh(skinIdx = 0) {
+            const skin = HAMSTER_SKINS[skinIdx % HAMSTER_SKINS.length];
+            const root = new THREE.Group();
+
+            // Soft ground shadow disc
+            const shadowDisc = new THREE.Mesh(
+                new THREE.CircleGeometry(1.3, 24),
+                new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32 })
+            );
+            shadowDisc.rotation.x = -Math.PI / 2;
+            shadowDisc.position.y = 0.025;
+            root.add(shadowDisc);
+
+            const bodyGroup = new THREE.Group();
+            root.add(bodyGroup);
+
+            // PBR Fur, Belly, Goggle Visor & Tactical Vest Materials
+            const furMat = new THREE.MeshStandardMaterial({ color: skin.furColor, roughness: 0.82, metalness: 0.02 });
+            const bellyMat = new THREE.MeshStandardMaterial({ color: skin.bellyColor, roughness: 0.85 });
+            const earPinkMat = new THREE.MeshStandardMaterial({ color: skin.earInner, roughness: 0.65 });
+            const vestMat = new THREE.MeshStandardMaterial({ color: skin.vestColor, roughness: 0.55, metalness: 0.15 });
+            const visorMat = new THREE.MeshPhysicalMaterial({
+                color: skin.visorColor,
+                roughness: 0.08,
+                metalness: 0.35,
+                clearcoat: 1.0
+            });
+
+            // 1. Plump Pear-Shaped Hamster Torso + Head
+            const lowerTorso = new THREE.Mesh(new THREE.SphereGeometry(1.08, 22, 18), furMat);
+            lowerTorso.scale.set(1.08, 0.96, 1.02);
+            lowerTorso.position.y = 1.15;
+            lowerTorso.castShadow = true;
+            bodyGroup.add(lowerTorso);
+
+            const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.92, 22, 18), furMat);
+            headMesh.scale.set(1.06, 0.95, 0.98);
+            headMesh.position.set(0, 1.92, 0.08);
+            headMesh.castShadow = true;
+            bodyGroup.add(headMesh);
+
+            // Soft Cream Belly Patch
+            const bellyPatch = new THREE.Mesh(new THREE.SphereGeometry(0.84, 16, 14), bellyMat);
+            bellyPatch.scale.set(0.95, 1.05, 0.65);
+            bellyPatch.position.set(0, 1.12, 0.62);
+            bodyGroup.add(bellyPatch);
+
+            // Chubby Puffed Hamster Cheeks
+            const cheekGeo = new THREE.SphereGeometry(0.45, 14, 14);
+            const leftCheek = new THREE.Mesh(cheekGeo, bellyMat);
+            leftCheek.position.set(-0.62, 1.72, 0.62);
+            const rightCheek = new THREE.Mesh(cheekGeo, bellyMat);
+            rightCheek.position.set(0.62, 1.72, 0.62);
+            bodyGroup.add(leftCheek, rightCheek);
+
+            // Cute Pink Nose + Buck Incisor Tooth + Whiskers
+            const nose = new THREE.Mesh(
+                new THREE.SphereGeometry(0.14, 12, 12),
+                new THREE.MeshPhysicalMaterial({ color: 0xff5c8a, roughness: 0.25, clearcoat: 0.8 })
+            );
+            nose.position.set(0, 1.85, 1.02);
+            bodyGroup.add(nose);
+
+            // Whiskers
+            const whiskerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            [-1, 1].forEach((side) => {
+                for (let w = 0; w < 2; w++) {
+                    const whisker = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.55, 6), whiskerMat);
+                    whisker.rotation.z = (Math.PI / 2) + side * (0.15 - w * 0.2);
+                    whisker.position.set(side * 0.85, 1.74 - w * 0.1, 0.78);
+                    bodyGroup.add(whisker);
+                }
+            });
+
+            // Two-Tone Rounded Hamster Ears (Furry Outer + Pink Inner Pocket)
+            [-1, 1].forEach((side) => {
+                const earGroup = new THREE.Group();
+                const outerEar = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 12), furMat);
+                outerEar.scale.set(1, 1.1, 0.55);
+                const innerEar = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), earPinkMat);
+                innerEar.scale.set(1, 1.05, 0.4);
+                innerEar.position.z = 0.12;
+                earGroup.add(outerEar, innerEar);
+                earGroup.position.set(side * 0.68, 2.58, 0.05);
+                earGroup.rotation.z = -side * 0.25;
+                bodyGroup.add(earGroup);
+            });
+
+            // Cute Fluffy Pom-Pom Tail at Back
+            const tail = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), bellyMat);
+            tail.position.set(0, 0.92, -1.04);
+            bodyGroup.add(tail);
+
+            // 2. PROTECTIVE PAINTBALL GOGGLES / THERMAL MASK
+            const goggleGroup = new THREE.Group();
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4 });
+            // Strap around head
+            const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.94, 0.94, 0.26, 20, 1, true), frameMat);
+            strap.position.set(0, 2.08, 0.06);
+            goggleGroup.add(strap);
+
+            // Curved Reflective Tinted Visor Lens across Eyes
+            const visorLens = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.96, 0.96, 0.42, 20, 1, false, -Math.PI * 0.32, Math.PI * 0.64),
+                visorMat
+            );
+            visorLens.position.set(0, 2.08, 0.09);
+            goggleGroup.add(visorLens);
+            bodyGroup.add(goggleGroup);
+
+            // 3. TACTICAL PAINTBALL POD HARNESS & BACKPACK PODS
+            const harness = new THREE.Mesh(new THREE.CylinderGeometry(1.06, 1.11, 0.55, 20, 1, true), vestMat);
+            harness.position.y = 1.18;
+            bodyGroup.add(harness);
+
+            // 3 Rear Paint Pod Tubes strapped to back
+            [-0.36, 0, 0.36].forEach((px, idx) => {
+                const podColor = PAINT_PALETTE[(skinIdx + idx) % PAINT_PALETTE.length];
+                const pod = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.14, 0.14, 0.68, 10),
+                    new THREE.MeshPhysicalMaterial({ color: podColor, roughness: 0.15, clearcoat: 0.9, transparent: true, opacity: 0.88 })
+                );
+                pod.position.set(px, 1.25, -1.02);
+                pod.rotation.z = 0.1;
+                bodyGroup.add(pod);
+            });
+
+            // Stubby Animated Hamster Paws & Feet
+            const pawMat = new THREE.MeshStandardMaterial({ color: 0x3b2f2f, roughness: 0.7 });
+            const footGeo = new THREE.CylinderGeometry(0.28, 0.32, 0.42, 12);
+            const leftFoot = new THREE.Mesh(footGeo, pawMat);
+            leftFoot.position.set(-0.46, 0.26, 0.08);
+            const rightFoot = new THREE.Mesh(footGeo, pawMat);
+            rightFoot.position.set(0.46, 0.26, 0.08);
+            root.add(leftFoot, rightFoot);
+
+            // 4. DETAILED 3D PAINTBALL MARKER (GUN) + TRANSLUCENT HOPPER + HPA TANK
+            const markerGroup = new THREE.Group();
+            const gunMetalMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.22 });
+            const anodizedMat = new THREE.MeshPhysicalMaterial({ color: skin.paintColor, metalness: 0.65, roughness: 0.2, clearcoat: 0.8 });
+
+            // Receiver body
+            const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.36, 1.15), anodizedMat);
+            markerGroup.add(receiver);
+
+            // Ported Carbon-Fiber Barrel
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.1, 1.25, 12), gunMetalMat);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.06, 1.05);
+            markerGroup.add(barrel);
+
+            // Rear 3000 PSI HPA Air Tank Bottle
+            const airTank = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.2, 0.2, 0.75, 14),
+                new THREE.MeshPhysicalMaterial({ color: 0x0f172a, metalness: 0.5, roughness: 0.15, clearcoat: 1.0 })
+            );
+            airTank.rotation.x = Math.PI / 2;
+            airTank.position.set(0, -0.14, -0.72);
+            markerGroup.add(airTank);
+
+            // Top Translucent Plastic Hopper (Loader) with Visible Colorful Mini Paintballs inside!
+            const hopperShell = new THREE.Mesh(
+                new THREE.SphereGeometry(0.42, 16, 12),
+                new THREE.MeshPhysicalMaterial({
+                    color: 0x0f172a,
+                    transparent: true,
+                    opacity: 0.48,
+                    roughness: 0.1,
+                    clearcoat: 1.0
+                })
+            );
+            hopperShell.scale.set(0.85, 0.78, 1.25);
+            hopperShell.position.set(0, 0.52, 0.05);
+            markerGroup.add(hopperShell);
+
+            // Mini colorful paintballs jiggling inside the translucent hopper!
+            const hopperBallsGroup = new THREE.Group();
+            hopperBallsGroup.position.copy(hopperShell.position);
+            for (let b = 0; b < 7; b++) {
+                const miniBall = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.11, 8, 8),
+                    new THREE.MeshPhysicalMaterial({ color: PAINT_PALETTE[b % PAINT_PALETTE.length], clearcoat: 1.0, roughness: 0.05 })
+                );
+                miniBall.position.set((Math.random() - 0.5) * 0.32, (Math.random() - 0.5) * 0.22, (Math.random() - 0.5) * 0.42);
+                hopperBallsGroup.add(miniBall);
+            }
+            markerGroup.add(hopperBallsGroup);
+
+            markerGroup.position.set(1.12, 1.48, 0.35);
+            root.add(markerGroup);
+
+            // Dynamic Coat Paint Stains Group (Attached when hit by opponent paintballs)
+            const coatStainsGroup = new THREE.Group();
+            bodyGroup.add(coatStainsGroup);
+
+            // 5. 3D Glossy Hamster Ball Shield (Slot 5 Active Power)
+            const hamsterBallMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(1.85, 24, 20),
+                new THREE.MeshPhysicalMaterial({
+                    color: 0x22d3ee,
+                    transparent: true,
+                    opacity: 0.34,
+                    roughness: 0.05,
+                    clearcoat: 1.0
+                })
+            );
+            hamsterBallMesh.position.y = 1.45;
+            hamsterBallMesh.visible = false;
+            root.add(hamsterBallMesh);
+
+            root.userData = {
+                bodyGroup,
+                leftFoot,
+                rightFoot,
+                markerGroup,
+                hopperBallsGroup,
+                coatStainsGroup,
+                hamsterBallMesh,
+                walkPhase: Math.random() * 10,
+                recoilOffset: 0
+            };
+
+            return root;
+        }
+
+        // Attach a glossy 3D paint stain blob directly onto a hamster's fur/vest when hit!
+        function addPaintStainOnHamster(hamsterMesh, colorHex) {
+            const stainsGroup = hamsterMesh.userData?.coatStainsGroup;
+            if (!stainsGroup) return;
+            const stain = new THREE.Mesh(
+                new THREE.SphereGeometry(0.24 + Math.random() * 0.12, 10, 10),
+                new THREE.MeshPhysicalMaterial({ color: colorHex, roughness: 0.06, clearcoat: 1.0 })
+            );
+            const angle = Math.random() * Math.PI * 2;
+            const h = 0.85 + Math.random() * 1.1;
+            stain.scale.set(1.2, 0.9, 0.35);
+            stain.position.set(Math.sin(angle) * 0.98, h, Math.cos(angle) * 0.98);
+            stain.lookAt(0, h, 0);
+            stainsGroup.add(stain);
+
+            if (stainsGroup.children.length > 8) {
+                stainsGroup.remove(stainsGroup.children[0]);
+            }
+        }
+
+        let localHamsterMesh = build3DHamsterMesh(state.selectedSkinIdx);
+        scene.add(localHamsterMesh);
+
+        // =========================================================================
+        // 7. SMART SPEEDBALL AI BOTS & REMOTE PLAYER MANAGEMENT
+        // =========================================================================
+        const aiBots = [];
+        const BOT_PROFILES = [
+            { name: 'AN', skinIdx: 2, skill: 0.88 },
+            { name: 'SqueakShot', skinIdx: 1, skill: 0.82 },
+            { name: 'BobaTrigger', skinIdx: 3, skill: 0.85 },
+            { name: 'ViperPaws', skinIdx: 4, skill: 0.92 }
+        ];
+
+        const worldLabelsLayer = document.getElementById('world-labels-layer');
+        function createWorldNameLabel(name, isBot = false) {
+            const el = document.createElement('div');
+            el.dataset.playerName = name;
+            el.className = 'absolute pointer-events-none flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2';
+            el.innerHTML = `
+                <div class="hp-mini-bar hidden w-14 h-2 bg-slate-950/85 rounded-full overflow-hidden mb-1 border border-white/30 p-0.5">
+                    <div class="hp-fill h-full bg-gradient-to-r from-lime-400 to-emerald-400 rounded-full" style="width:100%"></div>
+                </div>
+                <div class="px-2 py-0.5 rounded-md bg-slate-950/65 backdrop-blur-xs border border-white/15 flex items-center gap-1 shadow">
+                    <span class="w-2 h-2 rounded-full ${isBot ? 'bg-amber-400' : 'bg-lime-400'}"></span>
+                    <span class="name-text font-extrabold text-xs sm:text-sm text-white text-stroke-sm whitespace-nowrap tracking-tight">${name}</span>
+                </div>
+            `;
+            worldLabelsLayer.appendChild(el);
+            return el;
+        }
+
+        const localNameLabel = createWorldNameLabel(state.playerName, false);
+        const remoteMeshes = new Map();
+
+        function spawnAIBot(profileIndex) {
+            const profile = BOT_PROFILES[profileIndex % BOT_PROFILES.length];
+            const mesh = build3DHamsterMesh(profile.skinIdx);
+            const angle = (profileIndex / 4) * Math.PI * 2 + 0.5;
+            const spawnX = Math.cos(angle) * 20;
+            const spawnZ = Math.sin(angle) * 14;
+            mesh.position.set(spawnX, 0, spawnZ);
+            scene.add(mesh);
+
+            const callsign = aiBots.length >= BOT_PROFILES.length ? `${profile.name}-${aiBots.length + 1}` : profile.name;
+            const labelEl = createWorldNameLabel(callsign, true);
+
+            aiBots.push({
+                id: 'bot_' + Math.random().toString(36).slice(2, 7),
+                name: callsign,
+                skinIdx: profile.skinIdx,
+                x: spawnX,
+                z: spawnZ,
+                vx: 0,
+                vz: 0,
+                rotY: 0,
+                hp: 100,
+                shield: 100,
+                kos: Math.floor(Math.random() * 3),
+                seeds: 90 + Math.floor(Math.random() * 60),
+                mesh,
+                labelEl,
+                targetX: spawnX,
+                targetZ: spawnZ,
+                retargetTimer: 0,
+                shootCooldown: 1.1 + Math.random()
+            });
+
+            updateLobbyPlayerCount();
+        }
+
+        // =========================================================================
+        // 8. GLOSSY GELATIN PAINTBALLS, SURFACE-ADHERING WET SPLATS & VISOR HITS
+        // =========================================================================
+        const projectiles = [];
+        const particles = [];
+        const splatDecals = [];
+        const powerupCrates = [];
+        const splatRaycaster = new THREE.Raycaster();
+
+        function firePaintball(ownerId, ownerName, startX, startZ, targetX, targetZ, weaponType = 0, dmgMult = 1.0, customColor = null, isRemote = false) {
+            const dx = targetX - startX;
+            const dz = targetZ - startZ;
+            const baseAngle = Math.atan2(dx, dz);
+            const dist = Math.min(Math.hypot(dx, dz), 30);
+
+            let shots = [{ angleOffset: 0, speed: 32, radius: 0.32, baseDmg: 85, isBomb: false }];
+
+            if (weaponType === 1) {
+                // Triple-Burst Electro Marker
+                shots = [
+                    { angleOffset: -0.14, speed: 30, radius: 0.30, baseDmg: 65, isBomb: false },
+                    { angleOffset: 0, speed: 32, radius: 0.32, baseDmg: 75, isBomb: false },
+                    { angleOffset: 0.14, speed: 30, radius: 0.30, baseDmg: 65, isBomb: false }
+                ];
+            } else if (weaponType === 2) {
+                // Lobbed Paint Grenade Pod
+                shots = [
+                    { angleOffset: 0, speed: Math.max(15, dist * 0.88), radius: 0.62, baseDmg: 160, isBomb: true }
+                ];
+            }
+
+            const chosenColor = customColor || PAINT_PALETTE[Math.floor(Math.random() * PAINT_PALETTE.length)];
+
+            shots.forEach((cfg) => {
+                const angle = baseAngle + cfg.angleOffset;
+                const group = new THREE.Group();
+
+                // Glossy Gelatin Paintball Capsule with Specular Clearcoat
+                const ballMesh = new THREE.Mesh(
+                    new THREE.SphereGeometry(cfg.radius, 16, 14),
+                    new THREE.MeshPhysicalMaterial({
+                        color: chosenColor,
+                        roughness: 0.04,
+                        metalness: 0.05,
+                        clearcoat: 1.0,
+                        clearcoatRoughness: 0.02
+                    })
+                );
+                ballMesh.castShadow = true;
+                group.add(ballMesh);
+
+                // Subtle trailing velocity streak
+                const streak = new THREE.Mesh(
+                    new THREE.ConeGeometry(cfg.radius * 0.7, cfg.radius * 3.8, 8),
+                    new THREE.MeshBasicMaterial({ color: chosenColor, transparent: true, opacity: 0.45 })
+                );
+                streak.rotation.x = -Math.PI / 2;
+                streak.position.z = -cfg.radius * 1.8;
+                group.add(streak);
+
+                group.position.set(startX + Math.sin(angle) * 1.25, 1.55, startZ + Math.cos(angle) * 1.25);
+                group.rotation.y = angle;
+                scene.add(group);
+
+                projectiles.push({
+                    ownerId,
+                    ownerName,
+                    mesh: group,
+                    color: chosenColor,
+                    vx: Math.sin(angle) * cfg.speed,
+                    vy: cfg.isBomb ? 10.2 : 2.3,
+                    vz: Math.cos(angle) * cfg.speed,
+                    gravity: cfg.isBomb ? 22 : 9.8,
+                    radius: cfg.radius,
+                    damage: Math.round(cfg.baseDmg * dmgMult),
+                    isBomb: cfg.isBomb,
+                    age: 0
+                });
+            });
+
+            if (ownerId === 'local') {
+                sfx.playMarkerShot();
+                localHamsterMesh.userData.recoilOffset = 0.32;
+                if (parkChannel && !isRemote) {
+                    parkChannel.postMessage({
+                        type: 'paintballShot',
+                        uid: localTabId,
+                        roomCode: state.roomCode,
+                        name: state.playerName,
+                        sx: startX,
+                        sz: startZ,
+                        tx: targetX,
+                        tz: targetZ,
+                        weaponType,
+                        color: chosenColor
+                    });
+                }
+            }
+        }
+
+        // Surface-Adhering Wet Paint Splat Decal (Oriented along exact impact normal!)
+        function createSurfacePaintSplat(impactPos, impactNormal, colorHex, scale = 1.0) {
+            const splatMat = new THREE.MeshPhysicalMaterial({
+                color: colorHex,
+                alphaMap: sharedSplatAlphaTexture,
+                transparent: true,
+                opacity: 0.95,
+                roughness: 0.06,
+                metalness: 0.05,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.04,
+                depthWrite: false,
+                polygonOffset: true,
+                polygonOffsetFactor: -2
+            });
+
+            const size = (2.1 + Math.random() * 0.7) * scale;
+            const splatMesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), splatMat);
+
+            const normal = impactNormal.clone().normalize();
+            splatMesh.position.copy(impactPos).addScaledVector(normal, 0.03 + (splatDecals.length % 15) * 0.001);
+
+            const targetQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+            splatMesh.quaternion.copy(targetQuat);
+            splatMesh.rotateZ(Math.random() * Math.PI * 2);
+
+            scene.add(splatMesh);
+            splatDecals.push(splatMesh);
+
+            if (splatDecals.length > 95) {
+                const oldest = splatDecals.shift();
+                scene.remove(oldest);
+            }
+        }
+
+        function spawnSplatBurstParticles(x, y, z, color, count = 14) {
+            const geo = new THREE.SphereGeometry(0.16, 8, 8);
+            const mat = new THREE.MeshPhysicalMaterial({ color, roughness: 0.05, clearcoat: 1.0 });
+            for (let i = 0; i < count; i++) {
+                const p = new THREE.Mesh(geo, mat);
+                p.position.set(x, y, z);
+                scene.add(p);
+                const angle = Math.random() * Math.PI * 2;
+                const spd = 2.5 + Math.random() * 8;
+                particles.push({
+                    mesh: p,
+                    vx: Math.cos(angle) * spd,
+                    vy: 3.5 + Math.random() * 6.5,
+                    vz: Math.sin(angle) * spd,
+                    life: 0.45 + Math.random() * 0.25
+                });
+            }
+        }
+
+        // First-Person Goggle Visor Paint Splat Overlay when local player takes a hit!
+        const visorSplatLayer = document.getElementById('visor-splat-layer');
+        function triggerVisorGoggleSplat(colorHex) {
+            const hexStr = '#' + colorHex.toString(16).padStart(6, '0');
+            const el = document.createElement('div');
+            el.className = 'visor-splat';
+            // Place near screen edges so center aiming stays clear
+            const edgeLeft = Math.random() < 0.5 ? 6 + Math.random() * 20 : 72 + Math.random() * 20;
+            const edgeTop = 10 + Math.random() * 65;
+            el.style.left = `${edgeLeft}%`;
+            el.style.top = `${edgeTop}%`;
+            el.innerHTML = `
+                <svg width="170" height="170" viewBox="0 0 120 120" fill="${hexStr}">
+                    <path d="M60 18 C72 15, 88 28, 92 42 C98 55, 108 68, 92 82 C78 95, 72 110, 58 102 C44 95, 22 92, 20 74 C18 55, 28 42, 40 30 C48 22, 52 20, 60 18 Z" opacity="0.88"/>
+                    <circle cx="22" cy="32" r="8"/>
+                    <circle cx="98" cy="28" r="10"/>
+                    <circle cx="102" cy="88" r="7"/>
+                    <circle cx="32" cy="102" r="9"/>
+                    <ellipse cx="60" cy="48" rx="18" ry="8" fill="rgba(255,255,255,0.38)" transform="rotate(-18 60 48)"/>
+                </svg>
+            `;
+            visorSplatLayer.appendChild(el);
+            setTimeout(() => el.remove(), 2600);
+        }
+
+        const damagePopupsLayer = document.getElementById('damage-popups-layer');
+        function spawnFloatingDamageNumber(worldX, worldY, worldZ, amount, customText = null) {
+            const pos = new THREE.Vector3(worldX, worldY, worldZ);
+            pos.project(camera);
+            if (pos.z > 1) return;
+            const sx = (pos.x * 0.5 + 0.5) * window.innerWidth;
+            const sy = (-(pos.y * 0.5) + 0.5) * window.innerHeight;
+
+            const el = document.createElement('div');
+            el.className = 'damage-popup';
+            el.style.left = `${sx}px`;
+            el.style.top = `${sy}px`;
+            if (customText) {
+                el.style.color = '#a3e635';
+                el.style.fontSize = '1.4rem';
+                el.textContent = customText;
+            } else {
+                el.style.color = amount >= 140 ? '#ff2a85' : '#fbbf24';
+                el.textContent = amount >= 140 ? `${amount} CRIT!` : `${amount}`;
+            }
+            damagePopupsLayer.appendChild(el);
+            setTimeout(() => el.remove(), 950);
+        }
+
+        // Add Live Killfeed Entry in Top-Right
+        function pushKillfeedItem(killerName, victimName, colorHex = 0xa3e635) {
+            const feed = document.getElementById('splat-killfeed');
+            if (!feed) return;
+            const item = document.createElement('div');
+            const hex = '#' + colorHex.toString(16).padStart(6, '0');
+            item.className = 'tactical-panel px-3 py-1.5 rounded-xl text-xs font-extrabold text-white flex items-center gap-2 border-r-4 shadow animate-bounce';
+            item.style.borderRightColor = hex;
+            item.innerHTML = `
+                <span class="text-lime-300">${killerName}</span>
+                <i class="fa-solid fa-burst text-[10px]" style="color:${hex}"></i>
+                <span class="text-pink-400">${victimName}</span>
+            `;
+            feed.prepend(item);
+            setTimeout(() => item.remove(), 4200);
+        }
+
+        // Spawn Collectible Tactical Paint & Golden Seed Crates around the Park
+        function spawnPowerupCrate() {
+            if (powerupCrates.length >= 6) return;
+            const types = [
+                { type: 'seeds', color: 0xfbbf24, label: '+50 GOLDEN SEEDS!' },
+                { type: 'paint', color: 0xff2a85, label: '+16 PAINT PODS!' },
+                { type: 'shield', color: 0x22d3ee, label: '+60 GOGGLE SHIELD!' }
+            ];
+            const chosen = types[Math.floor(Math.random() * types.length)];
+            const x = -22 + Math.random() * 44;
+            const z = -16 + Math.random() * 32;
+
+            const group = new THREE.Group();
+            const crateBox = new THREE.Mesh(
+                new THREE.BoxGeometry(1.25, 1.25, 1.25),
+                new THREE.MeshPhysicalMaterial({ color: chosen.color, roughness: 0.15, clearcoat: 0.9 })
+            );
+            crateBox.castShadow = true;
+            group.add(crateBox);
+
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(0.95, 0.06, 8, 24),
+                new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+            ring.rotation.x = Math.PI / 2;
+            group.add(ring);
+
+            group.position.set(x, 1.2, z);
+            scene.add(group);
+            powerupCrates.push({ mesh: group, x, z, ...chosen });
+        }
+        for (let i = 0; i < 5; i++) spawnPowerupCrate();
+
+        // =========================================================================
+        // 9. KNOCKOUT BANNER, DEPLOYABLE BUNKER, HUD & RADAR MINIMAP
+        // =========================================================================
+        let koTimeout = null;
+        function triggerKnockoutAlert(victimName) {
+            const box = document.getElementById('ko-alert-box');
+            const nameEl = document.getElementById('ko-victim-name');
+            nameEl.textContent = victimName;
+            box.classList.remove('hidden', 'ko-banner-anim');
+            void box.offsetWidth;
+            box.classList.add('flex', 'ko-banner-anim');
+
+            sfx.playKO();
+            if (koTimeout) clearTimeout(koTimeout);
+            koTimeout = setTimeout(() => box.classList.add('hidden'), 2900);
+        }
+
+        function updateHUD() {
+            const skin = HAMSTER_SKINS[state.selectedSkinIdx];
+            document.getElementById('hud-avatar-swatch').style.backgroundColor = skin.badgeBg;
+            document.getElementById('hud-player-callsign').textContent = state.playerName.toUpperCase();
+
+            document.getElementById('hud-hp-bar').style.width = `${Math.max(0, (state.hp / state.maxHp) * 100)}%`;
+            document.getElementById('hud-hp-text').textContent = `${Math.ceil(state.hp)} / ${state.maxHp}`;
+
+            document.getElementById('hud-shield-bar').style.width = `${Math.max(0, (state.shield / state.maxShield) * 100)}%`;
+            document.getElementById('hud-shield-text').textContent = `${Math.ceil(state.shield)} / ${state.maxShield}`;
+
+            document.getElementById('hud-ammo-text').textContent = `${state.ammo}/${state.maxAmmo}`;
+            document.getElementById('hud-hopper-bar').style.width = `${Math.max(0, (state.ammo / state.maxAmmo) * 100)}%`;
+            document.getElementById('slot-0-count').textContent = state.ammo;
+            document.getElementById('slot-1-count').textContent = state.ammo;
+            document.getElementById('slot-2-count').textContent = state.bombs;
+            document.getElementById('slot-3-count').textContent = state.airBunkers;
+            document.getElementById('hud-reserve-ammo').textContent = state.reserveAmmo;
+            document.getElementById('hud-kos-count').textContent = state.kos;
+            document.getElementById('hud-seeds-count').textContent = state.seeds;
+            document.getElementById('shop-seeds-balance').textContent = state.seeds;
+
+            const psi = Math.max(1200, Math.round(3000 * (state.ammo / state.maxAmmo)));
+            document.getElementById('hud-air-psi').textContent = `${psi} PSI`;
+
+            const weaponNames = [
+                'PRO SPEEDBALL MARKER',
+                'TRIPLE-BURST ELECTRO MARKER',
+                'PAINT GRENADE POD',
+                'DEPLOYABLE AIR BUNKER',
+                'HAMSTER BALL SHIELD SURGE'
+            ];
+            document.getElementById('hud-weapon-name').textContent = weaponNames[state.activeSlot] || 'PRO SPEEDBALL MARKER';
+
+            document.querySelectorAll('.loadout-slot').forEach((slotEl) => {
+                const idx = Number(slotEl.dataset.slot);
+                slotEl.classList.toggle('active', idx === state.activeSlot);
+            });
+        }
+
+        function deployTacticalAirBunker() {
+            if (state.airBunkers <= 0) {
+                spawnFloatingDamageNumber(state.x, 2.6, state.z, 0, 'EARN PODS FOR BUNKERS!');
+                openQuestionModal();
+                return;
+            }
+            state.airBunkers--;
+            const angle = state.rotY;
+            const bx = state.x + Math.sin(angle) * 3.8;
+            const bz = state.z + Math.cos(angle) * 3.8;
+            const skinColor = HAMSTER_SKINS[state.selectedSkinIdx].paintColor;
+            createInflatableBrickBunker(bx, bz, skinColor, 0xffffff, angle);
+            sfx.playCorrect();
+            spawnFloatingDamageNumber(bx, 3.0, bz, 0, 'AIR BUNKER DEPLOYED!');
+            state.activeSlot = 0;
+            updateHUD();
+        }
+
+        function selectLoadoutSlot(slotIdx) {
+            state.activeSlot = slotIdx;
+            if (slotIdx === 3) {
+                deployTacticalAirBunker();
+                return;
+            }
+            if (slotIdx === 4 && !state.hamsterBallActive) {
+                state.hamsterBallActive = true;
+                state.hamsterBallTimer = 6.5;
+                state.hp = Math.min(state.maxHp, state.hp + 35);
+                state.shield = Math.min(state.maxShield, state.shield + 45);
+                localHamsterMesh.userData.hamsterBallMesh.visible = true;
+                document.getElementById('slot-4-badge').textContent = 'ON!';
+                sfx.playCorrect();
+                spawnFloatingDamageNumber(state.x, 2.8, state.z, 0, 'SHIELD BALL SURGE!');
+            }
+            updateHUD();
+        }
+
+        function refillWeaponMagazine() {
+            const needed = state.maxAmmo - state.ammo;
+            if (needed <= 0) return;
+            if (state.reserveAmmo > 0) {
+                const transfer = Math.min(needed, state.reserveAmmo);
+                state.ammo += transfer;
+                state.reserveAmmo -= transfer;
+                sfx.playCorrect();
+                spawnFloatingDamageNumber(state.x, 2.6, state.z, 0, `+${transfer} HOPPER LOADED!`);
+                updateHUD();
+            } else {
+                openQuestionModal();
+            }
+        }
+
+        // Live Tactical Radar Minimap Renderer
+        const radarCanvas = document.getElementById('radar-canvas');
+        const rctx = radarCanvas ? radarCanvas.getContext('2d') : null;
+        function renderParkRadar() {
+            if (!rctx) return;
+            const w = radarCanvas.width;
+            const h = radarCanvas.height;
+            rctx.clearRect(0, 0, w, h);
+
+            // Park turf background
+            rctx.fillStyle = '#0f291e';
+            rctx.fillRect(0, 0, w, h);
+
+            // Radar sweep rings
+            rctx.strokeStyle = 'rgba(34, 211, 238, 0.18)';
+            rctx.lineWidth = 1;
+            [24, 46, 64].forEach((r) => {
+                rctx.beginPath();
+                rctx.arc(w / 2, h / 2, r, 0, Math.PI * 2);
+                rctx.stroke();
+            });
+
+            const mapScaleX = w / 92;
+            const mapScaleZ = h / 68;
+            const toRX = (wx) => w / 2 + wx * mapScaleX;
+            const toRZ = (wz) => h / 2 + wz * mapScaleZ;
+
+            // Pond on east side
+            rctx.fillStyle = 'rgba(6, 182, 212, 0.45)';
+            rctx.beginPath();
+            rctx.ellipse(toRX(26), toRZ(0), 11 * mapScaleX, 18 * mapScaleZ, 0, 0, Math.PI * 2);
+            rctx.fill();
+
+            // Central Gazebo
+            rctx.strokeStyle = '#fbbf24';
+            rctx.beginPath();
+            rctx.arc(toRX(0), toRZ(0), 6 * mapScaleX, 0, Math.PI * 2);
+            rctx.stroke();
+
+            // Obstacles / Bunkers
+            rctx.fillStyle = 'rgba(148, 163, 184, 0.55)';
+            obstacles.forEach((obs) => {
+                if (obs.type === 'tree') return;
+                rctx.fillRect(toRX(obs.x) - 2, toRZ(obs.z) - 2, 4, 4);
+            });
+
+            // Loot Crates (Gold dots)
+            rctx.fillStyle = '#fbbf24';
+            powerupCrates.forEach((c) => {
+                rctx.beginPath();
+                rctx.arc(toRX(c.x), toRZ(c.z), 2.5, 0, Math.PI * 2);
+                rctx.fill();
+            });
+
+            // AI Bots (Pink/Red dots)
+            rctx.fillStyle = '#ff2a85';
+            aiBots.forEach((b) => {
+                rctx.beginPath();
+                rctx.arc(toRX(b.x), toRZ(b.z), 3.5, 0, Math.PI * 2);
+                rctx.fill();
+            });
+
+            // Remote Players (Cyan dots)
+            rctx.fillStyle = '#22d3ee';
+            remotePlayersData.forEach((r) => {
+                rctx.beginPath();
+                rctx.arc(toRX(r.x || 0), toRZ(r.z || 0), 3.5, 0, Math.PI * 2);
+                rctx.fill();
+            });
+
+            // Local Player (Bright Lime Arrow/Dot)
+            const px = toRX(state.x);
+            const pz = toRZ(state.z);
+            rctx.fillStyle = '#a3e635';
+            rctx.beginPath();
+            rctx.arc(px, pz, 4.5, 0, Math.PI * 2);
+            rctx.fill();
+            rctx.strokeStyle = '#ffffff';
+            rctx.beginPath();
+            rctx.moveTo(px, pz);
+            rctx.lineTo(px + Math.sin(state.rotY) * 9, pz + Math.cos(state.rotY) * 9);
+            rctx.stroke();
+        }
+
+        // =========================================================================
+        // 10. COLLISION RESOLUTION, CAMERA PERSPECTIVES & AIMING
+        // =========================================================================
+        function resolveObstacleCollisions(entity) {
+            entity.x = Math.max(-42, Math.min(42, entity.x));
+            entity.z = Math.max(-29, Math.min(29, entity.z));
+
+            for (const obs of obstacles) {
+                const dx = entity.x - obs.x;
+                const dz = entity.z - obs.z;
+                const dist = Math.hypot(dx, dz);
+                const minDist = obs.r + 1.05;
+                if (dist < minDist && dist > 0.001) {
+                    const push = minDist - dist;
+                    entity.x += (dx / dist) * push;
+                    entity.z += (dz / dist) * push;
+                }
+            }
+        }
+
+        function isInsidePondZone(x, z) {
+            // Elliptical check around east duck pond (center 26, 0)
+            const nx = (x - 26) / 11.4;
+            const nz = z / 18.5;
+            return (nx * nx + nz * nz) <= 1.0;
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const groundPlaneMath = new THREE.Plane(new THREE.Vector3(0, 1.2, 0), 0);
+        const intersectPt = new THREE.Vector3();
+
+        function updateAimPointFromMouse() {
+            const ndcX = (state.mouseScreenX / window.innerWidth) * 2 - 1;
+            const ndcY = -(state.mouseScreenY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
+            if (raycaster.ray.intersectPlane(groundPlaneMath, intersectPt)) {
+                state.aimWorldX = intersectPt.x;
+                state.aimWorldZ = intersectPt.z;
+            }
+        }
+
+        function tryLocalPlayerFire() {
+            if (state.isSpectator) return;
+            const now = performance.now();
+            if (now - state.lastShotTime < 210) return;
+
+            if (state.activeSlot === 2) {
+                // Slot 3: Paint Grenade Pod
+                if (state.bombs <= 0) {
+                    openQuestionModal();
+                    return;
+                }
+                state.bombs--;
+                state.lastShotTime = now + 240;
+                firePaintball('local', state.playerName, state.x, state.z, state.aimWorldX, state.aimWorldZ, 2, state.damageMultiplier);
+                updateHUD();
+                return;
+            }
+
+            // Slot 0 (Speedball Marker) or Slot 1 (Triple-Burst)
+            const cost = state.activeSlot === 1 ? 3 : 1;
+            if (state.ammo < cost) {
+                if (state.reserveAmmo > 0) refillWeaponMagazine();
+                else openQuestionModal();
+                return;
+            }
+
+            state.ammo -= cost;
+            state.lastShotTime = now;
+            const skinPaint = HAMSTER_SKINS[state.selectedSkinIdx].paintColor;
+            firePaintball(
+                'local',
+                state.playerName,
+                state.x,
+                state.z,
+                state.aimWorldX,
+                state.aimWorldZ,
+                state.activeSlot === 1 ? 1 : 0,
+                state.damageMultiplier,
+                skinPaint
+            );
+            updateHUD();
+        }
+
+        // =========================================================================
+        // 11. MAIN 3D PARK GAME LOOP
+        // =========================================================================
+        let lastFrameTime = performance.now();
+
+        function animateHamsterWalk(mesh, speed, dt, aimAngle) {
+            const ud = mesh.userData;
+            if (!ud) return;
+            if (speed > 0.4) {
+                ud.walkPhase += dt * 15;
+                ud.leftFoot.position.z = Math.sin(ud.walkPhase) * 0.36;
+                ud.rightFoot.position.z = -Math.sin(ud.walkPhase) * 0.36;
+                ud.bodyGroup.position.y = Math.abs(Math.sin(ud.walkPhase)) * 0.14;
+                // Jiggle paintballs inside translucent hopper!
+                ud.hopperBallsGroup.rotation.z = Math.sin(ud.walkPhase * 1.5) * 0.25;
+                ud.hopperBallsGroup.position.y = 0.52 + Math.abs(Math.cos(ud.walkPhase * 2)) * 0.05;
+            } else {
+                ud.leftFoot.position.z *= 0.85;
+                ud.rightFoot.position.z *= 0.85;
+                ud.bodyGroup.position.y *= 0.85;
+            }
+
+            // Smooth Marker Gun Recoil recovery
+            if (ud.recoilOffset > 0.001) {
+                ud.markerGroup.position.z = 0.35 - ud.recoilOffset;
+                ud.recoilOffset *= Math.pow(0.08, dt);
+            } else {
+                ud.markerGroup.position.z = 0.35;
+            }
+
+            if (aimAngle !== undefined) {
+                mesh.rotation.y = aimAngle;
+            }
+            if (ud.hamsterBallMesh.visible) {
+                ud.hamsterBallMesh.rotation.x += speed * dt * 0.55;
+                ud.hamsterBallMesh.rotation.z += speed * dt * 0.35;
+            }
+        }
+
+        function projectLabelToScreen(labelEl, worldX, worldY, worldZ, hpPct = 100) {
+            const vec = new THREE.Vector3(worldX, worldY, worldZ);
+            vec.project(camera);
+            if (vec.z > 1) {
+                labelEl.style.display = 'none';
+                return;
+            }
+            const sx = (vec.x * 0.5 + 0.5) * window.innerWidth;
+            const sy = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
+            labelEl.style.display = 'flex';
+            labelEl.style.left = `${sx}px`;
+            labelEl.style.top = `${sy}px`;
+
+            const miniBar = labelEl.querySelector('.hp-mini-bar');
+            const fill = labelEl.querySelector('.hp-fill');
+            if (miniBar && fill) {
+                if (hpPct < 99) {
+                    miniBar.classList.remove('hidden');
+                    fill.style.width = `${Math.max(0, hpPct)}%`;
+                } else {
+                    miniBar.classList.add('hidden');
+                }
+            }
+        }
+
+        function gameLoop(now) {
+            requestAnimationFrame(gameLoop);
+            const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
+            lastFrameTime = now;
+
+            // Animate Park Fountain Jet
+            if (fountainWaterMesh) {
+                fountainWaterMesh.scale.y = 0.9 + Math.sin(now * 0.008) * 0.15;
+                fountainWaterMesh.rotation.y += dt * 3;
+            }
+
+            // Update Hamster Ball Shield Timer
+            if (state.hamsterBallActive) {
+                state.hamsterBallTimer -= dt;
+                if (state.hamsterBallTimer <= 0) {
+                    state.hamsterBallActive = false;
+                    localHamsterMesh.userData.hamsterBallMesh.visible = false;
+                    document.getElementById('slot-4-badge').textContent = 'RDY';
+                    if (state.activeSlot === 4) state.activeSlot = 0;
+                    updateHUD();
+                }
+            }
+
+            // 1. LOCAL PLAYER MOVEMENT
+            const questionModalOpen = !document.getElementById('question-modal').classList.contains('hidden');
+            const shopModalOpen = !document.getElementById('shop-modal').classList.contains('hidden');
+
+            let moveX = 0;
+            let moveZ = 0;
+            if (!questionModalOpen && !shopModalOpen && state.screen !== 'join') {
+                if (state.keys['KeyW'] || state.keys['ArrowUp']) moveZ -= 1;
+                if (state.keys['KeyS'] || state.keys['ArrowDown']) moveZ += 1;
+                if (state.keys['KeyA'] || state.keys['ArrowLeft']) moveX -= 1;
+                if (state.keys['KeyD'] || state.keys['ArrowRight']) moveX += 1;
+            }
+
+            const moveLen = Math.hypot(moveX, moveZ);
+            if (moveLen > 0) {
+                moveX /= moveLen;
+                moveZ /= moveLen;
+            }
+
+            state.inPond = isInsidePondZone(state.x, state.z);
+            document.getElementById('pond-zone-badge').classList.toggle('hidden', !state.inPond);
+
+            const baseSpeed = 12.2 * state.speedMultiplier * (state.hamsterBallActive ? 1.32 : 1.0);
+            if (state.inPond) {
+                // Hydroplane slide across the shallow park duck pond!
+                state.vx += moveX * baseSpeed * 4.5 * dt;
+                state.vz += moveZ * baseSpeed * 4.5 * dt;
+                state.vx *= Math.pow(0.96, dt * 60);
+                state.vz *= Math.pow(0.96, dt * 60);
+                if (Math.hypot(state.vx, state.vz) > 4 && Math.random() < 0.35) {
+                    spawnSplatBurstParticles(state.x, 0.2, state.z, 0xa5f3fc, 2);
+                }
+            } else {
+                state.vx = moveX * baseSpeed;
+                state.vz = moveZ * baseSpeed;
+            }
+
+            state.x += state.vx * dt;
+            state.z += state.vz * dt;
+            resolveObstacleCollisions(state);
+
+            updateAimPointFromMouse();
+            state.rotY = Math.atan2(state.aimWorldX - state.x, state.aimWorldZ - state.z);
+
+            localHamsterMesh.position.set(state.x, 0, state.z);
+            animateHamsterWalk(localHamsterMesh, Math.hypot(state.vx, state.vz), dt, state.rotY);
+
+            if (state.mouseDown && !questionModalOpen && !shopModalOpen && state.screen !== 'join') {
+                tryLocalPlayerFire();
+            }
+
+            // Camera Tracking (Supports Tactical Overhead OR Action Over-The-Shoulder 3D View!)
+            if (state.cameraMode === 'shoulder') {
+                const camDist = 11.5;
+                const targetCamX = state.x - Math.sin(state.rotY) * camDist;
+                const targetCamZ = state.z - Math.cos(state.rotY) * camDist;
+                camera.position.x += (targetCamX - camera.position.x) * 9 * dt;
+                camera.position.y += (8.8 - camera.position.y) * 9 * dt;
+                camera.position.z += (targetCamZ - camera.position.z) * 9 * dt;
+                camera.lookAt(
+                    state.x + Math.sin(state.rotY) * 8,
+                    1.8,
+                    state.z + Math.cos(state.rotY) * 8
+                );
+            } else {
+                camera.position.x += (state.x - camera.position.x) * 8 * dt;
+                camera.position.y += (30 - camera.position.y) * 8 * dt;
+                camera.position.z += (state.z + 22 - camera.position.z) * 8 * dt;
+                camera.lookAt(state.x, 0.9, state.z - 1.5);
+            }
+
+            projectLabelToScreen(localNameLabel, state.x, -0.35, state.z + 1.4, ((state.hp + state.shield) / (state.maxHp + state.maxShield)) * 100);
+
+            // 2. UPDATE SPEEDBALL AI HAMSTER BOTS
+            aiBots.forEach((bot) => {
+                bot.retargetTimer -= dt;
+                if (bot.retargetTimer <= 0) {
+                    bot.retargetTimer = 1.4 + Math.random() * 1.8;
+                    const angle = Math.random() * Math.PI * 2;
+                    bot.targetX = state.x + Math.cos(angle) * (8 + Math.random() * 13);
+                    bot.targetZ = state.z + Math.sin(angle) * (8 + Math.random() * 13);
+                }
+
+                const dx = bot.targetX - bot.x;
+                const dz = bot.targetZ - bot.z;
+                const dist = Math.hypot(dx, dz);
+                const botSpeed = isInsidePondZone(bot.x, bot.z) ? 11.5 : 8.6;
+
+                if (dist > 0.6) {
+                    bot.vx = (dx / dist) * botSpeed;
+                    bot.vz = (dz / dist) * botSpeed;
+                    bot.x += bot.vx * dt;
+                    bot.z += bot.vz * dt;
+                    resolveObstacleCollisions(bot);
+                } else {
+                    bot.vx = 0;
+                    bot.vz = 0;
+                }
+
+                bot.rotY = Math.atan2(state.x - bot.x, state.z - bot.z);
+                bot.mesh.position.set(bot.x, 0, bot.z);
+                animateHamsterWalk(bot.mesh, Math.hypot(bot.vx, bot.vz), dt, bot.rotY);
+
+                projectLabelToScreen(bot.labelEl, bot.x, -0.35, bot.z + 1.4, ((bot.hp + bot.shield) / 200) * 100);
+
+                if (state.screen === 'playing') {
+                    bot.shootCooldown -= dt;
+                    const distToPlayer = Math.hypot(state.x - bot.x, state.z - bot.z);
+                    if (bot.shootCooldown <= 0 && distToPlayer < 27) {
+                        bot.shootCooldown = 1.35 + Math.random() * 1.3;
+                        const leadX = state.x + (Math.random() - 0.5) * 3.2;
+                        const leadZ = state.z + (Math.random() - 0.5) * 3.2;
+                        firePaintball(bot.id, bot.name, bot.x, bot.z, leadX, leadZ, 0, 0.32);
+                    }
+                }
+            });
+
+            // 3. UPDATE REMOTE MULTIPLAYER HAMSTERS
+            remotePlayersData.forEach((rData, uid) => {
+                let rObj = remoteMeshes.get(uid);
+                if (!rObj) {
+                    const mesh = build3DHamsterMesh(rData.skinIdx || 0);
+                    scene.add(mesh);
+                    const labelEl = createWorldNameLabel(rData.name || 'Hamster', false);
+                    rObj = { mesh, labelEl };
+                    remoteMeshes.set(uid, rObj);
+                }
+                rObj.mesh.position.x += ((rData.x || 0) - rObj.mesh.position.x) * 10 * dt;
+                rObj.mesh.position.z += ((rData.z || 0) - rObj.mesh.position.z) * 10 * dt;
+                rObj.mesh.userData.hamsterBallMesh.visible = !!rData.hamsterBall;
+                animateHamsterWalk(rObj.mesh, 4.5, dt, rData.rotY || 0);
+                projectLabelToScreen(rObj.labelEl, rObj.mesh.position.x, -0.35, rObj.mesh.position.z + 1.4, (((rData.hp || 100) + (rData.shield || 0)) / 200) * 100);
+            });
+
+            // 4. UPDATE PAINTBALL PROJECTILES & SURFACE-NORMAL SPLAT DECALS
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                const prevPos = p.mesh.position.clone();
+
+                p.age += dt;
+                p.vy -= p.gravity * dt;
+                p.mesh.position.x += p.vx * dt;
+                p.mesh.position.y += p.vy * dt;
+                p.mesh.position.z += p.vz * dt;
+
+                let hit = false;
+                let impactPos = p.mesh.position.clone();
+                let impactNormal = new THREE.Vector3(0, 1, 0);
+
+                // Raycast between prevPos and current position against splatTargets (bunkers, spools, ground)
+                const stepVec = p.mesh.position.clone().sub(prevPos);
+                const stepDist = stepVec.length();
+                if (stepDist > 0.001) {
+                    splatRaycaster.set(prevPos, stepVec.normalize());
+                    splatRaycaster.far = stepDist + p.radius;
+                    const hits = splatRaycaster.intersectObjects(splatTargets, false);
+                    if (hits.length > 0 && hits[0].face) {
+                        hit = true;
+                        impactPos.copy(hits[0].point);
+                        impactNormal.copy(hits[0].face.normal).transformDirection(hits[0].object.matrixWorld);
+                    }
+                }
+
+                // Fallback radial obstacle check
+                if (!hit) {
+                    for (const obs of obstacles) {
+                        if (p.mesh.position.y < (obs.h || 3.2)) {
+                            const dx = p.mesh.position.x - obs.x;
+                            const dz = p.mesh.position.z - obs.z;
+                            const d = Math.hypot(dx, dz);
+                            if (d < obs.r + p.radius) {
+                                hit = true;
+                                impactNormal.set(dx / (d || 1), 0.15, dz / (d || 1)).normalize();
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Check AI Bot hits
+                if (!hit && p.ownerId === 'local') {
+                    for (const bot of aiBots) {
+                        const hitRadius = p.isBomb ? 3.5 : 1.38;
+                        if (Math.hypot(p.mesh.position.x - bot.x, p.mesh.position.z - bot.z) < hitRadius) {
+                            hit = true;
+                            const dmg = p.damage + (Math.random() > 0.62 ? 75 : 0);
+                            if (bot.shield > 0) {
+                                const sDmg = Math.min(bot.shield, dmg);
+                                bot.shield -= sDmg;
+                                bot.hp -= (dmg - sDmg);
+                            } else {
+                                bot.hp -= dmg;
+                            }
+
+                            addPaintStainOnHamster(bot.mesh, p.color);
+                            spawnFloatingDamageNumber(bot.x, 2.7, bot.z, dmg);
+                            sfx.playSplat();
+
+                            if (bot.hp <= 0) {
+                                state.kos++;
+                                state.seeds += 45;
+                                triggerKnockoutAlert(bot.name);
+                                pushKillfeedItem(state.playerName, bot.name, p.color);
+                                updateHUD();
+                                bot.hp = 100;
+                                bot.shield = 100;
+                                bot.mesh.userData.coatStainsGroup.clear();
+                                const a = Math.random() * Math.PI * 2;
+                                bot.x = Math.cos(a) * 26;
+                                bot.z = Math.sin(a) * 18;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // Check Local Player hit by opponent paintball
+                if (!hit && p.ownerId !== 'local' && !state.isSpectator) {
+                    if (Math.hypot(p.mesh.position.x - state.x, p.mesh.position.z - state.z) < 1.32) {
+                        hit = true;
+                        if (state.hamsterBallActive) {
+                            spawnFloatingDamageNumber(state.x, 2.7, state.z, 0, 'DEFLECTED!');
+                        } else {
+                            const dmg = p.damage;
+                            if (state.shield > 0) {
+                                const sDmg = Math.min(state.shield, dmg);
+                                state.shield -= sDmg;
+                                state.hp -= (dmg - sDmg);
+                            } else {
+                                state.hp -= dmg;
+                            }
+                            addPaintStainOnHamster(localHamsterMesh, p.color);
+                            triggerVisorGoggleSplat(p.color);
+                            spawnFloatingDamageNumber(state.x, 2.7, state.z, dmg);
+                            sfx.playSplat();
+
+                            if (state.hp <= 0) {
+                                pushKillfeedItem(p.ownerName || 'Bot', state.playerName, p.color);
+                                state.hp = state.maxHp;
+                                state.shield = state.maxShield;
+                                localHamsterMesh.userData.coatStainsGroup.clear();
+                                state.x = -9;
+                                state.z = 5;
+                                spawnFloatingDamageNumber(state.x, 2.8, state.z, 0, 'RE-ENTERED PARK!');
+                            }
+                            updateHUD();
+                        }
+                    }
+                }
+
+                if (!hit && (p.mesh.position.y <= 0.12 || p.age > 3.0)) {
+                    hit = true;
+                    impactPos.y = 0.03;
+                    impactNormal.set(0, 1, 0);
+                }
+
+                if (hit) {
+                    createSurfacePaintSplat(impactPos, impactNormal, p.color, p.isBomb ? 2.2 : 1.0);
+                    spawnSplatBurstParticles(impactPos.x, Math.max(0.3, impactPos.y), impactPos.z, p.color, p.isBomb ? 24 : 12);
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // 5. UPDATE FLYING PAINT DROPLETS
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.life -= dt;
+                pt.vy -= 18 * dt;
+                pt.mesh.position.x += pt.vx * dt;
+                pt.mesh.position.y += pt.vy * dt;
+                pt.mesh.position.z += pt.vz * dt;
+                if (pt.life <= 0 || pt.mesh.position.y < 0) {
+                    scene.remove(pt.mesh);
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 6. UPDATE PARK POWER-UP CRATES
+            for (let i = powerupCrates.length - 1; i >= 0; i--) {
+                const crate = powerupCrates[i];
+                crate.mesh.rotation.y += dt * 2.2;
+                crate.mesh.position.y = 1.15 + Math.sin(now * 0.004 + i) * 0.25;
+
+                if (Math.hypot(state.x - crate.x, state.z - crate.z) < 1.95) {
+                    if (crate.type === 'seeds') state.seeds += 50;
+                    if (crate.type === 'paint') {
+                        state.ammo = state.maxAmmo;
+                        state.reserveAmmo += 16;
+                    }
+                    if (crate.type === 'shield') {
+                        state.shield = Math.min(state.maxShield, state.shield + 60);
+                    }
+                    sfx.playCorrect();
+                    spawnFloatingDamageNumber(crate.x, 2.5, crate.z, 0, crate.label);
+                    scene.remove(crate.mesh);
+                    powerupCrates.splice(i, 1);
+                    updateHUD();
+                    setTimeout(spawnPowerupCrate, 6000);
+                }
+            }
+
+            renderParkRadar();
+            broadcastLocalPlayerState();
+            renderer.render(scene, camera);
+        }
+
+        // =========================================================================
+        // 12. UI EVENT LISTENERS, QR GENERATOR, TRIVIA & PRO SHOP
+        // =========================================================================
+        function renderSkinSelector() {
+            const grid = document.getElementById('skin-selector-grid');
+            grid.innerHTML = '';
+            HAMSTER_SKINS.forEach((skin, idx) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `h-12 rounded-xl border-2 flex flex-col items-center justify-center transition ${
+                    idx === state.selectedSkinIdx
+                        ? 'border-indigo-700 bg-indigo-50 scale-105 shadow-sm'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`;
+                btn.innerHTML = `
+                    <span class="w-6 h-6 rounded-full border-2 border-black/30 shadow-xs flex items-center justify-center" style="background:${skin.badgeBg}">
+                        <span class="w-3 h-1.5 rounded-full" style="background:#${skin.visorColor.toString(16).padStart(6, '0')}"></span>
+                    </span>
+                `;
+                btn.onclick = () => {
+                    state.selectedSkinIdx = idx;
+                    document.getElementById('selected-skin-name').textContent = skin.name;
+                    scene.remove(localHamsterMesh);
+                    localHamsterMesh = build3DHamsterMesh(idx);
+                    scene.add(localHamsterMesh);
+                    renderSkinSelector();
+                    updateHUD();
+                };
+                grid.appendChild(btn);
+            });
+        }
+
+        function renderRoomQRCode(codeStr) {
+            const containerEl = document.getElementById('qr-svg-container');
+            const size = 21;
+            let seed = 0;
+            for (let i = 0; i < codeStr.length; i++) seed = (seed * 31 + codeStr.charCodeAt(i)) % 100000;
+
+            const isFinder = (r, c) =>
+                (r < 7 && c < 7) || (r < 7 && c >= size - 7) || (r >= size - 7 && c < 7);
+
+            let rects = '';
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    let filled = false;
+                    if (isFinder(r, c)) {
+                        const lr = r >= size - 7 ? r - (size - 7) : r;
+                        const lc = c >= size - 7 ? c - (size - 7) : c;
+                        if (lr === 0 || lr === 6 || lc === 0 || lc === 6 || (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4)) {
+                            filled = true;
+                        }
+                    } else {
+                        seed = (seed * 16807 + 11) % 2147483647;
+                        filled = (seed % 10) < 5;
+                    }
+                    if (filled) {
+                        rects += `<rect x="${c * 10}" y="${r * 10}" width="10" height="10" fill="#000"/>`;
+                    }
+                }
+            }
+            containerEl.innerHTML = `<svg viewBox="0 0 210 210" class="w-full h-full">${rects}</svg>`;
+        }
+
+        function updateLobbyPlayerCount() {
+            const total = 1 + aiBots.length + remotePlayersData.size;
+            document.getElementById('lobby-status-text').textContent = `Waiting for players... (${total} Hamsters in Park)`;
+        }
+
+        function copyTextToClipboard(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+        }
+
+        function toggleCameraPerspective() {
+            state.cameraMode = state.cameraMode === 'overhead' ? 'shoulder' : 'overhead';
+            const label = document.getElementById('camera-mode-label');
+            if (label) {
+                label.textContent = state.cameraMode === 'overhead' ? 'View: Tactical' : 'View: Action 3D';
+            }
+            sfx.playCorrect();
+        }
+
+        // Trivia Question Modal
+        let currentQuestionIdx = 0;
+        function openQuestionModal() {
+            const modal = document.getElementById('question-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            loadNextTriviaQuestion();
+        }
+
+        function closeQuestionModal() {
+            const modal = document.getElementById('question-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function loadNextTriviaQuestion() {
+            const qObj = TRIVIA_QUESTIONS[currentQuestionIdx % TRIVIA_QUESTIONS.length];
+            currentQuestionIdx++;
+            document.getElementById('q-category-badge').textContent = qObj.cat;
+            document.getElementById('q-prompt-text').textContent = qObj.q;
+            document.getElementById('q-feedback-banner').classList.add('hidden');
+
+            const indices = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+            const btnColors = [
+                'bg-[#e03131] hover:bg-[#c92a2a] border-[#a61e1e]',
+                'bg-[#1971c2] hover:bg-[#1864ab] border-[#124b82]',
+                'bg-[#f08c00] hover:bg-[#e67700] border-[#b86500]',
+                'bg-[#2f9e44] hover:bg-[#2b8a3e] border-[#1f6e2e]'
+            ];
+
+            const grid = document.getElementById('q-options-grid');
+            grid.innerHTML = '';
+            indices.forEach((optIdx, i) => {
+                const btn = document.createElement('button');
+                btn.className = `${btnColors[i]} text-white font-extrabold text-base p-4 rounded-xl border-b-4 shadow-md transition active:translate-y-0.5 text-left`;
+                btn.textContent = qObj.options[optIdx];
+                btn.onclick = () => {
+                    const banner = document.getElementById('q-feedback-banner');
+                    banner.classList.remove('hidden');
+                    if (optIdx === qObj.ans) {
+                        state.streak++;
+                        const bonusAmmo = 10 + Math.min(state.streak * 2, 10);
+                        const bonusSeeds = 35 + state.streak * 5;
+                        state.ammo = state.maxAmmo;
+                        state.reserveAmmo += bonusAmmo;
+                        state.bombs = Math.min(9, state.bombs + 1);
+                        if (state.streak % 2 === 0) state.airBunkers = Math.min(5, state.airBunkers + 1);
+                        state.seeds += bonusSeeds;
+                        sfx.playCorrect();
+                        banner.className = 'mt-4 p-3 rounded-xl font-black text-center text-white text-sm bg-emerald-600';
+                        banner.textContent = `DIRECT HIT! +${bonusAmmo} Paintballs, +1 Paint Bomb & +${bonusSeeds} Seeds!`;
+                        document.getElementById('q-streak-count').textContent = `${state.streak}x`;
+                        updateHUD();
+                        setTimeout(loadNextTriviaQuestion, 850);
+                    } else {
+                        state.streak = 0;
+                        sfx.playWrong();
+                        banner.className = 'mt-4 p-3 rounded-xl font-black text-center text-white text-sm bg-rose-600';
+                        banner.textContent = `Missed shot! Try the next question!`;
+                        document.getElementById('q-streak-count').textContent = `0x`;
+                        setTimeout(loadNextTriviaQuestion, 950);
+                    }
+                };
+                grid.appendChild(btn);
+            });
+        }
+
+        function renderShopModal() {
+            const grid = document.getElementById('shop-items-grid');
+            document.getElementById('shop-seeds-balance').textContent = state.seeds;
+            grid.innerHTML = '';
+
+            SHOP_UPGRADES.forEach((item) => {
+                const isMax = item.level >= item.maxLevel;
+                const card = document.createElement('div');
+                card.className = 'bg-slate-800 border border-white/10 rounded-xl p-4 flex flex-col justify-between gap-3';
+                card.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <div class="w-11 h-11 rounded-xl bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-amber-300 text-lg shrink-0">
+                            <i class="fa-solid ${item.icon}"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h4 class="font-black text-sm text-white">${item.name}</h4>
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300">Lv.${item.level}/${item.maxLevel}</span>
+                            </div>
+                            <p class="text-xs text-slate-300 mt-1">${item.desc}</p>
+                        </div>
+                    </div>
+                    <button class="buy-btn w-full py-2 rounded-lg font-extrabold text-xs transition ${
+                        isMax
+                            ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                            : state.seeds >= item.cost
+                            ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow'
+                            : 'bg-slate-700 text-slate-300'
+                    }">
+                        ${isMax ? 'MAXED OUT' : `Upgrade (${item.cost} Seeds)`}
+                    </button>
+                `;
+                card.querySelector('.buy-btn').onclick = () => {
+                    if (isMax || state.seeds < item.cost) {
+                        sfx.playWrong();
+                        return;
+                    }
+                    state.seeds -= item.cost;
+                    item.level++;
+                    item.cost = Math.round(item.cost * 1.35);
+                    if (item.id === 'maxAmmo') {
+                        state.maxAmmo += 8;
+                        state.ammo = state.maxAmmo;
+                    } else if (item.id === 'damage') {
+                        state.damageMultiplier += 0.25;
+                    } else if (item.id === 'speed') {
+                        state.speedMultiplier += 0.15;
+                    } else if (item.id === 'shield') {
+                        state.maxShield += 25;
+                        state.shield = state.maxShield;
+                    }
+                    sfx.playCorrect();
+                    updateHUD();
+                    renderShopModal();
+                };
+                grid.appendChild(card);
+            });
+        }
+
+        function renderLeaderboardModal() {
+            const list = document.getElementById('leaderboard-list');
+            document.getElementById('lb-room-code').textContent = state.roomCode;
+
+            const entries = [
+                { name: `${state.playerName} (You)`, kos: state.kos, seeds: state.seeds, isLocal: true }
+            ];
+            aiBots.forEach((b) => entries.push({ name: `${b.name} [Bot]`, kos: b.kos, seeds: b.seeds, isLocal: false }));
+            remotePlayersData.forEach((r) => entries.push({ name: r.name || 'Player', kos: r.kos || 0, seeds: r.seeds || 0, isLocal: false }));
+
+            entries.sort((a, b) => b.kos - a.kos || b.seeds - a.seeds);
+
+            list.innerHTML = entries
+                .map(
+                    (e, idx) => `
+                <div class="flex items-center justify-between px-4 py-2.5 rounded-xl ${
+                    e.isLocal ? 'bg-indigo-600/40 border border-lime-400' : 'bg-slate-800/90'
+                }">
+                    <div class="flex items-center gap-3">
+                        <span class="w-6 h-6 rounded-full bg-slate-950 font-black text-xs flex items-center justify-center text-amber-300">${idx + 1}</span>
+                        <span class="font-bold text-sm">${e.name}</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-xs font-extrabold">
+                        <span class="text-pink-400">${e.kos} Splats</span>
+                        <span class="text-amber-300">${e.seeds} Seeds</span>
+                    </div>
+                </div>
+            `
+                )
+                .join('');
+        }
+
+        function setupEventListeners() {
+            renderSkinSelector();
+
+            document.getElementById('random-code-btn').onclick = () => {
+                document.getElementById('room-code-input').value = String(Math.floor(100000 + Math.random() * 900000));
+            };
+
+            document.getElementById('join-game-btn').onclick = () => {
+                state.playerName = document.getElementById('player-name-input').value.trim() || 'Teacher Jan';
+                state.roomCode = document.getElementById('room-code-input').value.trim() || '370741';
+
+                localNameLabel.querySelector('.name-text').textContent = state.playerName;
+                document.getElementById('lobby-big-code').textContent = state.roomCode;
+                document.getElementById('hud-code-text').textContent = state.roomCode;
+                renderRoomQRCode(state.roomCode);
+
+                document.getElementById('join-screen').classList.add('hidden');
+                const lobby = document.getElementById('lobby-overlay');
+                lobby.classList.remove('hidden');
+                lobby.classList.add('flex');
+                document.getElementById('aim-reticle').classList.remove('hidden');
+
+                state.screen = 'lobby';
+                sfx.playCorrect();
+                updateHUD();
+                subscribeToRoomPlayers();
+            };
+
+            const toggleQR = () => document.getElementById('lobby-qr-modal').classList.toggle('hidden');
+            document.getElementById('lobby-big-code').onclick = toggleQR;
+            document.getElementById('lobby-qr-toggle-icon').onclick = toggleQR;
+
+            document.getElementById('copy-join-link-btn').onclick = () => {
+                copyTextToClipboard(`Room Code: ${state.roomCode}`);
+                document.getElementById('copy-link-text').textContent = `Copied Code ${state.roomCode}!`;
+                setTimeout(() => {
+                    document.getElementById('copy-link-text').textContent = 'Copy Join Link';
+                }, 1800);
+            };
+
+            const addBotHandler = () => {
+                spawnAIBot(aiBots.length);
+                sfx.playMarkerShot();
+            };
+            document.getElementById('lobby-add-bot-btn').onclick = addBotHandler;
+            document.getElementById('lobby-add-bot-icon').onclick = addBotHandler;
+
+            document.getElementById('spectator-toggle-btn').onclick = (e) => {
+                state.isSpectator = !state.isSpectator;
+                localHamsterMesh.visible = !state.isSpectator;
+                e.currentTarget.textContent = state.isSpectator
+                    ? 'Mode: Spectator (Click to Play)'
+                    : 'Mode: Active Player (Click to Spectate)';
+            };
+
+            document.getElementById('start-match-btn').onclick = () => {
+                document.getElementById('lobby-overlay').classList.add('hidden');
+                document.getElementById('lobby-overlay').classList.remove('flex');
+                const hud = document.getElementById('gameplay-hud');
+                hud.classList.remove('hidden');
+                hud.classList.add('flex');
+                state.screen = 'playing';
+                sfx.playKO();
+                updateHUD();
+            };
+
+            document.getElementById('back-to-lobby-btn').onclick = () => {
+                document.getElementById('gameplay-hud').classList.add('hidden');
+                document.getElementById('gameplay-hud').classList.remove('flex');
+                const lobby = document.getElementById('lobby-overlay');
+                lobby.classList.remove('hidden');
+                lobby.classList.add('flex');
+                state.screen = 'lobby';
+            };
+
+            document.getElementById('toggle-camera-btn').onclick = toggleCameraPerspective;
+
+            document.getElementById('hud-room-code-badge').onclick = () => {
+                copyTextToClipboard(state.roomCode);
+                document.getElementById('hud-code-text').textContent = 'COPIED!';
+                setTimeout(() => {
+                    document.getElementById('hud-code-text').textContent = state.roomCode;
+                }, 1200);
+            };
+
+            document.getElementById('answer-questions-btn').onclick = openQuestionModal;
+            document.getElementById('close-question-modal-btn').onclick = closeQuestionModal;
+            document.getElementById('refill-ammo-btn').onclick = refillWeaponMagazine;
+
+            document.getElementById('open-shop-btn').onclick = () => {
+                renderShopModal();
+                const m = document.getElementById('shop-modal');
+                m.classList.remove('hidden');
+                m.classList.add('flex');
+            };
+            document.getElementById('close-shop-modal-btn').onclick = () => {
+                const m = document.getElementById('shop-modal');
+                m.classList.add('hidden');
+                m.classList.remove('flex');
+            };
+
+            document.getElementById('open-leaderboard-btn').onclick = () => {
+                renderLeaderboardModal();
+                const m = document.getElementById('leaderboard-modal');
+                m.classList.remove('hidden');
+                m.classList.add('flex');
+            };
+            document.getElementById('close-leaderboard-modal-btn').onclick = () => {
+                const m = document.getElementById('leaderboard-modal');
+                m.classList.add('hidden');
+                m.classList.remove('flex');
+            };
+
+            const toggleAudio = () => {
+                sfx.enabled = !sfx.enabled;
+                const icon = document.getElementById('sound-icon');
+                icon.className = sfx.enabled ? 'fa-solid fa-volume-high text-sm' : 'fa-solid fa-volume-xmark text-sm';
+            };
+            document.getElementById('toggle-sound-btn').onclick = toggleAudio;
+            document.getElementById('lobby-audio-toggle-icon').onclick = toggleAudio;
+
+            document.querySelectorAll('.loadout-slot').forEach((slotEl) => {
+                slotEl.onclick = () => selectLoadoutSlot(Number(slotEl.dataset.slot));
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+                state.keys[e.code] = true;
+
+                if (e.code === 'Digit1') selectLoadoutSlot(0);
+                if (e.code === 'Digit2') selectLoadoutSlot(1);
+                if (e.code === 'Digit3') selectLoadoutSlot(2);
+                if (e.code === 'Digit4') selectLoadoutSlot(3);
+                if (e.code === 'Digit5') selectLoadoutSlot(4);
+                if (e.code === 'KeyV') toggleCameraPerspective();
+                if (e.code === 'KeyQ') {
+                    const isHidden = document.getElementById('question-modal').classList.contains('hidden');
+                    if (isHidden) openQuestionModal();
+                    else closeQuestionModal();
+                }
+                if (e.code === 'KeyR') refillWeaponMagazine();
+                if (e.code === 'Space' && state.screen !== 'join') {
+                    const angle = Math.atan2(state.aimWorldX - state.x, state.aimWorldZ - state.z);
+                    state.vx += Math.sin(angle) * 15;
+                    state.vz += Math.cos(angle) * 15;
+                }
+                if (e.code === 'Escape') {
+                    closeQuestionModal();
+                    document.getElementById('shop-modal').classList.add('hidden');
+                    document.getElementById('leaderboard-modal').classList.add('hidden');
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                state.keys[e.code] = false;
+            });
+
+            const reticleEl = document.getElementById('aim-reticle');
+            window.addEventListener('mousemove', (e) => {
+                state.mouseScreenX = e.clientX;
+                state.mouseScreenY = e.clientY;
+                reticleEl.style.left = `${e.clientX}px`;
+                reticleEl.style.top = `${e.clientY}px`;
+            });
+
+            container.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    state.mouseDown = true;
+                    tryLocalPlayerFire();
+                }
+            });
+            window.addEventListener('mouseup', () => {
+                state.mouseDown = false;
+            });
+
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 0) {
+                    state.mouseScreenX = e.touches[0].clientX;
+                    state.mouseScreenY = e.touches[0].clientY;
+                    updateAimPointFromMouse();
+                    tryLocalPlayerFire();
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            setInterval(() => {
+                if (state.screen === 'playing' && state.matchSecondsRemaining > 0) {
+                    state.matchSecondsRemaining--;
+                    const m = String(Math.floor(state.matchSecondsRemaining / 60)).padStart(2, '0');
+                    const s = String(state.matchSecondsRemaining % 60).padStart(2, '0');
+                    document.getElementById('match-timer').textContent = `${m}:${s}`;
+                }
+            }, 1000);
+        }
+
+        window.onload = function () {
+            createOutdoorPaintballPark();
+            spawnAIBot(0);
+            spawnAIBot(1);
+            spawnAIBot(2);
+            spawnAIBot(3);
+            setupEventListeners();
+            initFirebaseMultiplayer();
+            updateHUD();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>

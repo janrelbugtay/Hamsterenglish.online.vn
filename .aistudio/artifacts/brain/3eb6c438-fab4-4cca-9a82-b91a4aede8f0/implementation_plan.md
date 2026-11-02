@@ -1,101 +1,106 @@
-# Authentication Choice Hub & Red Light Movement Overhaul
+# Implementation Plan: Homework Creation, Management, and Analytics Proof
 
-This plan implements a clear 3-way authentication choice architecture (Google Sign-In, Non-Google Email/Password Account Creation, and Frictionless Guest Access), while resolving the Red Light, Green Light player orientation and movement bugs.
+Replace the secondary "Play in Mystery Box" option in My Games with a full **Create Homework** flow, build out the **Homework Section** with interactive Teacher/Student modes, and provide verifiable **Completion Analytics** (duration spent, score %, accuracy, and question breakdown).
 
 ---
 
-## User Review & Critical Decisions
+## User Review Required
 
 > [!IMPORTANT]
-> The application will provide three explicit, equal-prominence pathways so users are never forced to authenticate:
-> 1. **Google Sign-In**: Quick one-click sign in using their Google account.
-> 2. **Non-Google Account Creation**: Complete email/password registration with display name, allowing users to create and manage an independent account without any Google dependency.
-> 3. **No Sign-In Required (Guest Mode)**: Immediate access to all games, classrooms, and tools without registering or entering any credentials. Local data and progress are automatically saved to browser storage.
-
-In parallel, the plan addresses the Red Light, Green Light game behavior:
-- **Player Orientation**: Characters will face strictly towards the doll, never backwards towards the camera.
-- **Standby Wandering Fix**: Turn off standby random pacing during Red Light mode so players do not wander back and forth.
-- **Stop-and-Go Gameplay**: Players sprint forward during Green Light, freeze immediately on doll turns, and resume moving forward from their exact position until they cross the finish line to safety.
+> - **Game Card Menu**: "Play in Mystery Box (1-30)" in `GamesLibrary.tsx` will be replaced with **"Create Homework"** (with homework assignment icon).
+> - **Dual Access**: Students can launch homework directly from the **Homework Tab** or via a **Shareable Code / Direct Link** (`#homework-[pin]`).
+> - **Proof of Completion**: Every submission records exact completion timestamps, real time duration spent (minutes and seconds), accuracy percentage, and a question-by-question audit log.
 
 ---
 
-## 1. Overview & Core Concept
+## Proposed Architecture & Changes
 
-- **What It Does**:
-  - **Auth Choice Modal**: Redesigns `GoogleAuthModal.tsx` and the account entry flow into an "Authentication Choice Hub". Users can choose between:
-    - `Continue with Google` (Firebase Google OAuth)
-    - `Create Account (Email & Password)` / `Sign In (Email & Password)` with tabs for smooth toggling
-    - `Continue as Guest` / `Skip Sign-In` button prominently featured at the bottom and top
-  - **Red Light Player Direction & Physics**:
-    - Disables background standby wandering (`isStandbyActive = false`) during Red Light matches.
-    - Orients all character models with `lookAt(char.position.x, 1, -30)` so their faces and bodies face forward towards the giant doll.
-    - Ensures running only progresses forward toward the finish line (`z <= -18`), maintaining position across Green/Red Light stop-and-go cycles.
-
----
-
-## 2. User Experience & Visual Design
-
-### Auth Choice Modal Layout
-```
-┌────────────────────────────────────────────────────────┐
-│  Choose How to Play                  [✕ Close]         │
-│  Sign in to sync your progress, or play immediately.  │
-│                                                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  [G] Continue with Google                        │  │
-│  └──────────────────────────────────────────────────┘  │
-│                                                        │
-│  ─────── OR CREATE AN INDEPENDENT ACCOUNT ───────     │
-│                                                        │
-│  [ Sign In ]   [ Create Account ] (Tabs)               │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │ Name: [ Your Name / Nickname ]                   │  │
-│  │ Email: [ username@domain.com ]                   │  │
-│  │ Password: [ ••••••••••• ]                        │  │
-│  │ [ Create Account / Sign In Button ]              │  │
-│  └──────────────────────────────────────────────────┘  │
-│                                                        │
-│  ─────── NO ACCOUNT NEEDED ───────────────────────     │
-│                                                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  ⚡ Continue as Guest (No Sign-In Required)        │  │
-│  └──────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
-```
-
-### Red Light, Green Light Movement
-- **Start of Round**: All contestants spawn behind the starting line facing the doll (`z = -22`).
-- **Green Light**: Players sprint straight forward (`z -= step`).
-- **Doll Turning / Red Light**: Players brake to a complete stop and freeze in place. Any caught movers are targeted.
-- **Next Green Light**: Players resume sprinting straight forward from their exact frozen positions.
-- **Finish Line Crossing**: Once `z <= -18` (crossing the yellow line), the player is marked `✓ SAFE` and celebrates in the safe zone.
+### 1. My Games Menu: "Create Homework" Modal
+- **File**: `src/views/GamesLibrary.tsx`
+- In the game card 3-dots dropdown menu, replace `Play in Mystery Box (1-30)` with `Create Homework`.
+- When clicked, opens a **Create Homework Assignment Modal** pre-filled with the selected game's title, subject, and questions:
+  - **Assignment Title**: Editable title for the homework.
+  - **Target Class / Level**: Starters, Movers, Flyers, KET, PET, Grade 1-12.
+  - **Assigned Game Mode**: Select which game engine to run the homework in (Bubble Pop, Slap & Chop, Roller Coaster, Yoga Quiz, Mystery Box, Sumo, etc.).
+  - **Duration & Time Limit**: 5 min, 10 min, 15 min, 20 min, 30 min, or No Limit.
+  - **Due Date & Deadline**: Pick calendar date & time.
+  - **Mastery Target / Passing Score**: 60%, 70%, 80%, 90%, 100%.
+  - **Attempts Allowed**: 1, 3, or Unlimited.
+  - **Unique 6-Digit PIN & Share Link**: Instant share code generated for students.
+- Saves the assignment to Firestore (`homework_assignments`) with localStorage fallback.
+- Offers instant actions: "Copy Student Link", "View in Homework Dashboard", or "Done".
 
 ---
 
-## 3. Key Technical Decisions & Architecture
+### 2. Homework Hub: Teacher vs. Student Dual Modes
+- **File**: `src/views/Homework.tsx`
+- Upgrade the current placeholder into a dual-mode homework dashboard:
+  - **Top Bar Mode Switcher**:
+    - **Teacher View** (Assignments Manager, Class Overview & Analytics)
+    - **Student View** (My Assignments, Completed Tasks, and PIN Code Joiner)
 
-1. **Authentication Architecture**:
-   - `AuthContext.tsx` already supports `signInWithGoogle`, `signInWithEmail`, `signUpWithEmail`, and `signInAnonymously`.
-   - Update `GoogleAuthModal.tsx` to provide clear, dedicated tabs: "Sign In with Google", "Create Account / Email", and a prominent "Play as Guest (No Sign-In)" action.
-   - Non-Google accounts use Firebase Auth's `createUserWithEmailAndPassword` and `updateProfile`, storing user profile documents in Firestore `users/{uid}`.
-   - Guest mode creates an anonymous session or directly closes the modal with local storage persistence, ensuring zero friction.
-2. **Squid Game Red Light Bug Fixes (`SquidGamePicker.tsx`)**:
-   - In `spawnPlayers`: set `char.rotation.y = Math.PI` (or `char.lookAt(char.position.x, 1, -50)`) so the 3D model face correctly looks forward at the doll.
-   - In `playRedLightRound`: explicitly call `this.stopStandbyMode()` so `updateStandbyMovement` does not randomly wander players back and forth.
-   - Ensure the Green Light loop moves players strictly forward along negative Z towards the yellow line.
+#### A. Teacher View
+- **KPI Summary Row**:
+  - Total Active Assignments
+  - Total Submissions Received
+  - Average Class Accuracy %
+  - Average Time Spent (e.g. `8m 45s`)
+- **Tab 1: Active & Past Assignments**:
+  - List of created homework assignments with game mode thumbnail, due date, duration limit, and submissions counter.
+  - Quick action buttons: **View Analytics**, **Copy PIN/Link**, **Preview Game**, **Close/Delete**.
+  - "+ New Assignment" button to create homework from any existing saved game.
+- **Tab 2: Analytics & Proof-of-Work Ledger**:
+  - Filterable by Assignment and Class.
+  - **Submissions Ledger Table**:
+    - Student Name & Class
+    - Submission Date & Time
+    - **Duration Spent**: Exact elapsed time (proves student actually spent 7m 12s on task rather than clicking through).
+    - **Score & Accuracy**: e.g., `92% · 23/25 Correct`.
+    - **Status**: Verified Passed ✓ / Incomplete.
+    - **Audit Action**: "View Verified Proof".
+  - **Student Proof Certificate & Audit Modal**:
+    - Digital proof badge with submission ID, start timestamp, finish timestamp, and total duration.
+    - Question-by-question breakdown showing: Question text, student's selected answer, correct answer, and correctness flag.
+    - Export / Print / Copy Proof Summary button.
+
+#### B. Student View
+- **Join by PIN Bar**: Quick input to enter a 6-digit code from teacher.
+- **Pending Assignments List**:
+  - Shows homework card with due date, time limit badge, target score, and questions count.
+  - "Start Assignment" button launching the homework gameplay session.
+- **Completed Homework History**:
+  - Shows completed tasks with score, duration spent, and "View My Proof of Completion" card.
 
 ---
 
-## 4. Implementation Steps
+### 3. Homework Player Session & Completion Recording
+- **Files**: `src/views/Homework.tsx`, `src/App.tsx`
+- When starting an assignment, launches the selected game with a **Homework Header**:
+  - Student Name badge, live assignment timer, and progress counter.
+- On game end:
+  - Records student name, duration in seconds, score, accuracy %, and question breakdown.
+  - Persists submission to Firestore (`homework_submissions`) + localStorage.
+  - Shows immediate student completion celebration with printable Proof Card.
 
-1. **Authentication Choice Hub**:
-   - Update `src/components/GoogleAuthModal.tsx` to present the three choices: Google, Email/Password account creation/login, and Instant Guest access.
-   - Add clear tab switching between "Sign In" and "Create Account" for non-Google users.
-   - Add a high-visibility "Continue as Guest" card button.
-2. **Red Light Direction & Rotation Fix**:
-   - In `src/views/SquidGamePicker.tsx`, ensure player character models are rotated to face the doll (`rotation.y = Math.PI` or forward lookAt).
-   - In `playRedLightRound`, call `this.stopStandbyMode()` immediately on start so standby wandering is killed.
-   - Enforce unidirectional forward movement (`z -= step`) during Green Light intervals.
-3. **Verification & Build**:
-   - Run `lint_applet` and `compile_applet` to confirm build validity.
-   - Verify dev server responsiveness.
+---
+
+### 4. Direct Link & URL Routing Support
+- Supports URL hash `#homework-[pin]` or `#homework` so teachers can directly send links to students.
+
+---
+
+## Verification Plan
+
+### Automated Verification
+1. **TypeScript Validation**: Run `lint_applet` (`tsc --noEmit`) to verify 0 errors.
+2. **Build Verification**: Run `compile_applet` to confirm the production build compiles cleanly.
+
+### Manual Verification
+1. Navigate to **My Games** (`#games` / My Games tab).
+2. Open the 3-dots menu on any game card -> verify "Play in Mystery Box" is replaced with **"Create Homework"**.
+3. Click **"Create Homework"** -> verify modal opens with pre-filled game title, duration picker, passing score, and 6-digit PIN.
+4. Save homework -> verify it appears in the **Homework Tab**.
+5. Switch to **Teacher View** -> verify assignment shows with 0 submissions and share options.
+6. Switch to **Student View** -> click "Start Assignment" (or enter PIN), complete questions.
+7. Return to **Teacher Analytics** -> verify new submission appears with student name, exact duration spent, accuracy %, and full question breakdown.
+8. Click "View Verified Proof" -> verify detailed audit certificate with timestamp and question breakdown.
