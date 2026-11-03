@@ -1,11 +1,35 @@
-/**
- * Superhero Hands Canvas Renderer for Camera Mode
- * Left Side: Spider-Man's Web-Shooter Hand (Red & Navy suit, Webbing, Web-Shooter)
- * Right Side: Thanos's Infinity Gauntlet (Golden Titan Armor, 6 Glowing Infinity Stones)
- *
- * Designed with aspect-ratio-aware object-cover mapping so hands perfectly align
- * with the user's real camera feed without any stretching, flattening, or distortion.
- */
+// ============================================================================
+// SUPERHERO & FANTASY HAND RENDERERS FOR BUBBLE POP
+// Anatomically proportioned, distortion-free 3D glove & gauntlet rendering
+// with accurate 1:1 mirrored coordinate mapping and natural finger articulation.
+// ============================================================================
+
+export type HandCharacter =
+  | 'spiderman'
+  | 'thanos'
+  | 'witch'
+  | 'hulk'
+  | 'ironman'
+  | 'frost'
+  | 'cyberpunk';
+
+export type HandCharacterType = HandCharacter;
+
+export interface SuperheroHandRenderOptions {
+  ctx: CanvasRenderingContext2D;
+  hands: Landmark[][];
+  cw: number;
+  ch: number;
+  isTwoPlayers?: boolean;
+  playerDetections?: Array<{
+    holdProgress: number;
+    matchedOptionIdx: number | null;
+  }>;
+  time?: number;
+  videoW?: number;
+  videoH?: number;
+  character?: HandCharacterType;
+}
 
 export interface Landmark {
   x: number;
@@ -13,639 +37,640 @@ export interface Landmark {
   z?: number;
 }
 
-export interface SuperheroHandOptions {
-  ctx: CanvasRenderingContext2D;
-  hands: Landmark[][];
-  cw: number;
-  ch: number;
-  isTwoPlayers: boolean;
-  playerDetections: Array<{
-    holdProgress: number;
-    matchedOptionIdx: number | null;
-  }>;
-  time?: number;
-  videoW?: number;
-  videoH?: number;
+export interface Point2D {
+  x: number;
+  y: number;
 }
 
 /**
- * Aspect-ratio-aware coordinate projection matching CSS `object-cover`.
- * Converts normalized video landmarks (0..1) to isotropic canvas pixel coordinates.
+ * Convert normalized landmark [0..1] (already mirrored in x by onHandsResults/onFaceResults)
+ * to canvas pixel coordinates, accounting for object-cover aspect ratio scaling.
  */
 export function toPx(
-  lm: Landmark,
+  pt: Landmark,
   cw: number,
   ch: number,
   videoW = 1280,
   videoH = 720
-): { x: number; y: number } {
-  const vW = videoW > 0 ? videoW : 1280;
-  const vH = videoH > 0 ? videoH : 720;
-  const videoAspect = vW / vH;
-  const canvasAspect = cw / (ch || 1);
-
-  if (canvasAspect > videoAspect) {
-    // Canvas is wider than video: scale to fit width, cropped vertically
-    const renderedH = cw / videoAspect;
-    const offsetY = (ch - renderedH) / 2;
+): Point2D {
+  if (!videoW || !videoH || videoW <= 0 || videoH <= 0) {
     return {
-      x: lm.x * cw,
-      y: lm.y * renderedH + offsetY,
-    };
-  } else {
-    // Canvas is taller than video: scale to fit height, cropped horizontally
-    const renderedW = ch * videoAspect;
-    const offsetX = (cw - renderedW) / 2;
-    return {
-      x: lm.x * renderedW + offsetX,
-      y: lm.y * ch,
+      x: pt.x * cw,
+      y: pt.y * ch,
     };
   }
-}
+  const scale = Math.max(cw / videoW, ch / videoH);
+  const drawW = videoW * scale;
+  const drawH = videoH * scale;
+  const offsetX = (cw - drawW) / 2;
+  const offsetY = (ch - drawH) / 2;
 
-/** Euclidean distance between two pixel points */
-export function distPx(p1: { x: number; y: number }, p2: { x: number; y: number }) {
-  return Math.hypot(p1.x - p2.x, p1.y - p2.y);
-}
-
-/** Interpolate between two pixel points */
-export function lerpPx(p1: { x: number; y: number }, p2: { x: number; y: number }, t: number) {
   return {
-    x: p1.x + (p2.x - p1.x) * t,
-    y: p1.y + (p2.y - p1.y) * t,
+    x: pt.x * drawW + offsetX,
+    y: pt.y * drawH + offsetY,
+  };
+}
+
+export function distPx(a: Point2D, b: Point2D): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function lerpPx(a: Point2D, b: Point2D, t: number): Point2D {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  };
+}
+
+interface HandAnatomy {
+  pts: Point2D[];
+  wrist: Point2D;
+  middleKnuckle: Point2D;
+  palmCenter: Point2D;
+  palmScale: number;
+  fingerWidth: number;
+  armAngle: number;
+  dir: Point2D;
+  perp: Point2D;
+  thumbSign: number;
+  wristThumb: Point2D;
+  wristPinky: Point2D;
+  cuffBaseThumb: Point2D;
+  cuffBasePinky: Point2D;
+  cuffCenter: Point2D;
+}
+
+const FINGER_CHAINS: number[][] = [
+  [1, 2, 3, 4],     // Thumb
+  [5, 6, 7, 8],     // Index
+  [9, 10, 11, 12],  // Middle
+  [13, 14, 15, 16], // Ring
+  [17, 18, 19, 20], // Pinky
+];
+
+/**
+ * Computes distortion-free anatomical metrics for a 21-landmark hand.
+ */
+function computeHandAnatomy(
+  hand: Landmark[],
+  cw: number,
+  ch: number,
+  videoW: number,
+  videoH: number,
+  thicknessMultiplier = 1.0
+): HandAnatomy {
+  const pts = hand.map((p) => toPx(p, cw, ch, videoW, videoH));
+  const wrist = pts[0];
+
+  // Knuckle arch centroid (index, middle, ring, pinky MCPs)
+  const knuckleMid = {
+    x: (pts[5].x + pts[9].x + pts[13].x + pts[17].x) * 0.25,
+    y: (pts[5].y + pts[9].y + pts[13].y + pts[17].y) * 0.25,
+  };
+
+  const palmLength = distPx(wrist, pts[9]);
+  const knuckleSpan = distPx(pts[5], pts[17]);
+
+  // Balanced anatomical scale clamped so close-up hands never explode
+  const maxAllowedScale = Math.max(48, Math.min(cw, ch) * 0.28);
+  const rawScale = Math.max(palmLength * 0.88, knuckleSpan * 1.08);
+  const palmScale = Math.max(24, Math.min(maxAllowedScale, rawScale));
+
+  const palmCenter = {
+    x: wrist.x * 0.42 + knuckleMid.x * 0.48 + pts[2].x * 0.1,
+    y: wrist.y * 0.42 + knuckleMid.y * 0.48 + pts[2].y * 0.1,
+  };
+
+  const armAngle = Math.atan2(knuckleMid.y - wrist.y, knuckleMid.x - wrist.x);
+  const dir = { x: Math.cos(armAngle), y: Math.sin(armAngle) };
+  const perp = { x: -dir.y, y: dir.x };
+
+  // Determine which side of `perp` the thumb (landmark 5 / 2) lies on
+  const toThumbX = pts[5].x - pts[17].x;
+  const toThumbY = pts[5].y - pts[17].y;
+  const dot = toThumbX * perp.x + toThumbY * perp.y;
+  const thumbSign = dot >= 0 ? 1 : -1;
+
+  // Wide anatomical wrist heel (prevents sharp V-point diamond distortion)
+  const wristHalfW = Math.max(palmScale * 0.4, Math.min(palmScale * 0.58, knuckleSpan * 0.46)) * thicknessMultiplier;
+  const wristThumb = {
+    x: wrist.x + perp.x * thumbSign * wristHalfW * 0.92,
+    y: wrist.y + perp.y * thumbSign * wristHalfW * 0.92,
+  };
+  const wristPinky = {
+    x: wrist.x - perp.x * thumbSign * wristHalfW * 0.96,
+    y: wrist.y - perp.y * thumbSign * wristHalfW * 0.96,
+  };
+
+  const cuffLen = palmScale * 0.42;
+  const cuffCenter = {
+    x: wrist.x - dir.x * cuffLen * 0.5,
+    y: wrist.y - dir.y * cuffLen * 0.5,
+  };
+  const cuffBaseThumb = {
+    x: wristThumb.x - dir.x * cuffLen + perp.x * thumbSign * (wristHalfW * 0.06),
+    y: wristThumb.y - dir.y * cuffLen + perp.y * thumbSign * (wristHalfW * 0.06),
+  };
+  const cuffBasePinky = {
+    x: wristPinky.x - dir.x * cuffLen - perp.x * thumbSign * (wristHalfW * 0.06),
+    y: wristPinky.y - dir.y * cuffLen - perp.y * thumbSign * (wristHalfW * 0.06),
+  };
+
+  const fingerWidth = Math.max(7, Math.min(palmScale * 0.25 * thicknessMultiplier, 25 * thicknessMultiplier));
+
+  return {
+    pts,
+    wrist,
+    middleKnuckle: pts[9],
+    palmCenter,
+    palmScale,
+    fingerWidth,
+    armAngle,
+    dir,
+    perp,
+    thumbSign,
+    wristThumb,
+    wristPinky,
+    cuffBaseThumb,
+    cuffBasePinky,
+    cuffCenter,
   };
 }
 
 /**
- * Draw Spider-Man's Hand (Left Side / Player 1)
- * High-tech comic-accurate red glove, curved web grid, navy side plates,
- * silver web-shooter at wrist, and live web-shooting effects on lock-in.
+ * Traces a smooth, organic, rounded glove palm contour using quadratic curves.
  */
+function traceSmoothPalmPath(ctx: CanvasRenderingContext2D, h: HandAnatomy) {
+  const { pts, wrist, wristThumb, wristPinky, palmCenter, perp, thumbSign, dir, palmScale } = h;
+
+  const pad = palmScale * 0.1;
+  const p1Out = {
+    x: pts[1].x + perp.x * thumbSign * pad * 0.85,
+    y: pts[1].y + perp.y * thumbSign * pad * 0.85,
+  };
+  const p2Out = {
+    x: pts[2].x + perp.x * thumbSign * pad * 0.45,
+    y: pts[2].y + perp.y * thumbSign * pad * 0.45,
+  };
+  const webSaddle = {
+    x: (pts[2].x + pts[5].x) * 0.5 + (palmCenter.x - (pts[2].x + pts[5].x) * 0.5) * 0.25,
+    y: (pts[2].y + pts[5].y) * 0.5 + (palmCenter.y - (pts[2].y + pts[5].y) * 0.5) * 0.25,
+  };
+  const p5Top = {
+    x: pts[5].x + dir.x * pad * 0.45 + perp.x * thumbSign * pad * 0.35,
+    y: pts[5].y + dir.y * pad * 0.45 + perp.y * thumbSign * pad * 0.35,
+  };
+  const p9Top = {
+    x: pts[9].x + dir.x * pad * 0.55,
+    y: pts[9].y + dir.y * pad * 0.55,
+  };
+  const p13Top = {
+    x: pts[13].x + dir.x * pad * 0.5,
+    y: pts[13].y + dir.y * pad * 0.5,
+  };
+  const p17Out = {
+    x: pts[17].x + dir.x * pad * 0.35 - perp.x * thumbSign * pad * 0.75,
+    y: pts[17].y + dir.y * pad * 0.35 - perp.y * thumbSign * pad * 0.75,
+  };
+  const pinkyEdgeMid = {
+    x: (p17Out.x + wristPinky.x) * 0.5 - perp.x * thumbSign * pad * 0.8,
+    y: (p17Out.y + wristPinky.y) * 0.5 - perp.y * thumbSign * pad * 0.8,
+  };
+  const wristHeelCtrl = {
+    x: wrist.x - dir.x * pad * 0.95,
+    y: wrist.y - dir.y * pad * 0.95,
+  };
+
+  const startPt = lerpPx(wristThumb, p1Out, 0.5);
+
+  ctx.beginPath();
+  ctx.moveTo(startPt.x, startPt.y);
+  ctx.quadraticCurveTo(p1Out.x, p1Out.y, p2Out.x, p2Out.y);
+  ctx.quadraticCurveTo(webSaddle.x, webSaddle.y, p5Top.x, p5Top.y);
+  ctx.quadraticCurveTo(lerpPx(p5Top, p9Top, 0.5).x, lerpPx(p5Top, p9Top, 0.5).y, p9Top.x, p9Top.y);
+  ctx.quadraticCurveTo(lerpPx(p9Top, p13Top, 0.5).x, lerpPx(p9Top, p13Top, 0.5).y, p13Top.x, p13Top.y);
+  ctx.quadraticCurveTo(lerpPx(p13Top, p17Out, 0.5).x, lerpPx(p13Top, p17Out, 0.5).y, p17Out.x, p17Out.y);
+  ctx.quadraticCurveTo(pinkyEdgeMid.x, pinkyEdgeMid.y, wristPinky.x, wristPinky.y);
+  ctx.quadraticCurveTo(wristHeelCtrl.x, wristHeelCtrl.y, wristThumb.x, wristThumb.y);
+  ctx.quadraticCurveTo(wristThumb.x, wristThumb.y, startPt.x, startPt.y);
+  ctx.closePath();
+}
+
+/**
+ * Traces a rounded wristband / gauntlet cuff anchored cleanly behind the wrist heel.
+ */
+function traceWristCuffPath(ctx: CanvasRenderingContext2D, h: HandAnatomy) {
+  const { wristThumb, wristPinky, cuffBasePinky, cuffBaseThumb, dir, palmScale } = h;
+  const ctrlTop = {
+    x: (wristThumb.x + wristPinky.x) * 0.5 + dir.x * palmScale * 0.05,
+    y: (wristThumb.y + wristPinky.y) * 0.5 + dir.y * palmScale * 0.05,
+  };
+  const ctrlBottom = {
+    x: (cuffBaseThumb.x + cuffBasePinky.x) * 0.5 - dir.x * palmScale * 0.07,
+    y: (cuffBaseThumb.y + cuffBasePinky.y) * 0.5 - dir.y * palmScale * 0.07,
+  };
+
+  ctx.beginPath();
+  ctx.moveTo(wristThumb.x, wristThumb.y);
+  ctx.quadraticCurveTo(ctrlTop.x, ctrlTop.y, wristPinky.x, wristPinky.y);
+  ctx.lineTo(cuffBasePinky.x, cuffBasePinky.y);
+  ctx.quadraticCurveTo(ctrlBottom.x, ctrlBottom.y, cuffBaseThumb.x, cuffBaseThumb.y);
+  ctx.closePath();
+}
+
+interface FingerStyleOptions {
+  outlineColor: string;
+  baseColor: string;
+  midColor?: string;
+  tipColor: string;
+  highlightColor: string;
+  jointColor?: string;
+  outlineExtra?: number;
+}
+
+/**
+ * Renders all 5 articulated fingers ON TOP of the palm so that both extended
+ * and bent/curled fingers (e.g. pointing one finger or making a fist) remain
+ * 100% visible and track every finger movement accurately.
+ */
+function drawSculptedFingers(
+  ctx: CanvasRenderingContext2D,
+  h: HandAnatomy,
+  style: FingerStyleOptions,
+  onFingerExtra?: (chain: number[], fIdx: number, baseW: number) => void
+) {
+  const { pts, fingerWidth } = h;
+  const outlineExtra = style.outlineExtra ?? 3.5;
+
+  FINGER_CHAINS.forEach((chain, fIdx) => {
+    const fScale = fIdx === 0 ? 1.06 : fIdx === 1 ? 0.96 : fIdx === 2 ? 1.0 : fIdx === 3 ? 0.94 : 0.82;
+    const baseW = fingerWidth * fScale;
+    const fPts = [pts[chain[0]], pts[chain[1]], pts[chain[2]], pts[chain[3]]];
+
+    // 1. Dark outer contour pass along the 3 phalanges
+    for (let i = 0; i < fPts.length - 1; i++) {
+      const p1 = fPts[i];
+      const p2 = fPts[i + 1];
+      const taper = 1.0 - i * 0.11;
+
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.strokeStyle = style.outlineColor;
+      ctx.lineWidth = baseW * taper + outlineExtra;
+      ctx.stroke();
+    }
+
+    // 2. Main colored 3D finger body pass
+    for (let i = 0; i < fPts.length - 1; i++) {
+      const p1 = fPts[i];
+      const p2 = fPts[i + 1];
+      const taper = 1.0 - i * 0.11;
+
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.strokeStyle =
+        i === 2
+          ? style.tipColor
+          : i === 1 && style.midColor
+            ? style.midColor
+            : style.baseColor;
+      ctx.lineWidth = baseW * taper;
+      ctx.stroke();
+
+      // 3D cylindrical specular highlight along the center of each phalanx
+      const inset1 = lerpPx(p1, p2, 0.2);
+      const inset2 = lerpPx(p1, p2, 0.8);
+      ctx.beginPath();
+      ctx.moveTo(inset1.x, inset1.y);
+      ctx.lineTo(inset2.x, inset2.y);
+      ctx.strokeStyle = style.highlightColor;
+      ctx.lineWidth = Math.max(1.4, baseW * taper * 0.26);
+      ctx.stroke();
+
+      // Subtle anatomical knuckle crease / armor seam at joints
+      if (i > 0 && style.jointColor) {
+        const jPt = fPts[i];
+        const segAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const segPerp = { x: -Math.sin(segAngle), y: Math.cos(segAngle) };
+        const halfSeam = baseW * taper * 0.34;
+
+        ctx.beginPath();
+        ctx.moveTo(jPt.x - segPerp.x * halfSeam, jPt.y - segPerp.y * halfSeam);
+        ctx.lineTo(jPt.x + segPerp.x * halfSeam, jPt.y + segPerp.y * halfSeam);
+        ctx.strokeStyle = style.jointColor;
+        ctx.lineWidth = Math.max(1.4, baseW * 0.11);
+        ctx.stroke();
+      }
+    }
+
+    if (onFingerExtra) {
+      onFingerExtra(chain, fIdx, baseW);
+    }
+  });
+}
+
+// ============================================================================
+// 1. SPIDER-MAN HAND
+// ============================================================================
 export function drawSpidermanHand(
   ctx: CanvasRenderingContext2D,
   hand: Landmark[],
   cw: number,
   ch: number,
-  isLocking: boolean,
-  holdProgress: number,
+  isLocking = false,
+  holdProgress = 0,
   time = performance.now(),
   videoW = 1280,
   videoH = 720
 ) {
   if (!hand || hand.length < 21) return;
 
-  const pts = hand.map(p => toPx(p, cw, ch, videoW, videoH));
-  const wrist = pts[0];
-  const middleKnuckle = pts[9];
-  const palmScale = Math.max(30, distPx(wrist, middleKnuckle));
-  const palmCenter = lerpPx(wrist, middleKnuckle, 0.55);
-  const fingerWidth = Math.max(10, palmScale * 0.26);
-
-  // Arm/Hand orientation angle
-  const armAngle = Math.atan2(middleKnuckle.y - wrist.y, middleKnuckle.x - wrist.x);
-  const perp = { x: -Math.sin(armAngle), y: Math.cos(armAngle) };
+  const h = computeHandAnatomy(hand, cw, ch, videoW, videoH, 1.0);
+  const { pts, wrist, palmCenter, palmScale, fingerWidth } = h;
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.shadowColor = isLocking ? 'rgba(239, 68, 68, 0.7)' : 'rgba(15, 23, 42, 0.45)';
+  ctx.shadowBlur = isLocking ? 16 : 10;
 
-  // 1. Forearm Bracer (Red & Navy Suit Sleeve)
-  const forearmOffset = palmScale * 0.65;
-  const bracerBase = {
-    x: wrist.x - Math.cos(armAngle) * forearmOffset,
-    y: wrist.y - Math.sin(armAngle) * forearmOffset,
-  };
-  const bracerHalfW = palmScale * 0.45;
-
-  ctx.beginPath();
-  ctx.moveTo(wrist.x + perp.x * bracerHalfW * 0.85, wrist.y + perp.y * bracerHalfW * 0.85);
-  ctx.lineTo(wrist.x - perp.x * bracerHalfW * 0.85, wrist.y - perp.y * bracerHalfW * 0.85);
-  ctx.lineTo(bracerBase.x - perp.x * bracerHalfW, bracerBase.y - perp.y * bracerHalfW);
-  ctx.lineTo(bracerBase.x + perp.x * bracerHalfW, bracerBase.y + perp.y * bracerHalfW);
-  ctx.closePath();
-
-  const sleeveGrad = ctx.createLinearGradient(bracerBase.x, bracerBase.y, wrist.x, wrist.y);
-  sleeveGrad.addColorStop(0, '#be123c');
-  sleeveGrad.addColorStop(1, '#e11d48');
-  ctx.fillStyle = sleeveGrad;
+  // 1. Navy & Red Spider-Suit Wrist Cuff
+  traceWristCuffPath(ctx, h);
+  const cuffGrad = ctx.createLinearGradient(h.cuffCenter.x, h.cuffCenter.y, wrist.x, wrist.y);
+  cuffGrad.addColorStop(0, '#0f172a');
+  cuffGrad.addColorStop(0.55, '#1e3a8a');
+  cuffGrad.addColorStop(1, '#dc2626');
+  ctx.fillStyle = cuffGrad;
   ctx.fill();
-  ctx.strokeStyle = '#0f172a';
-  ctx.lineWidth = Math.max(2.5, palmScale * 0.05);
+  ctx.strokeStyle = '#090d16';
+  ctx.lineWidth = Math.max(2.5, palmScale * 0.055);
   ctx.stroke();
 
-  // 2. Palm & Hand Dorsal Plate (Vibrant Crimson Red)
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[5].x, pts[5].y);
-  ctx.lineTo(pts[9].x, pts[9].y);
-  ctx.lineTo(pts[13].x, pts[13].y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.closePath();
-
+  // 2. Smooth Rounded Spider-Suit Palm
+  traceSmoothPalmPath(ctx, h);
   const palmGrad = ctx.createRadialGradient(
-    palmCenter.x, palmCenter.y, palmScale * 0.15,
-    palmCenter.x, palmCenter.y, palmScale * 1.1
+    palmCenter.x - palmScale * 0.1,
+    palmCenter.y - palmScale * 0.1,
+    palmScale * 0.08,
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 1.05
   );
-  palmGrad.addColorStop(0, '#fb7185'); // highlight crimson
-  palmGrad.addColorStop(0.55, '#e11d48'); // classic spider-red
-  palmGrad.addColorStop(1, '#9f1239'); // deep shadow red
+  palmGrad.addColorStop(0, '#f87171');
+  palmGrad.addColorStop(0.35, '#ef4444');
+  palmGrad.addColorStop(0.78, '#dc2626');
+  palmGrad.addColorStop(1, '#991b1b');
   ctx.fillStyle = palmGrad;
   ctx.fill();
-  ctx.strokeStyle = '#0f172a';
-  ctx.lineWidth = Math.max(3, palmScale * 0.06);
+  ctx.strokeStyle = '#090d16';
+  ctx.lineWidth = Math.max(2.5, palmScale * 0.055);
   ctx.stroke();
 
-  // Navy Blue Side Panel
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.lineTo(lerpPx(pts[17], palmCenter, 0.4).x, lerpPx(pts[17], palmCenter, 0.4).y);
-  ctx.closePath();
-  ctx.fillStyle = '#1e3a8a';
-  ctx.fill();
-  ctx.strokeStyle = '#0f172a';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // 3. Fingers (Anatomical Segments with Charcoal Seams)
-  const fingers = [
-    [1, 2, 3, 4],   // Thumb
-    [5, 6, 7, 8],   // Index
-    [9, 10, 11, 12],// Middle
-    [13, 14, 15, 16],// Ring
-    [17, 18, 19, 20] // Pinky
-  ];
-
-  fingers.forEach((chain, fIdx) => {
-    const fScale = fIdx === 0 ? 1.05 : fIdx === 4 ? 0.85 : 0.95;
-    const baseW = fingerWidth * fScale;
-
-    for (let i = 0; i < chain.length - 1; i++) {
-      const p1 = pts[chain[i]];
-      const p2 = pts[chain[i + 1]];
-      const taper = 1.0 - (i * 0.14);
-
-      // Outer seam border
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = baseW * taper + 3.5;
-      ctx.stroke();
-
-      // Red glove fill
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = i === 2 ? '#fb7185' : '#e11d48';
-      ctx.lineWidth = baseW * taper;
-      ctx.stroke();
-
-      // Knuckle seam line (not a huge circle)
-      const mid = lerpPx(p1, p2, 0.5);
-      const segAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const segPerp = { x: -Math.sin(segAngle), y: Math.cos(segAngle) };
-      const seamHalfW = (baseW * taper) * 0.42;
-
-      ctx.beginPath();
-      ctx.moveTo(mid.x - segPerp.x * seamHalfW, mid.y - segPerp.y * seamHalfW);
-      ctx.lineTo(mid.x + segPerp.x * seamHalfW, mid.y + segPerp.y * seamHalfW);
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    // Finger Tip Pads
-    const tip = pts[chain[chain.length - 1]];
-    ctx.beginPath();
-    ctx.arc(tip.x, tip.y, baseW * 0.36, 0, Math.PI * 2);
-    ctx.fillStyle = '#be123c';
-    ctx.fill();
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  });
-
-  // 4. Dynamic Spider-Man Webbing on Palm
-  const knucklePts = [pts[2], pts[5], pts[9], pts[13], pts[17]];
-  ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
-  ctx.lineWidth = Math.max(1.5, palmScale * 0.035);
-
-  // Radial web spokes connecting palm center to knuckles
-  knucklePts.forEach(k => {
-    ctx.beginPath();
-    ctx.moveTo(palmCenter.x, palmCenter.y);
-    ctx.lineTo(k.x, k.y);
-    ctx.stroke();
-  });
-
-  // Cross web arcs curving toward palm center
-  for (const fraction of [0.4, 0.72]) {
-    for (let k = 0; k < knucklePts.length - 1; k++) {
-      const pA = lerpPx(palmCenter, knucklePts[k], fraction);
-      const pB = lerpPx(palmCenter, knucklePts[k + 1], fraction);
-      const control = lerpPx(palmCenter, lerpPx(pA, pB, 0.5), 0.7);
-
-      ctx.beginPath();
-      ctx.moveTo(pA.x, pA.y);
-      ctx.quadraticCurveTo(control.x, control.y, pB.x, pB.y);
-      ctx.stroke();
-    }
-  }
-
-  // 5. Stylized Spider Emblem in Palm
+  // Concentric Spider-Webbing Etched on the Red Glove
   ctx.save();
-  ctx.translate(palmCenter.x, palmCenter.y);
-  ctx.rotate(armAngle + Math.PI / 2);
-  ctx.fillStyle = '#0f172a';
-
-  // Spider Body & Head
-  ctx.beginPath();
-  ctx.ellipse(0, 0, palmScale * 0.08, palmScale * 0.12, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(0, -palmScale * 0.11, palmScale * 0.06, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Spider Legs (4 pairs)
-  ctx.strokeStyle = '#0f172a';
-  ctx.lineWidth = Math.max(1.8, palmScale * 0.032);
-  [-1, 1].forEach(dir => {
-    for (let l = 0; l < 4; l++) {
-      const yOff = (l - 1.5) * palmScale * 0.055;
-      const kneeX = dir * palmScale * (0.16 + l * 0.03);
-      const kneeY = yOff + (l < 2 ? -palmScale * 0.09 : palmScale * 0.09);
-      const tipX = dir * palmScale * (0.24 + l * 0.02);
-      const tipY = kneeY + (l < 2 ? -palmScale * 0.06 : palmScale * 0.07);
-
-      ctx.beginPath();
-      ctx.moveTo(0, yOff);
-      ctx.lineTo(kneeX, kneeY);
-      ctx.lineTo(tipX, tipY);
-      ctx.stroke();
-    }
-  });
-  ctx.restore();
-
-  // 6. Silver Chrome Web-Shooter at Wrist
-  ctx.save();
-  ctx.translate(wrist.x, wrist.y);
-  ctx.rotate(armAngle);
-
-  // Metallic bracelet band
-  ctx.fillStyle = '#475569';
-  ctx.beginPath();
-  ctx.roundRect(-palmScale * 0.18, -palmScale * 0.28, palmScale * 0.36, palmScale * 0.56, 5);
-  ctx.fill();
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Chrome nozzle
-  ctx.fillStyle = '#94a3b8';
-  ctx.beginPath();
-  ctx.roundRect(-palmScale * 0.08, -palmScale * 0.12, palmScale * 0.22, palmScale * 0.24, 4);
-  ctx.fill();
-
-  // Glowing Cyan Web-Trigger LED
-  const pulse = Math.sin(time * 0.008) * 0.35 + 0.65;
-  const ledGlow = ctx.createRadialGradient(0, 0, 1, 0, 0, palmScale * 0.2);
-  ledGlow.addColorStop(0, '#ffffff');
-  ledGlow.addColorStop(0.35, '#38bdf8');
-  ledGlow.addColorStop(0.8, 'rgba(6, 182, 212, 0.6)');
-  ledGlow.addColorStop(1, 'rgba(6, 182, 212, 0)');
-  ctx.fillStyle = ledGlow;
-  ctx.beginPath();
-  ctx.arc(0, 0, palmScale * (0.12 + pulse * 0.06), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // 7. Dynamic Web-Shooting Beam & Web-Net on Lock-In
-  if (isLocking && holdProgress > 0) {
-    const shootDist = palmScale * (1.5 + (holdProgress / 100) * 3.5);
-    const targetX = middleKnuckle.x + Math.cos(armAngle) * shootDist;
-    const targetY = middleKnuckle.y + Math.sin(armAngle) * shootDist;
-
-    ctx.save();
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = 16;
-
-    // Glowing main web strand
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = Math.max(3, palmScale * 0.05);
-    ctx.beginPath();
-    ctx.moveTo(wrist.x, wrist.y);
-    ctx.lineTo(targetX, targetY);
-    ctx.stroke();
-
-    // Spiral / tensile web coil
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const steps = 18;
-    for (let s = 0; s <= steps; s++) {
-      const t = s / steps;
-      const basePt = lerpPx(wrist, { x: targetX, y: targetY }, t);
-      const wave = Math.sin(t * Math.PI * 6 + time * 0.02) * palmScale * 0.12 * (1 - t * 0.4);
-      const wavePt = {
-        x: basePt.x + perp.x * wave,
-        y: basePt.y + perp.y * wave,
-      };
-      if (s === 0) ctx.moveTo(wavePt.x, wavePt.y);
-      else ctx.lineTo(wavePt.x, wavePt.y);
-    }
-    ctx.stroke();
-
-    // Web-Net Burst at the impact head
-    const netRadius = palmScale * (0.3 + (holdProgress / 100) * 0.5);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.beginPath();
-    ctx.arc(targetX, targetY, netRadius * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-
-    for (let w = 0; w < 6; w++) {
-      const angle = (w * Math.PI) / 3 + time * 0.006;
-      ctx.beginPath();
-      ctx.moveTo(targetX, targetY);
-      ctx.lineTo(targetX + Math.cos(angle) * netRadius, targetY + Math.sin(angle) * netRadius);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
-  // Label badge above hand
-  ctx.save();
-  const topY = Math.min(...pts.map(p => p.y)) - 24;
-  ctx.fillStyle = 'rgba(225, 29, 72, 0.92)';
-  ctx.beginPath();
-  ctx.roundRect(middleKnuckle.x - 70, topY - 14, 140, 28, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🕷️ SPIDER-MAN', middleKnuckle.x, topY);
-  ctx.restore();
-
-  ctx.restore();
-}
-
-/**
- * Draw Thanos's Infinity Gauntlet (Right Side / Player 2)
- * Titan golden armor, segmented metal plates, and the 6 Canonical Infinity Stones:
- * - Mind Stone (Yellow - large diamond core in center of gauntlet)
- * - Power Stone (Purple - index knuckle)
- * - Space Stone (Blue - middle knuckle)
- * - Reality Stone (Red - ring knuckle)
- * - Soul Stone (Orange - pinky knuckle)
- * - Time Stone (Green - thumb knuckle)
- *
- * Polished, anatomically fitted armor with tight cosmic energy aura
- * and NO giant distorted bicycle-wheel covering the screen.
- */
-export function drawThanosHand(
-  ctx: CanvasRenderingContext2D,
-  hand: Landmark[],
-  cw: number,
-  ch: number,
-  isLocking: boolean,
-  holdProgress: number,
-  time = performance.now(),
-  videoW = 1280,
-  videoH = 720
-) {
-  if (!hand || hand.length < 21) return;
-
-  const pts = hand.map(p => toPx(p, cw, ch, videoW, videoH));
-  const wrist = pts[0];
-  const middleKnuckle = pts[9];
-  const palmScale = Math.max(30, distPx(wrist, middleKnuckle));
-  const palmCenter = lerpPx(wrist, middleKnuckle, 0.52);
-  const fingerWidth = Math.max(12, palmScale * 0.28);
-
-  // Arm/Hand orientation angle
-  const armAngle = Math.atan2(middleKnuckle.y - wrist.y, middleKnuckle.x - wrist.x);
-  const perp = { x: -Math.sin(armAngle), y: Math.cos(armAngle) };
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  // 1. Heavy Titan Golden Bracer / Forearm Vambrace
-  const vambraceLength = palmScale * 0.75;
-  const vambraceBase = {
-    x: wrist.x - Math.cos(armAngle) * vambraceLength,
-    y: wrist.y - Math.sin(armAngle) * vambraceLength,
-  };
-  const vambraceW = palmScale * 0.52;
-
-  ctx.beginPath();
-  ctx.moveTo(wrist.x + perp.x * vambraceW * 0.9, wrist.y + perp.y * vambraceW * 0.9);
-  ctx.lineTo(wrist.x - perp.x * vambraceW * 0.9, wrist.y - perp.y * vambraceW * 0.9);
-  ctx.lineTo(vambraceBase.x - perp.x * vambraceW, vambraceBase.y - perp.y * vambraceW);
-  ctx.lineTo(vambraceBase.x + perp.x * vambraceW, vambraceBase.y + perp.y * vambraceW);
-  ctx.closePath();
-
-  const vambraceGrad = ctx.createLinearGradient(vambraceBase.x, vambraceBase.y, wrist.x, wrist.y);
-  vambraceGrad.addColorStop(0, '#78350f'); // bronze shadow
-  vambraceGrad.addColorStop(0.4, '#b45309'); // metallic bronze
-  vambraceGrad.addColorStop(0.75, '#f59e0b'); // radiant gold
-  vambraceGrad.addColorStop(1, '#fef08a'); // gold rim highlight
-  ctx.fillStyle = vambraceGrad;
-  ctx.fill();
-  ctx.strokeStyle = '#451a03';
-  ctx.lineWidth = Math.max(3, palmScale * 0.06);
-  ctx.stroke();
-
-  // Inset Titan studs on cuff
-  for (let s = -2; s <= 2; s++) {
-    const studPos = {
-      x: wrist.x + perp.x * (s * vambraceW * 0.35) - Math.cos(armAngle) * (palmScale * 0.2),
-      y: wrist.y + perp.y * (s * vambraceW * 0.35) - Math.sin(armAngle) * (palmScale * 0.2),
-    };
-    ctx.beginPath();
-    ctx.arc(studPos.x, studPos.y, palmScale * 0.045, 0, Math.PI * 2);
-    ctx.fillStyle = '#451a03';
-    ctx.fill();
-    ctx.strokeStyle = '#fef08a';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-  }
-
-  // 2. Heavy Golden Gauntlet Dorsal Plate
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[5].x, pts[5].y);
-  ctx.lineTo(pts[9].x, pts[9].y);
-  ctx.lineTo(pts[13].x, pts[13].y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.closePath();
-
-  const goldGrad = ctx.createRadialGradient(
-    palmCenter.x, palmCenter.y, palmScale * 0.1,
-    palmCenter.x, palmCenter.y, palmScale * 1.2
-  );
-  goldGrad.addColorStop(0, '#fef08a'); // central gold gleam
-  goldGrad.addColorStop(0.35, '#f59e0b'); // amber gold
-  goldGrad.addColorStop(0.75, '#d97706'); // burnished bronze
-  goldGrad.addColorStop(1, '#78350f'); // deep shadow bronze
-  ctx.fillStyle = goldGrad;
-  ctx.fill();
-  ctx.strokeStyle = '#451a03';
-  ctx.lineWidth = Math.max(3.5, palmScale * 0.07);
-  ctx.stroke();
-
-  // Engraved Carvings connecting knuckles to Mind Stone center
-  ctx.strokeStyle = 'rgba(120, 53, 15, 0.7)';
-  ctx.lineWidth = Math.max(1.8, palmScale * 0.035);
-  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach(target => {
+  traceSmoothPalmPath(ctx, h);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
+  ctx.lineWidth = Math.max(1.2, palmScale * 0.025);
+  const webTargets = [pts[2], pts[5], pts[9], pts[13], pts[17], wrist];
+  webTargets.forEach((target) => {
     ctx.beginPath();
     ctx.moveTo(palmCenter.x, palmCenter.y);
     ctx.lineTo(target.x, target.y);
     ctx.stroke();
   });
 
-  // 3. Articulated Golden Armor Fingers
-  const fingers = [
-    [1, 2, 3, 4],   // Thumb
-    [5, 6, 7, 8],   // Index
-    [9, 10, 11, 12],// Middle
-    [13, 14, 15, 16],// Ring
-    [17, 18, 19, 20] // Pinky
-  ];
-
-  fingers.forEach((chain, fIdx) => {
-    const fScale = fIdx === 0 ? 1.1 : fIdx === 4 ? 0.88 : 0.98;
-    const baseW = fingerWidth * fScale;
-
-    for (let i = 0; i < chain.length - 1; i++) {
-      const p1 = pts[chain[i]];
-      const p2 = pts[chain[i + 1]];
-      const taper = 1.0 - (i * 0.13);
-
-      // Deep bronze shadow border
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#451a03';
-      ctx.lineWidth = baseW * taper + 4;
-      ctx.stroke();
-
-      // Golden metallic segment
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = i === 2 ? '#fef08a' : '#f59e0b';
-      ctx.lineWidth = baseW * taper;
-      ctx.stroke();
-
-      // Articulated joint seam line
-      const mid = lerpPx(p1, p2, 0.5);
-      const segAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const segPerp = { x: -Math.sin(segAngle), y: Math.cos(segAngle) };
-      const seamHalfW = (baseW * taper) * 0.44;
-
-      ctx.beginPath();
-      ctx.moveTo(mid.x - segPerp.x * seamHalfW, mid.y - segPerp.y * seamHalfW);
-      ctx.lineTo(mid.x + segPerp.x * seamHalfW, mid.y + segPerp.y * seamHalfW);
-      ctx.strokeStyle = '#78350f';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    }
-
-    // Heavy Golden Finger Claws / Beveled Tips
-    const tip = pts[chain[chain.length - 1]];
+  [0.32, 0.58, 0.82].forEach((ringFactor) => {
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, baseW * 0.38, 0, Math.PI * 2);
-    ctx.fillStyle = '#fde047';
-    ctx.fill();
-    ctx.strokeStyle = '#78350f';
-    ctx.lineWidth = 2.5;
+    for (let i = 0; i < webTargets.length; i++) {
+      const a = lerpPx(palmCenter, webTargets[i], ringFactor);
+      const b = lerpPx(palmCenter, webTargets[(i + 1) % webTargets.length], ringFactor);
+      const mid = lerpPx(a, b, 0.5);
+      const sag = lerpPx(mid, palmCenter, 0.14);
+      if (i === 0) ctx.moveTo(a.x, a.y);
+      ctx.quadraticCurveTo(sag.x, sag.y, b.x, b.y);
+    }
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // 3. Crisp Black Spider Emblem in Center of Palm
+  const spiderSize = Math.max(8, palmScale * 0.18);
+  ctx.save();
+  ctx.translate(palmCenter.x, palmCenter.y);
+  ctx.rotate(h.armAngle + Math.PI / 2);
+  ctx.fillStyle = '#090d16';
+  ctx.strokeStyle = '#090d16';
+  ctx.lineWidth = Math.max(1.5, spiderSize * 0.16);
+
+  ctx.beginPath();
+  ctx.ellipse(0, 3, spiderSize * 0.34, spiderSize * 0.46, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, -spiderSize * 0.34, spiderSize * 0.24, 0, Math.PI * 2);
+  ctx.fill();
+
+  [-1, 1].forEach((side) => {
+    [-0.55, -0.18, 0.22, 0.6].forEach((angleOffset, legIdx) => {
+      ctx.beginPath();
+      ctx.moveTo(side * spiderSize * 0.2, (legIdx - 1.5) * spiderSize * 0.14);
+      const kneeX = side * spiderSize * 0.72;
+      const kneeY = angleOffset * spiderSize * 0.75;
+      const footX = side * spiderSize * 0.95;
+      const footY = (angleOffset + (legIdx < 2 ? -0.35 : 0.4)) * spiderSize * 1.05;
+      ctx.quadraticCurveTo(kneeX, kneeY, footX, footY);
+      ctx.stroke();
+    });
+  });
+  ctx.restore();
+
+  // 4. Sculpted Spider-Suit Fingers (drawn on top so curled/pointing fingers are always visible)
+  drawSculptedFingers(
+    ctx,
+    h,
+    {
+      outlineColor: '#090d16',
+      baseColor: '#dc2626',
+      midColor: '#ef4444',
+      tipColor: '#f87171',
+      highlightColor: 'rgba(254, 202, 202, 0.45)',
+      jointColor: 'rgba(15, 23, 42, 0.65)',
+    },
+    (chain, _fIdx, baseW) => {
+      const tip = pts[chain[3]];
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, baseW * 0.22, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.fill();
+    }
+  );
+
+  // 5. Mechanical Silver & Cyan Web-Shooter at Wrist
+  const shooterW = Math.max(12, palmScale * 0.32);
+  const shooterH = Math.max(8, palmScale * 0.2);
+  ctx.save();
+  ctx.translate(wrist.x, wrist.y);
+  ctx.rotate(h.armAngle + Math.PI / 2);
+
+  ctx.fillStyle = '#334155';
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(-shooterW / 2, -shooterH / 2, shooterW, shooterH, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  const webPulse = Math.sin(time * 0.01) * 0.15 + 0.85;
+  ctx.beginPath();
+  ctx.arc(0, 0, shooterH * 0.32 * webPulse, 0, Math.PI * 2);
+  ctx.fillStyle = isLocking ? '#ffffff' : '#38bdf8';
+  ctx.shadowColor = '#38bdf8';
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.restore();
+
+  if (isLocking && holdProgress > 0) {
+    const ringRadius = palmScale * 0.55 + (holdProgress / 100) * palmScale * 0.45;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = Math.max(2, fingerWidth * 0.16);
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(palmCenter.x, palmCenter.y, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// ============================================================================
+// 2. THANOS INFINITY GAUNTLET
+// ============================================================================
+export function drawThanosHand(
+  ctx: CanvasRenderingContext2D,
+  hand: Landmark[],
+  cw: number,
+  ch: number,
+  isLocking = false,
+  holdProgress = 0,
+  time = performance.now(),
+  videoW = 1280,
+  videoH = 720
+) {
+  if (!hand || hand.length < 21) return;
+
+  const h = computeHandAnatomy(hand, cw, ch, videoW, videoH, 1.08);
+  const { pts, wrist, palmCenter, palmScale } = h;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = isLocking ? 'rgba(250, 204, 21, 0.85)' : 'rgba(69, 26, 3, 0.6)';
+  ctx.shadowBlur = isLocking ? 20 : 12;
+
+  // 1. Armored Golden Vambrace Wrist Cuff
+  traceWristCuffPath(ctx, h);
+  const vambraceGrad = ctx.createLinearGradient(h.cuffCenter.x, h.cuffCenter.y, wrist.x, wrist.y);
+  vambraceGrad.addColorStop(0, '#78350f');
+  vambraceGrad.addColorStop(0.45, '#b45309');
+  vambraceGrad.addColorStop(0.8, '#f59e0b');
+  vambraceGrad.addColorStop(1, '#fef08a');
+  ctx.fillStyle = vambraceGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#451a03';
+  ctx.lineWidth = Math.max(3, palmScale * 0.06);
+  ctx.stroke();
+
+  // 2. Heavy Rounded Golden Gauntlet Dorsal Carapace
+  traceSmoothPalmPath(ctx, h);
+  const goldGrad = ctx.createRadialGradient(
+    palmCenter.x - palmScale * 0.1,
+    palmCenter.y - palmScale * 0.1,
+    palmScale * 0.08,
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 1.15
+  );
+  goldGrad.addColorStop(0, '#fef08a');
+  goldGrad.addColorStop(0.35, '#f59e0b');
+  goldGrad.addColorStop(0.75, '#d97706');
+  goldGrad.addColorStop(1, '#78350f');
+  ctx.fillStyle = goldGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#451a03';
+  ctx.lineWidth = Math.max(3, palmScale * 0.065);
+  ctx.stroke();
+
+  // Engraved Titan Carvings connecting knuckles to Mind Stone center
+  ctx.strokeStyle = 'rgba(120, 53, 15, 0.65)';
+  ctx.lineWidth = Math.max(1.6, palmScale * 0.032);
+  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach((target) => {
+    ctx.beginPath();
+    ctx.moveTo(palmCenter.x, palmCenter.y);
+    ctx.lineTo(target.x, target.y);
     ctx.stroke();
   });
 
+  // 3. Articulated Golden Armor Fingers (drawn before stones so knuckle stones crown the joints)
+  drawSculptedFingers(
+    ctx,
+    h,
+    {
+      outlineColor: '#451a03',
+      baseColor: '#d97706',
+      midColor: '#f59e0b',
+      tipColor: '#fde047',
+      highlightColor: 'rgba(254, 249, 195, 0.65)',
+      jointColor: '#78350f',
+      outlineExtra: 4,
+    },
+    (chain, _fIdx, baseW) => {
+      const tip = pts[chain[3]];
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, baseW * 0.34, 0, Math.PI * 2);
+      ctx.fillStyle = '#fef08a';
+      ctx.fill();
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  );
+
   // 4. THE 6 CANONICAL INFINITY STONES
   const stoneData = [
-    {
-      name: 'Power Stone',
-      color: '#c084fc',
-      core: '#a855f7',
-      glow: '#9333ea',
-      pt: pts[5], // Index knuckle
-      size: palmScale * 0.12,
-    },
-    {
-      name: 'Space Stone',
-      color: '#60a5fa',
-      core: '#3b82f6',
-      glow: '#2563eb',
-      pt: pts[9], // Middle knuckle
-      size: palmScale * 0.12,
-    },
-    {
-      name: 'Reality Stone',
-      color: '#f87171',
-      core: '#ef4444',
-      glow: '#dc2626',
-      pt: pts[13], // Ring knuckle
-      size: palmScale * 0.12,
-    },
-    {
-      name: 'Soul Stone',
-      color: '#fb923c',
-      core: '#f97316',
-      glow: '#ea580c',
-      pt: pts[17], // Pinky knuckle
-      size: palmScale * 0.11,
-    },
-    {
-      name: 'Time Stone',
-      color: '#34d399',
-      core: '#10b981',
-      glow: '#059669',
-      pt: pts[2], // Thumb knuckle
-      size: palmScale * 0.12,
-    },
-    {
-      name: 'Mind Stone',
-      color: '#fef08a',
-      core: '#facc15',
-      glow: '#eab308',
-      pt: palmCenter, // Giant Center Mind Stone
-      size: palmScale * 0.21,
-      isCenter: true,
-    },
+    { color: '#c084fc', core: '#a855f7', glow: '#9333ea', pt: pts[5], size: palmScale * 0.11 },
+    { color: '#60a5fa', core: '#3b82f6', glow: '#2563eb', pt: pts[9], size: palmScale * 0.115 },
+    { color: '#f87171', core: '#ef4444', glow: '#dc2626', pt: pts[13], size: palmScale * 0.11 },
+    { color: '#fb923c', core: '#f97316', glow: '#ea580c', pt: pts[17], size: palmScale * 0.1 },
+    { color: '#34d399', core: '#10b981', glow: '#059669', pt: pts[2], size: palmScale * 0.11 },
+    { color: '#fef08a', core: '#facc15', glow: '#eab308', pt: palmCenter, size: palmScale * 0.19, isCenter: true },
   ];
 
-  // Render each Infinity Stone with ornate golden bezel, gem facets, and radiant pulse
-  stoneData.forEach(stone => {
+  stoneData.forEach((stone) => {
     const isMind = stone.isCenter;
-    const pulse = Math.sin(time * 0.008 + (isMind ? 0 : 2)) * 0.2 + 1.0;
-    const r = stone.size * (isLocking ? pulse * 1.25 : pulse);
+    const pulse = Math.sin(time * 0.008 + (isMind ? 0 : 2)) * 0.16 + 1.0;
+    const r = stone.size * (isLocking ? pulse * 1.2 : pulse);
 
     ctx.save();
-    // 1. Bronze & Gold Gem Socket Bezel
     ctx.beginPath();
-    ctx.arc(stone.pt.x, stone.pt.y, r * 1.3, 0, Math.PI * 2);
+    ctx.arc(stone.pt.x, stone.pt.y, r * 1.28, 0, Math.PI * 2);
     ctx.fillStyle = '#451a03';
     ctx.fill();
     ctx.strokeStyle = '#fde047';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.8;
     ctx.stroke();
 
-    // 2. Cosmic Ambient Glow
     const glowRad = ctx.createRadialGradient(
-      stone.pt.x, stone.pt.y, r * 0.2,
-      stone.pt.x, stone.pt.y, r * (isLocking ? 2.5 : 1.8)
+      stone.pt.x,
+      stone.pt.y,
+      r * 0.2,
+      stone.pt.x,
+      stone.pt.y,
+      r * (isLocking ? 2.2 : 1.65)
     );
     glowRad.addColorStop(0, '#ffffff');
     glowRad.addColorStop(0.35, stone.color);
@@ -654,92 +679,44 @@ export function drawThanosHand(
 
     ctx.fillStyle = glowRad;
     ctx.beginPath();
-    ctx.arc(stone.pt.x, stone.pt.y, r * (isLocking ? 2.5 : 1.8), 0, Math.PI * 2);
+    ctx.arc(stone.pt.x, stone.pt.y, r * (isLocking ? 2.2 : 1.65), 0, Math.PI * 2);
     ctx.fill();
 
-    // 3. Faceted Gem Core
     ctx.beginPath();
     if (isMind) {
-      // Mind Stone has distinctive diamond/oval shape
-      ctx.ellipse(stone.pt.x, stone.pt.y, r * 1.15, r * 0.82, armAngle, 0, Math.PI * 2);
+      ctx.ellipse(stone.pt.x, stone.pt.y, r * 1.12, r * 0.82, h.armAngle, 0, Math.PI * 2);
     } else {
-      ctx.arc(stone.pt.x, stone.pt.y, r * 0.9, 0, Math.PI * 2);
+      ctx.arc(stone.pt.x, stone.pt.y, r * 0.88, 0, Math.PI * 2);
     }
     ctx.fillStyle = stone.core;
     ctx.fill();
 
-    // 4. White Diamond Specular Glint
     ctx.beginPath();
-    ctx.arc(stone.pt.x - r * 0.26, stone.pt.y - r * 0.26, r * 0.26, 0, Math.PI * 2);
+    ctx.arc(stone.pt.x - r * 0.25, stone.pt.y - r * 0.25, r * 0.24, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-
     ctx.restore();
   });
 
-  // 5. TIGHT COSMIC GAUNTLET AURA ON LOCK-IN (Clean, no huge bicycle wheel!)
   if (isLocking && holdProgress > 0) {
-    const surgeRadius = palmScale * (0.65 + (holdProgress / 100) * 0.45);
+    const surgeRadius = palmScale * (0.62 + (holdProgress / 100) * 0.42);
     ctx.save();
     ctx.strokeStyle = 'rgba(253, 224, 71, 0.9)';
-    ctx.lineWidth = Math.max(3, palmScale * 0.05);
+    ctx.lineWidth = Math.max(2.5, palmScale * 0.045);
     ctx.shadowColor = '#facc15';
-    ctx.shadowBlur = 18;
-
-    // Tight Cosmic Energy Halo around Gauntlet Carapace
+    ctx.shadowBlur = 16;
     ctx.beginPath();
     ctx.arc(palmCenter.x, palmCenter.y, surgeRadius, 0, Math.PI * 2);
     ctx.stroke();
-
-    // Concentric shimmering golden pulse
-    ctx.strokeStyle = 'rgba(254, 240, 138, 0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(palmCenter.x, palmCenter.y, surgeRadius * 1.25, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Crackling Cosmic Lightning Arcs between knuckle stones and central Mind Stone
-    for (let s = 0; s < 5; s++) {
-      const kPt = stoneData[s].pt;
-      ctx.beginPath();
-      ctx.moveTo(palmCenter.x, palmCenter.y);
-      const midX = lerpPx(palmCenter, kPt, 0.5).x + (Math.sin(time * 0.01 + s) * palmScale * 0.1);
-      const midY = lerpPx(palmCenter, kPt, 0.5).y + (Math.cos(time * 0.01 + s) * palmScale * 0.1);
-      ctx.lineTo(midX, midY);
-      ctx.lineTo(kPt.x, kPt.y);
-      ctx.strokeStyle = stoneData[s].color;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    }
     ctx.restore();
   }
-
-  // Label tag above hand
-  ctx.save();
-  const topY = Math.min(...pts.map(p => p.y)) - 24;
-  ctx.fillStyle = 'rgba(217, 119, 6, 0.95)';
-  ctx.beginPath();
-  ctx.roundRect(palmCenter.x - 72, topY - 14, 144, 28, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#fef08a';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🥊 THANOS GAUNTLET', palmCenter.x, topY);
-  ctx.restore();
 
   ctx.restore();
 }
 
-/**
- * Draw Wicked Witch's Hand
- * Eerie pale emerald/shadow skin, long sharp curved black witch claws,
- * glowing purple & emerald arcane runes, enchanted amethyst ring, and witch flame sparks!
- */
+// ============================================================================
+// 3. WICKED WITCH HAND
+// ============================================================================
 export function drawWitchHand(
   ctx: CanvasRenderingContext2D,
   hand: Landmark[],
@@ -753,62 +730,40 @@ export function drawWitchHand(
 ) {
   if (!hand || hand.length < 21) return;
 
-  const pts = hand.map(p => toPx(p, cw, ch, videoW, videoH));
-  const wrist = pts[0];
-  const middleKnuckle = pts[9];
-  const palmScale = Math.max(30, distPx(wrist, middleKnuckle));
-  const palmCenter = lerpPx(wrist, middleKnuckle, 0.52);
-  const fingerWidth = Math.max(8, palmScale * 0.22);
-  const armAngle = Math.atan2(middleKnuckle.y - wrist.y, middleKnuckle.x - wrist.x);
-  const perp = { x: -Math.sin(armAngle), y: Math.cos(armAngle) };
+  const h = computeHandAnatomy(hand, cw, ch, videoW, videoH, 0.94);
+  const { pts, wrist, palmCenter, palmScale, fingerWidth } = h;
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.shadowColor = isLocking ? 'rgba(168, 85, 247, 0.85)' : 'rgba(16, 185, 129, 0.5)';
+  ctx.shadowBlur = isLocking ? 18 : 12;
 
-  // 1. Tattered Witch Sleeve (Dark Black/Purple Velvet)
-  const sleeveLen = palmScale * 0.7;
-  const sleeveBase = {
-    x: wrist.x - Math.cos(armAngle) * sleeveLen,
-    y: wrist.y - Math.sin(armAngle) * sleeveLen,
-  };
-  const sleeveW = palmScale * 0.5;
-
-  ctx.beginPath();
-  ctx.moveTo(wrist.x + perp.x * sleeveW * 0.85, wrist.y + perp.y * sleeveW * 0.85);
-  ctx.lineTo(wrist.x - perp.x * sleeveW * 0.85, wrist.y - perp.y * sleeveW * 0.85);
-  ctx.lineTo(sleeveBase.x - perp.x * sleeveW, sleeveBase.y - perp.y * sleeveW);
-  ctx.lineTo(sleeveBase.x + perp.x * sleeveW, sleeveBase.y + perp.y * sleeveW);
-  ctx.closePath();
-
-  const sleeveGrad = ctx.createLinearGradient(sleeveBase.x, sleeveBase.y, wrist.x, wrist.y);
+  // 1. Dark Velvet Witch Sleeve Cuff
+  traceWristCuffPath(ctx, h);
+  const sleeveGrad = ctx.createLinearGradient(h.cuffCenter.x, h.cuffCenter.y, wrist.x, wrist.y);
   sleeveGrad.addColorStop(0, '#09090b');
-  sleeveGrad.addColorStop(0.7, '#1e1b4b');
+  sleeveGrad.addColorStop(0.65, '#1e1b4b');
   sleeveGrad.addColorStop(1, '#581c87');
   ctx.fillStyle = sleeveGrad;
   ctx.fill();
   ctx.strokeStyle = '#a855f7';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = Math.max(2, palmScale * 0.045);
   ctx.stroke();
 
-  // 2. Pale Emerald Witch Skin Palm Base
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[5].x, pts[5].y);
-  ctx.lineTo(pts[9].x, pts[9].y);
-  ctx.lineTo(pts[13].x, pts[13].y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.closePath();
-
+  // 2. Smooth Emerald Witch Palm
+  traceSmoothPalmPath(ctx, h);
   const skinGrad = ctx.createRadialGradient(
-    palmCenter.x, palmCenter.y, palmScale * 0.1,
-    palmCenter.x, palmCenter.y, palmScale * 1.15
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 0.08,
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 1.1
   );
   skinGrad.addColorStop(0, '#a7f3d0');
   skinGrad.addColorStop(0.45, '#34d399');
-  skinGrad.addColorStop(0.85, '#059669');
+  skinGrad.addColorStop(0.82, '#059669');
   skinGrad.addColorStop(1, '#064e3b');
   ctx.fillStyle = skinGrad;
   ctx.fill();
@@ -816,163 +771,101 @@ export function drawWitchHand(
   ctx.lineWidth = Math.max(2.5, palmScale * 0.05);
   ctx.stroke();
 
-  // Swirling Witchcraft Arcane Glyph in Palm Center
+  // Swirling Arcane Pentagram Rune in Palm Center
   ctx.save();
   ctx.translate(palmCenter.x, palmCenter.y);
   ctx.rotate(time * 0.002);
-  ctx.strokeStyle = 'rgba(167, 243, 208, 0.65)';
+  const runeR = palmScale * 0.25;
+  ctx.strokeStyle = 'rgba(192, 132, 252, 0.85)';
   ctx.lineWidth = 1.8;
   ctx.beginPath();
-  ctx.arc(0, 0, palmScale * 0.24, 0, Math.PI * 2);
+  ctx.arc(0, 0, runeR, 0, Math.PI * 2);
   ctx.stroke();
   for (let r = 0; r < 5; r++) {
     const a = (r * Math.PI * 2) / 5;
+    const b = (((r + 2) % 5) * Math.PI * 2) / 5;
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(a) * palmScale * 0.24, Math.sin(a) * palmScale * 0.24);
+    ctx.moveTo(Math.cos(a) * runeR, Math.sin(a) * runeR);
+    ctx.lineTo(Math.cos(b) * runeR, Math.sin(b) * runeR);
     ctx.stroke();
   }
   ctx.restore();
 
-  // 3. Slender Witch Fingers with Long Obsidian Claws
-  const fingers = [
-    [1, 2, 3, 4],
-    [5, 6, 7, 8],
-    [9, 10, 11, 12],
-    [13, 14, 15, 16],
-    [17, 18, 19, 20]
-  ];
+  // 3. Slender Emerald Witch Fingers with Curved Obsidian Claws
+  drawSculptedFingers(
+    ctx,
+    h,
+    {
+      outlineColor: '#022c22',
+      baseColor: '#10b981',
+      midColor: '#34d399',
+      tipColor: '#6ee7b7',
+      highlightColor: 'rgba(209, 250, 229, 0.45)',
+      jointColor: '#065f46',
+      outlineExtra: 3,
+    },
+    (chain, _fIdx, baseW) => {
+      const tip = pts[chain[3]];
+      const prevTip = pts[chain[2]];
+      const tipAngle = Math.atan2(tip.y - prevTip.y, tip.x - prevTip.x);
+      const clawLen = baseW * 1.35;
 
-  fingers.forEach((chain, fIdx) => {
-    const fScale = fIdx === 0 ? 1.0 : fIdx === 4 ? 0.82 : 0.92;
-    const baseW = fingerWidth * fScale;
+      ctx.save();
+      ctx.translate(tip.x, tip.y);
+      ctx.rotate(tipAngle);
 
-    for (let i = 0; i < chain.length - 1; i++) {
-      const p1 = pts[chain[i]];
-      const p2 = pts[chain[i + 1]];
-      const taper = 1.0 - (i * 0.16);
-
-      // Dark shadow edge
       ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#064e3b';
-      ctx.lineWidth = baseW * taper + 3;
-      ctx.stroke();
-
-      // Pale green witch skin segment
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = i === 2 ? '#6ee7b7' : '#34d399';
-      ctx.lineWidth = baseW * taper;
-      ctx.stroke();
-
-      // Knuckle wrinkle ring
-      const mid = lerpPx(p1, p2, 0.5);
-      ctx.beginPath();
-      ctx.arc(mid.x, mid.y, baseW * taper * 0.35, 0, Math.PI * 2);
-      ctx.fillStyle = '#065f46';
+      ctx.moveTo(-baseW * 0.32, -baseW * 0.3);
+      ctx.quadraticCurveTo(clawLen * 0.45, -baseW * 0.22, clawLen, 0);
+      ctx.quadraticCurveTo(clawLen * 0.45, baseW * 0.22, -baseW * 0.32, baseW * 0.3);
+      ctx.closePath();
+      ctx.fillStyle = '#09090b';
       ctx.fill();
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(clawLen * 0.68, 0, baseW * 0.18, 0, Math.PI * 2);
+      ctx.fillStyle = '#4ade80';
+      ctx.fill();
+      ctx.restore();
     }
+  );
 
-    // Long Curved Sharp Witch Obsidian Claw
-    const tip = pts[chain[chain.length - 1]];
-    const prevTip = pts[chain[chain.length - 2]];
-    const tipAngle = Math.atan2(tip.y - prevTip.y, tip.x - prevTip.x);
-    const clawLen = baseW * 1.6;
-
-    ctx.save();
-    ctx.translate(tip.x, tip.y);
-    ctx.rotate(tipAngle);
-
-    // Sharp curved claw
-    ctx.beginPath();
-    ctx.moveTo(-baseW * 0.4, -baseW * 0.35);
-    ctx.lineTo(clawLen, 0); // sharp tip
-    ctx.lineTo(-baseW * 0.4, baseW * 0.35);
-    ctx.closePath();
-    ctx.fillStyle = '#09090b';
-    ctx.fill();
-
-    // Glowing poison-green claw tip
-    ctx.beginPath();
-    ctx.arc(clawLen * 0.75, 0, baseW * 0.25, 0, Math.PI * 2);
-    ctx.fillStyle = '#4ade80';
-    ctx.shadowColor = '#22c55e';
-    ctx.shadowBlur = 8;
-    ctx.fill();
-
-    ctx.restore();
-  });
-
-  // 4. Witchcraft Rings on Index & Ring Knuckles
+  // Enchanted Rings on Index & Ring Knuckles
   [pts[5], pts[13]].forEach((kPt, idx) => {
     ctx.beginPath();
-    ctx.arc(kPt.x, kPt.y, fingerWidth * 0.65, 0, Math.PI * 2);
+    ctx.arc(kPt.x, kPt.y, fingerWidth * 0.45, 0, Math.PI * 2);
     ctx.fillStyle = '#1e1b4b';
     ctx.fill();
-    ctx.strokeStyle = '#a855f7';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#c084fc';
+    ctx.lineWidth = 1.6;
     ctx.stroke();
 
-    // Amethyst gem core
     ctx.beginPath();
-    ctx.arc(kPt.x, kPt.y, fingerWidth * 0.35, 0, Math.PI * 2);
-    ctx.fillStyle = idx === 0 ? '#c084fc' : '#34d399';
+    ctx.arc(kPt.x, kPt.y, fingerWidth * 0.24, 0, Math.PI * 2);
+    ctx.fillStyle = idx === 0 ? '#e879f9' : '#4ade80';
     ctx.fill();
   });
 
-  // Witch Pop Aura / Magic Flames on action
   if (isLocking && holdProgress > 0) {
-    const auraR = palmScale * (0.6 + (holdProgress / 100) * 0.5);
+    const auraR = palmScale * (0.58 + (holdProgress / 100) * 0.45);
     ctx.save();
-    ctx.strokeStyle = 'rgba(74, 222, 128, 0.85)';
+    ctx.strokeStyle = 'rgba(192, 132, 252, 0.88)';
     ctx.lineWidth = 2.5;
-    ctx.shadowColor = '#10b981';
-    ctx.shadowBlur = 15;
     ctx.beginPath();
     ctx.arc(palmCenter.x, palmCenter.y, auraR, 0, Math.PI * 2);
     ctx.stroke();
-
-    // Emerald magic flame sparks
-    for (let i = 0; i < 5; i++) {
-      const a = (i * Math.PI * 2) / 5 + time * 0.007;
-      const fx = palmCenter.x + Math.cos(a) * auraR;
-      const fy = palmCenter.y + Math.sin(a) * auraR;
-      ctx.beginPath();
-      ctx.arc(fx, fy, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#a7f3d0';
-      ctx.fill();
-    }
     ctx.restore();
   }
-
-  // Label tag above hand
-  ctx.save();
-  const topY = Math.min(...pts.map(p => p.y)) - 24;
-  ctx.fillStyle = 'rgba(5, 150, 105, 0.95)';
-  ctx.beginPath();
-  ctx.roundRect(palmCenter.x - 65, topY - 14, 130, 28, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#a7f3d0';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🧙‍♀️ WICKED WITCH', palmCenter.x, topY);
-  ctx.restore();
 
   ctx.restore();
 }
 
-/**
- * Draw Incredible Hulk's Hand
- * Massive muscular gamma-green hand, heavy knuckles, pulsing neon-lime veins,
- * torn purple superhero wristband, and earth-shattering shockwave punch!
- */
+// ============================================================================
+// 4. INCREDIBLE HULK HAND
+// ============================================================================
 export function drawHulkHand(
   ctx: CanvasRenderingContext2D,
   hand: Landmark[],
@@ -986,173 +879,114 @@ export function drawHulkHand(
 ) {
   if (!hand || hand.length < 21) return;
 
-  const pts = hand.map(p => toPx(p, cw, ch, videoW, videoH));
-  const wrist = pts[0];
-  const middleKnuckle = pts[9];
-  const palmScale = Math.max(34, distPx(wrist, middleKnuckle));
-  const palmCenter = lerpPx(wrist, middleKnuckle, 0.5);
-  const fingerWidth = Math.max(14, palmScale * 0.36); // Massive Hulk fingers!
-  const armAngle = Math.atan2(middleKnuckle.y - wrist.y, middleKnuckle.x - wrist.x);
-  const perp = { x: -Math.sin(armAngle), y: Math.cos(armAngle) };
+  const h = computeHandAnatomy(hand, cw, ch, videoW, videoH, 1.18);
+  const { pts, wrist, palmCenter, palmScale } = h;
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.shadowColor = isLocking ? 'rgba(74, 222, 128, 0.9)' : 'rgba(5, 46, 22, 0.6)';
+  ctx.shadowBlur = isLocking ? 22 : 12;
 
-  // 1. Torn Purple Superhero Wristband / Fabric
-  const bandLen = palmScale * 0.65;
-  const bandBase = {
-    x: wrist.x - Math.cos(armAngle) * bandLen,
-    y: wrist.y - Math.sin(armAngle) * bandLen,
-  };
-  const bandW = palmScale * 0.58;
-
-  ctx.beginPath();
-  ctx.moveTo(wrist.x + perp.x * bandW, wrist.y + perp.y * bandW);
-  ctx.lineTo(wrist.x - perp.x * bandW, wrist.y - perp.y * bandW);
-  ctx.lineTo(bandBase.x - perp.x * bandW * 1.1, bandBase.y - perp.y * bandW * 1.1);
-  ctx.lineTo(bandBase.x + perp.x * bandW * 1.1, bandBase.y + perp.y * bandW * 1.1);
-  ctx.closePath();
-
-  const bandGrad = ctx.createLinearGradient(bandBase.x, bandBase.y, wrist.x, wrist.y);
-  bandGrad.addColorStop(0, '#581c87');
+  // 1. Torn Purple Superhero Wristband
+  traceWristCuffPath(ctx, h);
+  const bandGrad = ctx.createLinearGradient(h.cuffCenter.x, h.cuffCenter.y, wrist.x, wrist.y);
+  bandGrad.addColorStop(0, '#4c1d95');
   bandGrad.addColorStop(0.5, '#7e22ce');
   bandGrad.addColorStop(1, '#a855f7');
   ctx.fillStyle = bandGrad;
   ctx.fill();
-  ctx.strokeStyle = '#3b0764';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#2e1065';
+  ctx.lineWidth = Math.max(3, palmScale * 0.06);
   ctx.stroke();
 
-  // 2. Heavy Muscular Gamma-Green Dorsal Palm
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[5].x, pts[5].y);
-  ctx.lineTo(pts[9].x, pts[9].y);
-  ctx.lineTo(pts[13].x, pts[13].y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.closePath();
-
+  // 2. Heavy Rounded Muscular Gamma-Green Palm
+  traceSmoothPalmPath(ctx, h);
   const hulkGrad = ctx.createRadialGradient(
-    palmCenter.x, palmCenter.y, palmScale * 0.1,
-    palmCenter.x, palmCenter.y, palmScale * 1.3
+    palmCenter.x - palmScale * 0.08,
+    palmCenter.y - palmScale * 0.08,
+    palmScale * 0.1,
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 1.2
   );
-  hulkGrad.addColorStop(0, '#86efac'); // bright gamma highlight
-  hulkGrad.addColorStop(0.35, '#22c55e'); // classic hulk green
-  hulkGrad.addColorStop(0.75, '#16a34a'); // deep muscle green
-  hulkGrad.addColorStop(1, '#14532d'); // shadow green
+  hulkGrad.addColorStop(0, '#86efac');
+  hulkGrad.addColorStop(0.38, '#22c55e');
+  hulkGrad.addColorStop(0.78, '#16a34a');
+  hulkGrad.addColorStop(1, '#14532d');
   ctx.fillStyle = hulkGrad;
   ctx.fill();
   ctx.strokeStyle = '#052e16';
-  ctx.lineWidth = Math.max(4, palmScale * 0.08);
+  ctx.lineWidth = Math.max(3.5, palmScale * 0.07);
   ctx.stroke();
 
-  // Pulsing Neon-Lime Gamma Veins along back of hand
-  ctx.strokeStyle = 'rgba(190, 242, 100, 0.75)';
-  ctx.lineWidth = Math.max(2, palmScale * 0.04);
-  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach(k => {
+  // Deterministic Pulsing Gamma Veins along the Back of the Hand
+  const veinPulse = 0.55 + Math.sin(time * 0.008) * 0.25;
+  ctx.strokeStyle = `rgba(190, 242, 100, ${veinPulse})`;
+  ctx.lineWidth = Math.max(1.8, palmScale * 0.036);
+  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach((k, idx) => {
+    const mid = lerpPx(palmCenter, k, 0.52);
+    const offset = (idx % 2 === 0 ? 1 : -1) * palmScale * 0.04;
     ctx.beginPath();
     ctx.moveTo(palmCenter.x, palmCenter.y);
-    const mid = lerpPx(palmCenter, k, 0.5);
-    ctx.lineTo(mid.x + (Math.random() - 0.5) * 4, mid.y + (Math.random() - 0.5) * 4);
-    ctx.lineTo(k.x, k.y);
+    ctx.quadraticCurveTo(mid.x + h.perp.x * offset, mid.y + h.perp.y * offset, k.x, k.y);
     ctx.stroke();
   });
 
-  // 3. Bulky Heavy Gamma Fingers
-  const fingers = [
-    [1, 2, 3, 4],
-    [5, 6, 7, 8],
-    [9, 10, 11, 12],
-    [13, 14, 15, 16],
-    [17, 18, 19, 20]
-  ];
+  // Glowing Gamma Emblem in Palm Center
+  const radR = palmScale * 0.17;
+  ctx.beginPath();
+  ctx.arc(palmCenter.x, palmCenter.y, radR, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(20, 83, 45, 0.75)';
+  ctx.fill();
+  ctx.strokeStyle = '#bef264';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
-  fingers.forEach((chain, fIdx) => {
-    const fScale = fIdx === 0 ? 1.2 : fIdx === 4 ? 0.95 : 1.08;
-    const baseW = fingerWidth * fScale;
+  ctx.beginPath();
+  ctx.arc(palmCenter.x, palmCenter.y, radR * 0.45, 0, Math.PI * 2);
+  ctx.fillStyle = '#bef264';
+  ctx.fill();
 
-    for (let i = 0; i < chain.length - 1; i++) {
-      const p1 = pts[chain[i]];
-      const p2 = pts[chain[i + 1]];
-      const taper = 1.0 - (i * 0.1);
-
-      // Dark shadow border
+  // 3. Muscular Gamma-Green Fingers
+  drawSculptedFingers(
+    ctx,
+    h,
+    {
+      outlineColor: '#052e16',
+      baseColor: '#16a34a',
+      midColor: '#22c55e',
+      tipColor: '#4ade80',
+      highlightColor: 'rgba(187, 247, 208, 0.45)',
+      jointColor: '#14532d',
+      outlineExtra: 4.5,
+    },
+    (chain, _fIdx, baseW) => {
+      const tip = pts[chain[3]];
       ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#052e16';
-      ctx.lineWidth = baseW * taper + 4;
-      ctx.stroke();
-
-      // Green muscular finger segment
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = i === 2 ? '#4ade80' : '#22c55e';
-      ctx.lineWidth = baseW * taper;
-      ctx.stroke();
-
-      // Heavy knuckle wrinkle
-      const mid = lerpPx(p1, p2, 0.5);
-      ctx.beginPath();
-      ctx.arc(mid.x, mid.y, baseW * taper * 0.4, 0, Math.PI * 2);
-      ctx.fillStyle = '#166534';
+      ctx.arc(tip.x, tip.y, baseW * 0.28, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(220, 252, 231, 0.55)';
       ctx.fill();
     }
+  );
 
-    // Heavy blunt fingernails
-    const tip = pts[chain[chain.length - 1]];
-    ctx.beginPath();
-    ctx.arc(tip.x, tip.y, baseW * 0.42, 0, Math.PI * 2);
-    ctx.fillStyle = '#bbf7d0';
-    ctx.fill();
-    ctx.strokeStyle = '#14532d';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-  });
-
-  // Gamma Smash Aura on Action
   if (isLocking && holdProgress > 0) {
-    const smashR = palmScale * (0.8 + (holdProgress / 100) * 0.6);
+    const smashR = palmScale * (0.65 + (holdProgress / 100) * 0.55);
     ctx.save();
-    ctx.strokeStyle = '#84cc16';
-    ctx.lineWidth = Math.max(3.5, palmScale * 0.07);
-    ctx.shadowColor = '#4ade80';
-    ctx.shadowBlur = 20;
-
+    ctx.strokeStyle = 'rgba(163, 230, 53, 0.9)';
+    ctx.lineWidth = Math.max(3, palmScale * 0.055);
     ctx.beginPath();
     ctx.arc(palmCenter.x, palmCenter.y, smashR, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
 
-  // Label tag above hand
-  ctx.save();
-  const topY = Math.min(...pts.map(p => p.y)) - 24;
-  ctx.fillStyle = 'rgba(22, 101, 52, 0.95)';
-  ctx.beginPath();
-  ctx.roundRect(palmCenter.x - 65, topY - 14, 130, 28, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#86efac';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🟢 THE HULK', palmCenter.x, topY);
-  ctx.restore();
-
   ctx.restore();
 }
 
-/**
- * Draw Iron Man's Repulsor Glove
- * Hot rod crimson armor, gold titanium knuckles, and glowing cyan/white palm Repulsor Core!
- */
+// ============================================================================
+// 5. IRON MAN MARK LXXXV GAUNTLET
+// ============================================================================
 export function drawIronManHand(
   ctx: CanvasRenderingContext2D,
   hand: Landmark[],
@@ -1166,164 +1000,136 @@ export function drawIronManHand(
 ) {
   if (!hand || hand.length < 21) return;
 
-  const pts = hand.map(p => toPx(p, cw, ch, videoW, videoH));
-  const wrist = pts[0];
-  const middleKnuckle = pts[9];
-  const palmScale = Math.max(30, distPx(wrist, middleKnuckle));
-  const palmCenter = lerpPx(wrist, middleKnuckle, 0.52);
-  const fingerWidth = Math.max(11, palmScale * 0.27);
-  const armAngle = Math.atan2(middleKnuckle.y - wrist.y, middleKnuckle.x - wrist.x);
-  const perp = { x: -Math.sin(armAngle), y: Math.cos(armAngle) };
+  const h = computeHandAnatomy(hand, cw, ch, videoW, videoH, 1.04);
+  const { pts, wrist, palmCenter, palmScale } = h;
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.shadowColor = isLocking ? 'rgba(56, 189, 248, 0.9)' : 'rgba(239, 68, 68, 0.5)';
+  ctx.shadowBlur = isLocking ? 22 : 12;
 
-  // 1. Forearm Stark Vambrace (Hot Rod Red & Titanium Gold)
-  const vambraceLen = palmScale * 0.72;
-  const vambraceBase = {
-    x: wrist.x - Math.cos(armAngle) * vambraceLen,
-    y: wrist.y - Math.sin(armAngle) * vambraceLen,
-  };
-  const vambraceW = palmScale * 0.5;
-
-  ctx.beginPath();
-  ctx.moveTo(wrist.x + perp.x * vambraceW, wrist.y + perp.y * vambraceW);
-  ctx.lineTo(wrist.x - perp.x * vambraceW, wrist.y - perp.y * vambraceW);
-  ctx.lineTo(vambraceBase.x - perp.x * vambraceW * 0.95, vambraceBase.y - perp.y * vambraceW * 0.95);
-  ctx.lineTo(vambraceBase.x + perp.x * vambraceW * 0.95, vambraceBase.y + perp.y * vambraceW * 0.95);
-  ctx.closePath();
-
-  const redGrad = ctx.createLinearGradient(vambraceBase.x, vambraceBase.y, wrist.x, wrist.y);
-  redGrad.addColorStop(0, '#7f1d1d');
-  redGrad.addColorStop(0.5, '#dc2626');
-  redGrad.addColorStop(1, '#ef4444');
-  ctx.fillStyle = redGrad;
-  ctx.fill();
-  ctx.strokeStyle = '#eab308';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  // 2. Armor Dorsal Plate (Crimson with Gold Titanium Inset)
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[5].x, pts[5].y);
-  ctx.lineTo(pts[9].x, pts[9].y);
-  ctx.lineTo(pts[13].x, pts[13].y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.closePath();
-  ctx.fillStyle = '#b91c1c';
+  // 1. Stark Hot-Rod Red & Gold Armored Cuff
+  traceWristCuffPath(ctx, h);
+  const cuffGrad = ctx.createLinearGradient(h.cuffCenter.x, h.cuffCenter.y, wrist.x, wrist.y);
+  cuffGrad.addColorStop(0, '#7f1d1d');
+  cuffGrad.addColorStop(0.55, '#dc2626');
+  cuffGrad.addColorStop(1, '#fbbf24');
+  ctx.fillStyle = cuffGrad;
   ctx.fill();
   ctx.strokeStyle = '#450a0a';
-  ctx.lineWidth = 3.5;
+  ctx.lineWidth = Math.max(2.8, palmScale * 0.055);
   ctx.stroke();
 
-  // 3. Gold Titanium Armored Fingers
-  const fingers = [
-    [1, 2, 3, 4],
-    [5, 6, 7, 8],
-    [9, 10, 11, 12],
-    [13, 14, 15, 16],
-    [17, 18, 19, 20]
-  ];
+  // 2. Smooth Armored Stark Gauntlet Palm
+  traceSmoothPalmPath(ctx, h);
+  const armorGrad = ctx.createRadialGradient(
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 0.08,
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 1.15
+  );
+  armorGrad.addColorStop(0, '#fef08a');
+  armorGrad.addColorStop(0.28, '#f59e0b');
+  armorGrad.addColorStop(0.62, '#dc2626');
+  armorGrad.addColorStop(1, '#7f1d1d');
+  ctx.fillStyle = armorGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#450a0a';
+  ctx.lineWidth = Math.max(3, palmScale * 0.06);
+  ctx.stroke();
 
-  fingers.forEach((chain, fIdx) => {
-    const fScale = fIdx === 0 ? 1.1 : fIdx === 4 ? 0.88 : 0.98;
-    const baseW = fingerWidth * fScale;
-
-    for (let i = 0; i < chain.length - 1; i++) {
-      const p1 = pts[chain[i]];
-      const p2 = pts[chain[i + 1]];
-      const taper = 1.0 - (i * 0.13);
-
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#78350f';
-      ctx.lineWidth = baseW * taper + 4;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = i === 1 ? '#ef4444' : '#facc15';
-      ctx.lineWidth = baseW * taper;
-      ctx.stroke();
-    }
-
-    const tip = pts[chain[chain.length - 1]];
+  // Gold Titanium Seam Lines to Knuckles
+  ctx.strokeStyle = 'rgba(254, 240, 138, 0.7)';
+  ctx.lineWidth = Math.max(1.5, palmScale * 0.03);
+  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach((k) => {
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, baseW * 0.38, 0, Math.PI * 2);
-    ctx.fillStyle = '#fef08a';
-    ctx.fill();
-    ctx.strokeStyle = '#854d0e';
-    ctx.lineWidth = 2;
+    ctx.moveTo(palmCenter.x, palmCenter.y);
+    ctx.lineTo(k.x, k.y);
     ctx.stroke();
   });
 
-  // 4. GLOWING ARC REPULSOR IN PALM CENTER
-  const repulsorR = palmScale * 0.26;
-  const pulse = Math.sin(time * 0.01) * 0.2 + 0.8;
+  // Iconic Glowing Arc Reactor Repulsor Core in Palm Center
+  const repulsorPulse = 1 + Math.sin(time * 0.012) * 0.1;
+  const repR = palmScale * 0.24 * (isLocking ? 1.2 : repulsorPulse);
 
-  // Outer repulsor metallic bezel
+  ctx.save();
   ctx.beginPath();
-  ctx.arc(palmCenter.x, palmCenter.y, repulsorR * 1.35, 0, Math.PI * 2);
+  ctx.arc(palmCenter.x, palmCenter.y, repR * 1.24, 0, Math.PI * 2);
   ctx.fillStyle = '#1e293b';
   ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = Math.max(2, palmScale * 0.04);
   ctx.stroke();
 
-  // Cyan & White Arc Light Glow
-  const glowGrad = ctx.createRadialGradient(
-    palmCenter.x, palmCenter.y, repulsorR * 0.15,
-    palmCenter.x, palmCenter.y, repulsorR * (isLocking ? 3.0 : 2.0)
+  const coreGrad = ctx.createRadialGradient(
+    palmCenter.x,
+    palmCenter.y,
+    repR * 0.1,
+    palmCenter.x,
+    palmCenter.y,
+    repR * 1.45
   );
-  glowGrad.addColorStop(0, '#ffffff');
-  glowGrad.addColorStop(0.3, '#38bdf8');
-  glowGrad.addColorStop(0.7, 'rgba(14, 165, 233, 0.6)');
-  glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-  ctx.fillStyle = glowGrad;
+  coreGrad.addColorStop(0, '#ffffff');
+  coreGrad.addColorStop(0.45, '#e0f2fe');
+  coreGrad.addColorStop(0.75, '#38bdf8');
+  coreGrad.addColorStop(1, 'rgba(2, 132, 199, 0)');
+  ctx.fillStyle = coreGrad;
   ctx.beginPath();
-  ctx.arc(palmCenter.x, palmCenter.y, repulsorR * (isLocking ? 3.0 : 2.0), 0, Math.PI * 2);
+  ctx.arc(palmCenter.x, palmCenter.y, repR * 1.45, 0, Math.PI * 2);
   ctx.fill();
 
-  // Core repulsor lens
   ctx.beginPath();
-  ctx.arc(palmCenter.x, palmCenter.y, repulsorR * 0.85, 0, Math.PI * 2);
+  ctx.arc(palmCenter.x, palmCenter.y, repR * 0.72, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = '#0284c7';
-  ctx.shadowBlur = 18 * pulse;
   ctx.fill();
-  ctx.shadowBlur = 0;
-
-  // Label tag above hand
-  ctx.save();
-  const topY = Math.min(...pts.map(p => p.y)) - 24;
-  ctx.fillStyle = 'rgba(185, 28, 28, 0.95)';
-  ctx.beginPath();
-  ctx.roundRect(palmCenter.x - 65, topY - 14, 130, 28, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#fde047';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🤖 IRON MAN', palmCenter.x, topY);
   ctx.restore();
+
+  // 3. Articulated Red & Gold Titanium Fingers with Repulsor Tips
+  drawSculptedFingers(
+    ctx,
+    h,
+    {
+      outlineColor: '#450a0a',
+      baseColor: '#dc2626',
+      midColor: '#f59e0b',
+      tipColor: '#ef4444',
+      highlightColor: 'rgba(254, 240, 138, 0.65)',
+      jointColor: '#78350f',
+      outlineExtra: 3.8,
+    },
+    (chain, _fIdx, baseW) => {
+      const tip = pts[chain[3]];
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, baseW * 0.28, 0, Math.PI * 2);
+      ctx.fillStyle = '#e0f2fe';
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+    }
+  );
+
+  if (isLocking && holdProgress > 0) {
+    const blastR = palmScale * (0.58 + (holdProgress / 100) * 0.48);
+    ctx.save();
+    ctx.strokeStyle = '#e0f2fe';
+    ctx.lineWidth = Math.max(2.5, palmScale * 0.05);
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(palmCenter.x, palmCenter.y, blastR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.restore();
 }
 
-/**
- * Draw Frost Mage / Elsa's Ice Crystalline Hand
- * Glacial cyan crystal plates, icicle claw tips, snowflake runes, and swirling winter frost!
- */
+// ============================================================================
+// 6. FROST MAGE GLACIAL GAUNTLET
+// ============================================================================
 export function drawFrostMageHand(
   ctx: CanvasRenderingContext2D,
   hand: Landmark[],
@@ -1337,122 +1143,148 @@ export function drawFrostMageHand(
 ) {
   if (!hand || hand.length < 21) return;
 
-  const pts = hand.map(p => toPx(p, cw, ch, videoW, videoH));
-  const wrist = pts[0];
-  const middleKnuckle = pts[9];
-  const palmScale = Math.max(30, distPx(wrist, middleKnuckle));
-  const palmCenter = lerpPx(wrist, middleKnuckle, 0.52);
-  const fingerWidth = Math.max(9, palmScale * 0.24);
+  const h = computeHandAnatomy(hand, cw, ch, videoW, videoH, 1.0);
+  const { pts, wrist, palmCenter, palmScale } = h;
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.shadowColor = isLocking ? 'rgba(186, 230, 253, 0.9)' : 'rgba(14, 165, 233, 0.55)';
+  ctx.shadowBlur = isLocking ? 20 : 12;
 
-  // Glacial Ice Palm
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[5].x, pts[5].y);
-  ctx.lineTo(pts[9].x, pts[9].y);
-  ctx.lineTo(pts[13].x, pts[13].y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.closePath();
-
-  const iceGrad = ctx.createRadialGradient(
-    palmCenter.x, palmCenter.y, palmScale * 0.1,
-    palmCenter.x, palmCenter.y, palmScale * 1.2
-  );
-  iceGrad.addColorStop(0, '#ffffff');
-  iceGrad.addColorStop(0.35, '#bae6fd');
-  iceGrad.addColorStop(0.75, '#38bdf8');
-  iceGrad.addColorStop(1, '#0284c7');
-  ctx.fillStyle = iceGrad;
+  // 1. Royal Cryo-Armor Wrist Cuff
+  traceWristCuffPath(ctx, h);
+  const cuffGrad = ctx.createLinearGradient(h.cuffCenter.x, h.cuffCenter.y, wrist.x, wrist.y);
+  cuffGrad.addColorStop(0, '#0c4a6e');
+  cuffGrad.addColorStop(0.55, '#0284c7');
+  cuffGrad.addColorStop(1, '#bae6fd');
+  ctx.fillStyle = cuffGrad;
   ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#082f49';
+  ctx.lineWidth = Math.max(2.5, palmScale * 0.055);
   ctx.stroke();
 
-  // Ice Snowflake Sigil in Palm
+  // 2. Smooth Rounded Glacial Gauntlet Palm
+  traceSmoothPalmPath(ctx, h);
+  const iceGrad = ctx.createRadialGradient(
+    palmCenter.x - palmScale * 0.08,
+    palmCenter.y - palmScale * 0.08,
+    palmScale * 0.06,
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 1.12
+  );
+  iceGrad.addColorStop(0, '#f0f9ff');
+  iceGrad.addColorStop(0.32, '#bae6fd');
+  iceGrad.addColorStop(0.68, '#38bdf8');
+  iceGrad.addColorStop(1, '#0369a1');
+  ctx.fillStyle = iceGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#082f49';
+  ctx.lineWidth = Math.max(2.8, palmScale * 0.058);
+  ctx.stroke();
+
+  // Frost Facet Lines radiating from Palm Center to Knuckles
+  ctx.strokeStyle = 'rgba(240, 249, 255, 0.65)';
+  ctx.lineWidth = Math.max(1.5, palmScale * 0.028);
+  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach((k) => {
+    ctx.beginPath();
+    ctx.moveTo(palmCenter.x, palmCenter.y);
+    ctx.lineTo(k.x, k.y);
+    ctx.stroke();
+  });
+
+  // Rotating 6-Pointed Crystalline Snowflake Emblem Inside the Palm
   ctx.save();
   ctx.translate(palmCenter.x, palmCenter.y);
-  ctx.rotate(time * 0.003);
+  ctx.rotate(time * 0.0018);
+  const flakeR = palmScale * 0.22;
+
+  ctx.beginPath();
+  ctx.arc(0, 0, flakeR * 1.15, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(12, 74, 110, 0.55)';
+  ctx.fill();
+  ctx.strokeStyle = '#bae6fd';
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  for (let s = 0; s < 6; s++) {
-    const a = (s * Math.PI) / 3;
+  ctx.lineWidth = Math.max(1.8, palmScale * 0.032);
+  for (let i = 0; i < 6; i++) {
+    const a = (i * Math.PI) / 3;
+    const x2 = Math.cos(a) * flakeR;
+    const y2 = Math.sin(a) * flakeR;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(a) * palmScale * 0.3, Math.sin(a) * palmScale * 0.3);
+    ctx.lineTo(x2, y2);
     ctx.stroke();
+
+    const bx = Math.cos(a) * (flakeR * 0.58);
+    const by = Math.sin(a) * (flakeR * 0.58);
+    [-0.55, 0.55].forEach((da) => {
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + Math.cos(a + da) * (flakeR * 0.34), by + Math.sin(a + da) * (flakeR * 0.34));
+      ctx.stroke();
+    });
   }
   ctx.restore();
 
-  // Ice Fingers with Sharp Icicle Tips
-  const fingers = [
-    [1, 2, 3, 4],
-    [5, 6, 7, 8],
-    [9, 10, 11, 12],
-    [13, 14, 15, 16],
-    [17, 18, 19, 20]
-  ];
+  // 3. Sculpted Crystalline Ice Fingers
+  drawSculptedFingers(
+    ctx,
+    h,
+    {
+      outlineColor: '#082f49',
+      baseColor: '#0284c7',
+      midColor: '#38bdf8',
+      tipColor: '#7dd3fc',
+      highlightColor: 'rgba(240, 249, 255, 0.75)',
+      jointColor: 'rgba(12, 74, 110, 0.7)',
+      outlineExtra: 3.8,
+    },
+    (chain, _fIdx, baseW) => {
+      const tip = pts[chain[3]];
+      const prev = pts[chain[2]];
+      const angle = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+      const r = baseW * 0.34;
 
-  fingers.forEach((chain, fIdx) => {
-    const baseW = fingerWidth * (fIdx === 0 ? 1.05 : 0.95);
-
-    for (let i = 0; i < chain.length - 1; i++) {
-      const p1 = pts[chain[i]];
-      const p2 = pts[chain[i + 1]];
-      const taper = 1.0 - (i * 0.14);
-
+      ctx.save();
+      ctx.translate(tip.x, tip.y);
+      ctx.rotate(angle);
       ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#e0f2fe';
-      ctx.lineWidth = baseW * taper + 3;
+      ctx.moveTo(r * 1.35, 0);
+      ctx.lineTo(0, -r * 0.85);
+      ctx.lineTo(-r * 0.85, 0);
+      ctx.lineTo(0, r * 0.85);
+      ctx.closePath();
+      ctx.fillStyle = '#f0f9ff';
+      ctx.fill();
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = baseW * taper;
-      ctx.stroke();
+      ctx.restore();
     }
+  );
 
-    const tip = pts[chain[chain.length - 1]];
+  if (isLocking && holdProgress > 0) {
+    const blizzardR = palmScale * (0.58 + (holdProgress / 100) * 0.45);
+    ctx.save();
+    ctx.strokeStyle = '#f0f9ff';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([6, 4]);
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, baseW * 0.38, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = 10;
-    ctx.fill();
-  });
-
-  // Label tag above hand
-  ctx.save();
-  const topY = Math.min(...pts.map(p => p.y)) - 24;
-  ctx.fillStyle = 'rgba(2, 132, 199, 0.95)';
-  ctx.beginPath();
-  ctx.roundRect(palmCenter.x - 65, topY - 14, 130, 28, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('❄️ FROST MAGE', palmCenter.x, topY);
-  ctx.restore();
+    ctx.arc(palmCenter.x, palmCenter.y, blizzardR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.restore();
 }
 
-/**
- * Draw Cyberpunk / Laser Mecha Hand
- * Dark graphite chassis with illuminated neon cyan & magenta laser circuit lines!
- */
+// ============================================================================
+// 7. CYBERPUNK MECHA HAND
+// ============================================================================
 export function drawCyberpunkHand(
   ctx: CanvasRenderingContext2D,
   hand: Landmark[],
@@ -1466,110 +1298,138 @@ export function drawCyberpunkHand(
 ) {
   if (!hand || hand.length < 21) return;
 
-  const pts = hand.map(p => toPx(p, cw, ch, videoW, videoH));
-  const wrist = pts[0];
-  const middleKnuckle = pts[9];
-  const palmScale = Math.max(30, distPx(wrist, middleKnuckle));
-  const palmCenter = lerpPx(wrist, middleKnuckle, 0.52);
-  const fingerWidth = Math.max(10, palmScale * 0.25);
+  const h = computeHandAnatomy(hand, cw, ch, videoW, videoH, 1.02);
+  const { pts, wrist, palmCenter, palmScale } = h;
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.shadowColor = isLocking ? 'rgba(34, 211, 238, 0.9)' : 'rgba(217, 70, 239, 0.65)';
+  ctx.shadowBlur = isLocking ? 20 : 12;
 
-  // Mecha Palm Chassis
-  ctx.beginPath();
-  ctx.moveTo(wrist.x, wrist.y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[5].x, pts[5].y);
-  ctx.lineTo(pts[9].x, pts[9].y);
-  ctx.lineTo(pts[13].x, pts[13].y);
-  ctx.lineTo(pts[17].x, pts[17].y);
-  ctx.closePath();
-  ctx.fillStyle = '#0f172a';
+  // 1. Matte Carbon & Neon Magenta Cyber Cuff
+  traceWristCuffPath(ctx, h);
+  const cuffGrad = ctx.createLinearGradient(h.cuffCenter.x, h.cuffCenter.y, wrist.x, wrist.y);
+  cuffGrad.addColorStop(0, '#09090b');
+  cuffGrad.addColorStop(0.65, '#1e1b4b');
+  cuffGrad.addColorStop(1, '#312e81');
+  ctx.fillStyle = cuffGrad;
   ctx.fill();
-  ctx.strokeStyle = '#06b6d4';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#d946ef';
+  ctx.lineWidth = Math.max(2.5, palmScale * 0.05);
   ctx.stroke();
 
-  // Neon Circuit Traces
-  ctx.strokeStyle = '#f43f5e';
-  ctx.lineWidth = 2;
-  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach(k => {
+  // 2. Smooth Rounded Carbon-Fiber Cyber Palm
+  traceSmoothPalmPath(ctx, h);
+  const chasGrad = ctx.createRadialGradient(
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 0.08,
+    palmCenter.x,
+    palmCenter.y,
+    palmScale * 1.15
+  );
+  chasGrad.addColorStop(0, '#334155');
+  chasGrad.addColorStop(0.55, '#1e293b');
+  chasGrad.addColorStop(1, '#09090b');
+  ctx.fillStyle = chasGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = Math.max(2.5, palmScale * 0.052);
+  ctx.stroke();
+
+  // Neon Magenta PCB Traces to Knuckle Nodes
+  ctx.strokeStyle = '#d946ef';
+  ctx.lineWidth = Math.max(1.8, palmScale * 0.032);
+  [pts[2], pts[5], pts[9], pts[13], pts[17]].forEach((k) => {
     ctx.beginPath();
     ctx.moveTo(palmCenter.x, palmCenter.y);
     ctx.lineTo(k.x, k.y);
     ctx.stroke();
   });
 
-  // Robotic Jointed Fingers
-  const fingers = [
-    [1, 2, 3, 4],
-    [5, 6, 7, 8],
-    [9, 10, 11, 12],
-    [13, 14, 15, 16],
-    [17, 18, 19, 20]
-  ];
+  // Spinning Holographic Cyber Core in Palm Center
+  ctx.save();
+  ctx.translate(palmCenter.x, palmCenter.y);
+  ctx.rotate(-time * 0.003);
+  const holoR = palmScale * 0.21;
 
-  fingers.forEach((chain) => {
-    for (let i = 0; i < chain.length - 1; i++) {
-      const p1 = pts[chain[i]];
-      const p2 = pts[chain[i + 1]];
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i * Math.PI) / 3;
+    const hx = Math.cos(a) * holoR;
+    const hy = Math.sin(a) * holoR;
+    if (i === 0) ctx.moveTo(hx, hy);
+    else ctx.lineTo(hx, hy);
+  }
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(34, 211, 238, 0.28)';
+  ctx.fill();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(0, 0, holoR * 0.42, 0, Math.PI * 2);
+  ctx.fillStyle = '#f0abfc';
+  ctx.fill();
+  ctx.restore();
+
+  // 3. Matte-Black Mecha Fingers with Neon Cyan & Magenta Circuitry
+  drawSculptedFingers(
+    ctx,
+    h,
+    {
+      outlineColor: '#09090b',
+      baseColor: '#1e293b',
+      midColor: '#334155',
+      tipColor: '#0f172a',
+      highlightColor: 'rgba(34, 211, 238, 0.65)',
+      jointColor: '#d946ef',
+      outlineExtra: 3.8,
+    },
+    (chain, _fIdx, baseW) => {
+      const k = pts[chain[0]];
       ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = fingerWidth * 0.9 + 3;
+      ctx.arc(k.x, k.y, baseW * 0.34, 0, Math.PI * 2);
+      ctx.fillStyle = '#09090b';
+      ctx.fill();
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
 
+      const tip = pts[chain[3]];
       ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = fingerWidth * 0.9;
+      ctx.arc(tip.x, tip.y, baseW * 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = '#22d3ee';
+      ctx.fill();
+      ctx.strokeStyle = '#f0abfc';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
     }
+  );
 
-    // Laser Emitter Tip
-    const tip = pts[chain[chain.length - 1]];
+  if (isLocking && holdProgress > 0) {
+    const empR = palmScale * (0.58 + (holdProgress / 100) * 0.48);
+    ctx.save();
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, fingerWidth * 0.4, 0, Math.PI * 2);
-    ctx.fillStyle = '#f43f5e';
-    ctx.shadowColor = '#f43f5e';
-    ctx.shadowBlur = 12;
-    ctx.fill();
-  });
-
-  // Label tag above hand
-  ctx.save();
-  const topY = Math.min(...pts.map(p => p.y)) - 24;
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
-  ctx.beginPath();
-  ctx.roundRect(palmCenter.x - 65, topY - 14, 130, 28, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#06b6d4';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('⚡ CYBER MECHA', palmCenter.x, topY);
-  ctx.restore();
+    ctx.arc(palmCenter.x, palmCenter.y, empR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.restore();
 }
 
-export type HandCharacterType = 'spiderman' | 'thanos' | 'witch' | 'hulk' | 'ironman' | 'frost' | 'cyberpunk';
-
 /**
- * Universal character hand renderer for Bubble Pop & Yoga Quiz
+ * Dispatcher for single-character hand rendering
  */
 export function drawCharacterHand(
   ctx: CanvasRenderingContext2D,
   hand: Landmark[],
-  character: HandCharacterType = 'spiderman',
+  character: HandCharacter,
   cw: number,
   ch: number,
   isLocking = false,
@@ -1580,66 +1440,63 @@ export function drawCharacterHand(
 ) {
   switch (character) {
     case 'spiderman':
-      drawSpidermanHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
-      break;
+      return drawSpidermanHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
     case 'thanos':
-      drawThanosHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
-      break;
+      return drawThanosHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
     case 'witch':
-      drawWitchHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
-      break;
+      return drawWitchHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
     case 'hulk':
-      drawHulkHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
-      break;
+      return drawHulkHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
     case 'ironman':
-      drawIronManHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
-      break;
+      return drawIronManHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
     case 'frost':
-      drawFrostMageHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
-      break;
+      return drawFrostMageHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
     case 'cyberpunk':
-      drawCyberpunkHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
-      break;
+      return drawCyberpunkHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
     default:
-      drawSpidermanHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
+      return drawSpidermanHand(ctx, hand, cw, ch, isLocking, holdProgress, time, videoW, videoH);
   }
 }
 
 /**
- * Main dispatcher: automatically applies Spider-Man on Left Side
- * and Thanos on Right Side based on hand position and active players!
+ * Renders detected hands with either an options object (used by YogaQuiz) or positional arguments
  */
-export function drawSuperheroHands({
-  ctx,
-  hands,
-  cw,
-  ch,
-  isTwoPlayers,
-  playerDetections,
+export function drawSuperheroHands(
+  ctxOrOpts: CanvasRenderingContext2D | SuperheroHandRenderOptions,
+  hands?: Landmark[][],
+  character: HandCharacter = 'spiderman',
+  cw = 1280,
+  ch = 720,
+  isLocking = false,
+  holdProgress = 0,
   time = performance.now(),
   videoW = 1280,
-  videoH = 720,
-}: SuperheroHandOptions) {
-  if (!hands || hands.length === 0) return;
+  videoH = 720
+) {
+  if ('ctx' in ctxOrOpts) {
+    const opts = ctxOrOpts;
+    if (!opts.hands || !opts.hands.length) return;
+    const t = opts.time ?? performance.now();
+    const vW = opts.videoW ?? 1280;
+    const vH = opts.videoH ?? 720;
 
-  hands.forEach(hand => {
-    if (!hand || hand.length < 21) return;
+    opts.hands.forEach((mirroredHand, idx) => {
+      if (!mirroredHand || mirroredHand.length < 21) return;
+      const wristMirroredX = mirroredHand[0]?.x ?? 0.5;
+      const pIdx = opts.isTwoPlayers ? (wristMirroredX < 0.5 ? 0 : 1) : 0;
+      const det = opts.playerDetections?.[pIdx] || opts.playerDetections?.[idx];
+      const locking = Boolean(det && det.matchedOptionIdx !== null && det.holdProgress > 0);
+      const prog = det?.holdProgress ?? 0;
+      const char: HandCharacter =
+        opts.character ?? (opts.isTwoPlayers ? (wristMirroredX < 0.5 ? 'spiderman' : 'thanos') : idx % 2 === 0 ? 'spiderman' : 'thanos');
 
-    // Check hand center position on screen (0.0 = left edge, 1.0 = right edge)
-    const palmX = hand[9]?.x ?? hand[0]?.x ?? 0.5;
-    const isLeftSide = palmX < 0.5;
+      drawCharacterHand(opts.ctx, mirroredHand, char, opts.cw, opts.ch, locking, prog, t, vW, vH);
+    });
+    return;
+  }
 
-    // Determine lock-in progress for the matching zone
-    const playerIdx = isLeftSide ? 0 : 1;
-    const detection = playerDetections[playerIdx] || { holdProgress: 0, matchedOptionIdx: null };
-    const isLocking = detection.matchedOptionIdx !== null && detection.holdProgress > 0;
-
-    if (isLeftSide) {
-      // Left side of the screen: SPIDER-MAN HAND
-      drawSpidermanHand(ctx, hand, cw, ch, isLocking, detection.holdProgress, time, videoW, videoH);
-    } else {
-      // Right side of the screen: THANOS INFINITY GAUNTLET HAND
-      drawThanosHand(ctx, hand, cw, ch, isLocking, detection.holdProgress, time, videoW, videoH);
-    }
+  if (!hands || !hands.length) return;
+  hands.forEach((hand) => {
+    drawCharacterHand(ctxOrOpts, hand, character, cw, ch, isLocking, holdProgress, time, videoW, videoH);
   });
 }

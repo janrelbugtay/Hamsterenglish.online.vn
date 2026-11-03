@@ -1409,32 +1409,40 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
           );
         });
       } else {
-        // Fallback for mouse / preview when no camera hand is detected
+        // Fallback for mouse / touch when no camera hand is detected: render full 3D character hand at pointer
+        const nowTime = performance.now();
         pointers.current.forEach((pointer, pIndex) => {
-          if (!pointer.detected) return;
+          if (!pointer.detected || pointer.x < 0 || pointer.y < 0) return;
           const effectivePlayer = gameState.current.numPlayers === 1 ? 0 : pIndex;
+          const demoHand = buildDemoHandLandmarks(pointer.x, pointer.y, width, height, nowTime);
+          const strikePoints = [9, 4, 8, 12, 16, 20].map((idx) =>
+            toPx(demoHand[idx], width, height, width, height)
+          );
           if (graphicsState.current.isQuestionActive) {
-            graphicsState.current.bubbles.forEach(b => {
-              if (!b.popped && b.checkCollision(pointer.x, pointer.y, effectivePlayer)) {
-                handlePop(b, effectivePlayer);
+            let poppedThisHand = false;
+            graphicsState.current.bubbles.forEach((b) => {
+              if (poppedThisHand || b.popped) return;
+              for (const pt of strikePoints) {
+                if (b.checkCollision(pt.x, pt.y, effectivePlayer)) {
+                  handlePop(b, effectivePlayer);
+                  poppedThisHand = true;
+                  break;
+                }
               }
             });
           }
-          ctx.save();
-          ctx.translate(pointer.x, pointer.y);
-          ctx.shadowColor = '#3b82f6';
-          ctx.shadowBlur = 15;
-          ctx.font = '48px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          const icon = currentHandChar === 'spiderman' ? '🕷️' :
-                       currentHandChar === 'thanos' ? '🧤' :
-                       currentHandChar === 'witch' ? '🧙‍♀️' :
-                       currentHandChar === 'hulk' ? '💪' :
-                       currentHandChar === 'ironman' ? '🤖' :
-                       currentHandChar === 'frost' ? '❄️' : '⚡';
-          ctx.fillText(icon, 0, 0);
-          ctx.restore();
+          drawCharacterHand(
+            ctx,
+            demoHand,
+            currentHandChar,
+            width,
+            height,
+            false,
+            0,
+            nowTime,
+            width,
+            height
+          );
         });
       }
     }
@@ -1528,16 +1536,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   };
 
   const onHandsResults = (results: any) => {
-    if (!gameState.current.isActive) return;
-    const width = containerRef.current?.clientWidth || 800;
-    const height = containerRef.current?.clientHeight || 600;
-    const vW = videoRef.current?.videoWidth || 640;
-    const vH = videoRef.current?.videoHeight || 480;
-
-    pointers.current.forEach(p => p.detected = false);
-
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
         detectedHandsRef.current = [];
+        if (gameState.current.isActive) {
+            pointers.current.forEach(p => p.detected = false);
+        }
         return;
     }
 
@@ -1549,6 +1552,15 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             z: lm.z
         }))
     );
+
+    if (!gameState.current.isActive) return;
+
+    const width = containerRef.current?.clientWidth || 800;
+    const height = containerRef.current?.clientHeight || 600;
+    const vW = videoRef.current?.videoWidth || 640;
+    const vH = videoRef.current?.videoHeight || 480;
+
+    pointers.current.forEach(p => p.detected = false);
 
     // Extract index finger tips for finger tracker
     const detected: Array<{ x: number; y: number }> = [];
@@ -1601,16 +1613,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   };
 
   const onFaceResults = (results: any) => {
-    if (!gameState.current.isActive) return;
-    const width = containerRef.current?.clientWidth || 800;
-    const height = containerRef.current?.clientHeight || 600;
-    const vW = videoRef.current?.videoWidth || 640;
-    const vH = videoRef.current?.videoHeight || 480;
-
-    pointers.current.forEach(p => p.detected = false);
-
     if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
         detectedFacesRef.current = [];
+        if (gameState.current.isActive) {
+            pointers.current.forEach(p => p.detected = false);
+        }
         return;
     }
 
@@ -1622,6 +1629,15 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             z: lm.z
         }))
     );
+
+    if (!gameState.current.isActive) return;
+
+    const width = containerRef.current?.clientWidth || 800;
+    const height = containerRef.current?.clientHeight || 600;
+    const vW = videoRef.current?.videoWidth || 640;
+    const vH = videoRef.current?.videoHeight || 480;
+
+    pointers.current.forEach(p => p.detected = false);
 
     const detected: Array<{ x: number; y: number }> = [];
     detectedFacesRef.current.forEach(face => {
@@ -1764,7 +1780,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             let isProcessing = false;
             let lastFrameTime = 0;
             let animId: number | null = null;
-            const TARGET_INTERVAL_MS = 33; // ~30 FPS throttling keeps CPU/GPU cool
+            const TARGET_INTERVAL_MS = 20; // ~50 FPS low-latency hand & face tracking
 
             const sendFrames = async (time: number) => {
                 if (!active || !videoRef.current) return;
@@ -2539,7 +2555,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
       {/* Screen: Setup */}
       {screen === 'setup' && (
-        <div className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto custom-scrollbar backdrop-blur-sm transition-colors duration-1000 ${selectedTheme === "theme-ocean" ? "bg-gradient-to-b from-sky-600/90 to-cyan-600/90 dark:from-sky-800/90 dark:to-cyan-900/90" : selectedTheme === "theme-space" ? "bg-gradient-to-b from-slate-900/90 to-indigo-950/90" : selectedTheme === "theme-jungle" ? "bg-gradient-to-b from-green-600/90 to-emerald-400/90 dark:from-green-900/90 dark:to-emerald-800/90" : selectedTheme === "theme-sunset" ? "bg-gradient-to-b from-orange-400/90 to-yellow-300/90 dark:from-orange-800/90 dark:to-yellow-700/90" : "bg-gradient-to-b from-sky-400/90 to-blue-300/90 dark:from-sky-900/90 dark:to-blue-950/90"}`}>
+        <div className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto custom-scrollbar backdrop-blur-sm transition-colors duration-1000 ${selectedTheme === "theme-ocean" ? "bg-gradient-to-b from-sky-600/95 to-cyan-700/95 dark:from-sky-900/95 dark:to-cyan-950/95" : selectedTheme === "theme-space" ? "bg-gradient-to-b from-slate-900/95 to-indigo-950/95" : selectedTheme === "theme-jungle" ? "bg-gradient-to-b from-emerald-700/95 to-teal-800/95 dark:from-green-950/95 dark:to-emerald-900/95" : selectedTheme === "theme-sunset" ? "bg-gradient-to-b from-orange-500/95 to-rose-600/95 dark:from-orange-900/95 dark:to-rose-950/95" : "bg-gradient-to-b from-sky-500/95 to-blue-600/95 dark:from-sky-900/95 dark:to-blue-950/95"}`}>
             {/* Immersive Background Elements */}
             <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
                 <div className="absolute top-10 left-10 w-32 h-32 bg-white/20 rounded-full blur-3xl"></div>
@@ -2573,41 +2589,41 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 ))}
             </div>
 
-            <div className="relative z-10 flex flex-col items-center w-full max-w-[1380px] my-auto py-4">
-                <h2 className="text-4xl sm:text-6xl font-black mb-5 text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-100 drop-shadow-[0_4px_4px_rgba(0,0,0,0.12)] text-center tracking-tight" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.5)' }}>
+            <div className="relative z-10 flex flex-col items-center w-full max-w-[1400px] my-auto py-3">
+                <h2 className="text-4xl sm:text-6xl font-black mb-4 text-white drop-shadow-[0_6px_12px_rgba(15,23,42,0.45)] text-center tracking-tight">
                     Bubble Pop
                 </h2>
                 
-                {/* 3-Column Setup Layout: [1. Players & Settings] | [2. Choose Your Tracker (Expanded)] | [3. Choose Theme & Study Mode] */}
+                {/* 3-Column High-Visibility Setup Layout: [1. Players & Settings] | [2. Choose Your Tracker + Live Camera] | [3. Choose Theme & Study Mode] */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch relative z-10 mb-5">
                     
                     {/* COLUMN 1: PLAYERS & GAME SETTINGS */}
-                    <div className="lg:col-span-4 bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl rounded-[2rem] border border-white/30 p-5 sm:p-6 shadow-2xl flex flex-col justify-between gap-4">
+                    <div className="lg:col-span-4 bg-slate-900/80 dark:bg-slate-950/85 backdrop-blur-2xl rounded-[2rem] border-2 border-white/40 p-5 sm:p-6 shadow-[0_20px_50px_rgba(15,23,42,0.5)] flex flex-col justify-between gap-4">
                         <div className="flex flex-col gap-4">
-                            {/* Improved Player 1 & Player 2 Mode Cards */}
+                            {/* High-Contrast Player 1 & Player 2 Mode Cards */}
                             <div className="grid grid-cols-2 gap-3.5">
                                 <button
                                     type="button"
                                     onClick={() => setNumPlayers(1)}
                                     className={`relative group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden ${
                                         numPlayers === 1
-                                            ? 'bg-gradient-to-b from-blue-500 to-blue-600 border-white text-white shadow-[0_8px_25px_rgba(59,130,246,0.55)] scale-[1.02]'
-                                            : 'bg-slate-900/25 hover:bg-slate-900/35 border-white/20 text-white/85'
+                                            ? 'bg-gradient-to-b from-blue-500 to-blue-600 border-white text-white shadow-[0_8px_25px_rgba(59,130,246,0.65)] ring-2 ring-white/50 scale-[1.02]'
+                                            : 'bg-slate-800/95 hover:bg-slate-700 border-white/30 hover:border-white/60 text-white shadow-md'
                                     }`}
                                 >
                                     {numPlayers === 1 && (
-                                        <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white text-blue-600 flex items-center justify-center text-xs font-black shadow">
+                                        <span className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full bg-white text-blue-600 flex items-center justify-center text-xs font-black shadow-md">
                                             ✓
                                         </span>
                                     )}
                                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
-                                        numPlayers === 1 ? 'bg-white/25 ring-2 ring-white/60' : 'bg-blue-500/80'
+                                        numPlayers === 1 ? 'bg-white text-blue-600' : 'bg-blue-600 text-white border border-white/30'
                                     }`}>
-                                        <User size={30} className="text-white" strokeWidth={2.5} />
+                                        <User size={30} strokeWidth={2.75} />
                                     </div>
                                     <div className="text-center">
-                                        <div className="font-black text-lg leading-tight">1 Player</div>
-                                        <div className="text-[11px] font-bold text-blue-100/90">Solo Arena</div>
+                                        <div className="font-black text-lg leading-tight text-white">1 Player</div>
+                                        <div className="text-xs font-extrabold text-blue-100">Solo Arena</div>
                                     </div>
                                 </button>
 
@@ -2616,42 +2632,42 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                     onClick={() => setNumPlayers(2)}
                                     className={`relative group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden ${
                                         numPlayers === 2
-                                            ? 'bg-gradient-to-b from-rose-500 to-red-600 border-white text-white shadow-[0_8px_25px_rgba(244,63,94,0.55)] scale-[1.02]'
-                                            : 'bg-slate-900/25 hover:bg-slate-900/35 border-white/20 text-white/85'
+                                            ? 'bg-gradient-to-b from-rose-500 to-red-600 border-white text-white shadow-[0_8px_25px_rgba(244,63,94,0.65)] ring-2 ring-white/50 scale-[1.02]'
+                                            : 'bg-slate-800/95 hover:bg-slate-700 border-white/30 hover:border-white/60 text-white shadow-md'
                                     }`}
                                 >
                                     {numPlayers === 2 && (
-                                        <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white text-rose-600 flex items-center justify-center text-xs font-black shadow">
+                                        <span className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full bg-white text-rose-600 flex items-center justify-center text-xs font-black shadow-md">
                                             ✓
                                         </span>
                                     )}
                                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
-                                        numPlayers === 2 ? 'bg-white/25 ring-2 ring-white/60' : 'bg-rose-500/80'
+                                        numPlayers === 2 ? 'bg-white text-rose-600' : 'bg-rose-600 text-white border border-white/30'
                                     }`}>
-                                        <Users size={30} className="text-white" strokeWidth={2.5} />
+                                        <Users size={30} strokeWidth={2.75} />
                                     </div>
                                     <div className="text-center">
-                                        <div className="font-black text-lg leading-tight">2 Players</div>
-                                        <div className="text-[11px] font-bold text-rose-100/90">Team Battle</div>
+                                        <div className="font-black text-lg leading-tight text-white">2 Players</div>
+                                        <div className="text-xs font-extrabold text-rose-100">Team Battle</div>
                                     </div>
                                 </button>
                             </div>
 
-                            {/* Improved Player 1 & Player 2 Team Name Cards */}
+                            {/* High-Contrast Player 1 & Player 2 Team Name Cards */}
                             <div className="flex flex-col gap-2.5">
                                 {/* Player 1 Card */}
-                                <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-gradient-to-r from-blue-600/40 to-sky-500/30 border-2 border-blue-300/50 shadow-md">
-                                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 text-white flex flex-col items-center justify-center font-black leading-none shadow-md border border-white/40 shrink-0">
-                                        <span className="text-[9px] uppercase tracking-wider opacity-80">P1</span>
+                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-blue-600/80 to-indigo-600/80 border-2 border-blue-300 shadow-lg">
+                                    <div className="w-11 h-11 rounded-xl bg-white text-blue-600 flex flex-col items-center justify-center font-black leading-none shadow-md shrink-0">
+                                        <span className="text-[10px] uppercase tracking-wider font-black">P1</span>
                                         <span className="text-sm">🔵</span>
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] font-black uppercase tracking-wider text-blue-100 mb-0.5">Player 1 / Team 1</div>
+                                        <div className="text-[11px] font-black uppercase tracking-wider text-white mb-1">Player 1 / Team 1</div>
                                         <input
                                             type="text"
                                             value={p1Name}
                                             onChange={e => setP1Name(e.target.value)}
-                                            className="w-full bg-white/15 hover:bg-white/20 focus:bg-white/25 text-white font-black placeholder-white/60 border border-white/30 rounded-xl px-3 py-1.5 outline-none focus:border-white transition-colors text-sm"
+                                            className="w-full bg-slate-950/75 hover:bg-slate-950/90 focus:bg-slate-950 text-white font-black placeholder-white/60 border-2 border-white/40 rounded-xl px-3 py-1.5 outline-none focus:border-amber-300 transition-colors text-sm shadow-inner"
                                             placeholder="Team 1"
                                         />
                                     </div>
@@ -2659,18 +2675,18 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
                                 {/* Player 2 Card */}
                                 {numPlayers === 2 ? (
-                                    <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-gradient-to-r from-rose-600/40 to-orange-500/30 border-2 border-rose-300/50 shadow-md animate-in fade-in duration-200">
-                                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-rose-400 to-red-600 text-white flex flex-col items-center justify-center font-black leading-none shadow-md border border-white/40 shrink-0">
-                                            <span className="text-[9px] uppercase tracking-wider opacity-80">P2</span>
+                                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-rose-600/85 to-red-600/85 border-2 border-rose-300 shadow-lg animate-in fade-in duration-200">
+                                        <div className="w-11 h-11 rounded-xl bg-white text-rose-600 flex flex-col items-center justify-center font-black leading-none shadow-md shrink-0">
+                                            <span className="text-[10px] uppercase tracking-wider font-black">P2</span>
                                             <span className="text-sm">🔴</span>
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-[10px] font-black uppercase tracking-wider text-rose-100 mb-0.5">Player 2 / Team 2</div>
+                                            <div className="text-[11px] font-black uppercase tracking-wider text-white mb-1">Player 2 / Team 2</div>
                                             <input
                                                 type="text"
                                                 value={p2Name}
                                                 onChange={e => setP2Name(e.target.value)}
-                                                className="w-full bg-white/15 hover:bg-white/20 focus:bg-white/25 text-white font-black placeholder-white/60 border border-white/30 rounded-xl px-3 py-1.5 outline-none focus:border-white transition-colors text-sm"
+                                                className="w-full bg-slate-950/75 hover:bg-slate-950/90 focus:bg-slate-950 text-white font-black placeholder-white/60 border-2 border-white/40 rounded-xl px-3 py-1.5 outline-none focus:border-amber-300 transition-colors text-sm shadow-inner"
                                                 placeholder="Team 2"
                                             />
                                         </div>
@@ -2679,24 +2695,24 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                     <button
                                         type="button"
                                         onClick={() => setNumPlayers(2)}
-                                        className="w-full py-2 px-3 rounded-xl bg-slate-900/20 hover:bg-rose-500/25 border border-dashed border-white/30 hover:border-rose-300/60 text-white/80 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                                        className="w-full py-2.5 px-3 rounded-xl bg-slate-800/90 hover:bg-rose-600/80 border-2 border-dashed border-white/40 hover:border-white text-white text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow"
                                     >
-                                        <Plus size={14} />
+                                        <Plus size={15} />
                                         <span>Add Player 2 (2 Players Battle)</span>
                                     </button>
                                 )}
                             </div>
 
                             {/* Game Settings Box + 1-10 Min Timer Slider */}
-                            <div className="bg-slate-900/25 p-4 rounded-2xl border border-white/20 flex flex-col gap-3">
+                            <div className="bg-slate-950/70 p-4 rounded-2xl border-2 border-white/25 flex flex-col gap-3 shadow-inner">
                                 {/* Timer Slider: 1 Minute to 10 Minutes */}
-                                <div className="flex flex-col gap-1.5 pb-2.5 border-b border-white/15 text-white">
+                                <div className="flex flex-col gap-1.5 pb-2.5 border-b border-white/20 text-white">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-bold text-sm flex items-center gap-1.5">
-                                            <Timer size={15} className="text-amber-300" />
+                                        <span className="font-black text-sm flex items-center gap-1.5 text-white">
+                                            <Timer size={16} className="text-amber-400" />
                                             <span>Timer</span>
                                         </span>
-                                        <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs shadow-sm">
+                                        <span className="px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs shadow">
                                             {gameDurationMinutes} {gameDurationMinutes === 1 ? 'Min' : 'Mins'}
                                         </span>
                                     </div>
@@ -2707,9 +2723,9 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                         step={1}
                                         value={gameDurationMinutes}
                                         onChange={(e) => handleSetTimerMinutes(Number(e.target.value))}
-                                        className="w-full h-2 bg-white/30 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                                        className="w-full h-2.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400 border border-white/20"
                                     />
-                                    <div className="flex justify-between text-[10px] font-bold text-white/70 px-0.5">
+                                    <div className="flex justify-between text-[11px] font-black text-white/90 px-0.5">
                                         <span>1m</span>
                                         <span>3m</span>
                                         <span>5m</span>
@@ -2719,31 +2735,31 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                 </div>
 
                                 <div className="flex justify-between items-center text-white">
-                                    <span className="font-bold text-sm">Speed</span>
+                                    <span className="font-black text-sm">Speed</span>
                                     <div className="flex gap-1.5">
-                                        <button onClick={() => handleSetSpeed(0.25)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${speed === 0.25 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Slow</button>
-                                        <button onClick={() => handleSetSpeed(1)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${speed === 1 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Normal</button>
-                                        <button onClick={() => handleSetSpeed(2.5)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${speed === 2.5 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Fast</button>
+                                        <button onClick={() => handleSetSpeed(0.25)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${speed === 0.25 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Slow</button>
+                                        <button onClick={() => handleSetSpeed(1)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${speed === 1 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Normal</button>
+                                        <button onClick={() => handleSetSpeed(2.5)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${speed === 2.5 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Fast</button>
                                     </div>
                                 </div>
                                 <div className="flex justify-between items-center text-white">
-                                    <span className="font-bold text-sm">Bubble Size</span>
+                                    <span className="font-black text-sm">Bubble Size</span>
                                     <div className="flex gap-1.5">
-                                        <button onClick={() => handleSetBubbleSize(0.5)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${bubbleSize === 0.5 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Small</button>
-                                        <button onClick={() => handleSetBubbleSize(1)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${bubbleSize === 1 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Normal</button>
-                                        <button onClick={() => handleSetBubbleSize(2)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${bubbleSize === 2 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Big</button>
+                                        <button onClick={() => handleSetBubbleSize(0.5)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${bubbleSize === 0.5 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Small</button>
+                                        <button onClick={() => handleSetBubbleSize(1)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${bubbleSize === 1 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Normal</button>
+                                        <button onClick={() => handleSetBubbleSize(2)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${bubbleSize === 2 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Big</button>
                                     </div>
                                 </div>
                                 <div className="flex justify-between items-center text-white">
-                                    <span className="font-bold text-sm">Twist Mode</span>
-                                    <button onClick={() => handleSetTwistEnabled(!twistEnabled)} className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${twistEnabled ? 'bg-blue-500' : 'bg-white/30'}`}>
-                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${twistEnabled ? 'left-6' : 'left-1'}`}></div>
+                                    <span className="font-black text-sm">Twist Mode</span>
+                                    <button onClick={() => handleSetTwistEnabled(!twistEnabled)} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer border ${twistEnabled ? 'bg-blue-500 border-white' : 'bg-slate-700 border-white/30'}`}>
+                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all shadow ${twistEnabled ? 'left-6' : 'left-1'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex justify-between items-center text-white">
-                                    <span className="font-bold text-sm">Voice Narration</span>
-                                    <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${voiceEnabled ? 'bg-blue-500' : 'bg-white/30'}`}>
-                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${voiceEnabled ? 'left-6' : 'left-1'}`}></div>
+                                    <span className="font-black text-sm">Voice Narration</span>
+                                    <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer border ${voiceEnabled ? 'bg-blue-500 border-white' : 'bg-slate-700 border-white/30'}`}>
+                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all shadow ${voiceEnabled ? 'left-6' : 'left-1'}`}></div>
                                     </button>
                                 </div>
                             </div>
@@ -2751,17 +2767,17 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
                         <button
                             onClick={() => startGameMode(numPlayers)}
-                            className="py-4 px-8 bg-gradient-to-r from-blue-500 to-sky-400 hover:from-blue-400 hover:to-sky-300 text-white font-black text-xl rounded-full shadow-[0_0_25px_rgba(59,130,246,0.55)] hover:scale-[1.02] active:scale-95 transition-all w-full cursor-pointer"
+                            className="py-4 px-8 bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 hover:from-sky-300 hover:to-indigo-500 text-white font-black text-xl rounded-full border-2 border-white/80 shadow-[0_10px_30px_rgba(59,130,246,0.7)] hover:scale-[1.02] active:scale-95 transition-all w-full cursor-pointer tracking-wide"
                         >
                             START GAME
                         </button>
                     </div>
 
-                    {/* COLUMN 2: EXPANDED CHOOSE YOUR TRACKER (BETWEEN PLAYER AND THEMES — ONLY WORDS & ICONS) */}
-                    <div className="lg:col-span-5 bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl rounded-[2rem] border border-white/30 p-5 sm:p-6 shadow-2xl flex flex-col justify-between gap-4">
-                        <div className="flex flex-col gap-4 h-full">
+                    {/* COLUMN 2: EXPANDED CHOOSE YOUR TRACKER + SMALL LIVE CAMERA PREVIEW */}
+                    <div className="lg:col-span-5 bg-slate-900/80 dark:bg-slate-950/85 backdrop-blur-2xl rounded-[2rem] border-2 border-white/40 p-5 sm:p-6 shadow-[0_20px_50px_rgba(15,23,42,0.5)] flex flex-col justify-between gap-3.5">
+                        <div className="flex flex-col gap-3.5 h-full">
                             <div className="flex items-center justify-center gap-2.5">
-                                <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xl shadow-md">
+                                <span className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 border border-white/50 text-white flex items-center justify-center text-xl shadow-lg">
                                     {trackerMode === 'finger' ? '☝️' : trackerMode === 'hand' ? '🖐️' : '👃'}
                                 </span>
                                 <h3 className="text-2xl font-black text-white drop-shadow-md">
@@ -2769,8 +2785,8 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                 </h3>
                             </div>
 
-                            {/* 3 Tracker Category Tabs (Words + Icons Only) */}
-                            <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-900/30 rounded-2xl border border-white/15">
+                            {/* 3 Tracker Category Tabs (Words + Icons Only — High Contrast) */}
+                            <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-950/85 rounded-2xl border-2 border-white/25">
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -2778,10 +2794,10 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                         detectedHandsRef.current = [];
                                         detectedFacesRef.current = [];
                                     }}
-                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer ${
+                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer border ${
                                         trackerMode === 'finger'
-                                            ? 'bg-blue-500 text-white shadow-lg scale-[1.02]'
-                                            : 'text-white/80 hover:bg-white/15'
+                                            ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-white shadow-lg scale-[1.02]'
+                                            : 'bg-slate-800/90 text-white hover:bg-slate-700 border-white/15'
                                     }`}
                                 >
                                     <span className="text-lg">☝️</span>
@@ -2794,10 +2810,10 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                         detectedHandsRef.current = [];
                                         detectedFacesRef.current = [];
                                     }}
-                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer ${
+                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer border ${
                                         trackerMode === 'hand'
-                                            ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg scale-[1.02]'
-                                            : 'text-white/80 hover:bg-white/15'
+                                            ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white border-white shadow-lg scale-[1.02]'
+                                            : 'bg-slate-800/90 text-white hover:bg-slate-700 border-white/15'
                                     }`}
                                 >
                                     <span className="text-lg">🖐️</span>
@@ -2810,10 +2826,10 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                         detectedHandsRef.current = [];
                                         detectedFacesRef.current = [];
                                     }}
-                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer ${
+                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer border ${
                                         trackerMode === 'nose'
-                                            ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg scale-[1.02]'
-                                            : 'text-white/80 hover:bg-white/15'
+                                            ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white border-white shadow-lg scale-[1.02]'
+                                            : 'bg-slate-800/90 text-white hover:bg-slate-700 border-white/15'
                                     }`}
                                 >
                                     <span className="text-lg">👃</span>
@@ -2821,22 +2837,33 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                 </button>
                             </div>
 
-                            {/* Expanded Tracker Options Grid — ONLY WORDS & ICONS, NO EXTRA DETAILS */}
+                            {/* SMALL LIVE CAMERA PREVIEW SO USER CAN TRY THE TRACKER */}
+                            <TrackerLivePreview
+                                videoRef={videoRef}
+                                isCameraActive={isCameraActive}
+                                trackerMode={trackerMode}
+                                handCharacter={handCharacter}
+                                noseStyle={noseStyle}
+                                detectedHandsRef={detectedHandsRef}
+                                detectedFacesRef={detectedFacesRef}
+                                onPopSound={() => playSound('pop')}
+                                onRetryCamera={() => setupCamera()}
+                            />
+
+                            {/* Expanded Tracker Options Grid — ONLY WORDS & ICONS, HIGH VISIBILITY */}
                             <div className="flex-1 flex flex-col justify-center">
                                 {trackerMode === 'finger' && (
                                     <div className="grid grid-cols-1 gap-3 my-auto">
                                         <button
                                             type="button"
                                             onClick={() => setTrackerMode('finger')}
-                                            className="p-6 rounded-2xl bg-white text-blue-600 border-2 border-blue-400 shadow-xl flex flex-col items-center justify-center gap-3 cursor-pointer transition-transform hover:scale-[1.01]"
+                                            className="p-4 rounded-2xl bg-white text-slate-950 border-2 border-amber-400 shadow-xl flex items-center justify-center gap-3.5 cursor-pointer transition-transform hover:scale-[1.01]"
                                         >
-                                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-4xl shadow-md">
+                                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-3xl shadow-md">
                                                 ☝️
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xl font-black text-slate-900">Finger Ball</span>
-                                                <span className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black">✓</span>
-                                            </div>
+                                            <span className="text-lg font-black text-slate-950">Finger Ball</span>
+                                            <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow">✓</span>
                                         </button>
                                     </div>
                                 )}
@@ -2850,20 +2877,20 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                                     key={c.id}
                                                     type="button"
                                                     onClick={() => setHandCharacter(c.id)}
-                                                    className={`p-3 rounded-2xl border-2 flex items-center gap-3 transition-all cursor-pointer ${
+                                                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all cursor-pointer ${
                                                         isSelected
-                                                            ? 'bg-white text-slate-900 border-blue-400 shadow-lg scale-[1.02]'
-                                                            : 'bg-white/20 hover:bg-white/30 text-white border-transparent'
+                                                            ? 'bg-white text-slate-950 border-amber-400 shadow-[0_6px_20px_rgba(255,255,255,0.25)] scale-[1.02]'
+                                                            : 'bg-slate-800/95 hover:bg-slate-700 text-white border-white/30 hover:border-white/60 shadow-md'
                                                     }`}
                                                 >
-                                                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
+                                                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-xl shadow-md shrink-0 border border-white/30`}>
                                                         {c.icon}
                                                     </div>
-                                                    <span className="font-black text-sm sm:text-base truncate flex-1 text-left">
+                                                    <span className={`font-black text-xs sm:text-sm leading-tight flex-1 text-left ${isSelected ? 'text-slate-950' : 'text-white'}`}>
                                                         {c.name}
                                                     </span>
                                                     {isSelected && (
-                                                        <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black shrink-0">
+                                                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow">
                                                             ✓
                                                         </span>
                                                     )}
@@ -2882,20 +2909,20 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                                     key={n.id}
                                                     type="button"
                                                     onClick={() => setNoseStyle(n.id)}
-                                                    className={`p-3 rounded-2xl border-2 flex items-center gap-3 transition-all cursor-pointer ${
+                                                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all cursor-pointer ${
                                                         isSelected
-                                                            ? 'bg-white text-slate-900 border-pink-400 shadow-lg scale-[1.02]'
-                                                            : 'bg-white/20 hover:bg-white/30 text-white border-transparent'
+                                                            ? 'bg-white text-slate-950 border-pink-400 shadow-[0_6px_20px_rgba(255,255,255,0.25)] scale-[1.02]'
+                                                            : 'bg-slate-800/95 hover:bg-slate-700 text-white border-white/30 hover:border-white/60 shadow-md'
                                                     }`}
                                                 >
-                                                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
+                                                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-xl shadow-md shrink-0 border border-white/30`}>
                                                         {n.icon}
                                                     </div>
-                                                    <span className="font-black text-sm sm:text-base truncate flex-1 text-left">
+                                                    <span className={`font-black text-xs sm:text-sm leading-tight flex-1 text-left ${isSelected ? 'text-slate-950' : 'text-white'}`}>
                                                         {n.name}
                                                     </span>
                                                     {isSelected && (
-                                                        <span className="w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-black shrink-0">
+                                                        <span className="w-5 h-5 rounded-full bg-pink-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow">
                                                             ✓
                                                         </span>
                                                     )}
@@ -2908,9 +2935,9 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                         </div>
                     </div>
 
-                    {/* COLUMN 3: CHOOSE THEME & STUDY MODE */}
+                    {/* COLUMN 3: CHOOSE THEME & STUDY MODE (HIGH VISIBILITY) */}
                     <div className="lg:col-span-3 flex flex-col gap-5">
-                        <div className="w-full rounded-[2rem] bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl border border-white/30 shadow-2xl p-5 sm:p-6 flex flex-col justify-center flex-1">
+                        <div className="w-full rounded-[2rem] bg-slate-900/80 dark:bg-slate-950/85 backdrop-blur-2xl border-2 border-white/40 shadow-[0_20px_50px_rgba(15,23,42,0.5)] p-5 sm:p-6 flex flex-col justify-center flex-1">
                             <h3 className="text-2xl font-black text-white mb-4 text-center drop-shadow-md">Choose Theme</h3>
                             <div className="grid grid-cols-2 gap-3">
                                 {[
@@ -2923,7 +2950,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                                     <button
                                         key={t.id}
                                         onClick={() => setSelectedTheme(t.id)}
-                                        className={`py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all shadow-sm font-black text-sm cursor-pointer ${selectedTheme === t.id ? 'bg-white text-blue-600 border-2 border-blue-400 scale-105 shadow-md' : 'bg-white/20 text-white border-2 border-transparent hover:bg-white/30'}`}
+                                        className={`py-3.5 px-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition-all font-black text-sm cursor-pointer border-2 ${
+                                            selectedTheme === t.id
+                                                ? 'bg-white text-blue-700 border-amber-400 scale-105 shadow-[0_6px_20px_rgba(255,255,255,0.25)]'
+                                                : 'bg-slate-800/95 hover:bg-slate-700 text-white border-white/30 hover:border-white/60 shadow-md'
+                                        }`}
                                     >
                                         <span className="text-2xl">{t.icon}</span>
                                         <span>{t.name}</span>
@@ -2932,21 +2963,24 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                             </div>
                         </div>
 
-                        <button onClick={() => setScreen('study')} className="group relative w-full h-36 rounded-[2rem] bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl border border-white/30 shadow-2xl overflow-hidden transition-all duration-300 hover:scale-[1.03] hover:bg-white/25 cursor-pointer flex items-center justify-center p-5 gap-4">
-                            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-400/30 rounded-full blur-2xl group-hover:bg-purple-400/50 transition-colors"></div>
+                        <button
+                            onClick={() => setScreen('study')}
+                            className="group relative w-full h-36 rounded-[2rem] bg-gradient-to-br from-indigo-600/95 via-purple-600/95 to-pink-600/90 border-2 border-white/50 shadow-[0_20px_50px_rgba(15,23,42,0.5)] overflow-hidden transition-all duration-300 hover:scale-[1.03] cursor-pointer flex items-center justify-center p-5 gap-4"
+                        >
+                            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-2xl group-hover:bg-white/30 transition-colors"></div>
                             <div className="relative z-10 text-5xl transform group-hover:scale-110 transition-transform duration-300 drop-shadow-xl">
                                 📖
                             </div>
                             <div className="flex flex-col items-start relative z-10 text-left">
                                 <h3 className="text-2xl font-black text-white leading-tight drop-shadow-md">Study Mode</h3>
-                                <p className="text-purple-100 font-bold text-xs">Review Questions!</p>
+                                <p className="text-amber-200 font-black text-xs">Review Questions!</p>
                             </div>
                         </button>
                     </div>
                 </div>
 
                 <div className="flex flex-wrap justify-center gap-4 relative z-10">
-                  <button onClick={() => onViewChange('games')} className="px-7 py-3 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-base font-black text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
+                  <button onClick={() => onViewChange('games')} className="px-7 py-3 rounded-full bg-slate-900/80 hover:bg-slate-900 backdrop-blur-md shadow-xl text-base font-black text-white border-2 border-white/50 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
                     <ArrowLeft size={20} /> Back to Games
                   </button>
                 </div>
@@ -3332,6 +3366,12 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
           onSelectHand={setHandCharacter}
           noseStyle={noseStyle}
           onSelectNose={setNoseStyle}
+          videoRef={videoRef}
+          isCameraActive={isCameraActive}
+          detectedHandsRef={detectedHandsRef}
+          detectedFacesRef={detectedFacesRef}
+          onPopSound={() => playSound('pop')}
+          onRetryCamera={() => setupCamera()}
         />,
         document.body
       )}
@@ -3939,6 +3979,476 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   );
 }
 
+interface TrackerLivePreviewProps {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  isCameraActive: boolean;
+  trackerMode: 'finger' | 'hand' | 'nose';
+  handCharacter: HandCharacterType;
+  noseStyle: NoseStyle;
+  detectedHandsRef: React.MutableRefObject<any[]>;
+  detectedFacesRef: React.MutableRefObject<any[]>;
+  onPopSound: () => void;
+  onRetryCamera?: () => void;
+}
+
+function buildDemoHandLandmarks(cxPx: number, cyPx: number, w: number, h: number, time: number) {
+  const unit = Math.max(26, Math.min(w, h) * 0.22);
+  const pulse = Math.sin(time * 0.004) * (unit * 0.04);
+
+  const toNorm = (dx: number, dy: number) => ({
+    x: (cxPx + dx) / Math.max(1, w),
+    y: (cyPx + dy) / Math.max(1, h),
+    z: 0,
+  });
+
+  return [
+    toNorm(0, unit * 0.95),                        // 0: Wrist
+    toNorm(-unit * 0.36, unit * 0.68),             // 1: Thumb CMC
+    toNorm(-unit * 0.62, unit * 0.34),             // 2: Thumb MCP
+    toNorm(-unit * 0.82, -unit * 0.02),            // 3: Thumb IP
+    toNorm(-unit * 0.96 - pulse, -unit * 0.34),    // 4: Thumb Tip
+    toNorm(-unit * 0.38, -unit * 0.04),            // 5: Index MCP
+    toNorm(-unit * 0.44, -unit * 0.46),            // 6: Index PIP
+    toNorm(-unit * 0.48, -unit * 0.82),            // 7: Index DIP
+    toNorm(-unit * 0.51, -unit * 1.12 - pulse),    // 8: Index Tip
+    toNorm(-unit * 0.04, -unit * 0.10),            // 9: Middle MCP (Palm reference)
+    toNorm(-unit * 0.05, -unit * 0.56),            // 10: Middle PIP
+    toNorm(-unit * 0.06, -unit * 0.94),            // 11: Middle DIP
+    toNorm(-unit * 0.06, -unit * 1.26 - pulse),    // 12: Middle Tip
+    toNorm(unit * 0.28, -unit * 0.04),             // 13: Ring MCP
+    toNorm(unit * 0.33, -unit * 0.46),             // 14: Ring PIP
+    toNorm(unit * 0.37, -unit * 0.80),             // 15: Ring DIP
+    toNorm(unit * 0.40, -unit * 1.08 - pulse),     // 16: Ring Tip
+    toNorm(unit * 0.56, unit * 0.12),              // 17: Pinky MCP
+    toNorm(unit * 0.66, -unit * 0.24),             // 18: Pinky PIP
+    toNorm(unit * 0.73, -unit * 0.54),             // 19: Pinky DIP
+    toNorm(unit * 0.79 + pulse, -unit * 0.80),     // 20: Pinky Tip
+  ];
+}
+
+function TrackerLivePreview({
+  videoRef,
+  isCameraActive,
+  trackerMode,
+  handCharacter,
+  noseStyle,
+  detectedHandsRef,
+  detectedFacesRef,
+  onPopSound,
+  onRetryCamera,
+}: TrackerLivePreviewProps) {
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [poppedCount, setPoppedCount] = useState(0);
+  const mousePosRef = useRef<{ x: number; y: number; active: boolean }>({ x: -100, y: -100, active: false });
+  const fingerTrailRef = useRef<Array<{ x: number; y: number }>>([]);
+  const lastPopTimeRef = useRef<number>(0);
+
+  const testBubbleRef = useRef<{
+    x: number;
+    y: number;
+    radius: number;
+    color: string;
+    respawnAt: number;
+    particles: Array<{ x: number; y: number; vx: number; vy: number; color: string; life: number }>;
+    ripples: Array<{ x: number; y: number; r: number; color: string; life: number }>;
+  }>({
+    x: 110,
+    y: 75,
+    radius: 24,
+    color: '#38bdf8',
+    respawnAt: 0,
+    particles: [],
+    ripples: [],
+  });
+
+  const onPopSoundRef = useRef(onPopSound);
+  onPopSoundRef.current = onPopSound;
+
+  useEffect(() => {
+    let animId: number | null = null;
+    const colors = ['#38bdf8', '#f43f5e', '#a855f7', '#22c55e', '#f59e0b'];
+
+    const renderLoop = (time: number) => {
+      animId = requestAnimationFrame(renderLoop);
+      const canvas = previewCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const w = canvas.clientWidth || 360;
+      const h = canvas.clientHeight || 160;
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // 1. Draw Mirrored Live Camera Video (or Interactive Stage Fallback)
+      const vid = videoRef.current;
+      const hasLiveVideo = Boolean(vid && vid.readyState >= 2 && vid.videoWidth > 0);
+      const vW = hasLiveVideo && vid ? vid.videoWidth : w;
+      const vH = hasLiveVideo && vid ? vid.videoHeight : h;
+
+      if (hasLiveVideo && vid) {
+        const scale = Math.max(w / vW, h / vH);
+        const drawW = vW * scale;
+        const drawH = vH * scale;
+        const offsetX = (w - drawW) / 2;
+        const offsetY = (h - drawH) / 2;
+
+        ctx.save();
+        ctx.translate(w, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(vid, offsetX, offsetY, drawW, drawH);
+        ctx.restore();
+
+        // Subtle vignette so tracker & practice bubble pop visually
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, 'rgba(15, 23, 42, 0.35)');
+        grad.addColorStop(0.5, 'rgba(15, 23, 42, 0.05)');
+        grad.addColorStop(1, 'rgba(15, 23, 42, 0.45)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+      } else {
+        const bgGrad = ctx.createLinearGradient(0, 0, w, h);
+        bgGrad.addColorStop(0, '#0f172a');
+        bgGrad.addColorStop(1, '#1e3a8a');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+        ctx.lineWidth = 1;
+        for (let gx = 0; gx < w; gx += 28) {
+          ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
+        }
+        for (let gy = 0; gy < h; gy += 28) {
+          ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+        }
+      }
+
+      // 2. Collect Active Strike Points & Render the Selected Tracker
+      const strikePoints: Array<{ x: number; y: number }> = [];
+      const now = Date.now();
+
+      if (trackerMode === 'finger') {
+        const hands = detectedHandsRef.current;
+        let tipPt: { x: number; y: number } | null = null;
+
+        if (hands && hands.length > 0 && hands[0] && hands[0][8]) {
+          tipPt = toPx(hands[0][8], w, h, vW, vH);
+        } else if (mousePosRef.current.active) {
+          tipPt = { x: mousePosRef.current.x, y: mousePosRef.current.y };
+        } else {
+          // Gentle figure-8 demo motion when idle so user sees Finger Ball
+          tipPt = {
+            x: w * 0.62 + Math.cos(time * 0.0025) * (w * 0.18),
+            y: h * 0.54 + Math.sin(time * 0.005) * (h * 0.18),
+          };
+        }
+
+        if (tipPt) {
+          strikePoints.push(tipPt);
+          fingerTrailRef.current.push({ x: tipPt.x, y: tipPt.y });
+          if (fingerTrailRef.current.length > 12) fingerTrailRef.current.shift();
+        }
+
+        if (fingerTrailRef.current.length > 1) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.beginPath();
+          ctx.moveTo(fingerTrailRef.current[0].x, fingerTrailRef.current[0].y);
+          for (let i = 1; i < fingerTrailRef.current.length; i++) {
+            ctx.lineTo(fingerTrailRef.current[i].x, fingerTrailRef.current[i].y);
+          }
+          ctx.strokeStyle = 'rgba(59, 130, 246, 0.55)';
+          ctx.lineWidth = 22;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.strokeStyle = '#60a5fa';
+          ctx.lineWidth = 8;
+          ctx.stroke();
+          ctx.restore();
+
+          const head = fingerTrailRef.current[fingerTrailRef.current.length - 1];
+          ctx.save();
+          ctx.translate(head.x, head.y);
+          const pulse = 1 + Math.sin(time * 0.01) * 0.16;
+          ctx.rotate(time * 0.003);
+          ctx.scale(pulse, pulse);
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#3b82f6';
+          ctx.shadowBlur = 18;
+          ctx.beginPath();
+          ctx.moveTo(0, -18); ctx.quadraticCurveTo(4, -4, 18, 0);
+          ctx.quadraticCurveTo(4, 4, 0, 18); ctx.quadraticCurveTo(-4, 4, -18, 0);
+          ctx.quadraticCurveTo(-4, -4, 0, -18);
+          ctx.fill();
+          ctx.fillStyle = '#3b82f6';
+          ctx.beginPath();
+          ctx.arc(0, 0, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      } else if (trackerMode === 'hand') {
+        const hands = detectedHandsRef.current;
+        if (hands && hands.length > 0) {
+          hands.forEach((hand) => {
+            if (!hand || hand.length < 21) return;
+            [9, 4, 8, 12, 16, 20].forEach((idx) => {
+              if (hand[idx]) strikePoints.push(toPx(hand[idx], w, h, vW, vH));
+            });
+            drawCharacterHand(ctx, hand, handCharacter, w, h, false, 0, time, vW, vH);
+          });
+        } else {
+          const cx = mousePosRef.current.active
+            ? mousePosRef.current.x
+            : w * 0.56 + Math.sin(time * 0.0022) * 20;
+          const cy = mousePosRef.current.active
+            ? mousePosRef.current.y
+            : h * 0.58 + Math.cos(time * 0.003) * 8;
+          const demoHand = buildDemoHandLandmarks(cx, cy, w, h, time);
+          [9, 4, 8, 12, 16, 20].forEach((idx) => {
+            strikePoints.push(toPx(demoHand[idx], w, h, w, h));
+          });
+          drawCharacterHand(ctx, demoHand, handCharacter, w, h, false, 0, time, w, h);
+        }
+      } else if (trackerMode === 'nose') {
+        const faces = detectedFacesRef.current;
+        const isPopping = now - lastPopTimeRef.current < 350;
+        if (faces && faces.length > 0) {
+          faces.forEach((face) => {
+            if (!face || face.length < 5 || !face[1]) return;
+            const tipPx = toPx(face[1], w, h, vW, vH);
+            const bridgePx = face[168] ? toPx(face[168], w, h, vW, vH) : undefined;
+            let noseSize = 30;
+            if (face[33] && face[263]) {
+              const e1 = toPx(face[33], w, h, vW, vH);
+              const e2 = toPx(face[263], w, h, vW, vH);
+              noseSize = Math.max(20, Math.min(48, Math.hypot(e2.x - e1.x, e2.y - e1.y) * 0.42));
+            }
+            const angle = bridgePx ? Math.atan2(tipPx.x - bridgePx.x, tipPx.y - bridgePx.y) : 0;
+            strikePoints.push(tipPx);
+            drawAnimatedNose({
+              ctx,
+              noseTip: tipPx,
+              noseBridge: bridgePx,
+              noseSize,
+              angle,
+              style: noseStyle,
+              isPopping,
+              time,
+            });
+          });
+        } else {
+          const nx = mousePosRef.current.active
+            ? mousePosRef.current.x
+            : w * 0.64 + Math.sin(time * 0.0025) * 20;
+          const ny = mousePosRef.current.active
+            ? mousePosRef.current.y
+            : h * 0.54 + Math.cos(time * 0.0035) * 10;
+          strikePoints.push({ x: nx, y: ny });
+          drawAnimatedNose({
+            ctx,
+            noseTip: { x: nx, y: ny },
+            noseSize: 32,
+            angle: 0,
+            style: noseStyle,
+            isPopping,
+            time,
+          });
+        }
+      }
+
+      // 3. Interactive Practice Bubble ("POP ME!")
+      const tb = testBubbleRef.current;
+      // Clamp bubble inside current canvas bounds
+      tb.x = Math.max(36, Math.min(w - 36, tb.x));
+      tb.y = Math.max(36, Math.min(h - 36, tb.y));
+
+      if (now >= tb.respawnAt) {
+        const bobY = tb.y + Math.sin(time * 0.0045) * 5;
+
+        // Check collision with any tracker strike point
+        for (const pt of strikePoints) {
+          if (Math.hypot(pt.x - tb.x, pt.y - bobY) < tb.radius + 16) {
+            lastPopTimeRef.current = now;
+            tb.respawnAt = now + 500;
+            tb.ripples.push({ x: tb.x, y: bobY, r: tb.radius * 0.6, color: tb.color, life: 1 });
+            for (let i = 0; i < 14; i++) {
+              const ang = (Math.PI * 2 * i) / 14;
+              const spd = 2 + Math.random() * 3.5;
+              tb.particles.push({
+                x: tb.x,
+                y: bobY,
+                vx: Math.cos(ang) * spd,
+                vy: Math.sin(ang) * spd,
+                color: tb.color,
+                life: 1,
+              });
+            }
+            // Pick next spot away from current spot
+            tb.x = 45 + Math.random() * Math.max(60, w - 90);
+            tb.y = 42 + Math.random() * Math.max(40, h - 84);
+            tb.color = colors[Math.floor(Math.random() * colors.length)];
+            setPoppedCount((c) => c + 1);
+            onPopSoundRef.current();
+            break;
+          }
+        }
+
+        // Draw practice bubble if still unpopped
+        if (now >= tb.respawnAt) {
+          ctx.save();
+          ctx.translate(tb.x, bobY);
+
+          const bGrad = ctx.createRadialGradient(-tb.radius * 0.3, -tb.radius * 0.3, 2, 0, 0, tb.radius);
+          bGrad.addColorStop(0, 'rgba(255,255,255,0.95)');
+          bGrad.addColorStop(0.35, tb.color);
+          bGrad.addColorStop(1, 'rgba(15,23,42,0.75)');
+
+          ctx.beginPath();
+          ctx.arc(0, 0, tb.radius, 0, Math.PI * 2);
+          ctx.fillStyle = bGrad;
+          ctx.shadowColor = tb.color;
+          ctx.shadowBlur = 14;
+          ctx.fill();
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.stroke();
+
+          // Gloss highlight
+          ctx.beginPath();
+          ctx.arc(-tb.radius * 0.32, -tb.radius * 0.32, tb.radius * 0.24, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,255,255,0.75)';
+          ctx.fill();
+
+          ctx.font = '900 10px Fredoka, sans-serif';
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 4;
+          ctx.fillText('POP ME!', 0, 1);
+          ctx.restore();
+        }
+      }
+
+      // 4. Draw Pop Particles & Ripples
+      tb.ripples = tb.ripples.filter((r) => r.life > 0.04);
+      tb.ripples.forEach((r) => {
+        r.r += 2.6;
+        r.life *= 0.86;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        ctx.strokeStyle = r.color;
+        ctx.globalAlpha = r.life;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      tb.particles = tb.particles.filter((p) => p.life > 0.04);
+      tb.particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life *= 0.88;
+        ctx.save();
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    };
+
+    animId = requestAnimationFrame(renderLoop);
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [trackerMode, handCharacter, noseStyle, isCameraActive]);
+
+  const activeTrackerLabel =
+    trackerMode === 'finger'
+      ? '☝️ Finger Ball'
+      : trackerMode === 'hand'
+      ? `${HAND_TRACKER_OPTIONS.find((h) => h.id === handCharacter)?.icon || '🖐️'} ${
+          HAND_TRACKER_OPTIONS.find((h) => h.id === handCharacter)?.name || 'Hand'
+        }`
+      : `${NOSE_TRACKER_OPTIONS.find((n) => n.id === noseStyle)?.icon || '👃'} ${
+          NOSE_TRACKER_OPTIONS.find((n) => n.id === noseStyle)?.name || 'Nose'
+        }`;
+
+  return (
+    <div className="relative w-full h-40 sm:h-44 rounded-2xl overflow-hidden border-2 border-cyan-300/80 bg-slate-950 shadow-[0_8px_25px_rgba(0,0,0,0.45)] select-none shrink-0">
+      <canvas
+        ref={previewCanvasRef}
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          mousePosRef.current = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            active: true,
+          };
+        }}
+        onMouseLeave={() => {
+          mousePosRef.current.active = false;
+        }}
+        onTouchMove={(e) => {
+          if (!e.touches.length) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          mousePosRef.current = {
+            x: e.touches[0].clientX - rect.left,
+            y: e.touches[0].clientY - rect.top,
+            active: true,
+          };
+        }}
+        className="w-full h-full block cursor-crosshair"
+      />
+
+      {/* Top Overlay Bar: Live Camera Status + Active Tracker Name */}
+      <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none">
+        <div className="px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/30 flex items-center gap-1.5 shadow">
+          <span className={`w-2 h-2 rounded-full ${isCameraActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+          <span className="text-[11px] font-black uppercase tracking-wider text-white">
+            {isCameraActive ? 'Try Tracker Camera' : 'Try Tracker Preview'}
+          </span>
+        </div>
+
+        <div className="px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-cyan-400/50 text-white text-[11px] font-black shadow flex items-center gap-1.5">
+          <span>{activeTrackerLabel}</span>
+          {poppedCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-black">
+              🫧 {poppedCount}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Helper Bar */}
+      <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+        <span className="px-2.5 py-0.5 rounded-full bg-slate-950/75 text-white/95 text-[11px] font-bold border border-white/20">
+          {trackerMode === 'nose'
+            ? '👃 Move your nose (or cursor) to pop the bubble!'
+            : '✋ Show your hand (or move cursor) to pop the bubble!'}
+        </span>
+
+        {!isCameraActive && onRetryCamera && (
+          <button
+            type="button"
+            onClick={onRetryCamera}
+            className="pointer-events-auto px-2.5 py-1 rounded-full bg-blue-500 hover:bg-blue-400 text-white text-[11px] font-black border border-white/50 shadow cursor-pointer"
+          >
+            📷 Enable Camera
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface TrackerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -3948,6 +4458,12 @@ interface TrackerModalProps {
   onSelectHand: (char: HandCharacterType) => void;
   noseStyle: NoseStyle;
   onSelectNose: (style: NoseStyle) => void;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  isCameraActive: boolean;
+  detectedHandsRef: React.MutableRefObject<any[]>;
+  detectedFacesRef: React.MutableRefObject<any[]>;
+  onPopSound: () => void;
+  onRetryCamera?: () => void;
 }
 
 function TrackerModal({
@@ -3958,44 +4474,50 @@ function TrackerModal({
   handCharacter,
   onSelectHand,
   noseStyle,
-  onSelectNose
+  onSelectNose,
+  videoRef,
+  isCameraActive,
+  detectedHandsRef,
+  detectedFacesRef,
+  onPopSound,
+  onRetryCamera,
 }: TrackerModalProps) {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
       <div 
-        className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-6 transform scale-100 animate-in fade-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-800 max-h-[92vh] overflow-y-auto custom-scrollbar"
+        className="bg-slate-900 text-white rounded-3xl p-6 sm:p-7 max-w-2xl w-full shadow-2xl flex flex-col gap-4 transform scale-100 animate-in fade-in zoom-in-95 duration-150 border-2 border-white/30 max-h-[92vh] overflow-y-auto custom-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-2xl shadow-lg shadow-blue-500/30">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-2xl shadow-lg border border-white/40">
               {trackerMode === 'finger' && '☝️'}
               {trackerMode === 'hand' && '🖐️'}
               {trackerMode === 'nose' && '👃'}
             </div>
-            <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+            <h3 className="text-2xl font-black text-white">
               Choose Your Tracker
             </h3>
           </div>
           <button 
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            className="w-9 h-9 rounded-full bg-slate-800 text-white/80 hover:text-white hover:bg-slate-700 border border-white/20 flex items-center justify-center cursor-pointer transition-colors"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Mode Selector Tabs */}
-        <div className="grid grid-cols-3 gap-2.5 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+        <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-950 rounded-2xl border border-white/20">
           <button
             onClick={() => onSelectMode('finger')}
-            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-2 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+            className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-2 transition-all font-black text-xs sm:text-sm cursor-pointer border ${
               trackerMode === 'finger'
-                ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 scale-[1.02]'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
+                ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-white shadow-lg scale-[1.02]'
+                : 'bg-slate-800 text-white hover:bg-slate-700 border-white/15'
             }`}
           >
             <span className="text-xl">☝️</span>
@@ -4003,10 +4525,10 @@ function TrackerModal({
           </button>
           <button
             onClick={() => onSelectMode('hand')}
-            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-2 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+            className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-2 transition-all font-black text-xs sm:text-sm cursor-pointer border ${
               trackerMode === 'hand'
-                ? 'bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-lg shadow-red-500/30 scale-[1.02]'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
+                ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white border-white shadow-lg scale-[1.02]'
+                : 'bg-slate-800 text-white hover:bg-slate-700 border-white/15'
             }`}
           >
             <span className="text-xl">🖐️</span>
@@ -4014,10 +4536,10 @@ function TrackerModal({
           </button>
           <button
             onClick={() => onSelectMode('nose')}
-            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-2 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+            className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-2 transition-all font-black text-xs sm:text-sm cursor-pointer border ${
               trackerMode === 'nose'
-                ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/30 scale-[1.02]'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
+                ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white border-white shadow-lg scale-[1.02]'
+                : 'bg-slate-800 text-white hover:bg-slate-700 border-white/15'
             }`}
           >
             <span className="text-xl">👃</span>
@@ -4025,76 +4547,92 @@ function TrackerModal({
           </button>
         </div>
 
+        {/* Small Live Try-It Camera Inside Modal */}
+        <TrackerLivePreview
+          videoRef={videoRef}
+          isCameraActive={isCameraActive}
+          trackerMode={trackerMode}
+          handCharacter={handCharacter}
+          noseStyle={noseStyle}
+          detectedHandsRef={detectedHandsRef}
+          detectedFacesRef={detectedFacesRef}
+          onPopSound={onPopSound}
+          onRetryCamera={onRetryCamera}
+        />
+
         {/* Tab 1: Finger Mode Content (Icon & Name Only) */}
         {trackerMode === 'finger' && (
-          <div className="p-8 rounded-3xl bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-purple-500/10 border-2 border-blue-500/30 flex flex-col items-center justify-center gap-4 animate-in fade-in duration-200">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center text-5xl shadow-[0_0_35px_rgba(59,130,246,0.6)]">
-              ⭐
+          <div className="p-4 rounded-2xl bg-white text-slate-950 border-2 border-amber-400 flex items-center justify-center gap-3.5 animate-in fade-in duration-200 shadow-lg">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-3xl shadow-md">
+              ☝️
             </div>
-            <h4 className="text-xl font-black text-slate-800 dark:text-white text-center">
-              Starlight Pointer
+            <h4 className="text-lg font-black text-slate-950">
+              Finger Ball
             </h4>
+            <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black">
+              ✓
+            </span>
           </div>
         )}
 
-        {/* Tab 2: Hand Mode Character Grid (Icons & Words Only) */}
+        {/* Tab 2: Hand Mode Character Grid (Icons & Words Only — High Contrast) */}
         {trackerMode === 'hand' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-in fade-in duration-200">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 animate-in fade-in duration-200">
             {HAND_TRACKER_OPTIONS.map((c) => {
               const isSelected = handCharacter === c.id;
               return (
                 <button
                   key={c.id}
                   onClick={() => onSelectHand(c.id)}
-                  className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-2.5 transition-all cursor-pointer relative ${
+                  className={`p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all cursor-pointer relative ${
                     isSelected
-                      ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 shadow-lg shadow-blue-500/20 scale-[1.02]'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                      ? 'bg-white text-slate-950 border-amber-400 shadow-lg scale-[1.02]'
+                      : 'bg-slate-800 hover:bg-slate-700 text-white border-white/25'
                   }`}
                 >
+                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-xl shadow-md shrink-0 border border-white/30`}>
+                    {c.icon}
+                  </div>
+                  <span className={`font-black text-xs sm:text-sm leading-tight flex-1 text-left ${isSelected ? 'text-slate-950' : 'text-white'}`}>
+                    {c.name}
+                  </span>
                   {isSelected && (
-                    <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shrink-0">
                       ✓
                     </span>
                   )}
-                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-3xl shadow-md`}>
-                    {c.icon}
-                  </div>
-                  <span className="font-black text-slate-800 dark:text-white text-sm text-center">
-                    {c.name}
-                  </span>
                 </button>
               );
             })}
           </div>
         )}
 
-        {/* Tab 3: Nose Mode Style Grid (Icons & Words Only) */}
+        {/* Tab 3: Nose Mode Style Grid (Icons & Words Only — High Contrast) */}
         {trackerMode === 'nose' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-in fade-in duration-200">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 animate-in fade-in duration-200">
             {NOSE_TRACKER_OPTIONS.map((n) => {
               const isSelected = noseStyle === n.id;
               return (
                 <button
                   key={n.id}
                   onClick={() => onSelectNose(n.id)}
-                  className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-2.5 transition-all cursor-pointer relative ${
+                  className={`p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all cursor-pointer relative ${
                     isSelected
-                      ? 'border-pink-500 bg-pink-50/80 dark:bg-pink-950/40 shadow-lg shadow-pink-500/20 scale-[1.02]'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                      ? 'bg-white text-slate-950 border-pink-400 shadow-lg scale-[1.02]'
+                      : 'bg-slate-800 hover:bg-slate-700 text-white border-white/25'
                   }`}
                 >
+                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-xl shadow-md shrink-0 border border-white/30`}>
+                    {n.icon}
+                  </div>
+                  <span className={`font-black text-xs sm:text-sm leading-tight flex-1 text-left ${isSelected ? 'text-slate-950' : 'text-white'}`}>
+                    {n.name}
+                  </span>
                   {isSelected && (
-                    <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-black">
+                    <span className="w-5 h-5 rounded-full bg-pink-600 text-white flex items-center justify-center text-xs font-black shrink-0">
                       ✓
                     </span>
                   )}
-                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-3xl shadow-md`}>
-                    {n.icon}
-                  </div>
-                  <span className="font-black text-slate-800 dark:text-white text-sm text-center">
-                    {n.name}
-                  </span>
                 </button>
               );
             })}
@@ -4102,10 +4640,10 @@ function TrackerModal({
         )}
 
         {/* Footer / Done */}
-        <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex justify-end pt-2 border-t border-white/15">
           <button
             onClick={onClose}
-            className="w-full sm:w-auto px-8 py-3.5 rounded-2xl font-black text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg shadow-blue-500/30 hover:scale-105 active:scale-95 cursor-pointer text-base"
+            className="w-full sm:w-auto px-8 py-3 rounded-2xl font-black text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 border border-white/50 transition-all shadow-lg hover:scale-105 active:scale-95 cursor-pointer text-base"
           >
             Apply & Continue
           </button>
