@@ -6,6 +6,7 @@ import {
   ExternalLink, UserCheck, Flame, User, RefreshCw
 } from 'lucide-react';
 import { getGameTypeMeta, formatRelativeTime, UserActivityEvent } from '../utils/activityTracker';
+import { isGameOwnedByUser, isRegisteredUser } from '../utils/platformCache';
 
 interface AdminActivityGamesViewProps {
   users: any[];
@@ -28,7 +29,7 @@ export function AdminActivityGamesView({
     const withGames = users.find(u => {
       const uid = u.uid || u.id;
       const email = (u.email || '').toLowerCase().trim();
-      return games.some(g => (g.userId === uid || g.userId === u.id) || (email && email !== 'user' && g.creatorEmail?.toLowerCase().trim() === email));
+      return games.some(g => isGameOwnedByUser(g, u) || (g.userId === uid || g.userId === u.id) || (email && email !== 'user' && email !== 'guest' && g.creatorEmail?.toLowerCase().trim() === email));
     });
     return withGames?.uid || withGames?.id || users[0]?.uid || users[0]?.id || '';
   });
@@ -46,8 +47,9 @@ export function AdminActivityGamesView({
       const uid = u.uid || u.id;
       const email = (u.email || '').toLowerCase().trim();
       const userCreatedGames = games.filter(g => {
+        if (isGameOwnedByUser(g, u)) return true;
         if (g.userId && (g.userId === uid || g.userId === u.id)) return true;
-        if (email && email !== 'user' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
+        if (email && email !== 'user' && email !== 'guest' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
         return false;
       });
       map.set(uid, userCreatedGames);
@@ -94,8 +96,8 @@ export function AdminActivityGamesView({
       const createdCount = (userGamesMap.get(uid) || []).length;
 
       if (userFilter === 'creators' && createdCount === 0) return false;
-      if (userFilter === 'registered' && (u.isAnonymous || u.email === 'User' || !u.email)) return false;
-      if (userFilter === 'guests' && !u.isAnonymous && u.email && u.email !== 'User') return false;
+      if (userFilter === 'registered' && !isRegisteredUser(u)) return false;
+      if (userFilter === 'guests' && isRegisteredUser(u)) return false;
 
       if (!userSearchTerm) return true;
       const term = userSearchTerm.toLowerCase();

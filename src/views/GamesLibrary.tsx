@@ -202,11 +202,22 @@ export const GamesLibrary = ({
       if (userGames.length > 0) {
         setGames(userGames);
         try { localStorage.setItem('hamster_cached_user_games', JSON.stringify(userGames)); } catch (e) {}
+        fetch('/api/platform-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ games: userGames }),
+        }).catch(() => {});
       } else {
         try {
           const cached = localStorage.getItem('hamster_cached_user_games');
           if (cached) {
-            setGames(JSON.parse(cached));
+            const parsed = JSON.parse(cached);
+            setGames(parsed);
+            fetch('/api/platform-cache', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ games: parsed }),
+            }).catch(() => {});
           } else {
             setGames(getSavedGames());
           }

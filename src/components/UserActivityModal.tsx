@@ -5,6 +5,7 @@ import {
   User, Mail, Copy, Check, ChevronDown, ChevronUp, Layers, HelpCircle
 } from 'lucide-react';
 import { getGameTypeMeta, formatRelativeTime, UserActivityEvent } from '../utils/activityTracker';
+import { isGameOwnedByUser } from '../utils/platformCache';
 
 interface UserActivityModalProps {
   user: any;
@@ -33,8 +34,9 @@ export function UserActivityModal({
     const email = (user.email || '').toLowerCase().trim();
 
     return games.filter(g => {
+      if (isGameOwnedByUser(g, user)) return true;
       if (g.userId && (g.userId === uid || g.userId === user.id)) return true;
-      if (email && email !== 'user' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
+      if (email && email !== 'user' && email !== 'guest' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
       return false;
     });
   }, [games, user]);

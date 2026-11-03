@@ -1,6 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  Firestore
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   projectId: "plucky-aegis-408915",
@@ -12,9 +18,26 @@ const firebaseConfig = {
   measurementId: ""
 };
 
+const DATABASE_ID = "ai-studio-eslgamestudioai-3eb6c438-fab4-4cca-9a82-b91a4aede8f0";
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app, "ai-studio-eslgamestudioai-3eb6c438-fab4-4cca-9a82-b91a4aede8f0");
+
+let db: Firestore;
+try {
+  db = initializeFirestore(
+    app,
+    {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    },
+    DATABASE_ID
+  );
+} catch (e) {
+  db = getFirestore(app, DATABASE_ID);
+}
+
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account'
@@ -23,3 +46,4 @@ googleProvider.setCustomParameters({
 const facebookProvider = new FacebookAuthProvider();
 
 export { auth, db, googleProvider, facebookProvider };
+

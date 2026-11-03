@@ -20,6 +20,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
+import {
+  mergePublicGames,
+  isGameOwnedByUser,
+  getCachedPageVisits,
+  setCachedPageVisits,
+  syncWithServerPlatformCache,
+} from "../utils/platformCache";
 
 export type CambridgeType = 'Starters' | 'Movers' | 'Flyers' | 'KET' | 'PET' | 'IELTS';
 export type GradeType = 
@@ -177,9 +184,9 @@ export function PublicDashboard({
   onViewChange: (view: ViewState, data?: any) => void;
 }) {
   const { user } = useAuth();
-  const [games, setGames] = useState<any[]>([]);
-  const [pageVisits, setPageVisits] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
+  const [games, setGames] = useState<any[]>(() => mergePublicGames([], user));
+  const [pageVisits, setPageVisits] = useState<number>(() => getCachedPageVisits());
+  const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -257,10 +264,22 @@ export function PublicDashboard({
         }
       }
 
-      const combined = Array.from(gamesMap.values());
-      setGames(combined);
+      const firestorePublic = Array.from(gamesMap.values());
+      const merged = mergePublicGames(firestorePublic, user);
+      setGames(merged);
+
+      // Sync with server cache in background
+      syncWithServerPlatformCache({ games: merged }).then((serverData) => {
+        if (serverData && Array.isArray(serverData.games) && serverData.games.length > 0) {
+          setGames((prev) => mergePublicGames([...prev, ...serverData.games], user));
+        }
+        if (serverData && serverData.pageVisits) {
+          setPageVisits(setCachedPageVisits(serverData.pageVisits));
+        }
+      });
     } catch (error) {
-      console.error("Error fetching public games:", error);
+      console.warn("Using cached community games:", error);
+      setGames((prev) => mergePublicGames(prev, user));
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -269,7 +288,7 @@ export function PublicDashboard({
 
   // Setup real-time listener for public games
   useEffect(() => {
-    setLoading(true);
+    setGames((prev) => mergePublicGames(prev, user));
     fetchAllPublicGames();
 
     let unsubscribe: (() => void) | null = null;
@@ -279,17 +298,16 @@ export function PublicDashboard({
         where("isPublic", "==", true)
       );
       unsubscribe = onSnapshot(qLive, (snapshot) => {
-        setGames((prev) => {
-          const map = new Map<string, any>();
-          prev.forEach((g) => map.set(g.id, g));
-          snapshot.forEach((doc) => {
-            map.set(doc.id, { id: doc.id, ...doc.data() });
-          });
-          return Array.from(map.values());
+        const snapGames: any[] = [];
+        snapshot.forEach((doc) => {
+          snapGames.push({ id: doc.id, ...doc.data() });
         });
+        setGames((prev) => mergePublicGames([...prev, ...snapGames], user));
         setLoading(false);
       }, (err) => {
         console.warn("Realtime listener notice:", err);
+        setGames((prev) => mergePublicGames(prev, user));
+        setLoading(false);
       });
     } catch (e) {
       console.warn("Failed to attach snapshot listener:", e);
@@ -304,10 +322,12 @@ export function PublicDashboard({
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) {
-        setPageVisits(docSnap.data().pageVisits || 0);
+        const visits = docSnap.data().pageVisits || 0;
+        setPageVisits(setCachedPageVisits(visits));
       }
     }, (err) => {
       console.warn("Public dashboard pageVisits listener notice:", err);
+      setPageVisits(getCachedPageVisits());
     });
     return () => unsub();
   }, []);
@@ -317,10 +337,10 @@ export function PublicDashboard({
     try {
       const snap = await getDoc(doc(db, 'settings', 'general'));
       if (snap.exists()) {
-        setPageVisits(snap.data().pageVisits || 0);
+        setPageVisits(setCachedPageVisits(snap.data().pageVisits || 0));
       }
     } catch (e) {
-      console.warn("Error refreshing users count:", e);
+      setPageVisits(getCachedPageVisits());
     }
     fetchAllPublicGames();
   };
@@ -329,6 +349,7 @@ export function PublicDashboard({
     { id: "mystery-box", title: "Mystery Box", color: "text-orange-600", icon: "/images/mystery-box-card.jpg" },
     { id: "bubble-pop", title: "Bubble Pop", color: "text-blue-600", icon: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000" },
     { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", color: "text-amber-600", icon: "/images/roller-coaster-quiz-card.jpg" },
+    { id: "hamster-paintball", title: "Hamster Paintball", color: "text-orange-600", icon: "/images/hamster-paintball-card.jpg" },
     { id: "slap-and-chop", title: "Slap & Chop", color: "text-purple-600", icon: "/images/slap-and-chop-card.jpg" },
     { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "/images/shark-attack-card.jpg" },
     { id: "flashcards-match", title: "Flashcards Match", color: "text-indigo-600", icon: "https://drive.google.com/thumbnail?id=1UtaZtVX0onrqj3VorxedOxy1iVXdFAHk&sz=w1000" },
@@ -427,7 +448,7 @@ export function PublicDashboard({
 
   const myGamesCount = useMemo(() => {
     if (!user) return 0;
-    return games.filter((g) => g.userId === user.uid).length;
+    return games.filter((g) => isGameOwnedByUser(g, user)).length;
   }, [games, user]);
 
   // Filtered games
@@ -440,7 +461,7 @@ export function PublicDashboard({
 
       const matchesSearch = !q || titleStr.includes(q) || creatorStr.includes(q) || classStr.includes(q);
       const matchesType = filterType === "all" || normalizeGameType(game.gameType) === normalizeGameType(filterType);
-      const matchesMyGames = !onlyMyGames || (user && game.userId === user.uid);
+      const matchesMyGames = !onlyMyGames || isGameOwnedByUser(game, user);
 
       let matchesLevel = true;
       if (selectedLevel !== 'all') {
@@ -848,7 +869,7 @@ export function PublicDashboard({
           {sortedGames.map((game) => {
             const info = getTemplateInfo(game.gameType);
             const isMultiModeCompatible = isInterchangeableGame(game);
-            const isOwner = Boolean(user && game.userId === user.uid);
+            const isOwner = isGameOwnedByUser(game, user);
             const isFresh = isRecentGame(game);
             const badge = getGameDisplayBadge(game);
 

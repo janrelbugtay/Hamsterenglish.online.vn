@@ -19,7 +19,94 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "25mb" }));
+
+  // Persistent Server-Side Platform Cache (Games, Registered Users, Activities, Page Visits)
+  const PLATFORM_CACHE_FILE = path.resolve("./.platform-cache.json");
+
+  app.get("/api/platform-cache", async (_req, res) => {
+    try {
+      const fs = await import("fs/promises");
+      const raw = await fs.readFile(PLATFORM_CACHE_FILE, "utf-8").catch(() => "{}");
+      const data = JSON.parse(raw || "{}");
+      res.json(data);
+    } catch (err: any) {
+      res.json({});
+    }
+  });
+
+  app.post("/api/platform-cache", async (req, res) => {
+    try {
+      const fs = await import("fs/promises");
+      const existingRaw = await fs.readFile(PLATFORM_CACHE_FILE, "utf-8").catch(() => "{}");
+      const existing = JSON.parse(existingRaw || "{}");
+
+      const incoming = req.body || {};
+
+      // Merge games by id
+      const gamesMap = new Map<string, any>();
+      if (Array.isArray(existing.games)) {
+        existing.games.forEach((g: any) => {
+          if (g && g.id) gamesMap.set(String(g.id), g);
+        });
+      }
+      if (Array.isArray(incoming.games)) {
+        incoming.games.forEach((g: any) => {
+          if (g && g.id) gamesMap.set(String(g.id), { ...(gamesMap.get(String(g.id)) || {}), ...g });
+        });
+      }
+
+      // Merge users by uid/id/email
+      const usersMap = new Map<string, any>();
+      if (Array.isArray(existing.users)) {
+        existing.users.forEach((u: any) => {
+          const key = String(u?.uid || u?.id || u?.email || "");
+          if (key) usersMap.set(key, u);
+        });
+      }
+      if (Array.isArray(incoming.users)) {
+        incoming.users.forEach((u: any) => {
+          const key = String(u?.uid || u?.id || u?.email || "");
+          if (key) usersMap.set(key, { ...(usersMap.get(key) || {}), ...u });
+        });
+      }
+
+      // Merge activities by id
+      const actsMap = new Map<string, any>();
+      if (Array.isArray(existing.activities)) {
+        existing.activities.forEach((a: any) => {
+          if (a && a.id) actsMap.set(String(a.id), a);
+        });
+      }
+      if (Array.isArray(incoming.activities)) {
+        incoming.activities.forEach((a: any) => {
+          if (a && a.id) actsMap.set(String(a.id), a);
+        });
+      }
+
+      const merged = {
+        games: Array.from(gamesMap.values()),
+        users: Array.from(usersMap.values()),
+        activities: Array.from(actsMap.values()).slice(0, 300),
+        pageVisits: Math.max(
+          Number(existing.pageVisits) || 0,
+          Number(incoming.pageVisits) || 0,
+          558
+        ),
+        updatedAt: Date.now(),
+      };
+
+      await fs.writeFile(PLATFORM_CACHE_FILE, JSON.stringify(merged), "utf-8");
+      res.json({
+        success: true,
+        gamesCount: merged.games.length,
+        usersCount: merged.users.length,
+        pageVisits: merged.pageVisits,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Cache error" });
+    }
+  });
 
   // Emoji Generation Endpoint (gemini-3.1-flash)
   app.post("/api/generate-emoji", async (req, res) => {

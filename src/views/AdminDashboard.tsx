@@ -14,6 +14,16 @@ import { examineUserThreat, categorizeThreats, SUPER_ADMIN_EMAIL, ThreatReport }
 import { UserActivityModal } from '../components/UserActivityModal';
 import { AdminActivityGamesView } from '../components/AdminActivityGamesView';
 import { UserActivityEvent } from '../utils/activityTracker';
+import {
+  isRegisteredUser,
+  mergePlatformUsers,
+  mergeAdminGames,
+  mergeAdminActivities,
+  getCachedPageVisits,
+  setCachedPageVisits,
+  syncWithServerPlatformCache,
+  isGameOwnedByUser,
+} from '../utils/platformCache';
 
 // Helper to safely format last login timestamps
 const formatLastLogin = (lastLoginAt: any) => {
@@ -136,9 +146,9 @@ const DashboardOverview = ({
   onNavigateToRoute
 }: any) => {
   const [showGuestModal, setShowGuestModal] = React.useState(false);
-  const registeredUsersList = users.filter((u: any) => u.isAnonymous !== true && u.email && u.email !== "User");
+  const registeredUsersList = users.filter((u: any) => isRegisteredUser(u));
   const registeredUsers = registeredUsersList.length;
-  const guestUsersList = users.filter((u: any) => u.isAnonymous === true || !u.email || u.email === "User");
+  const guestUsersList = users.filter((u: any) => !isRegisteredUser(u));
   const guestUsers = guestUsersList.length;
 
   const threatStats = useMemo(() => categorizeThreats(users), [users]);
@@ -310,8 +320,9 @@ const DashboardOverview = ({
                 const uid = user.uid || user.id;
                 const email = (user.email || '').toLowerCase().trim();
                 const userCreatedGames = games.filter((g: any) => {
+                  if (isGameOwnedByUser(g, user)) return true;
                   if (g.userId && (g.userId === uid || g.userId === user.id)) return true;
-                  if (email && email !== 'user' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
+                  if (email && email !== 'user' && email !== 'guest' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
                   return false;
                 });
 
@@ -331,7 +342,7 @@ const DashboardOverview = ({
                               <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-bold">Admin</span>
                             )}
                           </div>
-                          {(user.isAnonymous || user.email === "User") && (
+                          {!isRegisteredUser(user) && (
                             <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">Guest</span>
                           )}
                         </div>
@@ -476,8 +487,8 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
   const threatCategories = useMemo(() => {
     const critical = analyzedUsers.filter((u: any) => u._threat.level === 'critical' || u._threat.level === 'high');
     const suspicious = analyzedUsers.filter((u: any) => u._threat.level === 'medium');
-    const safe = analyzedUsers.filter((u: any) => u._threat.level === 'safe' || u._threat.level === 'low');
-    const guests = analyzedUsers.filter((u: any) => u.isAnonymous || !u.email || u.email === 'User');
+    const safe = analyzedUsers.filter((u: any) => (u._threat.level === 'safe' || u._threat.level === 'low') && isRegisteredUser(u));
+    const guests = analyzedUsers.filter((u: any) => !isRegisteredUser(u));
     return { critical, suspicious, safe, guests };
   }, [analyzedUsers]);
 
@@ -487,8 +498,8 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
       // Filter tab
       if (activeFilter === 'threats' && u._threat.level !== 'critical' && u._threat.level !== 'high') return false;
       if (activeFilter === 'suspicious' && u._threat.level !== 'medium') return false;
-      if (activeFilter === 'safe' && u._threat.level !== 'safe' && u._threat.level !== 'low') return false;
-      if (activeFilter === 'guests' && !u.isAnonymous && u.email && u.email !== 'User') return false;
+      if (activeFilter === 'safe' && ((u._threat.level !== 'safe' && u._threat.level !== 'low') || !isRegisteredUser(u))) return false;
+      if (activeFilter === 'guests' && isRegisteredUser(u)) return false;
 
       // Search term
       if (!searchTerm) return true;
@@ -1352,16 +1363,30 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
   const [currentRoute, setCurrentRoute] = useState('dashboard');
   const [usersFilter, setUsersFilter] = useState<'all' | 'threats' | 'suspicious' | 'safe' | 'guests'>('all');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [users, setUsers] = useState<any[]>([]);
-  const [games, setGames] = useState<any[]>([]);
-  const [activities, setActivities] = useState<UserActivityEvent[]>([]);
+  const [users, setUsers] = useState<any[]>(() => {
+    const initialGames = mergeAdminGames([], currentUser);
+    const initialActs = mergeAdminActivities([], initialGames);
+    return mergePlatformUsers([], initialGames, initialActs, currentUser);
+  });
+  const [games, setGames] = useState<any[]>(() => mergeAdminGames([], currentUser));
+  const [activities, setActivities] = useState<UserActivityEvent[]>(() => {
+    const initialGames = mergeAdminGames([], currentUser);
+    return mergeAdminActivities([], initialGames);
+  });
   const [inspectingUserActivity, setInspectingUserActivity] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>({});
+  const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('publishedGames');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
-  const [pageVisits, setPageVisits] = useState<number>(0);
+  const [pageVisits, setPageVisits] = useState<number>(() => getCachedPageVisits());
 
   // Sync users, games, and activities logic
   const handleSyncUsers = async () => {
@@ -1374,7 +1399,7 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
           const userRef = doc(db, 'users', currentUser.uid);
           await setDoc(userRef, {
             uid: currentUser.uid,
-            email: currentUser.email || 'User',
+            email: currentUser.email || 'Guest',
             displayName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
             photoURL: currentUser.photoURL || null,
             isAnonymous: currentUser.isAnonymous,
@@ -1406,108 +1431,123 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
         fetchedUsers.push({ id: doc.id, ...doc.data() });
       });
 
-      if (fetchedUsers.length > 0) {
-        fetchedUsers.sort((a, b) => {
-          const getTime = (val: any) => {
-            if (!val) return 0;
-            if (val.toMillis) return val.toMillis();
-            if (val.seconds) return val.seconds * 1000;
-            if (typeof val === 'number') return val;
-            if (typeof val === 'string') return new Date(val).getTime();
-            return 0;
-          };
-          return getTime(b.lastLoginAt) - getTime(a.lastLoginAt);
-        });
-        setUsers(fetchedUsers);
-      }
-
       const fetchedGames: any[] = [];
       gamesSnap.forEach((doc: any) => {
         fetchedGames.push({ id: doc.id, ...doc.data() });
       });
-      if (fetchedGames.length > 0) {
-        setGames(fetchedGames);
-      }
 
       const fetchedActs: any[] = [];
       actSnap.forEach((doc: any) => {
         fetchedActs.push({ id: doc.id, ...doc.data() });
       });
 
-      if (fetchedActs.length > 0) {
-        fetchedActs.sort((a, b) => {
-          const getMs = (val: any) => {
-            if (!val) return 0;
-            if (val.toMillis) return val.toMillis();
-            if (val.seconds) return val.seconds * 1000;
-            if (typeof val === 'number') return val;
-            if (typeof val === 'string') return new Date(val).getTime();
-            return 0;
-          };
-          return getMs(b.timestamp) - getMs(a.timestamp);
-        });
-        setActivities(fetchedActs);
-      }
+      const mergedGames = mergeAdminGames(fetchedGames, currentUser);
+      const mergedActs = mergeAdminActivities(fetchedActs, mergedGames);
+      const mergedUsers = mergePlatformUsers(fetchedUsers, mergedGames, mergedActs, currentUser);
 
-      setSyncMessage(`Successfully synced ${fetchedUsers.length} users and ${fetchedGames.length} games!`);
+      setGames(mergedGames);
+      setActivities(mergedActs);
+      setUsers(mergedUsers);
+
+      const serverCache = await syncWithServerPlatformCache({
+        games: mergedGames,
+        users: mergedUsers,
+        activities: mergedActs,
+        pageVisits,
+      });
+
+      if (serverCache) {
+        const finalGames = mergeAdminGames([...mergedGames, ...(serverCache.games || [])], currentUser);
+        const finalActs = mergeAdminActivities([...mergedActs, ...(serverCache.activities || [])], finalGames);
+        const finalUsers = mergePlatformUsers([...mergedUsers, ...(serverCache.users || [])], finalGames, finalActs, currentUser);
+        setGames(finalGames);
+        setActivities(finalActs);
+        setUsers(finalUsers);
+        if (serverCache.pageVisits) {
+          setPageVisits(setCachedPageVisits(serverCache.pageVisits));
+        }
+        const regCount = finalUsers.filter((u: any) => isRegisteredUser(u)).length;
+        setSyncMessage(`Synced ${regCount} registered users and ${finalGames.length} games!`);
+      } else {
+        const regCount = mergedUsers.filter((u: any) => isRegisteredUser(u)).length;
+        setSyncMessage(`Synced ${regCount} registered users and ${mergedGames.length} games!`);
+      }
       setTimeout(() => setSyncMessage(null), 4000);
     } catch (error: any) {
       console.warn("Notice during sync:", error?.message || error);
-      setSyncMessage("Sync updated with latest cloud records.");
+      setSyncMessage("Sync updated with latest platform records.");
       setTimeout(() => setSyncMessage(null), 3000);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Fetch real users from Firestore realtime listener
+  // Fetch real users from Firestore realtime listener & merge with platform cache
   useEffect(() => {
-    if (!currentUser) {
-      setLoading(false);
-      return;
-    }
+    const initialGames = mergeAdminGames([], currentUser);
+    const initialActs = mergeAdminActivities([], initialGames);
+    const initialUsers = mergePlatformUsers([], initialGames, initialActs, currentUser);
+    setGames(initialGames);
+    setActivities(initialActs);
+    setUsers(initialUsers);
+    setLoading(false);
+
+    syncWithServerPlatformCache({
+      games: initialGames,
+      users: initialUsers,
+      activities: initialActs,
+    }).then((serverData) => {
+      if (serverData) {
+        const g = mergeAdminGames(serverData.games || [], currentUser);
+        const a = mergeAdminActivities(serverData.activities || [], g);
+        const u = mergePlatformUsers(serverData.users || [], g, a, currentUser);
+        setGames(g);
+        setActivities(a);
+        setUsers(u);
+        if (serverData.pageVisits) {
+          setPageVisits(setCachedPageVisits(serverData.pageVisits));
+        }
+      }
+    });
+
+    if (!currentUser) return;
+
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const usersData: any[] = [];
       snapshot.forEach((doc) => {
         usersData.push({ id: doc.id, ...doc.data() });
       });
 
-      usersData.sort((a, b) => {
-        const getTime = (val: any) => {
-          if (!val) return 0;
-          if (val.toMillis) return val.toMillis();
-          if (val.seconds) return val.seconds * 1000;
-          if (typeof val === 'number') return val;
-          if (typeof val === 'string') return new Date(val).getTime();
-          return 0;
-        };
-        return getTime(b.lastLoginAt) - getTime(a.lastLoginAt);
-      });
-
-      setUsers(usersData);
+      setUsers((prev) => mergePlatformUsers([...prev, ...usersData], games, activities, currentUser));
       setLoading(false);
     }, (error) => {
       console.warn("Notice fetching users: ", error?.message || error);
+      setUsers((prev) => mergePlatformUsers(prev, games, activities, currentUser));
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Fetch all user-created games from Firestore realtime listener
+  // Fetch all user-created games from Firestore realtime listener & merge with platform cache
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'mysteryBoxGames'), (snapshot) => {
       const gamesData: any[] = [];
       snapshot.forEach((doc) => {
         gamesData.push({ id: doc.id, ...doc.data() });
       });
-      setGames(gamesData);
+      setGames((prev) => {
+        const merged = mergeAdminGames([...prev, ...gamesData], currentUser);
+        setUsers((prevUsers) => mergePlatformUsers(prevUsers, merged, activities, currentUser));
+        return merged;
+      });
     }, (error) => {
       console.warn("Notice fetching mysteryBoxGames: ", error?.message || error);
+      setGames((prev) => mergeAdminGames(prev, currentUser));
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Fetch all user activities from Firestore realtime listener
   useEffect(() => {
@@ -1518,21 +1558,14 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
         actData.push({ id: doc.id, ...doc.data() });
       });
 
-      actData.sort((a, b) => {
-        const getMs = (val: any) => {
-          if (!val) return 0;
-          if (val.toMillis) return val.toMillis();
-          if (val.seconds) return val.seconds * 1000;
-          if (typeof val === 'number') return val;
-          if (typeof val === 'string') return new Date(val).getTime();
-          return 0;
-        };
-        return getMs(b.timestamp) - getMs(a.timestamp);
+      setActivities((prev) => {
+        const merged = mergeAdminActivities([...prev, ...actData], games);
+        setUsers((prevUsers) => mergePlatformUsers(prevUsers, games, merged, currentUser));
+        return merged;
       });
-
-      setActivities(actData);
     }, (error) => {
       console.warn("Notice fetching userActivities: ", error?.message || error);
+      setActivities((prev) => mergeAdminActivities(prev, games));
     });
 
     return () => unsubscribe();
@@ -1550,11 +1583,13 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
             localStorage.setItem('publishedGames', JSON.stringify(pub));
             window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: pub }));
           } catch (e) {}
-          setPageVisits(doc.data().pageVisits || 0);
+          const visits = doc.data().pageVisits || 0;
+          setPageVisits(setCachedPageVisits(visits));
         }
       },
       (err) => {
         console.warn("Notice in Admin settings listener:", err?.message || err);
+        setPageVisits(getCachedPageVisits());
       }
     );
     return () => unsubscribe();
