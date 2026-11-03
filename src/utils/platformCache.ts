@@ -836,6 +836,36 @@ export function mergePlatformUsers(
 }
 
 /**
+ * Reads locally cached user activities from localStorage.
+ */
+export function getLocalActivities(): UserActivityEvent[] {
+  return safeReadLocalArray(CACHE_KEY_ACTIVITIES);
+}
+
+/**
+ * Saves an activity event to localStorage cache.
+ */
+export function saveLocalActivity(activity: UserActivityEvent): void {
+  try {
+    if (!activity) return;
+    const current = getLocalActivities();
+    const id = activity.id || `local-act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const entry: UserActivityEvent = {
+      ...activity,
+      id,
+      action: activity.action || (activity.actionType as any) || 'play_game',
+      actionType: activity.actionType || activity.action || 'play_game',
+      timestamp: activity.timestamp || Date.now(),
+      createdAtMs: typeof activity.timestamp === 'number' ? activity.timestamp : Date.now(),
+    };
+    const updated = [entry, ...current.filter((a) => a.id !== id)].slice(0, 100);
+    safeWriteLocal(CACHE_KEY_ACTIVITIES, updated);
+  } catch (err) {
+    console.warn('Failed to save local activity:', err);
+  }
+}
+
+/**
  * Merges user activities from Firestore and localStorage.
  */
 export function mergeAdminActivities(firestoreActs: UserActivityEvent[] = [], games: any[] = []): UserActivityEvent[] {
@@ -860,6 +890,7 @@ export function mergeAdminActivities(firestoreActs: UserActivityEvent[] = [], ga
         userEmail: g.creatorEmail || SUPER_ADMIN_EMAIL,
         userName: g.creatorName || 'Teacher Jan',
         isAnonymous: false,
+        action: 'create_game',
         actionType: 'create_game',
         gameType: g.gameType || 'mystery-box',
         gameTitle: g.topic || g.name || g.title || 'Custom Game',
@@ -876,11 +907,17 @@ export function mergeAdminActivities(firestoreActs: UserActivityEvent[] = [], ga
     });
   }
 
-  return Array.from(byId.values()).sort((a: any, b: any) => {
+  const combined = Array.from(byId.values()).sort((a: any, b: any) => {
     const ta = a.createdAtMs || (typeof a.timestamp === 'number' ? a.timestamp : 0);
     const tb = b.createdAtMs || (typeof b.timestamp === 'number' ? b.timestamp : 0);
     return tb - ta;
   });
+
+  if (combined.length > 0) {
+    safeWriteLocal(CACHE_KEY_ACTIVITIES, combined.slice(0, 100));
+  }
+
+  return combined;
 }
 
 /**

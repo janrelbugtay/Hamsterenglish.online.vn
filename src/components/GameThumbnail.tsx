@@ -435,6 +435,11 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
         src={info.icon}
         referrerPolicy="no-referrer"
         alt={info?.title || cleanTitle}
+        onError={(e: any) => {
+          if (normalizedType === 'hamster-paintball') {
+            e.currentTarget.src = '/images/hamster-paintball-card.png';
+          }
+        }}
         className="absolute inset-0 w-full h-full object-cover scale-[1.12] group-hover:scale-[1.20] transition-transform duration-500"
       />
     );

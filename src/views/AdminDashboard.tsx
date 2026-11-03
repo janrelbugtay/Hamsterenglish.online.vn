@@ -1598,10 +1598,25 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
   const toggleGamePublish = async (gameId: string) => {
     try {
       const isCurrentlyPublished = publishedGames[gameId] !== false;
-      const updated = {
+      const nextState = !isCurrentlyPublished;
+      const updated: Record<string, boolean> = {
         ...publishedGames,
-        [gameId]: !isCurrentlyPublished
+        [gameId]: nextState
       };
+      if (gameId === 'hamster-paintball') {
+        updated['hamsterpaintball'] = nextState;
+        updated['paintball'] = nextState;
+      } else if (gameId === 'sumo') {
+        updated['sumo-tags'] = nextState;
+        updated['sumotags'] = nextState;
+      } else if (gameId === 'bubble-sentence-pro') {
+        updated['bubble-island'] = nextState;
+        updated['bubblesentencepro'] = nextState;
+      } else if (gameId === 'roller-coaster-quiz') {
+        updated['rollercoasterquiz'] = nextState;
+      } else if (gameId === 'slap-and-chop') {
+        updated['slapandchop'] = nextState;
+      }
       setPublishedGames(updated);
       try {
         localStorage.setItem('publishedGames', JSON.stringify(updated));

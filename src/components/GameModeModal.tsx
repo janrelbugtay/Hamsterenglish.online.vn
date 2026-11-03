@@ -7,6 +7,7 @@ import { ViewState } from '../types';
 export type PlayableGameMode =
   | 'bubble-pop'
   | 'roller-coaster-quiz'
+  | 'hamster-paintball'
   | 'slap-and-chop'
   | 'shark-attack'
   | 'yoga-quiz'
@@ -80,6 +81,24 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     btnBg: 'bg-amber-500 hover:bg-amber-600',
     btnShadow: 'shadow-[0_4px_0_#b45309]',
     accentText: 'text-amber-600 dark:text-amber-400',
+  },
+  {
+    id: 'hamster-paintball',
+    title: 'Hamster Paintball',
+    shortAction: 'Play in Paintball',
+    tagline: '3D Speedball Park & Trivia Blitz',
+    description: 'Fire glossy paintballs, slide across the park, deploy inflatable bunkers, and earn ammo through trivia!',
+    players: '1–5 Players / Bots · Tactical 3D',
+    category: 'battle',
+    emoji: '🐹🎯',
+    image: '/images/hamster-paintball-card.jpg',
+    fallbackImage: '/images/hamster-paintball-card.png',
+    gradient: 'from-lime-500 via-emerald-600 to-slate-900',
+    cardBg: 'bg-lime-50/70 dark:bg-lime-950/25 hover:bg-lime-100/80 dark:hover:bg-lime-900/35',
+    cardBorder: 'border-lime-300 dark:border-lime-700/70',
+    btnBg: 'bg-lime-600 hover:bg-lime-700',
+    btnShadow: 'shadow-[0_4px_0_#3f6212]',
+    accentText: 'text-lime-600 dark:text-lime-400',
   },
   {
     id: 'slap-and-chop',
@@ -261,6 +280,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
 
   if (normalized === 'bubblepop') return 'bubble-pop';
   if (normalized === 'rollercoasterquiz' || normalized === 'coasterquiz') return 'roller-coaster-quiz';
+  if (normalized === 'hamsterpaintball' || normalized === 'paintball') return 'hamster-paintball';
   if (normalized === 'slapandchop' || normalized === 'slapchop') return 'slap-and-chop';
   if (normalized === 'sharkattack' || normalized === 'sharkstairs') return 'shark-attack';
   if (normalized === 'sumo' || normalized === 'sumotags' || normalized === 'sumoshowdown') return 'sumo';
@@ -275,6 +295,8 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   // Fallback check on title/name if gameType was generic
   const title = (gameData.name || gameData.title || gameData.topic || '').toLowerCase();
   if (title.includes('bubble pop')) return 'bubble-pop';
+  if (title.includes('roller coaster') || title.includes('coaster')) return 'roller-coaster-quiz';
+  if (title.includes('paintball') || title.includes('speedball')) return 'hamster-paintball';
   if (title.includes('slap') || title.includes('chop')) return 'slap-and-chop';
   if (title.includes('shark')) return 'shark-attack';
   if (title.includes('sumo')) return 'sumo';
@@ -283,7 +305,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   if (title.includes('tic tac toe') || title.includes('tic-tac-toe')) return 'tic-tac-toe';
   if (title.includes('flashcard')) return 'flashcards-match';
   if (title.includes('family feud')) return 'family-feud';
-  if (title.includes('hamster')) return 'hamster-pop-quiz';
+  if (title.includes('hamster pop') || title.includes('hamster')) return 'hamster-pop-quiz';
 
   return 'mystery-box';
 }
@@ -296,6 +318,9 @@ export function isGameModePublished(
   if (publishedMap[modeId] === false) return false;
 
   // Aliases check to ensure exact compatibility with AdminDashboard IDs
+  if (modeId === 'hamster-paintball' && (publishedMap['hamster-paintball'] === false || publishedMap['hamsterpaintball'] === false || publishedMap['paintball'] === false)) {
+    return false;
+  }
   if (modeId === 'sumo' && (publishedMap['sumo-tags'] === false || publishedMap['sumo-showdown'] === false)) {
     return false;
   }

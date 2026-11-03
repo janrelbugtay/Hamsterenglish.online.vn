@@ -16,7 +16,9 @@ export interface UserActivityEvent {
   userEmail?: string;
   userName?: string;
   userPhoto?: string | null;
-  action: ActivityAction;
+  action?: ActivityAction;
+  actionType?: string;
+  isAnonymous?: boolean;
   title?: string;
   gameId?: string;
   gameTitle?: string;
@@ -25,6 +27,7 @@ export interface UserActivityEvent {
   score?: number;
   details?: string;
   timestamp: any;
+  createdAtMs?: number;
 }
 
 /**
@@ -34,6 +37,25 @@ export interface UserActivityEvent {
 export async function logUserActivity(event: Omit<UserActivityEvent, 'timestamp'> & { timestamp?: any }) {
   try {
     if (!event.userId) return;
+
+    // Persist to local activity cache so admin dashboard shows immediate feedback
+    try {
+      const CACHE_KEY_ACTIVITIES = 'hamster_cached_activities_v2';
+      const raw = localStorage.getItem(CACHE_KEY_ACTIVITIES);
+      const list = raw ? JSON.parse(raw) : [];
+      const newEntry = {
+        ...event,
+        id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        action: event.action || (event.actionType as ActivityAction) || 'play_game',
+        actionType: event.actionType || event.action || 'play_game',
+        timestamp: Date.now(),
+        createdAtMs: Date.now(),
+      };
+      if (Array.isArray(list)) {
+        localStorage.setItem(CACHE_KEY_ACTIVITIES, JSON.stringify([newEntry, ...list].slice(0, 100)));
+      }
+    } catch {}
+
     const col = collection(db, 'userActivities');
     await addDoc(col, {
       ...event,

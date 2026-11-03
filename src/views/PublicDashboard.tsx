@@ -407,13 +407,13 @@ export function PublicDashboard({
       return false;
     }
 
-    if (['bubblepop', 'sharkattack', 'sumo', 'sumotags', 'yoga', 'yogaquiz', 'mysterybox', 'tictactoe', 'flashcardsmatch', 'hamsterpopquiz', 'familyfeud'].includes(normalized)) {
+    if (['bubblepop', 'rollercoasterquiz', 'hamsterpaintball', 'slapandchop', 'sharkattack', 'sumo', 'sumotags', 'yoga', 'yogaquiz', 'mysterybox', 'tictactoe', 'flashcardsmatch', 'hamsterpopquiz', 'familyfeud'].includes(normalized)) {
       return true;
     }
 
     if (typeof game === 'object') {
       const title = (game.topic || game.name || game.title || '').toLowerCase();
-      if (title.includes('bubble pop') || title.includes('shark') || title.includes('sumo') || title.includes('yoga') || title.includes('mystery box') || title.includes('family feud')) {
+      if (title.includes('paintball') || title.includes('bubble pop') || title.includes('slap') || title.includes('shark') || title.includes('sumo') || title.includes('yoga') || title.includes('mystery box') || title.includes('family feud')) {
         return true;
       }
       const questions = game.customQuestions || game.questions;
