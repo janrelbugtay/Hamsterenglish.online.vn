@@ -6,7 +6,7 @@ import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { parseOptionContent, formatOptionContent, AnswerContentMode } from "../utils/mediaAndPresets";
-import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, ClipboardList, Info, Settings, Copy, Flag, Volume2, VolumeX, Shuffle, Check } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, ClipboardList, Info, Settings, Copy, Flag, Volume2, VolumeX, Shuffle, Check, Trophy, Timer, RotateCcw, Users, User } from "lucide-react";
 import { collection, query, where, getDocs, deleteDoc, doc, addDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -57,6 +57,25 @@ const BLANK_QUESTION = (): Question => ({
 });
 
 const DEFAULT_BUBBLE_QUESTIONS: Question[] = [];
+
+const HAND_TRACKER_OPTIONS: Array<{ id: HandCharacterType; name: string; icon: string; color: string }> = [
+  { id: 'spiderman', name: 'Spider-Man', icon: '🕷️', color: 'from-red-500 to-blue-600' },
+  { id: 'thanos', name: 'Thanos Gauntlet', icon: '🧤', color: 'from-amber-500 to-yellow-600' },
+  { id: 'witch', name: 'Wicked Witch', icon: '🧙‍♀️', color: 'from-emerald-500 to-purple-700' },
+  { id: 'hulk', name: 'Incredible Hulk', icon: '💪', color: 'from-green-600 to-emerald-500' },
+  { id: 'ironman', name: 'Iron Man', icon: '🤖', color: 'from-red-600 to-amber-500' },
+  { id: 'frost', name: 'Frost Mage', icon: '❄️', color: 'from-cyan-500 to-blue-500' },
+  { id: 'cyberpunk', name: 'Cyberpunk Mecha', icon: '⚡', color: 'from-fuchsia-500 to-cyan-500' },
+];
+
+const NOSE_TRACKER_OPTIONS: Array<{ id: NoseStyle; name: string; icon: string; color: string }> = [
+  { id: 'real', name: 'Real Nose', icon: '👃', color: 'from-amber-400 to-rose-400' },
+  { id: 'clown', name: 'Clown Nose', icon: '🔴', color: 'from-red-500 to-rose-600' },
+  { id: 'rudolph', name: 'Rudolph', icon: '🦌', color: 'from-red-600 to-amber-500' },
+  { id: 'pig', name: 'Pig Snout', icon: '🐷', color: 'from-pink-400 to-rose-400' },
+  { id: 'cat', name: 'Cat Whiskers', icon: '🐱', color: 'from-slate-700 to-slate-900' },
+  { id: 'pinocchio', name: 'Pinocchio', icon: '🤥', color: 'from-amber-600 to-yellow-700' },
+];
 
 export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void, initialGame?: any }) {
   const { user } = useAuth();
@@ -264,10 +283,22 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const [p1Name, setP1Name] = useState("Team 1");
   const [p2Name, setP2Name] = useState("Team 2");
   const [speed, setSpeed] = useState(1);
+  const [gameDurationMinutes, setGameDurationMinutes] = useState(3);
+  const [timeLeftSeconds, setTimeLeftSeconds] = useState(180);
+  const [teamStats, setTeamStats] = useState<Array<{ correctPops: number; wrongPops: number; streak: number; maxCombo: number }>>([
+    { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 },
+    { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 }
+  ]);
   const [showInGameSettings, setShowInGameSettings] = useState(false);
   const handleSetSpeed = (val: number) => { setSpeed(val); gameState.current.speed = val; };
   const handleSetBubbleSize = (val: number) => { setBubbleSize(val); gameState.current.size = val; };
   const handleSetTwistEnabled = (val: boolean) => { setTwistEnabled(val); gameState.current.twist = val; };
+  const handleSetTimerMinutes = (mins: number) => {
+    const clamped = Math.max(1, Math.min(10, mins));
+    setGameDurationMinutes(clamped);
+    setTimeLeftSeconds(clamped * 60);
+    timeLeftSecondsRef.current = clamped * 60;
+  };
   const [bubbleSize, setBubbleSize] = useState(1);
   const [twistEnabled, setTwistEnabled] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -279,6 +310,15 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const [studyAnswers, setStudyAnswers] = useState<Record<number, boolean>>({});
   const handleSetVoiceEnabled = (val: boolean) => { setVoiceEnabled(val); gameState.current.voice = val; };
   
+  const timeLeftSecondsRef = useRef(180);
+  const matchTimerRef = useRef<any>(null);
+  const formatTimeMMSS = (sec: number) => {
+    const safeSec = Math.max(0, Math.floor(sec));
+    const m = Math.floor(safeSec / 60);
+    const s = safeSec % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   // Game engine state refs
   const gameState = useRef({
     isActive: false,
@@ -290,6 +330,10 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     maxCombo: 0,
     correctPops: 0,
     wrongPops: 0,
+    playerStats: [
+      { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 },
+      { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 }
+    ],
     questionStartTime: 0,
     questions: [] as Question[],
     speed: 1,
@@ -335,6 +379,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
       gameState.current.isActive = false;
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       if (questionTimerRef.current) clearInterval(questionTimerRef.current);
+      if (matchTimerRef.current) clearInterval(matchTimerRef.current);
       if (cameraRef.current && cameraRef.current.stop) {
           cameraRef.current.stop();
       }
@@ -521,6 +566,15 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
     }
+    if (matchTimerRef.current) {
+        clearInterval(matchTimerRef.current);
+        matchTimerRef.current = null;
+    }
+
+    const initialPlayerStats = [
+      { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 },
+      { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 }
+    ];
 
     gameState.current = {
         isActive: true,
@@ -532,6 +586,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         maxCombo: 0,
         correctPops: 0,
         wrongPops: 0,
+        playerStats: initialPlayerStats,
         questionStartTime: 0,
         questions: activeQuiz ? [...activeQuiz.questions].sort(() => 0.5 - Math.random()) : [],
         speed: speed,
@@ -551,8 +606,28 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     });
     
     setScores([0, 0]);
+    setTeamStats(initialPlayerStats);
+    setCurrentQuestionIndex(0);
     setCombo(0);
     setShowCombo(false);
+
+    const totalSecs = Math.max(1, Math.min(10, gameDurationMinutes)) * 60;
+    setTimeLeftSeconds(totalSecs);
+    timeLeftSecondsRef.current = totalSecs;
+
+    matchTimerRef.current = setInterval(() => {
+      if (!gameState.current.isActive) {
+        if (matchTimerRef.current) clearInterval(matchTimerRef.current);
+        return;
+      }
+      timeLeftSecondsRef.current -= 1;
+      setTimeLeftSeconds(timeLeftSecondsRef.current);
+      if (timeLeftSecondsRef.current <= 0) {
+        if (matchTimerRef.current) clearInterval(matchTimerRef.current);
+        showResults();
+      }
+    }, 1000);
+
     setScreen('game');
     
     setTimeout(() => {
@@ -897,7 +972,8 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
   const handlePop = (bubble: any, playerIndex: number) => {
     if (!graphicsState.current.isQuestionActive || bubble.popped || bubble.state === 'shaking') return;
-    if (gameState.current.frozenTeams[playerIndex]) return;
+    const pIdx = playerIndex === 1 ? 1 : 0;
+    if (gameState.current.frozenTeams[pIdx]) return;
     
     bubble.state = 'shaking'; 
     
@@ -914,18 +990,27 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             if(gameState.current.combo > gameState.current.maxCombo) {
                 gameState.current.maxCombo = gameState.current.combo;
             }
+
+            const pStat = gameState.current.playerStats[pIdx];
+            if (pStat) {
+                pStat.correctPops += 1;
+                pStat.streak += 1;
+                if (pStat.streak > pStat.maxCombo) {
+                    pStat.maxCombo = pStat.streak;
+                }
+            }
+            setTeamStats([...gameState.current.playerStats.map(s => ({ ...s }))]);
             
             let points = 5;
-            gameState.current.scores[playerIndex] += points;
+            gameState.current.scores[pIdx] += points;
             
             const w = containerRef.current?.clientWidth || 800;
-            const targetX = playerIndex === 0 ? 100 : w - 100;
+            const targetX = pIdx === 0 ? 100 : w - 100;
             graphicsState.current.floatingTexts.push(new FloatingText(bubble.x, bubble.y, `+5`, '#4ade80', true, targetX, 80));
             
             if(gameState.current.combo > 1) {
                 setCombo(gameState.current.combo);
                 setShowCombo(true);
-                // Trigger re-render animation using a small timeout hack in real life, but React handles it by remounting if keyed or we can just rely on css animation triggers on state change.
             }
             
             setScores([...gameState.current.scores]);
@@ -941,11 +1026,12 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 }
             });
 
-            setQuestionText(`Amazing!`);
+            setQuestionText(`Amazing! ${pIdx === 0 ? p1Name : p2Name} +5 PTS!`);
             setQuestionImage(null);
             speakText("Correct!");
             
             setTimeout(() => {
+                if (!gameState.current.isActive) return;
                 gameState.current.currentQuestionIndex++;
                 setCurrentQuestionIndex(gameState.current.currentQuestionIndex);
                 setShowCombo(false);
@@ -963,16 +1049,23 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             gameState.current.combo = 0; 
             setShowCombo(false);
 
+            const pStat = gameState.current.playerStats[pIdx];
+            if (pStat) {
+                pStat.wrongPops += 1;
+                pStat.streak = 0;
+            }
+            setTeamStats([...gameState.current.playerStats.map(s => ({ ...s }))]);
+
             const penalty = 5;
-            gameState.current.scores[playerIndex] = Math.max(0, gameState.current.scores[playerIndex] - penalty);
+            gameState.current.scores[pIdx] = Math.max(0, gameState.current.scores[pIdx] - penalty);
             setScores([...gameState.current.scores]);
             
             const w = containerRef.current?.clientWidth || 800;
-            const targetX = playerIndex === 0 ? 100 : w - 100;
+            const targetX = pIdx === 0 ? 100 : w - 100;
             graphicsState.current.floatingTexts.push(new FloatingText(bubble.x, bubble.y, `-5`, '#ef4444', true, targetX, 80));
             
             if (gameState.current.numPlayers === 2) {
-                const otherTeamIndex = playerIndex === 0 ? 1 : 0;
+                const otherTeamIndex = pIdx === 0 ? 1 : 0;
                 if (gameState.current.frozenTeams[otherTeamIndex]) {
                     // Unfreeze both since both got it wrong
                     gameState.current.frozenTeams = [false, false];
@@ -980,7 +1073,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 } else {
                     // Freeze the team that got it wrong
                     const newFrozen = [...gameState.current.frozenTeams];
-                    newFrozen[playerIndex] = true;
+                    newFrozen[pIdx] = true;
                     gameState.current.frozenTeams = newFrozen;
                     setFrozenTeams(newFrozen);
                 }
@@ -997,6 +1090,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const showResults = () => {
     gameState.current.isActive = false;
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
+    if (matchTimerRef.current) clearInterval(matchTimerRef.current);
     if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -1036,19 +1130,23 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     setStatsData(newStatsData);
     saveGame(newPlayerData, newStatsData);
 
+    setScores([...gameState.current.scores]);
+    setTeamStats([...gameState.current.playerStats.map(s => ({ ...s }))]);
     setAccuracy(acc);
     setXpEarned(xp);
     setCoinsEarned(coins);
     
     let title = "Good Try!";
     if (gameState.current.numPlayers === 1) {
-        if (acc > 90) title = "Perfect Round!";
-        else if (acc > 70) title = "Excellent!";
+        if (acc >= 90) title = `${p1Name || 'Team 1'} — Perfect Round!`;
+        else if (acc >= 70) title = `${p1Name || 'Team 1'} — Excellent!`;
+        else if (gameState.current.scores[0] > 0) title = `${p1Name || 'Team 1'} — Great Effort!`;
+        else title = `${p1Name || 'Team 1'} — Good Try!`;
     } else {
         if (gameState.current.scores[0] > gameState.current.scores[1]) {
-            title = `${p1Name} Wins!`;
+            title = `${p1Name || 'Team 1'} Wins!`;
         } else if (gameState.current.scores[1] > gameState.current.scores[0]) {
-            title = `${p2Name} Wins!`;
+            title = `${p2Name || 'Team 2'} Wins!`;
         } else {
             title = "It's a Tie!";
         }
@@ -1859,53 +1957,68 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
           <span>Switch Mode</span>
         </button>
       </div>
-        <div className="absolute top-4 right-4 z-[70] flex gap-3 pointer-events-auto">
+      <div className="absolute top-4 right-4 z-[70] flex items-center gap-2.5 pointer-events-auto">
         {screen === 'game' && (
           <>
+            {/* Live Countdown Timer Pill */}
+            <div
+              className={`h-12 px-4 flex items-center gap-2 rounded-full backdrop-blur-md border shadow-lg font-black text-sm sm:text-base tabular-nums transition-colors ${
+                timeLeftSeconds <= 15
+                  ? 'bg-red-500/90 border-red-300 text-white animate-pulse'
+                  : 'bg-white/85 dark:bg-slate-900/80 border-white/40 dark:border-white/20 text-slate-800 dark:text-white'
+              }`}
+              title="Match Countdown Timer"
+            >
+              <Timer size={18} className={timeLeftSeconds <= 15 ? 'text-white' : 'text-blue-500 dark:text-cyan-400'} />
+              <span>{formatTimeMMSS(timeLeftSeconds)}</span>
+            </div>
+
+            {/* In-Game Tracker Selector Button */}
             <button 
               onClick={() => setShowTrackerModal(true)} 
-              className="h-12 px-3.5 sm:px-4 flex items-center gap-2 rounded-full bg-white/25 dark:bg-black/45 hover:bg-white/35 dark:hover:bg-black/65 backdrop-blur-md border border-white/30 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg hover:scale-105 active:scale-95 cursor-pointer font-bold" 
-              title="Tracker Options: Finger Ball, Character Hands, or Animated Nose"
+              className="h-12 px-3.5 sm:px-4 flex items-center gap-2 rounded-full bg-white/85 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md border border-white/40 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg hover:scale-105 active:scale-95 cursor-pointer font-bold" 
+              title="Choose Your Tracker"
             >
               <span className="text-xl">
                 {trackerMode === 'finger' && '☝️'}
                 {trackerMode === 'hand' && (
-                  handCharacter === 'spiderman' ? '🕷️' :
-                  handCharacter === 'thanos' ? '🧤' :
-                  handCharacter === 'witch' ? '🧙‍♀️' :
-                  handCharacter === 'hulk' ? '💪' :
-                  handCharacter === 'ironman' ? '🤖' :
-                  handCharacter === 'frost' ? '❄️' : '⚡'
+                  HAND_TRACKER_OPTIONS.find(h => h.id === handCharacter)?.icon || '🖐️'
                 )}
                 {trackerMode === 'nose' && (
-                  noseStyle === 'real' ? '👃' :
-                  noseStyle === 'clown' ? '🔴' :
-                  noseStyle === 'rudolph' ? '🦌' :
-                  noseStyle === 'pig' ? '🐷' :
-                  noseStyle === 'cat' ? '🐱' : '🤥'
+                  NOSE_TRACKER_OPTIONS.find(n => n.id === noseStyle)?.icon || '👃'
                 )}
               </span>
               <span className="hidden sm:inline text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">
-                {trackerMode === 'finger' && 'Finger'}
+                {trackerMode === 'finger' && 'Finger Ball'}
                 {trackerMode === 'hand' && (
-                  handCharacter === 'spiderman' ? 'Spidey' :
-                  handCharacter === 'thanos' ? 'Thanos' :
-                  handCharacter === 'witch' ? 'Witch' :
-                  handCharacter === 'hulk' ? 'Hulk' :
-                  handCharacter === 'ironman' ? 'Iron Man' :
-                  handCharacter === 'frost' ? 'Frost' : 'Cyber'
+                  HAND_TRACKER_OPTIONS.find(h => h.id === handCharacter)?.name || 'Hand'
                 )}
                 {trackerMode === 'nose' && (
-                  noseStyle === 'real' ? 'Real Nose' :
-                  noseStyle === 'clown' ? 'Clown' :
-                  noseStyle === 'rudolph' ? 'Rudolph' :
-                  noseStyle === 'pig' ? 'Pig' :
-                  noseStyle === 'cat' ? 'Cat' : 'Pinocchio'
+                  NOSE_TRACKER_OPTIONS.find(n => n.id === noseStyle)?.name || 'Nose'
                 )}
               </span>
             </button>
-            <button onClick={() => setShowInGameSettings(!showInGameSettings)} className="w-12 h-12 flex justify-center items-center rounded-full bg-white/20 dark:bg-black/40 hover:bg-white/30 backdrop-blur-md border border-white/30 text-slate-800 dark:text-white transition-all shadow-lg cursor-pointer">
-                <Settings size={20} />
+
+            {/* End Game & View Results Icon Button next to Settings Icon */}
+            <button
+              onClick={() => {
+                setShowInGameSettings(false);
+                showResults();
+              }}
+              className="h-12 px-3.5 sm:px-4 flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm border border-amber-200 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="End Game & View Results"
+            >
+              <Trophy size={18} className="text-slate-950 shrink-0" />
+              <span className="hidden md:inline uppercase tracking-wider">End Game</span>
+            </button>
+
+            {/* Settings Icon Button */}
+            <button
+              onClick={() => setShowInGameSettings(!showInGameSettings)}
+              className="w-12 h-12 flex justify-center items-center rounded-full bg-white/85 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md border border-white/40 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg hover:scale-105 active:scale-95 cursor-pointer"
+              title="In-Game Settings"
+            >
+              <Settings size={20} />
             </button>
           </>
         )}
@@ -2231,38 +2344,70 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
       )}
 
       {screen === 'game' && showInGameSettings && (
-          <div className="absolute right-4 top-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-2 border-blue-500 rounded-3xl p-6 shadow-2xl w-80 pointer-events-auto z-[80]">
-              <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold text-slate-800 dark:text-white">Game Settings</h3>
+          <div className="absolute right-4 top-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-3xl p-6 shadow-2xl w-80 sm:w-96 pointer-events-auto z-[80]">
+              <div className="flex justify-between items-center mb-5">
+                  <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                    <Settings size={20} className="text-blue-500" />
+                    <span>Game Settings</span>
+                  </h3>
                   <button onClick={() => setShowInGameSettings(false)} className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-white transition-colors cursor-pointer">
                       <X size={16} />
                   </button>
               </div>
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-5">
+                  {/* Timer 1-10 Minutes Slider */}
+                  <div className="flex flex-col gap-2 text-slate-800 dark:text-white font-bold bg-slate-100/80 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <div className="flex justify-between items-center">
+                          <span className="flex items-center gap-1.5 text-sm font-black">
+                            <Timer size={16} className="text-blue-500" />
+                            <span>Timer</span>
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full bg-blue-500 text-white text-xs font-black">
+                            {gameDurationMinutes} {gameDurationMinutes === 1 ? 'Minute' : 'Minutes'}
+                          </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={gameDurationMinutes}
+                        onChange={(e) => handleSetTimerMinutes(Number(e.target.value))}
+                        className="w-full h-2 bg-slate-300 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      />
+                      <div className="flex justify-between text-[10px] font-bold text-slate-400 px-0.5">
+                        <span>1m</span>
+                        <span>3m</span>
+                        <span>5m</span>
+                        <span>8m</span>
+                        <span>10m</span>
+                      </div>
+                  </div>
+
                   <div className="flex flex-col gap-2 text-slate-800 dark:text-white font-bold">
                       <div className="flex justify-between items-center">
                           <span>Bubble Speed</span>
-                          <div className="flex gap-2">
-                                <button onClick={() => handleSetSpeed(0.25)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${speed === 0.25 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Slow</button>
-                                <button onClick={() => handleSetSpeed(1)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${speed === 1 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Normal</button>
-                                <button onClick={() => handleSetSpeed(2.5)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${speed === 2.5 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Fast</button>
+                          <div className="flex gap-1.5">
+                                <button onClick={() => handleSetSpeed(0.25)} className={`px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer ${speed === 0.25 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Slow</button>
+                                <button onClick={() => handleSetSpeed(1)} className={`px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer ${speed === 1 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Normal</button>
+                                <button onClick={() => handleSetSpeed(2.5)} className={`px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer ${speed === 2.5 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Fast</button>
                           </div>
                       </div>
                   </div>
                   <div className="flex flex-col gap-2 text-slate-800 dark:text-white font-bold">
                       <div className="flex justify-between items-center">
                           <span>Bubble Size</span>
-                          <div className="flex gap-2">
-                                <button onClick={() => handleSetBubbleSize(0.5)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${bubbleSize === 0.5 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Small</button>
-                                <button onClick={() => handleSetBubbleSize(1)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${bubbleSize === 1 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Normal</button>
-                                <button onClick={() => handleSetBubbleSize(2)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${bubbleSize === 2 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Big</button>
+                          <div className="flex gap-1.5">
+                                <button onClick={() => handleSetBubbleSize(0.5)} className={`px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer ${bubbleSize === 0.5 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Small</button>
+                                <button onClick={() => handleSetBubbleSize(1)} className={`px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer ${bubbleSize === 1 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Normal</button>
+                                <button onClick={() => handleSetBubbleSize(2)} className={`px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer ${bubbleSize === 2 ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>Big</button>
                           </div>
                       </div>
                   </div>
                   <div className="flex flex-col gap-2 text-slate-800 dark:text-white font-bold">
                         <div className="flex justify-between items-center">
                             <span>Twist Mode</span>
-                            <button onClick={() => handleSetTwistEnabled(!twistEnabled)} className={`w-12 h-6 rounded-full transition-colors relative ${twistEnabled ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                            <button onClick={() => handleSetTwistEnabled(!twistEnabled)} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${twistEnabled ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
                                 <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${twistEnabled ? 'left-7' : 'left-1'}`}></div>
                             </button>
                         </div>
@@ -2270,7 +2415,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                   <div className="flex flex-col gap-2 text-slate-800 dark:text-white font-bold">
                         <div className="flex justify-between items-center">
                             <span>Voice Narration</span>
-                            <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-12 h-6 rounded-full transition-colors relative ${voiceEnabled ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                            <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${voiceEnabled ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
                                 <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${voiceEnabled ? 'left-7' : 'left-1'}`}></div>
                             </button>
                         </div>
@@ -2311,11 +2456,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
       {screen === 'game' && (
         <div className="absolute bottom-4 right-4 z-[50] flex flex-col items-end pointer-events-none">
-            <div className="bg-white/80 dark:bg-black/60 backdrop-blur-md rounded-2xl px-6 py-3 shadow-lg border border-slate-200 dark:border-white/20">
-                <div className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-widest uppercase mb-1">Question</div>
-                <div className="text-3xl font-black text-slate-800 dark:text-white flex items-baseline gap-1">
+            <div className="bg-white/85 dark:bg-black/65 backdrop-blur-md rounded-2xl px-5 py-2.5 shadow-lg border border-slate-200 dark:border-white/20">
+                <div className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-widest uppercase mb-0.5">Question</div>
+                <div className="text-2xl sm:text-3xl font-black text-slate-800 dark:text-white flex items-baseline gap-1">
                     <span>{currentQuestionIndex + 1}</span>
-                    <span className="text-xl text-slate-400 dark:text-slate-500">/{gameState.current.questions.length}</span>
+                    <span className="text-lg text-slate-400 dark:text-slate-500">/{gameState.current.questions.length}</span>
                 </div>
             </div>
         </div>
@@ -2394,33 +2539,33 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
       {/* Screen: Setup */}
       {screen === 'setup' && (
-        <div className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-8 overflow-hidden backdrop-blur-sm transition-colors duration-1000 ${selectedTheme === "theme-ocean" ? "bg-gradient-to-b from-sky-600/90 to-cyan-600/90 dark:from-sky-800/90 dark:to-cyan-900/90" : selectedTheme === "theme-space" ? "bg-gradient-to-b from-slate-900/90 to-indigo-950/90" : selectedTheme === "theme-jungle" ? "bg-gradient-to-b from-green-600/90 to-emerald-400/90 dark:from-green-900/90 dark:to-emerald-800/90" : selectedTheme === "theme-sunset" ? "bg-gradient-to-b from-orange-400/90 to-yellow-300/90 dark:from-orange-800/90 dark:to-yellow-700/90" : "bg-gradient-to-b from-sky-400/90 to-blue-200/90 dark:from-sky-900/90 dark:to-blue-950/90"}`}>
+        <div className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto custom-scrollbar backdrop-blur-sm transition-colors duration-1000 ${selectedTheme === "theme-ocean" ? "bg-gradient-to-b from-sky-600/90 to-cyan-600/90 dark:from-sky-800/90 dark:to-cyan-900/90" : selectedTheme === "theme-space" ? "bg-gradient-to-b from-slate-900/90 to-indigo-950/90" : selectedTheme === "theme-jungle" ? "bg-gradient-to-b from-green-600/90 to-emerald-400/90 dark:from-green-900/90 dark:to-emerald-800/90" : selectedTheme === "theme-sunset" ? "bg-gradient-to-b from-orange-400/90 to-yellow-300/90 dark:from-orange-800/90 dark:to-yellow-700/90" : "bg-gradient-to-b from-sky-400/90 to-blue-300/90 dark:from-sky-900/90 dark:to-blue-950/90"}`}>
             {/* Immersive Background Elements */}
             <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
                 <div className="absolute top-10 left-10 w-32 h-32 bg-white/20 rounded-full blur-3xl"></div>
                 <div className="absolute bottom-20 right-20 w-48 h-48 bg-blue-300/30 rounded-full blur-3xl"></div>
                 {/* Clouds */}
-                <div className="absolute top-20 left-[10%] opacity-80 animate-float" style={{ animationDelay: '0s' }}>
+                <div className="absolute top-14 left-[8%] opacity-80 animate-float" style={{ animationDelay: '0s' }}>
                     <div className="w-24 h-8 bg-white rounded-full absolute top-4 left-4"></div>
                     <div className="w-16 h-16 bg-white rounded-full absolute top-0 left-8"></div>
                     <div className="w-12 h-12 bg-white rounded-full absolute top-2 left-2"></div>
                 </div>
-                <div className="absolute top-40 right-[15%] opacity-60 animate-float" style={{ animationDelay: '2s' }}>
+                <div className="absolute top-28 right-[10%] opacity-60 animate-float" style={{ animationDelay: '2s' }}>
                     <div className="w-32 h-10 bg-white rounded-full absolute top-6 left-6"></div>
                     <div className="w-20 h-20 bg-white rounded-full absolute top-0 left-10"></div>
                 </div>
                 {/* Floating Bubbles */}
-                {Array.from({ length: 15 }).map((_, i) => (
+                {Array.from({ length: 12 }).map((_, i) => (
                     <div 
                         key={i} 
                         className="absolute rounded-full border border-white/40 bg-gradient-to-tr from-white/10 to-white/30 backdrop-blur-[2px] shadow-[inset_0_0_10px_rgba(255,255,255,0.5)] animate-float-up"
                         style={{
-                            width: `${Math.random() * 40 + 20}px`,
-                            height: `${Math.random() * 40 + 20}px`,
-                            left: `${Math.random() * 100}%`,
-                            bottom: `-${Math.random() * 20 + 10}%`,
-                            animationDuration: `${Math.random() * 10 + 10}s`,
-                            animationDelay: `${Math.random() * 5}s`
+                            width: `${(i % 4) * 12 + 22}px`,
+                            height: `${(i % 4) * 12 + 22}px`,
+                            left: `${(i * 8.5) % 96}%`,
+                            bottom: `-${(i % 5) * 5 + 10}%`,
+                            animationDuration: `${(i % 5) * 2 + 10}s`,
+                            animationDelay: `${(i % 4)}s`
                         }}
                     >
                         <div className="absolute top-[15%] left-[20%] w-1/4 h-1/4 bg-white/60 rounded-full blur-[1px]"></div>
@@ -2428,152 +2573,381 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 ))}
             </div>
 
-            <div className="relative z-10 flex flex-col items-center">
-                <h2 className="text-6xl sm:text-7xl font-black mb-12 text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-100 drop-shadow-[0_4px_4px_rgba(0,0,0,0.1)] text-center tracking-tight" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.5)' }}>
+            <div className="relative z-10 flex flex-col items-center w-full max-w-[1380px] my-auto py-4">
+                <h2 className="text-4xl sm:text-6xl font-black mb-5 text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-100 drop-shadow-[0_4px_4px_rgba(0,0,0,0.12)] text-center tracking-tight" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.5)' }}>
                     Bubble Pop
                 </h2>
                 
-                <div className="flex flex-col xl:flex-row gap-6 w-full max-w-7xl justify-center items-stretch relative z-10">
-    <div className="flex-1 w-full max-w-2xl bg-white/10 dark:bg-black/20 backdrop-blur-md rounded-[2rem] border border-white/20 p-8 shadow-2xl flex flex-col items-center">
+                {/* 3-Column Setup Layout: [1. Players & Settings] | [2. Choose Your Tracker (Expanded)] | [3. Choose Theme & Study Mode] */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch relative z-10 mb-5">
+                    
+                    {/* COLUMN 1: PLAYERS & GAME SETTINGS */}
+                    <div className="lg:col-span-4 bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl rounded-[2rem] border border-white/30 p-5 sm:p-6 shadow-2xl flex flex-col justify-between gap-4">
+                        <div className="flex flex-col gap-4">
+                            {/* Improved Player 1 & Player 2 Mode Cards */}
+                            <div className="grid grid-cols-2 gap-3.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setNumPlayers(1)}
+                                    className={`relative group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden ${
+                                        numPlayers === 1
+                                            ? 'bg-gradient-to-b from-blue-500 to-blue-600 border-white text-white shadow-[0_8px_25px_rgba(59,130,246,0.55)] scale-[1.02]'
+                                            : 'bg-slate-900/25 hover:bg-slate-900/35 border-white/20 text-white/85'
+                                    }`}
+                                >
+                                    {numPlayers === 1 && (
+                                        <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white text-blue-600 flex items-center justify-center text-xs font-black shadow">
+                                            ✓
+                                        </span>
+                                    )}
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
+                                        numPlayers === 1 ? 'bg-white/25 ring-2 ring-white/60' : 'bg-blue-500/80'
+                                    }`}>
+                                        <User size={30} className="text-white" strokeWidth={2.5} />
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="font-black text-lg leading-tight">1 Player</div>
+                                        <div className="text-[11px] font-bold text-blue-100/90">Solo Arena</div>
+                                    </div>
+                                </button>
 
-                    <div className="flex gap-6 mb-8 w-full justify-center">
-                        <button
-                            onClick={() => setNumPlayers(1)}
-                            className={`flex-1 flex flex-col items-center gap-3 p-6 rounded-3xl border border-white/20 transition-all duration-300 ${numPlayers === 1 ? 'bg-blue-500/30 scale-105 shadow-[0_0_30px_rgba(59,130,246,0.3)]' : 'bg-black/20 hover:bg-white/10'}`}
-                        >
-                            <div className="text-5xl bg-blue-500 w-20 h-20 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.6)]">👤</div>
-                            <span className="text-white font-bold text-2xl">1 Player</span>
-                        </button>
-                        <button
-                            onClick={() => setNumPlayers(2)}
-                            className={`flex-1 flex flex-col items-center gap-3 p-6 rounded-3xl border border-white/20 transition-all duration-300 ${numPlayers === 2 ? 'bg-red-500/30 scale-105 shadow-[0_0_30px_rgba(239,68,68,0.3)]' : 'bg-black/20 hover:bg-white/10'}`}
-                        >
-                            <div className="text-5xl bg-red-500 w-20 h-20 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.6)]">👥</div>
-                            <span className="text-white font-bold text-2xl">2 Players</span>
-                        </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setNumPlayers(2)}
+                                    className={`relative group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden ${
+                                        numPlayers === 2
+                                            ? 'bg-gradient-to-b from-rose-500 to-red-600 border-white text-white shadow-[0_8px_25px_rgba(244,63,94,0.55)] scale-[1.02]'
+                                            : 'bg-slate-900/25 hover:bg-slate-900/35 border-white/20 text-white/85'
+                                    }`}
+                                >
+                                    {numPlayers === 2 && (
+                                        <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white text-rose-600 flex items-center justify-center text-xs font-black shadow">
+                                            ✓
+                                        </span>
+                                    )}
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
+                                        numPlayers === 2 ? 'bg-white/25 ring-2 ring-white/60' : 'bg-rose-500/80'
+                                    }`}>
+                                        <Users size={30} className="text-white" strokeWidth={2.5} />
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="font-black text-lg leading-tight">2 Players</div>
+                                        <div className="text-[11px] font-bold text-rose-100/90">Team Battle</div>
+                                    </div>
+                                </button>
+                            </div>
 
+                            {/* Improved Player 1 & Player 2 Team Name Cards */}
+                            <div className="flex flex-col gap-2.5">
+                                {/* Player 1 Card */}
+                                <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-gradient-to-r from-blue-600/40 to-sky-500/30 border-2 border-blue-300/50 shadow-md">
+                                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 text-white flex flex-col items-center justify-center font-black leading-none shadow-md border border-white/40 shrink-0">
+                                        <span className="text-[9px] uppercase tracking-wider opacity-80">P1</span>
+                                        <span className="text-sm">🔵</span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[10px] font-black uppercase tracking-wider text-blue-100 mb-0.5">Player 1 / Team 1</div>
+                                        <input
+                                            type="text"
+                                            value={p1Name}
+                                            onChange={e => setP1Name(e.target.value)}
+                                            className="w-full bg-white/15 hover:bg-white/20 focus:bg-white/25 text-white font-black placeholder-white/60 border border-white/30 rounded-xl px-3 py-1.5 outline-none focus:border-white transition-colors text-sm"
+                                            placeholder="Team 1"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Player 2 Card */}
+                                {numPlayers === 2 ? (
+                                    <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-gradient-to-r from-rose-600/40 to-orange-500/30 border-2 border-rose-300/50 shadow-md animate-in fade-in duration-200">
+                                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-rose-400 to-red-600 text-white flex flex-col items-center justify-center font-black leading-none shadow-md border border-white/40 shrink-0">
+                                            <span className="text-[9px] uppercase tracking-wider opacity-80">P2</span>
+                                            <span className="text-sm">🔴</span>
                                         </div>
-                    <div className="w-full max-w-md flex flex-col gap-4 mb-10">
-                        <div className="flex gap-3 items-center">
-                            <div className="w-12 h-12 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-xl shadow-[0_0_15px_rgba(59,130,246,0.6)]">1</div>
-                            <input type="text" value={p1Name} onChange={e => setP1Name(e.target.value)} className="flex-1 bg-black/20 text-white font-bold placeholder-white/50 border border-white/20 rounded-2xl px-5 py-4 outline-none focus:border-white/50 transition-colors text-lg" placeholder="Team 1 Name" />
-                        </div>
-                        {numPlayers === 2 && (
-                            <div className="flex gap-3 items-center">
-                                <div className="w-12 h-12 rounded-full bg-red-500 text-white flex items-center justify-center font-bold text-xl shadow-[0_0_15px_rgba(239,68,68,0.6)]">2</div>
-                                <input type="text" value={p2Name} onChange={e => setP2Name(e.target.value)} className="flex-1 bg-black/20 text-white font-bold placeholder-white/50 border border-white/20 rounded-2xl px-5 py-4 outline-none focus:border-white/50 transition-colors text-lg" placeholder="Team 2 Name" />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-rose-100 mb-0.5">Player 2 / Team 2</div>
+                                            <input
+                                                type="text"
+                                                value={p2Name}
+                                                onChange={e => setP2Name(e.target.value)}
+                                                className="w-full bg-white/15 hover:bg-white/20 focus:bg-white/25 text-white font-black placeholder-white/60 border border-white/30 rounded-xl px-3 py-1.5 outline-none focus:border-white transition-colors text-sm"
+                                                placeholder="Team 2"
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setNumPlayers(2)}
+                                        className="w-full py-2 px-3 rounded-xl bg-slate-900/20 hover:bg-rose-500/25 border border-dashed border-white/30 hover:border-rose-300/60 text-white/80 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                                    >
+                                        <Plus size={14} />
+                                        <span>Add Player 2 (2 Players Battle)</span>
+                                    </button>
+                                )}
                             </div>
-                        )}
 
-                    <div className="bg-black/20 p-4 rounded-2xl border border-white/20 flex flex-col gap-4 mt-2">
-                        <div className="flex justify-between items-center text-white">
-                            <span className="font-bold">Speed</span>
-                            <div className="flex gap-2">
-                                <button onClick={() => handleSetSpeed(0.25)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${speed === 0.25 ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Slow</button>
-                                <button onClick={() => handleSetSpeed(1)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${speed === 1 ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Normal</button>
-                                <button onClick={() => handleSetSpeed(2.5)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${speed === 2.5 ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Fast</button>
+                            {/* Game Settings Box + 1-10 Min Timer Slider */}
+                            <div className="bg-slate-900/25 p-4 rounded-2xl border border-white/20 flex flex-col gap-3">
+                                {/* Timer Slider: 1 Minute to 10 Minutes */}
+                                <div className="flex flex-col gap-1.5 pb-2.5 border-b border-white/15 text-white">
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-bold text-sm flex items-center gap-1.5">
+                                            <Timer size={15} className="text-amber-300" />
+                                            <span>Timer</span>
+                                        </span>
+                                        <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs shadow-sm">
+                                            {gameDurationMinutes} {gameDurationMinutes === 1 ? 'Min' : 'Mins'}
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={10}
+                                        step={1}
+                                        value={gameDurationMinutes}
+                                        onChange={(e) => handleSetTimerMinutes(Number(e.target.value))}
+                                        className="w-full h-2 bg-white/30 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                                    />
+                                    <div className="flex justify-between text-[10px] font-bold text-white/70 px-0.5">
+                                        <span>1m</span>
+                                        <span>3m</span>
+                                        <span>5m</span>
+                                        <span>8m</span>
+                                        <span>10m</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between items-center text-white">
+                                    <span className="font-bold text-sm">Speed</span>
+                                    <div className="flex gap-1.5">
+                                        <button onClick={() => handleSetSpeed(0.25)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${speed === 0.25 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Slow</button>
+                                        <button onClick={() => handleSetSpeed(1)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${speed === 1 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Normal</button>
+                                        <button onClick={() => handleSetSpeed(2.5)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${speed === 2.5 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Fast</button>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center text-white">
+                                    <span className="font-bold text-sm">Bubble Size</span>
+                                    <div className="flex gap-1.5">
+                                        <button onClick={() => handleSetBubbleSize(0.5)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${bubbleSize === 0.5 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Small</button>
+                                        <button onClick={() => handleSetBubbleSize(1)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${bubbleSize === 1 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Normal</button>
+                                        <button onClick={() => handleSetBubbleSize(2)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${bubbleSize === 2 ? 'bg-blue-500 text-white shadow' : 'bg-white/20 hover:bg-white/30'}`}>Big</button>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center text-white">
+                                    <span className="font-bold text-sm">Twist Mode</span>
+                                    <button onClick={() => handleSetTwistEnabled(!twistEnabled)} className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${twistEnabled ? 'bg-blue-500' : 'bg-white/30'}`}>
+                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${twistEnabled ? 'left-6' : 'left-1'}`}></div>
+                                    </button>
+                                </div>
+                                <div className="flex justify-between items-center text-white">
+                                    <span className="font-bold text-sm">Voice Narration</span>
+                                    <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${voiceEnabled ? 'bg-blue-500' : 'bg-white/30'}`}>
+                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${voiceEnabled ? 'left-6' : 'left-1'}`}></div>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex justify-between items-center text-white">
-                            <span className="font-bold">Bubble Size</span>
-                            <div className="flex gap-2">
-                                <button onClick={() => handleSetBubbleSize(0.5)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${bubbleSize === 0.5 ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Small</button>
-                                <button onClick={() => handleSetBubbleSize(1)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${bubbleSize === 1 ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Normal</button>
-                                <button onClick={() => handleSetBubbleSize(2)} className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${bubbleSize === 2 ? 'bg-blue-500' : 'bg-white/20 hover:bg-white/30'}`}>Big</button>
-                            </div>
-                        </div>
-                        <div className="flex justify-between items-center text-white">
-                            <span className="font-bold">Twist Mode</span>
-                            <button onClick={() => handleSetTwistEnabled(!twistEnabled)} className={`w-12 h-6 rounded-full transition-colors relative ${twistEnabled ? 'bg-blue-500' : 'bg-white/30'}`}>
-                                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${twistEnabled ? 'left-7' : 'left-1'}`}></div>
-                            </button>
-                        </div>
-                        <div className="flex justify-between items-center text-white">
-                            <span className="font-bold">Voice Narration</span>
-                            <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-12 h-6 rounded-full transition-colors relative ${voiceEnabled ? 'bg-blue-500' : 'bg-white/30'}`}>
-                                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${voiceEnabled ? 'left-7' : 'left-1'}`}></div>
-                            </button>
-                        </div>
-                        <div className="flex justify-between items-center text-white pt-2 border-t border-white/10">
-                            <span className="font-bold">Tracker</span>
-                            <button
-                                onClick={() => setShowTrackerModal(true)}
-                                className="px-4 py-2 rounded-xl text-sm font-black bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white flex items-center gap-2 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                            >
-                                <span className="text-base">
-                                  {trackerMode === 'finger' && '☝️'}
-                                  {trackerMode === 'hand' && (
-                                    handCharacter === 'spiderman' ? '🕷️' :
-                                    handCharacter === 'thanos' ? '🧤' :
-                                    handCharacter === 'witch' ? '🧙‍♀️' :
-                                    handCharacter === 'hulk' ? '💪' :
-                                    handCharacter === 'ironman' ? '🤖' :
-                                    handCharacter === 'frost' ? '❄️' : '⚡'
-                                  )}
-                                  {trackerMode === 'nose' && (
-                                    noseStyle === 'real' ? '👃' :
-                                    noseStyle === 'clown' ? '🔴' :
-                                    noseStyle === 'rudolph' ? '🦌' :
-                                    noseStyle === 'pig' ? '🐷' :
-                                    noseStyle === 'cat' ? '🐱' : '🤥'
-                                  )}
+
+                        <button
+                            onClick={() => startGameMode(numPlayers)}
+                            className="py-4 px-8 bg-gradient-to-r from-blue-500 to-sky-400 hover:from-blue-400 hover:to-sky-300 text-white font-black text-xl rounded-full shadow-[0_0_25px_rgba(59,130,246,0.55)] hover:scale-[1.02] active:scale-95 transition-all w-full cursor-pointer"
+                        >
+                            START GAME
+                        </button>
+                    </div>
+
+                    {/* COLUMN 2: EXPANDED CHOOSE YOUR TRACKER (BETWEEN PLAYER AND THEMES — ONLY WORDS & ICONS) */}
+                    <div className="lg:col-span-5 bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl rounded-[2rem] border border-white/30 p-5 sm:p-6 shadow-2xl flex flex-col justify-between gap-4">
+                        <div className="flex flex-col gap-4 h-full">
+                            <div className="flex items-center justify-center gap-2.5">
+                                <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xl shadow-md">
+                                    {trackerMode === 'finger' ? '☝️' : trackerMode === 'hand' ? '🖐️' : '👃'}
                                 </span>
-                                <span className="capitalize">{trackerMode}</span>
-                                <span className="text-xs opacity-80 bg-white/20 px-1.5 py-0.5 rounded">Change</span>
-                            </button>
+                                <h3 className="text-2xl font-black text-white drop-shadow-md">
+                                    Choose Your Tracker
+                                </h3>
+                            </div>
+
+                            {/* 3 Tracker Category Tabs (Words + Icons Only) */}
+                            <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-900/30 rounded-2xl border border-white/15">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTrackerMode('finger');
+                                        detectedHandsRef.current = [];
+                                        detectedFacesRef.current = [];
+                                    }}
+                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer ${
+                                        trackerMode === 'finger'
+                                            ? 'bg-blue-500 text-white shadow-lg scale-[1.02]'
+                                            : 'text-white/80 hover:bg-white/15'
+                                    }`}
+                                >
+                                    <span className="text-lg">☝️</span>
+                                    <span>Finger Ball</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTrackerMode('hand');
+                                        detectedHandsRef.current = [];
+                                        detectedFacesRef.current = [];
+                                    }}
+                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer ${
+                                        trackerMode === 'hand'
+                                            ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg scale-[1.02]'
+                                            : 'text-white/80 hover:bg-white/15'
+                                    }`}
+                                >
+                                    <span className="text-lg">🖐️</span>
+                                    <span>Hand Tracker</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTrackerMode('nose');
+                                        detectedHandsRef.current = [];
+                                        detectedFacesRef.current = [];
+                                    }}
+                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer ${
+                                        trackerMode === 'nose'
+                                            ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg scale-[1.02]'
+                                            : 'text-white/80 hover:bg-white/15'
+                                    }`}
+                                >
+                                    <span className="text-lg">👃</span>
+                                    <span>Nose Tracker</span>
+                                </button>
+                            </div>
+
+                            {/* Expanded Tracker Options Grid — ONLY WORDS & ICONS, NO EXTRA DETAILS */}
+                            <div className="flex-1 flex flex-col justify-center">
+                                {trackerMode === 'finger' && (
+                                    <div className="grid grid-cols-1 gap-3 my-auto">
+                                        <button
+                                            type="button"
+                                            onClick={() => setTrackerMode('finger')}
+                                            className="p-6 rounded-2xl bg-white text-blue-600 border-2 border-blue-400 shadow-xl flex flex-col items-center justify-center gap-3 cursor-pointer transition-transform hover:scale-[1.01]"
+                                        >
+                                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-4xl shadow-md">
+                                                ☝️
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xl font-black text-slate-900">Finger Ball</span>
+                                                <span className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black">✓</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {trackerMode === 'hand' && (
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        {HAND_TRACKER_OPTIONS.map((c) => {
+                                            const isSelected = handCharacter === c.id;
+                                            return (
+                                                <button
+                                                    key={c.id}
+                                                    type="button"
+                                                    onClick={() => setHandCharacter(c.id)}
+                                                    className={`p-3 rounded-2xl border-2 flex items-center gap-3 transition-all cursor-pointer ${
+                                                        isSelected
+                                                            ? 'bg-white text-slate-900 border-blue-400 shadow-lg scale-[1.02]'
+                                                            : 'bg-white/20 hover:bg-white/30 text-white border-transparent'
+                                                    }`}
+                                                >
+                                                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
+                                                        {c.icon}
+                                                    </div>
+                                                    <span className="font-black text-sm sm:text-base truncate flex-1 text-left">
+                                                        {c.name}
+                                                    </span>
+                                                    {isSelected && (
+                                                        <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black shrink-0">
+                                                            ✓
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {trackerMode === 'nose' && (
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        {NOSE_TRACKER_OPTIONS.map((n) => {
+                                            const isSelected = noseStyle === n.id;
+                                            return (
+                                                <button
+                                                    key={n.id}
+                                                    type="button"
+                                                    onClick={() => setNoseStyle(n.id)}
+                                                    className={`p-3 rounded-2xl border-2 flex items-center gap-3 transition-all cursor-pointer ${
+                                                        isSelected
+                                                            ? 'bg-white text-slate-900 border-pink-400 shadow-lg scale-[1.02]'
+                                                            : 'bg-white/20 hover:bg-white/30 text-white border-transparent'
+                                                    }`}
+                                                >
+                                                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
+                                                        {n.icon}
+                                                    </div>
+                                                    <span className="font-black text-sm sm:text-base truncate flex-1 text-left">
+                                                        {n.name}
+                                                    </span>
+                                                    {isSelected && (
+                                                        <span className="w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-black shrink-0">
+                                                            ✓
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
+
+                    {/* COLUMN 3: CHOOSE THEME & STUDY MODE */}
+                    <div className="lg:col-span-3 flex flex-col gap-5">
+                        <div className="w-full rounded-[2rem] bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl border border-white/30 shadow-2xl p-5 sm:p-6 flex flex-col justify-center flex-1">
+                            <h3 className="text-2xl font-black text-white mb-4 text-center drop-shadow-md">Choose Theme</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {[
+                                    { id: 'theme-sky', name: 'Sky', icon: '☁️' },
+                                    { id: 'theme-ocean', name: 'Ocean', icon: '🌊' },
+                                    { id: 'theme-space', name: 'Space', icon: '🚀' },
+                                    { id: 'theme-jungle', name: 'Jungle', icon: '🌴' },
+                                    { id: 'theme-sunset', name: 'Sunset', icon: '🌅' }
+                                ].map(t => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => setSelectedTheme(t.id)}
+                                        className={`py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all shadow-sm font-black text-sm cursor-pointer ${selectedTheme === t.id ? 'bg-white text-blue-600 border-2 border-blue-400 scale-105 shadow-md' : 'bg-white/20 text-white border-2 border-transparent hover:bg-white/30'}`}
+                                    >
+                                        <span className="text-2xl">{t.icon}</span>
+                                        <span>{t.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={() => setScreen('study')} className="group relative w-full h-36 rounded-[2rem] bg-white/15 dark:bg-slate-900/45 backdrop-blur-xl border border-white/30 shadow-2xl overflow-hidden transition-all duration-300 hover:scale-[1.03] hover:bg-white/25 cursor-pointer flex items-center justify-center p-5 gap-4">
+                            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-400/30 rounded-full blur-2xl group-hover:bg-purple-400/50 transition-colors"></div>
+                            <div className="relative z-10 text-5xl transform group-hover:scale-110 transition-transform duration-300 drop-shadow-xl">
+                                📖
+                            </div>
+                            <div className="flex flex-col items-start relative z-10 text-left">
+                                <h3 className="text-2xl font-black text-white leading-tight drop-shadow-md">Study Mode</h3>
+                                <p className="text-purple-100 font-bold text-xs">Review Questions!</p>
+                            </div>
+                        </button>
                     </div>
-
-                    <button
-                        onClick={() => startGameMode(numPlayers)}
-                        className="px-12 py-5 bg-gradient-to-r from-blue-500 to-sky-400 text-white font-black text-2xl rounded-full shadow-[0_0_30px_rgba(59,130,246,0.5)] hover:scale-105 active:scale-95 transition-all w-full max-w-md"
-                    >
-                        START GAME
-                    </button>
-    </div>
-
-    <div className="w-full xl:w-96 flex flex-col gap-6">
-        <div className="w-full rounded-[2rem] bg-white/10 dark:bg-black/20 backdrop-blur-md border border-white/20 shadow-2xl p-6 flex flex-col justify-center flex-1">
-            <h3 className="text-2xl font-black text-white mb-4 text-center drop-shadow-md">Choose Theme</h3>
-            <div className="grid grid-cols-2 gap-3">
-                {[
-                    { id: 'theme-sky', name: 'Sky', icon: '☁️' },
-                    { id: 'theme-ocean', name: 'Ocean', icon: '🌊' },
-                    { id: 'theme-space', name: 'Space', icon: '🚀' },
-                    { id: 'theme-jungle', name: 'Jungle', icon: '🌴' },
-                    { id: 'theme-sunset', name: 'Sunset', icon: '🌅' }
-                ].map(t => (
-                    <button
-                        key={t.id}
-                        onClick={() => setSelectedTheme(t.id)}
-                        className={`py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-all shadow-sm font-bold text-sm ${selectedTheme === t.id ? 'bg-white text-blue-600 border-2 border-blue-400 scale-105' : 'bg-white/20 text-white border-2 border-transparent hover:bg-white/30'}`}
-                    >
-                        <span className="text-2xl">{t.icon}</span>
-                        {t.name}
-                    </button>
-                ))}
-            </div>
-        </div>
-
-        <button onClick={() => setScreen('study')} className="group relative w-full h-48 rounded-[2rem] bg-white/10 dark:bg-black/20 backdrop-blur-md border border-white/20 shadow-2xl overflow-hidden transition-all duration-500 hover:scale-105 hover:bg-white/30 hover:-translate-y-1 cursor-pointer flex items-center justify-center p-6 gap-6">
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5 dark:to-black/20 pointer-events-none"></div>
-            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-400/30 rounded-full blur-2xl group-hover:bg-purple-400/50 transition-colors"></div>
-            
-            <div className="relative z-10 text-7xl transform group-hover:scale-110 group-hover:rotate-12 transition-transform duration-500 drop-shadow-xl">
-                📖
-            </div>
-            <div className="flex flex-col items-start relative z-10 text-left">
-                <h3 className="text-3xl font-black text-white mb-1 drop-shadow-md">Study Mode</h3>
-                <p className="text-purple-100 font-medium text-sm">Review Questions!</p>
-            </div>
-        </button>
-    </div>
-</div>
+                </div>
 
                 <div className="flex flex-wrap justify-center gap-4 relative z-10">
-                  <button onClick={() => onViewChange('games')} className="px-8 py-4 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-xl font-bold text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
-                    <ArrowLeft size={24} /> Back to Games
+                  <button onClick={() => onViewChange('games')} className="px-7 py-3 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-base font-black text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
+                    <ArrowLeft size={20} /> Back to Games
                   </button>
                 </div>
             </div>
@@ -2654,18 +3028,29 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                     <button onClick={() => {
                         gameState.current.isActive = false;
                         if (questionTimerRef.current) clearInterval(questionTimerRef.current);
+                        if (matchTimerRef.current) clearInterval(matchTimerRef.current);
                         setScreen('setup');
                     }} className="glass-panel px-6 py-2 rounded-full hover:bg-white/20 font-bold border border-white/20 cursor-pointer text-slate-800 dark:text-white shadow-sm transition-all hover:scale-105 active:scale-95 flex items-center justify-center">Exit</button>
                 </div>
 
-                <div className="flex justify-center items-end w-full gap-1.5 sm:gap-2 md:gap-4 pointer-events-none mt-auto px-2 sm:px-12 lg:px-20 relative z-30">
-                    <div className={`bg-white/80 dark:bg-slate-900/80 rounded-2xl sm:rounded-3xl p-2 sm:p-3 min-w-[70px] sm:min-w-[100px] md:min-w-[140px] border border-white/40 dark:border-white/10 flex flex-col items-center shadow-xl backdrop-blur-md pointer-events-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[0] ? 'opacity-70 grayscale border-cyan-400/50' : ''}`}>
+                {/* Bottom HUD: Improved Player 1 Scoreboard, Question Prompt, Player 2 Scoreboard */}
+                <div className="flex justify-center items-end w-full gap-2 sm:gap-3 md:gap-4 pointer-events-none mt-auto px-2 sm:px-12 lg:px-20 relative z-30">
+                    {/* Player 1 Scoreboard */}
+                    <div className={`bg-white/90 dark:bg-slate-900/90 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3.5 min-w-[88px] sm:min-w-[125px] md:min-w-[160px] border-2 border-blue-400/60 dark:border-blue-500/50 flex flex-col items-center shadow-2xl backdrop-blur-md pointer-events-auto shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[0] ? 'opacity-70 grayscale border-cyan-400' : ''}`}>
                         {frozenTeams[0] && <div className="absolute inset-0 bg-cyan-400/20 backdrop-blur-[2px] z-10 flex items-center justify-center pointer-events-none"><span className="text-4xl absolute opacity-50">❄️</span></div>}
-                        <div className="flex flex-col items-center gap-0.5 sm:gap-1 mb-0.5 sm:mb-1">
-                            <div className="min-w-[2.5rem] sm:min-w-[3rem] md:min-w-[4rem] px-1.5 sm:px-2 md:px-3 h-5 sm:h-6 md:h-8 rounded-full bg-blue-500 flex items-center justify-center text-[10px] sm:text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider">{p1Name}</div>
-                            <div className="text-[8px] sm:text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5 sm:mt-1">Score</div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-600 text-white text-[10px] sm:text-xs font-black flex items-center justify-center shadow">P1</span>
+                            <div className="px-2.5 py-0.5 rounded-full bg-blue-500 text-[10px] sm:text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider truncate max-w-[90px] sm:max-w-[110px]">
+                                {numPlayers === 2 && scores[0] > scores[1] ? '👑 ' : ''}{p1Name || 'Team 1'}
+                            </div>
                         </div>
-                        <div className="text-2xl sm:text-3xl md:text-5xl font-black text-blue-500 dark:text-blue-400 drop-shadow-sm tabular-nums tracking-tighter">{scores[0]}</div>
+                        <div className="text-2xl sm:text-4xl md:text-5xl font-black text-blue-600 dark:text-blue-400 drop-shadow-sm tabular-nums tracking-tighter leading-none my-0.5">
+                            {scores[0]}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1 text-[10px] font-black">
+                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">✓ {teamStats[0]?.correctPops || 0}</span>
+                            <span className="px-1.5 py-0.5 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400">✗ {teamStats[0]?.wrongPops || 0}</span>
+                        </div>
                     </div>
 
                     <div className="glass-panel bg-white/90 dark:bg-slate-900/90 rounded-2xl sm:rounded-3xl w-full max-w-4xl p-2.5 sm:p-4 md:p-6 text-center border-t-4 border-indigo-500 shadow-2xl relative overflow-hidden backdrop-blur-xl mb-2 pointer-events-auto flex-1">
@@ -2695,13 +3080,21 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                     </div>
                     
                     {numPlayers === 2 ? (
-                        <div className={`bg-white/80 dark:bg-slate-900/80 rounded-2xl sm:rounded-3xl p-2 sm:p-3 min-w-[70px] sm:min-w-[100px] md:min-w-[140px] border border-white/40 dark:border-white/10 flex flex-col items-center shadow-xl backdrop-blur-md pointer-events-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[1] ? 'opacity-70 grayscale border-cyan-400/50' : ''}`}>
+                        <div className={`bg-white/90 dark:bg-slate-900/90 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3.5 min-w-[88px] sm:min-w-[125px] md:min-w-[160px] border-2 border-rose-400/60 dark:border-rose-500/50 flex flex-col items-center shadow-2xl backdrop-blur-md pointer-events-auto shrink-0 mb-2 transition-transform hover:scale-105 relative overflow-hidden ${frozenTeams[1] ? 'opacity-70 grayscale border-cyan-400' : ''}`}>
                             {frozenTeams[1] && <div className="absolute inset-0 bg-cyan-400/20 backdrop-blur-[2px] z-10 flex items-center justify-center pointer-events-none"><span className="text-4xl absolute opacity-50">❄️</span></div>}
-                            <div className="flex flex-col items-center gap-0.5 sm:gap-1 mb-0.5 sm:mb-1">
-                                <div className="min-w-[2.5rem] sm:min-w-[3rem] md:min-w-[4rem] px-1.5 sm:px-2 md:px-3 h-5 sm:h-6 md:h-8 rounded-full bg-red-500 flex items-center justify-center text-[10px] sm:text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider">{p2Name}</div>
-                                <div className="text-[8px] sm:text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5 sm:mt-1">Score</div>
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-rose-600 text-white text-[10px] sm:text-xs font-black flex items-center justify-center shadow">P2</span>
+                                <div className="px-2.5 py-0.5 rounded-full bg-rose-500 text-[10px] sm:text-xs md:text-sm font-black text-white shadow-inner uppercase tracking-wider truncate max-w-[90px] sm:max-w-[110px]">
+                                    {scores[1] > scores[0] ? '👑 ' : ''}{p2Name || 'Team 2'}
+                                </div>
                             </div>
-                            <div className="text-2xl sm:text-3xl md:text-5xl font-black text-red-500 dark:text-red-400 drop-shadow-sm tabular-nums tracking-tighter">{scores[1]}</div>
+                            <div className="text-2xl sm:text-4xl md:text-5xl font-black text-rose-500 dark:text-rose-400 drop-shadow-sm tabular-nums tracking-tighter leading-none my-0.5">
+                                {scores[1]}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1 text-[10px] font-black">
+                                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">✓ {teamStats[1]?.correctPops || 0}</span>
+                                <span className="px-1.5 py-0.5 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400">✗ {teamStats[1]?.wrongPops || 0}</span>
+                            </div>
                         </div>
                     ) : (
                         <div className="hidden sm:block min-w-[100px] md:min-w-[140px] shrink-0"></div>
@@ -2710,76 +3103,192 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             </div>
         </div>
       )}
-            {/* Screen: Results */}
-      {screen === 'results' && (
-        <div className="absolute inset-0 z-50 bg-slate-100 dark:bg-[#0f121b] flex flex-col items-center justify-center overflow-hidden font-sans">
-            <div className="rounded-3xl p-8 max-w-2xl w-full text-center relative z-10 bg-white dark:bg-[#252836] shadow-2xl border border-slate-200 dark:border-slate-700/50">
-                <h2 className={`text-4xl md:text-5xl font-black uppercase tracking-widest mb-6 drop-shadow-sm ${numPlayers === 2 && scores[0] !== scores[1] ? (scores[0] > scores[1] ? 'text-blue-500' : 'text-red-500') : 'text-yellow-400'}`}>{resultsTitle}</h2>
-                
-                {numPlayers === 1 ? (
-                    <>
-                        <div className="flex justify-center gap-3 mb-10">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                                <div key={star} className="relative">
-                                    <svg 
-                                        viewBox="0 0 24 24" 
-                                        className={`w-12 h-12 md:w-16 md:h-16 transition-all duration-500 transform ${accuracy >= (star * 20 - 10) ? 'scale-100 opacity-100' : 'scale-75 opacity-30 grayscale'}`}
-                                        style={{
-                                            filter: accuracy >= (star * 20 - 10) ? 'drop-shadow(0 8px 6px rgba(0,0,0,0.4))' : 'none',
-                                            animation: accuracy >= (star * 20 - 10) ? `popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) ${star * 0.1}s both` : 'none'
-                                        }}
-                                    >
-                                        <path 
-                                            d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" 
-                                            fill={accuracy >= (star * 20 - 10) ? "#facc15" : "#475569"} 
-                                            stroke={accuracy >= (star * 20 - 10) ? "#ca8a04" : "#334155"} 
-                                            strokeWidth="1.5"
-                                            strokeLinejoin="round"
-                                        />
-                                    </svg>
-                                </div>
-                            ))}
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 md:gap-6 mb-10">
-                            <div className="bg-slate-50 dark:bg-[#303343] p-5 rounded-xl border border-slate-200 dark:border-white/5 shadow-inner flex flex-col items-center justify-center">
-                                <div className="text-slate-400 text-xs md:text-sm font-black uppercase tracking-wider mb-2">Accuracy</div>
-                                <div className="text-3xl md:text-5xl font-black text-emerald-400 drop-shadow-sm">{accuracy}%</div>
-                            </div>
-                            <div className="bg-slate-50 dark:bg-[#303343] p-5 rounded-xl border border-slate-200 dark:border-white/5 shadow-inner flex flex-col items-center justify-center">
-                                <div className="text-slate-400 text-xs md:text-sm font-black uppercase tracking-wider mb-2">Score</div>
-                                <div className="text-3xl md:text-5xl font-black text-sky-400 drop-shadow-sm">{scores[0]}</div>
-                            </div>
-                            
-                        </div>
-                    </>
-                ) : (
-                    <div className="flex flex-col gap-8 mb-10 w-full">
-                        <div className="flex items-center justify-center gap-4 w-full">
-                            <div className={`flex flex-col items-center flex-1 p-6 rounded-2xl border-4 transition-all ${scores[0] > scores[1] ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 scale-105 shadow-xl' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 grayscale-[20%]'}`}>
-                                <div className="min-w-[4rem] px-4 py-1 rounded-full bg-blue-500 text-white font-bold uppercase tracking-wider mb-4 shadow-md">{p1Name}</div>
-                                <div className={`text-5xl md:text-7xl font-black tabular-nums tracking-tighter ${scores[0] > scores[1] ? 'text-blue-500 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>{scores[0]}</div>
-                            </div>
-                            
-                            <div className="text-3xl font-black text-slate-300 dark:text-slate-600 px-2 italic">VS</div>
-                            
-                            <div className={`flex flex-col items-center flex-1 p-6 rounded-2xl border-4 transition-all ${scores[1] > scores[0] ? 'border-red-500 bg-red-50 dark:bg-red-900/20 scale-105 shadow-xl' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 grayscale-[20%]'}`}>
-                                <div className="min-w-[4rem] px-4 py-1 rounded-full bg-red-500 text-white font-bold uppercase tracking-wider mb-4 shadow-md">{p2Name}</div>
-                                <div className={`text-5xl md:text-7xl font-black tabular-nums tracking-tighter ${scores[1] > scores[0] ? 'text-red-500 dark:text-red-400' : 'text-slate-400 dark:text-slate-500'}`}>{scores[1]}</div>
-                            </div>
-                        </div>
-                        
-                        
-                    </div>
-                )}
 
-                <div className="flex flex-col sm:flex-row justify-center gap-4">
-                    <button onClick={() => setScreen('setup')} className="px-8 py-4 bg-slate-200 hover:bg-slate-300 dark:bg-[#393c4b] dark:hover:bg-[#444857] rounded-xl font-black text-lg transition-colors cursor-pointer text-slate-700 dark:text-white shadow-lg">Back to Setup</button>
-                    <button onClick={() => startGameMode(numPlayers)} className="px-8 py-4 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 rounded-xl font-black text-lg text-slate-800 dark:text-white cursor-pointer shadow-lg hover:shadow-indigo-500/25 transition-all">Play Again</button>
+      {/* Screen: Results (Real Winner & Team Stats Breakdown) */}
+      {screen === 'results' && (() => {
+        const p1Stat = teamStats[0] || { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 };
+        const p2Stat = teamStats[1] || { correctPops: 0, wrongPops: 0, streak: 0, maxCombo: 0 };
+        const p1Total = p1Stat.correctPops + p1Stat.wrongPops;
+        const p2Total = p2Stat.correctPops + p2Stat.wrongPops;
+        const p1Acc = p1Total > 0 ? Math.round((p1Stat.correctPops / p1Total) * 100) : accuracy;
+        const p2Acc = p2Total > 0 ? Math.round((p2Stat.correctPops / p2Total) * 100) : 0;
+
+        const isP1Win = numPlayers === 1 || scores[0] > scores[1];
+        const isP2Win = numPlayers === 2 && scores[1] > scores[0];
+        const isTie = numPlayers === 2 && scores[0] === scores[1];
+
+        const winnerBannerText = numPlayers === 2
+          ? isP1Win
+            ? `👑 ${p1Name || 'Team 1'} Wins!`
+            : isP2Win
+            ? `👑 ${p2Name || 'Team 2'} Wins!`
+            : `⚡ It's a Tie!`
+          : resultsTitle;
+
+        const winnerSubtext = numPlayers === 2
+          ? isP1Win
+            ? `${p1Name || 'Team 1'} won by +${scores[0] - scores[1]} points (${scores[0]} vs ${scores[1]} PTS)!`
+            : isP2Win
+            ? `${p2Name || 'Team 2'} won by +${scores[1] - scores[0]} points (${scores[1]} vs ${scores[0]} PTS)!`
+            : `Both ${p1Name || 'Team 1'} and ${p2Name || 'Team 2'} finished with ${scores[0]} points!`
+          : `${p1Name || 'Team 1'} finished with ${scores[0]} points and ${p1Acc}% accuracy!`;
+
+        return (
+          <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center p-4 overflow-y-auto">
+            <div className="rounded-[2.5rem] p-6 sm:p-8 max-w-2xl w-full text-center relative z-10 bg-gradient-to-b from-amber-50 via-white to-sky-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-900 shadow-[0_24px_60px_rgba(0,0,0,0.35)] border-4 border-amber-300 dark:border-amber-500/60 border-b-[10px] border-b-amber-500 text-slate-900 dark:text-white space-y-6 animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* Top Trophy & Real Winner Announcement */}
+              <div className="flex flex-col items-center">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-500 border-t-2 border-white border-b-4 border-b-amber-700 flex items-center justify-center text-5xl shadow-xl animate-bounce mb-3">
+                  🏆
                 </div>
+                <span className="px-4 py-1 rounded-full bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-400/40 text-amber-800 dark:text-amber-300 text-xs font-black uppercase tracking-widest">
+                  {numPlayers === 2 ? 'Official Match Result' : 'Solo Arena Result'}
+                </span>
+                <h2 className={`text-3xl sm:text-5xl font-black uppercase tracking-tight mt-2 drop-shadow-sm ${
+                  numPlayers === 2 && !isTie
+                    ? isP1Win
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                    : 'text-amber-500'
+                }`}>
+                  {winnerBannerText}
+                </h2>
+                <p className="text-sm sm:text-base font-bold text-slate-600 dark:text-slate-300 mt-1">
+                  {winnerSubtext}
+                </p>
+
+                {/* Stars for 1 Player */}
+                {numPlayers === 1 && (
+                  <div className="flex justify-center gap-2.5 mt-4">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <svg
+                        key={star}
+                        viewBox="0 0 24 24"
+                        className={`w-10 h-10 sm:w-12 sm:h-12 transition-all duration-500 transform ${
+                          p1Acc >= (star * 20 - 10) ? 'scale-100 opacity-100' : 'scale-75 opacity-30 grayscale'
+                        }`}
+                      >
+                        <path
+                          d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                          fill={p1Acc >= (star * 20 - 10) ? "#facc15" : "#64748b"}
+                          stroke={p1Acc >= (star * 20 - 10) ? "#ca8a04" : "#475569"}
+                          strokeWidth="1.5"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Team Result Podium Cards */}
+              <div className={`grid gap-4 ${numPlayers === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 max-w-md mx-auto'}`}>
+                {/* Player 1 Result Card */}
+                <div className={`relative rounded-3xl p-5 border-2 border-b-[8px] transition-all flex flex-col items-center ${
+                  isP1Win || isTie
+                    ? 'bg-gradient-to-b from-blue-50 to-white dark:from-blue-950/50 dark:to-slate-800 border-blue-400 border-b-blue-600 shadow-xl scale-[1.02]'
+                    : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 border-b-slate-300 opacity-85'
+                }`}>
+                  {(isP1Win || isTie) && (
+                    <span className="px-3.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider shadow mb-2">
+                      {isTie ? '🤝 Tie — Co-Winner' : '👑 Winner'}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-black flex items-center justify-center">P1</span>
+                    <span className="text-base font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                      {p1Name || 'Team 1'}
+                    </span>
+                  </div>
+                  <div className="text-5xl sm:text-6xl font-black text-blue-600 dark:text-blue-400 tabular-nums my-2">
+                    {scores[0]} <span className="text-base font-black">PTS</span>
+                  </div>
+                  <div className="w-full grid grid-cols-3 gap-2 pt-3 border-t border-blue-100 dark:border-slate-700 text-xs font-black">
+                    <div className="bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl py-2 text-emerald-700 dark:text-emerald-300">
+                      <div className="text-sm font-black">+{p1Stat.correctPops * 5}</div>
+                      <div className="text-[10px]">✓ {p1Stat.correctPops} Correct</div>
+                    </div>
+                    <div className="bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl py-2 text-rose-700 dark:text-rose-300">
+                      <div className="text-sm font-black">-{p1Stat.wrongPops * 5}</div>
+                      <div className="text-[10px]">✗ {p1Stat.wrongPops} Wrong</div>
+                    </div>
+                    <div className="bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 rounded-xl py-2 text-sky-700 dark:text-sky-300">
+                      <div className="text-sm font-black">{p1Acc}%</div>
+                      <div className="text-[10px]">🎯 Accuracy</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Player 2 Result Card (When 2 Players) */}
+                {numPlayers === 2 && (
+                  <div className={`relative rounded-3xl p-5 border-2 border-b-[8px] transition-all flex flex-col items-center ${
+                    isP2Win || isTie
+                      ? 'bg-gradient-to-b from-rose-50 to-white dark:from-rose-950/50 dark:to-slate-800 border-rose-400 border-b-rose-600 shadow-xl scale-[1.02]'
+                      : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 border-b-slate-300 opacity-85'
+                  }`}>
+                    {(isP2Win || isTie) && (
+                      <span className="px-3.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider shadow mb-2">
+                        {isTie ? '🤝 Tie — Co-Winner' : '👑 Winner'}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-rose-600 text-white text-xs font-black flex items-center justify-center">P2</span>
+                      <span className="text-base font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                        {p2Name || 'Team 2'}
+                      </span>
+                    </div>
+                    <div className="text-5xl sm:text-6xl font-black text-rose-600 dark:text-rose-400 tabular-nums my-2">
+                      {scores[1]} <span className="text-base font-black">PTS</span>
+                    </div>
+                    <div className="w-full grid grid-cols-3 gap-2 pt-3 border-t border-rose-100 dark:border-slate-700 text-xs font-black">
+                      <div className="bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl py-2 text-emerald-700 dark:text-emerald-300">
+                        <div className="text-sm font-black">+{p2Stat.correctPops * 5}</div>
+                        <div className="text-[10px]">✓ {p2Stat.correctPops} Correct</div>
+                      </div>
+                      <div className="bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl py-2 text-rose-700 dark:text-rose-300">
+                        <div className="text-sm font-black">-{p2Stat.wrongPops * 5}</div>
+                        <div className="text-[10px]">✗ {p2Stat.wrongPops} Wrong</div>
+                      </div>
+                      <div className="bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 rounded-xl py-2 text-sky-700 dark:text-sky-300">
+                        <div className="text-sm font-black">{p2Acc}%</div>
+                        <div className="text-[10px]">🎯 Accuracy</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
+                <button
+                  onClick={() => setScreen('setup')}
+                  className="px-6 py-4 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-2xl font-black text-base transition-colors cursor-pointer text-slate-800 dark:text-white shadow-md"
+                >
+                  Back to Setup
+                </button>
+                <button
+                  onClick={() => {
+                    setStudyIndex(0);
+                    setStudySelectedOption(null);
+                    setScreen('study');
+                  }}
+                  className="px-6 py-4 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-2xl font-black text-base transition-colors cursor-pointer shadow-md"
+                >
+                  📖 Study Mode
+                </button>
+                <button
+                  onClick={() => startGameMode(numPlayers)}
+                  className="flex-1 px-8 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 rounded-2xl font-black text-lg text-white cursor-pointer shadow-lg hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2"
+                >
+                  <RotateCcw size={20} />
+                  <span>Play Again</span>
+                </button>
+              </div>
             </div>
-        </div>
-      )}
+          </div>
+        );
+      })()}
 
       {/* 3-Mode Selection Modal */}
       <GameModeModal
@@ -3453,43 +3962,10 @@ function TrackerModal({
 }: TrackerModalProps) {
   if (!isOpen) return null;
 
-  const characters: Array<{
-    id: HandCharacterType;
-    name: string;
-    icon: string;
-    badge: string;
-    color: string;
-    desc: string;
-  }> = [
-    { id: 'spiderman', name: 'Spider-Man', icon: '🕷️', badge: 'Web Shooter', color: 'from-red-500 to-blue-600', desc: 'Classic red & navy suit, web shooter with glowing web trails' },
-    { id: 'thanos', name: 'Thanos Gauntlet', icon: '🧤', badge: '6 Infinity Stones', color: 'from-amber-500 to-yellow-600', desc: 'Golden Titan armor with 6 glowing Infinity Stones' },
-    { id: 'witch', name: 'Wicked Witch', icon: '🧙‍♀️', badge: 'Arcane Claws', color: 'from-emerald-500 to-purple-700', desc: 'Emerald skin, obsidian claws & glowing purple spell runes' },
-    { id: 'hulk', name: 'Incredible Hulk', icon: '💪', badge: 'Gamma Power', color: 'from-green-600 to-emerald-500', desc: 'Massive gamma muscle fist with pulsing lime green veins' },
-    { id: 'ironman', name: 'Iron Man', icon: '🤖', badge: 'Repulsor Core', color: 'from-red-600 to-amber-500', desc: 'Stark hot-rod titanium armor with glowing palm repulsor' },
-    { id: 'frost', name: 'Frost Mage', icon: '❄️', badge: 'Glacial Ice', color: 'from-cyan-500 to-blue-500', desc: 'Translucent ice crystal palm with glowing snowflake runes' },
-    { id: 'cyberpunk', name: 'Cyberpunk Mecha', icon: '⚡', badge: 'Laser Circuits', color: 'from-fuchsia-500 to-cyan-500', desc: 'Graphite mecha chassis with neon laser circuits & emitter tips' },
-  ];
-
-  const noseStyles: Array<{
-    id: NoseStyle;
-    name: string;
-    icon: string;
-    badge: string;
-    color: string;
-    desc: string;
-  }> = [
-    { id: 'real', name: 'Real Sniffing Nose', icon: '👃', badge: 'Cute 3D Sniffer', color: 'from-amber-400 to-rose-400', desc: 'Cute 3D anatomical nose with breathing pulse & sniffing air puffs' },
-    { id: 'clown', name: 'Red Clown Nose', icon: '🔴', badge: 'Glossy & Squeaky', color: 'from-red-500 to-rose-600', desc: 'Bouncy, glossy red clown nose with squash-and-stretch on pop' },
-    { id: 'rudolph', name: 'Rudolph Beacon', icon: '🦌', badge: 'Glowing Ruby', color: 'from-red-600 to-amber-500', desc: 'Glowing ruby red beacon with sparkling fairy stardust' },
-    { id: 'pig', name: 'Cute Pig Snout', icon: '🐷', badge: 'Pink Snout', color: 'from-pink-400 to-rose-400', desc: 'Wiggling pink piggy snout with cartoon snort puffs' },
-    { id: 'cat', name: 'Cat Whiskers', icon: '🐱', badge: 'Whiskers & Button', color: 'from-slate-700 to-slate-900', desc: 'Wet black button nose with twitching whisker arrays' },
-    { id: 'pinocchio', name: 'Pinocchio Nose', icon: '🤥', badge: 'Wooden Cone', color: 'from-amber-600 to-yellow-700', desc: 'Wooden cone nose that funny extends on every bubble pop' },
-  ];
-
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
       <div 
-        className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-3xl w-full shadow-2xl flex flex-col gap-6 transform scale-100 animate-in fade-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-800 max-h-[92vh] overflow-y-auto custom-scrollbar"
+        className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-6 transform scale-100 animate-in fade-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-800 max-h-[92vh] overflow-y-auto custom-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -3500,14 +3976,9 @@ function TrackerModal({
               {trackerMode === 'hand' && '🖐️'}
               {trackerMode === 'nose' && '👃'}
             </div>
-            <div>
-              <h3 className="text-2xl font-black text-slate-800 dark:text-white">
-                Choose Your Tracker
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                Play with your Finger Ball, Superhero Character Hands, or Animated Nose!
-              </p>
-            </div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+              Choose Your Tracker
+            </h3>
           </div>
           <button 
             onClick={onClose}
@@ -3521,7 +3992,7 @@ function TrackerModal({
         <div className="grid grid-cols-3 gap-2.5 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl">
           <button
             onClick={() => onSelectMode('finger')}
-            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-2 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
               trackerMode === 'finger'
                 ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 scale-[1.02]'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
@@ -3532,7 +4003,7 @@ function TrackerModal({
           </button>
           <button
             onClick={() => onSelectMode('hand')}
-            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-2 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
               trackerMode === 'hand'
                 ? 'bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-lg shadow-red-500/30 scale-[1.02]'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
@@ -3543,7 +4014,7 @@ function TrackerModal({
           </button>
           <button
             onClick={() => onSelectMode('nose')}
-            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
+            className={`py-3 px-2 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-2 transition-all font-bold text-xs sm:text-sm cursor-pointer ${
               trackerMode === 'nose'
                 ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/30 scale-[1.02]'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
@@ -3554,142 +4025,79 @@ function TrackerModal({
           </button>
         </div>
 
-        {/* Tab 1: Finger Mode Content */}
+        {/* Tab 1: Finger Mode Content (Icon & Name Only) */}
         {trackerMode === 'finger' && (
-          <div className="flex flex-col gap-4 animate-in fade-in duration-200">
-            <div className="p-6 rounded-3xl bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-purple-500/10 border-2 border-blue-500/30 flex flex-col sm:flex-row items-center gap-6">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center text-4xl shadow-[0_0_35px_rgba(59,130,246,0.6)] animate-pulse shrink-0">
-                ⭐
-              </div>
-              <div className="flex flex-col gap-2 text-center sm:text-left">
-                <div className="flex items-center justify-center sm:justify-start gap-2">
-                  <h4 className="text-xl font-black text-slate-800 dark:text-white">
-                    Magical Starlight Pointer Ball
-                  </h4>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-600 dark:text-blue-400">
-                    Classic
-                  </span>
-                </div>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Point your index finger toward the camera to control the glowing star ball with smooth starlight trails and pop bubbles with pinpoint precision!
-                </p>
-                <div className="flex flex-wrap gap-2 pt-1 justify-center sm:justify-start">
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                    ✨ Glowing Particle Trail
-                  </span>
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                    🎯 Pinpoint Fingertip Precision
-                  </span>
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                    👥 1 or 2 Players
-                  </span>
-                </div>
-              </div>
+          <div className="p-8 rounded-3xl bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-purple-500/10 border-2 border-blue-500/30 flex flex-col items-center justify-center gap-4 animate-in fade-in duration-200">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center text-5xl shadow-[0_0_35px_rgba(59,130,246,0.6)]">
+              ⭐
             </div>
+            <h4 className="text-xl font-black text-slate-800 dark:text-white text-center">
+              Starlight Pointer
+            </h4>
           </div>
         )}
 
-        {/* Tab 2: Hand Mode Character Grid */}
+        {/* Tab 2: Hand Mode Character Grid (Icons & Words Only) */}
         {trackerMode === 'hand' && (
-          <div className="flex flex-col gap-3 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Choose Superhero or Fantasy Hand ({characters.length} Available)
-              </span>
-              <span className="text-xs font-bold text-amber-500 flex items-center gap-1">
-                <span>Multi-point bubble popping (palm + all 5 fingers)</span>
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto custom-scrollbar p-1">
-              {characters.map((c) => {
-                const isSelected = handCharacter === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => onSelectHand(c.id)}
-                    className={`p-4 rounded-2xl border-2 text-left flex items-start gap-3.5 transition-all cursor-pointer relative overflow-hidden ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 shadow-lg shadow-blue-500/20 scale-[1.01]'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
-                    }`}
-                  >
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
-                      {c.icon}
-                    </div>
-                    <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-black text-slate-800 dark:text-white text-base truncate">
-                          {c.name}
-                        </span>
-                        {isSelected && (
-                          <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black">
-                            ✓
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                        {c.badge}
-                      </span>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
-                        {c.desc}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-in fade-in duration-200">
+            {HAND_TRACKER_OPTIONS.map((c) => {
+              const isSelected = handCharacter === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => onSelectHand(c.id)}
+                  className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-2.5 transition-all cursor-pointer relative ${
+                    isSelected
+                      ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 shadow-lg shadow-blue-500/20 scale-[1.02]'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                  }`}
+                >
+                  {isSelected && (
+                    <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black">
+                      ✓
+                    </span>
+                  )}
+                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-3xl shadow-md`}>
+                    {c.icon}
+                  </div>
+                  <span className="font-black text-slate-800 dark:text-white text-sm text-center">
+                    {c.name}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* Tab 3: Nose Mode Style Grid */}
+        {/* Tab 3: Nose Mode Style Grid (Icons & Words Only) */}
         {trackerMode === 'nose' && (
-          <div className="flex flex-col gap-3 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Choose Animated Nose Style ({noseStyles.length} Available)
-              </span>
-              <span className="text-xs font-bold text-pink-500 flex items-center gap-1">
-                <span>Renders animated nose on your face & pops with nose!</span>
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto custom-scrollbar p-1">
-              {noseStyles.map((n) => {
-                const isSelected = noseStyle === n.id;
-                return (
-                  <button
-                    key={n.id}
-                    onClick={() => onSelectNose(n.id)}
-                    className={`p-4 rounded-2xl border-2 text-left flex items-start gap-3.5 transition-all cursor-pointer relative overflow-hidden ${
-                      isSelected
-                        ? 'border-pink-500 bg-pink-50/80 dark:bg-pink-950/40 shadow-lg shadow-pink-500/20 scale-[1.01]'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
-                    }`}
-                  >
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-2xl shadow-md shrink-0`}>
-                      {n.icon}
-                    </div>
-                    <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-black text-slate-800 dark:text-white text-base truncate">
-                          {n.name}
-                        </span>
-                        {isSelected && (
-                          <span className="w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-black">
-                            ✓
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] font-black uppercase tracking-wider text-pink-600 dark:text-pink-400">
-                        {n.badge}
-                      </span>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
-                        {n.desc}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-in fade-in duration-200">
+            {NOSE_TRACKER_OPTIONS.map((n) => {
+              const isSelected = noseStyle === n.id;
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => onSelectNose(n.id)}
+                  className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-2.5 transition-all cursor-pointer relative ${
+                    isSelected
+                      ? 'border-pink-500 bg-pink-50/80 dark:bg-pink-950/40 shadow-lg shadow-pink-500/20 scale-[1.02]'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                  }`}
+                >
+                  {isSelected && (
+                    <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-black">
+                      ✓
+                    </span>
+                  )}
+                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-3xl shadow-md`}>
+                    {n.icon}
+                  </div>
+                  <span className="font-black text-slate-800 dark:text-white text-sm text-center">
+                    {n.name}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
