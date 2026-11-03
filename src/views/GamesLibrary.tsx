@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gamepad2, Plus, Users, Library, ArrowRight, Share2, Edit2, Play, Trash2, FolderPlus, FolderOpen, MoreVertical, X, Sparkles, Star, Flame, Eye, Lock, Globe, GlobeLock, Copy, Folder, MoreHorizontal, Gift, BookOpen } from 'lucide-react';
+import { Gamepad2, Plus, Users, Library, ArrowRight, Share2, Edit2, Play, Trash2, FolderPlus, FolderOpen, MoreVertical, X, Sparkles, Star, Flame, Eye, Lock, Globe, GlobeLock, Copy, Folder, MoreHorizontal, Gift, BookOpen, Presentation } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, deleteDoc, writeBatch, addDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
@@ -515,6 +515,14 @@ export const GamesLibrary = ({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => onViewChange("my-slides")}
+              className="flex items-center gap-2 px-4 py-3 bg-purple-50 dark:bg-purple-950/40 text-brand-purple dark:text-purple-300 font-bold rounded-xl border border-purple-200 dark:border-purple-800/60 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition"
+              title="Open My Slides classroom presentations"
+            >
+              <Presentation className="w-5 h-5" />
+              <span className="hidden sm:inline">My Slides</span>
+            </button>
             <button
               onClick={() => setShowNewFolderModal(true)}
               className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition"

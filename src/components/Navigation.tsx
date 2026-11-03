@@ -16,7 +16,8 @@ import {
   BookOpen,
   Loader2,
   FileSpreadsheet,
-  Award
+  Award,
+  Presentation
 } from "lucide-react";
 
 import { useAuth } from "../contexts/AuthContext";
@@ -45,6 +46,7 @@ export function Navigation({
     { id: "home", label: "Home", icon: Home, view: "home" as ViewState },
     { id: "public-dashboard", label: "Community", icon: Users, view: "public-dashboard" as ViewState },
     { id: "games", label: "My Games", icon: Gamepad2, view: "games" as ViewState },
+    { id: "my-slides", label: "My Slides", icon: Presentation, view: "my-slides" as ViewState },
     { id: "homework", label: "Homework", icon: BookOpen, view: "homework" as ViewState },
     { id: "class-rewards", label: "Class rewards", icon: Award, view: "class-rewards" as ViewState },
     ...(isAdmin ? [{ id: "admin-dashboard", label: "Admin Dashboard", icon: Shield, view: "admin-dashboard" as ViewState }] : []),
@@ -104,7 +106,7 @@ export function Navigation({
               <button
                 key={item.id}
                 onClick={() => {
-                  const freeViews = ["home", "homework", "public-dashboard"];
+                  const freeViews = ["home", "homework", "public-dashboard", "my-slides"];
                   if (!user) {
                     if (freeViews.includes(item.view)) {
                       onViewChange(item.view);

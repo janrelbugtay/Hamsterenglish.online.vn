@@ -34,6 +34,7 @@ import { ClassRecord, getBestSavedClasses, isDefaultMockClasses, STORAGE_KEY, so
 import { PhonemicMaster } from "./views/PhonemicMaster";
 import SquidGamePicker from "./views/SquidGamePicker";
 import { HamsterPaintball } from "./views/HamsterPaintball";
+import { MySlides } from "./views/MySlides";
 import { useAuth } from "./contexts/AuthContext";
 import { doc, onSnapshot, getDoc, updateDoc, increment, setDoc } from "firebase/firestore";
 import { db } from "./lib/firebase";
@@ -421,6 +422,8 @@ export default function App() {
         return <PublicDashboard onViewChange={handleViewChange} />;
       case "games":
         return <GamesLibrary onViewChange={handleViewChange} isAdmin={isAdmin} publishedGames={publishedGames} />;
+      case "my-slides":
+        return <MySlides onViewChange={handleViewChange} />;
       case "leaderboard":
         // Fallback for demo purposes
         return (

@@ -16,7 +16,8 @@ import {
   GraduationCap, 
   ArrowUpDown, 
   X,
-  Award
+  Award,
+  BookOpen
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
@@ -48,6 +49,42 @@ export const ALL_GRADES: GradeType[] = [
   'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8',
   'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'
 ];
+
+export const GLOBAL_SUCCESS_LEVELS = [
+  { id: 'Global Success 6', grade: 6, label: 'Global Success 6' },
+  { id: 'Global Success 7', grade: 7, label: 'Global Success 7' },
+  { id: 'Global Success 8', grade: 8, label: 'Global Success 8' },
+  { id: 'Global Success 9', grade: 9, label: 'Global Success 9' },
+  { id: 'Global Success 1-5', grade: null, label: 'Global Success 1–5' },
+  { id: 'Global Success 10-12', grade: null, label: 'Global Success 10–12' },
+];
+
+export function matchGameGlobalSuccess(game: any, gsId: string): boolean {
+  if (!game) return false;
+  const combined = `${game.topic || ''} ${game.name || ''} ${game.title || ''} ${game.curriculum || ''} ${game.classLevel || ''} ${game.className || ''}`.toLowerCase();
+  
+  if (gsId === 'Global Success 6') {
+    return (combined.includes('global success 6') || combined.includes('gs 6') || (combined.includes('global success') && extractGradeNumber(game) === 6)) || (extractGradeNumber(game) === 6 && combined.includes('tiếng anh 6'));
+  }
+  if (gsId === 'Global Success 7') {
+    return (combined.includes('global success 7') || combined.includes('gs 7') || (combined.includes('global success') && extractGradeNumber(game) === 7)) || (extractGradeNumber(game) === 7 && combined.includes('tiếng anh 7'));
+  }
+  if (gsId === 'Global Success 8') {
+    return (combined.includes('global success 8') || combined.includes('gs 8') || (combined.includes('global success') && extractGradeNumber(game) === 8)) || (extractGradeNumber(game) === 8 && combined.includes('tiếng anh 8'));
+  }
+  if (gsId === 'Global Success 9') {
+    return (combined.includes('global success 9') || combined.includes('gs 9') || (combined.includes('global success') && extractGradeNumber(game) === 9)) || (extractGradeNumber(game) === 9 && combined.includes('tiếng anh 9'));
+  }
+  if (gsId === 'Global Success 1-5') {
+    const gr = extractGradeNumber(game);
+    return combined.includes('global success') && gr !== null && gr >= 1 && gr <= 5;
+  }
+  if (gsId === 'Global Success 10-12') {
+    const gr = extractGradeNumber(game);
+    return combined.includes('global success') && gr !== null && gr >= 10 && gr <= 12;
+  }
+  return combined.includes('global success');
+}
 
 export type SortMode = 
   | 'latest'
@@ -465,7 +502,9 @@ export function PublicDashboard({
 
       let matchesLevel = true;
       if (selectedLevel !== 'all') {
-        if (selectedLevel.startsWith('Grade ')) {
+        if (selectedLevel.startsWith('Global Success')) {
+          matchesLevel = matchGameGlobalSuccess(game, selectedLevel);
+        } else if (selectedLevel.startsWith('Grade ')) {
           const gradeNum = parseInt(selectedLevel.replace('Grade ', ''), 10);
           matchesLevel = matchGameGrade(game, gradeNum);
         } else {
@@ -807,6 +846,29 @@ export function PublicDashboard({
                   }`}
                 >
                   {grade}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Global Success (6 to 9) Pills directly under the grades */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none pt-1 border-t border-slate-100 dark:border-slate-700/40">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1 min-w-[76px]">
+              <BookOpen size={13} /> Global Success:
+            </span>
+            {GLOBAL_SUCCESS_LEVELS.map((gs) => {
+              const isSelected = selectedLevel === gs.id;
+              return (
+                <button
+                  key={gs.id}
+                  onClick={() => setSelectedLevel(isSelected ? 'all' : gs.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 border ${
+                    isSelected
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      : 'bg-emerald-50/70 hover:bg-emerald-100/80 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/40'
+                  }`}
+                >
+                  {gs.label}
                 </button>
               );
             })}

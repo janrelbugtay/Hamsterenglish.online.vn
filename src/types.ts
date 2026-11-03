@@ -28,7 +28,8 @@ export type ViewState =
   | "shark-attack"
   | "slap-and-chop"
   | "roller-coaster-quiz"
-  | "hamster-paintball";
+  | "hamster-paintball"
+  | "my-slides";
 
 export interface Game {
   id: string;
