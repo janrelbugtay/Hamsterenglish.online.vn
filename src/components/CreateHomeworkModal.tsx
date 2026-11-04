@@ -23,6 +23,7 @@ import {
   convertSlideDeckToHomeworkObject,
   normalizeGameQuestionsForHomework,
 } from '../utils/homeworkService';
+import { useAuth } from '../contexts/AuthContext';
 
 export const PRODUCTION_HOMEWORK_BASE_URL = 'https://hamsterenglish.online';
 
@@ -84,6 +85,7 @@ export function CreateHomeworkModal({
   onCreated,
   onNavigateToHomework,
 }: CreateHomeworkModalProps) {
+  const { user } = useAuth();
   // Normalize game or slide deck
   const normalizedGame = useMemo(() => {
     if (!game) return null;
@@ -190,6 +192,8 @@ export function CreateHomeworkModal({
       const normalizedQs = normalizeGameQuestionsForHomework(rawQuestions, title.trim());
       const newAssignment: HomeworkAssignment = {
         id: `hw-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        ...(user?.uid ? { userId: user.uid, createdByUid: user.uid } : {}),
+        ...(user?.email ? { createdByEmail: user.email } : {}),
         gameId: normalizedGame.id || Date.now(),
         gameTitle: title.trim(),
         gameType: gameType || 'study-mode',
@@ -210,7 +214,7 @@ export function CreateHomeworkModal({
         submissionsCount: 0,
       };
 
-      const saved = await saveHomeworkAssignment(newAssignment);
+      const saved = await saveHomeworkAssignment(newAssignment, user?.uid);
       setCreatedAssignment(saved);
       onCreated?.(saved);
     } catch (e) {

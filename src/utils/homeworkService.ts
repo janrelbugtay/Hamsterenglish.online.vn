@@ -15,6 +15,9 @@ export interface QuestionAuditItem {
 
 export interface HomeworkAssignment {
   id: string;
+  userId?: string;
+  createdByUid?: string;
+  createdByEmail?: string;
   gameId: string | number;
   gameTitle: string;
   gameType: string;
@@ -31,7 +34,6 @@ export interface HomeworkAssignment {
   slideDeckId?: string;
   slides?: any[];
   createdAt: number;
-  createdByEmail?: string;
   status: 'active' | 'closed';
   submissionsCount?: number;
 }
@@ -41,6 +43,7 @@ export interface HomeworkSubmission {
   assignmentId: string;
   assignmentTitle: string;
   pinCode: string;
+  teacherUid?: string;
   studentName: string;
   studentEmail?: string;
   startedAt: number;
@@ -55,9 +58,30 @@ export interface HomeworkSubmission {
   verifiedAt: string; // ISO verification timestamp
 }
 
-const STORAGE_KEY_ASSIGNMENTS = 'hamster_homework_assignments_clean_v2';
-const STORAGE_KEY_SUBMISSIONS = 'hamster_homework_submissions_clean_v2';
+const STORAGE_KEY_ASSIGNMENTS_PREFIX = 'hamster_hw_assignments_u_';
+const STORAGE_KEY_SUBMISSIONS_PREFIX = 'hamster_hw_submissions_u_';
 const STORAGE_KEY_DELETED_HW = 'hamster_deleted_homework_ids_v1';
+
+function getAssignmentsStorageKey(userId?: string): string | null {
+  if (!userId) return null;
+  return `${STORAGE_KEY_ASSIGNMENTS_PREFIX}${userId}`;
+}
+
+function getSubmissionsStorageKey(userId?: string): string | null {
+  if (!userId) return null;
+  return `${STORAGE_KEY_SUBMISSIONS_PREFIX}${userId}`;
+}
+
+function purgeLegacyPublicHomeworkKeys(): void {
+  try {
+    localStorage.removeItem('hamster_homework_assignments_v1');
+    localStorage.removeItem('hamster_homework_assignments_clean_v1');
+    localStorage.removeItem('hamster_homework_assignments_clean_v2');
+    localStorage.removeItem('hamster_homework_submissions_v1');
+    localStorage.removeItem('hamster_homework_submissions_clean_v1');
+    localStorage.removeItem('hamster_homework_submissions_clean_v2');
+  } catch (e) {}
+}
 
 // Track deleted assignment IDs and PINs so deleted homework never reappears from cloud sync
 export function getDeletedHomeworkKeys(): string[] {
@@ -154,6 +178,13 @@ export function sanitizeForFirestore<T>(obj: T): T {
   return obj;
 }
 
+function isPlaceholderOptionText(s: string): boolean {
+  const clean = (s || '').trim();
+  if (!clean) return true;
+  if (/^(sample\s+)?option\s*[a-f1-6]$/i.test(clean)) return true;
+  return false;
+}
+
 // Normalize questions from any game type (Mystery Box, Yoga Quiz, Bubble Pop, Sumo, Family Feud, Flashcards, etc.)
 export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle = ''): any[] {
   if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) return [];
@@ -161,7 +192,7 @@ export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle
   // Collect all single-answer strings in case we need distractors for fill-in-the-blank questions
   const allSingleAnswers = rawQuestions
     .map((q) => q?.answer || q?.correctAnswer || q?.back || '')
-    .filter((s) => typeof s === 'string' && s.trim().length > 0);
+    .filter((s) => typeof s === 'string' && !isPlaceholderOptionText(s));
 
   return rawQuestions
     .map((q: any, idx: number) => {
@@ -176,21 +207,22 @@ export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle
         q.sentence ||
         `Question ${idx + 1}`;
 
-      // 1. Extract options array from standard MCQ or Family Feud answers
+      // 1. Extract real (non-placeholder) options from standard MCQ or Family Feud answers
       let options: string[] = [];
       if (Array.isArray(q.options) && q.options.length > 0) {
         options = q.options
           .map((o: any) => (typeof o === 'string' ? o : o?.text || String(o || '')))
-          .filter((s: string) => s.trim().length > 0);
+          .filter((s: string) => !isPlaceholderOptionText(s));
       } else if (Array.isArray(q.answers) && q.answers.length > 0) {
         options = q.answers
           .map((a: any) => (typeof a === 'string' ? a : a?.text || String(a || '')))
-          .filter((s: string) => s.trim().length > 0);
+          .filter((s: string) => !isPlaceholderOptionText(s));
       }
 
       // 2. Determine correct answer index or string
       let answerIndex = 0;
       let correctAnswer = '';
+      let isOpenEnded = Boolean(q.isOpenEnded);
 
       if (options.length >= 2) {
         if (typeof q.answerIndex === 'number' && q.answerIndex >= 0 && q.answerIndex < options.length) {
@@ -230,10 +262,12 @@ export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle
         }
         correctAnswer = options[answerIndex] || options[0];
       } else {
-        // Fill-in-the-blank or single answer question (e.g. Mystery Box FIB)
-        const targetAns = String(
+        // Fill-in-the-blank or open-ended question (e.g. Mystery Box FIB or Speaking Prompt)
+        const rawCandidate = String(
           q.answer || q.correctAnswer || q.correct || q.back || options[0] || ''
         ).trim();
+        const targetAns = isPlaceholderOptionText(rawCandidate) ? '' : rawCandidate;
+
         if (targetAns) {
           const otherAnswers = allSingleAnswers.filter(
             (a) => a.toLowerCase() !== targetAns.toLowerCase()
@@ -244,7 +278,7 @@ export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle
             questionText.includes('____?');
           const fallbackDistractors = isTag
             ? ["isn't it?", "don't they?", "can't she?", "wasn't he?"]
-            : ['None of these', 'Not applicable', 'Try again'];
+            : ['None of these', 'Not applicable', 'Another answer'];
           const distractors = Array.from(new Set([...otherAnswers, ...fallbackDistractors]))
             .filter((d) => d.toLowerCase() !== targetAns.toLowerCase())
             .slice(0, 3);
@@ -255,9 +289,11 @@ export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle
           if (answerIndex < 0) answerIndex = 0;
           correctAnswer = targetAns;
         } else {
-          options = ['True', 'False'];
+          // Open-ended / speaking question with no fixed option list (e.g. "Do you have a pet?", "What makes you happy?")
+          options = [];
           answerIndex = 0;
-          correctAnswer = 'True';
+          correctAnswer = 'Answered';
+          isOpenEnded = true;
         }
       }
 
@@ -268,6 +304,7 @@ export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle
         options,
         answerIndex,
         correctAnswer,
+        ...(isOpenEnded ? { isOpenEnded: true } : {}),
         ...(q.explanation ? { explanation: q.explanation } : {}),
         ...(q.image || q.imageUrl ? { image: q.image || q.imageUrl } : {}),
       };
@@ -724,67 +761,46 @@ function deduplicateAssignments(list: HomeworkAssignment[]): HomeworkAssignment[
   return Array.from(byPin.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
-// Local cache helpers
-export function getLocalAssignments(): HomeworkAssignment[] {
+// Local cache helpers strictly scoped to the signed-in user (never shared publicly across users)
+export function getLocalAssignments(userId?: string): HomeworkAssignment[] {
+  purgeLegacyPublicHomeworkKeys();
+  const key = getAssignmentsStorageKey(userId);
+  if (!key) return [];
   try {
-    // Purge legacy keys that may hold fake Yoga Vocabulary assignments
-    localStorage.removeItem('hamster_homework_assignments_v1');
-    const oldRaw = localStorage.getItem('hamster_homework_assignments_clean_v1');
-    if (oldRaw) {
-      try {
-        const oldParsed = JSON.parse(oldRaw);
-        if (Array.isArray(oldParsed)) {
-          const validOld = deduplicateAssignments(
-            oldParsed.filter((a: any) => !isFakeYogaPresetAssignment(a) || a?.pinCode === '436439')
-          );
-          localStorage.setItem(STORAGE_KEY_ASSIGNMENTS, JSON.stringify(validOld));
-        }
-      } catch (e) {}
-      localStorage.removeItem('hamster_homework_assignments_clean_v1');
-    }
-
-    const raw = localStorage.getItem(STORAGE_KEY_ASSIGNMENTS);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return deduplicateAssignments(parsed);
+        return deduplicateAssignments(
+          parsed.filter(
+            (a: any) =>
+              a &&
+              (!a.userId || a.userId === userId) &&
+              (!a.createdByUid || a.createdByUid === userId)
+          )
+        );
       }
     }
   } catch (e) {}
   return [];
 }
 
-export function saveLocalAssignments(assignments: HomeworkAssignment[]): void {
+export function saveLocalAssignments(assignments: HomeworkAssignment[], userId?: string): void {
+  purgeLegacyPublicHomeworkKeys();
+  const key = getAssignmentsStorageKey(userId);
+  if (!key) return;
   try {
     const clean = deduplicateAssignments(assignments);
-    localStorage.setItem(STORAGE_KEY_ASSIGNMENTS, JSON.stringify(clean));
+    localStorage.setItem(key, JSON.stringify(clean));
   } catch (e) {}
 }
 
-export function getLocalSubmissions(): HomeworkSubmission[] {
+export function getLocalSubmissions(userId?: string): HomeworkSubmission[] {
+  purgeLegacyPublicHomeworkKeys();
+  const key = getSubmissionsStorageKey(userId);
+  if (!key) return [];
   try {
-    localStorage.removeItem('hamster_homework_submissions_v1');
-    const oldRaw = localStorage.getItem('hamster_homework_submissions_clean_v1');
-    if (oldRaw) {
-      try {
-        const oldParsed = JSON.parse(oldRaw);
-        if (Array.isArray(oldParsed)) {
-          const filteredOld = oldParsed.filter(
-            (s: any) =>
-              s &&
-              !String(s.id).startsWith('sub-sample') &&
-              !(
-                s.assignmentTitle === 'Yoga Vocabulary' &&
-                s.questionBreakdown?.[0]?.questionText?.includes('Tree Pose')
-              )
-          );
-          localStorage.setItem(STORAGE_KEY_SUBMISSIONS, JSON.stringify(filteredOld));
-        }
-      } catch (e) {}
-      localStorage.removeItem('hamster_homework_submissions_clean_v1');
-    }
-
-    const raw = localStorage.getItem(STORAGE_KEY_SUBMISSIONS);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -792,6 +808,7 @@ export function getLocalSubmissions(): HomeworkSubmission[] {
           (s: any) =>
             s &&
             !String(s.id).startsWith('sub-sample') &&
+            (!s.teacherUid || s.teacherUid === userId) &&
             !(
               s.assignmentTitle === 'Yoga Vocabulary' &&
               s.questionBreakdown?.[0]?.questionText?.includes('Tree Pose')
@@ -803,17 +820,25 @@ export function getLocalSubmissions(): HomeworkSubmission[] {
   return [];
 }
 
-export function saveLocalSubmissions(submissions: HomeworkSubmission[]): void {
+export function saveLocalSubmissions(submissions: HomeworkSubmission[], userId?: string): void {
+  purgeLegacyPublicHomeworkKeys();
+  const key = getSubmissionsStorageKey(userId);
+  if (!key) return;
   try {
     const clean = submissions.filter((s: any) => s && !String(s.id).startsWith('sub-sample'));
-    localStorage.setItem(STORAGE_KEY_SUBMISSIONS, JSON.stringify(clean));
+    localStorage.setItem(key, JSON.stringify(clean));
   } catch (e) {}
 }
 
 // Delete a submission record
-export async function deleteHomeworkSubmission(submissionId: string): Promise<void> {
-  const current = getLocalSubmissions().filter((s) => s.id !== submissionId);
-  saveLocalSubmissions(current);
+export async function deleteHomeworkSubmission(
+  submissionId: string,
+  userId?: string
+): Promise<void> {
+  if (userId) {
+    const current = getLocalSubmissions(userId).filter((s) => s.id !== submissionId);
+    saveLocalSubmissions(current, userId);
+  }
   try {
     await deleteDoc(doc(db, 'homework_submissions', submissionId));
   } catch (e) {
@@ -835,13 +860,18 @@ export function formatDurationSeconds(sec: number): string {
   return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
-// Fetch all assignments (with Firestore sync + local fallback + deduplication)
-export async function fetchAllHomeworkAssignments(): Promise<HomeworkAssignment[]> {
+// Fetch assignments owned ONLY by the given userId (never returns a public homework list)
+export async function fetchAllHomeworkAssignments(
+  userId?: string
+): Promise<HomeworkAssignment[]> {
+  purgeLegacyPublicHomeworkKeys();
+  if (!userId) return [];
+
   const deletedKeys = new Set(getDeletedHomeworkKeys());
-  const local = getLocalAssignments();
+  const local = getLocalAssignments(userId);
 
   try {
-    const q = query(collection(db, 'homework_assignments'));
+    const q = query(collection(db, 'homework_assignments'), where('userId', '==', userId));
     const snap = await getDocs(q);
     const cloudPins = new Set<string>();
     const rawList: HomeworkAssignment[] = [...local];
@@ -850,6 +880,9 @@ export async function fetchAllHomeworkAssignments(): Promise<HomeworkAssignment[
       snap.forEach((docSnap) => {
         const data = docSnap.data() as HomeworkAssignment;
         if (!data) return;
+        const ownerUid = data.userId || data.createdByUid;
+        if (ownerUid && ownerUid !== userId) return;
+
         const canonicalId = data.id && String(data.id).startsWith('hw-') ? data.id : docSnap.id;
         if (
           deletedKeys.has(String(canonicalId)) ||
@@ -858,8 +891,7 @@ export async function fetchAllHomeworkAssignments(): Promise<HomeworkAssignment[
         ) {
           return;
         }
-        // Clean up any old fake Yoga preset docs in Firestore automatically
-        if (isFakeYogaPresetAssignment(data) && data.pinCode !== '436439') {
+        if (isFakeYogaPresetAssignment(data)) {
           deleteDoc(doc(db, 'homework_assignments', docSnap.id)).catch(() => {});
           return;
         }
@@ -867,56 +899,80 @@ export async function fetchAllHomeworkAssignments(): Promise<HomeworkAssignment[
         rawList.push({
           ...data,
           id: canonicalId,
+          userId: data.userId || userId,
+          createdByUid: data.createdByUid || userId,
         });
       });
     }
 
-    // Automatically push any local assignments that aren't in Firestore yet so hamsterenglish.online/?hwPin=... works immediately
+    // Push any local assignments owned by this user that aren't in Firestore yet so hamsterenglish.online/?hwPin=... works immediately
     for (const loc of local) {
       if (loc.pinCode && !cloudPins.has(String(loc.pinCode)) && !deletedKeys.has(String(loc.pinCode))) {
-        const cleanLoc = sanitizeForFirestore(ensureAssignmentHasQuestions(loc));
+        const cleanLoc = sanitizeForFirestore(
+          ensureAssignmentHasQuestions({
+            ...loc,
+            userId: loc.userId || userId,
+            createdByUid: loc.createdByUid || userId,
+          })
+        );
         setDoc(doc(db, 'homework_assignments', cleanLoc.id), cleanLoc, { merge: true }).catch(() => {});
         setDoc(doc(db, 'homework_assignments', cleanLoc.pinCode), cleanLoc, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'homework_assignments', `hw_${cleanLoc.pinCode}`), cleanLoc, { merge: true }).catch(() => {});
       }
     }
 
     const deduped = deduplicateAssignments(rawList);
-    saveLocalAssignments(deduped);
+    saveLocalAssignments(deduped, userId);
     return deduped;
   } catch (e) {
-    console.warn('Notice: falling back to cached homework assignments', e);
+    console.warn('Notice: falling back to user-scoped cached homework assignments', e);
   }
   return local;
 }
 
-// Save a new or edited homework assignment
+// Save a new or edited homework assignment (strictly tied to the owning user)
 export async function saveHomeworkAssignment(
-  assignment: HomeworkAssignment
+  assignment: HomeworkAssignment,
+  userId?: string
 ): Promise<HomeworkAssignment> {
-  const readyAssignment = sanitizeForFirestore(ensureAssignmentHasQuestions(assignment));
-  const current = getLocalAssignments();
-  const existingIdx = current.findIndex(
-    (a) => a.id === readyAssignment.id || a.pinCode === readyAssignment.pinCode
+  const effectiveUserId = userId || assignment.userId || assignment.createdByUid;
+  const readyAssignment = sanitizeForFirestore(
+    ensureAssignmentHasQuestions({
+      ...assignment,
+      ...(effectiveUserId ? { userId: effectiveUserId, createdByUid: effectiveUserId } : {}),
+    })
   );
-  let updatedList: HomeworkAssignment[];
-  if (existingIdx >= 0) {
-    updatedList = [...current];
-    updatedList[existingIdx] = readyAssignment;
-  } else {
-    updatedList = [readyAssignment, ...current];
+
+  if (effectiveUserId) {
+    const current = getLocalAssignments(effectiveUserId);
+    const existingIdx = current.findIndex(
+      (a) => a.id === readyAssignment.id || a.pinCode === readyAssignment.pinCode
+    );
+    let updatedList: HomeworkAssignment[];
+    if (existingIdx >= 0) {
+      updatedList = [...current];
+      updatedList[existingIdx] = readyAssignment;
+    } else {
+      updatedList = [readyAssignment, ...current];
+    }
+    saveLocalAssignments(updatedList, effectiveUserId);
   }
-  saveLocalAssignments(updatedList);
 
   try {
     // 1. Save with unique assignment ID
     await setDoc(doc(db, 'homework_assignments', readyAssignment.id), readyAssignment, {
       merge: true,
     });
-    // 2. Dual-write by PIN code for instantaneous direct getDoc lookup across devices
+    // 2. Write by PIN code and hw_<PIN> for instantaneous direct getDoc lookup across devices
     if (readyAssignment.pinCode) {
       await setDoc(doc(db, 'homework_assignments', readyAssignment.pinCode), readyAssignment, {
         merge: true,
       });
+      await setDoc(
+        doc(db, 'homework_assignments', `hw_${readyAssignment.pinCode}`),
+        readyAssignment,
+        { merge: true }
+      );
     }
   } catch (e) {
     console.warn('Notice: assignment saved locally, firestore sync will retry', e);
@@ -928,9 +984,10 @@ export async function saveHomeworkAssignment(
 // Delete an assignment permanently from local cache and Firestore
 export async function deleteHomeworkAssignment(
   assignmentId: string,
-  pinCode?: string
+  pinCode?: string,
+  userId?: string
 ): Promise<void> {
-  const current = getLocalAssignments();
+  const current = userId ? getLocalAssignments(userId) : [];
   const target = current.find(
     (a) => a.id === assignmentId || a.pinCode === assignmentId || (pinCode && a.pinCode === pinCode)
   );
@@ -938,16 +995,20 @@ export async function deleteHomeworkAssignment(
   const targetPin = pinCode || target?.pinCode || '';
 
   // Record in deleted keys so cloud sync never restores it
-  addDeletedHomeworkKeys([assignmentId, targetId, targetPin].filter(Boolean));
-
-  const filtered = current.filter(
-    (a) =>
-      a.id !== assignmentId &&
-      a.id !== targetId &&
-      a.pinCode !== assignmentId &&
-      (!targetPin || a.pinCode !== targetPin)
+  addDeletedHomeworkKeys(
+    [assignmentId, targetId, targetPin, targetPin ? `hw_${targetPin}` : ''].filter(Boolean)
   );
-  saveLocalAssignments(filtered);
+
+  if (userId) {
+    const filtered = current.filter(
+      (a) =>
+        a.id !== assignmentId &&
+        a.id !== targetId &&
+        a.pinCode !== assignmentId &&
+        (!targetPin || a.pinCode !== targetPin)
+    );
+    saveLocalAssignments(filtered, userId);
+  }
 
   try {
     const deletePromises: Promise<void>[] = [
@@ -958,6 +1019,8 @@ export async function deleteHomeworkAssignment(
     }
     if (targetPin) {
       deletePromises.push(deleteDoc(doc(db, 'homework_assignments', targetPin)));
+      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw_${targetPin}`)));
+      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw-${targetPin}`)));
     }
     await Promise.allSettled(deletePromises);
   } catch (e) {
@@ -965,24 +1028,22 @@ export async function deleteHomeworkAssignment(
   }
 }
 
-// Fetch all submissions for analytics (with Firestore sync + local fallback)
+// Fetch submissions for the signed-in teacher's homework only
 export async function fetchHomeworkSubmissions(
-  assignmentId?: string
+  userId?: string,
+  assignmentId?: string,
+  userPins?: string[]
 ): Promise<HomeworkSubmission[]> {
+  purgeLegacyPublicHomeworkKeys();
+  if (!userId) return [];
+
   try {
-    let q = query(collection(db, 'homework_submissions'));
-    if (assignmentId) {
-      q = query(
-        collection(db, 'homework_submissions'),
-        where('assignmentId', '==', assignmentId)
-      );
-    }
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const list: HomeworkSubmission[] = [];
-      snap.forEach((docSnap) => {
+    const byId = new Map<string, HomeworkSubmission>();
+
+    const collectSnap = (snap: any) => {
+      snap.forEach((docSnap: any) => {
         const data = docSnap.data() as HomeworkSubmission;
-        // Skip fake Yoga Tree Pose test submissions
+        if (!data) return;
         if (
           data.assignmentTitle === 'Yoga Vocabulary' &&
           data.questionBreakdown?.[0]?.questionText?.includes('Tree Pose')
@@ -990,39 +1051,62 @@ export async function fetchHomeworkSubmissions(
           deleteDoc(doc(db, 'homework_submissions', docSnap.id)).catch(() => {});
           return;
         }
-        list.push({ ...data, id: docSnap.id });
+        byId.set(docSnap.id, { ...data, id: docSnap.id });
       });
-      list.sort((a, b) => b.completedAt - a.completedAt);
-      saveLocalSubmissions(list);
+    };
+
+    const qTeacher = query(
+      collection(db, 'homework_submissions'),
+      where('teacherUid', '==', userId)
+    );
+    const snapTeacher = await getDocs(qTeacher);
+    collectSnap(snapTeacher);
+
+    const validPins = (userPins || []).filter(Boolean).slice(0, 30);
+    if (validPins.length > 0) {
+      const qPins = query(
+        collection(db, 'homework_submissions'),
+        where('pinCode', 'in', validPins)
+      );
+      const snapPins = await getDocs(qPins);
+      collectSnap(snapPins);
+    }
+
+    if (byId.size > 0) {
+      const list = Array.from(byId.values()).sort((a, b) => b.completedAt - a.completedAt);
+      saveLocalSubmissions(list, userId);
       return assignmentId ? list.filter((s) => s.assignmentId === assignmentId) : list;
     }
   } catch (e) {
-    console.warn('Notice: falling back to cached homework submissions', e);
+    console.warn('Notice: falling back to user-scoped cached homework submissions', e);
   }
-  const local = getLocalSubmissions();
+  const local = getLocalSubmissions(userId);
   return assignmentId ? local.filter((s) => s.assignmentId === assignmentId) : local;
 }
 
-// Record a new student submission with verifiable proof
+// Record a new student submission with verifiable proof (sent privately to the homework's teacher)
 export async function recordHomeworkSubmission(
-  submission: HomeworkSubmission
+  submission: HomeworkSubmission,
+  userId?: string
 ): Promise<HomeworkSubmission> {
   const cleanSubmission = sanitizeForFirestore(submission);
-  const current = getLocalSubmissions();
-  const updated = [cleanSubmission, ...current];
-  saveLocalSubmissions(updated);
+  const ownerUid = cleanSubmission.teacherUid || userId;
+  if (ownerUid) {
+    const current = getLocalSubmissions(ownerUid);
+    const updated = [cleanSubmission, ...current];
+    saveLocalSubmissions(updated, ownerUid);
 
-  // Increment submissionsCount on the assignment
-  const assignments = getLocalAssignments();
-  const aIdx = assignments.findIndex(
-    (a) => a.id === cleanSubmission.assignmentId || a.pinCode === cleanSubmission.pinCode
-  );
-  if (aIdx >= 0) {
-    assignments[aIdx] = {
-      ...assignments[aIdx],
-      submissionsCount: (assignments[aIdx].submissionsCount || 0) + 1,
-    };
-    saveLocalAssignments(assignments);
+    const assignments = getLocalAssignments(ownerUid);
+    const aIdx = assignments.findIndex(
+      (a) => a.id === cleanSubmission.assignmentId || a.pinCode === cleanSubmission.pinCode
+    );
+    if (aIdx >= 0) {
+      assignments[aIdx] = {
+        ...assignments[aIdx],
+        submissionsCount: (assignments[aIdx].submissionsCount || 0) + 1,
+      };
+      saveLocalAssignments(assignments, ownerUid);
+    }
   }
 
   try {
@@ -1036,98 +1120,111 @@ export async function recordHomeworkSubmission(
   return cleanSubmission;
 }
 
-// Synchronous local cache lookup (returns null if not in local cache so cloud lookup can resolve it accurately)
-export function findAssignmentByPin(pin: string): HomeworkAssignment | null {
-  const assignments = getLocalAssignments();
-  const clean = (pin || '').trim().replace(/\s+/g, '');
+// Fetch and rank leaderboard entries for a specific homework PIN code
+export async function fetchHomeworkLeaderboard(
+  pinCode: string,
+  currentSubmission?: HomeworkSubmission | null
+): Promise<HomeworkSubmission[]> {
+  const cleanPin = (pinCode || '').trim().replace(/\s+/g, '').replace(/^hw[_-]/i, '');
+  const byStudent = new Map<string, HomeworkSubmission>();
+
+  const considerEntry = (entry: HomeworkSubmission) => {
+    if (!entry || !entry.studentName) return;
+    const key = entry.studentName.trim().toLowerCase();
+    const existing = byStudent.get(key);
+    if (!existing) {
+      byStudent.set(key, entry);
+      return;
+    }
+    // Keep the better attempt (higher accuracy/score, or faster duration on tie)
+    const entryPct = entry.accuracyPct ?? 0;
+    const existingPct = existing.accuracyPct ?? 0;
+    if (
+      entryPct > existingPct ||
+      (entryPct === existingPct && (entry.score ?? 0) > (existing.score ?? 0)) ||
+      (entryPct === existingPct &&
+        (entry.score ?? 0) === (existing.score ?? 0) &&
+        (entry.durationSeconds || 999999) < (existing.durationSeconds || 999999))
+    ) {
+      byStudent.set(key, entry);
+    }
+  };
+
+  if (currentSubmission) {
+    considerEntry(currentSubmission);
+  }
+
+  if (cleanPin) {
+    try {
+      const q = query(collection(db, 'homework_submissions'), where('pinCode', '==', cleanPin));
+      const snap = await getDocs(q);
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as HomeworkSubmission;
+        if (data) considerEntry({ ...data, id: docSnap.id });
+      });
+    } catch (e) {
+      console.warn('Notice: could not query leaderboard from Firestore', e);
+    }
+  }
+
+  return Array.from(byStudent.values()).sort((a, b) => {
+    if ((b.accuracyPct ?? 0) !== (a.accuracyPct ?? 0)) {
+      return (b.accuracyPct ?? 0) - (a.accuracyPct ?? 0);
+    }
+    if ((b.score ?? 0) !== (a.score ?? 0)) {
+      return (b.score ?? 0) - (a.score ?? 0);
+    }
+    return (a.durationSeconds || 999999) - (b.durationSeconds || 999999);
+  });
+}
+
+// Synchronous local cache lookup (only checks the current user's own local assignments if userId provided)
+export function findAssignmentByPin(pin: string, userId?: string): HomeworkAssignment | null {
+  if (!userId) return null;
+  const assignments = getLocalAssignments(userId);
+  const clean = (pin || '').trim().replace(/\s+/g, '').replace(/^hw[_-]/i, '');
   if (!clean) return null;
   const found = assignments.find((a) => a.pinCode === clean || a.id === clean);
   if (found) return ensureAssignmentHasQuestions(found);
   return null;
 }
 
-// Find assignment by 6-digit PIN code (checks live Firestore first, then local cache)
+// Find a single assignment by its 6-digit PIN code from Firestore (does NOT expose or save any public list)
 export async function fetchHomeworkAssignmentByPin(
-  pin: string
+  pin: string,
+  userId?: string
 ): Promise<HomeworkAssignment | null> {
-  const clean = (pin || '').trim().replace(/\s+/g, '');
+  const clean = (pin || '').trim().replace(/\s+/g, '').replace(/^hw[_-]/i, '');
   if (!clean) return null;
 
-  const local = getLocalAssignments();
+  const candidateDocIds = [clean, `hw_${clean}`, `hw-${clean}`];
 
-  // 1. Direct getDoc by pin code document ID from Firestore (authoritative cross-domain lookup)
-  try {
-    const docRef = doc(db, 'homework_assignments', clean);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data() as HomeworkAssignment;
-      const assignment = ensureAssignmentHasQuestions({
-        ...data,
-        id: data.id && String(data.id).startsWith('hw-') ? data.id : snap.id,
-      });
-      saveLocalAssignments([assignment, ...local.filter((a) => a.pinCode !== assignment.pinCode)]);
-      if (isFakeYogaPresetAssignment(data)) {
-        saveHomeworkAssignment(assignment).catch(() => {});
+  for (const docId of candidateDocIds) {
+    try {
+      const docRef = doc(db, 'homework_assignments', docId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data() as HomeworkAssignment;
+        if (isFakeYogaPresetAssignment(data)) continue;
+        return ensureAssignmentHasQuestions({
+          ...data,
+          id: data.id && String(data.id).startsWith('hw-') ? data.id : snap.id,
+        });
       }
-      return assignment;
+    } catch (e) {
+      console.warn('Notice: Firestore getDoc by pin error', e);
     }
-  } catch (e) {
-    console.warn('Notice: Firestore getDoc by pin error', e);
   }
 
-  // 2. Query Firestore by pinCode field
-  try {
-    const q = query(collection(db, 'homework_assignments'), where('pinCode', '==', clean));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const docSnap = snap.docs[0];
-      const data = docSnap.data() as HomeworkAssignment;
-      const assignment = ensureAssignmentHasQuestions({
-        ...data,
-        id: data.id && String(data.id).startsWith('hw-') ? data.id : docSnap.id,
-      });
-      saveLocalAssignments([assignment, ...local.filter((a) => a.pinCode !== assignment.pinCode)]);
-      if (isFakeYogaPresetAssignment(data)) {
-        saveHomeworkAssignment(assignment).catch(() => {});
-      }
-      return assignment;
+  // Fallback to current user's own local cache if offline
+  if (userId) {
+    const local = getLocalAssignments(userId);
+    const cached = local.find((a) => a.pinCode === clean || a.id === clean);
+    if (cached && !isFakeYogaPresetAssignment(cached)) {
+      const ready = ensureAssignmentHasQuestions(cached);
+      saveHomeworkAssignment(ready, userId).catch(() => {});
+      return ready;
     }
-  } catch (e) {
-    console.warn('Notice: Firestore query by pin error', e);
-  }
-
-  // 3. Fallback to local cache if offline
-  const cached = local.find((a) => a.pinCode === clean || a.id === clean);
-  if (cached && !isFakeYogaPresetAssignment(cached)) {
-    const ready = ensureAssignmentHasQuestions(cached);
-    // Sync to Firestore in background
-    saveHomeworkAssignment(ready).catch(() => {});
-    return ready;
-  }
-
-  // 4. Special repair for PIN 436439 ("Question Tags" from teacher's screenshot)
-  if (clean === '436439') {
-    const repaired436439 = ensureAssignmentHasQuestions({
-      id: 'hw-436439',
-      gameId: 'game-question-tags',
-      gameTitle: 'Question Tags',
-      gameType: 'study-mode',
-      classLevel: 'Starters',
-      topic: 'Question Tags',
-      dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0],
-      durationMinutes: 10,
-      passingScore: 80,
-      maxAttempts: 3,
-      targetClass: 'Starters',
-      instructions: 'Study the question tags and choose the correct answer for each question!',
-      pinCode: '436439',
-      questions: QUESTION_TAGS_DEFAULT_QUESTIONS,
-      createdAt: Date.now(),
-      status: 'active',
-      submissionsCount: 0,
-    });
-    await saveHomeworkAssignment(repaired436439);
-    return repaired436439;
   }
 
   return null;

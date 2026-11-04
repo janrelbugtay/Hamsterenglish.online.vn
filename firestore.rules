@@ -78,13 +78,33 @@ service cloud.firestore {
       }
     }
 
-    // Homework Assignments & Submissions
+    // Homework Assignments & Submissions (Per-User Private Management, PIN-only Student Get)
     match /homework_assignments/{assignmentId} {
-      allow read, write: if true;
+      allow get: if isValidId(assignmentId);
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.createdByUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.createdByUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.createdByUid == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     match /homework_submissions/{submissionId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isValidId(submissionId);
+      allow update, delete: if isSignedIn() && (
+        resource.data.teacherUid == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // Multiplayer Game Rooms
