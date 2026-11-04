@@ -791,8 +791,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       },
       homeX: baseX,
       headX: baseX,
-      headY: 0.20,
-      headScale: 1.0,
+      headY: 0.28,
+      headScale: 1.08,
       headTilt: 0,
       headDetected: false,
       lastHeadTime: 0,
@@ -815,6 +815,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       lastDualHandTime: 0,
       dualHandsArmed: false,
       lastSeparatedHandsTime: 0,
+      lastSlapSelectTime: 0,
       clapTimer: 0,
       isClapping: false,
       clapMidX: baseX,
@@ -1117,7 +1118,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             const cIdx = candidate.landmarks?.[8];
             const eIdx = existing.landmarks?.[8];
             const tipDist = (cIdx && eIdx) ? Math.hypot(cIdx.x - eIdx.x, cIdx.y - eIdx.y) : centerDist;
-            return centerDist < 0.032 && wristDist < 0.032 && tipDist < 0.032;
+            return centerDist < 0.024 && wristDist < 0.024 && tipDist < 0.024;
           });
           if (!isDuplicateOnSameHand) {
             handsForPlayer.push(candidate);
@@ -1152,7 +1153,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         let rightData = handsForPlayer[handsForPlayer.length - 1];
 
         // Prevent vertical clap hand-swap jitter when both hands are at nearly the same X coordinate
-        if (lh.detected && rh.detected && Math.abs(rightData.clampedX - leftData.clampedX) < 0.07) {
+        if (lh.detected && rh.detected && Math.abs(rightData.clampedX - leftData.clampedX) < 0.085) {
           const dDirect = Math.hypot(leftData.clampedX - lh.x, leftData.clampedY - lh.y) + Math.hypot(rightData.clampedX - rh.x, rightData.clampedY - rh.y);
           const dSwapped = Math.hypot(rightData.clampedX - lh.x, rightData.clampedY - lh.y) + Math.hypot(leftData.clampedX - rh.x, leftData.clampedY - rh.y);
           if (dSwapped < dDirect) {
@@ -1179,10 +1180,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         }
 
-        // Check if the 21-landmark bounding boxes of the two hands touch/overlap (with small glove border padding)
+        const avgHandScale = Math.max(0.75, ((leftData.scale || 1.0) + (rightData.scale || 1.0)) * 0.5);
+
+        // Check if the 21-landmark bounding boxes of the two hands/gloves touch or overlap
         let bboxTouching = false;
         if (leftData.bbox && rightData.bbox) {
-          const pad = 0.025;
+          const pad = 0.008 * avgHandScale;
           bboxTouching =
             leftData.bbox.maxX + pad >= rightData.bbox.minX - pad &&
             rightData.bbox.maxX + pad >= leftData.bbox.minX - pad &&
@@ -1190,6 +1193,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             rightData.bbox.maxY + pad >= leftData.bbox.minY - pad;
         }
 
+        if (sepDist >= 0.135) {
+          player.lastSeparatedHandsTime = now;
+        }
         player.dualHandsArmed = true;
         player.lastTrueTwoHandsTime = now;
         player.lastTwoHandSepDist = sepDist;
@@ -1230,21 +1236,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
         if (rh.trail.length > 16) rh.trail.shift();
 
-        // Detect when the TWO GLOVES TOUCH (via palm distance, any finger/landmark proximity, or bounding-box overlap)
-        const avgHandScale = Math.max(0.75, (lh.scale + rh.scale) * 0.5);
+        // Detect when the TWO GLOVES / HANDS ACTUALLY MEET (clap together)
+        // Ensures holding two hands apart on either side of the headgear never triggers a false clap!
         const prevSep = Math.hypot(rh.prevX - lh.prevX, rh.prevY - lh.prevY);
         const closingVel = Math.max(0, prevSep - sepDist);
-        const glovesMeetThreshold = 0.20 * avgHandScale;
-        const landmarksMeetThreshold = 0.12 * avgHandScale;
+        const glovesMeetThreshold = 0.115 * avgHandScale;
+        const landmarksMeetThreshold = 0.052 * avgHandScale;
 
         if (
           sepDist <= glovesMeetThreshold ||
           minLandmarkDist <= landmarksMeetThreshold ||
-          bboxTouching ||
-          (sepDist <= 0.25 * avgHandScale && closingVel > 0.008)
+          (bboxTouching && sepDist <= 0.145 * avgHandScale) ||
+          (sepDist <= 0.155 * avgHandScale && closingVel > 0.008)
         ) {
           player.isClapping = true;
-          player.clapTimer = Math.max(player.clapTimer || 0, 0.22);
+          player.clapTimer = Math.max(player.clapTimer || 0, 0.24);
           player.slapAnim = 1.0;
           lh.slapAnim = 1.0;
           rh.slapAnim = 1.0;
@@ -1259,8 +1265,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           : { ...leftData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y };
       } else {
         // ONLY 1 HAND RETURNED BY MEDIAPIPE IN THIS FRAME:
-        // Never duplicate a single raised hand into two hands!
-        // Only allow a brief 200ms clap-occlusion bridge if 2 genuinely separate hands were seen < 200ms ago and just converged!
+        // Allow a 340ms clap-occlusion bridge when 2 genuinely separate hands were seen just before and converged palm-to-palm!
         const hData = handsForPlayer[0];
         const prevMidX = (lh.x + rh.x) * 0.5;
         const prevMidY = (lh.y + rh.y) * 0.5;
@@ -1271,16 +1276,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
         const hadTwoDistinctHandsJustNow = Boolean(
           player.dualHandsArmed &&
-          (now - (player.lastTrueTwoHandsTime || 0) < 200) &&
-          (player.lastTwoHandSepDist || 1) < 0.35
+          (now - (player.lastTrueTwoHandsTime || 0) < 340) &&
+          (player.lastTwoHandSepDist || 1) < 0.44
         );
 
         const justClappedFromTwoHands = Boolean(
-          hadTwoDistinctHandsJustNow && distToPrevMid < 0.16 * avgHandScale
+          hadTwoDistinctHandsJustNow &&
+          (distToPrevMid < 0.21 * avgHandScale || Math.min(distToLeft, distToRight) < 0.19 * avgHandScale)
         );
 
         if (justClappedFromTwoHands) {
-          // NOTE: Do NOT update player.lastTrueTwoHandsTime here so this occlusion bridge automatically expires after 200ms!
           lh.prevX = lh.x;
           lh.prevY = lh.y;
           rh.prevX = rh.x;
@@ -1307,7 +1312,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           rh.slapAnim = 1.0;
 
           player.isClapping = true;
-          player.clapTimer = Math.max(player.clapTimer || 0, 0.18);
+          player.clapTimer = Math.max(player.clapTimer || 0, 0.22);
           player.slapAnim = 1.0;
           player.swordLunge = 1.0;
           player.clapMidX = hData.clampedX;
@@ -1380,21 +1385,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
       }
 
-      checkHandWeaponCollision(
-        pIdx,
-        fastestHand.x ?? fastestHand.clampedX,
-        fastestHand.y ?? fastestHand.clampedY,
-        player.prevHandX,
-        player.prevHandY,
-        fastestHand.vx || 0,
-        fastestHand.vy || 0,
-        fastestHand.speed || 0,
-        fastestHand.pointingAngle,
-        fastestHand.scale,
-        cw,
-        ch
-      );
-
       player.handScale = player.handScale + (fastestHand.scale - player.handScale) * 0.5;
       updatePlayerArm(pIdx, fastestHand.x ?? fastestHand.clampedX, fastestHand.y ?? fastestHand.clampedY, fastestHand.pointingAngle, fastestHand.scale);
 
@@ -1409,13 +1399,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             ? Math.min(0.41, Math.max(0.09, targetHeadX))
             : Math.max(0.59, Math.min(0.91, targetHeadX));
         } else {
-          targetHeadX = Math.max(0.12, Math.min(0.88, targetHeadX));
+          targetHeadX = Math.max(0.14, Math.min(0.86, targetHeadX));
         }
-        const targetHeadY = Math.max(0.12, Math.min(0.32, minHandY - 0.28));
+        const targetHeadY = Math.max(0.20, Math.min(0.38, minHandY - 0.18));
 
         player.headX += (targetHeadX - player.headX) * 0.18;
         player.headY += (targetHeadY - player.headY) * 0.15;
-        player.headScale += (Math.max(0.75, Math.min(1.45, maxHandScale * 0.92)) - player.headScale) * 0.2;
+        player.headScale += (Math.max(0.88, Math.min(1.50, maxHandScale * 1.02)) - player.headScale) * 0.2;
       }
     });
   };
@@ -1452,10 +1442,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
             const clampedX = is2P
               ? (pIdx === 0 ? Math.min(0.41, Math.max(0.08, centerX)) : Math.max(0.59, Math.min(0.92, centerX)))
-              : Math.max(0.10, Math.min(0.90, centerX));
+              : Math.max(0.12, Math.min(0.88, centerX));
 
-            const targetY = Math.max(0.08, Math.min(0.42, topY + (box.height / vh) * 0.12));
-            const targetScale = Math.max(0.72, Math.min(1.55, relWidth * 5.2));
+            const targetY = Math.max(0.16, Math.min(0.46, topY + (box.height / vh) * 0.20));
+            const targetScale = Math.max(0.92, Math.min(1.62, relWidth * 5.6));
 
             player.headX += (clampedX - player.headX) * 0.45;
             player.headY += (targetY - player.headY) * 0.45;
@@ -1544,10 +1534,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         if (count > 14) {
           const cx = sumX / count;
           const cy = sumY / count;
-          const foreheadY = Math.max(0.08, Math.min(0.42, (minSkinY / H) * 0.45 + cy * 0.55 - 0.04));
+          const faceCenterY = Math.max(0.18, Math.min(0.44, (minSkinY / H) * 0.35 + cy * 0.65 + 0.02));
           const spanX = (maxSkinX - minSkinX) / W;
 
-          const faceScale = Math.max(0.75, Math.min(1.48, spanX * 3.8));
+          const faceScale = Math.max(0.88, Math.min(1.52, spanX * 4.1));
           const combinedScale = player.hasDetectedHands
             ? faceScale * 0.55 + player.handScale * 0.45
             : faceScale;
@@ -1557,14 +1547,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             : Math.max(0.10, Math.min(0.90, cx));
 
           player.headX += (clampedX - player.headX) * 0.32;
-          player.headY += (foreheadY - player.headY) * 0.32;
+          player.headY += (faceCenterY - player.headY) * 0.32;
           player.headScale += (combinedScale - player.headScale) * 0.25;
           player.headDetected = true;
           player.lastHeadTime = now;
         } else if (!player.hasDetectedHands && now - (player.lastHeadTime || 0) > 900) {
           player.headX += (player.homeX - player.headX) * 0.08;
-          player.headY += (0.20 - player.headY) * 0.08;
-          player.headScale += (1.0 - player.headScale) * 0.08;
+          player.headY += (0.28 - player.headY) * 0.08;
+          player.headScale += (1.08 - player.headScale) * 0.08;
         }
       };
 
@@ -1757,21 +1747,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     if (playersCount === 2) {
       p1.homeX = 0.25;
       p1.headX = 0.25;
-      p1.headY = 0.20;
+      p1.headY = 0.28;
       p1.handX = 0.25;
       p1.leftHand.x = 0.17;
       p1.rightHand.x = 0.33;
 
       p2.homeX = 0.75;
       p2.headX = 0.75;
-      p2.headY = 0.20;
+      p2.headY = 0.28;
       p2.handX = 0.75;
       p2.leftHand.x = 0.67;
       p2.rightHand.x = 0.83;
     } else {
       p1.homeX = 0.50;
       p1.headX = 0.50;
-      p1.headY = 0.20;
+      p1.headY = 0.28;
       p1.handX = 0.50;
       p1.leftHand.x = 0.42;
       p1.rightHand.x = 0.58;
@@ -2349,8 +2339,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   };
 
   // Unified Hand-Tracked Collision Check:
-  // - In Chop Mode: Tracks ONLY the player's hands & 21 finger landmarks (no knife!) to trigger a glowing slicing animation!
-  // - In Mosquito Slap Mode: Triggers when two gloves meet OR when a tracked hand swats across a mosquito!
+  // - In Mosquito Slap Mode: ONLY triggers when the player's TWO GLOVES / HANDS MEET (clap together) over a mosquito!
+  //   Moving a single hand or keeping two hands separated will NEVER accidentally trigger a mosquito selection!
+  // - In Chop Mode: Triggers when a tracked hand slices across a rising fruit!
   const checkHandWeaponCollision = (
     pIdx: number,
     normX: number,
@@ -2359,7 +2350,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     prevNormY: number,
     _vx: number,
     _vy: number,
-    handSpeed: number,
+    _handSpeed: number,
     _pointingAngle: number | undefined,
     handScale: number,
     cw: number,
@@ -2390,16 +2381,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const leftScale = Math.max(0.65, p.leftHand?.scale || handScale || 1.0);
     const rightScale = Math.max(0.65, p.rightHand?.scale || handScale || 1.0);
     const avgScale = (leftScale + rightScale) * 0.5;
-    const handDist = Math.hypot(rx - lx, ry - ly);
 
     const lLandmarks = p.leftHand?.landmarks;
     const rLandmarks = p.rightHand?.landmarks;
     const sampleIndices = [0, 4, 5, 8, 9, 12, 13, 16, 17, 20];
-
-    // Direct Real-Hand Tracking Collision Check for BOTH Mosquito Slap Mode and Fruit Slice Mode (No Gloves!)
-    const leftMovePx = Math.hypot(lx - prevLx, ly - prevLy);
-    const rightMovePx = Math.hypot(rx - prevRx, ry - prevRy);
-    const isMouseClick = Boolean(p.clapTimer && p.clapTimer > 0);
 
     const leftPts: { x: number; y: number }[] = [];
     if (showLeft) {
@@ -2423,6 +2408,87 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       }
     }
 
+    // =========================================================================
+    // MOSQUITO SLAP MODE: SELECTION TRIGGERS ONLY WHEN TWO GLOVES / HANDS MEET!
+    // =========================================================================
+    if (eng.roundMode === 'mosquito') {
+      const pixelHandSep = (p.hasDetectedHands && showLeft && showRight) ? Math.hypot(rx - lx, ry - ly) : 99999;
+      const isTwoGlovesMeeting = p.hasDetectedHands
+        ? Boolean(
+            p.isClapping ||
+            (p.clapTimer && p.clapTimer > 0) ||
+            (showLeft && showRight && pixelHandSep <= 102 * avgScale)
+          )
+        : Boolean(p.clapTimer && p.clapTimer > 0);
+
+      // Do NOT select any mosquito unless the two gloves/hands actually meet!
+      if (!isTwoGlovesMeeting) return;
+
+      // Debounce so a single clap only triggers one selection
+      if (now - (p.lastSlapSelectTime || 0) < 360) return;
+
+      const clapX = (p.clapMidX !== undefined && (p.isClapping || (p.clapTimer && p.clapTimer > 0)))
+        ? p.clapMidX * cw
+        : (lx + rx) * 0.5;
+      const clapY = (p.clapMidY !== undefined && (p.isClapping || (p.clapTimer && p.clapTimer > 0)))
+        ? p.clapMidY * ch
+        : (ly + ry) * 0.5;
+
+      let bestTarget: any = null;
+      let bestDist = 99999;
+
+      for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
+        const t = eng.targets[tIdx];
+        if (!t.alive || t.frozen || t.cooldown > 0) continue;
+        if (eng.numPlayers === 2) {
+          if (pIdx === 0 && t.team === 'p2') continue;
+          if (pIdx === 1 && t.team === 'p1') continue;
+        }
+
+        // Check distance from the meeting point of the two gloves and the span between the two gloves
+        let dClap = distToTargetOrOptionCard(
+          t,
+          { x: clapX, y: clapY - 36 * avgScale },
+          { x: clapX, y: clapY + 26 * avgScale }
+        );
+        if (showLeft && showRight) {
+          const dBridge = distToTargetOrOptionCard(t, { x: lx, y: ly }, { x: rx, y: ry });
+          if (dBridge < dClap) dClap = dBridge;
+        }
+        for (let k = 0; k < leftPts.length; k++) {
+          const dPt = distToTargetOrOptionCard(t, leftPts[k], leftPts[k]);
+          if (dPt < dClap) dClap = dPt;
+        }
+        for (let k = 0; k < rightPts.length; k++) {
+          const dPt = distToTargetOrOptionCard(t, rightPts[k], rightPts[k]);
+          if (dPt < dClap) dClap = dPt;
+        }
+
+        const slapHitRadius = (t.radius || 56) + 82 * avgScale;
+        if (dClap <= slapHitRadius && dClap < bestDist) {
+          bestDist = dClap;
+          bestTarget = t;
+        }
+      }
+
+      if (bestTarget) {
+        p.lastSlapSelectTime = now;
+        p.slapAnim = 1.0;
+        p.swordLunge = 1.0;
+        if (p.leftHand) p.leftHand.slapAnim = 1.0;
+        if (p.rightHand) p.rightHand.slapAnim = 1.0;
+        handleTargetHit(pIdx, bestTarget, 0);
+      }
+      return;
+    }
+
+    // =========================================================================
+    // CHOP MODE: SLICING RISING FRUITS
+    // =========================================================================
+    const leftMovePx = Math.hypot(lx - prevLx, ly - prevLy);
+    const rightMovePx = Math.hypot(rx - prevRx, ry - prevRy);
+    const isMouseClick = Boolean(p.clapTimer && p.clapTimer > 0);
+
     for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
       if (eng.resolved) break;
       const t = eng.targets[tIdx];
@@ -2432,8 +2498,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         if (pIdx === 1 && t.team === 'p1') continue;
       }
 
-      const hitRadiusL = t.radius + 68 * leftScale;
-      const hitRadiusR = t.radius + 68 * rightScale;
+      const hitRadiusL = t.radius + 64 * leftScale;
+      const hitRadiusR = t.radius + 64 * rightScale;
 
       let dLeft = showLeft ? distToTargetOrOptionCard(t, { x: prevLx, y: prevLy }, { x: lx, y: ly }) : 99999;
       for (let k = 0; k < leftPts.length; k++) {
@@ -2447,8 +2513,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         if (dPt < dRight) dRight = dPt;
       }
 
-      const leftHit = showLeft && dLeft < hitRadiusL && (p.hasDetectedHands || isMouseClick || leftMovePx > 0.8);
-      const rightHit = showRight && dRight < hitRadiusR && (p.hasDetectedHands || isMouseClick || rightMovePx > 0.8);
+      const leftHit = showLeft && dLeft < hitRadiusL && (isMouseClick || leftMovePx > 2.2);
+      const rightHit = showRight && dRight < hitRadiusR && (isMouseClick || rightMovePx > 2.2);
 
       if (leftHit || rightHit) {
         const sliceAng = leftHit
@@ -2464,7 +2530,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
         p.slapAnim = 1.0;
         p.swordLunge = 1.0;
-        handleTargetHit(pIdx, t, eng.roundMode === 'chop' ? sliceAng : 0);
+        handleTargetHit(pIdx, t, sliceAng);
         break;
       }
     }
@@ -2753,7 +2819,17 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           ctx.restore();
         }
 
-        // (Headgear removed per user request — clean camera arena focused on hand tracking!)
+        // 2. Draw Player Headgear (Mosquito Net Headgear covering user's face in Slap Mode; Chef Hat in Chop Mode)
+        if (showHeadgear) {
+          eng.players.forEach((p, idx) => {
+            if (idx === 1 && eng.numPlayers === 1) return;
+            if (eng.roundMode === 'mosquito') {
+              drawPurpleMosquitoNetHat(ctx, p, cw, ch);
+            } else {
+              draw3DChefHat(ctx, p, cw, ch);
+            }
+          });
+        }
 
         // 3. Draw 3D Splat Decals
         for (let i = eng.splats.length - 1; i >= 0; i--) {
@@ -2767,7 +2843,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
 
         // 4. Update & Draw Targets:
-        //    - In Mosquito Mode: Mosquitoes actively fly around the arena in lively swooping flight paths!
+        //    - In Mosquito Mode: Mosquitoes actively fly around the arena and periodically lunge in to BITE the player!
         //    - In Chop Mode: Fruits launch FROM BELOW the bottom of the screen and rise UPWARD in an arc!
         const mvStyle = movementStyleRef.current;
         const moveMult = mvStyle === 'hover' ? 0.45 : mvStyle === 'calm' ? 0.78 : mvStyle === 'zigzag' ? 1.32 : 1.05;
@@ -2782,6 +2858,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
           if (t.frozenTimer > 0) {
             t.frozenTimer = Math.max(0, t.frozenTimer - dt);
+            if (t.frozenTimer === 0 && t.frozen) {
+              t.frozen = false;
+              const restoreAng = (t.optionIndex || 0) * Math.PI * 0.5 + 0.4;
+              t.vx = Math.cos(restoreAng) * 1.9 * curSpd;
+              t.vy = eng.roundMode === 'chop' ? -8.5 * Math.sqrt(curSpd) : Math.sin(restoreAng) * 1.6 * curSpd;
+            }
           }
 
           const halfW = (t.cardW || (is2P ? 165 : 210)) / 2 + 14;
@@ -2824,7 +2906,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               if (t.x > cw - halfW - 16) { t.x = cw - halfW - 16; t.vx = -Math.abs(t.vx); }
             }
           } else {
-            // MOSQUITO MODE: Mosquitoes actively fly around the court in lively figure-8 & swooping flight paths!
+            // MOSQUITO MODE: Mosquitoes actively fly around the court and periodically latch/hover to BITE the player!
+            const biteWave = Math.sin(now * 0.0036 + t.wobblePhase * 1.9);
+            const isBitingNow = !t.frozen && biteWave > 0.15;
+            t.biteIntensity = isBitingNow ? Math.min(1, (biteWave - 0.15) / 0.55) : 0;
+
             const maxSpeed = 2.45 * curSpd;
             const minSpeed = 1.25 * curSpd;
             const currentVel = Math.hypot(t.vx, t.vy);
@@ -2838,10 +2924,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             }
 
             if (!t.frozen && !showSettingsModalRef.current) {
+              // Slow flight slightly while actively biting so it looks like the mosquito latched onto the player's visor/skin
+              const biteFlightDamp = 1 - (t.biteIntensity || 0) * 0.62;
               const swoopX = Math.sin(now * 0.0055 + t.wobblePhase) * 1.85 + Math.cos(now * 0.011 + t.wingPhase) * 0.75;
               const swoopY = Math.cos(now * 0.0068 + t.wobblePhase) * 1.55 + Math.sin(now * 0.013 + t.wingPhase) * 0.65;
-              t.x += t.vx * moveMult + swoopX * moveMult;
-              t.y += t.vy * moveMult + swoopY * moveMult;
+              t.x += (t.vx + swoopX) * moveMult * biteFlightDamp;
+              t.y += (t.vy + swoopY) * moveMult * biteFlightDamp;
             }
 
             if (t.team === 'p1') {
@@ -2960,7 +3048,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           setHudHandsDetected([[p0L, p0R], [p1L, p1R]]);
         }
 
-        // 5. Draw Tracked 3D Hands & Slicing / Slapping Animations (No Knife, No Headgear!)
+        // 5. Draw Tracked 3D Slap Gloves (in Mosquito Mode) & 3D Chopping Knives (in Chop Mode)
         eng.players.forEach((p, idx) => {
           if (idx === 1 && eng.numPlayers === 1) return;
           p.slapAnim = Math.max(0, p.slapAnim - dt * 3.8);
@@ -2969,6 +3057,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           if (p.rightHand) p.rightHand.slapAnim = Math.max(0, (p.rightHand.slapAnim || 0) - dt * 3.8);
           if (p.frozenTimer > 0) {
             p.frozenTimer = Math.max(0, p.frozenTimer - dt);
+            if (p.frozenTimer === 0) {
+              setHudFrozen([
+                (eng.players[0]?.frozenTimer || 0) > 0,
+                (eng.players[1]?.frozenTimer || 0) > 0
+              ]);
+            }
           }
           if (p.clapTimer > 0) {
             p.clapTimer = Math.max(0, p.clapTimer - dt);
@@ -2997,16 +3091,129 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             }
           }
 
-          const lx = (p.leftHand?.x ?? (p.handX - 0.068)) * cw;
-          const ly = (p.leftHand?.y ?? p.handY) * ch;
-          const rx = (p.rightHand?.x ?? (p.handX + 0.068)) * cw;
-          const ry = (p.rightHand?.y ?? p.handY) * ch;
-
           const pointerActive = !p.hasDetectedHands && (now - (p.lastPointerTime || 0) < 2500);
           const showLeft = p.hasDetectedHands ? Boolean(p.leftHand?.detected) : pointerActive;
           const showRight = p.hasDetectedHands ? Boolean(p.rightHand?.detected) : pointerActive;
 
-          // Continuous per-frame real-hand collision check in both Mosquito Mode and Chop Mode (no artificial gloves drawn!)
+          // Position of Left & Right Gloves (tracked to real hands or resting ready by the player's headgear)
+          const defaultLx = (p.headX - 0.11) * cw;
+          const defaultRx = (p.headX + 0.11) * cw;
+          const defaultY = (p.headY + 0.06) * ch + Math.sin(now * 0.004) * 5;
+
+          const lx = showLeft ? (p.leftHand?.x ?? (p.handX - 0.068)) * cw : defaultLx;
+          const ly = showLeft ? (p.leftHand?.y ?? p.handY) * ch : defaultY;
+          const rx = showRight ? (p.rightHand?.x ?? (p.handX + 0.068)) * cw : defaultRx;
+          const ry = showRight ? (p.rightHand?.y ?? p.handY) * ch : defaultY;
+
+          const isTouching = Boolean(p.isClapping || (p.clapTimer && p.clapTimer > 0));
+
+          // Draw AR Hand Tracking Reticles & Magnetic Clap Tether between Left & Right Gloves
+          drawARHandTrackingOverlay(
+            ctx,
+            p,
+            lx,
+            ly,
+            rx,
+            ry,
+            showLeft || !p.hasDetectedHands,
+            showRight || !p.hasDetectedHands,
+            isTouching,
+            cw,
+            ch,
+            now
+          );
+
+          if (eng.roundMode === 'mosquito') {
+            // Draw Left 3D Cartoon Slap Glove
+            if (showLeft || !p.hasDetectedHands) {
+              drawSingleCartoonGlove(
+                ctx,
+                lx,
+                ly,
+                showLeft ? (p.leftHand?.angle ?? -0.18) : -0.14,
+                showLeft ? (p.leftHand?.scale || 1.0) : 1.0,
+                false,
+                p.theme,
+                Math.max(p.slapAnim || 0, p.leftHand?.slapAnim || 0),
+                showLeft ? (p.leftHand?.openness || 1.0) : 1.0,
+                p.frozenTimer > 0,
+                showLeft ? (p.leftHand?.landmarks || undefined) : undefined,
+                cw,
+                ch
+              );
+            }
+
+            // Draw Right 3D Cartoon Slap Glove
+            if (showRight || !p.hasDetectedHands) {
+              drawSingleCartoonGlove(
+                ctx,
+                rx,
+                ry,
+                showRight ? (p.rightHand?.angle ?? 0.18) : 0.14,
+                showRight ? (p.rightHand?.scale || 1.0) : 1.0,
+                true,
+                p.theme,
+                Math.max(p.slapAnim || 0, p.rightHand?.slapAnim || 0),
+                showRight ? (p.rightHand?.openness || 1.0) : 1.0,
+                p.frozenTimer > 0,
+                showRight ? (p.rightHand?.landmarks || undefined) : undefined,
+                cw,
+                ch
+              );
+            }
+
+            // When the two gloves clap together, draw a bright golden "CLAP!" shockwave ring at the meeting point
+            if (isTouching) {
+              const cx = ((p.clapMidX ?? ((lx + rx) * 0.5 / cw))) * cw;
+              const cy = ((p.clapMidY ?? ((ly + ry) * 0.5 / ch))) * ch;
+              ctx.save();
+              ctx.translate(cx, cy);
+              ctx.strokeStyle = '#facc15';
+              ctx.lineWidth = 4.5;
+              ctx.beginPath();
+              ctx.arc(0, 0, 38 + (1 - (p.slapAnim || 0.5)) * 28, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.restore();
+            }
+          } else {
+            // CHOP MODE: Draw 3D Chopping Knives on active hands
+            if (showLeft) {
+              drawSingle3DChoppingKnife(
+                ctx,
+                lx,
+                ly,
+                p.leftHand?.knifeAngle ?? -0.45,
+                p.leftHand?.scale || 1.0,
+                false,
+                p.theme,
+                p.leftHand?.trail || [],
+                cw,
+                ch,
+                now,
+                p.leftHand?.slapAnim || 0,
+                p.frozenTimer > 0
+              );
+            }
+            if (showRight) {
+              drawSingle3DChoppingKnife(
+                ctx,
+                rx,
+                ry,
+                p.rightHand?.knifeAngle ?? -2.69,
+                p.rightHand?.scale || 1.0,
+                true,
+                p.theme,
+                p.rightHand?.trail || [],
+                cw,
+                ch,
+                now,
+                p.rightHand?.slapAnim || 0,
+                p.frozenTimer > 0
+              );
+            }
+          }
+
+          // Continuous per-frame collision check
           if (!showSettingsModalRef.current && (showLeft || showRight)) {
             const activeX = showLeft && showRight ? (lx + rx) * 0.5 : (showLeft ? lx : rx);
             const activeY = showLeft && showRight ? (ly + ry) * 0.5 : (showLeft ? ly : ry);
@@ -3153,7 +3360,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   // Save Quiz to Firebase
   const saveQuiz = async (quiz: Quiz) => {
     if (!user) {
-      alert("Please log in to save your game!");
+      onViewChange("games");
       return;
     }
     try {
@@ -3195,7 +3402,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       onViewChange("games");
     } catch (e: any) {
       console.error("Save error:", e);
-      alert("Error saving game. Please try again.");
     }
   };
 
@@ -3359,10 +3565,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
   };
 
+  // Mosquito Net Headgear Covering the User's Face (Matches Reference: Purple Dome Helmet + Spiky Plume + Headlamp Strap + Full-Face Protective Mesh Grid + Bottom Rim)
   const drawPurpleMosquitoNetHat = (ctx: CanvasRenderingContext2D, p: any, cw: number, ch: number) => {
     const hx = p.headX * cw;
     const hy = p.headY * ch;
-    const baseScale = Math.max(0.72, Math.min(1.42, cw / 960)) * (p.headScale || 1.0);
+    const baseScale = Math.max(0.82, Math.min(1.52, cw / 920)) * (p.headScale || 1.08);
     const th = p.theme;
 
     ctx.save();
@@ -3370,148 +3577,186 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.rotate(p.headTilt || 0);
     ctx.scale(baseScale, baseScale);
 
-    // 1. Subtle 3D Translucent Explorer Mesh Veil (Draped cleanly to the sides so the player's eyes & face are 100% clear)
-    const veilTopY = -34;
-    const veilBottomY = 48;
-    const veilTopHalfW = 122;
-    const veilBotHalfW = 112;
+    // 1. FULL-FACE PROTECTIVE MOSQUITO NET MESH VISOR (Covers the player's entire face from brim y=-24 down to chin y=+186)
+    const veilTopY = -26;
+    const veilBottomY = 186;
+    const veilTopHalfW = 128;
+    const veilBotHalfW = 122;
 
-    const veilGrad = ctx.createLinearGradient(-veilTopHalfW, 0, veilTopHalfW, 0);
-    veilGrad.addColorStop(0, 'rgba(255, 255, 255, 0.32)');
-    veilGrad.addColorStop(0.22, 'rgba(241, 245, 249, 0.08)');
-    veilGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
-    veilGrad.addColorStop(0.78, 'rgba(241, 245, 249, 0.08)');
-    veilGrad.addColorStop(1, 'rgba(255, 255, 255, 0.32)');
+    // Translucent Screen Tint over the Player's Face
+    const veilGrad = ctx.createLinearGradient(-veilTopHalfW, veilTopY, veilTopHalfW, veilBottomY);
+    veilGrad.addColorStop(0, 'rgba(255, 255, 255, 0.24)');
+    veilGrad.addColorStop(0.5, 'rgba(243, 232, 255, 0.14)');
+    veilGrad.addColorStop(1, 'rgba(255, 255, 255, 0.26)');
 
     ctx.fillStyle = veilGrad;
     ctx.beginPath();
     ctx.moveTo(-veilTopHalfW, veilTopY);
     ctx.lineTo(-veilBotHalfW, veilBottomY);
-    ctx.quadraticCurveTo(0, veilBottomY + 16, veilBotHalfW, veilBottomY);
+    ctx.quadraticCurveTo(0, veilBottomY + 20, veilBotHalfW, veilBottomY);
     ctx.lineTo(veilTopHalfW, veilTopY);
-    ctx.quadraticCurveTo(0, veilTopY - 14, -veilTopHalfW, veilTopY);
+    ctx.quadraticCurveTo(0, veilTopY - 12, -veilTopHalfW, veilTopY);
     ctx.closePath();
     ctx.fill();
 
-    // Fine 3D Hex/Diamond Netting Grid (stronger at edges, nearly invisible in center over eyes)
+    // Soft Translucent Purple Face/Nose Guard Circle inside the Net (matching reference image)
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
-    ctx.lineWidth = 1;
+    ctx.fillStyle = p.isP2 ? 'rgba(251, 113, 133, 0.34)' : 'rgba(192, 132, 252, 0.34)';
     ctx.beginPath();
-    for (let x = -105; x <= 105; x += 18) {
-      if (Math.abs(x) < 42) continue; // Keep eye window crystal clear!
-      ctx.moveTo(x, veilTopY);
-      ctx.lineTo(x * 0.94, veilBottomY + 4);
+    ctx.arc(-22, 92, 38, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Full-Face Crisp White Mosquito Netting Grid (Covers entire face visor edge-to-edge)
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-veilTopHalfW, veilTopY);
+    ctx.lineTo(-veilBotHalfW, veilBottomY);
+    ctx.quadraticCurveTo(0, veilBottomY + 20, veilBotHalfW, veilBottomY);
+    ctx.lineTo(veilTopHalfW, veilTopY);
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.46)';
+    ctx.lineWidth = 1.35;
+    ctx.beginPath();
+    for (let x = -120; x <= 120; x += 20) {
+      ctx.moveTo(x, veilTopY - 6);
+      ctx.lineTo(x * 0.96, veilBottomY + 18);
     }
-    for (let y = veilTopY + 14; y <= veilBottomY; y += 16) {
-      ctx.moveTo(-110, y);
-      ctx.lineTo(-42, y + 2);
-      ctx.moveTo(42, y + 2);
-      ctx.lineTo(110, y);
+    for (let y = veilTopY + 12; y <= veilBottomY + 12; y += 20) {
+      ctx.moveTo(-130, y);
+      ctx.quadraticCurveTo(0, y + 8, 130, y);
     }
     ctx.stroke();
     ctx.restore();
 
-    // 2. 3D Shadow under Hat Brim
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = 18;
-    ctx.shadowOffsetY = 8;
+    // Dark Outline Side Pillars of the Face Visor
+    ctx.strokeStyle = th.outline || '#2e1065';
+    ctx.lineWidth = 5.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-veilTopHalfW + 3, veilTopY + 4);
+    ctx.lineTo(-veilBotHalfW + 2, veilBottomY);
+    ctx.moveTo(veilTopHalfW - 3, veilTopY + 4);
+    ctx.lineTo(veilBotHalfW - 2, veilBottomY);
+    ctx.stroke();
 
-    // 3. Volumetric 3D Safari/Pith Crown Dome
-    const domeGrad = ctx.createRadialGradient(-26, -104, 8, 0, -78, 98);
-    domeGrad.addColorStop(0, '#ffffff');
-    domeGrad.addColorStop(0.18, th.hatLight);
-    domeGrad.addColorStop(0.58, th.hatMain);
+    // Thick Sculpted Purple Bottom Rim Bar Sealing the Bottom of the Face Net
+    const botRimGrad = ctx.createLinearGradient(-veilBotHalfW, veilBottomY - 8, veilBotHalfW, veilBottomY + 22);
+    botRimGrad.addColorStop(0, th.hatLight);
+    botRimGrad.addColorStop(0.5, th.hatMain);
+    botRimGrad.addColorStop(1, th.hatDark);
+    ctx.fillStyle = botRimGrad;
+    ctx.strokeStyle = th.outline || '#2e1065';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-veilBotHalfW - 6, veilBottomY - 6);
+    ctx.quadraticCurveTo(0, veilBottomY + 14, veilBotHalfW + 6, veilBottomY - 6);
+    ctx.quadraticCurveTo(veilBotHalfW + 8, veilBottomY + 10, veilBotHalfW - 2, veilBottomY + 12);
+    ctx.quadraticCurveTo(0, veilBottomY + 32, -veilBotHalfW + 2, veilBottomY + 12);
+    ctx.quadraticCurveTo(-veilBotHalfW - 8, veilBottomY + 10, -veilBotHalfW - 6, veilBottomY - 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 2. Spiky Cartoon Side Plume / Tuft on Left of Helmet (matching reference image)
+    ctx.fillStyle = th.plume || '#4c1d95';
+    ctx.strokeStyle = th.outline || '#2e1065';
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-78, -88);
+    ctx.lineTo(-154, -96);
+    ctx.lineTo(-118, -68);
+    ctx.lineTo(-146, -48);
+    ctx.lineTo(-82, -46);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Volumetric 3D Safari / Beekeeper Helmet Crown Dome
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 6;
+
+    const domeGrad = ctx.createRadialGradient(-24, -104, 10, 0, -76, 112);
+    domeGrad.addColorStop(0, th.hatLight);
+    domeGrad.addColorStop(0.45, th.hatMain);
     domeGrad.addColorStop(1, th.hatDark);
 
     ctx.fillStyle = domeGrad;
-    ctx.strokeStyle = th.outline;
-    ctx.lineWidth = 4.5;
+    ctx.strokeStyle = th.outline || '#2e1065';
+    ctx.lineWidth = 5.5;
     ctx.beginPath();
-    ctx.moveTo(-80, -54);
-    ctx.bezierCurveTo(-84, -134, 84, -134, 80, -54);
+    ctx.moveTo(-104, -44);
+    ctx.bezierCurveTo(-106, -138, 106, -138, 104, -44);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
     ctx.restore();
 
-    // Crown 3D Ribbed Seams & Top Button
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 2;
+    // 4. Brown & Gold Explorer Strap Band across Helmet Crown
+    ctx.fillStyle = '#5c2d24';
+    ctx.strokeStyle = th.outline || '#2e1065';
+    ctx.lineWidth = 4.5;
     ctx.beginPath();
-    ctx.moveTo(-36, -58);
-    ctx.quadraticCurveTo(-28, -110, 0, -116);
-    ctx.quadraticCurveTo(28, -110, 36, -58);
-    ctx.stroke();
-
-    // Top 3D Vent Knob
-    const knobGrad = ctx.createRadialGradient(-3, -120, 1, 0, -118, 12);
-    knobGrad.addColorStop(0, '#fde047');
-    knobGrad.addColorStop(1, '#b45309');
-    ctx.fillStyle = knobGrad;
-    ctx.strokeStyle = th.outline;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.ellipse(0, -116, 13, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // 4. 3D Ribbon Band + Extruded Gold Buckle
-    const bandGrad = ctx.createLinearGradient(-80, -70, 80, -56);
-    bandGrad.addColorStop(0, th.hatDark);
-    bandGrad.addColorStop(0.5, th.band);
-    bandGrad.addColorStop(1, th.hatDark);
-    ctx.fillStyle = bandGrad;
-    ctx.strokeStyle = th.outline;
-    ctx.lineWidth = 3.5;
-    ctx.beginPath();
-    ctx.moveTo(-80, -72);
-    ctx.quadraticCurveTo(0, -86, 80, -72);
-    ctx.lineTo(83, -54);
-    ctx.quadraticCurveTo(0, -68, -83, -54);
+    ctx.moveTo(-102, -68);
+    ctx.quadraticCurveTo(0, -82, 102, -68);
+    ctx.lineTo(105, -46);
+    ctx.quadraticCurveTo(0, -60, -105, -46);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // 3D Gold Buckle on Hatband
-    const buckleGrad = ctx.createLinearGradient(-16, -78, 16, -56);
-    buckleGrad.addColorStop(0, '#fef08a');
-    buckleGrad.addColorStop(0.5, '#f59e0b');
-    buckleGrad.addColorStop(1, '#92400e');
-    ctx.fillStyle = buckleGrad;
-    ctx.strokeStyle = th.outline;
-    ctx.lineWidth = 2.5;
-    roundRect(ctx, -18, -77, 36, 18, 5);
+    // Gold Accent Buckle Segment on Right Side of Strap
+    ctx.fillStyle = '#f59e0b';
+    ctx.strokeStyle = th.outline || '#2e1065';
+    ctx.lineWidth = 3.5;
+    roundRect(ctx, 18, -73, 42, 20, 4);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = th.band;
-    roundRect(ctx, -10, -73, 20, 10, 3);
-    ctx.fill();
 
     // 5. Wide Sculpted 3D Upper Brim
-    const brimGrad = ctx.createLinearGradient(-138, -62, 138, -22);
+    const brimGrad = ctx.createLinearGradient(-152, -52, 152, -18);
     brimGrad.addColorStop(0, th.hatLight);
     brimGrad.addColorStop(0.5, th.hatMain);
     brimGrad.addColorStop(1, th.hatDark);
     ctx.fillStyle = brimGrad;
-    ctx.strokeStyle = th.outline;
-    ctx.lineWidth = 4.5;
+    ctx.strokeStyle = th.outline || '#2e1065';
+    ctx.lineWidth = 5.5;
     ctx.beginPath();
-    ctx.moveTo(-138, -34);
-    ctx.quadraticCurveTo(0, -76, 138, -34);
-    ctx.quadraticCurveTo(144, -22, 126, -23);
-    ctx.quadraticCurveTo(0, -52, -126, -23);
-    ctx.quadraticCurveTo(-144, -22, -138, -34);
+    ctx.moveTo(-150, -28);
+    ctx.quadraticCurveTo(0, -68, 150, -28);
+    ctx.quadraticCurveTo(156, -16, 136, -17);
+    ctx.quadraticCurveTo(0, -46, -136, -17);
+    ctx.quadraticCurveTo(-156, -16, -150, -28);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Specular Rim Highlight on Dome
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+    // 6. Round Blue Headlamp Badge on Front-Left of Helmet Band (matching reference image)
+    ctx.save();
+    ctx.translate(-42, -66);
+    ctx.fillStyle = '#60a5fa';
+    ctx.strokeStyle = '#3b0764';
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.ellipse(-28, -92, 22, 9, -0.35, 0, Math.PI * 2);
+    ctx.arc(0, 0, 23, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#1e1b4b';
+    ctx.beginPath();
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#bfdbfe';
+    ctx.beginPath();
+    ctx.arc(-4, -4, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     ctx.restore();
   };
@@ -4390,12 +4635,34 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
 
     // ---------------------------------------------
-    // 2. Volumetric 3D Cartoon Mosquito (Friendly Bright 3D Colors)
+    // 2. Volumetric 3D Cartoon Mosquito with Biting Player Animation
     // ---------------------------------------------
+    const biteIntensity = t.frozen ? 0 : (t.biteIntensity || 0);
+    const jabCycle = biteIntensity > 0 ? Math.abs(Math.sin(time * 0.042 + t.wobblePhase)) : 0;
+    const jabX = -jabCycle * 12 * biteIntensity;
+    const jabY = jabCycle * 6 * biteIntensity;
+
+    // If targeted between the player's hands, show a subtle "CLAP TO SLAP" target ring
+    if (t.isTargeted && !t.frozen) {
+      ctx.save();
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([7, 5]);
+      ctx.beginPath();
+      ctx.arc(0, -4, 44 + Math.sin(time * 0.02) * 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     ctx.save();
     if (!facingLeft) ctx.scale(-1, 1);
 
-    const wingFlap = t.frozen ? 0.15 : Math.sin(time * 0.15 + t.wingPhase) * 0.72;
+    // Tilt mosquito forward and jab as it bites the player!
+    ctx.translate(jabX * 0.45, jabY * 0.45);
+    ctx.rotate(-biteIntensity * 0.24);
+
+    const wingFlap = t.frozen ? 0.15 : Math.sin(time * (biteIntensity > 0 ? 0.24 : 0.15) + t.wingPhase) * 0.78;
 
     // Back Iridescent 3D Wing
     ctx.save();
@@ -4414,14 +4681,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.stroke();
     ctx.restore();
 
-    // 6 Articulated 3D Insect Legs
-    ctx.strokeStyle = '#475569';
+    // 6 Articulated 3D Insect Legs (Gripping onto the player's visor/skin while biting)
+    ctx.strokeStyle = '#334155';
     ctx.lineWidth = 2.8;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (let legIdx = 0; legIdx < 3; legIdx++) {
       const legOffset = legIdx * 10 - 6;
-      const legWiggle = t.frozen ? 0 : Math.sin(time * 0.022 + legIdx * 1.6) * 4.5;
+      const legWiggle = t.frozen ? 0 : Math.sin(time * 0.022 + legIdx * 1.6) * (biteIntensity > 0 ? 2.0 : 4.5);
       ctx.beginPath();
       ctx.moveTo(legOffset, 5);
       ctx.lineTo(legOffset + 7, 17 + legWiggle);
@@ -4429,14 +4696,22 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ctx.stroke();
     }
 
-    // 3D Segmented Abdomen with Vibrant Option-Colored Stripes
+    // 3D Segmented Abdomen (Swelling & Pulsing Crimson Red as it Bites the Player!)
     ctx.save();
+    const abdSwell = 1 + biteIntensity * jabCycle * 0.18;
     ctx.translate(26, 2);
-    ctx.rotate(0.22);
+    ctx.rotate(0.22 + biteIntensity * 0.12);
+    ctx.scale(abdSwell, abdSwell);
     const abdGrad = ctx.createRadialGradient(-6, -6, 3, 0, 0, 28);
-    abdGrad.addColorStop(0, '#94a3b8');
-    abdGrad.addColorStop(0.55, '#475569');
-    abdGrad.addColorStop(1, '#334155');
+    if (biteIntensity > 0.25) {
+      abdGrad.addColorStop(0, '#fca5a5');
+      abdGrad.addColorStop(0.5, '#ef4444');
+      abdGrad.addColorStop(1, '#7f1d1d');
+    } else {
+      abdGrad.addColorStop(0, '#94a3b8');
+      abdGrad.addColorStop(0.55, '#475569');
+      abdGrad.addColorStop(1, '#334155');
+    }
     ctx.fillStyle = abdGrad;
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 2.5;
@@ -4448,8 +4723,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     // Clip to abdomen for curved 3D colored stripes
     ctx.clip();
     const stripeGrad = ctx.createLinearGradient(0, -15, 0, 15);
-    stripeGrad.addColorStop(0, t.color.light);
-    stripeGrad.addColorStop(0.5, t.color.main);
+    stripeGrad.addColorStop(0, biteIntensity > 0.4 ? '#fecaca' : t.color.light);
+    stripeGrad.addColorStop(0.5, biteIntensity > 0.4 ? '#dc2626' : t.color.main);
     stripeGrad.addColorStop(1, t.color.dark);
     ctx.fillStyle = stripeGrad;
     for (let s = -16; s <= 16; s += 9) {
@@ -4503,17 +4778,52 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.quadraticCurveTo(-30, -26, -38, -24);
     ctx.stroke();
 
-    // 3D Metallic Needle Proboscis
-    const needleGrad = ctx.createLinearGradient(-26, -4, -62, -1);
+    // 3D Metallic Needle Proboscis Jabbing & Biting the Player!
+    const needleTipX = -62 + jabX * 0.7;
+    const needleTipY = 2 + jabY * 0.8;
+    const needleGrad = ctx.createLinearGradient(-26, -4, needleTipX, needleTipY);
     needleGrad.addColorStop(0, '#64748b');
-    needleGrad.addColorStop(0.6, '#f8fafc');
+    needleGrad.addColorStop(0.5, '#f8fafc');
     needleGrad.addColorStop(1, '#ef4444');
     ctx.strokeStyle = needleGrad;
-    ctx.lineWidth = 3.2;
+    ctx.lineWidth = 3.2 + biteIntensity * 1.2;
     ctx.beginPath();
     ctx.moveTo(-26, -4);
-    ctx.lineTo(-60, -1);
+    ctx.lineTo(needleTipX, needleTipY);
     ctx.stroke();
+
+    // Biting Puncture Rings, Blood Suction Pulse & Bite Sparks at Needle Tip!
+    if (biteIntensity > 0.15) {
+      const rippleR = 6 + ((time * 0.04) % 14);
+      ctx.save();
+      ctx.strokeStyle = `rgba(239, 68, 68, ${Math.max(0.2, 0.85 * biteIntensity)})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(needleTipX, needleTipY, rippleR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Glowing red bite point & suction droplet moving up the proboscis
+      const dropProgress = (time * 0.006) % 1;
+      const dropX = needleTipX + (-26 - needleTipX) * dropProgress;
+      const dropY = needleTipY + (-4 - needleTipY) * dropProgress;
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(needleTipX, needleTipY, 4.2 * biteIntensity, 0, Math.PI * 2);
+      ctx.arc(dropX, dropY, 3.2 * biteIntensity, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Comic Bite Sparks around the puncture site
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+      for (let sp = 0; sp < 4; sp++) {
+        const a = sp * (Math.PI / 2) + time * 0.01;
+        ctx.beginPath();
+        ctx.moveTo(needleTipX + Math.cos(a) * 5, needleTipY + Math.sin(a) * 5);
+        ctx.lineTo(needleTipX + Math.cos(a) * 11, needleTipY + Math.sin(a) * 11);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // Glowing 3D Compound Ruby Eyes
     const eyeGrad = ctx.createRadialGradient(-23, -9, 1, -21, -7, 7);
@@ -4524,6 +4834,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.beginPath();
     ctx.arc(-21, -7.5, 6.2, 0, Math.PI * 2);
     ctx.fill();
+
+    // Fierce Biting Eyebrow Ridge when Biting
+    if (biteIntensity > 0.2) {
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(-28, -12);
+      ctx.lineTo(-16, -9);
+      ctx.stroke();
+    }
 
     // Dual Eye Specular Glints
     ctx.fillStyle = '#ffffff';
@@ -4562,6 +4882,20 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
 
     ctx.restore();
+
+    // Floating Comic "💢 BITE!" Indicator when Mosquito is Actively Biting
+    if (biteIntensity > 0.55 && !t.frozen) {
+      ctx.save();
+      ctx.font = '900 11px Fredoka, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ef4444';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      const biteLabelX = facingLeft ? -48 : 48;
+      ctx.strokeText('💢 BITE!', biteLabelX, -22);
+      ctx.fillText('💢 BITE!', biteLabelX, -22);
+      ctx.restore();
+    }
 
     // 3. If Wrong Option was Slapped, Encase Mosquito & Word in a 3D Ice Block!
     if (t.frozen) {
@@ -5427,8 +5761,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             {/* Bottom Light 3D Instruction Pill */}
             <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-30 px-6 py-2.5 rounded-full bg-white/95 backdrop-blur-md border-2 border-sky-300 border-b-4 border-b-sky-500 text-xs sm:text-base font-black text-slate-800 whitespace-nowrap shadow-lg">
               {activeRoundMode === 'mosquito'
-                ? '🦟🖐️ Slap the flying mosquitoes directly with your real hand on camera! (+5 Correct / -5 & Freeze if Wrong)'
-                : '🍉🖐️ Slice the rising fruits directly with your real hand on camera! (+5 Correct / -5 & Freeze if Wrong)'}
+                ? '🦟🧤 Bring both gloves together (CLAP!) over a mosquito to slap it! (+5 Correct / -5 & Freeze if Wrong)'
+                : '🍉🔪 Slice the rising fruits with your tracked hands! (+5 Correct / -5 & Freeze if Wrong)'}
             </div>
           </div>
         </div>
@@ -5824,7 +6158,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                     : 'bg-white border-slate-200 border-b-slate-300 opacity-90'
                 }`}>
                   {(isP1Winner || isTie) && (
-                    <span className=" -top-3.5 px-3 py-0.5 rounded-full bg-amber-400 border-2 border-white text-slate-900 text-[11px] font-black uppercase shadow">
+                    <span className="absolute -top-3.5 px-3 py-0.5 rounded-full bg-amber-400 border-2 border-white text-slate-900 text-[11px] font-black uppercase shadow">
                       {isTie ? '🥇 Co-Champion' : '👑 Winner'}
                     </span>
                   )}
@@ -5858,7 +6192,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                       : 'bg-white border-slate-200 border-b-slate-300 opacity-90'
                   }`}>
                     {(isP2Winner || isTie) && (
-                      <span className="-top-3.5 px-3 py-0.5 rounded-full bg-amber-400 border-2 border-white text-slate-900 text-[11px] font-black uppercase shadow">
+                      <span className="absolute -top-3.5 px-3 py-0.5 rounded-full bg-amber-400 border-2 border-white text-slate-900 text-[11px] font-black uppercase shadow">
                         {isTie ? '🥇 Co-Champion' : '👑 Winner'}
                       </span>
                     )}
