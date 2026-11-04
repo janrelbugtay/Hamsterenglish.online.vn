@@ -21,8 +21,12 @@ import {
   Award,
   GraduationCap,
   Lightbulb,
-  BookOpen
+  BookOpen,
+  QrCode,
+  Share2,
+  Check
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { ViewState } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
@@ -41,6 +45,8 @@ import {
   STARTERS_MONSTER_ART_DECK,
   STARTERS_MONSTER_ART_DECK_ID,
 } from '../components/StartersMonsterArtStudio';
+import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
+import { convertSlideDeckToHomeworkObject } from '../utils/homeworkService';
 
 export type SlideType = 'title' | 'vocab' | 'question' | 'grammar' | 'discussion';
 
@@ -123,7 +129,7 @@ export function matchGlobalSuccess(deck: any, gsId: string): boolean {
   return combined.includes(gsId.toLowerCase());
 }
 
-export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => void }) {
+export function MySlides({ onViewChange }: { onViewChange: (view: ViewState, data?: any) => void }) {
   const { user } = useAuth();
   const isAdmin = Boolean(
     user && !user.isAnonymous && user.email?.toLowerCase().trim() === 'janrelbugtay03@gmail.com'
@@ -204,10 +210,28 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
 
   // Editor Modal & Undo Delete state
   const [editingDeck, setEditingDeck] = useState<SlideDeck | null>(null);
+  const [deckForHomework, setDeckForHomework] = useState<any | null>(null);
+  const [deckForShareQr, setDeckForShareQr] = useState<SlideDeck | null>(null);
+  const [copiedSlideLink, setCopiedSlideLink] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [lastDeletedDeck, setLastDeletedDeck] = useState<SlideDeck | null>(null);
 
   const presenterRef = useRef<HTMLDivElement>(null);
+
+  // Auto-open deck if ?slideId=... is present in URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const slideId = params.get('slideId');
+    if (slideId && decks.length > 0 && !presentingDeck) {
+      const target = decks.find((d) => d.id === slideId);
+      if (target) {
+        setForceStandardSlideView(false);
+        setPresentingDeck(target);
+        setCurrentSlideIndex(0);
+      }
+    }
+  }, [decks]);
 
   // Persist decks and deleted IDs locally
   useEffect(() => {
@@ -1075,8 +1099,9 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                     </div>
 
                     {/* Bottom Deck Actions */}
-                    <div className="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-1.5">
                       <button
+                        type="button"
                         onClick={() => {
                           setForceStandardSlideView(false);
                           startPresenting(deck);
@@ -1085,8 +1110,36 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                       >
                         <Play className="w-3.5 h-3.5 fill-current" />
                         <span>
-                          {deck.id === STARTERS_MONSTER_ART_DECK_ID ? 'Launch Speaking Studio' : 'Present Deck'}
+                          {deck.id === STARTERS_MONSTER_ART_DECK_ID ? 'Launch Studio' : 'Present'}
                         </span>
+                      </button>
+
+                      {/* Send Slide Deck as Homework */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeckForHomework(convertSlideDeckToHomeworkObject(deck));
+                        }}
+                        className="px-2.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Send this slide deck as Homework"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>Homework</span>
+                      </button>
+
+                      {/* Share & QR Code on hamsterenglish.online */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCopiedSlideLink(false);
+                          setDeckForShareQr(deck);
+                        }}
+                        className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                        title="Share Slide Link & QR Code (hamsterenglish.online)"
+                      >
+                        <QrCode className="w-4 h-4" />
                       </button>
 
                       {isAdmin && (
@@ -1929,6 +1982,108 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
           </div>
         </div>
       )}
+
+      {/* Share Slide Deck & QR Code Modal (hamsterenglish.online) */}
+      {deckForShareQr && (
+        <div className="fixed inset-0 z-[250] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl p-6 text-center space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5 text-left">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-900/50 text-brand-purple flex items-center justify-center">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white leading-tight">
+                    Share Slide Deck & QR
+                  </h3>
+                  <p className="text-[11px] text-slate-400">hamsterenglish.online</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeckForShareQr(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <h4 className="text-base font-black text-slate-900 dark:text-white line-clamp-1">
+                {deckForShareQr.title}
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {deckForShareQr.curriculum || deckForShareQr.gradeLevel} · {deckForShareQr.slides.length} Slides
+              </p>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl border-2 border-purple-200 shadow-inner inline-flex mx-auto">
+              <QRCodeSVG
+                value={`https://hamsterenglish.online/?slideId=${encodeURIComponent(deckForShareQr.id)}`}
+                size={180}
+                level="H"
+                includeMargin={false}
+              />
+            </div>
+
+            <div className="text-xs font-mono text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl flex items-center justify-between gap-2 overflow-hidden border border-slate-200 dark:border-slate-700">
+              <span className="truncate">
+                https://hamsterenglish.online/?slideId={deckForShareQr.id}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(
+                    `https://hamsterenglish.online/?slideId=${encodeURIComponent(deckForShareQr.id)}`
+                  );
+                  setCopiedSlideLink(true);
+                  setTimeout(() => setCopiedSlideLink(false), 2000);
+                }}
+                className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-purple text-white font-bold text-xs flex items-center gap-1 hover:bg-purple-700 cursor-pointer"
+              >
+                {copiedSlideLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSlideLink ? 'Copied!' : 'Copy'}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = deckForShareQr;
+                  setDeckForShareQr(null);
+                  setDeckForHomework(convertSlideDeckToHomeworkObject(target));
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>Send as Homework (PIN & Grading)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeckForShareQr(null)}
+                className="py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Homework Modal for Slide Decks */}
+      <CreateHomeworkModal
+        isOpen={Boolean(deckForHomework)}
+        game={deckForHomework}
+        onClose={() => setDeckForHomework(null)}
+        onCreated={() => {
+          triggerToast('Slide deck assigned as homework on hamsterenglish.online!');
+        }}
+        onNavigateToHomework={() => {
+          setDeckForHomework(null);
+          onViewChange('homework');
+        }}
+      />
     </div>
   );
 }

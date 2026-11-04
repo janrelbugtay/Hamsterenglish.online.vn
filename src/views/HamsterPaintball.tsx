@@ -619,14 +619,10 @@ export default function HamsterPaintball({
   // Unique Client Session ID
   const clientIdRef = useRef<string>(`pb_${Math.random().toString(36).slice(2, 10)}`);
 
-  // Live Scannable Join URL
-  const liveJoinUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}?game=hamster-paintball&room=${roomCode}`
-      : `https://hamsterenglish.online/?game=hamster-paintball&room=${roomCode}`;
+  // Live Scannable Join URL (strictly uses production domain hamsterenglish.online, never dev server)
+  const liveJoinUrl = `https://hamsterenglish.online/?game=hamster-paintball&room=${roomCode}`;
 
-  const liveDisplayHost =
-    typeof window !== 'undefined' ? window.location.host : 'hamsterenglish.online';
+  const liveDisplayHost = 'hamsterenglish.online';
 
   // Keep roomCode in sessionStorage
   useEffect(() => {

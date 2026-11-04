@@ -189,6 +189,11 @@ export default function App() {
         setIsAuthModalOpen(true);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
+      const slideIdParam = params.get('slideId');
+      if (slideIdParam) {
+        setCurrentView('my-slides');
+        return;
+      }
       const hwPin = params.get('hwPin') || params.get('pin') || (window.location.hash?.startsWith('#homework-') ? window.location.hash.replace('#homework-', '') : null);
       if (hwPin) {
         setSelectedGame({ pinCode: hwPin });
@@ -207,9 +212,9 @@ export default function App() {
 
   const [pendingAction, setPendingAction] = useState<{ view: ViewState; data?: any } | null>(null);
 
-  // Name Picker games, Homework, and Hamster Paintball multiplayer links can be used freely by students without signing in
+  // Name Picker games, Homework, My Slides, and Hamster Paintball multiplayer links can be used freely by students without signing in
   const isNamePickerView = (v: ViewState) => v === "squid-game-picker" || v === "student-race";
-  const isPublicStudentView = (v: ViewState) => isNamePickerView(v) || v === "homework" || v === "public-dashboard" || v === "hamster-paintball";
+  const isPublicStudentView = (v: ViewState) => isNamePickerView(v) || v === "homework" || v === "public-dashboard" || v === "hamster-paintball" || v === "my-slides";
 
   // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {

@@ -611,8 +611,8 @@ const HostLobby = ({ state, dispatch }: { state: any, dispatch: any }) => {
     const teamX = players.filter((p: any) => p.team === 'X');
     const teamO = players.filter((p: any) => p.team === 'O');
     
-    // Construct the join URL
-    const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}?joinCode=${state.roomId}` : '';
+    // Construct the join URL using production domain hamsterenglish.online
+    const joinUrl = `https://hamsterenglish.online/?joinCode=${state.roomId}`;
 
     return (
         <div className="min-h-screen bg-emerald-100 text-gray-900 flex flex-col font-sans p-3 sm:p-8">

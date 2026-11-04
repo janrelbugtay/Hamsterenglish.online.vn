@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   BookOpen,
@@ -11,15 +11,17 @@ import {
   Sparkles,
   Link as LinkIcon,
   Gamepad2,
-  AlertCircle,
   Users,
   QrCode,
+  Presentation,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   HomeworkAssignment,
   generateHomeworkPin,
   saveHomeworkAssignment,
+  convertSlideDeckToHomeworkObject,
+  normalizeGameQuestionsForHomework,
 } from '../utils/homeworkService';
 
 export const PRODUCTION_HOMEWORK_BASE_URL = 'https://hamsterenglish.online';
@@ -29,15 +31,16 @@ export function getHomeworkShareUrl(pinCode: string): string {
 }
 
 const AVAILABLE_GAME_MODES = [
+  { id: 'study-mode', name: 'Study Mode', emoji: '📚' },
   { id: 'roller-coaster-quiz', name: 'Roller Coaster Quiz', emoji: '🎢' },
   { id: 'hamster-paintball', name: 'Hamster Paintball (3D Park Arena)', emoji: '🎯' },
   { id: 'bubble-pop', name: 'Bubble Pop', emoji: '🫧' },
   { id: 'slap-and-chop', name: 'Slap & Chop', emoji: '🥋' },
-  { id: 'yoga-quiz', name: 'Yoga Quiz & 3D Chase', emoji: '🧘' },
   { id: 'shark-attack', name: 'Shark Attack', emoji: '🦈' },
   { id: 'sumo', name: 'Sumo Showdown', emoji: '🤼' },
   { id: 'mystery-box', name: 'Mystery Box', emoji: '🎁' },
   { id: 'flashcards-match', name: 'Flashcards Match', emoji: '🃏' },
+  { id: 'yoga-quiz', name: 'Yoga Quiz & 3D Chase', emoji: '🧘' },
 ];
 
 const CLASS_LEVEL_OPTIONS = [
@@ -48,6 +51,10 @@ const CLASS_LEVEL_OPTIONS = [
   'KET',
   'PET',
   'IELTS',
+  'Global Success 6',
+  'Global Success 7',
+  'Global Success 8',
+  'Global Success 9',
   'Grade 1',
   'Grade 2',
   'Grade 3',
@@ -77,15 +84,41 @@ export function CreateHomeworkModal({
   onCreated,
   onNavigateToHomework,
 }: CreateHomeworkModalProps) {
-  if (!isOpen || !game) return null;
+  // Normalize game or slide deck
+  const normalizedGame = useMemo(() => {
+    if (!game) return null;
+    if (game.isSlideDeck || (Array.isArray(game.slides) && !Array.isArray(game.questions))) {
+      return convertSlideDeckToHomeworkObject(game);
+    }
+    return game;
+  }, [game]);
 
-  const rawQuestions = game.customQuestions || game.questions || [];
-  const questionsCount = Array.isArray(rawQuestions) ? rawQuestions.length : 0;
-  const initialTitle = game.topic || game.name || game.title || 'Homework Assignment';
+  const rawQuestions = useMemo(() => {
+    if (!normalizedGame) return [];
+    const qList =
+      normalizedGame.customQuestions ||
+      normalizedGame.questions ||
+      normalizedGame.items ||
+      normalizedGame.cards ||
+      [];
+    const titleForNorm =
+      normalizedGame.topic ||
+      normalizedGame.name ||
+      normalizedGame.title ||
+      'Homework Assignment';
+    return normalizeGameQuestionsForHomework(
+      Array.isArray(qList) ? qList : [],
+      titleForNorm
+    );
+  }, [normalizedGame]);
 
-  const [title, setTitle] = useState(initialTitle);
-  const [targetClass, setTargetClass] = useState(game.classLevel || 'Grade 7');
-  const [gameType, setGameType] = useState(game.gameType || 'roller-coaster-quiz');
+  const questionsCount = rawQuestions.length;
+  const isSlideHomework = Boolean(normalizedGame?.isSlideDeck || Array.isArray(normalizedGame?.slides));
+
+  // All React hooks MUST be declared unconditionally before early return
+  const [title, setTitle] = useState('Homework Assignment');
+  const [targetClass, setTargetClass] = useState('Starters');
+  const [gameType, setGameType] = useState('study-mode');
   const [durationMinutes, setDurationMinutes] = useState<number>(10);
   const [passingScore, setPassingScore] = useState<number>(80);
   const [maxAttempts, setMaxAttempts] = useState<number>(3);
@@ -94,12 +127,53 @@ export function CreateHomeworkModal({
     return d.toISOString().split('T')[0];
   });
   const [instructions, setInstructions] = useState(
-    'Play the assigned game, answer all questions, and achieve the passing score before the deadline!'
+    'Complete the Study Mode review, answer all questions, and achieve the passing score before the deadline!'
   );
-  const [pinCode] = useState(() => generateHomeworkPin());
+  const [pinCode, setPinCode] = useState(() => generateHomeworkPin());
   const [isCopied, setIsCopied] = useState(false);
   const [createdAssignment, setCreatedAssignment] = useState<HomeworkAssignment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync modal fields whenever a new game or slide deck is opened
+  useEffect(() => {
+    if (!isOpen || !normalizedGame) return;
+    const initTitle =
+      normalizedGame.topic ||
+      normalizedGame.name ||
+      normalizedGame.title ||
+      'Homework Assignment';
+    const initClass =
+      normalizedGame.classLevel ||
+      normalizedGame.curriculum ||
+      normalizedGame.cambridgeLevel ||
+      normalizedGame.schoolGrade ||
+      normalizedGame.gradeLevel ||
+      'Starters';
+
+    // Always default preset to Study Mode ('study-mode') instead of Yoga ('yoga-quiz')
+    const rawMode = String(normalizedGame.gameType || '').trim();
+    const validNonYogaMode =
+      rawMode &&
+      rawMode !== 'yoga-quiz' &&
+      rawMode !== 'interactive-slides' &&
+      AVAILABLE_GAME_MODES.some((m) => m.id === rawMode)
+        ? 'study-mode'
+        : 'study-mode';
+
+    setTitle(initTitle);
+    setTargetClass(CLASS_LEVEL_OPTIONS.includes(initClass) ? initClass : 'Starters');
+    setGameType(validNonYogaMode);
+    setPinCode(generateHomeworkPin());
+    setCreatedAssignment(null);
+    setIsCopied(false);
+    setInstructions(
+      normalizedGame.isSlideDeck || Array.isArray(normalizedGame.slides)
+        ? 'Use Study Mode to review the lesson slides & notes, then answer all questions to log your verified proof of work!'
+        : `Study and answer all ${rawQuestions.length || ''} questions on "${initTitle}" to achieve the passing score before the deadline!`
+    );
+  }, [isOpen, normalizedGame, rawQuestions.length]);
+
+  if (!isOpen || !normalizedGame) return null;
 
   const handleCopyLink = () => {
     const targetPin = createdAssignment?.pinCode || pinCode;
@@ -113,13 +187,14 @@ export function CreateHomeworkModal({
     if (!title.trim()) return;
     setIsSubmitting(true);
     try {
+      const normalizedQs = normalizeGameQuestionsForHomework(rawQuestions, title.trim());
       const newAssignment: HomeworkAssignment = {
         id: `hw-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        gameId: game.id || Date.now(),
+        gameId: normalizedGame.id || Date.now(),
         gameTitle: title.trim(),
-        gameType,
+        gameType: gameType || 'study-mode',
         classLevel: targetClass,
-        topic: game.topic || title.trim(),
+        topic: normalizedGame.topic || title.trim(),
         dueDate,
         durationMinutes,
         passingScore,
@@ -127,15 +202,17 @@ export function CreateHomeworkModal({
         targetClass,
         instructions: instructions.trim(),
         pinCode,
-        questions: Array.isArray(rawQuestions) ? rawQuestions : [],
+        questions: normalizedQs,
+        ...(normalizedGame.slideDeckId ? { slideDeckId: normalizedGame.slideDeckId } : {}),
+        ...(Array.isArray(normalizedGame.slides) ? { slides: normalizedGame.slides } : {}),
         createdAt: Date.now(),
         status: 'active',
         submissionsCount: 0,
       };
 
-      await saveHomeworkAssignment(newAssignment);
-      setCreatedAssignment(newAssignment);
-      onCreated?.(newAssignment);
+      const saved = await saveHomeworkAssignment(newAssignment);
+      setCreatedAssignment(saved);
+      onCreated?.(saved);
     } catch (e) {
       console.error('Failed to create homework assignment', e);
     } finally {
@@ -144,22 +221,26 @@ export function CreateHomeworkModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm animate-fade-in font-sans">
+    <div className="fixed inset-0 z-[250] flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm animate-fade-in font-sans">
       <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="px-6 py-4.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-purple-50 via-white to-indigo-50 dark:from-slate-850 dark:via-slate-900 dark:to-slate-850">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-brand-purple/10 dark:bg-brand-purple/20 text-brand-purple dark:text-purple-300 flex items-center justify-center">
-              <BookOpen size={20} />
+              {isSlideHomework ? <Presentation size={20} /> : <BookOpen size={20} />}
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
-                {createdAssignment ? 'Homework Created Successfully!' : 'Create Homework Assignment'}
+                {createdAssignment
+                  ? 'Homework Created Successfully!'
+                  : isSlideHomework
+                  ? 'Send Slide Deck as Homework'
+                  : 'Create Homework Assignment'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {createdAssignment
-                  ? 'Share the PIN or link with your students to track their completion & analytics.'
-                  : `Assign "${game.topic || game.name}" (${questionsCount} Qs) to students`}
+                  ? 'Share the PIN or QR code with your students on hamsterenglish.online'
+                  : `Assign "${normalizedGame.topic || normalizedGame.name}" (${questionsCount} Qs) to students`}
               </p>
             </div>
           </div>
@@ -183,10 +264,12 @@ export function CreateHomeworkModal({
 
               <div>
                 <h3 className="text-xl font-black text-slate-900 dark:text-white">
-                  Assignment is Live!
+                  Assignment is Live on hamsterenglish.online!
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                  Students can open the Homework tab and enter this code, or click the direct link to play and submit their verifiable proof of work.
+                  Students can scan the QR code below, click the direct link, or go to{' '}
+                  <strong className="text-brand-purple">hamsterenglish.online</strong> and enter PIN{' '}
+                  <strong className="font-mono">{createdAssignment.pinCode}</strong>.
                 </p>
               </div>
 
@@ -199,7 +282,11 @@ export function CreateHomeworkModal({
                   {createdAssignment.pinCode}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Due: {createdAssignment.dueDate} · Time limit: {createdAssignment.durationMinutes > 0 ? `${createdAssignment.durationMinutes} mins` : 'No limit'} · Target: {createdAssignment.passingScore}%
+                  Due: {createdAssignment.dueDate} · Time limit:{' '}
+                  {createdAssignment.durationMinutes > 0
+                    ? `${createdAssignment.durationMinutes} mins`
+                    : 'No limit'}{' '}
+                  · Target: {createdAssignment.passingScore}%
                 </p>
               </div>
 
@@ -219,7 +306,7 @@ export function CreateHomeworkModal({
                     Scan with Phone or Tablet Camera
                   </span>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Instant access on hamsterenglish.online
+                    Direct link: hamsterenglish.online/?hwPin={createdAssignment.pinCode}
                   </p>
                 </div>
               </div>
@@ -254,7 +341,7 @@ export function CreateHomeworkModal({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Unit 5 Review Homework"
+                  placeholder="e.g. Cambridge Starters Speaking Homework"
                   className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-white font-semibold outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 transition"
                 />
               </div>
@@ -282,7 +369,7 @@ export function CreateHomeworkModal({
                 <div>
                   <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
                     <Gamepad2 size={14} />
-                    <span>Homework Game Engine</span>
+                    <span>Homework Format / Mode</span>
                   </label>
                   <select
                     value={gameType}
@@ -371,7 +458,9 @@ export function CreateHomeworkModal({
               <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 flex items-start gap-2.5 text-xs text-indigo-800 dark:text-indigo-300">
                 <Sparkles size={16} className="shrink-0 mt-0.5 text-indigo-500" />
                 <p>
-                  <span className="font-bold">Verified Proof of Work Tracking:</span> When students complete this assignment, their total time spent (e.g. 8m 34s), final score %, accuracy, and question-by-question answer audit will automatically be logged in your <strong>Homework Analytics</strong> ledger.
+                  <span className="font-bold">Verified Proof of Work Tracking:</span> When students complete this{' '}
+                  {isSlideHomework ? 'slide deck & review quiz' : 'assignment'}, their total time spent, final score %, accuracy, and question-by-question answer audit will automatically be logged in your{' '}
+                  <strong>Homework Analytics</strong> ledger.
                 </p>
               </div>
             </>
