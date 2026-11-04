@@ -36,6 +36,11 @@ import {
   extractGradeNumber
 } from './PublicDashboard';
 import { FALLBACK_COMMUNITY_GAMES } from '../utils/platformCache';
+import {
+  StartersMonsterArtStudio,
+  STARTERS_MONSTER_ART_DECK,
+  STARTERS_MONSTER_ART_DECK_ID,
+} from '../components/StartersMonsterArtStudio';
 
 export type SlideType = 'title' | 'vocab' | 'question' | 'grammar' | 'discussion';
 
@@ -121,7 +126,7 @@ export function matchGlobalSuccess(deck: any, gsId: string): boolean {
 export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => void }) {
   const { user } = useAuth();
 
-  // Load real slide decks created by the user, removing any hardcoded pre-generated mock decks
+  // Load real slide decks created by the user, plus official Cambridge Starters Monster Art Class Studio
   const [decks, setDecks] = useState<SlideDeck[]>(() => {
     try {
       const cached = localStorage.getItem('hamster_my_slides');
@@ -135,11 +140,16 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
             !d.id?.startsWith('deck-phonics-magic-e') && 
             !d.id?.startsWith('deck-grammar-past-vs-present')
           );
-          return realUserDecks;
+          const hasStartersMonsterArt = realUserDecks.some(
+            d => d.id === STARTERS_MONSTER_ART_DECK_ID
+          );
+          return hasStartersMonsterArt
+            ? realUserDecks
+            : [STARTERS_MONSTER_ART_DECK, ...realUserDecks];
         }
       }
     } catch (e) {}
-    return [];
+    return [STARTERS_MONSTER_ART_DECK];
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -149,6 +159,7 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
   
   // Presenter Mode state
   const [presentingDeck, setPresentingDeck] = useState<SlideDeck | null>(null);
+  const [forceStandardSlideView, setForceStandardSlideView] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isBlackout, setIsBlackout] = useState(false);
@@ -834,18 +845,35 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                 >
                   {/* Top Deck Banner Card */}
                   <div
-                    onClick={() => startPresenting(deck)}
+                    onClick={() => {
+                      setForceStandardSlideView(false);
+                      startPresenting(deck);
+                    }}
                     className={`relative aspect-[16/10] bg-gradient-to-br ${getThemeGradient(deck.theme)} p-6 flex flex-col justify-between cursor-pointer overflow-hidden group/thumb`}
                   >
+                    {deck.id === STARTERS_MONSTER_ART_DECK_ID && (
+                      <img
+                        src="/assets/aistudio/image_7db17f83.png"
+                        alt="Monster Art Class"
+                        className="absolute inset-0 w-full h-full object-cover opacity-55 group-hover/thumb:scale-105 transition-transform duration-500 pointer-events-none"
+                      />
+                    )}
+                    {deck.id === STARTERS_MONSTER_ART_DECK_ID && (
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-indigo-950/45 to-slate-950/35 pointer-events-none" />
+                    )}
                     <div className="absolute -right-12 -bottom-12 w-48 h-48 rounded-full bg-white/10 blur-xl pointer-events-none group-hover/thumb:scale-125 transition-transform duration-500" />
                     
                     <div className="flex items-center justify-between gap-2 z-10">
                       <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-md text-white px-2.5 py-1 rounded-full border border-white/25">
                         {deck.curriculum || deck.gradeLevel}
                       </span>
-                      <span className="text-xs font-black text-white/90 bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                      <span className="text-xs font-black text-white/90 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full flex items-center gap-1.5">
                         <Layers className="w-3.5 h-3.5" />
-                        <span>{slideCount} Slides</span>
+                        <span>
+                          {deck.id === STARTERS_MONSTER_ART_DECK_ID
+                            ? '🎨 Interactive Studio + 8 Cards'
+                            : `${slideCount} Slides`}
+                        </span>
                       </span>
                     </div>
 
@@ -876,18 +904,37 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                       </p>
 
                       <div className="flex flex-wrap items-center gap-1.5 mb-4">
-                        {deck.slides.slice(0, 4).map((s, idx) => (
-                          <span 
-                            key={idx}
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 uppercase tracking-wider"
-                          >
-                            {s.type === 'vocab' ? `🔤 ${s.word || 'Vocab'}` : s.type === 'question' ? '❓ Quiz' : s.type === 'grammar' ? '📐 Grammar' : '💬 Speak'}
-                          </span>
-                        ))}
-                        {slideCount > 4 && (
-                          <span className="text-[10px] font-bold text-slate-400 px-1.5 py-0.5">
-                            +{slideCount - 4} more
-                          </span>
+                        {deck.id === STARTERS_MONSTER_ART_DECK_ID ? (
+                          <>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 uppercase tracking-wider">
+                              👆 Part 1A Point
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                              🃏 Part 1B 8 Cards
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                              🔍 Part 2 Q&A
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 uppercase tracking-wider">
+                              🎙️ Voice & Shields
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            {deck.slides.slice(0, 4).map((s, idx) => (
+                              <span 
+                                key={idx}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 uppercase tracking-wider"
+                              >
+                                {s.type === 'vocab' ? `🔤 ${s.word || 'Vocab'}` : s.type === 'question' ? '❓ Quiz' : s.type === 'grammar' ? '📐 Grammar' : '💬 Speak'}
+                              </span>
+                            ))}
+                            {slideCount > 4 && (
+                              <span className="text-[10px] font-bold text-slate-400 px-1.5 py-0.5">
+                                +{slideCount - 4} more
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -895,11 +942,16 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                     {/* Bottom Deck Actions */}
                     <div className="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
                       <button
-                        onClick={() => startPresenting(deck)}
+                        onClick={() => {
+                          setForceStandardSlideView(false);
+                          startPresenting(deck);
+                        }}
                         className="flex-1 py-2 px-3 rounded-xl bg-brand-purple text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-sm hover:bg-purple-700 active:scale-95 transition-all cursor-pointer"
                       >
                         <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Present Deck</span>
+                        <span>
+                          {deck.id === STARTERS_MONSTER_ART_DECK_ID ? 'Launch Speaking Studio' : 'Present Deck'}
+                        </span>
                       </button>
 
                       <button
@@ -940,7 +992,12 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
       {/* =========================================================================
           FULLSCREEN CLASSROOM PRESENTER THEATER
       ========================================================================= */}
-      {presentingDeck && (
+      {presentingDeck && presentingDeck.id === STARTERS_MONSTER_ART_DECK_ID && !forceStandardSlideView ? (
+        <StartersMonsterArtStudio
+          onClose={closePresentation}
+          onSwitchToStandardSlides={() => setForceStandardSlideView(true)}
+        />
+      ) : presentingDeck && (
         <div 
           ref={presenterRef}
           onMouseMove={(e) => {
@@ -968,6 +1025,15 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
+              {presentingDeck.id === STARTERS_MONSTER_ART_DECK_ID && (
+                <button
+                  onClick={() => setForceStandardSlideView(false)}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Interactive Studio</span>
+                </button>
+              )}
               <div>
                 <h2 className="font-extrabold text-base text-white truncate max-w-sm sm:max-w-md">
                   {presentingDeck.title}

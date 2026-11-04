@@ -1,0 +1,2618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cambridge Pre-A1 Starters Speaking — Monster Art Class</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --gold: #F59E0B;
+      --emerald: #10B981;
+    }
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: radial-gradient(circle at top left, #FEF3C7, #E0E7FF 55%, #DBEAFE);
+      min-height: 100vh;
+      overflow-x: hidden;
+      user-select: none;
+    }
+    h1, h2, h3, .font-kid {
+      font-family: 'Fredoka', sans-serif;
+    }
+
+    /* Interactive SVG Scene Item Glow & Hover */
+    .scene-item {
+      cursor: pointer;
+      transition: filter 0.25s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    .scene-item:hover {
+      filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.85)) brightness(1.06);
+    }
+    .scene-item.glow-correct {
+      animation: magicalGlow 1.3s ease-in-out infinite alternate;
+      z-index: 50;
+    }
+    .scene-item.glow-spotlight {
+      filter: drop-shadow(0 0 16px #38BDF8) drop-shadow(0 0 28px #6366F1);
+      animation: pulseBounce 1.4s infinite ease-in-out;
+    }
+    .scene-item.shake-wrong {
+      animation: wrongShake 0.45s ease-in-out;
+    }
+
+    @keyframes magicalGlow {
+      0% {
+        filter: drop-shadow(0 0 10px #FBBF24) drop-shadow(0 0 22px #F59E0B) brightness(1.12);
+        transform: scale(1.04);
+      }
+      100% {
+        filter: drop-shadow(0 0 18px #34D399) drop-shadow(0 0 32px #10B981) brightness(1.2);
+        transform: scale(1.09);
+      }
+    }
+
+    @keyframes pulseBounce {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    @keyframes wrongShake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-6px) rotate(-2deg); }
+      75% { transform: translateX(6px) rotate(2deg); }
+    }
+
+    /* Drop Zones in SVG */
+    .drop-zone {
+      transition: all 0.25s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .drop-zone.show-hint {
+      opacity: 0.75;
+      animation: dashRotate 8s linear infinite;
+    }
+    .drop-zone.active-hover {
+      opacity: 0.95 !important;
+      fill: rgba(16, 185, 129, 0.35) !important;
+      stroke: #059669 !important;
+      stroke-width: 4px !important;
+    }
+
+    /* Examiner Talking Mouth Animation */
+    .mouth-talking {
+      animation: talkAnim 0.22s infinite alternate ease-in-out;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    @keyframes talkAnim {
+      0% { transform: scaleY(0.35); }
+      100% { transform: scaleY(1.35); }
+    }
+
+    /* Draggable Object Cards */
+    .object-card {
+      touch-action: none;
+      cursor: grab;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+    }
+    .object-card:hover {
+      transform: translateY(-4px) scale(1.03);
+      box-shadow: 0 12px 20px -5px rgba(79, 70, 229, 0.25);
+    }
+    .object-card:active {
+      cursor: grabbing;
+    }
+    .object-card.selected-card {
+      ring: 4px solid #F59E0B;
+      box-shadow: 0 0 22px #FBBF24;
+      transform: scale(1.06);
+    }
+
+    /* Floating Drag Ghost */
+    #drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      width: 96px;
+      height: 96px;
+      transform: translate(-50%, -50%) scale(1.1) rotate(-3deg);
+      filter: drop-shadow(0 16px 24px rgba(0,0,0,0.3));
+      display: none;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #F1F5F9;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="text-slate-800 flex flex-col min-h-screen">
+
+  <!-- Floating Drag Ghost Container -->
+  <div id="drag-ghost" class="bg-white rounded-2xl border-4 border-amber-400 p-2 flex items-center justify-center"></div>
+
+  <!-- Confetti Canvas -->
+  <canvas id="confetti-canvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+  <!-- TOP NAVIGATION BAR & SCORE/SHIELDS -->
+  <header class="bg-white/95 backdrop-blur-md border-b-4 border-indigo-200 sticky top-0 z-40 shadow-sm px-3 py-2">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <!-- Brand / Title -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md border-2 border-indigo-200">
+          <span class="text-2xl">🎨</span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">Cambridge Pre-A1 Starters</span>
+            <span class="text-xs font-bold text-indigo-600 hidden sm:inline">Test 1 • Speaking</span>
+          </div>
+          <h1 class="text-lg sm:text-xl font-bold text-slate-900 leading-tight">Monster Art Class Studio</h1>
+        </div>
+      </div>
+
+      <!-- Mode Switcher Tabs -->
+      <nav class="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+        <button onclick="switchMode('part1a')" id="tab-part1a" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 bg-indigo-600 text-white shadow">
+          <span>👆</span> Part 1A: Point
+        </button>
+        <button onclick="switchMode('part1b')" id="tab-part1b" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
+          <span>🃏</span> Part 1B: Place Cards
+        </button>
+        <button onclick="switchMode('part2')" id="tab-part2" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
+          <span>🔍</span> Part 2: Scene Q&A
+        </button>
+        <button onclick="switchMode('part3')" id="tab-part3" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
+          <span>💬</span> Part 3: Object Cards
+        </button>
+        <button onclick="switchMode('sandbox')" id="tab-sandbox" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
+          <span>🎓</span> Free Teacher Mode
+        </button>
+      </nav>
+
+      <!-- Score & 5 Cambridge Shields -->
+      <div class="flex items-center gap-3">
+        <!-- 5 Shields Progress -->
+        <div class="flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-2xl border-2 border-indigo-100" title="Cambridge Speaking Shields Earned">
+          <div id="shields-container" class="flex items-center gap-1">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Star Points Counter -->
+        <div class="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white px-3.5 py-1.5 rounded-2xl font-kid font-bold shadow border-2 border-amber-200">
+          <span class="text-lg">⭐</span>
+          <span id="score-display" class="text-base sm:text-lg">0</span>
+          <span class="text-xs opacity-90">pts</span>
+        </div>
+
+        <!-- Certificate Button -->
+        <button onclick="openCertificateModal()" class="p-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 font-bold text-xs flex items-center gap-1 transition" title="View Cambridge Report Card">
+          <span>🏆</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- SUB-BAR: TEACHER HELPER & VOICE CONTROLS -->
+  <div class="bg-indigo-950 text-indigo-100 px-4 py-1.5 text-xs border-b border-indigo-800">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="font-bold text-amber-300 flex items-center gap-1">🛠️ Teacher & Audio Bar:</span>
+        <button onclick="repeatPromptAudio()" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1 transition">
+          🔊 Replay Examiner Voice
+        </button>
+        <button onclick="toggleSpeechRate()" id="btn-speech-rate" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white font-semibold transition">
+          🐢 Speed: Normal (0.9x)
+        </button>
+        <button onclick="toggleMute()" id="btn-mute" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white font-semibold transition">
+          🔔 Sound: ON
+        </button>
+        <button onclick="toggleDropZonesHint()" id="btn-drop-hint" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-amber-200 font-semibold transition">
+          🎯 Show Drop Zones: OFF
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="teacherAwardStar()" class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold flex items-center gap-1 shadow transition transform active:scale-95">
+          ⭐ Award Student +15 Pts
+        </button>
+        <button onclick="resetAllPlacedCards()" class="px-2.5 py-1 rounded-lg bg-rose-800/80 hover:bg-rose-700 text-white font-semibold transition">
+          🔄 Clear Placed Cards
+        </button>
+        <button onclick="nextQuestion()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition">
+          ⏭️ Next Prompt
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+    <!-- LEFT / CENTER COLUMN: SCENE PICTURE OR PART 3 STAGE (8 cols on desktop) -->
+    <div class="lg:col-span-8 flex flex-col gap-3">
+
+      <!-- EXAMINER PROMPT BANNER -->
+      <div class="bg-white rounded-3xl p-3.5 sm:p-4 shadow-md border-4 border-indigo-200 flex items-center gap-3.5 relative">
+        <!-- Animated Friendly Examiner Avatar -->
+        <div class="relative shrink-0">
+          <svg class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-b from-sky-100 to-indigo-100 border-2 border-indigo-300 shadow-inner" viewBox="0 0 100 100">
+            <!-- Shoulders -->
+            <path d="M15,98 C15,72 85,72 85,98 Z" fill="#4F46E5" />
+            <path d="M38,76 L50,92 L62,76 Z" fill="#FFFFFF" />
+            <!-- Neck & Head -->
+            <rect x="43" y="62" width="14" height="16" rx="5" fill="#FDBA74" />
+            <circle cx="50" cy="44" r="24" fill="#FED7AA" />
+            <!-- Hair -->
+            <path d="M24,42 C22,18 78,18 76,42 C72,26 30,26 24,42 Z" fill="#451A03" />
+            <!-- Glasses -->
+            <rect x="33" y="37" width="14" height="10" rx="3" fill="none" stroke="#1E293B" stroke-width="2.5" />
+            <rect x="53" y="37" width="14" height="10" rx="3" fill="none" stroke="#1E293B" stroke-width="2.5" />
+            <line x1="47" y1="42" x2="53" y2="42" stroke="#1E293B" stroke-width="2.5" />
+            <!-- Eyes -->
+            <circle cx="40" cy="42" r="2.5" fill="#1E293B" />
+            <circle cx="60" cy="42" r="2.5" fill="#1E293B" />
+            <!-- Cheeks -->
+            <circle cx="33" cy="50" r="3.5" fill="#FCA5A5" opacity="0.6" />
+            <circle cx="67" cy="50" r="3.5" fill="#FCA5A5" opacity="0.6" />
+            <!-- Animated Mouth -->
+            <g id="examiner-mouth">
+              <path d="M42,54 Q50,62 58,54 Z" fill="#E11D48" />
+            </g>
+          </svg>
+          <span id="speaking-badge" class="hidden absolute -bottom-1 -right-1 bg-emerald-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+            SPEAKING
+          </span>
+        </div>
+
+        <!-- Speech Bubble Content -->
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span id="part-badge" class="text-xs font-extrabold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+              Part 1 • Task A: Point to things
+            </span>
+            <span id="question-counter" class="text-xs font-bold text-slate-500">Question 1 of 8</span>
+          </div>
+          <p id="examiner-prompt-text" class="text-lg sm:text-xl font-kid font-bold text-slate-900 leading-snug">
+            "Hello! Look at the picture of the Monster Art Class. Where's the ball?"
+          </p>
+          <p id="examiner-sub-hint" class="text-xs sm:text-sm text-slate-600 mt-1 font-medium">
+            👉 Click or tap the object in the big picture to point to it!
+          </p>
+        </div>
+
+        <!-- Quick Audio & Hint Buttons -->
+        <div class="flex flex-col gap-1.5 shrink-0">
+          <button onclick="repeatPromptAudio()" class="w-11 h-11 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-md transition active:scale-95" title="Listen Again">
+            🔊
+          </button>
+          <button onclick="triggerVisualClue()" class="w-11 h-11 rounded-2xl bg-amber-100 hover:bg-amber-200 text-amber-800 border-2 border-amber-300 flex items-center justify-center shadow-sm transition active:scale-95" title="Show Hint Glow">
+            💡
+          </button>
+        </div>
+      </div>
+
+      <!-- INTERACTIVE SCENE PICTURE CONTAINER -->
+      <div id="scene-stage-wrapper" class="bg-white rounded-3xl p-2 sm:p-3 shadow-xl border-4 border-amber-300 relative overflow-hidden">
+        <!-- Floating Toast Feedback inside Scene -->
+        <div id="scene-toast" class="hidden absolute top-5 left-1/2 -translate-x-1/2 z-30 bg-slate-900/90 text-white px-5 py-2.5 rounded-2xl shadow-xl border-2 border-amber-400 font-kid font-bold text-base sm:text-lg flex items-center gap-2 transition-all">
+          <span id="scene-toast-icon">🌟</span>
+          <span id="scene-toast-text">Well done!</span>
+        </div>
+
+        <!-- FAITHFUL HIGH-DETAIL SVG RECREATION OF MONSTER ART CLASS (image_168c9f.jpg) -->
+        <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border-2 border-slate-300 shadow-inner bg-[#F5F3CE]">
+          <svg id="monster-art-scene" viewBox="0 0 900 675" class="w-full h-full block select-none">
+            <defs>
+              <!-- Wall & Floor Gradients -->
+              <linearGradient id="backWallGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#F5EE7A" />
+                <stop offset="60%" stop-color="#FBF7A8" />
+                <stop offset="100%" stop-color="#FDFBE2" />
+              </linearGradient>
+              <linearGradient id="leftWallGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#C8AF4B" />
+                <stop offset="100%" stop-color="#DFC65B" />
+              </linearGradient>
+              <linearGradient id="floorGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#FAF9F5" />
+                <stop offset="100%" stop-color="#E5E4DF" />
+              </linearGradient>
+              <linearGradient id="palmSky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#38BDF8" />
+                <stop offset="65%" stop-color="#E0F2FE" />
+                <stop offset="100%" stop-color="#FEF08A" />
+              </linearGradient>
+              <linearGradient id="laptopScreen" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#2563EB" />
+                <stop offset="50%" stop-color="#60A5FA" />
+                <stop offset="100%" stop-color="#EFF6FF" />
+              </linearGradient>
+            </defs>
+
+            <!-- 1. ROOM ARCHITECTURE (Back Wall, Left Wall, Floor, Shadows) -->
+            <!-- Back Wall -->
+            <polygon points="180,0 900,0 900,275 180,275" fill="url(#backWallGrad)" />
+            <!-- Left Angled Wall -->
+            <polygon points="0,0 180,0 180,275 0,495" fill="url(#leftWallGrad)" />
+            <!-- Floor -->
+            <polygon points="180,275 900,275 900,675 0,675 0,495" fill="url(#floorGrad)" />
+            <!-- Subtle Floor Texture Speckles -->
+            <g fill="#D6D3CD" opacity="0.45">
+              <ellipse cx="320" cy="390" rx="18" ry="5" />
+              <ellipse cx="620" cy="420" rx="22" ry="6" />
+              <ellipse cx="480" cy="520" rx="25" ry="7" />
+              <ellipse cx="210" cy="580" rx="20" ry="6" />
+              <ellipse cx="680" cy="590" rx="28" ry="7" />
+            </g>
+
+            <!-- Floor Cast Shadows (Matching the original art) -->
+            <polygon points="0,565 180,275 265,500 95,675 0,675" fill="#B5B2A8" opacity="0.65" />
+            <ellipse cx="490" cy="335" rx="95" ry="42" fill="#A8A49B" opacity="0.65" />
+            <polygon points="315,425 460,425 545,675 340,675" fill="#B5B2A8" opacity="0.6" />
+            <polygon points="435,515 565,515 705,675 495,675" fill="#B5B2A8" opacity="0.6" />
+            <polygon points="685,430 850,430 900,590 735,610" fill="#B5B2A8" opacity="0.6" />
+            <ellipse cx="795" cy="635" rx="95" ry="18" fill="#B5B2A8" opacity="0.6" />
+
+            <!-- 2. TALL WOODEN DOOR ON LEFT WALL -->
+            <g id="item-door" class="scene-item" onclick="handleSceneItemClick('door', event)">
+              <!-- Door Frame -->
+              <polygon points="38,168 118,98 118,370 38,465" fill="#8C4A19" stroke="#5C2D0C" stroke-width="3" />
+              <!-- Upper Panel -->
+              <polygon points="46,178 110,118 110,218 46,282" fill="#D98A4E" />
+              <!-- Middle Wood Band -->
+              <polygon points="46,282 110,218 110,255 46,322" fill="#B85224" />
+              <!-- Lower Panel -->
+              <polygon points="46,322 110,255 110,362 46,448" fill="#D98A4E" />
+              <!-- Door Knob -->
+              <circle cx="103" cy="238" r="5" fill="#5C2D0C" />
+            </g>
+
+            <!-- 3. WALL CLOCK (TOP CENTER) -->
+            <g id="item-clock" class="scene-item" onclick="handleSceneItemClick('clock', event)">
+              <circle cx="478" cy="28" r="22" fill="#94A3B8" stroke="#475569" stroke-width="2.5" />
+              <circle cx="478" cy="28" r="18" fill="#FFFBEB" stroke="#64748B" stroke-width="1.5" />
+              <!-- Clock ticks -->
+              <text x="478" y="16" text-anchor="middle" font-size="6" font-weight="bold" fill="#1E293B">12</text>
+              <text x="492" y="30" text-anchor="middle" font-size="6" font-weight="bold" fill="#1E293B">3</text>
+              <text x="478" y="43" text-anchor="middle" font-size="6" font-weight="bold" fill="#1E293B">6</text>
+              <text x="464" y="30" text-anchor="middle" font-size="6" font-weight="bold" fill="#1E293B">9</text>
+              <!-- Hands showing ~5:00 -->
+              <line x1="478" y1="28" x2="478" y2="17" stroke="#1E293B" stroke-width="2" stroke-linecap="round" />
+              <line x1="478" y1="28" x2="485" y2="35" stroke="#DC2626" stroke-width="2" stroke-linecap="round" />
+              <circle cx="478" cy="28" r="2" fill="#1E293B" />
+            </g>
+
+            <!-- 4. BACK WALL FRAMED PICTURES (LEFT & RIGHT) -->
+            <!-- Left Framed Picture: Palm Tree in Red Desert -->
+            <g id="item-left_picture" class="scene-item" onclick="handleSceneItemClick('left_picture', event)">
+              <rect x="210" y="92" width="136" height="96" rx="2" fill="#D99B52" stroke="#78350F" stroke-width="4" />
+              <rect x="218" y="100" width="120" height="80" fill="#FFFFFF" stroke="#92400E" stroke-width="2" />
+              <!-- Painting Inside -->
+              <rect x="223" y="105" width="110" height="70" fill="url(#palmSky)" />
+              <!-- Sun -->
+              <circle cx="316" cy="126" r="6" fill="#FDE047" />
+              <!-- Red Desert Hills -->
+              <path d="M223,155 Q248,142 275,154 Q305,140 333,153 L333,175 L223,175 Z" fill="#B91C1C" />
+              <path d="M223,164 Q275,156 333,165 L333,175 L223,175 Z" fill="#FCA5A5" />
+              <!-- Palm Tree Trunk -->
+              <path d="M268,175 Q271,148 269,130" stroke="#451A03" stroke-width="6" fill="none" stroke-linecap="round" />
+              <!-- Pink/Magenta Palm Fronds -->
+              <path d="M269,130 Q245,122 238,136 Q254,132 269,130 Z" fill="#EC4899" />
+              <path d="M269,130 Q248,108 236,118 Q255,120 269,130 Z" fill="#DB2777" />
+              <path d="M269,130 Q268,105 280,110 Q274,120 269,130 Z" fill="#F43F5E" />
+              <path d="M269,130 Q292,112 302,124 Q284,124 269,130 Z" fill="#EC4899" />
+              <path d="M269,130 Q295,128 298,142 Q282,135 269,130 Z" fill="#BE185D" />
+            </g>
+
+            <!-- Right Framed Picture: Animals & Orange Tree -->
+            <g id="item-right_picture" class="scene-item" onclick="handleSceneItemClick('right_picture', event)">
+              <rect x="660" y="88" width="138" height="96" rx="2" fill="#D99B52" stroke="#78350F" stroke-width="4" />
+              <rect x="668" y="96" width="122" height="80" fill="#FFFFFF" stroke="#92400E" stroke-width="2" />
+              <rect x="673" y="101" width="112" height="70" fill="url(#palmSky)" />
+              <!-- Red/Orange Ground -->
+              <path d="M673,148 Q728,142 785,148 L785,171 L673,171 Z" fill="#EA580C" />
+              <!-- Little Brown Hippo/Bear on left -->
+              <ellipse cx="696" cy="147" rx="13" ry="8" fill="#571A07" />
+              <circle cx="708" cy="144" r="6" fill="#571A07" />
+              <rect x="687" y="152" width="3" height="6" fill="#571A07" />
+              <rect x="694" y="152" width="3" height="6" fill="#571A07" />
+              <rect x="702" y="152" width="3" height="6" fill="#571A07" />
+              <!-- Orange Tree on right -->
+              <rect x="760" y="135" width="5" height="32" fill="#451A03" />
+              <ellipse cx="762" cy="132" rx="18" ry="12" fill="#EA580C" />
+              <!-- Toucan/Bird on tree -->
+              <ellipse cx="764" cy="120" rx="6" ry="8" fill="#1E293B" />
+              <ellipse cx="763" cy="121" rx="3" ry="5" fill="#FFFFFF" />
+              <path d="M758,115 L748,118 L758,121 Z" fill="#FACC15" />
+              <!-- White flower/rabbit below -->
+              <circle cx="745" cy="160" r="5" fill="#F8FAFC" />
+              <!-- Tiny Butterflies -->
+              <circle cx="705" cy="112" r="2.5" fill="#22C55E" />
+              <circle cx="728" cy="116" r="2" fill="#F59E0B" />
+            </g>
+
+            <!-- 5. CENTER LARGE WHITEBOARD WITH FISH DRAWING -->
+            <g id="item-whiteboard" class="scene-item" onclick="handleSceneItemClick('whiteboard', event)">
+              <rect x="372" y="64" width="232" height="156" fill="#64748B" stroke="#334155" stroke-width="3" />
+              <rect x="382" y="74" width="212" height="136" fill="#FFFFFF" />
+              <!-- Greenish Sketch of a Swimming Fish on Whiteboard -->
+              <g stroke="#65A30D" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.85">
+                <path d="M425,145 C445,112 495,112 522,135 C535,126 548,118 552,115 C548,132 548,148 554,162 C542,155 532,148 522,144 C495,165 445,164 425,145 Z" />
+                <!-- Fins -->
+                <path d="M468,120 Q482,102 495,118" />
+                <path d="M475,157 Q485,170 496,156" />
+                <!-- Eye & Smile -->
+                <circle cx="445" cy="136" r="3" />
+                <path d="M430,148 Q442,152 450,146" />
+                <!-- Water Wave Lines -->
+                <path d="M412,174 Q445,166 478,175 T545,172" />
+                <path d="M435,184 Q475,177 515,185 T572,182" />
+                <!-- Bubbles / Speed lines -->
+                <line x1="560" y1="132" x2="572" y2="132" />
+                <line x1="562" y1="142" x2="576" y2="142" />
+                <line x1="558" y1="152" x2="570" y2="152" />
+              </g>
+            </g>
+
+            <!-- 6. BROWN TABLE, SLEEPING GREY CAT & LAPTOP -->
+            <!-- Brown Table -->
+            <g id="item-table" class="scene-item" onclick="handleSceneItemClick('table', event)">
+              <!-- Table Legs -->
+              <rect x="385" y="275" width="9" height="65" fill="#7C2D12" />
+              <rect x="554" y="275" width="9" height="65" fill="#7C2D12" />
+              <!-- Table Top -->
+              <polygon points="375,228 562,228 576,278 362,278" fill="#C27838" stroke="#7C2D12" stroke-width="2.5" />
+              <rect x="362" y="276" width="214" height="7" fill="#7C2D12" />
+            </g>
+
+            <!-- Sleeping Grey Cat Under the Table -->
+            <g id="item-gray_cat" class="scene-item" onclick="handleSceneItemClick('gray_cat', event)">
+              <!-- Body -->
+              <ellipse cx="485" cy="312" rx="32" ry="16" fill="#64748B" stroke="#334155" stroke-width="1.5" />
+              <!-- Tail -->
+              <path d="M515,314 Q538,308 542,318" stroke="#64748B" stroke-width="6" fill="none" stroke-linecap="round" />
+              <!-- Head -->
+              <circle cx="460" cy="310" r="14" fill="#64748B" stroke="#334155" stroke-width="1.5" />
+              <!-- Ears -->
+              <polygon points="449,301 446,289 457,297" fill="#475569" />
+              <polygon points="464,297 473,289 471,301" fill="#475569" />
+              <!-- Closed Sleeping Eyes & Whiskers -->
+              <path d="M452,310 Q456,314 459,310" stroke="#1E293B" stroke-width="1.5" fill="none" />
+              <path d="M463,310 Q467,314 470,310" stroke="#1E293B" stroke-width="1.5" fill="none" />
+              <polygon points="459,315 463,315 461,318" fill="#F43F5E" />
+              <!-- Paws -->
+              <ellipse cx="452" cy="322" rx="6" ry="3.5" fill="#94A3B8" />
+              <ellipse cx="468" cy="323" rx="6" ry="3.5" fill="#94A3B8" />
+            </g>
+
+            <!-- Laptop / Computer on the Table -->
+            <g id="item-laptop" class="scene-item" onclick="handleSceneItemClick('laptop', event)">
+              <!-- Laptop Screen Half -->
+              <polygon points="525,198 570,214 552,256 508,238" fill="#334155" stroke="#1E293B" stroke-width="2" />
+              <polygon points="528,203 565,217 550,251 513,235" fill="url(#laptopScreen)" />
+              <!-- Laptop Keyboard Base -->
+              <polygon points="508,238 552,256 522,273 482,253" fill="#CBD5E1" stroke="#475569" stroke-width="2" />
+              <!-- Keyboard keys texture -->
+              <polygon points="508,243 544,257 524,267 492,251" fill="#64748B" />
+              <!-- Trackpad -->
+              <polygon points="504,258 514,263 509,266 499,261" fill="#94A3B8" />
+            </g>
+
+            <!-- 7. MONSTER IN GREEN DRESS WITH CAMERA -->
+            <g id="item-camera_monster" class="scene-item" onclick="handleSceneItemClick('camera_monster', event)">
+              <!-- 3 Purple/Blue Legs & Black Shoes -->
+              <path d="M332,395 L328,415" stroke="#4C1D95" stroke-width="6" stroke-linecap="round" />
+              <path d="M348,395 L346,422" stroke="#4C1D95" stroke-width="6" stroke-linecap="round" />
+              <path d="M362,395 L364,416" stroke="#4C1D95" stroke-width="6" stroke-linecap="round" />
+              <ellipse cx="324" cy="417" rx="9" ry="5" fill="#1E293B" />
+              <ellipse cx="344" cy="424" rx="9" ry="5" fill="#1E293B" />
+              <ellipse cx="366" cy="418" rx="9" ry="5" fill="#1E293B" />
+
+              <!-- Long Green Dress with Flowers -->
+              <path d="M334,240 L385,240 L405,398 Q355,408 310,395 Z" fill="#16A34A" stroke="#14532D" stroke-width="2" />
+              <!-- Dress Belt -->
+              <path d="M331,278 Q360,284 388,278" stroke="#14532D" stroke-width="4" fill="none" />
+              <!-- Pink/Purple Flowers on Dress -->
+              <g fill="#F472B6">
+                <circle cx="345" cy="302" r="4.5" /><circle cx="372" cy="312" r="4.5" />
+                <circle cx="335" cy="338" r="4.5" /><circle cx="362" cy="348" r="4.5" />
+                <circle cx="385" cy="365" r="4.5" /><circle cx="342" cy="375" r="4.5" />
+              </g>
+              <!-- Head & Ears/Horns -->
+              <path d="M335,202 L315,192" stroke="#D97706" stroke-width="5" stroke-linecap="round" />
+              <circle cx="313" cy="191" r="4.5" fill="#FDE047" />
+              <path d="M392,202 L412,192" stroke="#D97706" stroke-width="5" stroke-linecap="round" />
+              <circle cx="414" cy="191" r="4.5" fill="#FDE047" />
+              <ellipse cx="364" cy="212" rx="30" ry="24" fill="#FDE047" stroke="#CA8A04" stroke-width="1.5" />
+              <!-- Fluffy Pink Hair -->
+              <path d="M330,204 C325,175 402,175 398,204 C385,194 345,194 330,204 Z" fill="#EC4899" />
+              <circle cx="342" cy="186" r="10" fill="#EC4899" />
+              <circle cx="364" cy="182" r="12" fill="#EC4899" />
+              <circle cx="385" cy="186" r="10" fill="#EC4899" />
+              <!-- 3 Eyes + 1 Winking Eye -->
+              <path d="M344,208 Q348,204 352,208" stroke="#1E293B" stroke-width="2" fill="none" />
+              <circle cx="360" cy="208" r="3" fill="#1E293B" />
+              <circle cx="370" cy="208" r="3" fill="#1E293B" />
+              <circle cx="380" cy="208" r="3" fill="#1E293B" />
+              <!-- Smile -->
+              <path d="M356,222 Q368,230 378,220" stroke="#E11D48" stroke-width="2.5" fill="none" />
+              <!-- Green Sleeves & Hands holding Camera -->
+              <path d="M334,242 Q305,258 318,270 L340,255" fill="#16A34A" />
+              <path d="M385,242 Q412,258 395,270 L372,255" fill="#16A34A" />
+            </g>
+
+            <!-- Black Camera (Clickable separately OR as part of monster) -->
+            <g id="item-camera" class="scene-item" onclick="handleSceneItemClick('camera', event)">
+              <rect x="324" y="224" width="46" height="32" rx="5" fill="#1E293B" stroke="#0F172A" stroke-width="2" />
+              <rect x="338" y="217" width="16" height="8" rx="2" fill="#334155" />
+              <circle cx="347" cy="240" r="12" fill="#0F172A" stroke="#94A3B8" stroke-width="2" />
+              <circle cx="347" cy="240" r="8" fill="#38BDF8" />
+              <circle cx="344" cy="237" r="2.5" fill="#FFFFFF" />
+              <circle cx="362" cy="230" r="2.5" fill="#EF4444" />
+            </g>
+
+            <!-- 8. LEFT EASEL & GREEN MONSTER PAINTING A HOUSE -->
+            <g id="item-left_easel" class="scene-item" onclick="handleSceneItemClick('left_easel', event)">
+              <!-- Wooden Easel Legs -->
+              <polygon points="222,265 242,265 278,512 260,516" fill="#B47B44" stroke="#78350F" stroke-width="1.5" />
+              <polygon points="245,420 262,420 225,582 206,578" fill="#C88A4B" stroke="#78350F" stroke-width="1.5" />
+              <polygon points="150,415 166,415 135,555 118,552" fill="#B47B44" stroke="#78350F" stroke-width="1.5" />
+              <!-- Canvas with House Painting -->
+              <polygon points="175,286 284,296 244,468 134,442" fill="#F8FAFC" stroke="#94A3B8" stroke-width="2" />
+              <!-- Sky & Clouds on Canvas -->
+              <polygon points="175,286 284,296 266,375 154,355" fill="#7DD3FC" />
+              <!-- Painted House on Canvas -->
+              <polygon points="184,335 248,342 232,418 172,405" fill="#7C2D12" />
+              <!-- Yellow Roof & 3 Chimneys with Smoke -->
+              <polygon points="180,322 254,330 248,345 178,337" fill="#FACC15" stroke="#CA8A04" stroke-width="1.5" />
+              <rect x="195" y="305" width="9" height="19" fill="#EA580C" />
+              <rect x="215" y="307" width="9" height="19" fill="#EA580C" />
+              <rect x="234" y="310" width="9" height="19" fill="#EA580C" />
+              <!-- Smoke puffs -->
+              <path d="M199,303 Q204,292 212,294" stroke="#64748B" stroke-width="4" fill="none" stroke-linecap="round" />
+              <path d="M219,305 Q225,294 233,296" stroke="#64748B" stroke-width="4" fill="none" stroke-linecap="round" />
+              <path d="M238,308 Q244,297 252,299" stroke="#64748B" stroke-width="4" fill="none" stroke-linecap="round" />
+              <!-- House Windows -->
+              <rect x="184" y="350" width="14" height="14" fill="#FDE047" />
+              <rect x="218" y="355" width="14" height="14" fill="#1E293B" />
+              <rect x="208" y="382" width="16" height="24" fill="#DC2626" />
+              <!-- Easel Tray & 3 Paint Jars -->
+              <polygon points="124,442 244,468 236,486 116,458" fill="#D99B52" stroke="#78350F" stroke-width="1.5" />
+              <!-- 3 Paint Jars -->
+              <rect x="145" y="432" width="16" height="20" rx="3" fill="#FFFFFF" stroke="#64748B" />
+              <rect x="147" y="436" width="12" height="6" fill="#EF4444" />
+              <rect x="167" y="437" width="16" height="20" rx="3" fill="#FFFFFF" stroke="#64748B" />
+              <rect x="169" y="441" width="12" height="6" fill="#FACC15" />
+              <rect x="190" y="442" width="16" height="20" rx="3" fill="#FFFFFF" stroke="#64748B" />
+              <rect x="192" y="446" width="12" height="6" fill="#2563EB" />
+            </g>
+
+            <!-- Green Monster on the Left (Wearing Brown Hat, Red Shirt, Blue Trousers, 4 Arms) -->
+            <g id="item-green_monster" class="scene-item" onclick="handleSceneItemClick('green_monster', event)">
+              <!-- 3 Legs in Blue Trousers & White Shoes -->
+              <polygon points="82,485 144,485 154,578 130,580 122,520 114,582 94,582 96,520 84,585 66,582" fill="#1D4ED8" stroke="#1E3A8A" stroke-width="2" />
+              <ellipse cx="74" cy="588" rx="12" ry="6" fill="#F8FAFC" stroke="#94A3B8" />
+              <ellipse cx="104" cy="588" rx="12" ry="6" fill="#F8FAFC" stroke="#94A3B8" />
+              <ellipse cx="144" cy="582" rx="12" ry="6" fill="#F8FAFC" stroke="#94A3B8" />
+
+              <!-- Red T-Shirt Torso -->
+              <polygon points="68,412 148,412 146,492 78,492" fill="#EF4444" stroke="#B91C1C" stroke-width="2" />
+
+              <!-- 4 Green Arms (2 Left, 2 Right holding paintbrushes) -->
+              <!-- Left Upper & Lower Arms -->
+              <path d="M72,422 Q45,442 40,468" stroke="#A3E635" stroke-width="10" stroke-linecap="round" fill="none" />
+              <path d="M75,448 Q52,475 56,502" stroke="#84CC16" stroke-width="10" stroke-linecap="round" fill="none" />
+              <!-- Right Upper & Lower Arms reaching to Canvas -->
+              <path d="M140,420 Q172,400 186,378" stroke="#A3E635" stroke-width="10" stroke-linecap="round" fill="none" />
+              <path d="M142,442 Q178,428 195,405" stroke="#84CC16" stroke-width="10" stroke-linecap="round" fill="none" />
+              <!-- 2 Paintbrushes in right hands -->
+              <line x1="182" y1="382" x2="202" y2="360" stroke="#78350F" stroke-width="4" stroke-linecap="round" />
+              <polygon points="200,362 208,352 205,365" fill="#EA580C" />
+              <line x1="192" y1="408" x2="212" y2="390" stroke="#78350F" stroke-width="4" stroke-linecap="round" />
+              <polygon points="210,392 218,383 215,395" fill="#FACC15" />
+
+              <!-- Green Monster Head & Spotted Ears -->
+              <circle cx="78" cy="395" r="7" fill="#A3E635" stroke="#65A30D" stroke-width="2" />
+              <circle cx="88" cy="408" r="6" fill="#A3E635" stroke="#65A30D" stroke-width="2" />
+              <ellipse cx="116" cy="382" rx="34" ry="28" fill="#A3E635" stroke="#65A30D" stroke-width="2" />
+              <!-- Red Hair Tufts under Hat -->
+              <path d="M78,375 L70,388 M85,372 L78,386 M92,370 L88,384" stroke="#DC2626" stroke-width="4" stroke-linecap="round" />
+              <!-- 3 Eyes & Happy Smile -->
+              <circle cx="112" cy="374" r="3" fill="#1E293B" />
+              <circle cx="126" cy="368" r="3" fill="#1E293B" />
+              <circle cx="138" cy="374" r="3" fill="#1E293B" />
+              <path d="M114,392 Q128,400 138,388" stroke="#15803D" stroke-width="2.5" fill="none" />
+              <!-- Brown Hat -->
+              <ellipse cx="112" cy="356" rx="46" ry="15" fill="#78350F" stroke="#451A03" stroke-width="2" />
+              <path d="M84,354 C84,325 140,325 140,354 Z" fill="#92400E" stroke="#451A03" stroke-width="2" />
+            </g>
+
+            <!-- 9. RED CHAIR & SOCCER BALL UNDER CHAIR -->
+            <g id="item-chair" class="scene-item" onclick="handleSceneItemClick('chair', event)">
+              <!-- Backrest -->
+              <polygon points="282,500 362,492 372,568 296,576" fill="#B91C1C" stroke="#7F1D1D" stroke-width="2" />
+              <!-- Seat -->
+              <polygon points="296,576 372,568 402,592 316,604" fill="#DC2626" stroke="#7F1D1D" stroke-width="2" />
+              <!-- Chair Legs -->
+              <line x1="296" y1="576" x2="292" y2="628" stroke="#991B1B" stroke-width="6" stroke-linecap="round" />
+              <line x1="318" y1="602" x2="318" y2="655" stroke="#B91C1C" stroke-width="6" stroke-linecap="round" />
+              <line x1="398" y1="592" x2="400" y2="644" stroke="#B91C1C" stroke-width="6" stroke-linecap="round" />
+              <line x1="368" y1="572" x2="368" y2="618" stroke="#7F1D1D" stroke-width="5" stroke-linecap="round" />
+            </g>
+
+            <!-- Soccer Ball / Football Under the Red Chair -->
+            <g id="item-ball" class="scene-item" onclick="handleSceneItemClick('ball', event)">
+              <circle cx="350" cy="630" r="22" fill="#F8FAFC" stroke="#334155" stroke-width="2.5" />
+              <!-- Classic Soccer Pentagon Patches -->
+              <polygon points="350,618 358,624 355,633 345,633 342,624" fill="#1E293B" />
+              <polygon points="350,608 356,612 344,612" fill="#1E293B" />
+              <polygon points="330,624 336,620 338,629 331,633" fill="#1E293B" />
+              <polygon points="370,624 364,620 362,629 369,633" fill="#1E293B" />
+              <polygon points="340,646 346,639 354,639 360,646 350,651" fill="#1E293B" />
+            </g>
+
+            <!-- 10. CENTER EASEL (BLUE CAT PAINTING) & PINK TRIANGULAR MONSTER -->
+            <g id="item-center_easel" class="scene-item" onclick="handleSceneItemClick('center_easel', event)">
+              <!-- Wooden Legs -->
+              <polygon points="410,310 432,310 448,545 428,545" fill="#B47B44" stroke="#78350F" stroke-width="1.5" />
+              <polygon points="418,480 438,480 452,615 432,615" fill="#C88A4B" stroke="#78350F" stroke-width="1.5" />
+              <polygon points="502,465 522,465 548,585 528,585" fill="#B47B44" stroke="#78350F" stroke-width="1.5" />
+              <!-- White Canvas -->
+              <polygon points="362,338 492,326 534,492 404,515" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+              <!-- Blue Cat Drinking Milk Painting on Canvas -->
+              <g>
+                <!-- Cat arched back & tail -->
+                <ellipse cx="458" cy="404" rx="28" ry="18" transform="rotate(-20 458 404)" fill="#1E3A8A" />
+                <circle cx="482" cy="392" r="14" fill="#1E3A8A" />
+                <path d="M492,385 Q502,360 492,355" stroke="#1E3A8A" stroke-width="6" fill="none" stroke-linecap="round" />
+                <!-- Cat head down by bowl -->
+                <circle cx="426" cy="422" r="14" fill="#1E3A8A" />
+                <polygon points="416,412 414,400 424,408" fill="#1E3A8A" />
+                <polygon points="428,410 434,398 436,412" fill="#1E3A8A" />
+                <circle cx="422" cy="424" r="2.5" fill="#38BDF8" />
+                <!-- Cat legs -->
+                <path d="M442,418 L438,442 M456,418 L454,444 M478,405 L476,436 M488,402 L492,432" stroke="#1E3A8A" stroke-width="6" stroke-linecap="round" />
+                <!-- Milk Bowl -->
+                <ellipse cx="424" cy="454" rx="16" ry="7" fill="#93C5FD" stroke="#475569" stroke-width="1.5" />
+              </g>
+            </g>
+
+            <!-- Pink Triangular Monster -->
+            <g id="item-pink_monster" class="scene-item" onclick="handleSceneItemClick('pink_monster', event)">
+              <!-- 4 Blue/Cyan Cone Legs with Red Feet -->
+              <polygon points="512,542 522,542 528,582 502,582" fill="#38BDF8" />
+              <ellipse cx="514" cy="586" rx="13" ry="7" fill="#E11D48" />
+              <polygon points="544,548 554,548 562,592 534,592" fill="#38BDF8" />
+              <ellipse cx="548" cy="596" rx="13" ry="7" fill="#E11D48" />
+              <polygon points="575,552 585,552 594,595 566,595" fill="#38BDF8" />
+              <ellipse cx="580" cy="599" rx="13" ry="7" fill="#E11D48" />
+              <polygon points="604,554 614,554 624,595 596,595" fill="#38BDF8" />
+              <ellipse cx="610" cy="599" rx="13" ry="7" fill="#E11D48" />
+
+              <!-- Pink Triangular Body -->
+              <polygon points="562,462 608,566 502,550" fill="#EC4899" stroke="#BE185D" stroke-width="2" />
+              <!-- 2 Left Arms holding Paintbrushes + 1 Right Arm -->
+              <polygon points="552,476 500,446 494,458 544,492" fill="#EC4899" />
+              <polygon points="546,492 496,478 492,490 540,506" fill="#F472B6" />
+              <polygon points="574,482 628,505 622,520 568,498" fill="#EC4899" />
+              <!-- Paintbrushes -->
+              <line x1="498" y1="450" x2="478" y2="432" stroke="#78350F" stroke-width="3.5" />
+              <circle cx="476" cy="430" r="3.5" fill="#EF4444" />
+              <line x1="494" y1="482" x2="474" y2="472" stroke="#78350F" stroke-width="3.5" />
+              <circle cx="472" cy="471" r="3.5" fill="#1E3A8A" />
+
+              <!-- Inverted Pink Triangle Head & Triangle Ears -->
+              <polygon points="522,420 608,420 564,474" fill="#EC4899" stroke="#BE185D" stroke-width="2" />
+              <polygon points="526,442 512,448 522,456" fill="#DB2777" />
+              <polygon points="602,442 616,448 606,456" fill="#DB2777" />
+              <!-- Eyes & Sad Frown -->
+              <circle cx="552" cy="438" r="2.8" fill="#1E293B" />
+              <circle cx="578" cy="438" r="2.8" fill="#1E293B" />
+              <path d="M554,456 Q565,448 576,456" stroke="#881337" stroke-width="2.5" fill="none" />
+            </g>
+
+            <!-- 11. RIGHT EASEL & BLUE MONSTER PAINTING PORTRAIT -->
+            <g id="item-right_easel" class="scene-item" onclick="handleSceneItemClick('right_easel', event)">
+              <!-- Wooden Legs -->
+              <polygon points="682,216 706,216 716,522 692,522" fill="#B47B44" stroke="#78350F" stroke-width="1.5" />
+              <polygon points="680,380 700,380 668,492 648,488" fill="#92400E" />
+              <!-- White Canvas -->
+              <polygon points="642,248 776,242 806,412 678,430" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+              <!-- Portrait of Smiling Blue Monster on Canvas -->
+              <g>
+                <path d="M694,325 C685,275 758,275 764,335 L782,395 L694,405 Z" fill="#0F172A" />
+                <circle cx="724" cy="322" r="22" fill="#0284C7" />
+                <!-- Antennae on canvas portrait -->
+                <path d="M704,310 L682,302 M702,318 L680,315" stroke="#0284C7" stroke-width="4" stroke-linecap="round" />
+                <circle cx="680" cy="301" r="4" fill="#0369A1" />
+                <circle cx="678" cy="315" r="4" fill="#0369A1" />
+                <!-- Eyes & Big White Smile -->
+                <circle cx="716" cy="316" r="2.5" fill="#1E293B" />
+                <circle cx="732" cy="316" r="2.5" fill="#1E293B" />
+                <path d="M712,326 Q724,338 736,326 Z" fill="#FFFFFF" />
+                <!-- Body on canvas -->
+                <ellipse cx="736" cy="375" rx="28" ry="30" fill="#0369A1" />
+              </g>
+            </g>
+
+            <!-- Blue Round Monster Artist (Right) -->
+            <g id="item-blue_monster" class="scene-item" onclick="handleSceneItemClick('blue_monster', event)">
+              <!-- Legs -->
+              <path d="M784,485 L784,522 L772,526" stroke="#0369A1" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+              <path d="M812,485 L812,516 L802,520" stroke="#0369A1" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+              <!-- Round Blue Body -->
+              <ellipse cx="812" cy="436" rx="44" ry="54" fill="#0284C7" stroke="#0369A1" stroke-width="2" />
+              <!-- Blue Head & Black Hair with Antennae -->
+              <circle cx="806" cy="356" r="28" fill="#0284C7" stroke="#0369A1" stroke-width="2" />
+              <path d="M792,332 C812,316 858,332 854,415 C840,400 822,380 816,355 Z" fill="#0F172A" />
+              <!-- Smile & Eye -->
+              <circle cx="790" cy="350" r="3" fill="#1E293B" />
+              <path d="M780,362 Q790,372 798,362 Z" fill="#FFFFFF" />
+              <!-- Arms & Paint Palette -->
+              <path d="M778,405 Q745,382 726,356" stroke="#0284C7" stroke-width="10" stroke-linecap="round" fill="none" />
+              <path d="M775,432 Q748,438 730,435" stroke="#0284C7" stroke-width="10" stroke-linecap="round" fill="none" />
+              <!-- Wooden Paint Palette with Red/Green/Yellow blobs -->
+              <ellipse cx="716" cy="436" rx="26" ry="14" fill="#FDE68A" stroke="#B45309" stroke-width="2" />
+              <circle cx="704" cy="432" r="4.5" fill="#EF4444" />
+              <circle cx="716" cy="442" r="4.5" fill="#22C55E" />
+              <circle cx="728" cy="434" r="4.5" fill="#2563EB" />
+              <!-- Extra Small Back Arms on right side -->
+              <path d="M852,395 Q872,398 878,410" stroke="#0284C7" stroke-width="7" stroke-linecap="round" fill="none" />
+              <path d="M854,418 Q874,424 876,438" stroke="#0284C7" stroke-width="7" stroke-linecap="round" fill="none" />
+            </g>
+
+            <!-- 12. BOTTOM-RIGHT TOY BOX (CHECKERED BOARD, DOLL, BEACH BALL) -->
+            <g id="item-box" class="scene-item" onclick="handleSceneItemClick('box', event)">
+              <!-- Checkered Flag/Game Board sticking out -->
+              <g transform="rotate(-14 745 555)">
+                <rect x="725" y="525" width="42" height="46" fill="#FFFFFF" stroke="#1E293B" stroke-width="2" />
+                <rect x="725" y="525" width="10" height="10" fill="#1E293B" />
+                <rect x="745" y="525" width="10" height="10" fill="#1E293B" />
+                <rect x="735" y="535" width="10" height="10" fill="#1E293B" />
+                <rect x="755" y="535" width="10" height="10" fill="#1E293B" />
+                <rect x="725" y="545" width="10" height="10" fill="#1E293B" />
+                <rect x="745" y="545" width="10" height="10" fill="#1E293B" />
+              </g>
+              <!-- Sailor Toy Doll -->
+              <g>
+                <rect x="768" y="542" width="28" height="34" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5" />
+                <path d="M772,544 L782,556 L792,544" fill="#1D4ED8" />
+                <circle cx="782" cy="528" r="10" fill="#FDBA74" stroke="#C2410C" stroke-width="1" />
+                <circle cx="779" cy="526" r="1.5" fill="#1E293B" />
+                <circle cx="785" cy="526" r="1.5" fill="#1E293B" />
+                <path d="M779,532 Q782,535 785,532" stroke="#E11D48" stroke-width="1.5" fill="none" />
+                <!-- Sailor Hat -->
+                <ellipse cx="782" cy="518" rx="11" ry="4" fill="#FFFFFF" stroke="#1D4ED8" stroke-width="1.5" />
+              </g>
+              <!-- Colorful Beach Ball -->
+              <g>
+                <circle cx="824" cy="552" r="28" fill="#FEF08A" stroke="#CA8A04" stroke-width="1.5" />
+                <path d="M824,524 A28,28 0 0,1 852,552 L824,552 Z" fill="#EF4444" />
+                <path d="M824,524 A28,28 0 0,0 796,552 L824,552 Z" fill="#3B82F6" />
+                <path d="M796,552 A28,28 0 0,0 824,580 L824,552 Z" fill="#EC4899" />
+                <circle cx="824" cy="532" r="5" fill="#FFFFFF" />
+              </g>
+              <!-- Cardboard Box Front & Side -->
+              <polygon points="718,568 836,574 832,638 722,626" fill="#D6A874" stroke="#92400E" stroke-width="2" />
+              <polygon points="836,574 854,556 846,620 832,638" fill="#B4824E" stroke="#92400E" stroke-width="2" />
+            </g>
+
+            <!-- 13. DROP ZONES FOR PART 1B (DRAG & DROP PLACEMENT TARGETS) -->
+            <g id="drop-zones-layer">
+              <!-- Drop Zone 1: Under the table -->
+              <rect id="dz-under_table" data-zone="under_table" class="drop-zone" x="392" y="295" width="160" height="58" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <!-- Drop Zone 2: On the red chair -->
+              <rect id="dz-on_chair" data-zone="on_chair" class="drop-zone" x="298" y="540" width="98" height="62" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <!-- Drop Zone 3: On the whiteboard -->
+              <rect id="dz-on_whiteboard" data-zone="on_whiteboard" class="drop-zone" x="392" y="88" width="190" height="112" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <!-- Drop Zone 4: In the brown toy box -->
+              <rect id="dz-in_box" data-zone="in_box" class="drop-zone" x="720" y="520" width="132" height="105" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <!-- Drop Zone 5: In front of the door -->
+              <rect id="dz-in_front_of_door" data-zone="in_front_of_door" class="drop-zone" x="28" y="370" width="110" height="88" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <!-- Drop Zone 6: On the table (next to laptop) -->
+              <rect id="dz-on_table" data-zone="on_table" class="drop-zone" x="405" y="218" width="105" height="56" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <!-- Drop Zone 7: Between the red chair and pink monster -->
+              <rect id="dz-between_chair_monster" data-zone="between_chair_monster" class="drop-zone" x="405" y="545" width="95" height="75" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <!-- Drop Zone 8: Next to the green monster -->
+              <rect id="dz-next_to_green_monster" data-zone="next_to_green_monster" class="drop-zone" x="150" y="525" width="110" height="80" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+            </g>
+
+            <!-- 14. LAYER FOR CARDS PLACED INTO THE SCENE -->
+            <g id="placed-cards-layer"></g>
+          </svg>
+        </div>
+
+        <!-- Bottom Quick Legend under Scene Picture -->
+        <div class="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span id="scene-status-bar">Interactive Scene Ready — Click any object or drag an Object Card onto the room!</span>
+          </div>
+          <div class="flex items-center gap-1.5 font-semibold text-indigo-700">
+            <span>Placed Cards: <strong id="placed-count">0</strong>/8</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: INTERACTIVE CONTROLS, OBJECT CARDS TRAY, SPEECH / ANSWER BUILDER (4 cols on desktop) -->
+    <div class="lg:col-span-4 flex flex-col gap-3.5">
+
+      <!-- DYNAMIC ACTIVITY PANEL (Changes per Mode: Part 1A, Part 1B, Part 2, Part 3, Sandbox) -->
+      <div id="activity-panel" class="bg-white rounded-3xl p-4 shadow-lg border-4 border-indigo-200 flex flex-col gap-3">
+        <!-- Populated dynamically by JS -->
+      </div>
+
+      <!-- 8 TEST 1 OBJECT CARDS TRAY (Always accessible for Part 1B, Part 3, and Sandbox) -->
+      <div id="object-cards-tray-container" class="bg-white rounded-3xl p-4 shadow-lg border-4 border-amber-300">
+        <div class="flex items-center justify-between mb-2.5">
+          <div>
+            <h2 class="text-base sm:text-lg font-kid font-bold text-slate-900 flex items-center gap-1.5">
+              <span>✂️</span> Test 1 Object Cards (8 Cards)
+            </h2>
+            <p id="cards-tray-subtitle" class="text-xs text-slate-500 font-medium">
+              Drag any card onto the big picture or click to inspect!
+            </p>
+          </div>
+          <button onclick="resetAllPlacedCards()" class="text-xs font-bold px-2.5 py-1 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 transition">
+            Reset Tray
+          </button>
+        </div>
+
+        <!-- Grid of 8 Cutout Cards with Dashed Scissor Borders -->
+        <div id="object-cards-grid" class="grid grid-cols-4 gap-2">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- MICROPHONE & GUIDED SPOKEN ANSWER BOX -->
+      <div id="speech-practice-box" class="bg-gradient-to-br from-indigo-900 to-purple-900 text-white rounded-3xl p-4 shadow-lg border-4 border-indigo-400">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🎙️</span>
+            <div>
+              <h3 class="font-kid font-bold text-sm sm:text-base leading-tight">Speak or Build Your Answer</h3>
+              <p class="text-[11px] text-indigo-200">Practice speaking aloud or tap the answer chips!</p>
+            </div>
+          </div>
+          <button onclick="toggleMicrophone()" id="btn-mic" class="px-3 py-1.5 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white font-kid font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95">
+            <span id="mic-icon">🎤</span> <span id="mic-label">Speak Answer</span>
+          </button>
+        </div>
+
+        <!-- Live Speech Transcript Display -->
+        <div id="transcript-box" class="bg-indigo-950/80 border border-indigo-700 rounded-2xl p-2.5 text-xs sm:text-sm text-indigo-100 min-h-[42px] flex items-center justify-between gap-2 mb-2.5">
+          <span id="transcript-text" class="italic text-indigo-300">Tap "Speak Answer" or click an answer phrase below...</span>
+          <span id="speech-match-badge" class="hidden px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold text-[10px] shrink-0">✓ GREAT!</span>
+        </div>
+
+        <!-- Clickable Model Answer Chips -->
+        <div id="answer-chips-container" class="flex flex-wrap gap-1.5">
+          <!-- Populated dynamically per question -->
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- CAMBRIDGE 5-SHIELD CERTIFICATE MODAL -->
+  <div id="certificate-modal" class="hidden fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border-8 border-amber-400 text-center relative animate-bounce-once">
+      <button onclick="closeCertificateModal()" class="absolute top-3 right-3 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">✕</button>
+      <div class="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-4xl shadow-lg border-4 border-amber-200 mb-3">
+        🏆
+      </div>
+      <span class="text-xs font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-indigo-100 text-indigo-800">Cambridge English • Pre-A1 Starters</span>
+      <h2 class="text-2xl sm:text-3xl font-kid font-bold text-slate-900 mt-2">Speaking Test Star Certificate!</h2>
+      <p class="text-sm text-slate-600 mt-1">Monster Art Class — Official Speaking Practice Report</p>
+
+      <!-- Shields & Score Box -->
+      <div class="my-5 bg-gradient-to-r from-indigo-50 via-amber-50 to-indigo-50 p-4 rounded-2xl border-2 border-indigo-200">
+        <div class="text-xs font-bold uppercase text-slate-500 mb-2">Cambridge Speaking Shields</div>
+        <div id="modal-shields" class="flex justify-center gap-2 text-3xl mb-3"></div>
+        <div class="text-2xl font-kid font-bold text-indigo-900">
+          Total Score: <span id="modal-score" class="text-amber-600">0</span> ⭐ Points
+        </div>
+      </div>
+
+      <!-- Breakdown -->
+      <div class="grid grid-cols-2 gap-2 text-left text-xs bg-slate-50 p-3 rounded-2xl border border-slate-200 mb-5">
+        <div>✅ <strong>Part 1A (Pointing):</strong>Where is / Where are</div>
+        <div>✅ <strong>Part 1B (Prepositions):</strong>Put the card on/under/in</div>
+        <div>✅ <strong>Part 2 (Scene Q&A):</strong>Tell me about the monster</div>
+        <div>✅ <strong>Part 3 (Object Cards):</strong>Have you got / Do you like</div>
+      </div>
+
+      <div class="flex items-center justify-center gap-3">
+        <button onclick="celebrateWithConfetti(); playFanfare();" class="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-kid font-bold shadow-lg transition">
+          🎉 Celebrate Again!
+        </button>
+        <button onclick="closeCertificateModal()" class="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold shadow-lg transition">
+          Keep Practicing
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION JAVASCRIPT -->
+  <script>
+    /*************************************************************************
+     * 1. CUSTOM SVG ARTWORK FOR THE 8 TEST 1 OBJECT CARDS (image_168958.png)
+     *************************************************************************/
+    const OBJECT_CARDS = [
+      {
+        id: 'frog',
+        name: 'frog',
+        article: 'a frog',
+        isPlural: false,
+        colorText: 'green and yellow',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <!-- Back legs -->
+            <ellipse cx="22" cy="64" rx="14" ry="9" transform="rotate(25 22 64)" fill="#84CC16" />
+            <ellipse cx="78" cy="64" rx="14" ry="9" transform="rotate(-25 78 64)" fill="#84CC16" />
+            <!-- Body -->
+            <ellipse cx="50" cy="58" rx="26" ry="22" fill="#A3E635" stroke="#65A30D" stroke-width="2" />
+            <!-- Yellow Belly -->
+            <ellipse cx="50" cy="63" rx="16" ry="14" fill="#FDE047" />
+            <!-- Head -->
+            <ellipse cx="50" cy="36" rx="24" ry="16" fill="#A3E635" stroke="#65A30D" stroke-width="2" />
+            <!-- Eye bumps -->
+            <circle cx="37" cy="22" r="8" fill="#A3E635" stroke="#65A30D" stroke-width="1.5" />
+            <circle cx="63" cy="22" r="8" fill="#A3E635" stroke="#65A30D" stroke-width="1.5" />
+            <circle cx="37" cy="22" r="4.5" fill="#1E293B" />
+            <circle cx="63" cy="22" r="4.5" fill="#1E293B" />
+            <circle cx="35.5" cy="20.5" r="1.5" fill="#FFFFFF" />
+            <circle cx="61.5" cy="20.5" r="1.5" fill="#FFFFFF" />
+            <!-- Red Smiling Mouth -->
+            <path d="M38,40 Q52,48 66,38 Q56,49 38,40 Z" fill="#DC2626" stroke="#991B1B" stroke-width="1.5" />
+            <!-- Green Spots -->
+            <circle cx="32" cy="52" r="2.2" fill="#4D7C0F" />
+            <circle cx="28" cy="60" r="2" fill="#4D7C0F" />
+            <circle cx="68" cy="54" r="2.2" fill="#4D7C0F" />
+            <!-- Front legs & Toes -->
+            <path d="M32,68 L28,82 M68,68 L72,82" stroke="#84CC16" stroke-width="6" stroke-linecap="round" />
+            <circle cx="23" cy="83" r="2.5" fill="#4D7C0F" />
+            <circle cx="29" cy="85" r="2.5" fill="#4D7C0F" />
+            <circle cx="35" cy="84" r="2.5" fill="#4D7C0F" />
+            <circle cx="65" cy="84" r="2.5" fill="#4D7C0F" />
+            <circle cx="71" cy="85" r="2.5" fill="#4D7C0F" />
+            <circle cx="77" cy="83" r="2.5" fill="#4D7C0F" />
+          </svg>`
+      },
+      {
+        id: 'board_game',
+        name: 'board game',
+        article: 'a board game',
+        isPlural: false,
+        colorText: 'pink, white and brown',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <rect x="8" y="24" width="84" height="52" fill="#FFFFFF" stroke="#1E293B" stroke-width="2.5" />
+            <!-- Top Row Squares -->
+            <rect x="8" y="24" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="20" y="24" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="32" y="24" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="44" y="24" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="56" y="24" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="68" y="24" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="80" y="24" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <!-- Bottom Row Squares -->
+            <rect x="8" y="66" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="20" y="66" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="32" y="66" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="44" y="66" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="56" y="66" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="68" y="66" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="80" y="66" width="12" height="10" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <!-- Left & Right Column Squares -->
+            <rect x="8" y="34" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="8" y="44" width="12" height="11" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="8" y="55" width="12" height="11" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="80" y="34" width="12" height="10" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <rect x="80" y="44" width="12" height="11" fill="#F472B6" stroke="#1E293B" stroke-width="1" />
+            <rect x="80" y="55" width="12" height="11" fill="#FFFFFF" stroke="#1E293B" stroke-width="1" />
+            <!-- 3 Brown Ladders inside board -->
+            <g stroke="#78350F" stroke-width="2">
+              <line x1="14" y1="50" x2="34" y2="28" /><line x1="18" y1="53" x2="38" y2="31" />
+              <line x1="47" y1="34" x2="47" y2="66" /><line x1="53" y1="34" x2="53" y2="66" />
+              <line x1="47" y1="42" x2="53" y2="42" /><line x1="47" y1="50" x2="53" y2="50" /><line x1="47" y1="58" x2="53" y2="58" />
+              <line x1="64" y1="68" x2="84" y2="48" /><line x1="68" y1="71" x2="88" y2="51" />
+            </g>
+          </svg>`
+      },
+      {
+        id: 'trousers',
+        name: 'trousers',
+        article: 'trousers',
+        isPlural: true,
+        colorText: 'black (or dark blue)',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <polygon points="32,12 68,12 74,88 56,88 50,36 44,88 26,88" fill="#1E293B" stroke="#0F172A" stroke-width="2.5" stroke-linejoin="round" />
+            <line x1="32" y1="18" x2="68" y2="18" stroke="#334155" stroke-width="2" />
+            <circle cx="50" cy="15" r="2" fill="#94A3B8" />
+          </svg>`
+      },
+      {
+        id: 'train',
+        name: 'train',
+        article: 'a train',
+        isPlural: false,
+        colorText: 'red, blue and yellow',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <!-- Track -->
+            <line x1="6" y1="68" x2="94" y2="68" stroke="#D97706" stroke-width="2.5" />
+            <!-- Engine (Left) -->
+            <polygon points="10,62 15,54 15,62" fill="#0284C7" />
+            <rect x="15" y="48" width="16" height="14" fill="#EF4444" stroke="#1E293B" stroke-width="1.2" />
+            <rect x="27" y="42" width="12" height="20" fill="#0284C7" stroke="#1E293B" stroke-width="1.2" />
+            <rect x="30" y="45" width="6" height="6" fill="#E0F2FE" />
+            <rect x="18" y="40" width="4" height="8" fill="#FACC15" stroke="#1E293B" stroke-width="1" />
+            <!-- Middle Wagon -->
+            <rect x="43" y="44" width="22" height="18" fill="#EF4444" stroke="#1E293B" stroke-width="1.2" />
+            <rect x="46" y="47" width="4" height="5" fill="#E0F2FE" />
+            <rect x="52" y="47" width="4" height="5" fill="#E0F2FE" />
+            <rect x="58" y="47" width="4" height="5" fill="#E0F2FE" />
+            <!-- Back Wagon -->
+            <rect x="69" y="44" width="22" height="18" fill="#0284C7" stroke="#1E293B" stroke-width="1.2" />
+            <rect x="72" y="47" width="4" height="5" fill="#FDE047" />
+            <rect x="78" y="47" width="4" height="5" fill="#FDE047" />
+            <rect x="84" y="47" width="4" height="5" fill="#FDE047" />
+            <!-- Couplers -->
+            <line x1="39" y1="58" x2="43" y2="58" stroke="#1E293B" stroke-width="2.5" />
+            <line x1="65" y1="58" x2="69" y2="58" stroke="#1E293B" stroke-width="2.5" />
+            <!-- Wheels -->
+            <circle cx="20" cy="64" r="4" fill="#FACC15" stroke="#1E293B" stroke-width="1.5" />
+            <circle cx="32" cy="64" r="4" fill="#FACC15" stroke="#1E293B" stroke-width="1.5" />
+            <circle cx="48" cy="64" r="3.5" fill="#EF4444" stroke="#1E293B" stroke-width="1.5" />
+            <circle cx="60" cy="64" r="3.5" fill="#EF4444" stroke="#1E293B" stroke-width="1.5" />
+            <circle cx="74" cy="64" r="3.5" fill="#0284C7" stroke="#1E293B" stroke-width="1.5" />
+            <circle cx="86" cy="64" r="3.5" fill="#0284C7" stroke="#1E293B" stroke-width="1.5" />
+          </svg>`
+      },
+      {
+        id: 'book',
+        name: 'book',
+        article: 'a book',
+        isPlural: false,
+        colorText: 'brown (or gold)',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <!-- Back Cover & White Pages -->
+            <polygon points="18,28 62,16 86,66 38,84" fill="#78350F" stroke="#451A03" stroke-width="2" />
+            <polygon points="36,80 84,62 86,67 38,85" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" />
+            <!-- Front Cover -->
+            <polygon points="16,24 62,12 84,60 36,78" fill="#B4822C" stroke="#78350F" stroke-width="2" />
+            <!-- Spine Highlight -->
+            <polygon points="16,24 24,22 44,75 36,78" fill="#92400E" />
+            <polygon points="16,24 18,29 38,84 36,78" fill="#78350F" />
+          </svg>`
+      },
+      {
+        id: 'lorry',
+        name: 'lorry',
+        article: 'a lorry (or truck)',
+        isPlural: false,
+        colorText: 'red and black',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <!-- Long Red Trailer -->
+            <rect x="36" y="34" width="56" height="26" fill="#EF4444" stroke="#991B1B" stroke-width="2" />
+            <!-- Red Cab -->
+            <polygon points="10,50 18,50 22,38 33,38 33,60 10,60" fill="#EF4444" stroke="#991B1B" stroke-width="2" />
+            <!-- Window -->
+            <polygon points="20,48 23,40 30,40 30,48" fill="#1E293B" />
+            <!-- Chassis Bar -->
+            <rect x="10" y="59" width="82" height="4" fill="#334155" />
+            <!-- 6 Wheels -->
+            <circle cx="20" cy="65" r="5.5" fill="#1E293B" /><circle cx="20" cy="65" r="2.5" fill="#E2E8F0" />
+            <circle cx="42" cy="65" r="5.5" fill="#1E293B" /><circle cx="42" cy="65" r="2.5" fill="#E2E8F0" />
+            <circle cx="54" cy="65" r="5.5" fill="#1E293B" /><circle cx="54" cy="65" r="2.5" fill="#E2E8F0" />
+            <circle cx="74" cy="65" r="5.5" fill="#1E293B" /><circle cx="74" cy="65" r="2.5" fill="#E2E8F0" />
+            <circle cx="85" cy="65" r="5.5" fill="#1E293B" /><circle cx="85" cy="65" r="2.5" fill="#E2E8F0" />
+          </svg>`
+      },
+      {
+        id: 'shorts',
+        name: 'shorts',
+        article: 'shorts',
+        isPlural: true,
+        colorText: 'light blue',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <polygon points="22,18 78,18 86,78 55,78 50,48 45,78 14,78" fill="#7DD3FC" stroke="#0284C7" stroke-width="2.5" stroke-linejoin="round" />
+            <!-- Waistband & Belt Loops -->
+            <rect x="22" y="18" width="56" height="7" fill="#0284C7" />
+            <rect x="32" y="17" width="3" height="9" fill="#E0F2FE" />
+            <rect x="50" y="17" width="3" height="9" fill="#E0F2FE" />
+            <rect x="66" y="17" width="3" height="9" fill="#E0F2FE" />
+            <!-- Pockets & Fly stitch -->
+            <path d="M22,34 Q32,34 34,25" stroke="#0369A1" stroke-width="2" fill="none" />
+            <path d="M78,34 Q68,34 66,25" stroke="#0369A1" stroke-width="2" fill="none" />
+            <line x1="50" y1="25" x2="50" y2="44" stroke="#0369A1" stroke-width="2" />
+          </svg>`
+      },
+      {
+        id: 'fish',
+        name: 'fish',
+        article: 'a fish',
+        isPlural: false,
+        colorText: 'orange, brown and yellow',
+        svg: `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <!-- Aqua Square Background like Card -->
+            <rect x="6" y="6" width="88" height="88" rx="8" fill="#A5F3FC" />
+            <!-- Dorsal & Bottom Fins -->
+            <path d="M35,38 Q52,18 68,22 Q58,32 58,40 Z" fill="#9A3412" />
+            <path d="M44,64 Q52,74 62,72 Q54,65 54,60 Z" fill="#9A3412" />
+            <!-- Big Flowing Brown Tail -->
+            <path d="M66,52 C74,34 90,34 90,56 C90,72 88,80 94,84 C80,82 74,66 66,52 Z" fill="#9A3412" />
+            <!-- Orange Fish Body -->
+            <path d="M10,52 C22,30 52,32 68,52 C52,70 22,70 10,52 Z" fill="#F97316" stroke="#C2410C" stroke-width="1.5" />
+            <!-- Yellow Spots -->
+            <circle cx="42" cy="46" r="2.2" fill="#FDE047" />
+            <circle cx="50" cy="44" r="2.2" fill="#FDE047" />
+            <circle cx="46" cy="53" r="2.2" fill="#FDE047" />
+            <circle cx="55" cy="52" r="2.2" fill="#FDE047" />
+            <circle cx="40" cy="58" r="2.2" fill="#FDE047" />
+            <circle cx="52" cy="59" r="2.2" fill="#FDE047" />
+            <!-- Big Eye -->
+            <circle cx="24" cy="49" r="7" fill="#FFFFFF" stroke="#1E293B" stroke-width="1.5" />
+            <circle cx="24" cy="49" r="4" fill="#1E293B" />
+            <!-- Gill curve -->
+            <path d="M34,40 Q39,52 34,62" stroke="#9A3412" stroke-width="2" fill="none" />
+          </svg>`
+      }
+    ];
+
+    /*************************************************************************
+     * 2. STRUCTURED CAMBRIDGE STARTERS SPEAKING CURRICULUM (PARTS 1A, 1B, 2, 3)
+     *************************************************************************/
+    const PART1A_TASKS = [
+      {
+        prompt: "Look at the picture. Where's the ball?",
+        subHint: "Point to the black and white football in the picture.",
+        targets: ['ball'],
+        successLabel: "There it is! The ball is under the red chair!",
+        chips: ["Here it is!", "It's under the red chair.", "The ball is under the chair."]
+      },
+      {
+        prompt: "Where's the computer?",
+        subHint: "Point to the laptop computer in the classroom.",
+        targets: ['laptop'],
+        successLabel: "Great job! The computer is on the brown table!",
+        chips: ["Here it is!", "It's on the table.", "The laptop is on the table."]
+      },
+      {
+        prompt: "Where's the camera?",
+        subHint: "Point to the black camera.",
+        targets: ['camera', 'camera_monster'],
+        successLabel: "Well done! The monster in the green dress has got the camera!",
+        chips: ["Here it is!", "The monster is holding it.", "It's in her hands."]
+      },
+      {
+        prompt: "Where's the grey cat?",
+        subHint: "Find the sleeping cat in the room.",
+        targets: ['gray_cat'],
+        successLabel: "Super! The grey cat is sleeping under the table!",
+        chips: ["Here it is!", "It's under the table.", "The cat is sleeping under the table."]
+      },
+      {
+        prompt: "Where's the clock?",
+        subHint: "Look up high on the wall!",
+        targets: ['clock'],
+        successLabel: "Awesome! The clock is on the wall above the whiteboard!",
+        chips: ["Here it is!", "It's on the wall.", "It's above the whiteboard."]
+      },
+      {
+        prompt: "Where are the pictures on the wall?",
+        subHint: "Plural question! Point to the framed paintings on the yellow wall.",
+        targets: ['left_picture', 'right_picture'],
+        successLabel: "Fantastic! Those are the two framed pictures on the wall!",
+        chips: ["Here they are!", "They are on the yellow wall.", "There are two pictures."]
+      },
+      {
+        prompt: "Where are the monsters?",
+        subHint: "Plural question! Point to any of the monsters in the art class.",
+        targets: ['green_monster', 'camera_monster', 'pink_monster', 'blue_monster'],
+        successLabel: "Brilliant! There are four colourful monsters in the classroom!",
+        chips: ["Here they are!", "There are four monsters.", "They are painting pictures."]
+      },
+      {
+        prompt: "Where's the box with the toys?",
+        subHint: "Look in the bottom right corner of the room.",
+        targets: ['box'],
+        successLabel: "Spot on! The brown toy box has a doll and a beach ball in it!",
+        chips: ["Here it is!", "It's on the floor.", "The toys are in the box."]
+      }
+    ];
+
+    const PART1B_TASKS = [
+      {
+        prompt: "Which is the book? ... Put the book under the table.",
+        subHint: "Drag the brown BOOK card and drop it UNDER the brown table (next to the grey cat).",
+        cardId: 'book',
+        zoneId: 'under_table',
+        zoneCoords: { x: 410, y: 292 },
+        successLabel: "Well done! You put the book under the table!",
+        chips: ["This is the book.", "I'm putting the book under the table.", "The book is under the table."]
+      },
+      {
+        prompt: "Which is the frog? ... Put the frog on the red chair.",
+        subHint: "Drag the green FROG card and drop it ON the red chair.",
+        cardId: 'frog',
+        zoneId: 'on_chair',
+        zoneCoords: { x: 315, y: 536 },
+        successLabel: "Super! The green frog is sitting on the red chair!",
+        chips: ["This is the frog.", "The frog is on the red chair.", "It's on the chair."]
+      },
+      {
+        prompt: "Which is the fish? ... Put the fish on the whiteboard.",
+        subHint: "Drag the orange FISH card and drop it ON the big whiteboard.",
+        cardId: 'fish',
+        zoneId: 'on_whiteboard',
+        zoneCoords: { x: 515, y: 110 },
+        successLabel: "Great! Now there are two fish on the whiteboard!",
+        chips: ["This is the fish.", "The fish is on the whiteboard.", "It's next to the drawing."]
+      },
+      {
+        prompt: "Which is the train? ... Put the train in the brown box.",
+        subHint: "Drag the toy TRAIN card and drop it IN the toy box on the bottom right.",
+        cardId: 'train',
+        zoneId: 'in_box',
+        zoneCoords: { x: 755, y: 555 },
+        successLabel: "Awesome! The toy train is in the brown box with the other toys!",
+        chips: ["This is the train.", "The train is in the box.", "It's in the toy box."]
+      },
+      {
+        prompt: "Which is the lorry? ... Put the lorry in front of the door.",
+        subHint: "Drag the red LORRY (truck) card and drop it IN FRONT OF the brown door on the left.",
+        cardId: 'lorry',
+        zoneId: 'in_front_of_door',
+        zoneCoords: { x: 52, y: 382 },
+        successLabel: "Fantastic! The red lorry is in front of the door!",
+        chips: ["This is the lorry.", "The lorry is in front of the door.", "It's by the door."]
+      },
+      {
+        prompt: "Which are the shorts? ... Put the shorts on the table, next to the computer.",
+        subHint: "Drag the light blue SHORTS card and drop them ON the table.",
+        cardId: 'shorts',
+        zoneId: 'on_table',
+        zoneCoords: { x: 425, y: 215 },
+        successLabel: "Brilliant! The shorts are on the table next to the laptop!",
+        chips: ["These are the shorts.", "They are on the table.", "They're next to the computer."]
+      },
+      {
+        prompt: "Which are the trousers? ... Put the trousers between the red chair and the pink monster.",
+        subHint: "Drag the black TROUSERS card and drop them BETWEEN the chair and the pink monster.",
+        cardId: 'trousers',
+        zoneId: 'between_chair_monster',
+        zoneCoords: { x: 420, y: 548 },
+        successLabel: "Amazing! The trousers are between the chair and the pink monster!",
+        chips: ["These are the trousers.", "They are between the chair and the monster."]
+      },
+      {
+        prompt: "Which is the board game? ... Put the board game next to the green monster.",
+        subHint: "Drag the pink BOARD GAME card and drop it NEXT TO the green monster's feet.",
+        cardId: 'board_game',
+        zoneId: 'next_to_green_monster',
+        zoneCoords: { x: 168, y: 530 },
+        successLabel: "Hooray! You placed all 8 Object Cards correctly!",
+        chips: ["This is the board game.", "It's next to the green monster."]
+      }
+    ];
+
+    const PART2_QUESTIONS = [
+      {
+        title: "1. What's this? / What colour / Where?",
+        spotlightId: 'laptop',
+        prompt: "Look at this on the table. What's this? What colour is it? Where is it?",
+        subHint: "Answer the three questions using your voice or the sentence blocks!",
+        keywords: ['computer', 'laptop', 'grey', 'blue', 'table'],
+        chips: [
+          "It's a computer.",
+          "It's a laptop.",
+          "It's grey and blue.",
+          "It's on the brown table."
+        ]
+      },
+      {
+        title: "2. What are these? / How many?",
+        spotlightId: 'left_picture',
+        secondarySpotlightId: 'right_picture',
+        prompt: "Look at the wall. What are these? How many pictures are there on the wall?",
+        subHint: "Practice plural answers: 'They're pictures' and counting!",
+        keywords: ['picture', 'painting', 'two', 'three', 'wall'],
+        chips: [
+          "They're pictures.",
+          "They're paintings.",
+          "There are two pictures on the wall.",
+          "One has a palm tree and one has animals."
+        ]
+      },
+      {
+        title: "3. Where is the ball? / What colour?",
+        spotlightId: 'ball',
+        prompt: "Look at the football. What colour is it? And where is it?",
+        subHint: "Say the colours and use the preposition 'under'!",
+        keywords: ['black', 'white', 'under', 'chair', 'red'],
+        chips: [
+          "It's black and white.",
+          "It's under the red chair.",
+          "The football is on the floor under the chair."
+        ]
+      },
+      {
+        title: "4. What is this monster doing?",
+        spotlightId: 'camera_monster',
+        prompt: "Look at this monster in the green dress. What is she doing? What is she wearing?",
+        subHint: "Describe what she is holding and wearing!",
+        keywords: ['photo', 'camera', 'picture', 'green', 'dress', 'pink', 'hair'],
+        chips: [
+          "She's taking a photo.",
+          "She's holding a black camera.",
+          "She's wearing a green dress with flowers.",
+          "She has got pink hair and four eyes."
+        ]
+      },
+      {
+        title: "5. ⭐ Tell me about this Green Monster!",
+        spotlightId: 'green_monster',
+        isMonsterBuilder: true,
+        monsterKey: 'green',
+        prompt: "Now, tell me about this green monster! What colour is he? What is he wearing? What is he doing?",
+        subHint: "In Cambridge Starters, say 3 sentences to get full shields!",
+        keywords: ['green', 'hat', 'red', 'blue', 'four', 'arms', 'painting', 'house', 'happy'],
+        chips: [
+          "He is green and happy.",
+          "He has got four arms and three eyes.",
+          "He is wearing a brown hat, a red T-shirt and blue trousers.",
+          "He is painting a picture of a house."
+        ]
+      },
+      {
+        title: "6. ⭐ Tell me about this Pink Monster!",
+        spotlightId: 'pink_monster',
+        isMonsterBuilder: true,
+        monsterKey: 'pink',
+        prompt: "Tell me about this pink monster! Is it happy or sad? How many legs has it got?",
+        subHint: "Look at the pink triangle monster's face and legs!",
+        keywords: ['pink', 'triangle', 'sad', 'four', 'legs', 'red', 'shoes', 'painting', 'cat'],
+        chips: [
+          "It is pink and shaped like a triangle.",
+          "It looks sad / It isn't happy.",
+          "It has got four blue legs and red shoes.",
+          "It is painting a blue cat."
+        ]
+      },
+      {
+        title: "7. ⭐ Tell me about this Blue Monster!",
+        spotlightId: 'blue_monster',
+        isMonsterBuilder: true,
+        monsterKey: 'blue',
+        prompt: "Tell me about this blue monster on the right! What is she doing?",
+        subHint: "Describe her colour, hair, arms, and painting!",
+        keywords: ['blue', 'round', 'black', 'hair', 'four', 'arms', 'happy', 'painting', 'monster'],
+        chips: [
+          "She is blue and round.",
+          "She has got black hair and four arms.",
+          "She is smiling and happy.",
+          "She is painting a picture of her friend."
+        ]
+      }
+    ];
+
+    const PART3_QUESTIONS = [
+      {
+        cardId: 'fish',
+        steps: [
+          { q: "What's this?", a: ["It's a fish.", "A fish."], keywords: ['fish'] },
+          { q: "What colour is it?", a: ["It's orange and brown.", "It's orange with yellow spots."], keywords: ['orange', 'brown', 'yellow'] },
+          { q: "Have you got a fish at home? Do you like fish?", a: ["Yes, I have! / No, I haven't.", "Yes, I like fish!", "No, I don't."], keywords: ['yes', 'no', 'have', 'like', 'fish'] }
+        ]
+      },
+      {
+        cardId: 'frog',
+        steps: [
+          { q: "What's this?", a: ["It's a frog.", "A frog."], keywords: ['frog'] },
+          { q: "What colour is the frog?", a: ["It's green and yellow.", "Green with a yellow tummy."], keywords: ['green', 'yellow'] },
+          { q: "Do you like frogs? Can frogs jump?", a: ["Yes, I do! / No, I don't.", "Yes, frogs can jump very high!"], keywords: ['yes', 'no', 'jump', 'can', 'like'] }
+        ]
+      },
+      {
+        cardId: 'book',
+        steps: [
+          { q: "What's this?", a: ["It's a book.", "A brown book."], keywords: ['book'] },
+          { q: "Have you got lots of books?", a: ["Yes, I have!", "No, I haven't."], keywords: ['yes', 'no', 'have', 'books'] },
+          { q: "Where do you read your books?", a: ["In my bedroom.", "At school.", "In the living room."], keywords: ['bedroom', 'school', 'home', 'bed', 'living', 'room'] }
+        ]
+      },
+      {
+        cardId: 'train',
+        steps: [
+          { q: "What's this?", a: ["It's a train.", "It's a toy train."], keywords: ['train'] },
+          { q: "What colour is it?", a: ["It's red, blue and yellow."], keywords: ['red', 'blue', 'yellow'] },
+          { q: "Have you got a toy train? Do you like riding on trains?", a: ["Yes, I have! / No, I haven't.", "Yes, I love trains!"], keywords: ['yes', 'no', 'have', 'like', 'train'] }
+        ]
+      },
+      {
+        cardId: 'lorry',
+        steps: [
+          { q: "What's this?", a: ["It's a lorry.", "It's a truck."], keywords: ['lorry', 'truck'] },
+          { q: "What colour is it? Is it big or small?", a: ["It's red and black.", "It's a big red lorry."], keywords: ['red', 'black', 'big', 'small'] },
+          { q: "How many wheels has this lorry got?", a: ["It has got six wheels.", "Five / Six wheels."], keywords: ['five', 'six', 'wheels'] }
+        ]
+      },
+      {
+        cardId: 'trousers',
+        steps: [
+          { q: "What are these?", a: ["They're trousers.", "They are pants."], keywords: ['trousers', 'pants', 'they'] },
+          { q: "What colour are they?", a: ["They're black.", "They're dark blue."], keywords: ['black', 'blue', 'dark'] },
+          { q: "Are you wearing trousers today?", a: ["Yes, I am!", "No, I'm not. I'm wearing shorts / a skirt."], keywords: ['yes', 'no', 'wearing', 'am'] }
+        ]
+      },
+      {
+        cardId: 'shorts',
+        steps: [
+          { q: "What are these?", a: ["They're shorts."], keywords: ['shorts', 'they'] },
+          { q: "What colour are they?", a: ["They're light blue.", "They're blue."], keywords: ['blue', 'light'] },
+          { q: "Have you got blue shorts? When do you wear shorts?", a: ["Yes, I have! / No, I haven't.", "I wear shorts in summer / when it's sunny."], keywords: ['yes', 'no', 'have', 'summer', 'hot', 'sunny'] }
+        ]
+      },
+      {
+        cardId: 'board_game',
+        steps: [
+          { q: "What's this?", a: ["It's a board game.", "It's a game."], keywords: ['game', 'board'] },
+          { q: "What colour is it?", a: ["It's pink and white."], keywords: ['pink', 'white', 'brown'] },
+          { q: "Do you like playing board games? Who do you play with?", a: ["Yes, I do!", "I play with my friends.", "I play with my family / brother / sister."], keywords: ['yes', 'friends', 'family', 'mum', 'dad', 'brother', 'sister'] }
+        ]
+      }
+    ];
+
+    const SCENE_ITEM_LABELS = {
+      ball: { name: "the ball (football)", sentence: "It's a black and white football under the red chair." },
+      laptop: { name: "the computer / laptop", sentence: "It's a laptop computer on the brown table." },
+      camera: { name: "the camera", sentence: "It's a black camera." },
+      camera_monster: { name: "the monster in the green dress", sentence: "She has pink hair and is taking a photo with a camera." },
+      clock: { name: "the clock", sentence: "The clock is on the wall above the whiteboard." },
+      gray_cat: { name: "the grey cat", sentence: "The grey cat is sleeping under the brown table." },
+      left_picture: { name: "the palm tree picture", sentence: "It's a painting of a pink palm tree on the wall." },
+      right_picture: { name: "the animals picture", sentence: "It's a painting of animals and a bird on the wall." },
+      whiteboard: { name: "the whiteboard", sentence: "There is a drawing of a fish on the big whiteboard." },
+      table: { name: "the brown table", sentence: "The laptop is on the table and the cat is under the table." },
+      door: { name: "the brown door", sentence: "There is a tall brown door on the left wall." },
+      left_easel: { name: "the house painting", sentence: "The green monster is painting a house with three chimneys." },
+      green_monster: { name: "the green monster", sentence: "He has four arms, a brown hat, a red shirt and blue trousers." },
+      chair: { name: "the red chair", sentence: "The red chair is in front of the easels." },
+      center_easel: { name: "the blue cat painting", sentence: "It's a painting of a blue cat drinking milk." },
+      pink_monster: { name: "the pink triangle monster", sentence: "It is pink, has four legs, and looks sad." },
+      right_easel: { name: "the monster portrait", sentence: "It's a painting of a smiling blue monster." },
+      blue_monster: { name: "the blue monster", sentence: "She is round, blue, has four arms, and is holding paints." },
+      box: { name: "the toy box", sentence: "There is a doll, a beach ball, and a game board in the brown box." }
+    };
+
+    /*************************************************************************
+     * 3. STATE MANAGEMENT
+     *************************************************************************/
+    let currentMode = 'part1a'; // 'part1a' | 'part1b' | 'part2' | 'part3' | 'sandbox'
+    let score = 0;
+    let p1aIndex = 0;
+    let p1bIndex = 0;
+    let p2Index = 0;
+    let p3CardIndex = 0;
+    let p3StepIndex = 0;
+    let pairTalkMode = false; // Toggle inside Part 3 for image 2 ("Talk about each picture in pairs")
+
+    // Track placed cards in the scene: { cardId: { x, y, zoneId } }
+    let placedCards = {};
+    // Track Pair Talk personal badges: { cardId: { have: bool, like: bool } }
+    let cardPersonalTags = {};
+    OBJECT_CARDS.forEach(c => { cardPersonalTags[c.id] = { have: false, like: false }; });
+
+    // Audio & Teacher Settings
+    let soundMuted = false;
+    let speechRate = 0.9;
+    let showDropZonesHint = false;
+    let selectedCardForTapPlacement = null;
+
+    /*************************************************************************
+     * 4. WEB AUDIO API (CHIMES, POP, FANFARE) & WEB SPEECH API (TTS & STT)
+     *************************************************************************/
+    let audioCtx = null;
+    function getAudioCtx() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    function playChime(type = 'success') {
+      if (soundMuted) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        if (type === 'success') {
+          const notes = [523.25, 659.25, 783.99, 1046.5];
+          notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+            gain.gain.setValueAtTime(0.18, now + idx * 0.08);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.35);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + idx * 0.08);
+            osc.stop(now + idx * 0.08 + 0.36);
+          });
+        } else if (type === 'pop') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(420, now);
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.09);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        } else if (type === 'wrong') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.linearRampToValueAtTime(165, now + 0.22);
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        }
+      } catch (e) {}
+    }
+
+    function playFanfare() {
+      if (soundMuted) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        const chord = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+        chord.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.1);
+          gain.gain.setValueAtTime(0.2, now + i * 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.65);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + i * 0.1);
+          osc.stop(now + i * 0.1 + 0.7);
+        });
+      } catch (e) {}
+    }
+
+    function speakText(text) {
+      if (soundMuted || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'en-GB';
+        utter.rate = speechRate;
+        utter.pitch = 1.08;
+
+        const mouth = document.getElementById('examiner-mouth');
+        const badge = document.getElementById('speaking-badge');
+
+        utter.onstart = () => {
+          if (mouth) mouth.classList.add('mouth-talking');
+          if (badge) badge.classList.remove('hidden');
+        };
+        utter.onend = () => {
+          if (mouth) mouth.classList.remove('mouth-talking');
+          if (badge) badge.classList.add('hidden');
+        };
+        utter.onerror = () => {
+          if (mouth) mouth.classList.remove('mouth-talking');
+          if (badge) badge.classList.add('hidden');
+        };
+
+        window.speechSynthesis.speak(utter);
+      } catch (e) {}
+    }
+
+    function repeatPromptAudio() {
+      const promptEl = document.getElementById('examiner-prompt-text');
+      if (promptEl) {
+        const clean = promptEl.textContent.replace(/"/g, '');
+        speakText(clean);
+      }
+    }
+
+    function toggleSpeechRate() {
+      speechRate = speechRate === 0.9 ? 0.75 : (speechRate === 0.75 ? 1.05 : 0.9);
+      const label = speechRate === 0.75 ? '🐢 Speed: Slow (0.75x)' : (speechRate === 1.05 ? '🐇 Speed: Fast (1.05x)' : '🐢 Speed: Normal (0.9x)');
+      document.getElementById('btn-speech-rate').textContent = label;
+      playChime('pop');
+    }
+
+    function toggleMute() {
+      soundMuted = !soundMuted;
+      document.getElementById('btn-mute').textContent = soundMuted ? '🔕 Sound: MUTED' : '🔔 Sound: ON';
+      if (soundMuted && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    }
+
+    function toggleDropZonesHint() {
+      showDropZonesHint = !showDropZonesHint;
+      document.getElementById('btn-drop-hint').textContent = showDropZonesHint ? '🎯 Show Drop Zones: ON' : '🎯 Show Drop Zones: OFF';
+      updateDropZonesVisibility();
+    }
+
+    function updateDropZonesVisibility() {
+      document.querySelectorAll('.drop-zone').forEach(dz => {
+        if (showDropZonesHint || currentMode === 'part1b') {
+          dz.classList.add('show-hint');
+        } else {
+          dz.classList.remove('show-hint');
+        }
+      });
+    }
+
+    /*************************************************************************
+     * 5. SCORE, SHIELDS & TOAST FEEDBACK
+     *************************************************************************/
+    function addPoints(pts, toastMessage = null) {
+      score += pts;
+      const scoreEl = document.getElementById('score-display');
+      scoreEl.textContent = score;
+      scoreEl.parentElement.classList.add('scale-110');
+      setTimeout(() => scoreEl.parentElement.classList.remove('scale-110'), 250);
+
+      renderShields();
+      playChime('success');
+      if (toastMessage) showSceneToast(toastMessage, '🌟');
+    }
+
+    function teacherAwardStar() {
+      addPoints(15, "Great speaking! Teacher awarded +15 Star Points!");
+      celebrateWithConfetti(25);
+    }
+
+    function renderShields() {
+      // 5 Cambridge Shields unlocked at 20, 50, 90, 140, 200 points
+      const thresholds = [20, 50, 90, 140, 200];
+      const container = document.getElementById('shields-container');
+      const modalShields = document.getElementById('modal-shields');
+      let html = '';
+      let modalHtml = '';
+
+      thresholds.forEach((t, idx) => {
+        const earned = score >= t;
+        html += `
+          <svg class="w-5 h-6 transition-transform duration-300 ${earned ? 'scale-110 drop-shadow' : 'opacity-30 grayscale'}" viewBox="0 0 24 28">
+            <path d="M12,2 L22,6 L22,14 C22,20.5 12,26 12,26 C12,26 2,20.5 2,14 L2,6 Z"
+                  fill="${earned ? '#F59E0B' : '#94A3B8'}" stroke="${earned ? '#B45309' : '#64748B'}" stroke-width="2"/>
+            <text x="12" y="18" text-anchor="middle" font-size="10" font-weight="bold" fill="#FFFFFF">${idx + 1}</text>
+          </svg>`;
+        modalHtml += `<span class="${earned ? '' : 'opacity-25 grayscale'}">🛡️</span>`;
+      });
+
+      if (container) container.innerHTML = html;
+      if (modalShields) modalShields.innerHTML = modalHtml;
+      const modalScore = document.getElementById('modal-score');
+      if (modalScore) modalScore.textContent = score;
+    }
+
+    let toastTimeout = null;
+    function showSceneToast(text, icon = '🌟', isError = false) {
+      const toast = document.getElementById('scene-toast');
+      const toastIcon = document.getElementById('scene-toast-icon');
+      const toastText = document.getElementById('scene-toast-text');
+      if (!toast) return;
+
+      toastIcon.textContent = icon;
+      toastText.textContent = text;
+      toast.className = `absolute top-4 left-1/2 -translate-x-1/2 z-30 px-5 py-2.5 rounded-2xl shadow-xl border-2 font-kid font-bold text-sm sm:text-base flex items-center gap-2 transition-all ${
+        isError ? 'bg-rose-900/95 text-white border-rose-300' : 'bg-slate-900/95 text-white border-amber-400'
+      }`;
+      toast.classList.remove('hidden');
+
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3200);
+    }
+
+    /*************************************************************************
+     * 6. MODE SWITCHING & UI RENDERING
+     *************************************************************************/
+    function switchMode(mode) {
+      currentMode = mode;
+      clearAllSceneHighlights();
+
+      // Update Top Tab Styling
+      document.querySelectorAll('.mode-tab').forEach(btn => {
+        btn.className = "mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white";
+      });
+      const activeTab = document.getElementById(`tab-${mode}`);
+      if (activeTab) {
+        activeTab.className = "mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 bg-indigo-600 text-white shadow";
+      }
+
+      updateDropZonesVisibility();
+      renderCurrentMode();
+    }
+
+    function clearAllSceneHighlights() {
+      document.querySelectorAll('.scene-item').forEach(el => {
+        el.classList.remove('glow-correct', 'glow-spotlight', 'shake-wrong');
+      });
+    }
+
+    function renderCurrentMode() {
+      const partBadge = document.getElementById('part-badge');
+      const qCounter = document.getElementById('question-counter');
+      const promptText = document.getElementById('examiner-prompt-text');
+      const subHint = document.getElementById('examiner-sub-hint');
+      const panel = document.getElementById('activity-panel');
+
+      if (currentMode === 'part1a') {
+        const task = PART1A_TASKS[p1aIndex];
+        partBadge.textContent = "Part 1 • Task A: Point to Things in the Big Picture";
+        qCounter.textContent = `Question ${p1aIndex + 1} of ${PART1A_TASKS.length}`;
+        promptText.textContent = `"${task.prompt}"`;
+        subHint.textContent = `👉 ${task.subHint}`;
+        speakText(task.prompt);
+        renderAnswerChips(task.chips, []);
+
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">👆 Task A: Where is / Where are...?</h2>
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">+10 pts each</span>
+          </div>
+          <p class="text-xs text-slate-600">
+            Listen to the Examiner and <strong>click directly on the object(s)</strong> in the Monster Art Class picture!
+          </p>
+          <div class="grid grid-cols-4 gap-1.5 my-1">
+            ${PART1A_TASKS.map((t, idx) => `
+              <button onclick="p1aIndex=${idx}; renderCurrentMode();" class="py-1.5 px-2 rounded-xl font-kid font-bold text-xs border transition ${
+                idx === p1aIndex
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow'
+                  : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
+              }">
+                Q${idx + 1}
+              </button>
+            `).join('')}
+          </div>
+          <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+            <button onclick="prevQuestion()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
+              ⬅️ Previous
+            </button>
+            <button onclick="triggerVisualClue()" class="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-kid font-bold text-xs transition">
+              💡 Show Me Hint
+            </button>
+            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
+              Next Question ➡️
+            </button>
+          </div>
+        `;
+      }
+
+      else if (currentMode === 'part1b') {
+        const task = PART1B_TASKS[p1bIndex];
+        partBadge.textContent = "Part 1 • Task B: Place the Object Cards";
+        qCounter.textContent = `Placement ${p1bIndex + 1} of ${PART1B_TASKS.length}`;
+        promptText.textContent = `"${task.prompt}"`;
+        subHint.textContent = `🃏 ${task.subHint}`;
+        speakText(task.prompt);
+        renderAnswerChips(task.chips, []);
+
+        // Highlight the target card in tray subtly if needed
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🃏 Task B: Put the Card On / Under / In</h2>
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">+15 pts each</span>
+          </div>
+          <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-3 text-xs text-amber-950 flex items-center gap-3">
+            <div class="w-14 h-14 rounded-xl bg-white border-2 border-amber-300 p-1 shrink-0 shadow-sm">
+              ${OBJECT_CARDS.find(c => c.id === task.cardId).svg}
+            </div>
+            <div>
+              <div class="font-extrabold uppercase text-[10px] text-amber-700">Target Card: ${task.cardId.replace('_', ' ')}</div>
+              <div class="font-bold text-sm text-slate-900 mt-0.5">${task.prompt}</div>
+              <div class="text-[11px] text-slate-600 mt-0.5">Drag the card from the tray below onto the glowing dashed zone in the picture!</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-4 gap-1.5">
+            ${PART1B_TASKS.map((t, idx) => `
+              <button onclick="p1bIndex=${idx}; renderCurrentMode();" class="py-1.5 px-2 rounded-xl font-kid font-bold text-xs border transition ${
+                idx === p1bIndex
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow'
+                  : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
+              }">
+                #${idx + 1} ${t.cardId.split('_')[0]}
+              </button>
+            `).join('')}
+          </div>
+          <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+            <button onclick="prevQuestion()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
+              ⬅️ Previous
+            </button>
+            <button onclick="autoDemoPlaceCurrentCard()" class="px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-kid font-bold text-xs transition">
+              ✨ Auto-Demo Placement
+            </button>
+            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
+              Next Task ➡️
+            </button>
+          </div>
+        `;
+      }
+
+      else if (currentMode === 'part2') {
+        const q = PART2_QUESTIONS[p2Index];
+        partBadge.textContent = "Part 2 • Questions about the Scene Picture";
+        qCounter.textContent = `Prompt ${p2Index + 1} of ${PART2_QUESTIONS.length}`;
+        promptText.textContent = `"${q.prompt}"`;
+        subHint.textContent = `🔍 ${q.subHint}`;
+        speakText(q.prompt);
+
+        clearAllSceneHighlights();
+        const spotEl = document.getElementById(`item-${q.spotlightId}`);
+        if (spotEl) spotEl.classList.add('glow-spotlight');
+        if (q.secondarySpotlightId) {
+          const secEl = document.getElementById(`item-${q.secondarySpotlightId}`);
+          if (secEl) secEl.classList.add('glow-spotlight');
+        }
+
+        renderAnswerChips(q.chips, q.keywords);
+
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🔍 Part 2: Scene Q&A & "Tell me about..."</h2>
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">+15 pts</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            ${PART2_QUESTIONS.map((item, idx) => `
+              <button onclick="p2Index=${idx}; renderCurrentMode();" class="px-2.5 py-1 rounded-xl font-kid font-bold text-xs border transition ${
+                idx === p2Index
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow'
+                  : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
+              }">
+                ${item.isMonsterBuilder ? '👾 ' : ''}${item.title.split('.')[0]}
+              </button>
+            `).join('')}
+          </div>
+
+          <div class="bg-indigo-50/80 border-2 border-indigo-200 rounded-2xl p-3">
+            <div class="text-xs font-extrabold uppercase text-indigo-700 mb-1">${q.title}</div>
+            <p class="text-xs text-slate-700 mb-2">
+              Click any sentence below to hear & practice saying it aloud, or use the <strong>🎤 Speak Answer</strong> button!
+            </p>
+            <div class="flex flex-col gap-1.5">
+              ${q.chips.map(sentence => `
+                <button onclick="practiceSentence('${sentence.replace(/'/g, "\\'")}')" class="text-left px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
+                  <span>🗣️ "${sentence}"</span>
+                  <span class="text-emerald-600 text-xs font-extrabold">+10 ⭐</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2 pt-1">
+            <button onclick="prevQuestion()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
+              ⬅️ Previous
+            </button>
+            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
+              Next Question ➡️
+            </button>
+          </div>
+        `;
+      }
+
+      else if (currentMode === 'part3') {
+        const cardObj = PART3_QUESTIONS[p3CardIndex];
+        const cardMeta = OBJECT_CARDS.find(c => c.id === cardObj.cardId);
+        const stepObj = cardObj.steps[p3StepIndex];
+
+        partBadge.textContent = "Part 3 • Questions about the Small Object Cards";
+        qCounter.textContent = `Card ${p3CardIndex + 1} of 8 • Step ${p3StepIndex + 1}/3`;
+        promptText.textContent = `"${stepObj.q}"`;
+        subHint.textContent = `💬 Examiner is showing you the ${cardMeta.name.toUpperCase()} card. Answer the question!`;
+        speakText(stepObj.q);
+        renderAnswerChips(stepObj.a, stepObj.keywords);
+
+        panel.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">💬 Part 3: Object Cards Q&A</h2>
+            <button onclick="pairTalkMode = !pairTalkMode; renderCurrentMode();" class="text-xs font-bold px-2.5 py-1 rounded-xl border transition ${
+              pairTalkMode ? 'bg-amber-500 text-white border-amber-600' : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+            }">
+              👥 ${pairTalkMode ? 'Back to Examiner Q&A' : 'Pair Talk Activity'}
+            </button>
+          </div>
+
+          ${!pairTalkMode ? `
+            <!-- Featured 3D Object Card Spotlight -->
+            <div class="bg-gradient-to-br from-sky-50 to-indigo-50 border-4 border-indigo-200 rounded-3xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-inner">
+              <div class="w-28 h-28 rounded-2xl bg-white border-4 border-dashed border-slate-400 p-2 shadow-md shrink-0 relative">
+                ${cardMeta.svg}
+                <span class="absolute bottom-1 right-1.5 text-[9px] font-bold text-slate-500">Test 1</span>
+              </div>
+              <div class="flex-1 text-center sm:text-left">
+                <div class="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 mb-2">
+                  ${cardObj.steps.map((s, idx) => `
+                    <button onclick="p3StepIndex=${idx}; renderCurrentMode();" class="px-2.5 py-1 rounded-lg font-kid font-bold text-xs transition ${
+                      idx === p3StepIndex ? 'bg-indigo-600 text-white shadow' : 'bg-white text-slate-600 border border-slate-200'
+                    }">
+                      Q${idx + 1}
+                    </button>
+                  `).join('')}
+                </div>
+                <p class="text-base font-kid font-bold text-indigo-950 mb-2">"${stepObj.q}"</p>
+                <div class="flex flex-col gap-1.5">
+                  ${stepObj.a.map(ans => `
+                    <button onclick="practiceSentence('${ans.replace(/'/g, "\\'")}', true)" class="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
+                      <span>💬 "${ans}"</span>
+                      <span class="text-emerald-600 font-extrabold">+10 ⭐</span>
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 pt-1">
+              <button onclick="prevPart3Step()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
+                ⬅️ Previous
+              </button>
+              <span class="text-xs font-bold text-slate-500">Click any card below to switch!</span>
+              <button onclick="nextPart3Step()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
+                Next Question ➡️
+              </button>
+            </div>
+          ` : `
+            <!-- Pair Talk Extension (Based on Image 2: What colour? Which things do you have? Which things do you like? Why?) -->
+            <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 text-xs space-y-2">
+              <div class="font-kid font-bold text-sm text-amber-950">👥 Pair Talk Activity (Book Exercise 1):</div>
+              <ul class="list-disc list-inside text-slate-700 font-semibold space-y-0.5">
+                <li>What colour are the things in the pictures?</li>
+                <li>Which things do you have? (Tap <strong>"I have this!"</strong>)</li>
+                <li>Which things do you like? Why? (Tap <strong>"I like this!"</strong>)</li>
+              </ul>
+              <div class="bg-white rounded-xl p-2.5 border border-amber-200 flex items-center gap-3">
+                <div class="w-16 h-16 shrink-0 border border-dashed border-slate-300 rounded-lg p-1">
+                  ${cardMeta.svg}
+                </div>
+                <div class="flex-1 space-y-1.5">
+                  <div class="font-bold text-slate-900 capitalize">${cardMeta.name} — <span class="text-indigo-600">${cardMeta.colorText}</span></div>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button onclick="togglePersonalTag('${cardMeta.id}', 'have')" class="px-2.5 py-1 rounded-lg font-bold text-xs border transition ${
+                      cardPersonalTags[cardMeta.id].have ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-slate-100 text-slate-700 border-slate-300'
+                    }">
+                      🏠 I have got ${cardMeta.article}!
+                    </button>
+                    <button onclick="togglePersonalTag('${cardMeta.id}', 'like')" class="px-2.5 py-1 rounded-lg font-bold text-xs border transition ${
+                      cardPersonalTags[cardMeta.id].like ? 'bg-rose-500 text-white border-rose-600' : 'bg-slate-100 text-slate-700 border-slate-300'
+                    }">
+                      ❤️ I like ${cardMeta.name}s!
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `}
+        `;
+      }
+
+      else if (currentMode === 'sandbox') {
+        partBadge.textContent = "🎓 Free Teacher & Student Sandbox Mode";
+        qCounter.textContent = "All Items Interactive";
+        promptText.textContent = `"Click any object in the classroom to hear its name and sentence, or drag any card anywhere in the room!"`;
+        subHint.textContent = "✨ Teacher Tip: Use this mode to ask your own custom questions or review vocabulary freely.";
+        renderAnswerChips([
+          "There are four monsters.",
+          "The ball is under the chair.",
+          "The cat is sleeping under the table.",
+          "She is taking a photo."
+        ], []);
+
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🎓 Teacher Sandbox & Vocabulary Explorer</h2>
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800">Free Play</span>
+          </div>
+          <p class="text-xs text-slate-600">
+            Click any button below to spotlight an item in the Monster Art Class and hear a model Cambridge Starters sentence:
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
+            ${Object.entries(SCENE_ITEM_LABELS).map(([key, info]) => `
+              <button onclick="spotlightAndSpeakSandbox('${key}')" class="text-left px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-xs font-bold text-slate-700 truncate transition">
+                ✨ ${info.name}
+              </button>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      renderObjectCardsTray();
+    }
+
+    /*************************************************************************
+     * 7. SCENE ITEM CLICK HANDLER (PART 1A & SANDBOX)
+     *************************************************************************/
+    function handleSceneItemClick(itemId, event) {
+      if (event) event.stopPropagation();
+      const el = document.getElementById(`item-${itemId}`);
+
+      if (currentMode === 'part1a') {
+        const task = PART1A_TASKS[p1aIndex];
+        if (task.targets.includes(itemId)) {
+          // Correct Item Pointed!
+          clearAllSceneHighlights();
+          task.targets.forEach(tId => {
+            const targetEl = document.getElementById(`item-${tId}`);
+            if (targetEl) targetEl.classList.add('glow-correct');
+          });
+          addPoints(10, task.successLabel);
+          speakText(task.successLabel);
+        } else {
+          // Gentle wrong item feedback
+          if (el) {
+            el.classList.remove('shake-wrong');
+            void el.offsetWidth;
+            el.classList.add('shake-wrong');
+          }
+          playChime('wrong');
+          const clickedInfo = SCENE_ITEM_LABELS[itemId];
+          const msg = clickedInfo ? `That's ${clickedInfo.name}. Try again: ${task.prompt}` : `Try again! ${task.prompt}`;
+          showSceneToast(msg, '🤔', true);
+          speakText(`That's ${clickedInfo ? clickedInfo.name : 'not it'}. ${task.prompt}`);
+        }
+      } else {
+        // In Part 2, Part 3, Part 1B, or Sandbox: clicking any item makes it glow and speaks its description
+        clearAllSceneHighlights();
+        if (el) el.classList.add('glow-correct');
+        const info = SCENE_ITEM_LABELS[itemId];
+        if (info) {
+          playChime('pop');
+          showSceneToast(`${info.name}: "${info.sentence}"`, '🎨');
+          speakText(info.sentence);
+        }
+      }
+    }
+
+    function spotlightAndSpeakSandbox(itemId) {
+      clearAllSceneHighlights();
+      const el = document.getElementById(`item-${itemId}`);
+      if (el) el.classList.add('glow-correct');
+      const info = SCENE_ITEM_LABELS[itemId];
+      if (info) {
+        document.getElementById('examiner-prompt-text').textContent = `"${info.sentence}"`;
+        showSceneToast(info.sentence, '✨');
+        speakText(info.sentence);
+      }
+    }
+
+    function triggerVisualClue() {
+      clearAllSceneHighlights();
+      playChime('pop');
+      if (currentMode === 'part1a') {
+        const task = PART1A_TASKS[p1aIndex];
+        task.targets.forEach(tId => {
+          const el = document.getElementById(`item-${tId}`);
+          if (el) el.classList.add('glow-spotlight');
+        });
+        showSceneToast(`Hint: Look at the glowing object!`, '💡');
+      } else if (currentMode === 'part1b') {
+        const task = PART1B_TASKS[p1bIndex];
+        const dz = document.getElementById(`dz-${task.zoneId}`);
+        if (dz) dz.classList.add('active-hover');
+        setTimeout(() => { if (dz) dz.classList.remove('active-hover'); }, 2200);
+        showSceneToast(`Hint: Drag the ${task.cardId.replace('_', ' ')} to the green glowing zone!`, '💡');
+      } else if (currentMode === 'part2') {
+        const q = PART2_QUESTIONS[p2Index];
+        const el = document.getElementById(`item-${q.spotlightId}`);
+        if (el) el.classList.add('glow-correct');
+      }
+    }
+
+    /*************************************************************************
+     * 8. RENDER 8 OBJECT CARDS TRAY & SMOOTH DRAG-AND-DROP ENGINE
+     *************************************************************************/
+    function renderObjectCardsTray() {
+      const grid = document.getElementById('object-cards-grid');
+      if (!grid) return;
+
+      grid.innerHTML = OBJECT_CARDS.map((card, idx) => {
+        const isPlaced = Boolean(placedCards[card.id]);
+        const isCurrentP3 = currentMode === 'part3' && PART3_QUESTIONS[p3CardIndex].cardId === card.id;
+        const isCurrentP1B = currentMode === 'part1b' && PART1B_TASKS[p1bIndex].cardId === card.id;
+        const tags = cardPersonalTags[card.id];
+
+        return `
+          <div
+            data-card-id="${card.id}"
+            onpointerdown="startCardDrag(event, '${card.id}')"
+            onclick="handleTrayCardClick('${card.id}')"
+            class="object-card relative rounded-2xl bg-white p-1.5 border-2 border-dashed ${
+              isCurrentP3 || isCurrentP1B ? 'border-amber-500 ring-2 ring-amber-300 bg-amber-50/40' : 'border-slate-400'
+            } ${isPlaced ? 'opacity-45' : ''} flex flex-col items-center justify-between aspect-square select-none shadow-sm"
+          >
+            <!-- Scissor Icon on Top Right Corner like official cutout sheet -->
+            <span class="absolute -top-2 -right-1 text-[11px] text-slate-500 pointer-events-none">✂️</span>
+
+            <!-- Personal Tags Badges -->
+            <div class="absolute top-1 left-1 flex gap-0.5 pointer-events-none">
+              ${tags.have ? '<span class="text-[10px]" title="I have this!">🏠</span>' : ''}
+              ${tags.like ? '<span class="text-[10px]" title="I like this!">❤️</span>' : ''}
+            </div>
+
+            <div class="w-full h-4/5 flex items-center justify-center pointer-events-none p-1">
+              ${card.svg}
+            </div>
+
+            <div class="w-full flex items-center justify-between px-1 pointer-events-none">
+              <span class="text-[10px] font-extrabold text-slate-700 truncate capitalize">${card.name}</span>
+              <span class="text-[8px] font-bold text-slate-400">Test 1</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('placed-count').textContent = Object.keys(placedCards).length;
+    }
+
+    function handleTrayCardClick(cardId) {
+      const card = OBJECT_CARDS.find(c => c.id === cardId);
+      if (!card) return;
+
+      if (currentMode === 'part3') {
+        const idx = PART3_QUESTIONS.findIndex(q => q.cardId === cardId);
+        if (idx !== -1) {
+          p3CardIndex = idx;
+          p3StepIndex = 0;
+          renderCurrentMode();
+        }
+      } else {
+        playChime('pop');
+        const phrase = card.isPlural ? `These are ${card.name}. They are ${card.colorText}.` : `This is ${card.article}. It is ${card.colorText}.`;
+        showSceneToast(phrase, '🃏');
+        speakText(phrase);
+      }
+    }
+
+    // Pointer Drag-and-Drop Implementation (Works on Desktop Mouse, Touch Tablets & Smartboards)
+    let draggingCardId = null;
+    let dragStartPos = { x: 0, y: 0 };
+    let isDraggingActive = false;
+
+    function startCardDrag(e, cardId) {
+      if (e.button !== undefined && e.button !== 0) return;
+      draggingCardId = cardId;
+      dragStartPos = { x: e.clientX, y: e.clientY };
+      isDraggingActive = false;
+
+      window.addEventListener('pointermove', onCardPointerMove);
+      window.addEventListener('pointerup', onCardPointerUp);
+    }
+
+    function onCardPointerMove(e) {
+      if (!draggingCardId) return;
+      const dx = e.clientX - dragStartPos.x;
+      const dy = e.clientY - dragStartPos.y;
+
+      if (!isDraggingActive && Math.hypot(dx, dy) > 8) {
+        isDraggingActive = true;
+        const card = OBJECT_CARDS.find(c => c.id === draggingCardId);
+        const ghost = document.getElementById('drag-ghost');
+        ghost.innerHTML = card.svg;
+        ghost.style.display = 'flex';
+        playChime('pop');
+      }
+
+      if (isDraggingActive) {
+        const ghost = document.getElementById('drag-ghost');
+        ghost.style.left = `${e.clientX}px`;
+        ghost.style.top = `${e.clientY}px`;
+
+        // Highlight drop zone if hovering over SVG
+        highlightHoveredDropZone(e.clientX, e.clientY);
+      }
+    }
+
+    function getSvgCoordsFromClient(clientX, clientY) {
+      const svg = document.getElementById('monster-art-scene');
+      const rect = svg.getBoundingClientRect();
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+        return null;
+      }
+      const x = ((clientX - rect.left) / rect.width) * 900;
+      const y = ((clientY - rect.top) / rect.height) * 675;
+      return { x, y };
+    }
+
+    function highlightHoveredDropZone(clientX, clientY) {
+      document.querySelectorAll('.drop-zone').forEach(dz => dz.classList.remove('active-hover'));
+      const pt = getSvgCoordsFromClient(clientX, clientY);
+      if (!pt) return;
+
+      document.querySelectorAll('.drop-zone').forEach(dz => {
+        const x = parseFloat(dz.getAttribute('x'));
+        const y = parseFloat(dz.getAttribute('y'));
+        const w = parseFloat(dz.getAttribute('width'));
+        const h = parseFloat(dz.getAttribute('height'));
+        if (pt.x >= x - 15 && pt.x <= x + w + 15 && pt.y >= y - 15 && pt.y <= y + h + 15) {
+          dz.classList.add('active-hover');
+        }
+      });
+    }
+
+    function onCardPointerUp(e) {
+      window.removeEventListener('pointermove', onCardPointerMove);
+      window.removeEventListener('pointerup', onCardPointerUp);
+
+      const ghost = document.getElementById('drag-ghost');
+      ghost.style.display = 'none';
+      document.querySelectorAll('.drop-zone').forEach(dz => dz.classList.remove('active-hover'));
+
+      if (isDraggingActive && draggingCardId) {
+        const pt = getSvgCoordsFromClient(e.clientX, e.clientY);
+        if (pt) {
+          handleCardDropOnScene(draggingCardId, pt.x, pt.y);
+        }
+      }
+
+      draggingCardId = null;
+      isDraggingActive = false;
+    }
+
+    function handleCardDropOnScene(cardId, svgX, svgY) {
+      // Check if dropped inside any defined drop zone
+      let matchedZone = null;
+      document.querySelectorAll('.drop-zone').forEach(dz => {
+        const x = parseFloat(dz.getAttribute('x'));
+        const y = parseFloat(dz.getAttribute('y'));
+        const w = parseFloat(dz.getAttribute('width'));
+        const h = parseFloat(dz.getAttribute('height'));
+        if (svgX >= x - 20 && svgX <= x + w + 20 && svgY >= y - 20 && svgY <= y + h + 20) {
+          matchedZone = dz.getAttribute('data-zone');
+        }
+      });
+
+      if (currentMode === 'part1b') {
+        const task = PART1B_TASKS[p1bIndex];
+        if (cardId !== task.cardId) {
+          playChime('wrong');
+          showSceneToast(`Oops! That's the ${cardId.replace('_', ' ')}. Please pick the ${task.cardId.replace('_', ' ').toUpperCase()}!`, '🤔', true);
+          speakText(`That's the ${cardId.replace('_', ' ')}. Please find the ${task.cardId.replace('_', ' ')}.`);
+          return;
+        }
+
+        if (matchedZone === task.zoneId) {
+          placeCardInSceneSVG(cardId, task.zoneCoords.x, task.zoneCoords.y);
+          addPoints(15, task.successLabel);
+          speakText(task.successLabel);
+          celebrateWithConfetti(30);
+        } else {
+          playChime('wrong');
+          showSceneToast(`Almost! Listen carefully: "${task.prompt}"`, '🎯', true);
+          speakText(task.prompt);
+        }
+      } else {
+        // Free placement anywhere in scene (Sandbox or other modes)
+        placeCardInSceneSVG(cardId, svgX - 42, svgY - 42);
+        const card = OBJECT_CARDS.find(c => c.id === cardId);
+        addPoints(5, `Placed the ${card.name} in the classroom!`);
+      }
+    }
+
+    function placeCardInSceneSVG(cardId, x, y) {
+      placedCards[cardId] = { x, y };
+      renderPlacedCardsInScene();
+      renderObjectCardsTray();
+    }
+
+    function renderPlacedCardsInScene() {
+      const layer = document.getElementById('placed-cards-layer');
+      if (!layer) return;
+
+      layer.innerHTML = Object.entries(placedCards).map(([cardId, pos]) => {
+        const card = OBJECT_CARDS.find(c => c.id === cardId);
+        return `
+          <g transform="translate(${pos.x}, ${pos.y})"
+             class="cursor-pointer glow-correct"
+             onpointerdown="startPlacedCardRedrag(event, '${cardId}')"
+             onclick="removePlacedCard('${cardId}', event)">
+            <rect x="0" y="0" width="84" height="84" rx="14" fill="#FFFFFF" stroke="#F59E0B" stroke-width="3" />
+            <svg x="4" y="4" width="76" height="76" viewBox="0 0 100 100">
+              ${card.svg}
+            </svg>
+          </g>
+        `;
+      }).join('');
+    }
+
+    function startPlacedCardRedrag(e, cardId) {
+      e.stopPropagation();
+      startCardDrag(e, cardId);
+    }
+
+    function removePlacedCard(cardId, e) {
+      if (e) e.stopPropagation();
+      delete placedCards[cardId];
+      playChime('pop');
+      renderPlacedCardsInScene();
+      renderObjectCardsTray();
+    }
+
+    function resetAllPlacedCards() {
+      placedCards = {};
+      playChime('pop');
+      renderPlacedCardsInScene();
+      renderObjectCardsTray();
+      showSceneToast("All 8 Object Cards returned to the tray!", '🔄');
+    }
+
+    function autoDemoPlaceCurrentCard() {
+      if (currentMode !== 'part1b') return;
+      const task = PART1B_TASKS[p1bIndex];
+      placeCardInSceneSVG(task.cardId, task.zoneCoords.x, task.zoneCoords.y);
+      addPoints(15, task.successLabel);
+      speakText(task.successLabel);
+    }
+
+    /*************************************************************************
+     * 9. NAVIGATION HELPERS (NEXT / PREVIOUS QUESTION)
+     *************************************************************************/
+    function nextQuestion() {
+      playChime('pop');
+      if (currentMode === 'part1a') {
+        p1aIndex = (p1aIndex + 1) % PART1A_TASKS.length;
+      } else if (currentMode === 'part1b') {
+        p1bIndex = (p1bIndex + 1) % PART1B_TASKS.length;
+      } else if (currentMode === 'part2') {
+        p2Index = (p2Index + 1) % PART2_QUESTIONS.length;
+      } else if (currentMode === 'part3') {
+        nextPart3Step();
+        return;
+      }
+      renderCurrentMode();
+    }
+
+    function prevQuestion() {
+      playChime('pop');
+      if (currentMode === 'part1a') {
+        p1aIndex = (p1aIndex - 1 + PART1A_TASKS.length) % PART1A_TASKS.length;
+      } else if (currentMode === 'part1b') {
+        p1bIndex = (p1bIndex - 1 + PART1B_TASKS.length) % PART1B_TASKS.length;
+      } else if (currentMode === 'part2') {
+        p2Index = (p2Index - 1 + PART2_QUESTIONS.length) % PART2_QUESTIONS.length;
+      } else if (currentMode === 'part3') {
+        prevPart3Step();
+        return;
+      }
+      renderCurrentMode();
+    }
+
+    function nextPart3Step() {
+      const cardObj = PART3_QUESTIONS[p3CardIndex];
+      if (p3StepIndex < cardObj.steps.length - 1) {
+        p3StepIndex++;
+      } else {
+        p3StepIndex = 0;
+        p3CardIndex = (p3CardIndex + 1) % PART3_QUESTIONS.length;
+      }
+      renderCurrentMode();
+    }
+
+    function prevPart3Step() {
+      if (p3StepIndex > 0) {
+        p3StepIndex--;
+      } else {
+        p3CardIndex = (p3CardIndex - 1 + PART3_QUESTIONS.length) % PART3_QUESTIONS.length;
+        p3StepIndex = PART3_QUESTIONS[p3CardIndex].steps.length - 1;
+      }
+      renderCurrentMode();
+    }
+
+    function togglePersonalTag(cardId, tagType) {
+      cardPersonalTags[cardId][tagType] = !cardPersonalTags[cardId][tagType];
+      const card = OBJECT_CARDS.find(c => c.id === cardId);
+      if (cardPersonalTags[cardId][tagType]) {
+        const sentence = tagType === 'have'
+          ? `I have got ${card.article} at home!`
+          : `I like ${card.name}s because they are cool!`;
+        addPoints(10, sentence);
+        speakText(sentence);
+      }
+      renderCurrentMode();
+    }
+
+    /*************************************************************************
+     * 10. SPEECH RECOGNITION (MICROPHONE) & ANSWER CHIPS BUILDER
+     *************************************************************************/
+    let currentExpectedKeywords = [];
+    let recognition = null;
+    let isListening = false;
+
+    function renderAnswerChips(chips = [], keywords = []) {
+      currentExpectedKeywords = keywords;
+      const container = document.getElementById('answer-chips-container');
+      if (!container) return;
+
+      container.innerHTML = chips.map(chip => `
+        <button onclick="practiceSentence('${chip.replace(/'/g, "\\'")}')"
+                class="px-2.5 py-1.5 rounded-xl bg-indigo-800/90 hover:bg-emerald-600 text-indigo-100 hover:text-white border border-indigo-600 text-xs font-bold transition shadow-sm">
+          🗣️ "${chip}"
+        </button>
+      `).join('');
+    }
+
+    function practiceSentence(sentence, autoAdvancePart3 = false) {
+      const transcriptText = document.getElementById('transcript-text');
+      const badge = document.getElementById('speech-match-badge');
+      if (transcriptText) {
+        transcriptText.textContent = `"${sentence}"`;
+        transcriptText.className = "font-bold text-emerald-300";
+      }
+      if (badge) badge.classList.remove('hidden');
+
+      addPoints(10, `Great speaking: "${sentence}"`);
+      speakText(sentence);
+    }
+
+    function toggleMicrophone() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        showSceneToast("Voice recognition isn't supported in this browser — tap any answer chip below instead!", 'ℹ️');
+        return;
+      }
+
+      if (isListening && recognition) {
+        recognition.stop();
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      const btnMic = document.getElementById('btn-mic');
+      const micLabel = document.getElementById('mic-label');
+      const transcriptText = document.getElementById('transcript-text');
+      const badge = document.getElementById('speech-match-badge');
+
+      recognition.onstart = () => {
+        isListening = true;
+        btnMic.className = "px-3 py-1.5 rounded-2xl bg-emerald-500 text-white font-kid font-bold text-xs flex items-center gap-1.5 shadow-md animate-pulse";
+        micLabel.textContent = "Listening...";
+        transcriptText.textContent = "Listening... Speak your answer now!";
+        transcriptText.className = "text-amber-300 font-semibold";
+        badge.classList.add('hidden');
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0].transcript)
+          .join('');
+        transcriptText.textContent = `"${transcript}"`;
+
+        if (event.results[0].isFinal) {
+          const lower = transcript.toLowerCase();
+          const matched = currentExpectedKeywords.length === 0 || currentExpectedKeywords.some(kw => lower.includes(kw));
+          if (matched) {
+            badge.classList.remove('hidden');
+            transcriptText.className = "font-bold text-emerald-300";
+            addPoints(15, `Awesome speaking! You said: "${transcript}"`);
+          } else {
+            addPoints(5, `Good try! You said: "${transcript}"`);
+          }
+        }
+      };
+
+      recognition.onerror = () => {
+        isListening = false;
+        btnMic.className = "px-3 py-1.5 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white font-kid font-bold text-xs flex items-center gap-1.5 shadow-md transition";
+        micLabel.textContent = "Speak Answer";
+      };
+
+      recognition.onend = () => {
+        isListening = false;
+        btnMic.className = "px-3 py-1.5 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white font-kid font-bold text-xs flex items-center gap-1.5 shadow-md transition";
+        micLabel.textContent = "Speak Answer";
+      };
+
+      recognition.start();
+    }
+
+    /*************************************************************************
+     * 11. CERTIFICATE MODAL & CONFETTI CELEBRATION
+     *************************************************************************/
+    function openCertificateModal() {
+      renderShields();
+      document.getElementById('certificate-modal').classList.remove('hidden');
+      celebrateWithConfetti(60);
+      playFanfare();
+    }
+
+    function closeCertificateModal() {
+      document.getElementById('certificate-modal').classList.add('hidden');
+    }
+
+    function celebrateWithConfetti(count = 45) {
+      const canvas = document.getElementById('confetti-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const colors = ['#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#8B5CF6', '#FACC15'];
+      const pieces = Array.from({ length: count }, () => ({
+        x: Math.random() * canvas.width,
+        y: -20 - Math.random() * 100,
+        size: 7 + Math.random() * 7,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: -2 + Math.random() * 4,
+        vy: 3 + Math.random() * 5,
+        angle: Math.random() * Math.PI * 2,
+        spin: -0.1 + Math.random() * 0.2
+      }));
+
+      let frame = 0;
+      function animateConfetti() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        pieces.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.angle += p.spin;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.angle);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+          ctx.restore();
+        });
+        frame++;
+        if (frame < 110) {
+          requestAnimationFrame(animateConfetti);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+      animateConfetti();
+    }
+
+    /*************************************************************************
+     * 12. INITIALIZATION ON WINDOW LOAD
+     *************************************************************************/
+    window.onload = function () {
+      renderShields();
+      renderCurrentMode();
+    };
+  </script>
+</body>
+</html>
