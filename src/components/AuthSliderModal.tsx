@@ -121,15 +121,36 @@ export function AuthSliderModal({
     const code = roomCode.trim().toUpperCase();
 
     try {
+      const pbRef = doc(db, 'paintball_rooms', code);
+      const pbSnap = await getDoc(pbRef);
+      if (pbSnap.exists() && onJoinRoom) {
+        onJoinRoom(code, nickname.trim(), 'hamster-paintball');
+        onClose();
+        return;
+      }
+
       const tttRef = doc(db, 'ttt_rooms', code);
       const snap = await getDoc(tttRef);
       if (snap.exists() && onJoinRoom) {
         onJoinRoom(code, nickname.trim(), 'tic-tac-toe');
         onClose();
-      } else {
-        setLocalError('Room not found. Please verify your room code.');
+        return;
       }
+
+      // If 6-digit numeric code, allow direct entry into Hamster Paintball Park room
+      if (/^\d{6}$/.test(code) && onJoinRoom) {
+        onJoinRoom(code, nickname.trim(), 'hamster-paintball');
+        onClose();
+        return;
+      }
+
+      setLocalError('Room not found. Please verify your room code.');
     } catch (err) {
+      if (/^\d{6}$/.test(code) && onJoinRoom) {
+        onJoinRoom(code, nickname.trim(), 'hamster-paintball');
+        onClose();
+        return;
+      }
       setLocalError('Error connecting to room. Please try again.');
     } finally {
       setIsJoining(false);

@@ -4,14 +4,15 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, GenerateVideosOperation } from "@google/genai";
 import multer from "multer";
 
-const ai = new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY,
+const getAiClient = () => new GoogleGenAI({ 
+  apiKey: process.env.GEMINI_API_KEY || "missing-api-key",
   httpOptions: {
     headers: {
       'User-Agent': 'aistudio-build',
     }
   }
 });
+const ai = getAiClient();
 
 const upload = multer({ storage: multer.memoryStorage() });
 

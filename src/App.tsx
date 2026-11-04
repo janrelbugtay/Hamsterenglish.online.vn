@@ -175,6 +175,14 @@ export default function App() {
   useEffect(() => {
     const checkUrlParams = () => {
       const params = new URLSearchParams(window.location.search);
+      const gameParam = params.get('game');
+      const roomParam = params.get('room') || params.get('paintballRoom');
+      if (gameParam === 'hamster-paintball' || params.get('paintballRoom')) {
+        const cleanRoom = (roomParam || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 6);
+        setSelectedGame((prev: any) => ({ ...(prev || {}), roomCode: cleanRoom || undefined }));
+        setCurrentView('hamster-paintball');
+        return;
+      }
       const code = params.get('joinCode');
       if (code) {
         setInitialRoomCode(code);
@@ -199,9 +207,9 @@ export default function App() {
 
   const [pendingAction, setPendingAction] = useState<{ view: ViewState; data?: any } | null>(null);
 
-  // Name Picker games and Homework can be used freely by students without signing in
+  // Name Picker games, Homework, and Hamster Paintball multiplayer links can be used freely by students without signing in
   const isNamePickerView = (v: ViewState) => v === "squid-game-picker" || v === "student-race";
-  const isPublicStudentView = (v: ViewState) => isNamePickerView(v) || v === "homework" || v === "public-dashboard";
+  const isPublicStudentView = (v: ViewState) => isNamePickerView(v) || v === "homework" || v === "public-dashboard" || v === "hamster-paintball";
 
   // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {
@@ -218,8 +226,7 @@ export default function App() {
       return;
     }
 
-    // Name Picker and Homework are completely accessible for students without signing in!
-    // All other actions, games, and views require signing in or entering a guest name.
+    // Name Picker, Homework, and Hamster Paintball are accessible for students without signing in
     const isFreeAccess = view === "home" || isPublicStudentView(view);
     if (!user && !isFreeAccess) {
       setPendingAction({ view, data });
@@ -470,6 +477,9 @@ export default function App() {
         }}
         onJoinRoom={(code, name, type) => {
           setJoinData({code, nickname: name, gameType: type});
+          if (type === 'hamster-paintball') {
+            setSelectedGame({ roomCode: code, playerName: name });
+          }
           setCurrentView(type as ViewState);
         }}
       />
