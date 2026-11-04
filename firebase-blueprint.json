@@ -59,6 +59,38 @@
         }
       },
       "required": ["classes", "updatedAt"]
+    },
+    "SlideDeck": {
+      "title": "Slide Deck",
+      "description": "Publicly viewable classroom slide deck managed by Admin",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "gradeLevel": {
+          "type": "string"
+        },
+        "theme": {
+          "type": "string"
+        },
+        "slides": {
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "number"
+        }
+      },
+      "required": ["id", "title", "slides", "updatedAt"]
     }
   },
   "firestore": {
@@ -79,6 +111,12 @@
         "$ref": "#/entities/UserClassData"
       },
       "description": "User classroom data"
+    },
+    "mySlides/{slideId}": {
+      "schema": {
+        "$ref": "#/entities/SlideDeck"
+      },
+      "description": "Public slide decks editable and erasable only by Admin"
     }
   }
 }

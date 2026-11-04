@@ -14,7 +14,7 @@ export const STARTERS_MONSTER_ART_DECK: SlideDeck = {
   cambridgeLevel: 'Starters',
   curriculum: 'Cambridge Starters',
   theme: 'indigo',
-  updatedAt: 1730741700000,
+  updatedAt: 1730743500000,
   authorName: 'Cambridge Pre-A1 Starters Studio',
   slides: [
     {
@@ -29,11 +29,14 @@ export const STARTERS_MONSTER_ART_DECK: SlideDeck = {
       discussionPrompt: 'Part 1A: Point to Things in the Monster Art Class',
       targetLevel: 'Cambridge Pre-A1 Starters • Part 1A',
       discussionQuestions: [
-        "Look at the picture. Where's the ball? (Under the red chair)",
-        "Where's the computer? (On the brown table)",
-        "Where's the camera? (In the monster's hands)",
-        "Where's the grey cat? (Sleeping under the table)",
-        "Where are the pictures on the wall? / Where are the monsters?",
+        "1. Look at the picture. Where's the ball? — The ball is under the red chair.",
+        "2. Where's the computer? — The computer is on the brown table.",
+        "3. Where's the camera? — The camera is in the monster's hands.",
+        "4. Where's the grey cat? — The grey cat is sleeping under the table.",
+        "5. Where is the clock? — The clock is on the wall.",
+        "6. Where is the board? — The board is between the pictures.",
+        "7. Where are the toys? — The toys are in the toy box.",
+        "8. Where is the brown hat? — The brown hat is on the green monster's head.",
       ],
     },
     {
@@ -176,6 +179,11 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       opacity: 0.78;
       animation: dashRotate 8s linear infinite;
     }
+    .drop-zone.clickable-zone {
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .drop-zone.clickable-zone:hover,
     .drop-zone.active-hover {
       opacity: 0.95 !important;
       fill: rgba(16, 185, 129, 0.35) !important;
@@ -422,7 +430,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         </div>
 
         <!-- FAITHFUL HIGH-DETAIL SVG RECREATION + ORIGINAL BOOK ILLUSTRATION OF MONSTER ART CLASS -->
-        <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border-2 border-slate-300 shadow-inner bg-[#F5F3CE]">
+        <div id="scene-canvas-container" class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border-2 border-slate-300 shadow-inner bg-[#F5F3CE]">
           <svg id="monster-art-scene" viewBox="0 0 900 675" class="w-full h-full block select-none">
             <defs>
               <!-- Wall & Floor Gradients -->
@@ -749,9 +757,11 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
               <circle cx="126" cy="368" r="3" fill="#1E293B" />
               <circle cx="138" cy="374" r="3" fill="#1E293B" />
               <path d="M114,392 Q128,400 138,388" stroke="#15803D" stroke-width="2.5" fill="none" />
-              <!-- Brown Hat -->
-              <ellipse cx="112" cy="356" rx="46" ry="15" fill="#78350F" stroke="#451A03" stroke-width="2" />
-              <path d="M84,354 C84,325 140,325 140,354 Z" fill="#92400E" stroke="#451A03" stroke-width="2" />
+              <!-- Brown Hat on Green Monster's Head (Clickable as brown_hat or green_monster) -->
+              <g id="item-brown_hat" class="scene-item" onclick="handleSceneItemClick('brown_hat', event)">
+                <ellipse cx="112" cy="356" rx="46" ry="15" fill="#78350F" stroke="#451A03" stroke-width="2" />
+                <path d="M84,354 C84,325 140,325 140,354 Z" fill="#92400E" stroke="#451A03" stroke-width="2" />
+              </g>
             </g>
 
             <!-- 9. RED CHAIR & SOCCER BALL UNDER CHAIR -->
@@ -924,24 +934,24 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
               <polygon points="836,574 854,556 846,620 832,638" fill="#B4824E" stroke="#92400E" stroke-width="2" />
             </g>
 
-            <!-- 13. DROP ZONES FOR PART 1B (DRAG & DROP PLACEMENT TARGETS) -->
+            <!-- 13. DROP ZONES FOR PART 1B (DRAG & DROP OR CLICK PLACEMENT TARGETS) -->
             <g id="drop-zones-layer">
               <!-- Drop Zone 1: Under the table -->
-              <rect id="dz-under_table" data-zone="under_table" class="drop-zone" x="392" y="295" width="160" height="58" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-under_table" data-zone="under_table" onclick="handleDropZoneClick('under_table', event)" class="drop-zone" x="392" y="295" width="160" height="58" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
               <!-- Drop Zone 2: On the red chair -->
-              <rect id="dz-on_chair" data-zone="on_chair" class="drop-zone" x="298" y="540" width="98" height="62" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-on_chair" data-zone="on_chair" onclick="handleDropZoneClick('on_chair', event)" class="drop-zone" x="298" y="540" width="98" height="62" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
               <!-- Drop Zone 3: On the whiteboard -->
-              <rect id="dz-on_whiteboard" data-zone="on_whiteboard" class="drop-zone" x="392" y="88" width="190" height="112" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-on_whiteboard" data-zone="on_whiteboard" onclick="handleDropZoneClick('on_whiteboard', event)" class="drop-zone" x="392" y="88" width="190" height="112" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
               <!-- Drop Zone 4: In the brown toy box -->
-              <rect id="dz-in_box" data-zone="in_box" class="drop-zone" x="720" y="520" width="132" height="105" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-in_box" data-zone="in_box" onclick="handleDropZoneClick('in_box', event)" class="drop-zone" x="720" y="520" width="132" height="105" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
               <!-- Drop Zone 5: In front of the door -->
-              <rect id="dz-in_front_of_door" data-zone="in_front_of_door" class="drop-zone" x="28" y="370" width="110" height="88" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-in_front_of_door" data-zone="in_front_of_door" onclick="handleDropZoneClick('in_front_of_door', event)" class="drop-zone" x="28" y="370" width="110" height="88" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
               <!-- Drop Zone 6: On the table (next to laptop) -->
-              <rect id="dz-on_table" data-zone="on_table" class="drop-zone" x="405" y="218" width="105" height="56" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-on_table" data-zone="on_table" onclick="handleDropZoneClick('on_table', event)" class="drop-zone" x="405" y="218" width="105" height="56" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
               <!-- Drop Zone 7: Between the red chair and pink monster -->
-              <rect id="dz-between_chair_monster" data-zone="between_chair_monster" class="drop-zone" x="405" y="545" width="95" height="75" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-between_chair_monster" data-zone="between_chair_monster" onclick="handleDropZoneClick('between_chair_monster', event)" class="drop-zone" x="405" y="545" width="95" height="75" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
               <!-- Drop Zone 8: Next to the green monster -->
-              <rect id="dz-next_to_green_monster" data-zone="next_to_green_monster" class="drop-zone" x="150" y="525" width="110" height="80" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
+              <rect id="dz-next_to_green_monster" data-zone="next_to_green_monster" onclick="handleDropZoneClick('next_to_green_monster', event)" class="drop-zone" x="150" y="525" width="110" height="80" rx="14" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="3" stroke-dasharray="8 6" />
             </g>
 
             <!-- 14. LAYER FOR CARDS PLACED INTO THE SCENE -->
@@ -949,14 +959,19 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
           </svg>
         </div>
 
+        <!-- PART 3 BIG OBJECT CARDS STAGE (Replaces the Big Scene Picture when Part 3 is active) -->
+        <div id="part3-big-stage" class="hidden relative w-full aspect-[4/3] rounded-2xl overflow-hidden border-2 border-indigo-200 shadow-inner bg-gradient-to-br from-sky-50 via-indigo-50 to-amber-50 p-4 sm:p-6 flex flex-col justify-between">
+          <!-- Populated dynamically by JS in Part 3 -->
+        </div>
+
         <!-- Bottom Quick Legend under Scene Picture -->
-        <div class="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-600">
+        <div id="scene-footer-bar" class="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-600">
           <div class="flex items-center gap-2">
             <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
             <span id="scene-status-bar">Interactive Scene Ready — Click any object or drag an Object Card onto the room!</span>
           </div>
           <div class="flex items-center gap-2 font-semibold text-indigo-700">
-            <button onclick="toggleOriginalBookArt()" class="text-[11px] px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold">
+            <button id="btn-footer-book-art" onclick="toggleOriginalBookArt()" class="text-[11px] px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold">
               🖼️ Toggle Original Book Picture
             </button>
             <span>Placed Cards: <strong id="placed-count">0</strong>/8</span>
@@ -1291,232 +1306,310 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     const PART1A_TASKS = [
       {
         prompt: "Look at the picture. Where's the ball?",
+        answer: "The ball is under the red chair.",
         subHint: "Point to the black and white football in the picture.",
         targets: ['ball'],
-        successLabel: "There it is! The ball is under the red chair!",
-        chips: ["Here it is!", "It's under the red chair.", "The ball is under the chair."]
+        successLabel: "The ball is under the red chair.",
+        chips: ["The ball is under the red chair.", "It's under the red chair.", "Here it is!"]
       },
       {
         prompt: "Where's the computer?",
+        answer: "The computer is on the brown table.",
         subHint: "Point to the laptop computer in the classroom.",
         targets: ['laptop'],
-        successLabel: "Great job! The computer is on the brown table!",
-        chips: ["Here it is!", "It's on the table.", "The laptop is on the table."]
+        successLabel: "The computer is on the brown table.",
+        chips: ["The computer is on the brown table.", "It's on the table.", "Here it is!"]
       },
       {
         prompt: "Where's the camera?",
+        answer: "The camera is in the monster's hands.",
         subHint: "Point to the black camera.",
         targets: ['camera', 'camera_monster'],
-        successLabel: "Well done! The monster in the green dress has got the camera!",
-        chips: ["Here it is!", "The monster is holding it.", "It's in her hands."]
+        successLabel: "The camera is in the monster's hands.",
+        chips: ["The camera is in the monster's hands.", "The monster is holding it.", "Here it is!"]
       },
       {
         prompt: "Where's the grey cat?",
+        answer: "The grey cat is sleeping under the table.",
         subHint: "Find the sleeping cat in the room.",
         targets: ['gray_cat'],
-        successLabel: "Super! The grey cat is sleeping under the table!",
-        chips: ["Here it is!", "It's under the table.", "The cat is sleeping under the table."]
+        successLabel: "The grey cat is sleeping under the table.",
+        chips: ["The grey cat is sleeping under the table.", "It's under the table.", "Here it is!"]
       },
       {
-        prompt: "Where's the clock?",
-        subHint: "Look up high on the wall!",
+        prompt: "Where is the clock?",
+        answer: "The clock is on the wall.",
+        subHint: "Look up high on the wall and point to the clock!",
         targets: ['clock'],
-        successLabel: "Awesome! The clock is on the wall above the whiteboard!",
-        chips: ["Here it is!", "It's on the wall.", "It's above the whiteboard."]
+        successLabel: "The clock is on the wall.",
+        chips: ["The clock is on the wall.", "It's on the wall.", "Here it is!"]
       },
       {
-        prompt: "Where are the pictures on the wall?",
-        subHint: "Plural question! Point to the framed paintings on the yellow wall.",
-        targets: ['left_picture', 'right_picture'],
-        successLabel: "Fantastic! Those are the two framed pictures on the wall!",
-        chips: ["Here they are!", "They are on the yellow wall.", "There are two pictures."]
+        prompt: "Where is the board?",
+        answer: "The board is between the pictures.",
+        subHint: "Point to the board between the two pictures on the wall.",
+        targets: ['whiteboard'],
+        successLabel: "The board is between the pictures.",
+        chips: ["The board is between the pictures.", "It's between the pictures.", "Here it is!"]
       },
       {
-        prompt: "Where are the monsters?",
-        subHint: "Plural question! Point to any of the monsters in the art class.",
-        targets: ['green_monster', 'camera_monster', 'pink_monster', 'blue_monster'],
-        successLabel: "Brilliant! There are four colourful monsters in the classroom!",
-        chips: ["Here they are!", "There are four monsters.", "They are painting pictures."]
-      },
-      {
-        prompt: "Where's the box with the toys?",
-        subHint: "Look in the bottom right corner of the room.",
+        prompt: "Where are the toys?",
+        answer: "The toys are in the toy box.",
+        subHint: "Point to the toys in the toy box in the bottom right corner.",
         targets: ['box'],
-        successLabel: "Spot on! The brown toy box has a doll and a beach ball in it!",
-        chips: ["Here it is!", "It's on the floor.", "The toys are in the box."]
+        successLabel: "The toys are in the toy box.",
+        chips: ["The toys are in the toy box.", "They are in the toy box.", "Here they are!"]
+      },
+      {
+        prompt: "Where is the brown hat?",
+        answer: "The brown hat is on the green monster's head.",
+        subHint: "Point to the brown hat on the green monster's head!",
+        targets: ['brown_hat', 'green_monster'],
+        successLabel: "The brown hat is on the green monster's head.",
+        chips: ["The brown hat is on the green monster's head.", "It's on the green monster's head.", "Here it is!"]
       }
     ];
 
     const PART1B_TASKS = [
       {
-        prompt: "Which is the book? ... Put the book under the table.",
-        subHint: "Drag the brown BOOK card and drop it UNDER the brown table (next to the grey cat).",
+        selectPrompt: "Which is the book?",
+        placePrompt: "Put the book under the table.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the book UNDER the table!",
         cardId: 'book',
         zoneId: 'under_table',
         zoneCoords: { x: 410, y: 292 },
         successLabel: "Well done! You put the book under the table!",
-        chips: ["This is the book.", "I'm putting the book under the table.", "The book is under the table."]
+        selectChips: ["This is the book.", "Here is the book."],
+        placeChips: ["I'm putting the book under the table.", "The book is under the table."]
       },
       {
-        prompt: "Which is the frog? ... Put the frog on the red chair.",
-        subHint: "Drag the green FROG card and drop it ON the red chair.",
+        selectPrompt: "Which is the frog?",
+        placePrompt: "Put the frog on the red chair.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the frog ON the red chair!",
         cardId: 'frog',
         zoneId: 'on_chair',
         zoneCoords: { x: 315, y: 536 },
         successLabel: "Super! The green frog is sitting on the red chair!",
-        chips: ["This is the frog.", "The frog is on the red chair.", "It's on the chair."]
+        selectChips: ["This is the frog.", "Here is the frog."],
+        placeChips: ["The frog is on the red chair.", "It's on the chair."]
       },
       {
-        prompt: "Which is the fish? ... Put the fish on the whiteboard.",
-        subHint: "Drag the orange FISH card and drop it ON the big whiteboard.",
+        selectPrompt: "Which is the fish?",
+        placePrompt: "Put the fish on the whiteboard.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the fish ON the whiteboard!",
         cardId: 'fish',
         zoneId: 'on_whiteboard',
         zoneCoords: { x: 515, y: 110 },
-        successLabel: "Great! Now there are two fish on the whiteboard!",
-        chips: ["This is the fish.", "The fish is on the whiteboard.", "It's next to the drawing."]
+        successLabel: "Great! The fish is on the whiteboard!",
+        selectChips: ["This is the fish.", "Here is the fish."],
+        placeChips: ["The fish is on the whiteboard.", "It's on the board."]
       },
       {
-        prompt: "Which is the train? ... Put the train in the brown box.",
-        subHint: "Drag the toy TRAIN card and drop it IN the toy box on the bottom right.",
+        selectPrompt: "Which is the train?",
+        placePrompt: "Put the train in the brown box.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the train IN the brown box!",
         cardId: 'train',
         zoneId: 'in_box',
         zoneCoords: { x: 755, y: 555 },
-        successLabel: "Awesome! The toy train is in the brown box with the other toys!",
-        chips: ["This is the train.", "The train is in the box.", "It's in the toy box."]
+        successLabel: "Awesome! The toy train is in the brown box!",
+        selectChips: ["This is the train.", "Here is the train."],
+        placeChips: ["The train is in the box.", "It's in the toy box."]
       },
       {
-        prompt: "Which is the lorry? ... Put the lorry in front of the door.",
-        subHint: "Drag the red LORRY (truck) card and drop it IN FRONT OF the brown door on the left.",
+        selectPrompt: "Which is the lorry?",
+        placePrompt: "Put the lorry in front of the door.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the lorry IN FRONT OF the door!",
         cardId: 'lorry',
         zoneId: 'in_front_of_door',
         zoneCoords: { x: 52, y: 382 },
         successLabel: "Fantastic! The red lorry is in front of the door!",
-        chips: ["This is the lorry.", "The lorry is in front of the door.", "It's by the door."]
+        selectChips: ["This is the lorry.", "Here is the lorry."],
+        placeChips: ["The lorry is in front of the door.", "It's by the door."]
       },
       {
-        prompt: "Which are the shorts? ... Put the shorts on the table, next to the computer.",
-        subHint: "Drag the light blue SHORTS card and drop them ON the table.",
+        selectPrompt: "Which are the shorts?",
+        placePrompt: "Put the shorts on the table, next to the computer.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the shorts ON the table!",
         cardId: 'shorts',
         zoneId: 'on_table',
         zoneCoords: { x: 425, y: 215 },
         successLabel: "Brilliant! The shorts are on the table next to the laptop!",
-        chips: ["These are the shorts.", "They are on the table.", "They're next to the computer."]
+        selectChips: ["These are the shorts.", "Here are the shorts."],
+        placeChips: ["They are on the table.", "They're next to the computer."]
       },
       {
-        prompt: "Which are the trousers? ... Put the trousers between the red chair and the pink monster.",
-        subHint: "Drag the black TROUSERS card and drop them BETWEEN the chair and the pink monster.",
+        selectPrompt: "Which are the trousers?",
+        placePrompt: "Put the trousers between the red chair and the pink monster.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the trousers BETWEEN the chair and the pink monster!",
         cardId: 'trousers',
         zoneId: 'between_chair_monster',
         zoneCoords: { x: 420, y: 548 },
         successLabel: "Amazing! The trousers are between the chair and the pink monster!",
-        chips: ["These are the trousers.", "They are between the chair and the monster."]
+        selectChips: ["These are the trousers.", "Here are the trousers."],
+        placeChips: ["They are between the chair and the monster."]
       },
       {
-        prompt: "Which is the board game? ... Put the board game next to the green monster.",
-        subHint: "Drag the pink BOARD GAME card and drop it NEXT TO the green monster's feet.",
+        selectPrompt: "Which is the board game?",
+        placePrompt: "Put the board game next to the green monster.",
+        selectSubHint: "Step 1: Click or tap the right object card from the 8 cards!",
+        placeSubHint: "Step 2: Now drag the card (or click the glowing spot) to put the board game NEXT TO the green monster!",
         cardId: 'board_game',
         zoneId: 'next_to_green_monster',
         zoneCoords: { x: 168, y: 530 },
         successLabel: "Hooray! You placed all 8 Object Cards correctly!",
-        chips: ["This is the board game.", "It's next to the green monster."]
+        selectChips: ["This is the board game.", "Here is the board game."],
+        placeChips: ["It's next to the green monster."]
       }
     ];
 
     const PART2_QUESTIONS = [
       {
-        title: "1. What's this? / What colour / Where?",
+        title: "Q1. What's this?",
         spotlightId: 'laptop',
-        prompt: "Look at this on the table. What's this? What colour is it? Where is it?",
-        subHint: "Answer the three questions using your voice or the sentence blocks!",
-        keywords: ['computer', 'laptop', 'grey', 'blue', 'table'],
+        prompt: "Look at this on the table. What's this?",
+        subHint: "Wait for the student's answer, then click Next Question!",
+        keywords: ['computer', 'laptop'],
         chips: [
           "It's a computer.",
-          "It's a laptop.",
-          "It's grey and blue.",
-          "It's on the brown table."
+          "It's a laptop."
         ]
       },
       {
-        title: "2. What are these? / How many?",
+        title: "Q2. What colour?",
+        spotlightId: 'laptop',
+        prompt: "What colour is it?",
+        subHint: "Look at the computer on the table. Wait for the answer, then click Next!",
+        keywords: ['grey', 'blue', 'silver', 'white', 'black'],
+        chips: [
+          "It's grey and blue.",
+          "Blue and grey."
+        ]
+      },
+      {
+        title: "Q3. Where is it?",
+        spotlightId: 'laptop',
+        prompt: "Where is it?",
+        subHint: "Wait for the student's answer, then click Next!",
+        keywords: ['table', 'on', 'brown'],
+        chips: [
+          "It's on the brown table.",
+          "On the table."
+        ]
+      },
+      {
+        title: "Q4. What are these?",
         spotlightId: 'left_picture',
         secondarySpotlightId: 'right_picture',
-        prompt: "Look at the wall. What are these? How many pictures are there on the wall?",
-        subHint: "Practice plural answers: 'They're pictures' and counting!",
-        keywords: ['picture', 'painting', 'two', 'three', 'wall'],
+        prompt: "Look at the wall. What are these?",
+        subHint: "Wait for the student's answer, then click Next!",
+        keywords: ['picture', 'painting', 'pictures', 'paintings'],
         chips: [
           "They're pictures.",
-          "They're paintings.",
-          "There are two pictures on the wall.",
-          "One has a palm tree and one has animals."
+          "They're paintings."
         ]
       },
       {
-        title: "3. Where is the ball? / What colour?",
+        title: "Q5. How many?",
+        spotlightId: 'left_picture',
+        secondarySpotlightId: 'right_picture',
+        prompt: "How many pictures are there on the wall?",
+        subHint: "Wait for the student's answer, then click Next!",
+        keywords: ['two', '2'],
+        chips: [
+          "There are two pictures.",
+          "Two."
+        ]
+      },
+      {
+        title: "Q6. Ball colour?",
         spotlightId: 'ball',
-        prompt: "Look at the football. What colour is it? And where is it?",
-        subHint: "Say the colours and use the preposition 'under'!",
-        keywords: ['black', 'white', 'under', 'chair', 'red'],
+        prompt: "Look at the ball. What colour is it?",
+        subHint: "Wait for the student's answer, then click Next!",
+        keywords: ['black', 'white'],
         chips: [
           "It's black and white.",
-          "It's under the red chair.",
-          "The football is on the floor under the chair."
+          "Black and white."
         ]
       },
       {
-        title: "4. What is this monster doing?",
+        title: "Q7. Where is the ball?",
+        spotlightId: 'ball',
+        prompt: "Where is the ball?",
+        subHint: "Wait for the student's answer, then click Next!",
+        keywords: ['under', 'chair', 'red'],
+        chips: [
+          "It's under the red chair.",
+          "Under the chair."
+        ]
+      },
+      {
+        title: "Q8. Monster doing?",
         spotlightId: 'camera_monster',
-        prompt: "Look at this monster in the green dress. What is she doing? What is she wearing?",
-        subHint: "Describe what she is holding and wearing!",
-        keywords: ['photo', 'camera', 'picture', 'green', 'dress', 'pink', 'hair'],
+        prompt: "Look at this monster in the green dress. What is she doing?",
+        subHint: "Wait for the student's answer, then click Next!",
+        keywords: ['photo', 'camera', 'picture', 'taking'],
         chips: [
           "She's taking a photo.",
-          "She's holding a black camera.",
-          "She's wearing a green dress with flowers.",
-          "She has got pink hair and four eyes."
+          "She's holding a camera."
         ]
       },
       {
-        title: "5. ⭐ Tell me about this Green Monster!",
+        title: "Q9. Wearing?",
+        spotlightId: 'camera_monster',
+        prompt: "What is she wearing?",
+        subHint: "Wait for the student's answer, then click Next!",
+        keywords: ['green', 'dress', 'flowers'],
+        chips: [
+          "She's wearing a green dress.",
+          "A green dress with flowers."
+        ]
+      },
+      {
+        title: "Q10. ⭐ Green Monster",
         spotlightId: 'green_monster',
         isMonsterBuilder: true,
         monsterKey: 'green',
-        prompt: "Now, tell me about this green monster! What colour is he? What is he wearing? What is he doing?",
-        subHint: "In Cambridge Starters, say 3 sentences to get full shields!",
+        prompt: "Tell me about this green monster.",
+        subHint: "Wait for the student to describe the green monster, then click Next!",
         keywords: ['green', 'hat', 'red', 'blue', 'four', 'arms', 'painting', 'house', 'happy'],
         chips: [
           "He is green and happy.",
-          "He has got four arms and three eyes.",
           "He is wearing a brown hat, a red T-shirt and blue trousers.",
           "He is painting a picture of a house."
         ]
       },
       {
-        title: "6. ⭐ Tell me about this Pink Monster!",
+        title: "Q11. ⭐ Pink Monster",
         spotlightId: 'pink_monster',
         isMonsterBuilder: true,
         monsterKey: 'pink',
-        prompt: "Tell me about this pink monster! Is it happy or sad? How many legs has it got?",
-        subHint: "Look at the pink triangle monster's face and legs!",
+        prompt: "Tell me about this pink monster.",
+        subHint: "Wait for the student to describe the pink monster, then click Next!",
         keywords: ['pink', 'triangle', 'sad', 'four', 'legs', 'red', 'shoes', 'painting', 'cat'],
         chips: [
-          "It is pink and shaped like a triangle.",
-          "It looks sad / It isn't happy.",
+          "It is pink and looks sad.",
           "It has got four blue legs and red shoes.",
           "It is painting a blue cat."
         ]
       },
       {
-        title: "7. ⭐ Tell me about this Blue Monster!",
+        title: "Q12. ⭐ Blue Monster",
         spotlightId: 'blue_monster',
         isMonsterBuilder: true,
         monsterKey: 'blue',
-        prompt: "Tell me about this blue monster on the right! What is she doing?",
-        subHint: "Describe her colour, hair, arms, and painting!",
+        prompt: "Tell me about this blue monster.",
+        subHint: "Wait for the student to describe the blue monster!",
         keywords: ['blue', 'round', 'black', 'hair', 'four', 'arms', 'happy', 'painting', 'monster'],
         chips: [
           "She is blue and round.",
           "She has got black hair and four arms.",
-          "She is smiling and happy.",
           "She is painting a picture of her friend."
         ]
       }
@@ -1528,7 +1621,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         steps: [
           { q: "What's this?", a: ["It's a fish.", "A fish."], keywords: ['fish'] },
           { q: "What colour is it?", a: ["It's orange and brown.", "It's orange with yellow spots."], keywords: ['orange', 'brown', 'yellow'] },
-          { q: "Have you got a fish at home? Do you like fish?", a: ["Yes, I have! / No, I haven't.", "Yes, I like fish!", "No, I don't."], keywords: ['yes', 'no', 'have', 'like', 'fish'] }
+          { q: "Have you got a fish at home?", a: ["Yes, I have!", "No, I haven't."], keywords: ['yes', 'no', 'have', 'fish'] },
+          { q: "Do you like fish?", a: ["Yes, I like fish!", "No, I don't."], keywords: ['yes', 'no', 'like', 'fish'] }
         ]
       },
       {
@@ -1536,13 +1630,15 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         steps: [
           { q: "What's this?", a: ["It's a frog.", "A frog."], keywords: ['frog'] },
           { q: "What colour is the frog?", a: ["It's green and yellow.", "Green with a yellow tummy."], keywords: ['green', 'yellow'] },
-          { q: "Do you like frogs? Can frogs jump?", a: ["Yes, I do! / No, I don't.", "Yes, frogs can jump very high!"], keywords: ['yes', 'no', 'jump', 'can', 'like'] }
+          { q: "Do you like frogs?", a: ["Yes, I do!", "No, I don't."], keywords: ['yes', 'no', 'like'] },
+          { q: "Can frogs jump?", a: ["Yes, they can!", "Yes, frogs can jump very high!"], keywords: ['yes', 'jump', 'can'] }
         ]
       },
       {
         cardId: 'book',
         steps: [
           { q: "What's this?", a: ["It's a book.", "A brown book."], keywords: ['book'] },
+          { q: "What colour is it?", a: ["It's brown.", "Brown and white."], keywords: ['brown', 'gold', 'white'] },
           { q: "Have you got lots of books?", a: ["Yes, I have!", "No, I haven't."], keywords: ['yes', 'no', 'have', 'books'] },
           { q: "Where do you read your books?", a: ["In my bedroom.", "At school.", "In the living room."], keywords: ['bedroom', 'school', 'home', 'bed', 'living', 'room'] }
         ]
@@ -1552,14 +1648,16 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         steps: [
           { q: "What's this?", a: ["It's a train.", "It's a toy train."], keywords: ['train'] },
           { q: "What colour is it?", a: ["It's red, blue and yellow."], keywords: ['red', 'blue', 'yellow'] },
-          { q: "Have you got a toy train? Do you like riding on trains?", a: ["Yes, I have! / No, I haven't.", "Yes, I love trains!"], keywords: ['yes', 'no', 'have', 'like', 'train'] }
+          { q: "Have you got a toy train?", a: ["Yes, I have!", "No, I haven't."], keywords: ['yes', 'no', 'have', 'train'] },
+          { q: "Do you like riding on trains?", a: ["Yes, I do!", "Yes, I love trains!"], keywords: ['yes', 'no', 'like', 'train'] }
         ]
       },
       {
         cardId: 'lorry',
         steps: [
           { q: "What's this?", a: ["It's a lorry.", "It's a truck."], keywords: ['lorry', 'truck'] },
-          { q: "What colour is it? Is it big or small?", a: ["It's red and black.", "It's a big red lorry."], keywords: ['red', 'black', 'big', 'small'] },
+          { q: "What colour is it?", a: ["It's red and black."], keywords: ['red', 'black'] },
+          { q: "Is it big or small?", a: ["It's big.", "It's a big red lorry."], keywords: ['big', 'small'] },
           { q: "How many wheels has this lorry got?", a: ["It has got six wheels.", "Five / Six wheels."], keywords: ['five', 'six', 'wheels'] }
         ]
       },
@@ -1568,7 +1666,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         steps: [
           { q: "What are these?", a: ["They're trousers.", "They are pants."], keywords: ['trousers', 'pants', 'they'] },
           { q: "What colour are they?", a: ["They're black.", "They're dark blue."], keywords: ['black', 'blue', 'dark'] },
-          { q: "Are you wearing trousers today?", a: ["Yes, I am!", "No, I'm not. I'm wearing shorts / a skirt."], keywords: ['yes', 'no', 'wearing', 'am'] }
+          { q: "Are you wearing trousers today?", a: ["Yes, I am!", "No, I'm not."], keywords: ['yes', 'no', 'wearing', 'am'] }
         ]
       },
       {
@@ -1576,7 +1674,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         steps: [
           { q: "What are these?", a: ["They're shorts."], keywords: ['shorts', 'they'] },
           { q: "What colour are they?", a: ["They're light blue.", "They're blue."], keywords: ['blue', 'light'] },
-          { q: "Have you got blue shorts? When do you wear shorts?", a: ["Yes, I have! / No, I haven't.", "I wear shorts in summer / when it's sunny."], keywords: ['yes', 'no', 'have', 'summer', 'hot', 'sunny'] }
+          { q: "Have you got blue shorts?", a: ["Yes, I have!", "No, I haven't."], keywords: ['yes', 'no', 'have'] },
+          { q: "When do you wear shorts?", a: ["In summer.", "When it's sunny and hot."], keywords: ['summer', 'hot', 'sunny'] }
         ]
       },
       {
@@ -1584,7 +1683,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         steps: [
           { q: "What's this?", a: ["It's a board game.", "It's a game."], keywords: ['game', 'board'] },
           { q: "What colour is it?", a: ["It's pink and white."], keywords: ['pink', 'white', 'brown'] },
-          { q: "Do you like playing board games? Who do you play with?", a: ["Yes, I do!", "I play with my friends.", "I play with my family / brother / sister."], keywords: ['yes', 'friends', 'family', 'mum', 'dad', 'brother', 'sister'] }
+          { q: "Do you like playing board games?", a: ["Yes, I do!", "No, I don't."], keywords: ['yes', 'no', 'like'] },
+          { q: "Who do you play with?", a: ["With my friends.", "With my family."], keywords: ['friends', 'family', 'mum', 'dad', 'brother', 'sister'] }
         ]
       }
     ];
@@ -1594,30 +1694,33 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       laptop: { name: "the computer / laptop", sentence: "It's a laptop computer on the brown table." },
       camera: { name: "the camera", sentence: "It's a black camera." },
       camera_monster: { name: "the monster in the green dress", sentence: "She has pink hair and is taking a photo with a camera." },
-      clock: { name: "the clock", sentence: "The clock is on the wall above the whiteboard." },
+      clock: { name: "the clock", sentence: "The clock is on the wall." },
       gray_cat: { name: "the grey cat", sentence: "The grey cat is sleeping under the brown table." },
       left_picture: { name: "the palm tree picture", sentence: "It's a painting of a pink palm tree on the wall." },
       right_picture: { name: "the animals picture", sentence: "It's a painting of animals and a bird on the wall." },
-      whiteboard: { name: "the whiteboard", sentence: "There is a drawing of a fish on the big whiteboard." },
+      whiteboard: { name: "the board", sentence: "The board is between the pictures." },
       table: { name: "the brown table", sentence: "The laptop is on the table and the cat is under the table." },
       door: { name: "the brown door", sentence: "There is a tall brown door on the left wall." },
       left_easel: { name: "the house painting", sentence: "The green monster is painting a house with three chimneys." },
+      brown_hat: { name: "the brown hat", sentence: "The brown hat is on the green monster's head." },
       green_monster: { name: "the green monster", sentence: "He has four arms, a brown hat, a red shirt and blue trousers." },
       chair: { name: "the red chair", sentence: "The red chair is in front of the easels." },
       center_easel: { name: "the blue cat painting", sentence: "It's a painting of a blue cat drinking milk." },
       pink_monster: { name: "the pink triangle monster", sentence: "It is pink, has four legs, and looks sad." },
       right_easel: { name: "the monster portrait", sentence: "It's a painting of a smiling blue monster." },
       blue_monster: { name: "the blue monster", sentence: "She is round, blue, has four arms, and is holding paints." },
-      box: { name: "the toy box", sentence: "There is a doll, a beach ball, and a game board in the brown box." }
+      box: { name: "the toys / toy box", sentence: "The toys are in the toy box." }
     };
 
     let currentMode = 'part1a';
     let score = 0;
     let p1aIndex = 0;
     let p1bIndex = 0;
+    let p1bStep = 'select'; // 'select' ("Which is the book?") -> 'place' ("Put the book under the table.")
     let p2Index = 0;
     let p3CardIndex = 0;
     let p3StepIndex = 0;
+    let p3ShowAllGrid = false;
     let pairTalkMode = false;
     let useOriginalBookArt = false;
 
@@ -1792,11 +1895,18 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     }
 
     function updateDropZonesVisibility() {
+      const shouldShowZones = showDropZonesHint || (currentMode === 'part1b' && p1bStep === 'place');
+      const shouldMakeClickable = currentMode === 'part1b' && p1bStep === 'place';
       document.querySelectorAll('.drop-zone').forEach(dz => {
-        if (showDropZonesHint || currentMode === 'part1b') {
+        if (shouldShowZones) {
           dz.classList.add('show-hint');
         } else {
           dz.classList.remove('show-hint');
+        }
+        if (shouldMakeClickable) {
+          dz.classList.add('clickable-zone');
+        } else {
+          dz.classList.remove('clickable-zone');
         }
       });
     }
@@ -1864,6 +1974,9 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     function switchMode(mode) {
       currentMode = mode;
+      if (mode === 'part1b') {
+        p1bStep = 'select';
+      }
       clearAllSceneHighlights();
 
       document.querySelectorAll('.mode-tab').forEach(btn => {
@@ -1884,12 +1997,166 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       });
     }
 
+    function renderPart3BigStage() {
+      const bigStage = document.getElementById('part3-big-stage');
+      if (!bigStage) return;
+
+      const cardObj = PART3_QUESTIONS[p3CardIndex];
+      const cardMeta = OBJECT_CARDS.find(c => c.id === cardObj.cardId);
+      const stepObj = cardObj.steps[p3StepIndex];
+      const tags = cardPersonalTags[cardMeta.id];
+
+      if (p3ShowAllGrid) {
+        bigStage.innerHTML = \`
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <span class="text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                Part 3 • All 8 Object Cards
+              </span>
+              <h3 class="text-base sm:text-lg font-kid font-bold text-slate-900 mt-0.5">
+                Click any card to practice Examiner questions!
+              </h3>
+            </div>
+            <button onclick="p3ShowAllGrid = false; renderPart3BigStage();" class="px-3.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs sm:text-sm shadow transition">
+              🔍 Show Giant Active Card
+            </button>
+          </div>
+          <div class="flex-1 grid grid-cols-4 grid-rows-2 gap-3 sm:gap-4 items-center">
+            \${OBJECT_CARDS.map(card => {
+              const isSelected = card.id === cardMeta.id;
+              return \`
+                <div
+                  onclick="selectPart3CardById('\${card.id}'); p3ShowAllGrid = false; renderPart3BigStage();"
+                  class="cursor-pointer w-full h-full rounded-3xl bg-white p-3 sm:p-4 border-4 border-dashed transition transform hover:scale-105 flex items-center justify-center relative shadow-md \${
+                    isSelected ? 'border-amber-500 ring-4 ring-amber-300 bg-amber-50/30 scale-105' : 'border-slate-300 hover:border-indigo-400'
+                  }"
+                >
+                  <span class="absolute -top-2.5 -right-1.5 text-sm text-slate-500 pointer-events-none">✂️</span>
+                  <div class="w-full h-full flex items-center justify-center p-1">
+                    \${card.svg}
+                  </div>
+                </div>
+              \`;
+            }).join('')}
+          </div>
+        \`;
+      } else {
+        bigStage.innerHTML = \`
+          <!-- Top Bar inside Big Stage -->
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-indigo-600 text-white shadow-sm">
+                Card \${p3CardIndex + 1} of 8
+              </span>
+              <div class="flex items-center gap-1 bg-white/90 px-2 py-1 rounded-xl border border-indigo-200 shadow-sm">
+                \${cardObj.steps.map((s, idx) => \`
+                  <button onclick="p3StepIndex=\${idx}; renderCurrentMode();" class="px-2.5 py-1 rounded-lg font-kid font-bold text-xs transition \${
+                    idx === p3StepIndex ? 'bg-amber-500 text-white shadow' : 'text-slate-600 hover:bg-slate-100'
+                  }">
+                    Q\${idx + 1}
+                  </button>
+                \`).join('')}
+              </div>
+            </div>
+            <button onclick="p3ShowAllGrid = true; renderPart3BigStage();" class="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-indigo-800 border-2 border-indigo-200 font-kid font-bold text-xs shadow-sm transition">
+              🖼️ Show All 8 Cards Grid
+            </button>
+          </div>
+
+          <!-- Center Huge Object Card Display -->
+          <div class="flex-1 flex items-center justify-center gap-3 sm:gap-6 my-2">
+            <button onclick="prevPart3Card()" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-700 border-2 border-indigo-200 shadow-md flex items-center justify-center text-xl font-bold transition active:scale-95" title="Previous Object Card">
+              ⬅️
+            </button>
+
+            <div class="relative w-56 h-56 sm:w-72 sm:h-72 md:w-80 md:h-80 rounded-[2rem] bg-white border-4 border-dashed border-slate-400 shadow-2xl p-6 sm:p-8 flex items-center justify-center transition-all">
+              <span class="absolute -top-3.5 -right-2 text-2xl text-slate-600 pointer-events-none">✂️</span>
+              <div class="absolute top-3 left-3 flex gap-1.5 pointer-events-none">
+                \${tags.have ? '<span class="text-xl" title="I have this!">🏠</span>' : ''}
+                \${tags.like ? '<span class="text-xl" title="I like this!">❤️</span>' : ''}
+              </div>
+              <div class="w-full h-full flex items-center justify-center">
+                \${cardMeta.svg}
+              </div>
+            </div>
+
+            <button onclick="nextPart3Card()" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-700 border-2 border-indigo-200 shadow-md flex items-center justify-center text-xl font-bold transition active:scale-95" title="Next Object Card">
+              ➡️
+            </button>
+          </div>
+
+          <!-- Bottom 8-Card Selector Strip (No words or Test 1 labels) -->
+          <div class="bg-white/85 backdrop-blur rounded-2xl p-2 border-2 border-indigo-100 shadow-sm">
+            <div class="grid grid-cols-8 gap-2">
+              \${OBJECT_CARDS.map(card => {
+                const isSelected = card.id === cardMeta.id;
+                return \`
+                  <button
+                    onclick="selectPart3CardById('\${card.id}')"
+                    class="aspect-square rounded-xl bg-white p-1.5 border-2 border-dashed transition transform hover:scale-105 flex items-center justify-center \${
+                      isSelected ? 'border-amber-500 ring-2 ring-amber-400 bg-amber-50 scale-105 shadow' : 'border-slate-300 opacity-75 hover:opacity-100'
+                    }"
+                  >
+                    \${card.svg}
+                  </button>
+                \`;
+              }).join('')}
+            </div>
+          </div>
+        \`;
+      }
+    }
+
+    function selectPart3CardById(cardId) {
+      const idx = PART3_QUESTIONS.findIndex(q => q.cardId === cardId);
+      if (idx !== -1) {
+        p3CardIndex = idx;
+        p3StepIndex = 0;
+        playChime('pop');
+        renderCurrentMode();
+      }
+    }
+
+    function prevPart3Card() {
+      p3CardIndex = (p3CardIndex - 1 + PART3_QUESTIONS.length) % PART3_QUESTIONS.length;
+      p3StepIndex = 0;
+      playChime('pop');
+      renderCurrentMode();
+    }
+
+    function nextPart3Card() {
+      p3CardIndex = (p3CardIndex + 1) % PART3_QUESTIONS.length;
+      p3StepIndex = 0;
+      playChime('pop');
+      renderCurrentMode();
+    }
+
     function renderCurrentMode() {
       const partBadge = document.getElementById('part-badge');
       const qCounter = document.getElementById('question-counter');
       const promptText = document.getElementById('examiner-prompt-text');
       const subHint = document.getElementById('examiner-sub-hint');
       const panel = document.getElementById('activity-panel');
+      const sceneContainer = document.getElementById('scene-canvas-container');
+      const part3BigStage = document.getElementById('part3-big-stage');
+      const statusText = document.getElementById('scene-status-bar');
+      const bookArtBtn = document.getElementById('btn-footer-book-art');
+
+      // Toggle between the Big Classroom Scene and the Big Object Cards Stage (Part 3)
+      if (currentMode === 'part3') {
+        if (sceneContainer) sceneContainer.classList.add('hidden');
+        if (part3BigStage) part3BigStage.classList.remove('hidden');
+        if (bookArtBtn) bookArtBtn.classList.add('hidden');
+        if (statusText) statusText.textContent = "Part 3 Object Cards Stage — Answer the Examiner's question about the big card!";
+        renderPart3BigStage();
+      } else {
+        if (sceneContainer) sceneContainer.classList.remove('hidden');
+        if (part3BigStage) part3BigStage.classList.add('hidden');
+        if (bookArtBtn) bookArtBtn.classList.remove('hidden');
+        if (statusText) statusText.textContent = "Interactive Scene Ready — Click any object or drag an Object Card onto the room!";
+      }
+
+      updateDropZonesVisibility();
 
       if (currentMode === 'part1a') {
         const task = PART1A_TASKS[p1aIndex];
@@ -1908,6 +2175,13 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
           <p class="text-xs text-slate-600">
             Listen to the Examiner and <strong>click directly on the object(s)</strong> in the Monster Art Class picture!
           </p>
+          <div class="bg-indigo-50/90 border-2 border-indigo-200 rounded-2xl p-2.5 text-xs space-y-1.5">
+            <div class="font-extrabold uppercase text-[10px] text-indigo-700">Question \${p1aIndex + 1}: \${task.prompt}</div>
+            <button onclick="practiceSentence('\${task.answer.replace(/'/g, "\\\\'")}')" class="w-full text-left px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
+              <span>🗣️ "\${task.answer}"</span>
+              <span class="text-emerald-600 text-xs font-extrabold">🔊 Listen</span>
+            </button>
+          </div>
           <div class="grid grid-cols-4 gap-1.5 my-1">
             \${PART1A_TASKS.map((t, idx) => \`
               <button onclick="p1aIndex=\${idx}; renderCurrentMode();" class="py-1.5 px-2 rounded-xl font-kid font-bold text-xs border transition \${
@@ -1935,36 +2209,57 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
       else if (currentMode === 'part1b') {
         const task = PART1B_TASKS[p1bIndex];
-        partBadge.textContent = "Part 1 • Task B: Place the Object Cards";
-        qCounter.textContent = \`Placement \${p1bIndex + 1} of \${PART1B_TASKS.length}\`;
-        promptText.textContent = \`"\${task.prompt}"\`;
-        subHint.textContent = \`🃏 \${task.subHint}\`;
-        speakText(task.prompt);
-        renderAnswerChips(task.chips, []);
+        const isSelectStep = p1bStep === 'select';
+        const activePrompt = isSelectStep ? task.selectPrompt : task.placePrompt;
+        const activeSubHint = isSelectStep ? task.selectSubHint : task.placeSubHint;
+
+        partBadge.textContent = isSelectStep
+          ? "Part 1 • Task B (Step 1/2): Find the Object Card"
+          : "Part 1 • Task B (Step 2/2): Place the Card in the Room";
+        qCounter.textContent = \`Task \${p1bIndex + 1} of \${PART1B_TASKS.length} • Step \${isSelectStep ? 1 : 2}/2\`;
+        promptText.textContent = \`"\${activePrompt}"\`;
+        subHint.textContent = \`🃏 \${activeSubHint}\`;
+        speakText(activePrompt);
+        renderAnswerChips(isSelectStep ? task.selectChips : task.placeChips, []);
 
         panel.innerHTML = \`
           <div class="flex items-center justify-between">
-            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🃏 Task B: Put the Card On / Under / In</h2>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">+15 pts each</span>
+            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🃏 Task B: Select & Place Cards</h2>
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">Step \${isSelectStep ? '1: Select' : '2: Place'}</span>
           </div>
-          <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-3 text-xs text-amber-950 flex items-center gap-3">
-            <div class="w-14 h-14 rounded-xl bg-white border-2 border-amber-300 p-1 shrink-0 shadow-sm">
-              \${OBJECT_CARDS.find(c => c.id === task.cardId).svg}
+
+          \${isSelectStep ? \`
+            <div class="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-3 text-xs text-indigo-950 flex items-center gap-3">
+              <div class="w-12 h-12 rounded-2xl bg-white border-2 border-dashed border-indigo-300 flex items-center justify-center text-2xl shrink-0 shadow-sm">
+                ❓
+              </div>
+              <div>
+                <div class="font-extrabold uppercase text-[10px] text-indigo-600">Step 1: Listen & Select Object Card</div>
+                <div class="font-bold text-sm text-slate-900 mt-0.5">"\${task.selectPrompt}"</div>
+                <div class="text-[11px] text-slate-600 mt-0.5">Click the matching picture in the 8 Object Cards tray below!</div>
+              </div>
             </div>
-            <div>
-              <div class="font-extrabold uppercase text-[10px] text-amber-700">Target Card: \${task.cardId.replace('_', ' ')}</div>
-              <div class="font-bold text-sm text-slate-900 mt-0.5">\${task.prompt}</div>
-              <div class="text-[11px] text-slate-600 mt-0.5">Drag the card from the tray below onto the glowing dashed zone in the picture!</div>
+          \` : \`
+            <div class="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3 text-xs text-emerald-950 flex items-center gap-3">
+              <div class="w-14 h-14 rounded-xl bg-white border-2 border-emerald-400 p-1 shrink-0 shadow-sm">
+                \${OBJECT_CARDS.find(c => c.id === task.cardId).svg}
+              </div>
+              <div>
+                <div class="font-extrabold uppercase text-[10px] text-emerald-700">✓ Correct Card Selected! Now Step 2:</div>
+                <div class="font-bold text-sm text-slate-900 mt-0.5">"\${task.placePrompt}"</div>
+                <div class="text-[11px] text-slate-600 mt-0.5">Drag the highlighted card to the dashed zone in the picture (or click the spot)!</div>
+              </div>
             </div>
-          </div>
+          \`}
+
           <div class="grid grid-cols-4 gap-1.5">
             \${PART1B_TASKS.map((t, idx) => \`
-              <button onclick="p1bIndex=\${idx}; renderCurrentMode();" class="py-1.5 px-2 rounded-xl font-kid font-bold text-xs border transition \${
+              <button onclick="p1bIndex=\${idx}; p1bStep='select'; renderCurrentMode();" class="py-1.5 px-2 rounded-xl font-kid font-bold text-xs border transition \${
                 idx === p1bIndex
                   ? 'bg-indigo-600 text-white border-indigo-700 shadow'
                   : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
               }">
-                #\${idx + 1} \${t.cardId.split('_')[0]}
+                Task #\${idx + 1}
               </button>
             \`).join('')}
           </div>
@@ -1973,7 +2268,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
               ⬅️ Previous
             </button>
             <button onclick="autoDemoPlaceCurrentCard()" class="px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-kid font-bold text-xs transition">
-              ✨ Auto-Demo Placement
+              ✨ \${isSelectStep ? 'Show Answer Card' : 'Auto-Place Card'}
             </button>
             <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
               Next Task ➡️
@@ -1984,8 +2279,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
       else if (currentMode === 'part2') {
         const q = PART2_QUESTIONS[p2Index];
-        partBadge.textContent = "Part 2 • Questions about the Scene Picture";
-        qCounter.textContent = \`Prompt \${p2Index + 1} of \${PART2_QUESTIONS.length}\`;
+        partBadge.textContent = "Part 2 • One Question at a Time (Wait for Answer)";
+        qCounter.textContent = \`Question \${p2Index + 1} of \${PART2_QUESTIONS.length}\`;
         promptText.textContent = \`"\${q.prompt}"\`;
         subHint.textContent = \`🔍 \${q.subHint}\`;
         speakText(q.prompt);
@@ -2002,25 +2297,25 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
         panel.innerHTML = \`
           <div class="flex items-center justify-between">
-            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🔍 Part 2: Scene Q&A & "Tell me about..."</h2>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">+15 pts</span>
+            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🔍 Part 2: Scene Q&A (Step-by-Step)</h2>
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Q\${p2Index + 1}/\${PART2_QUESTIONS.length}</span>
           </div>
-          <div class="flex flex-wrap gap-1.5">
+          <div class="grid grid-cols-4 gap-1.5">
             \${PART2_QUESTIONS.map((item, idx) => \`
-              <button onclick="p2Index=\${idx}; renderCurrentMode();" class="px-2.5 py-1 rounded-xl font-kid font-bold text-xs border transition \${
+              <button onclick="p2Index=\${idx}; renderCurrentMode();" class="px-2 py-1 rounded-xl font-kid font-bold text-[11px] border truncate transition \${
                 idx === p2Index
                   ? 'bg-indigo-600 text-white border-indigo-700 shadow'
                   : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
               }">
-                \${item.isMonsterBuilder ? '👾 ' : ''}\${item.title.split('.')[0]}
+                \${item.title}
               </button>
             \`).join('')}
           </div>
 
           <div class="bg-indigo-50/80 border-2 border-indigo-200 rounded-2xl p-3">
-            <div class="text-xs font-extrabold uppercase text-indigo-700 mb-1">\${q.title}</div>
-            <p class="text-xs text-slate-700 mb-2">
-              Click any sentence below to hear & practice saying it aloud, or use the <strong>🎤 Speak Answer</strong> button!
+            <div class="text-xs font-extrabold uppercase text-indigo-700 mb-1">\${q.prompt}</div>
+            <p class="text-xs text-slate-600 mb-2">
+              Wait for the student to answer aloud, or click a model answer below before clicking <strong>Next Question ➡️</strong>:
             </p>
             <div class="flex flex-col gap-1.5">
               \${q.chips.map(sentence => \`
@@ -2036,7 +2331,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
             <button onclick="prevQuestion()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
               ⬅️ Previous
             </button>
-            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
+            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-kid font-bold text-xs shadow transition">
               Next Question ➡️
             </button>
           </div>
@@ -2048,10 +2343,10 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         const cardMeta = OBJECT_CARDS.find(c => c.id === cardObj.cardId);
         const stepObj = cardObj.steps[p3StepIndex];
 
-        partBadge.textContent = "Part 3 • Questions about the Small Object Cards";
-        qCounter.textContent = \`Card \${p3CardIndex + 1} of 8 • Step \${p3StepIndex + 1}/3\`;
+        partBadge.textContent = "Part 3 • Object Cards Q&A (One Question at a Time)";
+        qCounter.textContent = \`Card \${p3CardIndex + 1} of 8 • Question \${p3StepIndex + 1} of \${cardObj.steps.length}\`;
         promptText.textContent = \`"\${stepObj.q}"\`;
-        subHint.textContent = \`💬 Examiner is showing you the \${cardMeta.name.toUpperCase()} card. Answer the question!\`;
+        subHint.textContent = \`💬 Look at the big Object Card on the left and answer the Examiner's question!\`;
         speakText(stepObj.q);
         renderAnswerChips(stepObj.a, stepObj.keywords);
 
@@ -2066,13 +2361,9 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
           </div>
 
           \${!pairTalkMode ? \`
-            <div class="bg-gradient-to-br from-sky-50 to-indigo-50 border-4 border-indigo-200 rounded-3xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-inner">
-              <div class="w-28 h-28 rounded-2xl bg-white border-4 border-dashed border-slate-400 p-2 shadow-md shrink-0 relative">
-                \${cardMeta.svg}
-                <span class="absolute bottom-1 right-1.5 text-[9px] font-bold text-slate-500">Test 1</span>
-              </div>
-              <div class="flex-1 text-center sm:text-left">
-                <div class="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 mb-2">
+            <div class="bg-gradient-to-br from-sky-50 to-indigo-50 border-4 border-indigo-200 rounded-3xl p-3.5 flex flex-col gap-3 shadow-inner">
+              <div class="flex flex-wrap items-center justify-between gap-1.5">
+                <div class="flex flex-wrap items-center gap-1.5">
                   \${cardObj.steps.map((s, idx) => \`
                     <button onclick="p3StepIndex=\${idx}; renderCurrentMode();" class="px-2.5 py-1 rounded-lg font-kid font-bold text-xs transition \${
                       idx === p3StepIndex ? 'bg-indigo-600 text-white shadow' : 'bg-white text-slate-600 border border-slate-200'
@@ -2081,15 +2372,16 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
                     </button>
                   \`).join('')}
                 </div>
-                <p class="text-base font-kid font-bold text-indigo-950 mb-2">"\${stepObj.q}"</p>
-                <div class="flex flex-col gap-1.5">
-                  \${stepObj.a.map(ans => \`
-                    <button onclick="practiceSentence('\${ans.replace(/'/g, "\\\\'")}', true)" class="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
-                      <span>💬 "\${ans}"</span>
-                      <span class="text-emerald-600 font-extrabold">+10 ⭐</span>
-                    </button>
-                  \`).join('')}
-                </div>
+                <span class="text-[11px] font-bold text-indigo-700">Card \${p3CardIndex + 1}/8</span>
+              </div>
+              <p class="text-base font-kid font-bold text-indigo-950">"\${stepObj.q}"</p>
+              <div class="flex flex-col gap-1.5">
+                \${stepObj.a.map(ans => \`
+                  <button onclick="practiceSentence('\${ans.replace(/'/g, "\\\\'")}', true)" class="px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
+                    <span>💬 "\${ans}"</span>
+                    <span class="text-emerald-600 font-extrabold">+10 ⭐</span>
+                  </button>
+                \`).join('')}
               </div>
             </div>
 
@@ -2097,14 +2389,13 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
               <button onclick="prevPart3Step()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
                 ⬅️ Previous
               </button>
-              <span class="text-xs font-bold text-slate-500">Click any card below to switch!</span>
-              <button onclick="nextPart3Step()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
+              <button onclick="nextPart3Step()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-kid font-bold text-xs shadow transition">
                 Next Question ➡️
               </button>
             </div>
           \` : \`
             <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 text-xs space-y-2">
-              <div class="font-kid font-bold text-sm text-amber-950">👥 Pair Talk Activity (Book Exercise 1):</div>
+              <div class="font-kid font-bold text-sm text-amber-950">👥 Pair Talk Activity:</div>
               <ul class="list-disc list-inside text-slate-700 font-semibold space-y-0.5">
                 <li>What colour are the things in the pictures?</li>
                 <li>Which things do you have? (Tap <strong>"I have this!"</strong>)</li>
@@ -2115,17 +2406,16 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
                   \${cardMeta.svg}
                 </div>
                 <div class="flex-1 space-y-1.5">
-                  <div class="font-bold text-slate-900 capitalize">\${cardMeta.name} — <span class="text-indigo-600">\${cardMeta.colorText}</span></div>
                   <div class="flex flex-wrap gap-1.5">
                     <button onclick="togglePersonalTag('\${cardMeta.id}', 'have')" class="px-2.5 py-1 rounded-lg font-bold text-xs border transition \${
                       cardPersonalTags[cardMeta.id].have ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-slate-100 text-slate-700 border-slate-300'
                     }">
-                      🏠 I have got \${cardMeta.article}!
+                      🏠 I have got this!
                     </button>
                     <button onclick="togglePersonalTag('\${cardMeta.id}', 'like')" class="px-2.5 py-1 rounded-lg font-bold text-xs border transition \${
                       cardPersonalTags[cardMeta.id].like ? 'bg-rose-500 text-white border-rose-600' : 'bg-slate-100 text-slate-700 border-slate-300'
                     }">
-                      ❤️ I like \${cardMeta.name}s!
+                      ❤️ I like this!
                     </button>
                   </div>
                 </div>
@@ -2194,6 +2484,10 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
           showSceneToast(msg, '🤔', true);
           speakText(\`That's \${clickedInfo ? clickedInfo.name : 'not it'}. \${task.prompt}\`);
         }
+      } else if (currentMode === 'part1b' && p1bStep === 'select') {
+        const task = PART1B_TASKS[p1bIndex];
+        showSceneToast(\`First select the object card on the right: "\${task.selectPrompt}"\`, '👉');
+        speakText(task.selectPrompt);
       } else {
         clearAllSceneHighlights();
         if (el) el.classList.add('glow-correct');
@@ -2203,6 +2497,27 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
           showSceneToast(\`\${info.name}: "\${info.sentence}"\`, '🎨');
           speakText(info.sentence);
         }
+      }
+    }
+
+    function handleDropZoneClick(zoneId, event) {
+      if (event) event.stopPropagation();
+      if (currentMode !== 'part1b') return;
+      const task = PART1B_TASKS[p1bIndex];
+      if (p1bStep === 'select') {
+        showSceneToast(\`First click the object card: "\${task.selectPrompt}"\`, '👉', true);
+        speakText(task.selectPrompt);
+        return;
+      }
+      if (zoneId === task.zoneId) {
+        placeCardInSceneSVG(task.cardId, task.zoneCoords.x, task.zoneCoords.y);
+        addPoints(15, task.successLabel);
+        speakText(task.successLabel);
+        celebrateWithConfetti(30);
+      } else {
+        playChime('wrong');
+        showSceneToast(\`Almost! Listen carefully: "\${task.placePrompt}"\`, '🎯', true);
+        speakText(task.placePrompt);
       }
     }
 
@@ -2230,10 +2545,19 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         showSceneToast(\`Hint: Look at the glowing object!\`, '💡');
       } else if (currentMode === 'part1b') {
         const task = PART1B_TASKS[p1bIndex];
-        const dz = document.getElementById(\`dz-\${task.zoneId}\`);
-        if (dz) dz.classList.add('active-hover');
-        setTimeout(() => { if (dz) dz.classList.remove('active-hover'); }, 2200);
-        showSceneToast(\`Hint: Drag the \${task.cardId.replace('_', ' ')} to the green glowing zone!\`, '💡');
+        if (p1bStep === 'select') {
+          const cardEl = document.querySelector(\`[data-card-id="\${task.cardId}"]\`);
+          if (cardEl) {
+            cardEl.classList.add('ring-4', 'ring-amber-400', 'scale-105');
+            setTimeout(() => cardEl.classList.remove('ring-4', 'ring-amber-400', 'scale-105'), 2000);
+          }
+          showSceneToast(\`Hint: Click the glowing card in the tray!\`, '💡');
+        } else {
+          const dz = document.getElementById(\`dz-\${task.zoneId}\`);
+          if (dz) dz.classList.add('active-hover');
+          setTimeout(() => { if (dz) dz.classList.remove('active-hover'); }, 2200);
+          showSceneToast(\`Hint: Drag the card to the green glowing zone in the picture!\`, '💡');
+        }
       } else if (currentMode === 'part2') {
         const q = PART2_QUESTIONS[p2Index];
         const el = document.getElementById(\`item-\${q.spotlightId}\`);
@@ -2248,7 +2572,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       grid.innerHTML = OBJECT_CARDS.map((card, idx) => {
         const isPlaced = Boolean(placedCards[card.id]);
         const isCurrentP3 = currentMode === 'part3' && PART3_QUESTIONS[p3CardIndex].cardId === card.id;
-        const isCurrentP1B = currentMode === 'part1b' && PART1B_TASKS[p1bIndex].cardId === card.id;
+        // Only highlight the target card in Part 1B AFTER the student has correctly selected it in Step 1!
+        const isSelectedP1B = currentMode === 'part1b' && p1bStep === 'place' && PART1B_TASKS[p1bIndex].cardId === card.id;
         const tags = cardPersonalTags[card.id];
 
         return \`
@@ -2256,21 +2581,17 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
             data-card-id="\${card.id}"
             onpointerdown="startCardDrag(event, '\${card.id}')"
             onclick="handleTrayCardClick('\${card.id}')"
-            class="object-card relative rounded-2xl bg-white p-1.5 border-2 border-dashed \${
-              isCurrentP3 || isCurrentP1B ? 'border-amber-500 ring-2 ring-amber-300 bg-amber-50/40' : 'border-slate-400'
-            } \${isPlaced ? 'opacity-45' : ''} flex flex-col items-center justify-between aspect-square select-none shadow-sm"
+            class="object-card relative rounded-2xl bg-white p-2 border-2 border-dashed \${
+              isCurrentP3 || isSelectedP1B ? 'border-emerald-500 ring-4 ring-emerald-300 bg-emerald-50/50 scale-105' : 'border-slate-400'
+            } \${isPlaced ? 'opacity-45' : ''} flex items-center justify-center aspect-square select-none shadow-sm"
           >
             <span class="absolute -top-2 -right-1 text-[11px] text-slate-500 pointer-events-none">✂️</span>
             <div class="absolute top-1 left-1 flex gap-0.5 pointer-events-none">
               \${tags.have ? '<span class="text-[10px]" title="I have this!">🏠</span>' : ''}
               \${tags.like ? '<span class="text-[10px]" title="I like this!">❤️</span>' : ''}
             </div>
-            <div class="w-full h-4/5 flex items-center justify-center pointer-events-none p-1">
+            <div class="w-full h-full flex items-center justify-center pointer-events-none p-1">
               \${card.svg}
-            </div>
-            <div class="w-full flex items-center justify-between px-1 pointer-events-none">
-              <span class="text-[10px] font-extrabold text-slate-700 truncate capitalize">\${card.name}</span>
-              <span class="text-[8px] font-bold text-slate-400">Test 1</span>
             </div>
           </div>
         \`;
@@ -2282,6 +2603,37 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     function handleTrayCardClick(cardId) {
       const card = OBJECT_CARDS.find(c => c.id === cardId);
       if (!card) return;
+
+      if (currentMode === 'part1b') {
+        const task = PART1B_TASKS[p1bIndex];
+        if (p1bStep === 'select') {
+          if (cardId === task.cardId) {
+            p1bStep = 'place';
+            addPoints(10, \`Correct! Now: \${task.placePrompt}\`);
+            renderCurrentMode();
+          } else {
+            const wrongEl = document.querySelector(\`[data-card-id="\${cardId}"]\`);
+            if (wrongEl) {
+              wrongEl.classList.add('shake-wrong');
+              setTimeout(() => wrongEl.classList.remove('shake-wrong'), 500);
+            }
+            playChime('wrong');
+            showSceneToast(\`Try again! "\${task.selectPrompt}"\`, '🤔', true);
+            speakText(\`Try again! \${task.selectPrompt}\`);
+          }
+        } else {
+          // Already in 'place' step
+          if (cardId === task.cardId) {
+            playChime('pop');
+            showSceneToast(\`Now drag it onto the picture: "\${task.placePrompt}"\`, '👉');
+            speakText(task.placePrompt);
+          } else {
+            playChime('wrong');
+            showSceneToast(\`Use the highlighted card! "\${task.placePrompt}"\`, '🤔', true);
+          }
+        }
+        return;
+      }
 
       if (currentMode === 'part3') {
         const idx = PART3_QUESTIONS.findIndex(q => q.cardId === cardId);
@@ -2304,6 +2656,10 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     function startCardDrag(e, cardId) {
       if (e.button !== undefined && e.button !== 0) return;
+      // In Part 1B Step 1 ('select'), require clicking/selecting the card first before dragging!
+      if (currentMode === 'part1b' && p1bStep === 'select') {
+        return;
+      }
       draggingCardId = cardId;
       dragStartPos = { x: e.clientX, y: e.clientY };
       isDraggingActive = false;
@@ -2396,8 +2752,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         const task = PART1B_TASKS[p1bIndex];
         if (cardId !== task.cardId) {
           playChime('wrong');
-          showSceneToast(\`Oops! That's the \${cardId.replace('_', ' ')}. Please pick the \${task.cardId.replace('_', ' ').toUpperCase()}!\`, '🤔', true);
-          speakText(\`That's the \${cardId.replace('_', ' ')}. Please find the \${task.cardId.replace('_', ' ')}.\`);
+          showSceneToast(\`Please use the selected card! "\${task.placePrompt}"\`, '🤔', true);
+          speakText(task.placePrompt);
           return;
         }
 
@@ -2408,13 +2764,13 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
           celebrateWithConfetti(30);
         } else {
           playChime('wrong');
-          showSceneToast(\`Almost! Listen carefully: "\${task.prompt}"\`, '🎯', true);
-          speakText(task.prompt);
+          showSceneToast(\`Almost! Listen carefully: "\${task.placePrompt}"\`, '🎯', true);
+          speakText(task.placePrompt);
         }
       } else {
         placeCardInSceneSVG(cardId, svgX - 42, svgY - 42);
         const card = OBJECT_CARDS.find(c => c.id === cardId);
-        addPoints(5, \`Placed the \${card.name} in the classroom!\`);
+        addPoints(5, \`Placed the card in the classroom!\`);
       }
     }
 
@@ -2459,18 +2815,27 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     function resetAllPlacedCards() {
       placedCards = {};
+      if (currentMode === 'part1b') {
+        p1bStep = 'select';
+      }
       playChime('pop');
       renderPlacedCardsInScene();
-      renderObjectCardsTray();
+      renderCurrentMode();
       showSceneToast("All 8 Object Cards returned to the tray!", '🔄');
     }
 
     function autoDemoPlaceCurrentCard() {
       if (currentMode !== 'part1b') return;
       const task = PART1B_TASKS[p1bIndex];
-      placeCardInSceneSVG(task.cardId, task.zoneCoords.x, task.zoneCoords.y);
-      addPoints(15, task.successLabel);
-      speakText(task.successLabel);
+      if (p1bStep === 'select') {
+        p1bStep = 'place';
+        addPoints(10, \`Selected! Now: \${task.placePrompt}\`);
+        renderCurrentMode();
+      } else {
+        placeCardInSceneSVG(task.cardId, task.zoneCoords.x, task.zoneCoords.y);
+        addPoints(15, task.successLabel);
+        speakText(task.successLabel);
+      }
     }
 
     function nextQuestion() {
@@ -2479,6 +2844,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         p1aIndex = (p1aIndex + 1) % PART1A_TASKS.length;
       } else if (currentMode === 'part1b') {
         p1bIndex = (p1bIndex + 1) % PART1B_TASKS.length;
+        p1bStep = 'select';
       } else if (currentMode === 'part2') {
         p2Index = (p2Index + 1) % PART2_QUESTIONS.length;
       } else if (currentMode === 'part3') {
@@ -2494,6 +2860,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         p1aIndex = (p1aIndex - 1 + PART1A_TASKS.length) % PART1A_TASKS.length;
       } else if (currentMode === 'part1b') {
         p1bIndex = (p1bIndex - 1 + PART1B_TASKS.length) % PART1B_TASKS.length;
+        p1bStep = 'select';
       } else if (currentMode === 'part2') {
         p2Index = (p2Index - 1 + PART2_QUESTIONS.length) % PART2_QUESTIONS.length;
       } else if (currentMode === 'part3') {

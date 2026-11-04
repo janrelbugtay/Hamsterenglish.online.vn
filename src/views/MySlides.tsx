@@ -26,7 +26,7 @@ import {
 import { ViewState } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
 import { 
   CAMBRIDGE_COURSES, 
   ALL_GRADES, 
@@ -125,31 +125,63 @@ export function matchGlobalSuccess(deck: any, gsId: string): boolean {
 
 export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => void }) {
   const { user } = useAuth();
+  const isAdmin = Boolean(
+    user && !user.isAnonymous && user.email?.toLowerCase().trim() === 'janrelbugtay03@gmail.com'
+  );
 
-  // Load real slide decks created by the user, plus official Cambridge Starters Monster Art Class Studio
+  // Track explicitly deleted deck IDs so deleted built-in or cached decks stay deleted
+  const [deletedDeckIds, setDeletedDeckIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('hamster_deleted_slide_ids');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  // Load real slide decks created by the Admin, plus official Cambridge Starters Monster Art Class Studio
   const [decks, setDecks] = useState<SlideDeck[]>(() => {
+    let deletedIds: string[] = [];
+    try {
+      const rawDel = localStorage.getItem('hamster_deleted_slide_ids');
+      if (rawDel) {
+        const parsedDel = JSON.parse(rawDel);
+        if (Array.isArray(parsedDel)) deletedIds = parsedDel;
+      }
+    } catch (e) {}
+
     try {
       const cached = localStorage.getItem('hamster_my_slides');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          // Strictly remove pre-generated demo mock decks
-          const realUserDecks = parsed.filter(d => 
-            d && 
-            !d.id?.startsWith('deck-cambridge-flyers') && 
-            !d.id?.startsWith('deck-phonics-magic-e') && 
-            !d.id?.startsWith('deck-grammar-past-vs-present')
+          // Strictly remove pre-generated demo mock decks & deleted decks
+          const realUserDecks = parsed.filter(
+            d =>
+              d &&
+              !deletedIds.includes(d.id) &&
+              !d.id?.startsWith('deck-cambridge-flyers') &&
+              !d.id?.startsWith('deck-phonics-magic-e') &&
+              !d.id?.startsWith('deck-grammar-past-vs-present')
           );
-          const hasStartersMonsterArt = realUserDecks.some(
+          const updatedDecks = realUserDecks.map(d =>
+            d.id === STARTERS_MONSTER_ART_DECK_ID && (d.updatedAt || 0) < STARTERS_MONSTER_ART_DECK.updatedAt
+              ? STARTERS_MONSTER_ART_DECK
+              : d
+          );
+          const hasStartersMonsterArt = updatedDecks.some(
             d => d.id === STARTERS_MONSTER_ART_DECK_ID
           );
-          return hasStartersMonsterArt
-            ? realUserDecks
-            : [STARTERS_MONSTER_ART_DECK, ...realUserDecks];
+          if (!hasStartersMonsterArt && !deletedIds.includes(STARTERS_MONSTER_ART_DECK_ID)) {
+            return [STARTERS_MONSTER_ART_DECK, ...updatedDecks];
+          }
+          return updatedDecks;
         }
       }
     } catch (e) {}
-    return [STARTERS_MONSTER_ART_DECK];
+    return deletedIds.includes(STARTERS_MONSTER_ART_DECK_ID) ? [] : [STARTERS_MONSTER_ART_DECK];
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -170,33 +202,93 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  // Editor Modal state
+  // Editor Modal & Undo Delete state
   const [editingDeck, setEditingDeck] = useState<SlideDeck | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [lastDeletedDeck, setLastDeletedDeck] = useState<SlideDeck | null>(null);
 
   const presenterRef = useRef<HTMLDivElement>(null);
 
-  // Sync real decks to localStorage and Firestore
+  // Persist decks and deleted IDs locally
   useEffect(() => {
     try {
       localStorage.setItem('hamster_my_slides', JSON.stringify(decks));
     } catch (e) {}
+  }, [decks]);
 
-    if (user && !user.isAnonymous) {
-      decks.forEach((deck) => {
-        setDoc(doc(db, 'mySlides', deck.id), {
-          ...deck,
-          userId: user.uid,
-          authorName: user.displayName || 'Teacher',
-          updatedAt: Date.now(),
-        }, { merge: true }).catch(() => {});
-      });
-    }
-  }, [decks, user]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('hamster_deleted_slide_ids', JSON.stringify(deletedDeckIds));
+    } catch (e) {}
+  }, [deletedDeckIds]);
+
+  // Real-time public subscription to Firestore `mySlides` so all public users see Admin's slides
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'mySlides'),
+      (snap) => {
+        const cloudDecks: SlideDeck[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as SlideDeck;
+          if (
+            data &&
+            data.id &&
+            Array.isArray(data.slides) &&
+            !data.id.startsWith('deck-cambridge-flyers') &&
+            !data.id.startsWith('deck-phonics-magic-e') &&
+            !data.id.startsWith('deck-grammar-past-vs-present')
+          ) {
+            cloudDecks.push(data);
+          }
+        });
+
+        if (cloudDecks.length > 0) {
+          setDecks((prev) => {
+            const mergedMap = new Map<string, SlideDeck>();
+            // Start with cloud decks that haven't been locally deleted
+            cloudDecks.forEach((cd) => {
+              if (!deletedDeckIds.includes(cd.id)) {
+                mergedMap.set(cd.id, cd);
+              }
+            });
+            // Keep any local decks not yet in cloud (unless deleted)
+            prev.forEach((ld) => {
+              if (!deletedDeckIds.includes(ld.id) && !mergedMap.has(ld.id)) {
+                mergedMap.set(ld.id, ld);
+              }
+            });
+            if (
+              !mergedMap.has(STARTERS_MONSTER_ART_DECK_ID) &&
+              !deletedDeckIds.includes(STARTERS_MONSTER_ART_DECK_ID)
+            ) {
+              mergedMap.set(STARTERS_MONSTER_ART_DECK_ID, STARTERS_MONSTER_ART_DECK);
+            }
+            return Array.from(mergedMap.values());
+          });
+        }
+      },
+      () => {}
+    );
+    return () => unsub();
+  }, [deletedDeckIds]);
+
+  const saveDeckToCloud = (deck: SlideDeck) => {
+    if (!isAdmin || !user) return;
+    setDoc(
+      doc(db, 'mySlides', deck.id),
+      {
+        ...deck,
+        userId: user.uid,
+        authorName: user.displayName || 'Admin',
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    ).catch(() => {});
+  };
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   // Sound effects generator
@@ -402,26 +494,54 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
     return () => clearInterval(interval);
   }, [isTimerRunning, timerSeconds]);
 
-  // Delete Deck
+  // Delete Deck (Admin only — instant delete without blocked window.confirm, plus Undo support)
   const handleDeleteDeck = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this slide deck?")) {
-      setDecks(prev => prev.filter(d => d.id !== id));
-      triggerToast("Slide deck deleted.");
+    e.preventDefault();
+    if (!isAdmin) {
+      triggerToast('Only the Admin can delete slide decks.');
+      return;
     }
+    const targetDeck = decks.find((d) => d.id === id) || null;
+    if (targetDeck) {
+      setLastDeletedDeck(targetDeck);
+    }
+    setDeletedDeckIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setDecks((prev) => {
+      const updated = prev.filter((d) => d.id !== id);
+      try {
+        localStorage.setItem('hamster_my_slides', JSON.stringify(updated));
+      } catch (err) {}
+      return updated;
+    });
+    deleteDoc(doc(db, 'mySlides', id)).catch(() => {});
+    triggerToast('Slide deck erased.');
   };
 
-  // Duplicate Deck
+  const handleUndoDelete = () => {
+    if (!isAdmin || !lastDeletedDeck) return;
+    const restored = lastDeletedDeck;
+    setLastDeletedDeck(null);
+    setDeletedDeckIds((prev) => prev.filter((id) => id !== restored.id));
+    setDecks((prev) => [restored, ...prev.filter((d) => d.id !== restored.id)]);
+    saveDeckToCloud(restored);
+    triggerToast(`Restored "${restored.title}"!`);
+  };
+
+  // Duplicate Deck (Admin only)
   const handleDuplicateDeck = (deck: SlideDeck, e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
+    if (!isAdmin) return;
     const duplicated: SlideDeck = {
       ...deck,
       id: `deck-${Date.now()}`,
       title: `${deck.title} (Copy)`,
       updatedAt: Date.now(),
     };
-    setDecks(prev => [duplicated, ...prev]);
-    triggerToast("Slide deck duplicated!");
+    setDecks((prev) => [duplicated, ...prev]);
+    saveDeckToCloud(duplicated);
+    triggerToast('Slide deck duplicated!');
   };
 
   // Helper to convert games/lessons into a slide deck
@@ -489,8 +609,9 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
     };
   };
 
-  // Convert Custom Games from My Games into Slide Decks
+  // Convert Custom Games from My Games into Slide Decks (Admin only)
   const handleImportFromGames = () => {
+    if (!isAdmin) return;
     try {
       const cached = localStorage.getItem('hamster_cached_user_games');
       const customGames = cached ? JSON.parse(cached) : [];
@@ -500,6 +621,7 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
       }
 
       const importedDecks: SlideDeck[] = customGames.map((g: any, i: number) => convertGameToSlideDeck(g, i, false));
+      importedDecks.forEach((d) => saveDeckToCloud(d));
       setDecks(prev => [...importedDecks, ...prev]);
       triggerToast(`Imported ${importedDecks.length} slide deck(s) from My Games!`);
     } catch (e) {
@@ -507,8 +629,9 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
     }
   };
 
-  // Import Global Success 6 to 9 Lesson Slide Decks directly
+  // Import Global Success 6 to 9 Lesson Slide Decks directly (Admin only)
   const handleImportGlobalSuccessDecks = () => {
+    if (!isAdmin) return;
     try {
       const gsGames = FALLBACK_COMMUNITY_GAMES.filter(g => {
         const title = (g.title || g.name || g.topic || '').toLowerCase();
@@ -533,6 +656,7 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
           triggerToast("Global Success 6–9 decks are already loaded in your slides!");
           return prev;
         }
+        filtered.forEach((d) => saveDeckToCloud(d));
         triggerToast(`Added ${filtered.length} Global Success 6 to 9 slide decks!`);
         return [...filtered, ...prev];
       });
@@ -574,6 +698,14 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
         <div className="fixed top-6 right-6 z-[200] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200 text-sm font-semibold">
           <Sparkles className="w-5 h-5 text-amber-400" />
           <span>{toastMessage}</span>
+          {isAdmin && lastDeletedDeck && (
+            <button
+              onClick={handleUndoDelete}
+              className="ml-2 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition cursor-pointer"
+            >
+              Undo
+            </button>
+          )}
         </div>
       )}
 
@@ -595,67 +727,70 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
               </span>
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-2xl font-medium">
-              Create and present interactive lesson slide decks for classroom TV and projector displays. Filter by Cambridge, School Grade, or Global Success 6–9.
+              Present interactive lesson slide decks for classroom TV and projector displays. Filter by Cambridge, School Grade, or Global Success 6–9.
             </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => handleImportGlobalSuccessDecks()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold text-sm hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shadow-xs cursor-pointer"
-              title="Add official Global Success 6 to 9 curriculum slide decks"
-            >
-              <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Import Global Success (6–9)</span>
-            </button>
-            <button
-              onClick={() => handleImportFromGames()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-bold text-sm hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors shadow-xs cursor-pointer"
-              title="Convert question sets from My Games into slide presentations"
-            >
-              <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <span>Import from My Games</span>
-            </button>
-            <button
-              onClick={() => {
-                const newDeck: SlideDeck = {
-                  id: `deck-${Date.now()}`,
-                  title: 'New Lesson Slide Deck',
-                  description: 'Add your vocabulary words, phonics drills, and quiz questions.',
-                  category: 'global-success',
-                  gradeLevel: 'Global Success 6',
-                  curriculum: 'Global Success 6',
-                  schoolGrade: 'Grade 6',
-                  theme: 'emerald',
-                  updatedAt: Date.now(),
-                  slides: [
-                    {
-                      id: `s-${Date.now()}-1`,
-                      type: 'title',
-                      title: 'Global Success 6: Unit Title',
-                      subtitle: 'Lesson Objective & Target Vocabulary',
-                    },
-                    {
-                      id: `s-${Date.now()}-2`,
-                      type: 'vocab',
-                      word: 'Neighbourhood',
-                      phonetic: '/ˈneɪ.bə.hʊd/',
-                      partOfSpeech: 'Noun',
-                      definition: 'The area of a town that surrounds someone\'s home.',
-                      exampleSentence: 'My neighbourhood is very peaceful and friendly.',
-                      imageUrl: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=1000&auto=format&fit=crop'
-                    }
-                  ]
-                };
-                setEditingDeck(newDeck);
-              }}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-purple text-white font-extrabold text-sm shadow-md shadow-purple-500/20 hover:bg-purple-700 active:scale-95 transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Slide Deck</span>
-            </button>
-          </div>
+          {/* Admin-Only Management Action Buttons */}
+          {isAdmin && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => handleImportGlobalSuccessDecks()}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold text-sm hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shadow-xs cursor-pointer"
+                title="Add official Global Success 6 to 9 curriculum slide decks"
+              >
+                <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Import Global Success (6–9)</span>
+              </button>
+              <button
+                onClick={() => handleImportFromGames()}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-bold text-sm hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors shadow-xs cursor-pointer"
+                title="Convert question sets from My Games into slide presentations"
+              >
+                <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <span>Import from My Games</span>
+              </button>
+              <button
+                onClick={() => {
+                  const newDeck: SlideDeck = {
+                    id: `deck-${Date.now()}`,
+                    title: 'New Lesson Slide Deck',
+                    description: 'Add your vocabulary words, phonics drills, and quiz questions.',
+                    category: 'global-success',
+                    gradeLevel: 'Global Success 6',
+                    curriculum: 'Global Success 6',
+                    schoolGrade: 'Grade 6',
+                    theme: 'emerald',
+                    updatedAt: Date.now(),
+                    slides: [
+                      {
+                        id: `s-${Date.now()}-1`,
+                        type: 'title',
+                        title: 'Global Success 6: Unit Title',
+                        subtitle: 'Lesson Objective & Target Vocabulary',
+                      },
+                      {
+                        id: `s-${Date.now()}-2`,
+                        type: 'vocab',
+                        word: 'Neighbourhood',
+                        phonetic: '/ˈneɪ.bə.hʊd/',
+                        partOfSpeech: 'Noun',
+                        definition: "The area of a town that surrounds someone's home.",
+                        exampleSentence: 'My neighbourhood is very peaceful and friendly.',
+                        imageUrl:
+                          'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=1000&auto=format&fit=crop',
+                      },
+                    ],
+                  };
+                  setEditingDeck(newDeck);
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-purple text-white font-extrabold text-sm shadow-md shadow-purple-500/20 hover:bg-purple-700 active:scale-95 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>New Slide Deck</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Filter and Search Box (Matches Screenshot & Global Success 6-9 Extension) */}
@@ -786,7 +921,7 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                 >
                   Clear Filters
                 </button>
-              ) : (
+              ) : isAdmin ? (
                 <>
                   <button
                     onClick={() => handleImportGlobalSuccessDecks()}
@@ -819,8 +954,8 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                             type: 'title',
                             title: 'Global Success 6: Unit 1',
                             subtitle: 'My New School · Classroom Lesson Deck',
-                          }
-                        ]
+                          },
+                        ],
                       };
                       setEditingDeck(newDeck);
                     }}
@@ -829,7 +964,7 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                     Create Deck
                   </button>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
         ) : (
@@ -954,32 +1089,39 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
                         </span>
                       </button>
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingDeck(deck);
-                        }}
-                        className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                        title="Edit slides"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingDeck(deck);
+                            }}
+                            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                            title="Edit slides (Admin)"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
 
-                      <button
-                        onClick={(e) => handleDuplicateDeck(deck, e)}
-                        className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                        title="Duplicate deck"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDuplicateDeck(deck, e)}
+                            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                            title="Duplicate deck (Admin)"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
 
-                      <button
-                        onClick={(e) => handleDeleteDeck(deck.id, e)}
-                        className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                        title="Delete deck"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteDeck(deck.id, e)}
+                            className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                            title="Erase deck (Admin)"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1763,16 +1905,20 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState) => 
               <button
                 type="button"
                 onClick={() => {
-                  setDecks(prev => {
-                    const idx = prev.findIndex(d => d.id === editingDeck.id);
+                  if (!isAdmin) return;
+                  const savedDeck = { ...editingDeck, updatedAt: Date.now() };
+                  setDeletedDeckIds((prev) => prev.filter((id) => id !== savedDeck.id));
+                  setDecks((prev) => {
+                    const idx = prev.findIndex((d) => d.id === savedDeck.id);
                     if (idx >= 0) {
                       const updated = [...prev];
-                      updated[idx] = { ...editingDeck, updatedAt: Date.now() };
+                      updated[idx] = savedDeck;
                       return updated;
                     }
-                    return [editingDeck, ...prev];
+                    return [savedDeck, ...prev];
                   });
-                  triggerToast("Slide deck saved successfully!");
+                  saveDeckToCloud(savedDeck);
+                  triggerToast('Slide deck saved successfully!');
                   setEditingDeck(null);
                 }}
                 className="px-6 py-2.5 rounded-xl bg-brand-purple text-white text-xs font-black shadow-md hover:bg-purple-700 transition-colors cursor-pointer"
