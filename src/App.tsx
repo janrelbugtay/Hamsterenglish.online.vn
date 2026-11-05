@@ -63,12 +63,12 @@ export default function App() {
         }
       }
 
-      // 3. Cache and retrieve from sessionStorage
       if (pin) {
         sessionStorage.setItem('active_hw_pin', pin);
         return pin;
       }
-      return sessionStorage.getItem('active_hw_pin') || null;
+      sessionStorage.removeItem('active_hw_pin');
+      return null;
     } catch (e) {
       return null;
     }

@@ -11,6 +11,7 @@ export interface QuestionAuditItem {
   correctAnswer: string;
   isCorrect: boolean;
   timeSpentSeconds?: number;
+  pointsEarned?: number;
 }
 
 export interface HomeworkAssignment {
@@ -36,6 +37,8 @@ export interface HomeworkAssignment {
   createdAt: number;
   status: 'active' | 'closed';
   submissionsCount?: number;
+  isDeleted?: boolean;
+  deletedAt?: number;
 }
 
 export interface HomeworkSubmission {
@@ -52,14 +55,29 @@ export interface HomeworkSubmission {
   score: number; // e.g. 18
   maxScore: number; // e.g. 20
   accuracyPct: number; // e.g. 90 (%)
+  points?: number; // Total arcade/study points including speed & streak bonuses
+  bestStreak?: number; // Highest consecutive correct streak achieved
   passed: boolean;
   attemptNumber: number;
   questionBreakdown: QuestionAuditItem[];
   verifiedAt: string; // ISO verification timestamp
 }
 
+export function getSubmissionPoints(sub: HomeworkSubmission): number {
+  if (typeof sub.points === 'number' && sub.points >= 0) {
+    return sub.points;
+  }
+  const correct = sub.score || 0;
+  if (correct <= 0) return 0;
+  const base = correct * 100;
+  const avgSecPerQ = (sub.durationSeconds || 30) / Math.max(1, sub.maxScore || correct);
+  const speedBonusPerQ = avgSecPerQ <= 3 ? 40 : avgSecPerQ <= 6 ? 25 : avgSecPerQ <= 10 ? 15 : 5;
+  return base + correct * speedBonusPerQ;
+}
+
 const STORAGE_KEY_ASSIGNMENTS_PREFIX = 'hamster_hw_assignments_u_';
 const STORAGE_KEY_SUBMISSIONS_PREFIX = 'hamster_hw_submissions_u_';
+const STORAGE_KEY_TRASH_PREFIX = 'hamster_hw_trash_u_';
 const STORAGE_KEY_DELETED_HW = 'hamster_deleted_homework_ids_v1';
 
 function getAssignmentsStorageKey(userId?: string): string | null {
@@ -70,6 +88,11 @@ function getAssignmentsStorageKey(userId?: string): string | null {
 function getSubmissionsStorageKey(userId?: string): string | null {
   if (!userId) return null;
   return `${STORAGE_KEY_SUBMISSIONS_PREFIX}${userId}`;
+}
+
+function getTrashStorageKey(userId?: string): string | null {
+  if (!userId) return null;
+  return `${STORAGE_KEY_TRASH_PREFIX}${userId}`;
 }
 
 function purgeLegacyPublicHomeworkKeys(): void {
@@ -102,6 +125,14 @@ export function addDeletedHomeworkKeys(keys: string[]): void {
       if (k) current.add(String(k));
     });
     localStorage.setItem(STORAGE_KEY_DELETED_HW, JSON.stringify(Array.from(current)));
+  } catch (e) {}
+}
+
+export function removeDeletedHomeworkKeys(keys: string[]): void {
+  try {
+    const toRemove = new Set(keys.filter(Boolean).map(String));
+    const updated = getDeletedHomeworkKeys().filter((k) => !toRemove.has(k));
+    localStorage.setItem(STORAGE_KEY_DELETED_HW, JSON.stringify(updated));
   } catch (e) {}
 }
 
@@ -830,6 +861,50 @@ export function saveLocalSubmissions(submissions: HomeworkSubmission[], userId?:
   } catch (e) {}
 }
 
+export function getLocalTrashAssignments(userId?: string): HomeworkAssignment[] {
+  const key = getTrashStorageKey(userId);
+  if (!key) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const byPin = new Map<string, HomeworkAssignment>();
+        parsed.forEach((item: any) => {
+          if (!item || isFakeYogaPresetAssignment(item)) return;
+          const k = item.pinCode || String(item.id);
+          if (!byPin.has(k)) {
+            byPin.set(k, ensureAssignmentHasQuestions(item));
+          }
+        });
+        return Array.from(byPin.values()).sort(
+          (a, b) => (b.deletedAt || b.createdAt || 0) - (a.deletedAt || a.createdAt || 0)
+        );
+      }
+    }
+  } catch (e) {}
+  return [];
+}
+
+export function saveLocalTrashAssignments(
+  assignments: HomeworkAssignment[],
+  userId?: string
+): void {
+  const key = getTrashStorageKey(userId);
+  if (!key) return;
+  try {
+    const byPin = new Map<string, HomeworkAssignment>();
+    assignments.forEach((item) => {
+      if (!item || isFakeYogaPresetAssignment(item)) return;
+      const k = item.pinCode || String(item.id);
+      if (!byPin.has(k)) {
+        byPin.set(k, item);
+      }
+    });
+    localStorage.setItem(key, JSON.stringify(Array.from(byPin.values())));
+  } catch (e) {}
+}
+
 // Delete a submission record
 export async function deleteHomeworkSubmission(
   submissionId: string,
@@ -843,6 +918,53 @@ export async function deleteHomeworkSubmission(
     await deleteDoc(doc(db, 'homework_submissions', submissionId));
   } catch (e) {
     console.warn('Notice: submission deleted locally', e);
+  }
+}
+
+// Remove a player (student) completely from a homework leaderboard (deletes all attempts by that player on that homework PIN)
+export async function removePlayerFromHomework(
+  submission: HomeworkSubmission,
+  userId?: string
+): Promise<void> {
+  const targetPin = (submission.pinCode || '').trim();
+  const targetStudent = (submission.studentName || '').trim().toLowerCase();
+
+  if (userId) {
+    const current = getLocalSubmissions(userId).filter((s) => {
+      if (s.id === submission.id) return false;
+      if (
+        targetPin &&
+        s.pinCode === targetPin &&
+        s.studentName.trim().toLowerCase() === targetStudent
+      ) {
+        return false;
+      }
+      return true;
+    });
+    saveLocalSubmissions(current, userId);
+  }
+
+  try {
+    const deletePromises: Promise<void>[] = [];
+    if (submission.id) {
+      deletePromises.push(deleteDoc(doc(db, 'homework_submissions', submission.id)));
+    }
+    if (targetPin) {
+      const q = query(collection(db, 'homework_submissions'), where('pinCode', '==', targetPin));
+      const snap = await getDocs(q);
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as HomeworkSubmission;
+        if (
+          docSnap.id === submission.id ||
+          (data?.studentName && data.studentName.trim().toLowerCase() === targetStudent)
+        ) {
+          deletePromises.push(deleteDoc(doc(db, 'homework_submissions', docSnap.id)));
+        }
+      });
+    }
+    await Promise.allSettled(deletePromises);
+  } catch (e) {
+    console.warn('Notice: player removed locally', e);
   }
 }
 
@@ -869,6 +991,10 @@ export async function fetchAllHomeworkAssignments(
 
   const deletedKeys = new Set(getDeletedHomeworkKeys());
   const local = getLocalAssignments(userId);
+  const trashedMap = new Map<string, HomeworkAssignment>();
+  getLocalTrashAssignments(userId).forEach((t) => {
+    trashedMap.set(t.pinCode || t.id, t);
+  });
 
   try {
     const q = query(collection(db, 'homework_assignments'), where('userId', '==', userId));
@@ -883,18 +1009,31 @@ export async function fetchAllHomeworkAssignments(
         const ownerUid = data.userId || data.createdByUid;
         if (ownerUid && ownerUid !== userId) return;
 
-        const canonicalId = data.id && String(data.id).startsWith('hw-') ? data.id : docSnap.id;
-        if (
-          deletedKeys.has(String(canonicalId)) ||
-          deletedKeys.has(String(docSnap.id)) ||
-          (data.pinCode && deletedKeys.has(String(data.pinCode)))
-        ) {
-          return;
-        }
         if (isFakeYogaPresetAssignment(data)) {
           deleteDoc(doc(db, 'homework_assignments', docSnap.id)).catch(() => {});
           return;
         }
+
+        const canonicalId = data.id && String(data.id).startsWith('hw-') ? data.id : docSnap.id;
+        const isTrashedOrDeleted =
+          data.isDeleted === true ||
+          deletedKeys.has(String(canonicalId)) ||
+          deletedKeys.has(String(docSnap.id)) ||
+          (data.pinCode && deletedKeys.has(String(data.pinCode)));
+
+        if (isTrashedOrDeleted) {
+          const trashItem = ensureAssignmentHasQuestions({
+            ...data,
+            id: canonicalId,
+            userId: data.userId || userId,
+            createdByUid: data.createdByUid || userId,
+            isDeleted: true,
+            deletedAt: data.deletedAt || Date.now(),
+          });
+          trashedMap.set(trashItem.pinCode || trashItem.id, trashItem);
+          return;
+        }
+
         if (data.pinCode) cloudPins.add(String(data.pinCode));
         rawList.push({
           ...data,
@@ -907,7 +1046,12 @@ export async function fetchAllHomeworkAssignments(
 
     // Push any local assignments owned by this user that aren't in Firestore yet so hamsterenglish.online/?hwPin=... works immediately
     for (const loc of local) {
-      if (loc.pinCode && !cloudPins.has(String(loc.pinCode)) && !deletedKeys.has(String(loc.pinCode))) {
+      if (
+        loc.pinCode &&
+        !loc.isDeleted &&
+        !cloudPins.has(String(loc.pinCode)) &&
+        !deletedKeys.has(String(loc.pinCode))
+      ) {
         const cleanLoc = sanitizeForFirestore(
           ensureAssignmentHasQuestions({
             ...loc,
@@ -921,6 +1065,10 @@ export async function fetchAllHomeworkAssignments(
       }
     }
 
+    if (trashedMap.size > 0) {
+      saveLocalTrashAssignments(Array.from(trashedMap.values()), userId);
+    }
+
     const deduped = deduplicateAssignments(rawList);
     saveLocalAssignments(deduped, userId);
     return deduped;
@@ -928,6 +1076,66 @@ export async function fetchAllHomeworkAssignments(
     console.warn('Notice: falling back to user-scoped cached homework assignments', e);
   }
   return local;
+}
+
+// Fetch trashed homework assignments for the signed-in teacher (including any recoverable deleted homeworks from submissions)
+export async function fetchTrashedHomeworkAssignments(
+  userId?: string
+): Promise<HomeworkAssignment[]> {
+  if (!userId) return [];
+  const trashedByPin = new Map<string, HomeworkAssignment>();
+  getLocalTrashAssignments(userId).forEach((t) => {
+    trashedByPin.set(t.pinCode || t.id, t);
+  });
+
+  const activePins = new Set(getLocalAssignments(userId).map((a) => a.pinCode));
+  const deletedKeys = new Set(getDeletedHomeworkKeys());
+
+  // Also check if any submissions owned by this teacher belong to a deleted homework so it can be recovered
+  try {
+    const subs = getLocalSubmissions(userId);
+    for (const s of subs) {
+      if (!s.pinCode || activePins.has(s.pinCode) || trashedByPin.has(s.pinCode)) continue;
+      if (deletedKeys.has(s.pinCode) || deletedKeys.has(s.assignmentId)) {
+        const reconstructedQuestions = (s.questionBreakdown || []).map((qb, idx) => ({
+          id: qb.questionId || `q-${idx + 1}`,
+          text: qb.questionText,
+          question: qb.questionText,
+          options: Array.from(new Set([qb.correctAnswer, qb.studentAnswer].filter(Boolean))),
+          answerIndex: 0,
+          correctAnswer: qb.correctAnswer,
+        }));
+        const recoveredHw: HomeworkAssignment = ensureAssignmentHasQuestions({
+          id: s.assignmentId || `hw-${s.pinCode}`,
+          userId,
+          createdByUid: userId,
+          gameId: s.assignmentId || Date.now(),
+          gameTitle: s.assignmentTitle || 'Recovered Homework',
+          gameType: 'study-mode',
+          classLevel: 'All Classes',
+          dueDate: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+          durationMinutes: 10,
+          passingScore: 70,
+          maxAttempts: 3,
+          targetClass: 'All Classes',
+          instructions: 'Complete all questions to log your score on the leaderboard.',
+          pinCode: s.pinCode,
+          questions: reconstructedQuestions,
+          createdAt: s.startedAt || Date.now(),
+          status: 'active',
+          isDeleted: true,
+          deletedAt: s.completedAt || Date.now(),
+        });
+        trashedByPin.set(s.pinCode, recoveredHw);
+      }
+    }
+  } catch (e) {}
+
+  const list = Array.from(trashedByPin.values()).sort(
+    (a, b) => (b.deletedAt || b.createdAt || 0) - (a.deletedAt || a.createdAt || 0)
+  );
+  saveLocalTrashAssignments(list, userId);
+  return list;
 }
 
 // Save a new or edited homework assignment (strictly tied to the owning user)
@@ -939,8 +1147,18 @@ export async function saveHomeworkAssignment(
   const readyAssignment = sanitizeForFirestore(
     ensureAssignmentHasQuestions({
       ...assignment,
+      isDeleted: false,
       ...(effectiveUserId ? { userId: effectiveUserId, createdByUid: effectiveUserId } : {}),
     })
+  );
+
+  // Ensure it's not blocked by deleted keys
+  removeDeletedHomeworkKeys(
+    [
+      readyAssignment.id,
+      readyAssignment.pinCode,
+      readyAssignment.pinCode ? `hw_${readyAssignment.pinCode}` : '',
+    ].filter(Boolean)
   );
 
   if (effectiveUserId) {
@@ -981,20 +1199,37 @@ export async function saveHomeworkAssignment(
   return readyAssignment;
 }
 
-// Delete an assignment permanently from local cache and Firestore
+// Move an assignment to the Trash Bin (recoverable by the user)
 export async function deleteHomeworkAssignment(
   assignmentId: string,
   pinCode?: string,
-  userId?: string
+  userId?: string,
+  assignmentObj?: HomeworkAssignment
 ): Promise<void> {
   const current = userId ? getLocalAssignments(userId) : [];
-  const target = current.find(
-    (a) => a.id === assignmentId || a.pinCode === assignmentId || (pinCode && a.pinCode === pinCode)
-  );
+  const target =
+    assignmentObj ||
+    current.find(
+      (a) =>
+        a.id === assignmentId ||
+        a.pinCode === assignmentId ||
+        (pinCode && a.pinCode === pinCode)
+    );
   const targetId = target?.id || assignmentId;
   const targetPin = pinCode || target?.pinCode || '';
 
-  // Record in deleted keys so cloud sync never restores it
+  // Save to Trash Bin so the user can recover it anytime
+  if (userId && target) {
+    const currentTrash = getLocalTrashAssignments(userId);
+    const trashedItem: HomeworkAssignment = {
+      ...target,
+      isDeleted: true,
+      deletedAt: Date.now(),
+    };
+    saveLocalTrashAssignments([trashedItem, ...currentTrash], userId);
+  }
+
+  // Record in deleted keys so active list doesn't show it while in trash
   addDeletedHomeworkKeys(
     [assignmentId, targetId, targetPin, targetPin ? `hw_${targetPin}` : ''].filter(Boolean)
   );
@@ -1011,20 +1246,90 @@ export async function deleteHomeworkAssignment(
   }
 
   try {
+    // Mark canonical doc as deleted in Firestore so it can be recovered across devices, and remove public PIN lookup docs
+    if (target) {
+      const cleanTrash = sanitizeForFirestore({
+        ...target,
+        isDeleted: true,
+        deletedAt: Date.now(),
+      });
+      await setDoc(doc(db, 'homework_assignments', targetId), cleanTrash, { merge: true });
+    }
+    if (targetPin) {
+      await Promise.allSettled([
+        deleteDoc(doc(db, 'homework_assignments', targetPin)),
+        deleteDoc(doc(db, 'homework_assignments', `hw_${targetPin}`)),
+        deleteDoc(doc(db, 'homework_assignments', `hw-${targetPin}`)),
+      ]);
+    }
+  } catch (e) {
+    console.warn('Notice: assignment moved to trash locally', e);
+  }
+}
+
+// Recover an assignment from the Trash Bin back to Active Homework
+export async function restoreHomeworkAssignment(
+  assignment: HomeworkAssignment,
+  userId?: string
+): Promise<HomeworkAssignment> {
+  const targetId = assignment.id;
+  const targetPin = assignment.pinCode || '';
+
+  removeDeletedHomeworkKeys(
+    [
+      targetId,
+      targetPin,
+      targetPin ? `hw_${targetPin}` : '',
+      targetPin ? `hw-${targetPin}` : '',
+    ].filter(Boolean)
+  );
+
+  if (userId) {
+    const remainingTrash = getLocalTrashAssignments(userId).filter(
+      (t) => t.id !== targetId && (!targetPin || t.pinCode !== targetPin)
+    );
+    saveLocalTrashAssignments(remainingTrash, userId);
+  }
+
+  const restored: HomeworkAssignment = {
+    ...assignment,
+    isDeleted: false,
+    deletedAt: undefined,
+    status: 'active',
+  };
+
+  return saveHomeworkAssignment(restored, userId);
+}
+
+// Permanently delete an assignment from the Trash Bin
+export async function permanentlyDeleteHomeworkAssignment(
+  assignmentId: string,
+  pinCode?: string,
+  userId?: string
+): Promise<void> {
+  if (userId) {
+    const remainingTrash = getLocalTrashAssignments(userId).filter(
+      (t) => t.id !== assignmentId && (!pinCode || t.pinCode !== pinCode)
+    );
+    saveLocalTrashAssignments(remainingTrash, userId);
+  }
+
+  addDeletedHomeworkKeys(
+    [assignmentId, pinCode || '', pinCode ? `hw_${pinCode}` : ''].filter(Boolean)
+  );
+
+  try {
     const deletePromises: Promise<void>[] = [
       deleteDoc(doc(db, 'homework_assignments', assignmentId)),
     ];
-    if (targetId && targetId !== assignmentId) {
-      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', targetId)));
-    }
-    if (targetPin) {
-      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', targetPin)));
-      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw_${targetPin}`)));
-      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw-${targetPin}`)));
+    if (pinCode) {
+      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', pinCode)));
+      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw_${pinCode}`)));
+      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw-${pinCode}`)));
     }
     await Promise.allSettled(deletePromises);
   } catch (e) {
-    console.warn('Notice: assignment deleted locally', e);
+    console.warn('Notice: assignment permanently deleted from trash', e);
   }
 }
 
@@ -1136,13 +1441,17 @@ export async function fetchHomeworkLeaderboard(
       byStudent.set(key, entry);
       return;
     }
-    // Keep the better attempt (higher accuracy/score, or faster duration on tie)
+    // Keep the better attempt (higher points, or higher accuracy/score, or faster duration on tie)
+    const entryPts = getSubmissionPoints(entry);
+    const existingPts = getSubmissionPoints(existing);
     const entryPct = entry.accuracyPct ?? 0;
     const existingPct = existing.accuracyPct ?? 0;
     if (
-      entryPct > existingPct ||
-      (entryPct === existingPct && (entry.score ?? 0) > (existing.score ?? 0)) ||
-      (entryPct === existingPct &&
+      entryPts > existingPts ||
+      (entryPts === existingPts && entryPct > existingPct) ||
+      (entryPts === existingPts && entryPct === existingPct && (entry.score ?? 0) > (existing.score ?? 0)) ||
+      (entryPts === existingPts &&
+        entryPct === existingPct &&
         (entry.score ?? 0) === (existing.score ?? 0) &&
         (entry.durationSeconds || 999999) < (existing.durationSeconds || 999999))
     ) {
@@ -1168,6 +1477,8 @@ export async function fetchHomeworkLeaderboard(
   }
 
   return Array.from(byStudent.values()).sort((a, b) => {
+    const ptsDiff = getSubmissionPoints(b) - getSubmissionPoints(a);
+    if (ptsDiff !== 0) return ptsDiff;
     if ((b.accuracyPct ?? 0) !== (a.accuracyPct ?? 0)) {
       return (b.accuracyPct ?? 0) - (a.accuracyPct ?? 0);
     }
