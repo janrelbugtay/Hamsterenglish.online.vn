@@ -28,6 +28,14 @@ import { useAuth } from '../contexts/AuthContext';
 export const PRODUCTION_HOMEWORK_BASE_URL = 'https://hamsterenglish.online';
 
 export function getHomeworkShareUrl(pinCode: string): string {
+  if (
+    typeof window !== 'undefined' &&
+    window.location.origin &&
+    !window.location.origin.includes('localhost') &&
+    !window.location.origin.includes('127.0.0.1')
+  ) {
+    return `${window.location.origin}/?hwPin=${pinCode}`;
+  }
   return `${PRODUCTION_HOMEWORK_BASE_URL}/?hwPin=${pinCode}`;
 }
 

@@ -75,6 +75,7 @@ export default function App() {
   };
 
   const initialHwPin = getUrlHwPin();
+  const [isLockedHomeworkLink, setIsLockedHomeworkLink] = useState<boolean>(Boolean(initialHwPin));
 
   const [currentView, setCurrentView] = useState<ViewState>(initialHwPin ? "homework" : "home");
   const [selectedGame, setSelectedGame] = useState<any>(initialHwPin ? { pinCode: initialHwPin } : null);
@@ -127,12 +128,12 @@ export default function App() {
       const justLoggedIn = !prevUserRef.current || prevUserRef.current.isAnonymous;
       if (justLoggedIn) {
         // Never override homework if opened with PIN in URL or already in homework view
-        const hasHwInUrl = Boolean(getUrlHwPin());
+        const hasHwInUrl = Boolean(getUrlHwPin()) || isLockedHomeworkLink;
         setCurrentView((prev) => (prev === 'homework' || hasHwInUrl ? 'homework' : 'home'));
       }
     }
     prevUserRef.current = user;
-  }, [user]);
+  }, [user, isLockedHomeworkLink]);
 
   // Proactive multi-device cloud sync on authentication
   useEffect(() => {
@@ -175,6 +176,13 @@ export default function App() {
   useEffect(() => {
     const checkUrlParams = () => {
       const params = new URLSearchParams(window.location.search);
+      const hwPin = params.get('hwPin') || params.get('pin') || (window.location.hash?.startsWith('#homework-') ? window.location.hash.replace('#homework-', '') : null);
+      if (hwPin) {
+        setIsLockedHomeworkLink(true);
+        setSelectedGame({ pinCode: hwPin });
+        setCurrentView('homework');
+        return;
+      }
       const gameParam = params.get('game');
       const roomParam = params.get('room') || params.get('paintballRoom');
       if (gameParam === 'hamster-paintball' || params.get('paintballRoom')) {
@@ -193,11 +201,6 @@ export default function App() {
       if (slideIdParam) {
         setCurrentView('my-slides');
         return;
-      }
-      const hwPin = params.get('hwPin') || params.get('pin') || (window.location.hash?.startsWith('#homework-') ? window.location.hash.replace('#homework-', '') : null);
-      if (hwPin) {
-        setSelectedGame({ pinCode: hwPin });
-        setCurrentView('homework');
       }
     };
 
@@ -226,6 +229,11 @@ export default function App() {
   }, [loading, user, currentView]);
 
   const handleViewChange = (view: ViewState, data?: any) => {
+    // Players on a shared homework link can ONLY access the homework window given within the link
+    if (isLockedHomeworkLink) {
+      setCurrentView("homework");
+      return;
+    }
     if (view === "admin-dashboard" && !isAdmin) {
       setCurrentView("home");
       return;
@@ -507,25 +515,29 @@ export default function App() {
           }
         }}
       />
-      <Navigation 
-        currentView={currentView} 
-        onViewChange={handleViewChange} 
-        isMobileMenuOpen={isMobileMenuOpen}
-        setIsMobileMenuOpen={setIsMobileMenuOpen}
-        openAuthModal={() => setIsAuthModalOpen(true)}
-        openGoogleAuthModal={openGoogleAuthModal}
-      />
+      {!isLockedHomeworkLink && (
+        <Navigation 
+          currentView={currentView} 
+          onViewChange={handleViewChange} 
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+          openAuthModal={() => setIsAuthModalOpen(true)}
+          openGoogleAuthModal={openGoogleAuthModal}
+        />
+      )}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className={isGame ? "hidden md:block shrink-0" : "shrink-0"}>
-          <Header 
-            onViewChange={handleViewChange} 
-            setIsMobileMenuOpen={setIsMobileMenuOpen}
-            openAuthModal={() => setIsAuthModalOpen(true)}
-          />
-        </div>
-        <main className={`flex-1 ${isGame ? "p-0 space-y-0 h-full flex flex-col overflow-y-auto" : isClass ? "p-2 md:p-3 space-y-0 overflow-y-auto" : "p-4 md:p-8 space-y-6 overflow-y-auto"}`}>
+        {!isLockedHomeworkLink && (
+          <div className={isGame ? "hidden md:block shrink-0" : "shrink-0"}>
+            <Header 
+              onViewChange={handleViewChange} 
+              setIsMobileMenuOpen={setIsMobileMenuOpen}
+              openAuthModal={() => setIsAuthModalOpen(true)}
+            />
+          </div>
+        )}
+        <main className={`flex-1 ${isLockedHomeworkLink || isGame ? "p-0 space-y-0 h-full flex flex-col overflow-y-auto" : isClass ? "p-2 md:p-3 space-y-0 overflow-y-auto" : "p-4 md:p-8 space-y-6 overflow-y-auto"}`}>
           {renderView()}
-          {!isGame && !isClass && <Footer />}
+          {!isLockedHomeworkLink && !isGame && !isClass && <Footer />}
         </main>
       </div>
     </div>

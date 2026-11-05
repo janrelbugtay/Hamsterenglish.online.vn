@@ -104,81 +104,93 @@ function playHomeworkSfx(type: HomeworkSoundEffect, enabled = true, streakCount 
   try {
     const ctx = getHomeworkAudioContext();
     if (!ctx) return;
-    const now = ctx.currentTime;
 
-    const playTone = (
-      freq: number,
-      startOffset: number,
-      duration: number,
-      wave: OscillatorType = 'triangle',
-      peakGain = 0.35,
-      endFreq?: number
-    ) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = wave;
-      osc.frequency.setValueAtTime(freq, now + startOffset);
-      if (endFreq) {
-        osc.frequency.exponentialRampToValueAtTime(endFreq, now + startOffset + duration);
+    const scheduleNotes = () => {
+      const now = ctx.currentTime;
+
+      const playTone = (
+        freq: number,
+        startOffset: number,
+        duration: number,
+        wave: OscillatorType = 'triangle',
+        peakGain = 0.38,
+        endFreq?: number
+      ) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = wave;
+        osc.frequency.setValueAtTime(freq, now + startOffset);
+        if (endFreq) {
+          osc.frequency.exponentialRampToValueAtTime(endFreq, now + startOffset + duration);
+        }
+        gain.gain.setValueAtTime(0.001, now + startOffset);
+        gain.gain.linearRampToValueAtTime(
+          peakGain,
+          now + startOffset + Math.min(0.02, duration * 0.2)
+        );
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + startOffset + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + startOffset);
+        osc.stop(now + startOffset + duration + 0.02);
+      };
+
+      if (type === 'correct') {
+        // Crisp arcade coin ding + major triad chime + upper sparkle
+        playTone(987.77, 0.0, 0.09, 'sine', 0.42); // B5 coin ding
+        playTone(1318.51, 0.07, 0.28, 'sine', 0.46); // E6 coin ring
+        playTone(523.25, 0.0, 0.16, 'triangle', 0.34); // C5
+        playTone(659.25, 0.06, 0.18, 'triangle', 0.36); // E5
+        playTone(783.99, 0.12, 0.22, 'triangle', 0.38); // G5
+        playTone(1046.5, 0.18, 0.38, 'sine', 0.4, 1080); // C6 sparkle
+      } else if (type === 'streak') {
+        // Energetic combo power-up fanfare that pitches higher with bigger streaks
+        const pitchBoost = 1 + Math.min(streakCount, 8) * 0.035;
+        const notes = [523.25, 659.25, 783.99, 987.77, 1174.66, 1567.98];
+        notes.forEach((n, idx) => {
+          playTone(n * pitchBoost, idx * 0.05, 0.24, idx < 3 ? 'triangle' : 'sine', 0.4);
+        });
+        playTone(261.63 * pitchBoost, 0, 0.42, 'triangle', 0.3);
+      } else if (type === 'milestone') {
+        // Special 5x / 10x milestone celebration fanfare
+        const fanfare = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98, 2093.0];
+        fanfare.forEach((n, idx) => {
+          playTone(n, idx * 0.055, 0.28, 'sine', 0.42);
+        });
+        playTone(523.25, 0.35, 0.5, 'triangle', 0.34);
+        playTone(659.25, 0.35, 0.5, 'triangle', 0.34);
+        playTone(783.99, 0.35, 0.5, 'triangle', 0.34);
+      } else if (type === 'wrong') {
+        // Clear two-tone descending buzzer
+        playTone(311.13, 0.0, 0.2, 'sawtooth', 0.28, 261.63); // Eb4 -> C4
+        playTone(233.08, 0.16, 0.36, 'triangle', 0.38, 185.0); // Bb3 -> F#3
+      } else if (type === 'select') {
+        playTone(580, 0.0, 0.08, 'sine', 0.28, 880);
+      } else if (type === 'start') {
+        playTone(392.0, 0.0, 0.14, 'triangle', 0.36); // G4
+        playTone(523.25, 0.08, 0.16, 'triangle', 0.38); // C5
+        playTone(659.25, 0.16, 0.18, 'triangle', 0.4); // E5
+        playTone(783.99, 0.24, 0.38, 'sine', 0.44); // G5
+      } else if (type === 'victory') {
+        // Grand championship fanfare when homework is completed
+        const chord = [523.25, 659.25, 783.99, 1046.5];
+        playTone(523.25, 0.0, 0.13, 'triangle', 0.4);
+        playTone(523.25, 0.14, 0.13, 'triangle', 0.4);
+        playTone(523.25, 0.28, 0.13, 'triangle', 0.4);
+        playTone(659.25, 0.42, 0.24, 'triangle', 0.42);
+        playTone(783.99, 0.62, 0.22, 'triangle', 0.42);
+        chord.forEach((f) => playTone(f, 0.82, 0.7, 'sine', 0.34));
+        playTone(1567.98, 0.9, 0.6, 'sine', 0.32);
       }
-      gain.gain.setValueAtTime(0.001, now + startOffset);
-      gain.gain.linearRampToValueAtTime(
-        peakGain,
-        now + startOffset + Math.min(0.02, duration * 0.2)
-      );
-      gain.gain.exponentialRampToValueAtTime(0.0008, now + startOffset + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + startOffset);
-      osc.stop(now + startOffset + duration + 0.02);
     };
 
-    if (type === 'correct') {
-      // Crisp arcade coin ding + major triad chime + upper sparkle
-      playTone(987.77, 0.0, 0.09, 'sine', 0.38); // B5 coin ding
-      playTone(1318.51, 0.07, 0.28, 'sine', 0.42); // E6 coin ring
-      playTone(523.25, 0.0, 0.16, 'triangle', 0.3); // C5
-      playTone(659.25, 0.06, 0.18, 'triangle', 0.32); // E5
-      playTone(783.99, 0.12, 0.22, 'triangle', 0.34); // G5
-      playTone(1046.5, 0.18, 0.38, 'sine', 0.36, 1080); // C6 sparkle
-    } else if (type === 'streak') {
-      // Energetic combo power-up fanfare that pitches higher with bigger streaks
-      const pitchBoost = 1 + Math.min(streakCount, 8) * 0.035;
-      const notes = [523.25, 659.25, 783.99, 987.77, 1174.66, 1567.98];
-      notes.forEach((n, idx) => {
-        playTone(n * pitchBoost, idx * 0.05, 0.24, idx < 3 ? 'triangle' : 'sine', 0.36);
-      });
-      playTone(261.63 * pitchBoost, 0, 0.42, 'triangle', 0.26);
-    } else if (type === 'milestone') {
-      // Special 5x / 10x milestone celebration fanfare
-      const fanfare = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98, 2093.0];
-      fanfare.forEach((n, idx) => {
-        playTone(n, idx * 0.055, 0.28, 'sine', 0.38);
-      });
-      playTone(523.25, 0.35, 0.5, 'triangle', 0.3);
-      playTone(659.25, 0.35, 0.5, 'triangle', 0.3);
-      playTone(783.99, 0.35, 0.5, 'triangle', 0.3);
-    } else if (type === 'wrong') {
-      // Clear two-tone descending buzzer
-      playTone(311.13, 0.0, 0.2, 'sawtooth', 0.24, 261.63); // Eb4 -> C4
-      playTone(233.08, 0.16, 0.36, 'triangle', 0.34, 185.0); // Bb3 -> F#3
-    } else if (type === 'select') {
-      playTone(580, 0.0, 0.08, 'sine', 0.24, 880);
-    } else if (type === 'start') {
-      playTone(392.0, 0.0, 0.14, 'triangle', 0.32); // G4
-      playTone(523.25, 0.08, 0.16, 'triangle', 0.34); // C5
-      playTone(659.25, 0.16, 0.18, 'triangle', 0.36); // E5
-      playTone(783.99, 0.24, 0.38, 'sine', 0.4); // G5
-    } else if (type === 'victory') {
-      // Grand championship fanfare when homework is completed
-      const chord = [523.25, 659.25, 783.99, 1046.5];
-      playTone(523.25, 0.0, 0.13, 'triangle', 0.36);
-      playTone(523.25, 0.14, 0.13, 'triangle', 0.36);
-      playTone(523.25, 0.28, 0.13, 'triangle', 0.36);
-      playTone(659.25, 0.42, 0.24, 'triangle', 0.38);
-      playTone(783.99, 0.62, 0.22, 'triangle', 0.38);
-      chord.forEach((f) => playTone(f, 0.82, 0.7, 'sine', 0.3));
-      playTone(1567.98, 0.9, 0.6, 'sine', 0.28);
+    if (ctx.state === 'suspended') {
+      ctx
+        .resume()
+        .then(scheduleNotes)
+        .catch(() => {});
+    } else {
+      scheduleNotes();
     }
   } catch {
     // Ignore audio context restrictions
@@ -405,6 +417,19 @@ export function Homework({
     window.addEventListener('popstate', checkAndLaunchPin);
     return () => window.removeEventListener('popstate', checkAndLaunchPin);
   }, [initialData, user?.uid]);
+
+  // Proactively unlock Web Audio API on first user gesture so shared links always play sound effects
+  useEffect(() => {
+    const unlockAudio = () => {
+      getHomeworkAudioContext();
+    };
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, []);
 
   // Live timer for student while taking homework
   useEffect(() => {
@@ -893,7 +918,13 @@ export function Homework({
     : [];
 
   return (
-    <div className="w-full max-w-6xl mx-auto py-8 px-4 sm:px-6">
+    <div
+      className={
+        isUrlStudentLink || isTakingHomework
+          ? 'w-full min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center py-6 px-4 sm:px-8'
+          : 'w-full max-w-6xl mx-auto py-8 px-4 sm:px-6'
+      }
+    >
       {/* Embedded Monster Art Speaking Studio Modal during Homework */}
       {showEmbeddedMonsterStudio && (
         <StartersMonsterArtStudio
@@ -906,26 +937,27 @@ export function Homework({
       {/* MINIMAL COMMUNITY-STYLE HOMEWORK VIEW                     */}
       {/* ========================================================= */}
       {!isTakingHomework && (
-        <div className="space-y-8">
-          {/* Clean Top Bar: Title + Student 6-Digit PIN Launcher + Teacher Create Homework Button */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black shrink-0">
-                <BookOpen className="w-6 h-6" />
+        <div className="space-y-8 w-full max-w-6xl mx-auto">
+          {/* Clean Top Bar: Only shown when NOT on a locked student share link */}
+          {!isUrlStudentLink && (
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black shrink-0">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                    Homework
+                  </h1>
+                  <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
+                    {isTeacherAccount && activeRole === 'teacher' && assignments.length > 0
+                      ? 'Click any homework icon to inspect accuracy, leaderboard, and students who completed it.'
+                      : 'Enter your 6-digit Homework PIN from your teacher to start Study Mode and climb the leaderboard.'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                  Homework
-                </h1>
-                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
-                  {isTeacherAccount && activeRole === 'teacher' && !isUrlStudentLink && assignments.length > 0
-                    ? 'Click any homework icon to inspect accuracy, leaderboard, and students who completed it.'
-                    : 'Enter your 6-digit Homework PIN from your teacher to start Study Mode and climb the leaderboard.'}
-                </p>
-              </div>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
               {/* Student Quick PIN Box */}
               <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/90 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700">
                 <input
@@ -1016,8 +1048,9 @@ export function Homework({
                   </button>
                 </>
               )}
+              </div>
             </div>
-          </div>
+          )}
 
           {pinError && (
             <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-600 dark:text-rose-300 flex items-center gap-2">
@@ -1149,628 +1182,660 @@ export function Homework({
       )}
 
       {/* ========================================================= */}
-      {/* FOCUSED HOMEWORK QUESTION PLAYER & POST-ANSWER LEADERBOARD */}
+      {/* FULL-WINDOW HOMEWORK QUESTION PLAYER & LEADERBOARD        */}
       {/* ========================================================= */}
       {isTakingHomework && activeStudentAssignment && (
-        <div className="mt-2 max-w-3xl mx-auto">
-          {!completedSubmission ? (
-            /* FOCUSED QUESTION-ONLY VIEW WITH LIVE POINTS, STREAK & SOUND EFFECTS */
-            <div className="p-5 sm:p-9 rounded-3xl bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-xl space-y-5 relative overflow-hidden">
-              {/* Top Bar with Points, Streak, Timer & Sound Toggle */}
-              <div className="flex flex-wrap items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-700 gap-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 truncate">
-                    {activeStudentAssignment.gameTitle}
-                  </p>
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Player:{' '}
-                    <strong className="text-slate-900 dark:text-slate-100">{studentName}</strong>
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Live Points Badge */}
-                  <div className="flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-3 py-1.5 rounded-xl">
-                    <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400 fill-purple-500" />
-                    <span className="text-xs sm:text-sm font-mono font-black text-purple-900 dark:text-purple-200 tabular-nums">
-                      {livePoints.toLocaleString()} PTS
-                    </span>
-                  </div>
-
-                  {/* Live Streak Badge */}
-                  {currentStreak > 0 && (
-                    <div className="flex items-center gap-1 bg-orange-50 dark:bg-orange-950/60 border border-orange-200 dark:border-orange-800 px-2.5 py-1.5 rounded-xl animate-bounce">
-                      <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
-                      <span className="text-xs font-black text-orange-700 dark:text-orange-300 tabular-nums">
-                        {currentStreak}x
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Elapsed Timer */}
-                  <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-xl">
-                    <Timer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    <span className="text-xs sm:text-sm font-mono font-black text-amber-900 dark:text-amber-200 tabular-nums">
-                      {formatDurationSeconds(elapsedSeconds)}
-                    </span>
-                  </div>
-
-                  {/* Sound Effects Toggle */}
-                  <button
-                    onClick={() => setSoundEnabled((prev) => !prev)}
-                    title={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
-                    className={`p-2 rounded-xl border transition cursor-pointer ${
-                      soundEnabled
-                        ? 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-purple-600 dark:text-purple-300'
-                        : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400'
-                    }`}
-                  >
-                    {soundEnabled ? (
-                      <Volume2 className="w-4 h-4" />
-                    ) : (
-                      <VolumeX className="w-4 h-4" />
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setIsTakingHomework(false);
-                      setCompletedSubmission(null);
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
-                  >
-                    Exit
-                  </button>
-                </div>
-              </div>
-
-              {/* Progress bar + Instant Answer Feedback Banner */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-xs font-bold text-slate-400">
-                  <span>
-                    Question {currentQuestionIndex + 1} of{' '}
-                    {Math.max(1, activeStudentAssignment.questions.length)}
-                  </span>
-                  <span>
-                    {Math.round(
-                      ((currentQuestionIndex + 1) /
-                        Math.max(1, activeStudentAssignment.questions.length)) *
-                        100
-                    )}
-                    % Complete
-                  </span>
-                </div>
-                <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-300 rounded-full"
-                    style={{
-                      width: `${
-                        ((currentQuestionIndex + 1) /
-                          Math.max(1, activeStudentAssignment.questions.length)) *
-                        100
-                      }%`,
-                    }}
-                  />
-                </div>
-
-                {/* Instant Points & Streak Feedback Toast */}
+        <div className="fixed inset-0 z-40 w-screen h-screen overflow-y-auto bg-gradient-to-br from-slate-900 via-purple-950 to-indigo-950 flex flex-col items-center justify-center p-4 sm:p-8">
+          <div className="w-full max-w-4xl mx-auto my-auto">
+            {!completedSubmission ? (
+              /* FULL-WINDOW QUESTION VIEW WITH RICH VISUAL & SOUND EFFECTS */
+              <div
+                className={`p-6 sm:p-10 rounded-3xl bg-white dark:bg-slate-900 border-2 shadow-2xl space-y-6 relative overflow-hidden transition-all duration-300 ${
+                  answerFeedback
+                    ? answerFeedback.isCorrect
+                      ? 'border-emerald-400 ring-4 ring-emerald-500/30 scale-[1.01]'
+                      : 'border-rose-400 ring-4 ring-rose-500/30'
+                    : 'border-purple-200/80 dark:border-slate-700'
+                }`}
+              >
+                {/* Floating Celebration Effect Burst when Answering */}
                 {answerFeedback && (
-                  <div
-                    className={`mt-2 px-4 py-2.5 rounded-2xl border flex items-center justify-between text-xs sm:text-sm font-black transition-all ${
-                      answerFeedback.isCorrect
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
+                  <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center animate-bounce">
+                    <div
+                      className={`px-5 py-2 rounded-full shadow-xl border-2 flex items-center gap-2.5 text-sm sm:text-base font-black tracking-wide ${
+                        answerFeedback.isCorrect
+                          ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white border-emerald-200'
+                          : 'bg-gradient-to-r from-rose-500 to-red-600 text-white border-rose-200'
+                      }`}
+                    >
                       {answerFeedback.isCorrect ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <>
+                          <Sparkles className="w-5 h-5 text-amber-200 fill-amber-200 animate-spin" />
+                          <span>+{answerFeedback.pointsGained} PTS!</span>
+                          {answerFeedback.streakCount >= 2 && (
+                            <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white text-xs font-black">
+                              🔥 {answerFeedback.streakCount}x COMBO!
+                            </span>
+                          )}
+                          {answerFeedback.speedBonus >= 20 && (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-xs font-black">
+                              ⚡ +{answerFeedback.speedBonus} FAST!
+                            </span>
+                          )}
+                        </>
                       ) : (
-                        <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                        <>
+                          <XCircle className="w-5 h-5 text-white" />
+                          <span>Streak Reset · Keep Going!</span>
+                        </>
                       )}
-                      <span>
-                        {answerFeedback.isCorrect
-                          ? answerFeedback.streakCount >= 3
-                            ? `Awesome! ${answerFeedback.streakCount}x Combo Streak!`
-                            : 'Correct Answer!'
-                          : 'Not quite! Keep going!'}
-                      </span>
                     </div>
-                    {answerFeedback.isCorrect && (
-                      <div className="flex items-center gap-2 font-mono">
-                        <span className="px-2 py-0.5 rounded-lg bg-emerald-600 text-white text-xs font-black">
-                          +{answerFeedback.pointsGained} PTS
-                        </span>
-                        {answerFeedback.speedBonus >= 20 && (
-                          <span className="text-[11px] text-amber-600 dark:text-amber-400 hidden sm:inline">
-                            ⚡ +{answerFeedback.speedBonus} Speed
-                          </span>
-                        )}
-                        {answerFeedback.streakBonus > 0 && (
-                          <span className="text-[11px] text-orange-600 dark:text-orange-400 hidden sm:inline">
-                            🔥 +{answerFeedback.streakBonus} Streak
-                          </span>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
-              </div>
 
-              {/* Current Question */}
-              {activeStudentAssignment.questions[currentQuestionIndex] &&
-                (() => {
-                  const q = activeStudentAssignment.questions[currentQuestionIndex];
-                  const promptText =
-                    q.text || q.question || q.prompt || `Question ${currentQuestionIndex + 1}`;
-                  const realOptions: string[] = Array.isArray(q.options)
-                    ? q.options.filter(
-                        (o: any) =>
-                          typeof o === 'string' &&
-                          o.trim().length > 0 &&
-                          !/^(sample\s+)?option\s*[a-f1-6]$/i.test(o.trim())
-                      )
-                    : [];
-                  const hasMultipleChoice = !q.isOpenEnded && realOptions.length >= 2;
-                  const isLastQuestion =
-                    currentQuestionIndex >= activeStudentAssignment.questions.length - 1;
-
-                  const correctIndex =
-                    typeof q.answerIndex === 'number'
-                      ? q.answerIndex
-                      : typeof q.correct === 'number'
-                      ? q.correct
-                      : 0;
-
-                  return (
-                    <div className="pt-2 space-y-6">
-                      <div className="flex items-start justify-between gap-4">
-                        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-100 leading-snug">
-                          {promptText}
-                        </h2>
-                        <button
-                          onClick={() => speakSlideText(promptText)}
-                          className="p-3 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300 hover:bg-purple-200 shrink-0 cursor-pointer transition"
-                          title="Read question aloud"
-                        >
-                          <Volume2 className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {q.image && (
-                        <div className="flex justify-center">
-                          <img
-                            src={q.image}
-                            alt="Question illustration"
-                            className="max-h-56 rounded-2xl object-contain border border-slate-200 dark:border-slate-700"
-                          />
-                        </div>
-                      )}
-
-                      {hasMultipleChoice ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
-                          {realOptions.map((optText: string, optIdx: number) => {
-                            const isCorrect =
-                              optIdx === correctIndex ||
-                              optText === q.correctAnswer ||
-                              optText === q.correct;
-                            const isSelected = answerFeedback?.selectedText === optText;
-                            const showCorrectHighlight =
-                              Boolean(answerFeedback) && isCorrect;
-                            const showWrongHighlight =
-                              Boolean(answerFeedback) && isSelected && !isCorrect;
-
-                            let btnStyle =
-                              'border-slate-200 dark:border-slate-700 hover:border-purple-600 dark:hover:border-purple-500 bg-slate-50 dark:bg-slate-900/60 hover:bg-purple-50 dark:hover:bg-purple-950/20 text-slate-800 dark:text-slate-200';
-                            let badgeStyle =
-                              'border-slate-300 dark:border-slate-600 text-slate-400 group-hover:border-purple-600 group-hover:text-purple-600';
-
-                            if (showCorrectHighlight) {
-                              btnStyle =
-                                'border-emerald-500 bg-emerald-500 text-white shadow-lg shadow-emerald-500/25 scale-[1.01]';
-                              badgeStyle = 'border-white/80 bg-white/20 text-white';
-                            } else if (showWrongHighlight) {
-                              btnStyle =
-                                'border-rose-500 bg-rose-500 text-white shadow-lg shadow-rose-500/25';
-                              badgeStyle = 'border-white/80 bg-white/20 text-white';
-                            }
-
-                            return (
-                              <button
-                                key={optIdx}
-                                disabled={Boolean(answerFeedback)}
-                                onClick={() => handleSelectOption(optText, isCorrect)}
-                                className={`p-4 sm:p-5 rounded-2xl border-2 text-left font-bold text-base transition-all active:scale-98 flex items-center justify-between group cursor-pointer ${btnStyle}`}
-                              >
-                                <span>{optText}</span>
-                                <span
-                                  className={`w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold transition-colors shrink-0 ml-3 ${badgeStyle}`}
-                                >
-                                  {showCorrectHighlight
-                                    ? '✓'
-                                    : showWrongHighlight
-                                    ? '✕'
-                                    : String.fromCharCode(65 + optIdx)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        /* Open-Ended / Speaking Question — Show only the question and clean answer submission */
-                        <div className="space-y-4 pt-2">
-                          <input
-                            type="text"
-                            value={openAnswerInput}
-                            onChange={(e) => setOpenAnswerInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSelectOption(
-                                  openAnswerInput.trim() || 'Answered',
-                                  true
-                                );
-                              }
-                            }}
-                            placeholder="Type your answer here (optional for speaking questions)..."
-                            className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-purple-600 focus:outline-none text-slate-900 dark:text-slate-100 font-semibold text-base"
-                          />
-
-                          <div className="flex items-center justify-between gap-3 pt-2">
-                            {currentQuestionIndex > 0 ? (
-                              <button
-                                onClick={() => {
-                                  playHomeworkSfx('select', soundEnabled);
-                                  setCurrentQuestionIndex((i) => Math.max(0, i - 1));
-                                  setOpenAnswerInput(
-                                    studentAnswers[currentQuestionIndex - 1]?.text === 'Answered'
-                                      ? ''
-                                      : studentAnswers[currentQuestionIndex - 1]?.text || ''
-                                  );
-                                }}
-                                className="px-5 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-sm flex items-center gap-2 transition cursor-pointer"
-                              >
-                                <ArrowLeft className="w-4 h-4" />
-                                Previous
-                              </button>
-                            ) : (
-                              <div />
-                            )}
-
-                            <button
-                              onClick={() =>
-                                handleSelectOption(
-                                  openAnswerInput.trim() || 'Answered',
-                                  true
-                                )
-                              }
-                              className="px-7 py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-sm sm:text-base shadow-lg shadow-purple-500/20 flex items-center gap-2 transition active:scale-95 cursor-pointer"
-                            >
-                              <span>
-                                {isLastQuestion
-                                  ? 'Finish & View Leaderboard'
-                                  : 'Next Question'}
-                              </span>
-                              {isLastQuestion ? (
-                                <Trophy className="w-4 h-4" />
-                              ) : (
-                                <ArrowRight className="w-4 h-4" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-            </div>
-          ) : (
-            /* ========================================================= */
-            /* REDESIGNED POST-ANSWER HOMEWORK LEADERBOARD               */
-            /* ========================================================= */
-            (() => {
-              const board =
-                leaderboardEntries.length > 0 ? leaderboardEntries : [completedSubmission];
-              const myRankIndex = board.findIndex(
-                (entry) =>
-                  entry.id === completedSubmission.id ||
-                  entry.studentName.trim().toLowerCase() ===
-                    completedSubmission.studentName.trim().toLowerCase()
-              );
-              const myRank = myRankIndex >= 0 ? myRankIndex + 1 : 1;
-              const myPoints = getSubmissionPoints(completedSubmission);
-              const myBestStreak = completedSubmission.bestStreak || bestStreak || 0;
-
-              return (
-                <div className="p-4 sm:p-8 rounded-3xl bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-6">
-                  {/* Championship Hero Banner */}
-                  <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-950 text-white space-y-5 shadow-xl">
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-                      <div className="flex flex-col sm:flex-row items-center gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-500 text-slate-950 flex flex-col items-center justify-center font-black shrink-0 shadow-lg shadow-amber-500/30">
-                          <Trophy className="w-7 h-7" />
-                          <span className="text-xs leading-none mt-0.5">#{myRank}</span>
-                        </div>
-                        <div>
-                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/15 text-purple-200 mb-1">
-                            {activeStudentAssignment.gameTitle} · Completed
-                          </span>
-                          <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight">
-                            Great job, {completedSubmission.studentName}!
-                          </h2>
-                          <p className="text-xs text-purple-200 mt-0.5">
-                            Ranked #{myRank} of {board.length}{' '}
-                            {board.length === 1 ? 'player' : 'players'} on this homework
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="px-4 py-2.5 rounded-2xl bg-amber-400/15 border border-amber-400/30 text-center shrink-0">
-                        <span className="block text-[10px] uppercase tracking-wider font-bold text-amber-200">
-                          Total Points
-                        </span>
-                        <span className="text-2xl font-mono font-black text-amber-300 tabular-nums">
-                          {myPoints.toLocaleString()} PTS
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 4 Responsive Metric Pills (Zero clipping on mobile) */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
-                        <span className="block text-[10px] text-purple-200 uppercase font-bold">
-                          Accuracy
-                        </span>
-                        <span className="text-lg font-black text-white tabular-nums">
-                          {completedSubmission.accuracyPct}%
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
-                        <span className="block text-[10px] text-purple-200 uppercase font-bold">
-                          Correct Answers
-                        </span>
-                        <span className="text-lg font-black text-emerald-300 tabular-nums">
-                          {completedSubmission.score}/{completedSubmission.maxScore}
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
-                        <span className="block text-[10px] text-purple-200 uppercase font-bold">
-                          Best Streak
-                        </span>
-                        <span className="text-lg font-black text-orange-300 tabular-nums">
-                          🔥 {myBestStreak}x
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
-                        <span className="block text-[10px] text-purple-200 uppercase font-bold">
-                          Time Spent
-                        </span>
-                        <span className="text-lg font-mono font-black text-sky-300 tabular-nums">
-                          {formatDurationSeconds(completedSubmission.durationSeconds)}
-                        </span>
-                      </div>
-                    </div>
+                {/* Top Bar with Points, Streak, Timer & Sound Toggle */}
+                <div className="flex flex-wrap items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 truncate">
+                      {activeStudentAssignment.gameTitle}
+                    </p>
+                    <p className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      Player:{' '}
+                      <strong className="text-slate-900 dark:text-slate-100">{studentName}</strong>
+                    </p>
                   </div>
 
-                  {/* Top 3 Championship Podium */}
-                  {board.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {board.slice(0, 3).map((entry, idx) => {
-                        const rank = idx + 1;
-                        const pts = getSubmissionPoints(entry);
-                        const isMe =
-                          entry.id === completedSubmission.id ||
-                          entry.studentName.trim().toLowerCase() ===
-                            completedSubmission.studentName.trim().toLowerCase();
-                        const badgeColors =
-                          rank === 1
-                            ? 'bg-amber-400 text-slate-950'
-                            : rank === 2
-                            ? 'bg-slate-300 text-slate-900'
-                            : 'bg-orange-300 text-slate-950';
-                        const cardStyles =
-                          rank === 1
-                            ? 'bg-gradient-to-b from-amber-50/90 to-white dark:from-amber-950/30 dark:to-slate-900 border-amber-300 dark:border-amber-700'
-                            : rank === 2
-                            ? 'bg-gradient-to-b from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900 border-slate-300 dark:border-slate-700'
-                            : 'bg-gradient-to-b from-orange-50/70 to-white dark:from-orange-950/25 dark:to-slate-900 border-orange-200 dark:border-orange-800';
-
-                        return (
-                          <div
-                            key={entry.id || idx}
-                            className={`p-4 rounded-2xl border-2 ${cardStyles} flex flex-col justify-between gap-3 relative`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${badgeColors}`}
-                              >
-                                {rank === 1 ? '🥇 1st' : rank === 2 ? '🥈 2nd' : '🥉 3rd'}
-                              </span>
-                              <span className="text-xs font-mono font-black text-purple-600 dark:text-purple-400 tabular-nums">
-                                {pts.toLocaleString()} PTS
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center font-black text-xs uppercase shrink-0">
-                                {entry.studentName.slice(0, 2)}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 truncate">
-                                  {entry.studentName} {isMe && '(You)'}
-                                </p>
-                                <p className="text-[11px] font-semibold text-slate-500 tabular-nums">
-                                  {entry.score}/{entry.maxScore} correct ·{' '}
-                                  {formatDurationSeconds(entry.durationSeconds)}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between pt-2 border-t border-slate-200/70 dark:border-slate-700/70 text-xs">
-                              <span className="font-bold text-slate-500">Accuracy</span>
-                              <span className="font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                                {entry.accuracyPct}%
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Live Points Badge */}
+                    <div className="flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-3.5 py-2 rounded-xl shadow-xs">
+                      <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400 fill-purple-500" />
+                      <span className="text-xs sm:text-sm font-mono font-black text-purple-900 dark:text-purple-200 tabular-nums">
+                        {livePoints.toLocaleString()} PTS
+                      </span>
                     </div>
-                  )}
 
-                  {/* Mobile-First Ranked Standings List (Never clips horizontally on mobile) */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-base font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                        <Crown className="w-5 h-5 text-amber-500" />
-                        Live Leaderboard Standings ({board.length})
-                      </h3>
-                      {isLoadingLeaderboard && (
-                        <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          Syncing...
+                    {/* Live Streak Badge */}
+                    {currentStreak > 0 && (
+                      <div className="flex items-center gap-1 bg-orange-50 dark:bg-orange-950/60 border border-orange-200 dark:border-orange-800 px-3 py-2 rounded-xl animate-bounce shadow-xs">
+                        <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
+                        <span className="text-xs sm:text-sm font-black text-orange-700 dark:text-orange-300 tabular-nums">
+                          {currentStreak}x
                         </span>
-                      )}
+                      </div>
+                    )}
+
+                    {/* Elapsed Timer */}
+                    <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-3.5 py-2 rounded-xl shadow-xs">
+                      <Timer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-xs sm:text-sm font-mono font-black text-amber-900 dark:text-amber-200 tabular-nums">
+                        {formatDurationSeconds(elapsedSeconds)}
+                      </span>
                     </div>
 
-                    <div className="space-y-2">
-                      {board.map((entry, idx) => {
-                        const rank = idx + 1;
-                        const pts = getSubmissionPoints(entry);
-                        const isMe =
-                          entry.id === completedSubmission.id ||
-                          entry.studentName.trim().toLowerCase() ===
-                            completedSubmission.studentName.trim().toLowerCase();
-
-                        return (
-                          <div
-                            key={entry.id || idx}
-                            className={`p-3.5 sm:p-4 rounded-2xl border transition flex items-center justify-between gap-3 ${
-                              isMe
-                                ? 'bg-purple-50/90 dark:bg-purple-950/40 border-purple-300 dark:border-purple-700 shadow-sm'
-                                : 'bg-slate-50/70 dark:bg-slate-900/50 border-slate-200/80 dark:border-slate-700/70 hover:bg-slate-100/70 dark:hover:bg-slate-800/60'
-                            }`}
-                          >
-                            {/* Left: Rank Badge + Avatar + Student Name & Details */}
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div
-                                className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 tabular-nums ${
-                                  rank === 1
-                                    ? 'bg-amber-400 text-slate-950 shadow-sm'
-                                    : rank === 2
-                                    ? 'bg-slate-300 text-slate-900'
-                                    : rank === 3
-                                    ? 'bg-orange-300 text-slate-950'
-                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                                }`}
-                              >
-                                {rank === 1
-                                  ? '🥇'
-                                  : rank === 2
-                                  ? '🥈'
-                                  : rank === 3
-                                  ? '🥉'
-                                  : `#${rank}`}
-                              </div>
-
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-black text-sm sm:text-base text-slate-900 dark:text-slate-100 truncate">
-                                    {entry.studentName}
-                                  </span>
-                                  {isMe && (
-                                    <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-[10px] font-black uppercase">
-                                      YOU
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-semibold tabular-nums mt-0.5 flex-wrap">
-                                  <span>
-                                    {entry.score}/{entry.maxScore} correct
-                                  </span>
-                                  <span>·</span>
-                                  <span>⏱️ {formatDurationSeconds(entry.durationSeconds)}</span>
-                                  {(entry.bestStreak || 0) >= 2 && (
-                                    <>
-                                      <span>·</span>
-                                      <span className="text-orange-600 dark:text-orange-400 font-bold">
-                                        🔥 {entry.bestStreak}x
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Right: Points + Accuracy Pill + Teacher Remove Player Button */}
-                            <div className="flex items-center gap-2.5 shrink-0">
-                              <div className="text-right">
-                                <div className="text-sm sm:text-base font-mono font-black text-purple-600 dark:text-purple-400 tabular-nums">
-                                  {pts.toLocaleString()} PTS
-                                </div>
-                                <div className="inline-flex items-center gap-1.5 mt-0.5">
-                                  <span
-                                    className={`px-2 py-0.5 rounded-md text-[11px] font-black tabular-nums ${
-                                      (entry.accuracyPct || 0) >= 80
-                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                        : (entry.accuracyPct || 0) >= 50
-                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                                        : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                                    }`}
-                                  >
-                                    {entry.accuracyPct}%
-                                  </span>
-                                </div>
-                              </div>
-                              {isTeacherAccount && !isUrlStudentLink && (
-                                <button
-                                  onClick={(e) => requestRemovePlayer(entry, e)}
-                                  title="Remove player from leaderboard"
-                                  className="p-2 rounded-xl bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-600 text-rose-600 hover:text-white dark:text-rose-400 border border-rose-200 dark:border-rose-800 transition cursor-pointer"
-                                >
-                                  <UserMinus className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Footer Actions */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    {/* Sound Effects Toggle */}
                     <button
-                      onClick={() => setSelectedProof(completedSubmission)}
-                      className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer"
+                      onClick={() => setSoundEnabled((prev) => !prev)}
+                      title={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
+                      className={`p-2 rounded-xl border transition cursor-pointer ${
+                        soundEnabled
+                          ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-purple-600 dark:text-purple-300'
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400'
+                      }`}
                     >
-                      <FileText className="w-4 h-4" />
-                      Review Answers
+                      {soundEnabled ? (
+                        <Volume2 className="w-4 h-4" />
+                      ) : (
+                        <VolumeX className="w-4 h-4" />
+                      )}
                     </button>
 
-                    <div className="flex items-center gap-2.5">
-                      <button
-                        onClick={() =>
-                          launchInteractiveSession(activeStudentAssignment, studentName)
-                        }
-                        className="px-5 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 font-bold text-xs sm:text-sm transition cursor-pointer"
-                      >
-                        Play Again
-                      </button>
+                    {/* Only allow teacher preview (not shared link players) to close preview */}
+                    {!isUrlStudentLink && isTeacherAccount && (
                       <button
                         onClick={() => {
                           setIsTakingHomework(false);
                           setCompletedSubmission(null);
                         }}
-                        className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs sm:text-sm transition cursor-pointer"
+                        className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
                       >
-                        Done
+                        Back
                       </button>
-                    </div>
+                    )}
                   </div>
                 </div>
-              );
-            })()
-          )}
+
+                {/* Progress bar + Instant Answer Feedback Banner */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs sm:text-sm font-bold text-slate-400">
+                    <span>
+                      Question {currentQuestionIndex + 1} of{' '}
+                      {Math.max(1, activeStudentAssignment.questions.length)}
+                    </span>
+                    <span>
+                      {Math.round(
+                        ((currentQuestionIndex + 1) /
+                          Math.max(1, activeStudentAssignment.questions.length)) *
+                          100
+                      )}
+                      % Complete
+                    </span>
+                  </div>
+                  <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500 transition-all duration-300 rounded-full"
+                      style={{
+                        width: `${
+                          ((currentQuestionIndex + 1) /
+                            Math.max(1, activeStudentAssignment.questions.length)) *
+                          100
+                        }%`,
+                      }}
+                    />
+                  </div>
+
+                  {/* Instant Points & Streak Feedback Toast */}
+                  {answerFeedback && (
+                    <div
+                      className={`mt-2 px-4 py-3 rounded-2xl border flex items-center justify-between text-xs sm:text-sm font-black transition-all ${
+                        answerFeedback.isCorrect
+                          ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {answerFeedback.isCorrect ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                        )}
+                        <span>
+                          {answerFeedback.isCorrect
+                            ? answerFeedback.streakCount >= 3
+                              ? `Awesome! ${answerFeedback.streakCount}x Combo Streak!`
+                              : 'Correct Answer!'
+                            : 'Not quite! Keep going!'}
+                        </span>
+                      </div>
+                      {answerFeedback.isCorrect && (
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white text-xs font-black">
+                            +{answerFeedback.pointsGained} PTS
+                          </span>
+                          {answerFeedback.speedBonus >= 20 && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400 hidden sm:inline">
+                              ⚡ +{answerFeedback.speedBonus} Speed
+                            </span>
+                          )}
+                          {answerFeedback.streakBonus > 0 && (
+                            <span className="text-xs text-orange-600 dark:text-orange-400 hidden sm:inline">
+                              🔥 +{answerFeedback.streakBonus} Streak
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Current Question (Sound icon next to question removed as requested) */}
+                {activeStudentAssignment.questions[currentQuestionIndex] &&
+                  (() => {
+                    const q = activeStudentAssignment.questions[currentQuestionIndex];
+                    const promptText =
+                      q.text || q.question || q.prompt || `Question ${currentQuestionIndex + 1}`;
+                    const realOptions: string[] = Array.isArray(q.options)
+                      ? q.options.filter(
+                          (o: any) =>
+                            typeof o === 'string' &&
+                            o.trim().length > 0 &&
+                            !/^(sample\s+)?option\s*[a-f1-6]$/i.test(o.trim())
+                        )
+                      : [];
+                    const hasMultipleChoice = !q.isOpenEnded && realOptions.length >= 2;
+                    const isLastQuestion =
+                      currentQuestionIndex >= activeStudentAssignment.questions.length - 1;
+
+                    const correctIndex =
+                      typeof q.answerIndex === 'number'
+                        ? q.answerIndex
+                        : typeof q.correct === 'number'
+                        ? q.correct
+                        : 0;
+
+                    return (
+                      <div className="pt-2 space-y-6">
+                        <div>
+                          <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 leading-snug">
+                            {promptText}
+                          </h2>
+                        </div>
+
+                        {q.image && (
+                          <div className="flex justify-center">
+                            <img
+                              src={q.image}
+                              alt="Question illustration"
+                              className="max-h-60 rounded-2xl object-contain border border-slate-200 dark:border-slate-700"
+                            />
+                          </div>
+                        )}
+
+                        {hasMultipleChoice ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                            {realOptions.map((optText: string, optIdx: number) => {
+                              const isCorrect =
+                                optIdx === correctIndex ||
+                                optText === q.correctAnswer ||
+                                optText === q.correct;
+                              const isSelected = answerFeedback?.selectedText === optText;
+                              const showCorrectHighlight =
+                                Boolean(answerFeedback) && isCorrect;
+                              const showWrongHighlight =
+                                Boolean(answerFeedback) && isSelected && !isCorrect;
+
+                              let btnStyle =
+                                'border-slate-200 dark:border-slate-700 hover:border-purple-600 dark:hover:border-purple-500 bg-slate-50 dark:bg-slate-800/80 hover:bg-purple-50 dark:hover:bg-purple-950/30 text-slate-800 dark:text-slate-100';
+                              let badgeStyle =
+                                'border-slate-300 dark:border-slate-600 text-slate-500 group-hover:border-purple-600 group-hover:text-purple-600';
+
+                              if (showCorrectHighlight) {
+                                btnStyle =
+                                  'border-emerald-500 bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-xl shadow-emerald-500/30 scale-[1.02]';
+                                badgeStyle = 'border-white/80 bg-white/25 text-white';
+                              } else if (showWrongHighlight) {
+                                btnStyle =
+                                  'border-rose-500 bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-xl shadow-rose-500/30';
+                                badgeStyle = 'border-white/80 bg-white/25 text-white';
+                              }
+
+                              return (
+                                <button
+                                  key={optIdx}
+                                  disabled={Boolean(answerFeedback)}
+                                  onClick={() => handleSelectOption(optText, isCorrect)}
+                                  className={`p-5 sm:p-6 rounded-2xl border-2 text-left font-black text-base sm:text-lg transition-all active:scale-98 flex items-center justify-between group cursor-pointer ${btnStyle}`}
+                                >
+                                  <span>{optText}</span>
+                                  <span
+                                    className={`w-9 h-9 rounded-full border flex items-center justify-center text-xs sm:text-sm font-black transition-colors shrink-0 ml-3 ${badgeStyle}`}
+                                  >
+                                    {showCorrectHighlight
+                                      ? '✓'
+                                      : showWrongHighlight
+                                      ? '✕'
+                                      : String.fromCharCode(65 + optIdx)}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          /* Open-Ended / Speaking Question — Show only the question and clean answer submission */
+                          <div className="space-y-4 pt-2">
+                            <input
+                              type="text"
+                              value={openAnswerInput}
+                              onChange={(e) => setOpenAnswerInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSelectOption(
+                                    openAnswerInput.trim() || 'Answered',
+                                    true
+                                  );
+                                }
+                              }}
+                              placeholder="Type your answer here (optional for speaking questions)..."
+                              className="w-full px-4 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-purple-600 focus:outline-none text-slate-900 dark:text-slate-100 font-semibold text-base sm:text-lg"
+                            />
+
+                            <div className="flex items-center justify-between gap-3 pt-2">
+                              {currentQuestionIndex > 0 ? (
+                                <button
+                                  onClick={() => {
+                                    playHomeworkSfx('select', soundEnabled);
+                                    setCurrentQuestionIndex((i) => Math.max(0, i - 1));
+                                    setOpenAnswerInput(
+                                      studentAnswers[currentQuestionIndex - 1]?.text === 'Answered'
+                                        ? ''
+                                        : studentAnswers[currentQuestionIndex - 1]?.text || ''
+                                    );
+                                  }}
+                                  className="px-5 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-sm flex items-center gap-2 transition cursor-pointer"
+                                >
+                                  <ArrowLeft className="w-4 h-4" />
+                                  Previous
+                                </button>
+                              ) : (
+                                <div />
+                              )}
+
+                              <button
+                                onClick={() =>
+                                  handleSelectOption(
+                                    openAnswerInput.trim() || 'Answered',
+                                    true
+                                  )
+                                }
+                                className="px-7 py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-sm sm:text-base shadow-lg shadow-purple-500/20 flex items-center gap-2 transition active:scale-95 cursor-pointer"
+                              >
+                                <span>
+                                  {isLastQuestion
+                                    ? 'Finish & View Leaderboard'
+                                    : 'Next Question'}
+                                </span>
+                                {isLastQuestion ? (
+                                  <Trophy className="w-4 h-4" />
+                                ) : (
+                                  <ArrowRight className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+              </div>
+            ) : (
+              /* ========================================================= */
+              /* REDESIGNED POST-ANSWER HOMEWORK LEADERBOARD               */
+              /* ========================================================= */
+              (() => {
+                const board =
+                  leaderboardEntries.length > 0 ? leaderboardEntries : [completedSubmission];
+                const myRankIndex = board.findIndex(
+                  (entry) =>
+                    entry.id === completedSubmission.id ||
+                    entry.studentName.trim().toLowerCase() ===
+                      completedSubmission.studentName.trim().toLowerCase()
+                );
+                const myRank = myRankIndex >= 0 ? myRankIndex + 1 : 1;
+                const myPoints = getSubmissionPoints(completedSubmission);
+                const myBestStreak = completedSubmission.bestStreak || bestStreak || 0;
+
+                return (
+                  <div className="p-5 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-6">
+                    {/* Championship Hero Banner */}
+                    <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-950 text-white space-y-5 shadow-xl">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-500 text-slate-950 flex flex-col items-center justify-center font-black shrink-0 shadow-lg shadow-amber-500/30">
+                            <Trophy className="w-7 h-7" />
+                            <span className="text-xs leading-none mt-0.5">#{myRank}</span>
+                          </div>
+                          <div>
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/15 text-purple-200 mb-1">
+                              {activeStudentAssignment.gameTitle} · Completed
+                            </span>
+                            <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight">
+                              Great job, {completedSubmission.studentName}!
+                            </h2>
+                            <p className="text-xs text-purple-200 mt-0.5">
+                              Ranked #{myRank} of {board.length}{' '}
+                              {board.length === 1 ? 'player' : 'players'} on this homework
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="px-4 py-2.5 rounded-2xl bg-amber-400/15 border border-amber-400/30 text-center shrink-0">
+                          <span className="block text-[10px] uppercase tracking-wider font-bold text-amber-200">
+                            Total Points
+                          </span>
+                          <span className="text-2xl font-mono font-black text-amber-300 tabular-nums">
+                            {myPoints.toLocaleString()} PTS
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 4 Responsive Metric Pills (Zero clipping on mobile) */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
+                          <span className="block text-[10px] text-purple-200 uppercase font-bold">
+                            Accuracy
+                          </span>
+                          <span className="text-lg font-black text-white tabular-nums">
+                            {completedSubmission.accuracyPct}%
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
+                          <span className="block text-[10px] text-purple-200 uppercase font-bold">
+                            Correct Answers
+                          </span>
+                          <span className="text-lg font-black text-emerald-300 tabular-nums">
+                            {completedSubmission.score}/{completedSubmission.maxScore}
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
+                          <span className="block text-[10px] text-purple-200 uppercase font-bold">
+                            Best Streak
+                          </span>
+                          <span className="text-lg font-black text-orange-300 tabular-nums">
+                            🔥 {myBestStreak}x
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-sm text-center">
+                          <span className="block text-[10px] text-purple-200 uppercase font-bold">
+                            Time Spent
+                          </span>
+                          <span className="text-lg font-mono font-black text-sky-300 tabular-nums">
+                            {formatDurationSeconds(completedSubmission.durationSeconds)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Top 3 Championship Podium */}
+                    {board.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {board.slice(0, 3).map((entry, idx) => {
+                          const rank = idx + 1;
+                          const pts = getSubmissionPoints(entry);
+                          const isMe =
+                            entry.id === completedSubmission.id ||
+                            entry.studentName.trim().toLowerCase() ===
+                              completedSubmission.studentName.trim().toLowerCase();
+                          const badgeColors =
+                            rank === 1
+                              ? 'bg-amber-400 text-slate-950'
+                              : rank === 2
+                              ? 'bg-slate-300 text-slate-900'
+                              : 'bg-orange-300 text-slate-950';
+                          const cardStyles =
+                            rank === 1
+                              ? 'bg-gradient-to-b from-amber-50/90 to-white dark:from-amber-950/30 dark:to-slate-900 border-amber-300 dark:border-amber-700'
+                              : rank === 2
+                              ? 'bg-gradient-to-b from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900 border-slate-300 dark:border-slate-700'
+                              : 'bg-gradient-to-b from-orange-50/70 to-white dark:from-orange-950/25 dark:to-slate-900 border-orange-200 dark:border-orange-800';
+
+                          return (
+                            <div
+                              key={entry.id || idx}
+                              className={`p-4 rounded-2xl border-2 ${cardStyles} flex flex-col justify-between gap-3 relative`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${badgeColors}`}
+                                >
+                                  {rank === 1 ? '🥇 1st' : rank === 2 ? '🥈 2nd' : '🥉 3rd'}
+                                </span>
+                                <span className="text-xs font-mono font-black text-purple-600 dark:text-purple-400 tabular-nums">
+                                  {pts.toLocaleString()} PTS
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center font-black text-xs uppercase shrink-0">
+                                  {entry.studentName.slice(0, 2)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 truncate">
+                                    {entry.studentName} {isMe && '(You)'}
+                                  </p>
+                                  <p className="text-[11px] font-semibold text-slate-500 tabular-nums">
+                                    {entry.score}/{entry.maxScore} correct ·{' '}
+                                    {formatDurationSeconds(entry.durationSeconds)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between pt-2 border-t border-slate-200/70 dark:border-slate-700/70 text-xs">
+                                <span className="font-bold text-slate-500">Accuracy</span>
+                                <span className="font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                  {entry.accuracyPct}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Mobile-First Ranked Standings List (Never clips horizontally on mobile) */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-base font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          <Crown className="w-5 h-5 text-amber-500" />
+                          Live Leaderboard Standings ({board.length})
+                        </h3>
+                        {isLoadingLeaderboard && (
+                          <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            Syncing...
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        {board.map((entry, idx) => {
+                          const rank = idx + 1;
+                          const pts = getSubmissionPoints(entry);
+                          const isMe =
+                            entry.id === completedSubmission.id ||
+                            entry.studentName.trim().toLowerCase() ===
+                              completedSubmission.studentName.trim().toLowerCase();
+
+                          return (
+                            <div
+                              key={entry.id || idx}
+                              className={`p-3.5 sm:p-4 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                                isMe
+                                  ? 'bg-purple-50/90 dark:bg-purple-950/40 border-purple-300 dark:border-purple-700 shadow-sm'
+                                  : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-700/70 hover:bg-slate-100/70 dark:hover:bg-slate-800/80'
+                              }`}
+                            >
+                              {/* Left: Rank Badge + Avatar + Student Name & Details */}
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div
+                                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 tabular-nums ${
+                                    rank === 1
+                                      ? 'bg-amber-400 text-slate-950 shadow-sm'
+                                      : rank === 2
+                                      ? 'bg-slate-300 text-slate-900'
+                                      : rank === 3
+                                      ? 'bg-orange-300 text-slate-950'
+                                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                  }`}
+                                >
+                                  {rank === 1
+                                    ? '🥇'
+                                    : rank === 2
+                                    ? '🥈'
+                                    : rank === 3
+                                    ? '🥉'
+                                    : `#${rank}`}
+                                </div>
+
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-black text-sm sm:text-base text-slate-900 dark:text-slate-100 truncate">
+                                      {entry.studentName}
+                                    </span>
+                                    {isMe && (
+                                      <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-[10px] font-black uppercase">
+                                        YOU
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-semibold tabular-nums mt-0.5 flex-wrap">
+                                    <span>
+                                      {entry.score}/{entry.maxScore} correct
+                                    </span>
+                                    <span>·</span>
+                                    <span>⏱️ {formatDurationSeconds(entry.durationSeconds)}</span>
+                                    {(entry.bestStreak || 0) >= 2 && (
+                                      <>
+                                        <span>·</span>
+                                        <span className="text-orange-600 dark:text-orange-400 font-bold">
+                                          🔥 {entry.bestStreak}x
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right: Points + Accuracy Pill + Teacher Remove Player Button */}
+                              <div className="flex items-center gap-2.5 shrink-0">
+                                <div className="text-right">
+                                  <div className="text-sm sm:text-base font-mono font-black text-purple-600 dark:text-purple-400 tabular-nums">
+                                    {pts.toLocaleString()} PTS
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5 mt-0.5">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-[11px] font-black tabular-nums ${
+                                        (entry.accuracyPct || 0) >= 80
+                                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                          : (entry.accuracyPct || 0) >= 50
+                                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                                          : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                      }`}
+                                    >
+                                      {entry.accuracyPct}%
+                                    </span>
+                                  </div>
+                                </div>
+                                {isTeacherAccount && !isUrlStudentLink && (
+                                  <button
+                                    onClick={(e) => requestRemovePlayer(entry, e)}
+                                    title="Remove player from leaderboard"
+                                    className="p-2 rounded-xl bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-600 text-rose-600 hover:text-white dark:text-rose-400 border border-rose-200 dark:border-rose-800 transition cursor-pointer"
+                                  >
+                                    <UserMinus className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Footer Actions ("Done" removed as requested; only Review Answers and Play Again) */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <button
+                        onClick={() => setSelectedProof(completedSubmission)}
+                        className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <FileText className="w-4 h-4" />
+                        Review Answers
+                      </button>
+
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          onClick={() =>
+                            launchInteractiveSession(activeStudentAssignment, studentName)
+                          }
+                          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-purple-500/25 transition cursor-pointer"
+                        >
+                          Play Again
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
+          </div>
         </div>
       )}
 
@@ -2232,12 +2297,14 @@ export function Homework({
             </div>
 
             <div className="flex items-center gap-2 pt-2">
-              <button
-                onClick={() => setShowNameModal(false)}
-                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm rounded-2xl transition cursor-pointer"
-              >
-                Cancel
-              </button>
+              {!isUrlStudentLink && (
+                <button
+                  onClick={() => setShowNameModal(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm rounded-2xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 onClick={handleConfirmNameAndStart}
                 className="flex-[2] py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
