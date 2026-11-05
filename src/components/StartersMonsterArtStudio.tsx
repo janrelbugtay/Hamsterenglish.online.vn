@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Maximize2, Minimize2, Sparkles, Layers } from 'lucide-react';
+import { ArrowLeft, Maximize2, Minimize2, Layers } from 'lucide-react';
 import type { SlideDeck } from '../views/MySlides';
 
 export const STARTERS_MONSTER_ART_DECK_ID = 'deck-cambridge-starters-monster-art-class';
@@ -140,8 +140,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       z-index: 50;
     }
     .scene-item.glow-spotlight {
-      filter: drop-shadow(0 0 16px #38BDF8) drop-shadow(0 0 28px #6366F1);
-      animation: pulseBounce 1.4s infinite ease-in-out;
+      animation: spotlightPulse 0.9s infinite ease-in-out alternate;
+      z-index: 60;
     }
     .scene-item.shake-wrong {
       animation: wrongShake 0.45s ease-in-out;
@@ -149,18 +149,34 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     @keyframes magicalGlow {
       0% {
-        filter: drop-shadow(0 0 10px #FBBF24) drop-shadow(0 0 22px #F59E0B) brightness(1.12);
+        filter: drop-shadow(0 0 12px #FBBF24) drop-shadow(0 0 26px #F59E0B) brightness(1.15);
         transform: scale(1.04);
       }
       100% {
-        filter: drop-shadow(0 0 18px #34D399) drop-shadow(0 0 32px #10B981) brightness(1.2);
-        transform: scale(1.09);
+        filter: drop-shadow(0 0 20px #34D399) drop-shadow(0 0 38px #10B981) brightness(1.25);
+        transform: scale(1.1);
       }
     }
 
-    @keyframes pulseBounce {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
+    @keyframes spotlightPulse {
+      0% {
+        filter:
+          drop-shadow(0 0 6px #FFFFFF)
+          drop-shadow(0 0 16px #FACC15)
+          drop-shadow(0 0 32px #F97316)
+          drop-shadow(0 0 48px #EF4444)
+          brightness(1.18) saturate(1.25);
+        transform: scale(1.03);
+      }
+      100% {
+        filter:
+          drop-shadow(0 0 10px #FFFFFF)
+          drop-shadow(0 0 24px #FEF08A)
+          drop-shadow(0 0 44px #F59E0B)
+          drop-shadow(0 0 64px #EC4899)
+          brightness(1.32) saturate(1.4);
+        transform: scale(1.11);
+      }
     }
 
     @keyframes wrongShake {
@@ -248,7 +264,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     }
   </style>
 </head>
-<body class="text-slate-800 flex flex-col min-h-screen">
+<body class="text-slate-800 flex flex-col h-screen overflow-hidden">
 
   <!-- Floating Drag Ghost Container -->
   <div id="drag-ghost" class="bg-white rounded-2xl border-4 border-amber-400 p-2 flex items-center justify-center"></div>
@@ -256,182 +272,54 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
   <!-- Confetti Canvas -->
   <canvas id="confetti-canvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
 
-  <!-- TOP NAVIGATION BAR & SCORE/SHIELDS -->
-  <header class="bg-white/95 backdrop-blur-md border-b-4 border-indigo-200 sticky top-0 z-40 shadow-sm px-3 py-2">
-    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-      <!-- Brand / Title -->
-      <div class="flex items-center gap-2.5">
-        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md border-2 border-indigo-200">
-          <span class="text-2xl">🎨</span>
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">Cambridge Pre-A1 Starters</span>
-            <span class="text-xs font-bold text-indigo-600 hidden sm:inline">Test 1 • Speaking</span>
-          </div>
-          <h1 class="text-lg sm:text-xl font-bold text-slate-900 leading-tight">Monster Art Class Studio</h1>
-        </div>
-      </div>
-
-      <!-- Mode Switcher Tabs -->
-      <nav class="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-        <button onclick="switchMode('part1a')" id="tab-part1a" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 bg-indigo-600 text-white shadow">
-          <span>👆</span> Part 1A: Point
+  <!-- COMPACT TOP BAR: ONLY SOUND & SHOW DROP ZONES -->
+  <header class="bg-white/95 backdrop-blur-md border-b-2 border-indigo-100 shrink-0 z-40 shadow-sm px-4 py-1.5">
+    <div class="w-full flex flex-wrap items-center justify-between gap-2">
+      <!-- Only Keep Sound & Show Drop Zones -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <button onclick="toggleMute()" id="btn-mute" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs sm:text-sm shadow-sm transition flex items-center gap-1.5">
+          🔔 Sound: ON
         </button>
-        <button onclick="switchMode('part1b')" id="tab-part1b" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
-          <span>🃏</span> Part 1B: Place Cards
-        </button>
-        <button onclick="switchMode('part2')" id="tab-part2" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
-          <span>🔍</span> Part 2: Scene Q&A
-        </button>
-        <button onclick="switchMode('part3')" id="tab-part3" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
-          <span>💬</span> Part 3: Object Cards
-        </button>
-        <button onclick="switchMode('sandbox')" id="tab-sandbox" class="mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white">
-          <span>🎓</span> Free Teacher Mode
-        </button>
-      </nav>
-
-      <!-- Score & 5 Cambridge Shields -->
-      <div class="flex items-center gap-3">
-        <!-- 5 Shields Progress -->
-        <div class="flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-2xl border-2 border-indigo-100" title="Cambridge Speaking Shields Earned">
-          <div id="shields-container" class="flex items-center gap-1">
-            <!-- Populated by JS -->
-          </div>
-        </div>
-
-        <!-- Star Points Counter -->
-        <div class="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white px-3.5 py-1.5 rounded-2xl font-kid font-bold shadow border-2 border-amber-200">
-          <span class="text-lg">⭐</span>
-          <span id="score-display" class="text-base sm:text-lg">0</span>
-          <span class="text-xs opacity-90">pts</span>
-        </div>
-
-        <!-- Certificate Button -->
-        <button onclick="openCertificateModal()" class="p-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 font-bold text-xs flex items-center gap-1 transition" title="View Cambridge Report Card">
-          <span>🏆</span>
+        <button onclick="toggleDropZonesHint()" id="btn-drop-hint" class="px-3.5 py-1.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 text-amber-200 font-kid font-bold text-xs sm:text-sm shadow-sm transition flex items-center gap-1.5">
+          🎯 Show Drop Zones: OFF
         </button>
       </div>
     </div>
   </header>
 
-  <!-- SUB-BAR: TEACHER HELPER & VOICE CONTROLS -->
-  <div class="bg-indigo-950 text-indigo-100 px-4 py-1.5 text-xs border-b border-indigo-800">
-    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="font-bold text-amber-300 flex items-center gap-1">🛠️ Teacher & Audio Bar:</span>
-        <button onclick="repeatPromptAudio()" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1 transition">
-          🔊 Replay Examiner Voice
-        </button>
-        <button onclick="toggleSpeechRate()" id="btn-speech-rate" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white font-semibold transition">
-          🐢 Speed: Normal (0.9x)
-        </button>
-        <button onclick="toggleMute()" id="btn-mute" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white font-semibold transition">
-          🔔 Sound: ON
-        </button>
-        <button onclick="toggleDropZonesHint()" id="btn-drop-hint" class="px-2.5 py-1 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-amber-200 font-semibold transition">
-          🎯 Show Drop Zones: OFF
-        </button>
-        <button onclick="toggleOriginalBookArt()" id="btn-book-art" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold transition border border-purple-400">
-          🖼️ Scene: Vector HD (Switch to Book Art)
-        </button>
-        <button onclick="openCardsSheetModal()" class="px-2.5 py-1 rounded-lg bg-sky-700 hover:bg-sky-600 text-white font-bold transition border border-sky-400">
-          ✂️ View Original 8 Cards Sheet
-        </button>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <button onclick="teacherAwardStar()" class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold flex items-center gap-1 shadow transition transform active:scale-95">
-          ⭐ Award Student +15 Pts
-        </button>
-        <button onclick="resetAllPlacedCards()" class="px-2.5 py-1 rounded-lg bg-rose-800/80 hover:bg-rose-700 text-white font-semibold transition">
-          🔄 Clear Placed Cards
-        </button>
-        <button onclick="nextQuestion()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition">
-          ⏭️ Next Prompt
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MAIN WORKSPACE -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+  <!-- MAIN FULL-SCREEN WORKSPACE -->
+  <main class="flex-1 w-full px-3 sm:px-4 py-2 grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch min-h-0 overflow-hidden">
 
     <!-- LEFT / CENTER COLUMN: SCENE PICTURE OR PART 3 STAGE (8 cols on desktop) -->
-    <div class="lg:col-span-8 flex flex-col gap-3">
+    <div class="lg:col-span-8 flex flex-col gap-2.5 h-full min-h-0">
 
-      <!-- EXAMINER PROMPT BANNER -->
-      <div class="bg-white rounded-3xl p-3.5 sm:p-4 shadow-md border-4 border-indigo-200 flex items-center gap-3.5 relative">
-        <!-- Animated Friendly Examiner Avatar -->
-        <div class="relative shrink-0">
-          <svg class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-b from-sky-100 to-indigo-100 border-2 border-indigo-300 shadow-inner" viewBox="0 0 100 100">
-            <!-- Shoulders -->
-            <path d="M15,98 C15,72 85,72 85,98 Z" fill="#4F46E5" />
-            <path d="M38,76 L50,92 L62,76 Z" fill="#FFFFFF" />
-            <!-- Neck & Head -->
-            <rect x="43" y="62" width="14" height="16" rx="5" fill="#FDBA74" />
-            <circle cx="50" cy="44" r="24" fill="#FED7AA" />
-            <!-- Hair -->
-            <path d="M24,42 C22,18 78,18 76,42 C72,26 30,26 24,42 Z" fill="#451A03" />
-            <!-- Glasses -->
-            <rect x="33" y="37" width="14" height="10" rx="3" fill="none" stroke="#1E293B" stroke-width="2.5" />
-            <rect x="53" y="37" width="14" height="10" rx="3" fill="none" stroke="#1E293B" stroke-width="2.5" />
-            <line x1="47" y1="42" x2="53" y2="42" stroke="#1E293B" stroke-width="2.5" />
-            <!-- Eyes -->
-            <circle cx="40" cy="42" r="2.5" fill="#1E293B" />
-            <circle cx="60" cy="42" r="2.5" fill="#1E293B" />
-            <!-- Cheeks -->
-            <circle cx="33" cy="50" r="3.5" fill="#FCA5A5" opacity="0.6" />
-            <circle cx="67" cy="50" r="3.5" fill="#FCA5A5" opacity="0.6" />
-            <!-- Animated Mouth -->
-            <g id="examiner-mouth">
-              <path d="M42,54 Q50,62 58,54 Z" fill="#E11D48" />
-            </g>
-          </svg>
-          <span id="speaking-badge" class="hidden absolute -bottom-1 -right-1 bg-emerald-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
-            SPEAKING
-          </span>
-        </div>
+      <!-- BIG PART 1 / PART 2 / PART 3 SELECTOR TABS ON TOP OF THE PICTURE -->
+      <nav class="shrink-0 flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded-3xl shadow-md border-4 border-indigo-200">
+        <button onclick="switchMode('part1a')" id="tab-part1a" class="mode-tab flex-1 min-w-[130px] px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl font-kid font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md">
+          <span class="text-lg">👆</span> Part 1A: Point
+        </button>
+        <button onclick="switchMode('part1b')" id="tab-part1b" class="mode-tab flex-1 min-w-[140px] px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl font-kid font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 text-slate-700 bg-slate-100/80 hover:bg-indigo-50">
+          <span class="text-lg">🃏</span> Part 1B: Place Cards
+        </button>
+        <button onclick="switchMode('part2')" id="tab-part2" class="mode-tab flex-1 min-w-[140px] px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl font-kid font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 text-slate-700 bg-slate-100/80 hover:bg-indigo-50">
+          <span class="text-lg">🔍</span> Part 2: Scene Q&A
+        </button>
+        <button onclick="switchMode('part3')" id="tab-part3" class="mode-tab flex-1 min-w-[150px] px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl font-kid font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 text-slate-700 bg-slate-100/80 hover:bg-indigo-50">
+          <span class="text-lg">💬</span> Part 3: Object Cards
+        </button>
+      </nav>
 
-        <!-- Speech Bubble Content -->
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between gap-2 mb-1">
-            <span id="part-badge" class="text-xs font-extrabold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
-              Part 1 • Task A: Point to things
-            </span>
-            <span id="question-counter" class="text-xs font-bold text-slate-500">Question 1 of 8</span>
-          </div>
-          <p id="examiner-prompt-text" class="text-lg sm:text-xl font-kid font-bold text-slate-900 leading-snug">
-            "Hello! Look at the picture of the Monster Art Class. Where's the ball?"
-          </p>
-          <p id="examiner-sub-hint" class="text-xs sm:text-sm text-slate-600 mt-1 font-medium">
-            👉 Click or tap the object in the big picture to point to it!
-          </p>
-        </div>
-
-        <!-- Quick Audio & Hint Buttons -->
-        <div class="flex flex-col gap-1.5 shrink-0">
-          <button onclick="repeatPromptAudio()" class="w-11 h-11 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-md transition active:scale-95" title="Listen Again">
-            🔊
-          </button>
-          <button onclick="triggerVisualClue()" class="w-11 h-11 rounded-2xl bg-amber-100 hover:bg-amber-200 text-amber-800 border-2 border-amber-300 flex items-center justify-center shadow-sm transition active:scale-95" title="Show Hint Glow">
-            💡
-          </button>
-        </div>
-      </div>
-
-      <!-- INTERACTIVE SCENE PICTURE CONTAINER -->
-      <div id="scene-stage-wrapper" class="bg-white rounded-3xl p-2 sm:p-3 shadow-xl border-4 border-amber-300 relative overflow-hidden">
+      <!-- INTERACTIVE SCENE PICTURE CONTAINER (Fills Full Screen Height) -->
+      <div id="scene-stage-wrapper" class="flex-1 min-h-0 bg-white rounded-3xl p-2 sm:p-2.5 shadow-xl border-4 border-amber-300 relative overflow-hidden flex flex-col">
         <!-- Floating Toast Feedback inside Scene -->
         <div id="scene-toast" class="hidden absolute top-5 left-1/2 -translate-x-1/2 z-30 bg-slate-900/90 text-white px-5 py-2.5 rounded-2xl shadow-xl border-2 border-amber-400 font-kid font-bold text-base sm:text-lg flex items-center gap-2 transition-all">
           <span id="scene-toast-icon">🌟</span>
           <span id="scene-toast-text">Well done!</span>
         </div>
 
-        <!-- FAITHFUL HIGH-DETAIL SVG RECREATION + ORIGINAL BOOK ILLUSTRATION OF MONSTER ART CLASS -->
-        <div id="scene-canvas-container" class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border-2 border-slate-300 shadow-inner bg-[#F5F3CE]">
-          <svg id="monster-art-scene" viewBox="0 0 900 675" class="w-full h-full block select-none">
+        <!-- FAITHFUL HIGH-DETAIL SVG RECREATION OF MONSTER ART CLASS -->
+        <div id="scene-canvas-container" class="relative flex-1 w-full h-full min-h-0 rounded-2xl overflow-hidden border-2 border-slate-300 shadow-inner bg-[#F5F3CE]">
+          <svg id="monster-art-scene" viewBox="0 0 900 675" preserveAspectRatio="none" class="w-full h-full block select-none">
             <defs>
               <!-- Wall & Floor Gradients -->
               <linearGradient id="backWallGrad" x1="0" y1="0" x2="1" y2="1">
@@ -960,37 +848,23 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         </div>
 
         <!-- PART 3 BIG OBJECT CARDS STAGE (Replaces the Big Scene Picture when Part 3 is active) -->
-        <div id="part3-big-stage" class="hidden relative w-full aspect-[4/3] rounded-2xl overflow-hidden border-2 border-indigo-200 shadow-inner bg-gradient-to-br from-sky-50 via-indigo-50 to-amber-50 p-4 sm:p-6 flex flex-col justify-between">
+        <div id="part3-big-stage" class="hidden relative flex-1 w-full h-full min-h-0 rounded-2xl overflow-hidden border-2 border-indigo-200 shadow-inner bg-gradient-to-br from-sky-50 via-indigo-50 to-amber-50 p-3 sm:p-5 flex flex-col justify-between">
           <!-- Populated dynamically by JS in Part 3 -->
-        </div>
-
-        <!-- Bottom Quick Legend under Scene Picture -->
-        <div id="scene-footer-bar" class="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-600">
-          <div class="flex items-center gap-2">
-            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <span id="scene-status-bar">Interactive Scene Ready — Click any object or drag an Object Card onto the room!</span>
-          </div>
-          <div class="flex items-center gap-2 font-semibold text-indigo-700">
-            <button id="btn-footer-book-art" onclick="toggleOriginalBookArt()" class="text-[11px] px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold">
-              🖼️ Toggle Original Book Picture
-            </button>
-            <span>Placed Cards: <strong id="placed-count">0</strong>/8</span>
-          </div>
         </div>
       </div>
 
     </div>
 
-    <!-- RIGHT COLUMN: INTERACTIVE CONTROLS, OBJECT CARDS TRAY, SPEECH / ANSWER BUILDER (4 cols on desktop) -->
-    <div class="lg:col-span-4 flex flex-col gap-3.5">
+    <!-- RIGHT COLUMN: LARGE QUESTIONS PANEL & PART 1B OBJECT CARDS TRAY (4 cols on desktop) -->
+    <div class="lg:col-span-4 flex flex-col gap-3 h-full min-h-0 overflow-y-auto">
 
-      <!-- DYNAMIC ACTIVITY PANEL (Changes per Mode: Part 1A, Part 1B, Part 2, Part 3, Sandbox) -->
-      <div id="activity-panel" class="bg-white rounded-3xl p-4 shadow-lg border-4 border-indigo-200 flex flex-col gap-3">
+      <!-- DYNAMIC ACTIVITY PANEL (Full-height large card design) -->
+      <div id="activity-panel" class="flex-1 bg-white rounded-3xl p-5 sm:p-6 shadow-xl border-4 border-indigo-200 flex flex-col justify-between gap-4 min-h-0 overflow-y-auto">
         <!-- Populated dynamically by JS -->
       </div>
 
-      <!-- 8 TEST 1 OBJECT CARDS TRAY (Always accessible for Part 1B, Part 3, and Sandbox) -->
-      <div id="object-cards-tray-container" class="bg-white rounded-3xl p-4 shadow-lg border-4 border-amber-300">
+      <!-- 8 TEST 1 OBJECT CARDS TRAY (Shown ONLY in Part 1B) -->
+      <div id="object-cards-tray-container" class="hidden shrink-0 bg-white rounded-3xl p-4 shadow-lg border-4 border-amber-300">
         <div class="flex items-center justify-between mb-2.5">
           <div>
             <h2 class="text-base sm:text-lg font-kid font-bold text-slate-900 flex items-center gap-1.5">
@@ -1013,33 +887,6 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         <!-- Grid of 8 Cutout Cards with Dashed Scissor Borders -->
         <div id="object-cards-grid" class="grid grid-cols-4 gap-2">
           <!-- Rendered by JS -->
-        </div>
-      </div>
-
-      <!-- MICROPHONE & GUIDED SPOKEN ANSWER BOX -->
-      <div id="speech-practice-box" class="bg-gradient-to-br from-indigo-900 to-purple-900 text-white rounded-3xl p-4 shadow-lg border-4 border-indigo-400">
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <div class="flex items-center gap-2">
-            <span class="text-xl">🎙️</span>
-            <div>
-              <h3 class="font-kid font-bold text-sm sm:text-base leading-tight">Speak or Build Your Answer</h3>
-              <p class="text-[11px] text-indigo-200">Practice speaking aloud or tap the answer chips!</p>
-            </div>
-          </div>
-          <button onclick="toggleMicrophone()" id="btn-mic" class="px-3 py-1.5 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white font-kid font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95">
-            <span id="mic-icon">🎤</span> <span id="mic-label">Speak Answer</span>
-          </button>
-        </div>
-
-        <!-- Live Speech Transcript Display -->
-        <div id="transcript-box" class="bg-indigo-950/80 border border-indigo-700 rounded-2xl p-2.5 text-xs sm:text-sm text-indigo-100 min-h-[42px] flex items-center justify-between gap-2 mb-2.5">
-          <span id="transcript-text" class="italic text-indigo-300">Tap "Speak Answer" or click an answer phrase below...</span>
-          <span id="speech-match-badge" class="hidden px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold text-[10px] shrink-0">✓ GREAT!</span>
-        </div>
-
-        <!-- Clickable Model Answer Chips -->
-        <div id="answer-chips-container" class="flex flex-wrap gap-1.5">
-          <!-- Populated dynamically per question -->
         </div>
       </div>
 
@@ -1912,45 +1759,15 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     }
 
     function addPoints(pts, toastMessage = null) {
-      score += pts;
-      const scoreEl = document.getElementById('score-display');
-      scoreEl.textContent = score;
-      scoreEl.parentElement.classList.add('scale-110');
-      setTimeout(() => scoreEl.parentElement.classList.remove('scale-110'), 250);
-
-      renderShields();
       playChime('success');
       if (toastMessage) showSceneToast(toastMessage, '🌟');
     }
 
     function teacherAwardStar() {
-      addPoints(15, "Great speaking! Teacher awarded +15 Star Points!");
-      celebrateWithConfetti(25);
+      playChime('success');
     }
 
-    function renderShields() {
-      const thresholds = [20, 50, 90, 140, 200];
-      const container = document.getElementById('shields-container');
-      const modalShields = document.getElementById('modal-shields');
-      let html = '';
-      let modalHtml = '';
-
-      thresholds.forEach((t, idx) => {
-        const earned = score >= t;
-        html += \`
-          <svg class="w-5 h-6 transition-transform duration-300 \${earned ? 'scale-110 drop-shadow' : 'opacity-30 grayscale'}" viewBox="0 0 24 28">
-            <path d="M12,2 L22,6 L22,14 C22,20.5 12,26 12,26 C12,26 2,20.5 2,14 L2,6 Z"
-                  fill="\${earned ? '#F59E0B' : '#94A3B8'}" stroke="\${earned ? '#B45309' : '#64748B'}" stroke-width="2"/>
-            <text x="12" y="18" text-anchor="middle" font-size="10" font-weight="bold" fill="#FFFFFF">\${idx + 1}</text>
-          </svg>\`;
-        modalHtml += \`<span class="\${earned ? '' : 'opacity-25 grayscale'}">🛡️</span>\`;
-      });
-
-      if (container) container.innerHTML = html;
-      if (modalShields) modalShields.innerHTML = modalHtml;
-      const modalScore = document.getElementById('modal-score');
-      if (modalScore) modalScore.textContent = score;
-    }
+    function renderShields() {}
 
     let toastTimeout = null;
     function showSceneToast(text, icon = '🌟', isError = false) {
@@ -1972,19 +1789,34 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       }, 3200);
     }
 
+    let showAnswer = false;
+
+    function toggleShowAnswer() {
+      showAnswer = !showAnswer;
+      playChime('pop');
+      renderCurrentMode();
+    }
+
     function switchMode(mode) {
       currentMode = mode;
+      showAnswer = false;
       if (mode === 'part1b') {
         p1bStep = 'select';
+      } else {
+        // Automatically remove all placed object cards when leaving Part 1B (e.g., when Part 2 is clicked)
+        if (Object.keys(placedCards).length > 0) {
+          placedCards = {};
+          renderPlacedCardsInScene();
+        }
       }
       clearAllSceneHighlights();
 
       document.querySelectorAll('.mode-tab').forEach(btn => {
-        btn.className = "mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 text-slate-700 hover:bg-white";
+        btn.className = "mode-tab flex-1 min-w-[130px] px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl font-kid font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 text-slate-700 bg-slate-100/80 hover:bg-indigo-50";
       });
       const activeTab = document.getElementById(\`tab-\${mode}\`);
       if (activeTab) {
-        activeTab.className = "mode-tab px-3 py-1.5 rounded-xl font-kid font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 bg-indigo-600 text-white shadow";
+        activeTab.className = "mode-tab flex-1 min-w-[130px] px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl font-kid font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md";
       }
 
       updateDropZonesVisibility();
@@ -2003,36 +1835,35 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
       const cardObj = PART3_QUESTIONS[p3CardIndex];
       const cardMeta = OBJECT_CARDS.find(c => c.id === cardObj.cardId);
-      const stepObj = cardObj.steps[p3StepIndex];
       const tags = cardPersonalTags[cardMeta.id];
 
       if (p3ShowAllGrid) {
         bigStage.innerHTML = \`
-          <div class="flex items-center justify-between gap-2 mb-3">
+          <div class="flex items-center justify-between gap-2 mb-2 shrink-0">
             <div>
-              <span class="text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+              <span class="text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
                 Part 3 • All 8 Object Cards
               </span>
-              <h3 class="text-base sm:text-lg font-kid font-bold text-slate-900 mt-0.5">
-                Click any card to practice Examiner questions!
+              <h3 class="text-lg sm:text-xl font-kid font-bold text-slate-900 mt-0.5">
+                Click any card to enlarge it!
               </h3>
             </div>
-            <button onclick="p3ShowAllGrid = false; renderPart3BigStage();" class="px-3.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs sm:text-sm shadow transition">
+            <button onclick="p3ShowAllGrid = false; renderPart3BigStage();" class="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-sm shadow transition">
               🔍 Show Giant Active Card
             </button>
           </div>
-          <div class="flex-1 grid grid-cols-4 grid-rows-2 gap-3 sm:gap-4 items-center">
+          <div class="flex-1 min-h-0 grid grid-cols-4 grid-rows-2 gap-3 sm:gap-4 items-center">
             \${OBJECT_CARDS.map(card => {
               const isSelected = card.id === cardMeta.id;
               return \`
                 <div
                   onclick="selectPart3CardById('\${card.id}'); p3ShowAllGrid = false; renderPart3BigStage();"
-                  class="cursor-pointer w-full h-full rounded-3xl bg-white p-3 sm:p-4 border-4 border-dashed transition transform hover:scale-105 flex items-center justify-center relative shadow-md \${
+                  class="cursor-pointer w-full h-full rounded-3xl bg-white p-3 sm:p-5 border-4 border-dashed transition transform hover:scale-105 flex items-center justify-center relative shadow-md \${
                     isSelected ? 'border-amber-500 ring-4 ring-amber-300 bg-amber-50/30 scale-105' : 'border-slate-300 hover:border-indigo-400'
                   }"
                 >
                   <span class="absolute -top-2.5 -right-1.5 text-sm text-slate-500 pointer-events-none">✂️</span>
-                  <div class="w-full h-full flex items-center justify-center p-1">
+                  <div class="w-full h-full flex items-center justify-center p-1 [&>svg]:w-full [&>svg]:h-full">
                     \${card.svg}
                   </div>
                 </div>
@@ -2043,14 +1874,14 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       } else {
         bigStage.innerHTML = \`
           <!-- Top Bar inside Big Stage -->
-          <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="shrink-0 flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
-              <span class="text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-indigo-600 text-white shadow-sm">
+              <span class="text-sm font-extrabold uppercase tracking-wider px-4 py-1.5 rounded-full bg-indigo-600 text-white shadow-sm">
                 Card \${p3CardIndex + 1} of 8
               </span>
-              <div class="flex items-center gap-1 bg-white/90 px-2 py-1 rounded-xl border border-indigo-200 shadow-sm">
+              <div class="flex items-center gap-1.5 bg-white/95 px-2.5 py-1 rounded-2xl border-2 border-indigo-200 shadow-sm">
                 \${cardObj.steps.map((s, idx) => \`
-                  <button onclick="p3StepIndex=\${idx}; renderCurrentMode();" class="px-2.5 py-1 rounded-lg font-kid font-bold text-xs transition \${
+                  <button onclick="selectPart3Step(\${idx})" class="px-3 py-1 rounded-xl font-kid font-extrabold text-sm transition \${
                     idx === p3StepIndex ? 'bg-amber-500 text-white shadow' : 'text-slate-600 hover:bg-slate-100'
                   }">
                     Q\${idx + 1}
@@ -2058,42 +1889,42 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
                 \`).join('')}
               </div>
             </div>
-            <button onclick="p3ShowAllGrid = true; renderPart3BigStage();" class="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-indigo-800 border-2 border-indigo-200 font-kid font-bold text-xs shadow-sm transition">
+            <button onclick="p3ShowAllGrid = true; renderPart3BigStage();" class="px-4 py-2 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-800 border-2 border-indigo-200 font-kid font-extrabold text-sm shadow-sm transition">
               🖼️ Show All 8 Cards Grid
             </button>
           </div>
 
-          <!-- Center Huge Object Card Display -->
-          <div class="flex-1 flex items-center justify-center gap-3 sm:gap-6 my-2">
-            <button onclick="prevPart3Card()" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-700 border-2 border-indigo-200 shadow-md flex items-center justify-center text-xl font-bold transition active:scale-95" title="Previous Object Card">
+          <!-- Center HUGE Object Card Display -->
+          <div class="flex-1 min-h-0 flex items-center justify-center gap-4 sm:gap-8 my-2 px-2">
+            <button onclick="prevPart3Card()" class="shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-700 border-2 border-indigo-200 shadow-lg flex items-center justify-center text-2xl font-bold transition active:scale-95" title="Previous Object Card">
               ⬅️
             </button>
 
-            <div class="relative w-56 h-56 sm:w-72 sm:h-72 md:w-80 md:h-80 rounded-[2rem] bg-white border-4 border-dashed border-slate-400 shadow-2xl p-6 sm:p-8 flex items-center justify-center transition-all">
-              <span class="absolute -top-3.5 -right-2 text-2xl text-slate-600 pointer-events-none">✂️</span>
+            <div class="relative h-full max-h-[460px] aspect-square rounded-[2.5rem] bg-white border-4 border-dashed border-indigo-400 shadow-2xl p-5 sm:p-8 flex items-center justify-center transition-all">
+              <span class="absolute -top-4 -right-2.5 text-3xl text-slate-600 pointer-events-none">✂️</span>
               <div class="absolute top-3 left-3 flex gap-1.5 pointer-events-none">
-                \${tags.have ? '<span class="text-xl" title="I have this!">🏠</span>' : ''}
-                \${tags.like ? '<span class="text-xl" title="I like this!">❤️</span>' : ''}
+                \${tags.have ? '<span class="text-2xl" title="I have this!">🏠</span>' : ''}
+                \${tags.like ? '<span class="text-2xl" title="I like this!">❤️</span>' : ''}
               </div>
-              <div class="w-full h-full flex items-center justify-center">
+              <div class="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full">
                 \${cardMeta.svg}
               </div>
             </div>
 
-            <button onclick="nextPart3Card()" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-700 border-2 border-indigo-200 shadow-md flex items-center justify-center text-xl font-bold transition active:scale-95" title="Next Object Card">
+            <button onclick="nextPart3Card()" class="shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-700 border-2 border-indigo-200 shadow-lg flex items-center justify-center text-2xl font-bold transition active:scale-95" title="Next Object Card">
               ➡️
             </button>
           </div>
 
-          <!-- Bottom 8-Card Selector Strip (No words or Test 1 labels) -->
-          <div class="bg-white/85 backdrop-blur rounded-2xl p-2 border-2 border-indigo-100 shadow-sm">
+          <!-- Bottom 8-Card Selector Strip -->
+          <div class="shrink-0 bg-white/90 backdrop-blur rounded-2xl p-2 border-2 border-indigo-100 shadow-sm">
             <div class="grid grid-cols-8 gap-2">
               \${OBJECT_CARDS.map(card => {
                 const isSelected = card.id === cardMeta.id;
                 return \`
                   <button
                     onclick="selectPart3CardById('\${card.id}')"
-                    class="aspect-square rounded-xl bg-white p-1.5 border-2 border-dashed transition transform hover:scale-105 flex items-center justify-center \${
+                    class="h-14 sm:h-16 rounded-xl bg-white p-1.5 border-2 border-dashed transition transform hover:scale-105 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full \${
                       isSelected ? 'border-amber-500 ring-2 ring-amber-400 bg-amber-50 scale-105 shadow' : 'border-slate-300 opacity-75 hover:opacity-100'
                     }"
                   >
@@ -2112,6 +1943,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       if (idx !== -1) {
         p3CardIndex = idx;
         p3StepIndex = 0;
+        showAnswer = false;
         playChime('pop');
         renderCurrentMode();
       }
@@ -2120,6 +1952,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     function prevPart3Card() {
       p3CardIndex = (p3CardIndex - 1 + PART3_QUESTIONS.length) % PART3_QUESTIONS.length;
       p3StepIndex = 0;
+      showAnswer = false;
       playChime('pop');
       renderCurrentMode();
     }
@@ -2127,20 +1960,65 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     function nextPart3Card() {
       p3CardIndex = (p3CardIndex + 1) % PART3_QUESTIONS.length;
       p3StepIndex = 0;
+      showAnswer = false;
       playChime('pop');
       renderCurrentMode();
     }
 
+    function selectPart1AQuestion(idx) {
+      p1aIndex = idx;
+      showAnswer = false;
+      renderCurrentMode();
+      const task = PART1A_TASKS[p1aIndex];
+      if (task) speakText(task.prompt);
+    }
+
+    function selectPart1BTask(idx) {
+      p1bIndex = idx;
+      p1bStep = 'select';
+      showAnswer = false;
+      renderCurrentMode();
+      const task = PART1B_TASKS[p1bIndex];
+      if (task) speakText(task.selectPrompt);
+    }
+
+    function selectPart2Question(idx) {
+      p2Index = idx;
+      showAnswer = false;
+      renderCurrentMode();
+      const q = PART2_QUESTIONS[p2Index];
+      if (q) speakText(q.prompt);
+    }
+
+    function selectPart3Step(idx) {
+      p3StepIndex = idx;
+      showAnswer = false;
+      renderCurrentMode();
+      const cardObj = PART3_QUESTIONS[p3CardIndex];
+      const stepObj = cardObj && cardObj.steps[p3StepIndex];
+      if (stepObj) speakText(stepObj.q);
+    }
+
     function renderCurrentMode() {
-      const partBadge = document.getElementById('part-badge');
-      const qCounter = document.getElementById('question-counter');
-      const promptText = document.getElementById('examiner-prompt-text');
-      const subHint = document.getElementById('examiner-sub-hint');
+      const partBadge = document.getElementById('part-badge') || {};
+      const qCounter = document.getElementById('question-counter') || {};
+      const promptText = document.getElementById('examiner-prompt-text') || {};
+      const subHint = document.getElementById('examiner-sub-hint') || {};
       const panel = document.getElementById('activity-panel');
       const sceneContainer = document.getElementById('scene-canvas-container');
       const part3BigStage = document.getElementById('part3-big-stage');
       const statusText = document.getElementById('scene-status-bar');
       const bookArtBtn = document.getElementById('btn-footer-book-art');
+      const cardsTray = document.getElementById('object-cards-tray-container');
+
+      // Show Test 1 Object Cards Tray ONLY in Part 1B
+      if (cardsTray) {
+        if (currentMode === 'part1b') {
+          cardsTray.classList.remove('hidden');
+        } else {
+          cardsTray.classList.add('hidden');
+        }
+      }
 
       // Toggle between the Big Classroom Scene and the Big Object Cards Stage (Part 3)
       if (currentMode === 'part3') {
@@ -2158,51 +2036,62 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
       updateDropZonesVisibility();
 
+      const showHideBtnHtml = \`
+        <button onclick="toggleShowAnswer()" class="px-4 py-2 rounded-2xl font-kid font-extrabold text-sm sm:text-base border-2 transition shadow-sm flex items-center gap-1.5 \${
+          showAnswer
+            ? 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'
+            : 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500'
+        }">
+          <span>\${showAnswer ? '🙈 Hide Answer' : '👁️ Show Answer'}</span>
+        </button>
+      \`;
+
       if (currentMode === 'part1a') {
         const task = PART1A_TASKS[p1aIndex];
         partBadge.textContent = "Part 1 • Task A: Point to Things in the Big Picture";
         qCounter.textContent = \`Question \${p1aIndex + 1} of \${PART1A_TASKS.length}\`;
         promptText.textContent = \`"\${task.prompt}"\`;
         subHint.textContent = \`👉 \${task.subHint}\`;
-        speakText(task.prompt);
         renderAnswerChips(task.chips, []);
 
         panel.innerHTML = \`
-          <div class="flex items-center justify-between">
-            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">👆 Task A: Where is / Where are...?</h2>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">+10 pts each</span>
+          <div class="flex-1 flex flex-col justify-between bg-indigo-50/90 border-2 border-indigo-200 rounded-3xl p-5 sm:p-6 gap-4">
+            <div class="space-y-4">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
+                  Question \${p1aIndex + 1}
+                </span>
+                \${showHideBtnHtml}
+              </div>
+              <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-2">
+                \${task.prompt}
+              </div>
+            </div>
+
+            <div>
+              \${showAnswer ? \`
+                <button onclick="practiceSentence('\${task.answer.replace(/'/g, "\\\\'")}')" class="w-full text-left px-5 py-4 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl lg:text-2xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
+                  <span>🗣️ "\${task.answer}"</span>
+                  <span class="text-emerald-600 text-base font-extrabold shrink-0">🔊 Listen</span>
+                </button>
+              \` : \`
+                <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
+                  👁️ Click to Show Sample Answer
+                </button>
+              \`}
+            </div>
           </div>
-          <p class="text-xs text-slate-600">
-            Listen to the Examiner and <strong>click directly on the object(s)</strong> in the Monster Art Class picture!
-          </p>
-          <div class="bg-indigo-50/90 border-2 border-indigo-200 rounded-2xl p-2.5 text-xs space-y-1.5">
-            <div class="font-extrabold uppercase text-[10px] text-indigo-700">Question \${p1aIndex + 1}: \${task.prompt}</div>
-            <button onclick="practiceSentence('\${task.answer.replace(/'/g, "\\\\'")}')" class="w-full text-left px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
-              <span>🗣️ "\${task.answer}"</span>
-              <span class="text-emerald-600 text-xs font-extrabold">🔊 Listen</span>
-            </button>
-          </div>
-          <div class="grid grid-cols-4 gap-1.5 my-1">
+
+          <div class="grid grid-cols-4 gap-2.5 shrink-0 pt-1">
             \${PART1A_TASKS.map((t, idx) => \`
-              <button onclick="p1aIndex=\${idx}; renderCurrentMode();" class="py-1.5 px-2 rounded-xl font-kid font-bold text-xs border transition \${
+              <button onclick="selectPart1AQuestion(\${idx})" class="py-3.5 sm:py-4 px-3 rounded-2xl font-kid font-extrabold text-lg sm:text-xl border-2 transition shadow-sm \${
                 idx === p1aIndex
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow'
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-md scale-[1.02]'
                   : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
               }">
                 Q\${idx + 1}
               </button>
             \`).join('')}
-          </div>
-          <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-            <button onclick="prevQuestion()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
-              ⬅️ Previous
-            </button>
-            <button onclick="triggerVisualClue()" class="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-kid font-bold text-xs transition">
-              💡 Show Me Hint
-            </button>
-            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
-              Next Question ➡️
-            </button>
           </div>
         \`;
       }
@@ -2219,60 +2108,56 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         qCounter.textContent = \`Task \${p1bIndex + 1} of \${PART1B_TASKS.length} • Step \${isSelectStep ? 1 : 2}/2\`;
         promptText.textContent = \`"\${activePrompt}"\`;
         subHint.textContent = \`🃏 \${activeSubHint}\`;
-        speakText(activePrompt);
         renderAnswerChips(isSelectStep ? task.selectChips : task.placeChips, []);
 
+        const sampleAnswerText = isSelectStep ? task.selectChips[0] : task.successLabel;
+
         panel.innerHTML = \`
-          <div class="flex items-center justify-between">
-            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🃏 Task B: Select & Place Cards</h2>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">Step \${isSelectStep ? '1: Select' : '2: Place'}</span>
+          <div class="flex-1 flex flex-col justify-between \${isSelectStep ? 'bg-indigo-50/90 border-indigo-200' : 'bg-emerald-50 border-emerald-300'} border-2 rounded-3xl p-4 sm:p-5 gap-3">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="px-3.5 py-1.5 rounded-xl \${isSelectStep ? 'bg-indigo-600' : 'bg-emerald-600'} text-white font-kid font-extrabold uppercase text-xs sm:text-sm tracking-wider shadow-sm">
+                  Question \${p1bIndex + 1} • \${isSelectStep ? 'Step 1: Select Card' : 'Step 2: Place Card'}
+                </span>
+                \${showHideBtnHtml}
+              </div>
+
+              <div class="flex items-center gap-3">
+                \${!isSelectStep ? \`
+                  <div class="w-16 h-16 rounded-2xl bg-white border-2 border-emerald-400 p-1.5 shrink-0 shadow-sm">
+                    \${OBJECT_CARDS.find(c => c.id === task.cardId).svg}
+                  </div>
+                \` : ''}
+                <div class="font-kid font-extrabold text-xl sm:text-2xl lg:text-3xl text-slate-900 leading-tight">
+                  "\${activePrompt}"
+                </div>
+              </div>
+            </div>
+
+            <div>
+              \${showAnswer ? \`
+                <button onclick="practiceSentence('\${sampleAnswerText.replace(/'/g, "\\\\'")}')" class="w-full text-left px-4 py-3.5 rounded-2xl bg-white hover:bg-emerald-100 border-2 border-emerald-400 text-base sm:text-lg lg:text-xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-2 transition shadow-md">
+                  <span>🗣️ "\${sampleAnswerText}"</span>
+                  <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
+                </button>
+              \` : \`
+                <button onclick="toggleShowAnswer()" class="w-full py-3.5 px-4 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition">
+                  👁️ Click to Show Sample Answer
+                </button>
+              \`}
+            </div>
           </div>
 
-          \${isSelectStep ? \`
-            <div class="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-3 text-xs text-indigo-950 flex items-center gap-3">
-              <div class="w-12 h-12 rounded-2xl bg-white border-2 border-dashed border-indigo-300 flex items-center justify-center text-2xl shrink-0 shadow-sm">
-                ❓
-              </div>
-              <div>
-                <div class="font-extrabold uppercase text-[10px] text-indigo-600">Step 1: Listen & Select Object Card</div>
-                <div class="font-bold text-sm text-slate-900 mt-0.5">"\${task.selectPrompt}"</div>
-                <div class="text-[11px] text-slate-600 mt-0.5">Click the matching picture in the 8 Object Cards tray below!</div>
-              </div>
-            </div>
-          \` : \`
-            <div class="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3 text-xs text-emerald-950 flex items-center gap-3">
-              <div class="w-14 h-14 rounded-xl bg-white border-2 border-emerald-400 p-1 shrink-0 shadow-sm">
-                \${OBJECT_CARDS.find(c => c.id === task.cardId).svg}
-              </div>
-              <div>
-                <div class="font-extrabold uppercase text-[10px] text-emerald-700">✓ Correct Card Selected! Now Step 2:</div>
-                <div class="font-bold text-sm text-slate-900 mt-0.5">"\${task.placePrompt}"</div>
-                <div class="text-[11px] text-slate-600 mt-0.5">Drag the highlighted card to the dashed zone in the picture (or click the spot)!</div>
-              </div>
-            </div>
-          \`}
-
-          <div class="grid grid-cols-4 gap-1.5">
+          <div class="grid grid-cols-4 gap-2 shrink-0 pt-1">
             \${PART1B_TASKS.map((t, idx) => \`
-              <button onclick="p1bIndex=\${idx}; p1bStep='select'; renderCurrentMode();" class="py-1.5 px-2 rounded-xl font-kid font-bold text-xs border transition \${
+              <button onclick="selectPart1BTask(\${idx})" class="py-2.5 sm:py-3 px-2.5 rounded-2xl font-kid font-extrabold text-base sm:text-lg border-2 transition shadow-sm \${
                 idx === p1bIndex
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow'
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-md'
                   : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
               }">
-                Task #\${idx + 1}
+                Q\${idx + 1}
               </button>
             \`).join('')}
-          </div>
-          <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-            <button onclick="prevQuestion()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
-              ⬅️ Previous
-            </button>
-            <button onclick="autoDemoPlaceCurrentCard()" class="px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-kid font-bold text-xs transition">
-              ✨ \${isSelectStep ? 'Show Answer Card' : 'Auto-Place Card'}
-            </button>
-            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-kid font-bold text-xs shadow transition">
-              Next Task ➡️
-            </button>
           </div>
         \`;
       }
@@ -2283,7 +2168,6 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         qCounter.textContent = \`Question \${p2Index + 1} of \${PART2_QUESTIONS.length}\`;
         promptText.textContent = \`"\${q.prompt}"\`;
         subHint.textContent = \`🔍 \${q.subHint}\`;
-        speakText(q.prompt);
 
         clearAllSceneHighlights();
         const spotEl = document.getElementById(\`item-\${q.spotlightId}\`);
@@ -2296,159 +2180,93 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         renderAnswerChips(q.chips, q.keywords);
 
         panel.innerHTML = \`
-          <div class="flex items-center justify-between">
-            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🔍 Part 2: Scene Q&A (Step-by-Step)</h2>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Q\${p2Index + 1}/\${PART2_QUESTIONS.length}</span>
-          </div>
-          <div class="grid grid-cols-4 gap-1.5">
-            \${PART2_QUESTIONS.map((item, idx) => \`
-              <button onclick="p2Index=\${idx}; renderCurrentMode();" class="px-2 py-1 rounded-xl font-kid font-bold text-[11px] border truncate transition \${
-                idx === p2Index
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow'
-                  : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
-              }">
-                \${item.title}
-              </button>
-            \`).join('')}
-          </div>
+          <div class="flex-1 flex flex-col justify-between bg-indigo-50/90 border-2 border-indigo-200 rounded-3xl p-5 sm:p-6 gap-4">
+            <div class="space-y-4">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
+                  Question \${p2Index + 1}
+                </span>
+                \${showHideBtnHtml}
+              </div>
+              <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-1">
+                \${q.prompt}
+              </div>
+            </div>
 
-          <div class="bg-indigo-50/80 border-2 border-indigo-200 rounded-2xl p-3">
-            <div class="text-xs font-extrabold uppercase text-indigo-700 mb-1">\${q.prompt}</div>
-            <p class="text-xs text-slate-600 mb-2">
-              Wait for the student to answer aloud, or click a model answer below before clicking <strong>Next Question ➡️</strong>:
-            </p>
-            <div class="flex flex-col gap-1.5">
-              \${q.chips.map(sentence => \`
-                <button onclick="practiceSentence('\${sentence.replace(/'/g, "\\\\'")}')" class="text-left px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
+            <div class="flex flex-col gap-2.5">
+              \${showAnswer ? q.chips.map(sentence => \`
+                <button onclick="practiceSentence('\${sentence.replace(/'/g, "\\\\'")}')" class="text-left px-5 py-3.5 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
                   <span>🗣️ "\${sentence}"</span>
-                  <span class="text-emerald-600 text-xs font-extrabold">+10 ⭐</span>
+                  <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
                 </button>
-              \`).join('')}
+              \`).join('') : \`
+                <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
+                  👁️ Click to Show Sample Answer
+                </button>
+              \`}
             </div>
           </div>
 
-          <div class="flex items-center justify-between gap-2 pt-1">
-            <button onclick="prevQuestion()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
-              ⬅️ Previous
-            </button>
-            <button onclick="nextQuestion()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-kid font-bold text-xs shadow transition">
-              Next Question ➡️
-            </button>
+          <div class="grid grid-cols-4 gap-2.5 shrink-0 pt-1">
+            \${PART2_QUESTIONS.map((item, idx) => \`
+              <button onclick="selectPart2Question(\${idx})" class="py-3 sm:py-3.5 px-2.5 rounded-2xl font-kid font-extrabold text-base sm:text-lg border-2 transition shadow-sm \${
+                idx === p2Index
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-md scale-[1.02]'
+                  : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
+              }">
+                Q\${idx + 1}
+              </button>
+            \`).join('')}
           </div>
         \`;
       }
 
       else if (currentMode === 'part3') {
         const cardObj = PART3_QUESTIONS[p3CardIndex];
-        const cardMeta = OBJECT_CARDS.find(c => c.id === cardObj.cardId);
         const stepObj = cardObj.steps[p3StepIndex];
 
         partBadge.textContent = "Part 3 • Object Cards Q&A (One Question at a Time)";
         qCounter.textContent = \`Card \${p3CardIndex + 1} of 8 • Question \${p3StepIndex + 1} of \${cardObj.steps.length}\`;
         promptText.textContent = \`"\${stepObj.q}"\`;
         subHint.textContent = \`💬 Look at the big Object Card on the left and answer the Examiner's question!\`;
-        speakText(stepObj.q);
         renderAnswerChips(stepObj.a, stepObj.keywords);
 
         panel.innerHTML = \`
-          <div class="flex items-center justify-between gap-2">
-            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">💬 Part 3: Object Cards Q&A</h2>
-            <button onclick="pairTalkMode = !pairTalkMode; renderCurrentMode();" class="text-xs font-bold px-2.5 py-1 rounded-xl border transition \${
-              pairTalkMode ? 'bg-amber-500 text-white border-amber-600' : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-            }">
-              👥 \${pairTalkMode ? 'Back to Examiner Q&A' : 'Pair Talk Activity'}
-            </button>
+          <div class="flex-1 flex flex-col justify-between bg-indigo-50/90 border-2 border-indigo-200 rounded-3xl p-5 sm:p-6 gap-4">
+            <div class="space-y-4">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
+                  Card \${p3CardIndex + 1} • Question \${p3StepIndex + 1}
+                </span>
+                \${showHideBtnHtml}
+              </div>
+              <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-2">
+                "\${stepObj.q}"
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2.5">
+              \${showAnswer ? stepObj.a.map(ans => \`
+                <button onclick="practiceSentence('\${ans.replace(/'/g, "\\\\'")}', true)" class="text-left px-5 py-4 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl lg:text-2xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
+                  <span>🗣️ "\${ans}"</span>
+                  <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
+                </button>
+              \`).join('') : \`
+                <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
+                  👁️ Click to Show Sample Answer
+                </button>
+              \`}
+            </div>
           </div>
 
-          \${!pairTalkMode ? \`
-            <div class="bg-gradient-to-br from-sky-50 to-indigo-50 border-4 border-indigo-200 rounded-3xl p-3.5 flex flex-col gap-3 shadow-inner">
-              <div class="flex flex-wrap items-center justify-between gap-1.5">
-                <div class="flex flex-wrap items-center gap-1.5">
-                  \${cardObj.steps.map((s, idx) => \`
-                    <button onclick="p3StepIndex=\${idx}; renderCurrentMode();" class="px-2.5 py-1 rounded-lg font-kid font-bold text-xs transition \${
-                      idx === p3StepIndex ? 'bg-indigo-600 text-white shadow' : 'bg-white text-slate-600 border border-slate-200'
-                    }">
-                      Q\${idx + 1}
-                    </button>
-                  \`).join('')}
-                </div>
-                <span class="text-[11px] font-bold text-indigo-700">Card \${p3CardIndex + 1}/8</span>
-              </div>
-              <p class="text-base font-kid font-bold text-indigo-950">"\${stepObj.q}"</p>
-              <div class="flex flex-col gap-1.5">
-                \${stepObj.a.map(ans => \`
-                  <button onclick="practiceSentence('\${ans.replace(/'/g, "\\\\'")}', true)" class="px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 border border-indigo-200 hover:border-emerald-400 text-xs font-bold text-slate-800 flex items-center justify-between transition shadow-sm">
-                    <span>💬 "\${ans}"</span>
-                    <span class="text-emerald-600 font-extrabold">+10 ⭐</span>
-                  </button>
-                \`).join('')}
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between gap-2 pt-1">
-              <button onclick="prevPart3Step()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-kid font-bold text-xs transition">
-                ⬅️ Previous
-              </button>
-              <button onclick="nextPart3Step()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-kid font-bold text-xs shadow transition">
-                Next Question ➡️
-              </button>
-            </div>
-          \` : \`
-            <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 text-xs space-y-2">
-              <div class="font-kid font-bold text-sm text-amber-950">👥 Pair Talk Activity:</div>
-              <ul class="list-disc list-inside text-slate-700 font-semibold space-y-0.5">
-                <li>What colour are the things in the pictures?</li>
-                <li>Which things do you have? (Tap <strong>"I have this!"</strong>)</li>
-                <li>Which things do you like? Why? (Tap <strong>"I like this!"</strong>)</li>
-              </ul>
-              <div class="bg-white rounded-xl p-2.5 border border-amber-200 flex items-center gap-3">
-                <div class="w-16 h-16 shrink-0 border border-dashed border-slate-300 rounded-lg p-1">
-                  \${cardMeta.svg}
-                </div>
-                <div class="flex-1 space-y-1.5">
-                  <div class="flex flex-wrap gap-1.5">
-                    <button onclick="togglePersonalTag('\${cardMeta.id}', 'have')" class="px-2.5 py-1 rounded-lg font-bold text-xs border transition \${
-                      cardPersonalTags[cardMeta.id].have ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-slate-100 text-slate-700 border-slate-300'
-                    }">
-                      🏠 I have got this!
-                    </button>
-                    <button onclick="togglePersonalTag('\${cardMeta.id}', 'like')" class="px-2.5 py-1 rounded-lg font-bold text-xs border transition \${
-                      cardPersonalTags[cardMeta.id].like ? 'bg-rose-500 text-white border-rose-600' : 'bg-slate-100 text-slate-700 border-slate-300'
-                    }">
-                      ❤️ I like this!
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          \`}
-        \`;
-      }
-
-      else if (currentMode === 'sandbox') {
-        partBadge.textContent = "🎓 Free Teacher & Student Sandbox Mode";
-        qCounter.textContent = "All Items Interactive";
-        promptText.textContent = \`"Click any object in the classroom to hear its name and sentence, or drag any card anywhere in the room!"\`;
-        subHint.textContent = "✨ Teacher Tip: Use this mode to ask your own custom questions or review vocabulary freely.";
-        renderAnswerChips([
-          "There are four monsters.",
-          "The ball is under the chair.",
-          "The cat is sleeping under the table.",
-          "She is taking a photo."
-        ], []);
-
-        panel.innerHTML = \`
-          <div class="flex items-center justify-between">
-            <h2 class="text-base sm:text-lg font-kid font-bold text-indigo-950">🎓 Teacher Sandbox & Vocabulary Explorer</h2>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800">Free Play</span>
-          </div>
-          <p class="text-xs text-slate-600">
-            Click any button below to spotlight an item in the Monster Art Class and hear a model Cambridge Starters sentence:
-          </p>
-          <div class="grid grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
-            \${Object.entries(SCENE_ITEM_LABELS).map(([key, info]) => \`
-              <button onclick="spotlightAndSpeakSandbox('\${key}')" class="text-left px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-xs font-bold text-slate-700 truncate transition">
-                ✨ \${info.name}
+          <div class="grid grid-cols-4 gap-2.5 shrink-0 pt-1">
+            \${cardObj.steps.map((s, idx) => \`
+              <button onclick="selectPart3Step(\${idx})" class="py-3.5 sm:py-4 px-3 rounded-2xl font-kid font-extrabold text-lg sm:text-xl border-2 transition shadow-sm \${
+                idx === p3StepIndex
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-md scale-[1.02]'
+                  : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200'
+              }">
+                Q\${idx + 1}
               </button>
             \`).join('')}
           </div>
@@ -2527,7 +2345,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       if (el) el.classList.add('glow-correct');
       const info = SCENE_ITEM_LABELS[itemId];
       if (info) {
-        document.getElementById('examiner-prompt-text').textContent = \`"\${info.sentence}"\`;
+        const promptEl = document.getElementById('examiner-prompt-text');
+        if (promptEl) promptEl.textContent = \`"\${info.sentence}"\`;
         showSceneToast(info.sentence, '✨');
         speakText(info.sentence);
       }
@@ -2597,7 +2416,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         \`;
       }).join('');
 
-      document.getElementById('placed-count').textContent = Object.keys(placedCards).length;
+      const placedCountEl = document.getElementById('placed-count');
+      if (placedCountEl) placedCountEl.textContent = Object.keys(placedCards).length;
     }
 
     function handleTrayCardClick(cardId) {
@@ -2611,6 +2431,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
             p1bStep = 'place';
             addPoints(10, \`Correct! Now: \${task.placePrompt}\`);
             renderCurrentMode();
+            speakText(task.placePrompt);
           } else {
             const wrongEl = document.querySelector(\`[data-card-id="\${cardId}"]\`);
             if (wrongEl) {
@@ -3104,10 +2925,6 @@ export const StartersMonsterArtStudio: React.FC<StartersMonsterArtStudioProps> =
             <ArrowLeft className="w-4 h-4" />
             <span>Back to My Slides</span>
           </button>
-          <span className="text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Cambridge Pre-A1 Starters • Interactive Speaking Studio
-          </span>
         </div>
 
         <div className="flex items-center gap-2">
