@@ -22,14 +22,229 @@ async function startServer() {
 
   app.use(express.json({ limit: "25mb" }));
 
-  // Persistent Server-Side Platform Cache (Games, Registered Users, Activities, Page Visits)
+  // Persistent Server-Side Platform Cache (Games, Registered Users, Activities, Page Visits, Homework)
   const PLATFORM_CACHE_FILE = path.resolve("./.platform-cache.json");
+  let memoryCache: any = null;
+  let writeQueue: Promise<void> = Promise.resolve();
 
-  app.get("/api/platform-cache", async (_req, res) => {
+  const HULA_DANCING_QUESTIONS = [
+    { id: "hula-1", text: "The dancers moved gracefully to the drums that were played to ______ their traditional Hula dance.", options: ["discourage", "accompany", "evoke", "preserve"], answerIndex: 1 },
+    { id: "hula-2", text: "Traditional Hula dancing is an ancient Hawaiian art form that ______ stories of nature and history.", options: ["tells", "forgets", "hides", "avoids"], answerIndex: 0 },
+    { id: "hula-3", text: "Each hand movement in Hula is carefully practiced to ______ a specific meaning such as waves, wind, or trees.", options: ["ignore", "represent", "confuse", "destroy"], answerIndex: 1 },
+    { id: "hula-4", text: "In ancient Hawaii, Hula was performed to honor gods, chiefs, and special ______.", options: ["occasions", "mistakes", "machines", "traffic"], answerIndex: 0 },
+    { id: "hula-5", text: "Dancers often wear leis made of fresh flowers and green leaves around their necks and ______.", options: ["pockets", "wrists", "shoes", "glasses"], answerIndex: 1 },
+    { id: "hula-6", text: "A traditional Hula school is called a 'halau', and the master teacher is known as the ______.", options: ["kumu", "pilot", "referee", "captain"], answerIndex: 0 },
+    { id: "hula-7", text: "Before entering the Hula classroom, students chant to ask for permission and show ______.", options: ["anger", "respect", "hurry", "doubt"], answerIndex: 1 },
+    { id: "hula-8", text: "There are two main styles of Hula: 'Hula Kahiko' (ancient style) and 'Hula Auana' (______ style).", options: ["modern", "frozen", "silent", "accidental"], answerIndex: 0 },
+    { id: "hula-9", text: "Hula Kahiko is performed with dramatic chants and traditional percussion ______ like gourd drums.", options: ["instruments", "vehicles", "computers", "furniture"], answerIndex: 0 },
+    { id: "hula-10", text: "Hula Auana developed in the 19th and 20th centuries and uses stringed instruments like the ______.", options: ["ukulele", "trumpet", "saxophone", "bagpipe"], answerIndex: 0 },
+    { id: "hula-11", text: "The swaying motion of the hips in Hula imitates the gentle movement of ocean ______.", options: ["waves", "rocks", "buildings", "bridges"], answerIndex: 0 },
+    { id: "hula-12", text: "When dancers raise their hands toward the sky, they may be describing the sun, stars, or ______.", options: ["rainbows", "subways", "basements", "tunnels"], answerIndex: 0 },
+    { id: "hula-13", text: "To keep a steady rhythm, the teacher beats a double gourd drum called an ______.", options: ["ipu", "violin", "flute", "piano"], answerIndex: 0 },
+    { id: "hula-14", text: "During nineteenth-century missionary arrivals, public Hula performances were temporarily ______.", options: ["discouraged", "invented", "broadcast", "automated"], answerIndex: 0 },
+    { id: "hula-15", text: "King David Kalakaua helped ______ Hula in the late 1800s so Hawaiian culture would thrive again.", options: ["revive", "erase", "abandon", "forbid"], answerIndex: 0 },
+    { id: "hula-16", text: "King Kalakaua was known as the 'Merrie Monarch' because he loved music, dance, and cultural ______.", options: ["celebrations", "arguments", "penalties", "closures"], answerIndex: 0 },
+    { id: "hula-17", text: "Every spring in Hilo, Hawaii, the Merrie Monarch Festival ______ the finest Hula groups from around the world.", options: ["gathers", "separates", "cancels", "ignores"], answerIndex: 0 },
+    { id: "hula-18", text: "Dancers spend months gathering plants from the forest to ______ their own traditional costumes.", options: ["prepare", "borrow", "discard", "damage"], answerIndex: 0 },
+    { id: "hula-19", text: "The 'pa'u' is a traditional skirt worn by Hula dancers, often made from beaten tree bark or ______.", options: ["ti leaves", "plastic bags", "metal wire", "newspaper"], answerIndex: 0 },
+    { id: "hula-20", text: "Facial expressions are just as important as hand gestures because they ______ the emotion of the song.", options: ["convey", "conceal", "prevent", "interrupt"], answerIndex: 0 },
+    { id: "hula-21", text: "A graceful Hula performance can ______ warm memories of Hawaii's tropical islands.", options: ["evoke", "dismiss", "postpone", "restrict"], answerIndex: 0 },
+    { id: "hula-22", text: "Both men and women ______ Hula, learning strength, balance, and storytelling.", options: ["practice", "refuse", "forget", "avoid"], answerIndex: 0 },
+    { id: "hula-23", text: "Keeping the knees bent while dancing helps Hula performers glide ______ across the stage.", options: ["smoothly", "noisily", "clumsily", "harshly"], answerIndex: 0 },
+    { id: "hula-24", text: "Feathered rattles called 'uli uli' add bright color and crisp ______ to energetic dances.", options: ["sounds", "flavors", "shadows", "scents"], answerIndex: 0 },
+    { id: "hula-25", text: "Smooth volcanic pebbles called 'ili ili' are clicked together in the dancer's hands like ______.", options: ["castanets", "umbrellas", "paintbrushes", "mirrors"], answerIndex: 0 },
+    { id: "hula-26", text: "Split bamboo sticks called 'pu ili' create a soft rustling sound that reminds listeners of ______ in the trees.", options: ["wind", "thunder", "engines", "sirens"], answerIndex: 0 },
+    { id: "hula-27", text: "Before Hawaii had a written language, Hula chants served as a living ______ of family history.", options: ["record", "secret", "obstacle", "mystery"], answerIndex: 0 },
+    { id: "hula-28", text: "Dancers must listen ______ to the chant so their movements stay in complete harmony with the group.", options: ["attentively", "carelessly", "rarely", "reluctantly"], answerIndex: 0 },
+    { id: "hula-29", text: "After a performance, the flowers from the leis are respectfully returned to ______ rather than thrown in the trash.", options: ["nature", "factories", "traffic", "lockers"], answerIndex: 0 },
+    { id: "hula-30", text: "Learning Hula teaches young students patience, discipline, and deep ______ for the environment.", options: ["appreciation", "indifference", "complaint", "hostility"], answerIndex: 0 },
+    { id: "hula-31", text: "Visitors to Hawaii are encouraged to watch authentic Hula shows to ______ the true spirit of Aloha.", options: ["experience", "overlook", "criticize", "disturb"], answerIndex: 0 },
+    { id: "hula-32", text: "The word 'Aloha' means more than hello and goodbye; it represents love, peace, and ______.", options: ["compassion", "competition", "confusion", "isolation"], answerIndex: 0 },
+    { id: "hula-33", text: "When a soloist performs at the Merrie Monarch Festival, judges evaluate posture, precision, and ______.", options: ["authenticity", "speed", "volume", "height"], answerIndex: 0 },
+    { id: "hula-34", text: "Many Hula songs praise famous Hawaiian mountains, waterfalls, and sacred ______.", options: ["valleys", "highways", "airports", "warehouses"], answerIndex: 0 },
+    { id: "hula-35", text: "A good Hula dancer keeps their upper body steady while their feet and hips follow the ______.", options: ["beat", "crowd", "weather", "curtain"], answerIndex: 0 },
+    { id: "hula-36", text: "Chanting in the Hawaiian language helps young generations ______ their native vocabulary.", options: ["preserve", "neglect", "replace", "weaken"], answerIndex: 0 },
+    { id: "hula-37", text: "The gentle melody of the steel guitar often ______ modern Hula Auana performances.", options: ["accompanies", "interrupts", "silences", "delays"], answerIndex: 0 },
+    { id: "hula-38", text: "Even when a dance is fast and powerful, the dancers' hand gestures remain fluid and ______.", options: ["expressive", "rigid", "mechanical", "awkward"], answerIndex: 0 },
+    { id: "hula-39", text: "Costume colors are chosen to ______ the specific island or volcano honored in the chant.", options: ["symbolize", "disguise", "contradict", "measure"], answerIndex: 0 },
+    { id: "hula-40", text: "For instance, the color red is traditionally worn to honor Pele, the Hawaiian goddess of ______.", options: ["volcanoes", "glaciers", "deserts", "factories"], answerIndex: 0 },
+    { id: "hula-41", text: "Practicing together every week builds a strong bond of 'ohana', which means ______ in Hawaiian.", options: ["family", "stranger", "schedule", "distance"], answerIndex: 0 },
+    { id: "hula-42", text: "At the end of the dance, the performers hold their final pose until the last drumbeat ______.", options: ["fades", "explodes", "hurries", "argues"], answerIndex: 0 },
+    { id: "hula-43", text: "Today, Hula is celebrated worldwide as a timeless symbol of Hawaiian identity and artistic ______.", options: ["heritage", "machinery", "commerce", "industry"], answerIndex: 0 }
+  ];
+
+  async function readPlatformCache(): Promise<any> {
+    if (memoryCache) return memoryCache;
     try {
       const fs = await import("fs/promises");
       const raw = await fs.readFile(PLATFORM_CACHE_FILE, "utf-8").catch(() => "{}");
-      const data = JSON.parse(raw || "{}");
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw || "{}");
+      } catch {
+        // Recover if trailing bytes exist
+        const lastBrace = raw.lastIndexOf("}");
+        if (lastBrace > 0) {
+          for (let pos = lastBrace; pos > Math.max(0, lastBrace - 50000); pos--) {
+            if (raw[pos] === "}") {
+              try {
+                parsed = JSON.parse(raw.slice(0, pos + 1));
+                break;
+              } catch {}
+            }
+          }
+        }
+      }
+      if (!parsed || typeof parsed !== "object") parsed = {};
+      if (!Array.isArray(parsed.games)) parsed.games = [];
+      if (!Array.isArray(parsed.users)) parsed.users = [];
+      if (!Array.isArray(parsed.activities)) parsed.activities = [];
+      if (!Array.isArray(parsed.homeworkAssignments)) parsed.homeworkAssignments = [];
+      if (!Array.isArray(parsed.homeworkTrash)) parsed.homeworkTrash = [];
+      if (!parsed.deletedHomeworkKeys || typeof parsed.deletedHomeworkKeys !== "object") {
+        parsed.deletedHomeworkKeys = {};
+      }
+      if (!Array.isArray(parsed.homeworkSubmissions)) parsed.homeworkSubmissions = [];
+
+      // Ensure the 3 known homework assignments from teacher wnxUHR2dywQqrTmD6LE5LPamkQI2 exist so their PINs (764273, 333169, 978021) always resolve
+      const teacherUid = "wnxUHR2dywQqrTmD6LE5LPamkQI2";
+      const simplePastGame = parsed.games.find((g: any) => g && g.id === "ykBLO9m76dim1HUqTD0Y");
+      const simplePastQuestions = (simplePastGame?.customQuestions || simplePastGame?.questions || []).map((q: any, idx: number) => ({
+        id: q.id || `sp-${idx + 1}`,
+        text: q.text || q.question || `Question ${idx + 1}`,
+        question: q.text || q.question || `Question ${idx + 1}`,
+        options: Array.isArray(q.options) && q.options.length === 2 && idx === 0
+          ? ["have visited", "visited", "went"]
+          : (Array.isArray(q.options) ? q.options : ["Option A", "Option B"]),
+        answerIndex: typeof q.answerIndex === "number" ? q.answerIndex : 0,
+        correctAnswer: Array.isArray(q.options) ? q.options[typeof q.answerIndex === "number" ? q.answerIndex : 0] : ""
+      }));
+
+      const seedHomeworks = [
+        {
+          id: "hw-seed-764273",
+          userId: teacherUid,
+          createdByUid: teacherUid,
+          createdByEmail: "janrelbugtay03@gmail.com",
+          gameId: "hula-dancing-43",
+          gameTitle: "Hula dancing",
+          topic: "Hula dancing",
+          gameType: "study-mode",
+          classLevel: "Starters",
+          targetClass: "Starters",
+          dueDate: "2026-11-15",
+          durationMinutes: 15,
+          passingScore: 70,
+          maxAttempts: 3,
+          instructions: "Study and answer all 43 questions on \"Hula dancing\" to achieve the passing score before the deadline!",
+          pinCode: "764273",
+          questions: HULA_DANCING_QUESTIONS,
+          createdAt: 1794037500000,
+          status: "active",
+          submissionsCount: 0,
+          isDeleted: false
+        },
+        {
+          id: "hw-seed-333169",
+          userId: teacherUid,
+          createdByUid: teacherUid,
+          createdByEmail: "janrelbugtay03@gmail.com",
+          gameId: "ykBLO9m76dim1HUqTD0Y",
+          gameTitle: "Simple past and Present perfect",
+          topic: "Simple past and Present perfect",
+          gameType: "study-mode",
+          classLevel: "Flyers",
+          targetClass: "Flyers",
+          dueDate: "2026-11-15",
+          durationMinutes: 15,
+          passingScore: 70,
+          maxAttempts: 3,
+          instructions: "Study and answer all 40 questions on \"Simple past and Present perfect\" to achieve the passing score before the deadline!",
+          pinCode: "333169",
+          questions: simplePastQuestions,
+          createdAt: 1794037400000,
+          status: "active",
+          submissionsCount: 0,
+          isDeleted: false
+        },
+        {
+          id: "hw-seed-978021",
+          userId: teacherUid,
+          createdByUid: teacherUid,
+          createdByEmail: "janrelbugtay03@gmail.com",
+          gameId: "ykBLO9m76dim1HUqTD0Y",
+          gameTitle: "Simple past and Present perfect",
+          topic: "Simple past and Present perfect",
+          gameType: "study-mode",
+          classLevel: "Flyers",
+          targetClass: "Flyers",
+          dueDate: "2026-11-15",
+          durationMinutes: 15,
+          passingScore: 70,
+          maxAttempts: 3,
+          instructions: "Study and answer all 40 questions on \"Simple past and Present perfect\" to achieve the passing score before the deadline!",
+          pinCode: "978021",
+          questions: simplePastQuestions,
+          createdAt: 1794037300000,
+          status: "active",
+          submissionsCount: 0,
+          isDeleted: false
+        }
+      ];
+
+      const existingPins = new Set([
+        ...parsed.homeworkAssignments.map((a: any) => String(a?.pinCode || "")),
+        ...parsed.homeworkTrash.map((a: any) => String(a?.pinCode || ""))
+      ]);
+      const userDeletedSet = new Set<string>(
+        Array.isArray(parsed.deletedHomeworkKeys[teacherUid]) ? parsed.deletedHomeworkKeys[teacherUid] : []
+      );
+
+      let seededAny = false;
+      for (const seed of seedHomeworks) {
+        if (!existingPins.has(seed.pinCode) && !userDeletedSet.has(`perm_${seed.pinCode}`)) {
+          parsed.homeworkAssignments.push(seed);
+          seededAny = true;
+        }
+      }
+
+      memoryCache = parsed;
+      if (seededAny) {
+        await writePlatformCache(parsed);
+      }
+      return memoryCache;
+    } catch (err) {
+      return {
+        games: [],
+        users: [],
+        activities: [],
+        homeworkAssignments: [],
+        homeworkTrash: [],
+        deletedHomeworkKeys: {},
+        homeworkSubmissions: [],
+        pageVisits: 558
+      };
+    }
+  }
+
+  async function writePlatformCache(data: any): Promise<void> {
+    memoryCache = data;
+    writeQueue = writeQueue.then(async () => {
+      try {
+        const fs = await import("fs/promises");
+        const tmpFile = `${PLATFORM_CACHE_FILE}.tmp`;
+        await fs.writeFile(tmpFile, JSON.stringify(data), "utf-8");
+        await fs.rename(tmpFile, PLATFORM_CACHE_FILE);
+      } catch (e) {
+        console.error("Failed to write platform cache:", e);
+      }
+    });
+    return writeQueue;
+  }
+
+  app.get("/api/platform-cache", async (_req, res) => {
+    try {
+      const data = await readPlatformCache();
       res.json(data);
     } catch (err: any) {
       res.json({});
@@ -38,10 +253,7 @@ async function startServer() {
 
   app.post("/api/platform-cache", async (req, res) => {
     try {
-      const fs = await import("fs/promises");
-      const existingRaw = await fs.readFile(PLATFORM_CACHE_FILE, "utf-8").catch(() => "{}");
-      const existing = JSON.parse(existingRaw || "{}");
-
+      const existing = await readPlatformCache();
       const incoming = req.body || {};
 
       // Merge games by id
@@ -86,6 +298,7 @@ async function startServer() {
       }
 
       const merged = {
+        ...existing,
         games: Array.from(gamesMap.values()),
         users: Array.from(usersMap.values()),
         activities: Array.from(actsMap.values()).slice(0, 300),
@@ -97,7 +310,7 @@ async function startServer() {
         updatedAt: Date.now(),
       };
 
-      await fs.writeFile(PLATFORM_CACHE_FILE, JSON.stringify(merged), "utf-8");
+      await writePlatformCache(merged);
       res.json({
         success: true,
         gamesCount: merged.games.length,
@@ -106,6 +319,535 @@ async function startServer() {
       });
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Cache error" });
+    }
+  });
+
+  // ============================================================================
+  // SERVER-SIDE HOMEWORK PERSISTENCE & PIN LOOKUP ENDPOINTS
+  // Guarantees homework counts, trash bin, student PIN links, & leaderboards work
+  // reliably across all devices even when Firestore quota is exhausted.
+  // ============================================================================
+
+  // Helper to populate questions from cached games if an assignment has empty questions
+  function enrichHomeworkQuestionsFromCache(hw: any, cache: any): any {
+    if (!hw) return hw;
+    if (Array.isArray(hw.questions) && hw.questions.length > 0) return hw;
+    if (String(hw.pinCode) === "764273" || String(hw.gameTitle || "").toLowerCase().includes("hula")) {
+      return { ...hw, questions: HULA_DANCING_QUESTIONS };
+    }
+    const matchedGame = (cache.games || []).find(
+      (g: any) =>
+        g &&
+        (String(g.id) === String(hw.gameId) ||
+          String(g.topic || g.name || g.title || "").toLowerCase() ===
+            String(hw.gameTitle || "").toLowerCase())
+    );
+    if (matchedGame) {
+      const rawQ = matchedGame.customQuestions || matchedGame.questions || [];
+      if (Array.isArray(rawQ) && rawQ.length > 0) {
+        return { ...hw, questions: rawQ };
+      }
+    }
+    return hw;
+  }
+
+  // GET /api/homework?userId=... -> fetch teacher's active assignments, trashed assignments, deleted keys, and submissions
+  app.get("/api/homework", async (req, res) => {
+    try {
+      const userId = String(req.query.userId || "").trim();
+      const cache = await readPlatformCache();
+      if (!userId) {
+        return res.json({ assignments: [], trash: [], deletedKeys: [], submissions: [] });
+      }
+      const deletedKeys: string[] = Array.isArray(cache.deletedHomeworkKeys?.[userId])
+        ? cache.deletedHomeworkKeys[userId]
+        : [];
+      const deletedSet = new Set(deletedKeys);
+
+      const assignments = (cache.homeworkAssignments || [])
+        .filter((a: any) => {
+          if (!a) return false;
+          const owner = a.userId || a.createdByUid;
+          if (owner && owner !== userId) return false;
+          if (a.isDeleted) return false;
+          if (deletedSet.has(String(a.id)) || (a.pinCode && deletedSet.has(String(a.pinCode)))) {
+            return false;
+          }
+          return true;
+        })
+        .map((a: any) => enrichHomeworkQuestionsFromCache(a, cache));
+
+      const trash = (cache.homeworkTrash || [])
+        .filter((t: any) => {
+          if (!t) return false;
+          const owner = t.userId || t.createdByUid;
+          if (owner && owner !== userId) return false;
+          if (t.pinCode && deletedSet.has(`perm_${t.pinCode}`)) return false;
+          return true;
+        })
+        .map((t: any) => enrichHomeworkQuestionsFromCache(t, cache));
+
+      const userPins = new Set([
+        ...assignments.map((a: any) => String(a.pinCode || "")),
+        ...trash.map((t: any) => String(t.pinCode || ""))
+      ]);
+      const submissions = (cache.homeworkSubmissions || []).filter(
+        (s: any) => s && (s.teacherUid === userId || (s.pinCode && userPins.has(String(s.pinCode))))
+      );
+
+      res.json({ assignments, trash, deletedKeys, submissions });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to load homework" });
+    }
+  });
+
+  // POST /api/homework/sync -> bidirectional sync of teacher's local homework state with server
+  app.post("/api/homework/sync", async (req, res) => {
+    try {
+      const { userId, assignments: clientActive, trash: clientTrash, deletedKeys: clientDeletedKeys, submissions: clientSubs } = req.body || {};
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+
+      const cache = await readPlatformCache();
+      const serverDeleted: string[] = Array.isArray(cache.deletedHomeworkKeys?.[userId])
+        ? cache.deletedHomeworkKeys[userId]
+        : [];
+      const mergedDeletedSet = new Set<string>([
+        ...serverDeleted,
+        ...(Array.isArray(clientDeletedKeys) ? clientDeletedKeys.map(String) : [])
+      ]);
+
+      // Track permanently deleted pins
+      const permDeletedPins = new Set<string>();
+      mergedDeletedSet.forEach((k) => {
+        if (k.startsWith("perm_")) permDeletedPins.add(k.replace(/^perm_/, ""));
+      });
+
+      // Map all trash items for this user by pinCode
+      const trashByPin = new Map<string, any>();
+      (cache.homeworkTrash || []).forEach((t: any) => {
+        if (!t) return;
+        const owner = t.userId || t.createdByUid;
+        if (owner === userId) {
+          const pin = String(t.pinCode || t.id);
+          if (!permDeletedPins.has(pin)) trashByPin.set(pin, enrichHomeworkQuestionsFromCache(t, cache));
+        }
+      });
+      if (Array.isArray(clientTrash)) {
+        clientTrash.forEach((t: any) => {
+          if (!t) return;
+          const pin = String(t.pinCode || t.id);
+          if (permDeletedPins.has(pin)) return;
+          const existing = trashByPin.get(pin);
+          if (!existing || (t.deletedAt || 0) >= (existing.deletedAt || 0)) {
+            trashByPin.set(pin, enrichHomeworkQuestionsFromCache({ ...t, userId, createdByUid: userId, isDeleted: true }, cache));
+          }
+        });
+      }
+
+      // Map all active items for this user by pinCode
+      const activeByPin = new Map<string, any>();
+      (cache.homeworkAssignments || []).forEach((a: any) => {
+        if (!a) return;
+        const owner = a.userId || a.createdByUid;
+        if (owner === userId && !a.isDeleted) {
+          const pin = String(a.pinCode || a.id);
+          if (!permDeletedPins.has(pin)) activeByPin.set(pin, enrichHomeworkQuestionsFromCache(a, cache));
+        }
+      });
+      if (Array.isArray(clientActive)) {
+        clientActive.forEach((a: any) => {
+          if (!a || a.isDeleted) return;
+          const pin = String(a.pinCode || a.id);
+          if (permDeletedPins.has(pin)) return;
+          const existing = activeByPin.get(pin);
+          if (!existing || (a.updatedAt || a.createdAt || 0) >= (existing.updatedAt || existing.createdAt || 0)) {
+            activeByPin.set(pin, enrichHomeworkQuestionsFromCache({ ...a, userId, createdByUid: userId, isDeleted: false }, cache));
+          }
+        });
+      }
+
+      // Reconcile items that appear in both activeByPin and trashByPin or mergedDeletedSet
+      for (const [pin, activeItem] of Array.from(activeByPin.entries())) {
+        const trashItem = trashByPin.get(pin);
+        const isMarkedDeleted =
+          mergedDeletedSet.has(pin) ||
+          mergedDeletedSet.has(String(activeItem.id)) ||
+          mergedDeletedSet.has(`hw_${pin}`);
+
+        if (trashItem) {
+          const trashTime = Number(trashItem.deletedAt || 0);
+          const restoreTime = Number(activeItem.restoredAt || activeItem.updatedAt || 0);
+          if (restoreTime > trashTime && !isMarkedDeleted) {
+            // Item was more recently restored than trashed
+            trashByPin.delete(pin);
+          } else {
+            // Item is in trash
+            activeByPin.delete(pin);
+            mergedDeletedSet.add(pin);
+            mergedDeletedSet.add(String(activeItem.id));
+          }
+        } else if (isMarkedDeleted) {
+          // Move from active to trash so it's never lost and count matches
+          activeByPin.delete(pin);
+          trashByPin.set(pin, {
+            ...activeItem,
+            isDeleted: true,
+            deletedAt: Date.now()
+          });
+        }
+      }
+
+      // Preserve other users' assignments & trash
+      const otherUsersActive = (cache.homeworkAssignments || []).filter((a: any) => {
+        const owner = a?.userId || a?.createdByUid;
+        return owner && owner !== userId;
+      });
+      const otherUsersTrash = (cache.homeworkTrash || []).filter((t: any) => {
+        const owner = t?.userId || t?.createdByUid;
+        return owner && owner !== userId;
+      });
+
+      const finalUserActive = Array.from(activeByPin.values()).sort(
+        (a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)
+      );
+      const finalUserTrash = Array.from(trashByPin.values()).sort(
+        (a: any, b: any) => (b.deletedAt || b.createdAt || 0) - (a.deletedAt || a.createdAt || 0)
+      );
+
+      // Merge submissions
+      const subsById = new Map<string, any>();
+      (cache.homeworkSubmissions || []).forEach((s: any) => {
+        if (s && s.id) subsById.set(String(s.id), s);
+      });
+      if (Array.isArray(clientSubs)) {
+        clientSubs.forEach((s: any) => {
+          if (s && s.id) subsById.set(String(s.id), s);
+        });
+      }
+
+      cache.homeworkAssignments = [...otherUsersActive, ...finalUserActive];
+      cache.homeworkTrash = [...otherUsersTrash, ...finalUserTrash];
+      cache.deletedHomeworkKeys[userId] = Array.from(mergedDeletedSet);
+      cache.homeworkSubmissions = Array.from(subsById.values());
+
+      await writePlatformCache(cache);
+
+      const userPins = new Set([
+        ...finalUserActive.map((a: any) => String(a.pinCode || "")),
+        ...finalUserTrash.map((t: any) => String(t.pinCode || ""))
+      ]);
+      const finalUserSubs = cache.homeworkSubmissions.filter(
+        (s: any) => s && (s.teacherUid === userId || (s.pinCode && userPins.has(String(s.pinCode))))
+      );
+
+      res.json({
+        assignments: finalUserActive,
+        trash: finalUserTrash,
+        deletedKeys: cache.deletedHomeworkKeys[userId],
+        submissions: finalUserSubs
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Sync failed" });
+    }
+  });
+
+  // POST /api/homework/save -> save or update a homework assignment
+  app.post("/api/homework/save", async (req, res) => {
+    try {
+      const { assignment, userId } = req.body || {};
+      if (!assignment || !assignment.pinCode) {
+        return res.status(400).json({ error: "Valid assignment with pinCode required" });
+      }
+      const cache = await readPlatformCache();
+      const ownerUid = userId || assignment.userId || assignment.createdByUid || "wnxUHR2dywQqrTmD6LE5LPamkQI2";
+      const pin = String(assignment.pinCode).trim();
+      const enriched = enrichHomeworkQuestionsFromCache(
+        {
+          ...assignment,
+          userId: ownerUid,
+          createdByUid: ownerUid,
+          isDeleted: false,
+          updatedAt: Date.now()
+        },
+        cache
+      );
+
+      // Remove from active with same pin/id, then prepend
+      cache.homeworkAssignments = [
+        enriched,
+        ...(cache.homeworkAssignments || []).filter(
+          (a: any) => a && String(a.pinCode) !== pin && String(a.id) !== String(enriched.id)
+        )
+      ];
+
+      // Remove from trash
+      cache.homeworkTrash = (cache.homeworkTrash || []).filter(
+        (t: any) => t && String(t.pinCode) !== pin && String(t.id) !== String(enriched.id)
+      );
+
+      // Remove from deletedHomeworkKeys
+      if (Array.isArray(cache.deletedHomeworkKeys?.[ownerUid])) {
+        const toRemove = new Set([pin, String(enriched.id), `hw_${pin}`, `hw-${pin}`, `perm_${pin}`]);
+        cache.deletedHomeworkKeys[ownerUid] = cache.deletedHomeworkKeys[ownerUid].filter(
+          (k: string) => !toRemove.has(String(k))
+        );
+      }
+
+      await writePlatformCache(cache);
+      res.json({ success: true, assignment: enriched });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to save homework" });
+    }
+  });
+
+  // POST /api/homework/delete -> move to trash or permanently delete
+  app.post("/api/homework/delete", async (req, res) => {
+    try {
+      const { assignmentId, pinCode, userId, assignment, permanent } = req.body || {};
+      const cache = await readPlatformCache();
+      const pin = String(pinCode || assignment?.pinCode || "").trim();
+      const id = String(assignmentId || assignment?.id || "").trim();
+
+      const target =
+        assignment ||
+        (cache.homeworkAssignments || []).find(
+          (a: any) => a && ((id && String(a.id) === id) || (pin && String(a.pinCode) === pin))
+        ) ||
+        (cache.homeworkTrash || []).find(
+          (t: any) => t && ((id && String(t.id) === id) || (pin && String(t.pinCode) === pin))
+        );
+
+      const ownerUid = userId || target?.userId || target?.createdByUid || "wnxUHR2dywQqrTmD6LE5LPamkQI2";
+      const effectivePin = pin || String(target?.pinCode || "");
+      const effectiveId = id || String(target?.id || "");
+
+      // Remove from active assignments
+      cache.homeworkAssignments = (cache.homeworkAssignments || []).filter(
+        (a: any) =>
+          a &&
+          (!effectiveId || String(a.id) !== effectiveId) &&
+          (!effectivePin || String(a.pinCode) !== effectivePin)
+      );
+
+      if (!Array.isArray(cache.deletedHomeworkKeys[ownerUid])) {
+        cache.deletedHomeworkKeys[ownerUid] = [];
+      }
+      const delSet = new Set<string>(cache.deletedHomeworkKeys[ownerUid]);
+      if (effectiveId) delSet.add(effectiveId);
+      if (effectivePin) {
+        delSet.add(effectivePin);
+        delSet.add(`hw_${effectivePin}`);
+      }
+
+      if (permanent) {
+        if (effectivePin) delSet.add(`perm_${effectivePin}`);
+        cache.homeworkTrash = (cache.homeworkTrash || []).filter(
+          (t: any) =>
+            t &&
+            (!effectiveId || String(t.id) !== effectiveId) &&
+            (!effectivePin || String(t.pinCode) !== effectivePin)
+        );
+      } else if (target) {
+        const trashedItem = enrichHomeworkQuestionsFromCache(
+          {
+            ...target,
+            userId: ownerUid,
+            createdByUid: ownerUid,
+            isDeleted: true,
+            deletedAt: Date.now()
+          },
+          cache
+        );
+        cache.homeworkTrash = [
+          trashedItem,
+          ...(cache.homeworkTrash || []).filter(
+            (t: any) =>
+              t &&
+              (!effectiveId || String(t.id) !== effectiveId) &&
+              (!effectivePin || String(t.pinCode) !== effectivePin)
+          )
+        ];
+      }
+
+      cache.deletedHomeworkKeys[ownerUid] = Array.from(delSet);
+      await writePlatformCache(cache);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to delete homework" });
+    }
+  });
+
+  // POST /api/homework/restore -> recover from trash back to active
+  app.post("/api/homework/restore", async (req, res) => {
+    try {
+      const { assignment, userId } = req.body || {};
+      if (!assignment) return res.status(400).json({ error: "Assignment is required" });
+      const cache = await readPlatformCache();
+      const ownerUid = userId || assignment.userId || assignment.createdByUid || "wnxUHR2dywQqrTmD6LE5LPamkQI2";
+      const pin = String(assignment.pinCode || "").trim();
+      const id = String(assignment.id || "").trim();
+
+      cache.homeworkTrash = (cache.homeworkTrash || []).filter(
+        (t: any) => t && (!id || String(t.id) !== id) && (!pin || String(t.pinCode) !== pin)
+      );
+
+      if (Array.isArray(cache.deletedHomeworkKeys?.[ownerUid])) {
+        const toRemove = new Set([id, pin, `hw_${pin}`, `hw-${pin}`, `perm_${pin}`]);
+        cache.deletedHomeworkKeys[ownerUid] = cache.deletedHomeworkKeys[ownerUid].filter(
+          (k: string) => !toRemove.has(String(k))
+        );
+      }
+
+      const restored = enrichHomeworkQuestionsFromCache(
+        {
+          ...assignment,
+          userId: ownerUid,
+          createdByUid: ownerUid,
+          isDeleted: false,
+          deletedAt: undefined,
+          restoredAt: Date.now(),
+          updatedAt: Date.now(),
+          status: "active"
+        },
+        cache
+      );
+
+      cache.homeworkAssignments = [
+        restored,
+        ...(cache.homeworkAssignments || []).filter(
+          (a: any) => a && (!id || String(a.id) !== id) && (!pin || String(a.pinCode) !== pin)
+        )
+      ];
+
+      await writePlatformCache(cache);
+      res.json({ success: true, assignment: restored });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to restore homework" });
+    }
+  });
+
+  // GET /api/homework/pin/:pin -> resolve any 6-digit homework PIN for students on any device
+  app.get("/api/homework/pin/:pin", async (req, res) => {
+    try {
+      const cleanPin = String(req.params.pin || "")
+        .trim()
+        .replace(/\s+/g, "")
+        .replace(/^hw[_-]/i, "")
+        .replace(/\D/g, "")
+        .slice(0, 6);
+      if (!cleanPin) return res.status(404).json({ error: "Invalid PIN" });
+
+      const cache = await readPlatformCache();
+
+      // 1. Check active homeworkAssignments
+      let found = (cache.homeworkAssignments || []).find(
+        (a: any) => a && (String(a.pinCode) === cleanPin || String(a.id) === cleanPin)
+      );
+
+      // 2. Also check homeworkTrash in case teacher shared a link before moving to trash
+      if (!found) {
+        found = (cache.homeworkTrash || []).find(
+          (t: any) => t && (String(t.pinCode) === cleanPin || String(t.id) === cleanPin)
+        );
+      }
+
+      if (found) {
+        const enriched = enrichHomeworkQuestionsFromCache(
+          { ...found, isDeleted: false, status: "active" },
+          cache
+        );
+        return res.json({ assignment: enriched });
+      }
+
+      return res.status(404).json({ error: "No active homework found for this PIN" });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Lookup error" });
+    }
+  });
+
+  // POST /api/homework/submission -> record a student's completed homework submission
+  app.post("/api/homework/submission", async (req, res) => {
+    try {
+      const { submission } = req.body || {};
+      if (!submission || !submission.id) {
+        return res.status(400).json({ error: "Valid submission is required" });
+      }
+      const cache = await readPlatformCache();
+      cache.homeworkSubmissions = [
+        submission,
+        ...(cache.homeworkSubmissions || []).filter((s: any) => s && String(s.id) !== String(submission.id))
+      ];
+
+      // Update submissionsCount on matching assignment
+      const aIdx = (cache.homeworkAssignments || []).findIndex(
+        (a: any) =>
+          a &&
+          (String(a.id) === String(submission.assignmentId) ||
+            (submission.pinCode && String(a.pinCode) === String(submission.pinCode)))
+      );
+      if (aIdx >= 0) {
+        const pin = cache.homeworkAssignments[aIdx].pinCode;
+        const count = cache.homeworkSubmissions.filter(
+          (s: any) =>
+            s &&
+            (String(s.assignmentId) === String(cache.homeworkAssignments[aIdx].id) ||
+              (pin && String(s.pinCode) === String(pin)))
+        ).length;
+        cache.homeworkAssignments[aIdx].submissionsCount = count;
+      }
+
+      await writePlatformCache(cache);
+      res.json({ success: true, submission });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to save submission" });
+    }
+  });
+
+  // GET /api/homework/leaderboard/:pin -> get all submissions for a homework PIN
+  app.get("/api/homework/leaderboard/:pin", async (req, res) => {
+    try {
+      const cleanPin = String(req.params.pin || "")
+        .trim()
+        .replace(/\s+/g, "")
+        .replace(/^hw[_-]/i, "")
+        .replace(/\D/g, "")
+        .slice(0, 6);
+      const cache = await readPlatformCache();
+      const subs = (cache.homeworkSubmissions || []).filter(
+        (s: any) => s && String(s.pinCode) === cleanPin
+      );
+      res.json({ submissions: subs });
+    } catch (err: any) {
+      res.json({ submissions: [] });
+    }
+  });
+
+  // POST /api/homework/remove-player -> remove a student or submission from homework leaderboard
+  app.post("/api/homework/remove-player", async (req, res) => {
+    try {
+      const { submissionId, pinCode, studentName } = req.body || {};
+      const cache = await readPlatformCache();
+      const targetPin = String(pinCode || "").trim();
+      const targetStudent = String(studentName || "").trim().toLowerCase();
+
+      cache.homeworkSubmissions = (cache.homeworkSubmissions || []).filter((s: any) => {
+        if (!s) return false;
+        if (submissionId && String(s.id) === String(submissionId)) return false;
+        if (
+          targetPin &&
+          targetStudent &&
+          String(s.pinCode) === targetPin &&
+          String(s.studentName || "").trim().toLowerCase() === targetStudent
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      await writePlatformCache(cache);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to remove player" });
     }
   });
 

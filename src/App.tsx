@@ -44,7 +44,7 @@ import { GoogleAuthModal } from "./components/GoogleAuthModal";
 
 export default function App() {
   // Synchronously detect direct student homework links (?hwPin=... or #homework-...)
-  const getUrlHwPin = () => {
+  const getUrlHwPin = (preserveExisting = false) => {
     if (typeof window === 'undefined') return null;
     try {
       // 1. Check window.location.search (?hwPin=... or ?pin=...)
@@ -64,8 +64,16 @@ export default function App() {
       }
 
       if (pin) {
-        sessionStorage.setItem('active_hw_pin', pin);
-        return pin;
+        const cleanMatch = pin.trim().match(/\d{6}/);
+        const cleanPin = cleanMatch ? cleanMatch[0] : pin.trim().replace(/[^0-9A-Za-z_-]/g, '');
+        if (cleanPin) {
+          sessionStorage.setItem('active_hw_pin', cleanPin);
+          return cleanPin;
+        }
+      }
+      if (preserveExisting) {
+        const saved = sessionStorage.getItem('active_hw_pin');
+        if (saved) return saved;
       }
       sessionStorage.removeItem('active_hw_pin');
       return null;
@@ -122,13 +130,16 @@ export default function App() {
     setIsGoogleAuthModalOpen(true);
   };
 
-  // Route new sign-ins directly to "home" while preserving homework
+  // Route new sign-ins directly to "home" while preserving homework and active PIN
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const justLoggedIn = !prevUserRef.current || prevUserRef.current.isAnonymous;
       if (justLoggedIn) {
-        // Never override homework if opened with PIN in URL or already in homework view
-        const hasHwInUrl = Boolean(getUrlHwPin()) || isLockedHomeworkLink;
+        const activePin = getUrlHwPin(true);
+        const hasHwInUrl = Boolean(activePin) || isLockedHomeworkLink;
+        if (hasHwInUrl && activePin) {
+          setSelectedGame((prev: any) => (prev?.pinCode ? prev : { pinCode: activePin }));
+        }
         setCurrentView((prev) => (prev === 'homework' || hasHwInUrl ? 'homework' : 'home'));
       }
     }
@@ -175,14 +186,14 @@ export default function App() {
 
   useEffect(() => {
     const checkUrlParams = () => {
-      const params = new URLSearchParams(window.location.search);
-      const hwPin = params.get('hwPin') || params.get('pin') || (window.location.hash?.startsWith('#homework-') ? window.location.hash.replace('#homework-', '') : null);
+      const hwPin = getUrlHwPin(false);
       if (hwPin) {
         setIsLockedHomeworkLink(true);
         setSelectedGame({ pinCode: hwPin });
         setCurrentView('homework');
         return;
       }
+      const params = new URLSearchParams(window.location.search);
       const gameParam = params.get('game');
       const roomParam = params.get('room') || params.get('paintballRoom');
       if (gameParam === 'hamster-paintball' || params.get('paintballRoom')) {

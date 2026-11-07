@@ -154,6 +154,7 @@ export function CreateHomeworkModal({
       'Homework Assignment';
     const initClass =
       normalizedGame.classLevel ||
+      normalizedGame.className ||
       normalizedGame.curriculum ||
       normalizedGame.cambridgeLevel ||
       normalizedGame.schoolGrade ||

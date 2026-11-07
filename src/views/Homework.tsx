@@ -197,13 +197,35 @@ function playHomeworkSfx(type: HomeworkSoundEffect, enabled = true, streakCount 
   }
 }
 
+function extractHomeworkPinFromUrl(initialData?: any): string | null {
+  let rawPin = initialData?.pinCode || null;
+  if (!rawPin && typeof window !== 'undefined') {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      rawPin = params.get('hwPin') || params.get('pin');
+      if (!rawPin && window.location.hash) {
+        const hash = window.location.hash;
+        if (hash.includes('hwPin=') || hash.includes('pin=')) {
+          const qPart = hash.includes('?') ? hash.split('?')[1] : hash.replace(/^#\/?/, '');
+          const hashParams = new URLSearchParams(qPart);
+          rawPin = hashParams.get('hwPin') || hashParams.get('pin');
+        } else if (hash.startsWith('#homework-')) {
+          rawPin = hash.replace('#homework-', '').replace(/^\/+/, '');
+        }
+      }
+      if (!rawPin) {
+        rawPin = sessionStorage.getItem('active_hw_pin');
+      }
+    } catch {}
+  }
+  if (!rawPin) return null;
+  const str = String(rawPin).trim();
+  const sixDigits = str.match(/\d{6}/);
+  return sixDigits ? sixDigits[0] : str.replace(/[^0-9A-Za-z_-]/g, '');
+}
+
 function hasHomeworkPinInUrl(initialData?: any): boolean {
-  if (initialData?.pinCode) return true;
-  if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('hwPin') || params.get('pin')) return true;
-  if (window.location.hash?.startsWith('#homework-')) return true;
-  return false;
+  return Boolean(extractHomeworkPinFromUrl(initialData));
 }
 
 export function Homework({
@@ -308,14 +330,37 @@ export function Homework({
   const loadData = async () => {
     setLoading(true);
     try {
-      // Sync user's Firestore games into local cache if signed in
+      // Sync user's games into local cache if signed in (from server platform-cache + Firestore)
       if (user?.uid) {
         try {
-          const q = query(collection(db, 'mysteryBoxGames'), where('userId', '==', user.uid));
-          const snap = await getDocs(q);
-          const cloudGames = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          if (cloudGames.length > 0 && typeof window !== 'undefined') {
-            localStorage.setItem('hamster_cached_user_games', JSON.stringify(cloudGames));
+          const gamesMap = new Map<string, any>();
+          try {
+            const cacheRes = await fetch('/api/platform-cache');
+            if (cacheRes.ok) {
+              const cacheData = await cacheRes.json();
+              if (Array.isArray(cacheData?.games)) {
+                cacheData.games.forEach((g: any) => {
+                  if (g && g.id && g.userId === user.uid) {
+                    gamesMap.set(String(g.id), g);
+                  }
+                });
+              }
+            }
+          } catch {}
+
+          try {
+            const q = query(collection(db, 'mysteryBoxGames'), where('userId', '==', user.uid));
+            const snap = await getDocs(q);
+            snap.docs.forEach((d) => {
+              gamesMap.set(d.id, { id: d.id, ...d.data() });
+            });
+          } catch {}
+
+          if (gamesMap.size > 0 && typeof window !== 'undefined') {
+            localStorage.setItem(
+              'hamster_cached_user_games',
+              JSON.stringify(Array.from(gamesMap.values()))
+            );
           }
         } catch {
           // ignore offline
@@ -395,19 +440,14 @@ export function Homework({
         return;
       }
 
-      let pin = initialData?.pinCode;
-      if (!pin && typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        pin = params.get('hwPin') || params.get('pin');
-        if (!pin && window.location.hash?.startsWith('#homework-')) {
-          pin = window.location.hash.replace('#homework-', '');
-        }
-      }
+      const pin = extractHomeworkPinFromUrl(initialData);
       if (pin) {
         setIsUrlStudentLink(true);
         setPinInput(pin);
         setActiveRole('student');
-        resolvePinAndPromptName(pin);
+        if (!isTakingHomework || activeStudentAssignment?.pinCode !== pin) {
+          resolvePinAndPromptName(pin);
+        }
       } else if (!user || user.isAnonymous) {
         setActiveRole('student');
       }
@@ -760,7 +800,7 @@ export function Homework({
     if (selectedAssignmentFilter === assignmentId) {
       setSelectedAssignmentFilter('all');
     }
-    await deleteHomeworkAssignment(assignmentId, pinCode, user?.uid);
+    await deleteHomeworkAssignment(assignmentId, pinCode, user?.uid, targetToTrash);
   };
 
   // Recover a deleted homework from Trash Bin back to active assignments
