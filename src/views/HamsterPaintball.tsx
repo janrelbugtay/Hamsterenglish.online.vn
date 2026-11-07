@@ -89,7 +89,7 @@ interface Quiz {
   isPublic?: boolean;
 }
 
-const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
+const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 // =============================================================
 // DEFAULT ESL PAINTBALL TRIVIA QUESTIONS
@@ -145,8 +145,116 @@ const DEFAULT_TRIVIA: Question[] = [
   }
 ];
 
+// Normalize questions across all game schemas (Bubble Pop, Mystery Box, Homework, Custom Sets)
+function normalizePaintballQuestions(rawList: any): Question[] {
+  if (!Array.isArray(rawList)) return [];
+  const normalized: Question[] = [];
+
+  rawList.forEach((raw, idx) => {
+    if (!raw || typeof raw !== 'object') return;
+
+    // Extract question text & any embedded image URL (`text ||| imageUrl`)
+    const rawQuestionStr = String(
+      raw.text ?? raw.question ?? raw.prompt ?? raw.title ?? ''
+    ).trim();
+    const parsedQ = parseOptionContent(rawQuestionStr);
+    const cleanText = parsedQ.text.trim();
+    const cleanImage =
+      (typeof raw.image === 'string' && raw.image.trim()) ||
+      (typeof raw.imageUrl === 'string' && raw.imageUrl.trim()) ||
+      (typeof raw.mediaUrl === 'string' && raw.mediaUrl.trim()) ||
+      parsedQ.imageUrl ||
+      undefined;
+
+    // Extract options from `options` or `answers` or `choices`
+    let rawOptions: any[] = [];
+    if (Array.isArray(raw.options)) {
+      rawOptions = raw.options;
+    } else if (Array.isArray(raw.answers)) {
+      rawOptions = raw.answers;
+    } else if (Array.isArray(raw.choices)) {
+      rawOptions = raw.choices;
+    }
+
+    let inferredCorrectIdx = -1;
+    const cleanOptions: string[] = rawOptions
+      .map((opt: any, oIdx: number) => {
+        if (typeof opt === 'string') return opt.trim();
+        if (opt && typeof opt === 'object') {
+          if (opt.isCorrect || opt.correct) inferredCorrectIdx = oIdx;
+          const t = String(opt.text ?? opt.label ?? opt.value ?? '').trim();
+          const img = String(opt.image ?? opt.imageUrl ?? '').trim();
+          return img ? formatOptionContent(t, img) : t;
+        }
+        return String(opt ?? '').trim();
+      })
+      .filter((o: string) => o.length > 0);
+
+    // Skip completely empty placeholder questions
+    if (!cleanText && !cleanImage && cleanOptions.length < 2) {
+      return;
+    }
+
+    const finalOptions =
+      cleanOptions.length >= 2
+        ? cleanOptions
+        : ['Option A', 'Option B', 'Option C', 'Option D'];
+
+    // Resolve correct answer index from `answerIndex`, `correct`, `correctIndex`, or `correctAnswer`
+    let ansIdx = inferredCorrectIdx;
+    const candidateIdx =
+      raw.answerIndex ?? raw.correct ?? raw.correctIndex ?? raw.correctOption;
+
+    if (typeof candidateIdx === 'number' && !Number.isNaN(candidateIdx)) {
+      ansIdx = candidateIdx;
+    } else if (typeof candidateIdx === 'string' && candidateIdx.trim() !== '') {
+      const num = Number(candidateIdx.trim());
+      if (!Number.isNaN(num)) {
+        ansIdx = num;
+      } else {
+        const letterIdx = OPTION_LETTERS.indexOf(candidateIdx.trim().toUpperCase());
+        if (letterIdx !== -1) ansIdx = letterIdx;
+      }
+    }
+
+    if (
+      (ansIdx < 0 || ansIdx >= finalOptions.length) &&
+      typeof (raw.correctAnswer ?? raw.answer) === 'string'
+    ) {
+      const targetStr = String(raw.correctAnswer ?? raw.answer).trim().toLowerCase();
+      const letterIdx = OPTION_LETTERS.indexOf(targetStr.toUpperCase());
+      if (letterIdx !== -1 && letterIdx < finalOptions.length) {
+        ansIdx = letterIdx;
+      } else {
+        const foundOptIdx = finalOptions.findIndex(o => {
+          const p = parseOptionContent(o);
+          return (
+            o.trim().toLowerCase() === targetStr ||
+            p.text.trim().toLowerCase() === targetStr
+          );
+        });
+        if (foundOptIdx !== -1) ansIdx = foundOptIdx;
+      }
+    }
+
+    if (ansIdx < 0 || ansIdx >= finalOptions.length) {
+      ansIdx = 0;
+    }
+
+    normalized.push({
+      id: raw.id ?? idx + 1,
+      text: cleanText || (cleanImage ? 'Look at the picture and choose the correct answer:' : `Question ${idx + 1}`),
+      options: finalOptions,
+      answerIndex: ansIdx,
+      ...(cleanImage ? { image: cleanImage } : {})
+    });
+  });
+
+  return normalized;
+}
+
 // =============================================================
-// HAMSTER PAINTBALL CHARACTERS (6 ILLUSTRATED 3D / SVG CHARACTERS)
+// HAMSTER PAINTBALL CHARACTERS (6 FULL-BODY ILLUSTRATED CHARACTERS)
 // =============================================================
 interface HamsterSkin {
   id: string;
@@ -161,6 +269,7 @@ interface HamsterSkin {
   visorHex: string;
   strapColor: number;
   vestColor: number;
+  vestHex: string;
   paintColor: number;
   paintHex: string;
   badgeBg: string;
@@ -181,6 +290,7 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     visorHex: '#ec4899',
     strapColor: 0xbe185d,
     vestColor: 0x1e293b,
+    vestHex: '#1e293b',
     paintColor: 0xa3e635,
     paintHex: '#a3e635',
     badgeBg: '#f59e0b',
@@ -199,6 +309,7 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     visorHex: '#f97316',
     strapColor: 0xc2410c,
     vestColor: 0x0f172a,
+    vestHex: '#0f172a',
     paintColor: 0x22d3ee,
     paintHex: '#22d3ee',
     badgeBg: '#14b8a6',
@@ -208,8 +319,8 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     id: 'cocoa',
     name: 'Shadow Paws',
     roleTitle: 'Stealth Scout',
-    furColor: 0x572607,
-    furHex: '#572607',
+    furColor: 0x78350f,
+    furHex: '#78350f',
     earInnerHex: '#fdba74',
     bellyColor: 0xfde68a,
     bellyHex: '#fde68a',
@@ -217,17 +328,18 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     visorHex: '#06b6d4',
     strapColor: 0x0369a1,
     vestColor: 0x18181b,
+    vestHex: '#18181b',
     paintColor: 0xf43f5e,
     paintHex: '#f43f5e',
-    badgeBg: '#78350f',
+    badgeBg: '#92400e',
     headgear: 'SpecOps'
   },
   {
     id: 'snow',
     name: 'Arctic Frost',
     roleTitle: 'Ice Defender',
-    furColor: 0xe2e8f0,
-    furHex: '#e2e8f0',
+    furColor: 0xcbd5e1,
+    furHex: '#cbd5e1',
     earInnerHex: '#f9a8d4',
     bellyColor: 0xffffff,
     bellyHex: '#ffffff',
@@ -235,6 +347,7 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     visorHex: '#84cc16',
     strapColor: 0x4d7c0f,
     vestColor: 0x334155,
+    vestHex: '#334155',
     paintColor: 0xa855f7,
     paintHex: '#a855f7',
     badgeBg: '#64748b',
@@ -253,6 +366,7 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     visorHex: '#facc15',
     strapColor: 0xa16207,
     vestColor: 0x1e1b4b,
+    vestHex: '#1e1b4b',
     paintColor: 0xfacc15,
     paintHex: '#facc15',
     badgeBg: '#7c3aed',
@@ -271,6 +385,7 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     visorHex: '#38bdf8',
     strapColor: 0x0284c7,
     vestColor: 0x3b0764,
+    vestHex: '#3b0764',
     paintColor: 0xf472b6,
     paintHex: '#f472b6',
     badgeBg: '#db2777',
@@ -280,7 +395,7 @@ const HAMSTER_SKINS: HamsterSkin[] = [
 
 function HamsterCharacterAvatar({
   skin,
-  size = 56
+  size = 64
 }: {
   skin: HamsterSkin;
   size?: number;
@@ -289,99 +404,224 @@ function HamsterCharacterAvatar({
     <svg
       width={size}
       height={size}
-      viewBox="0 0 80 80"
-      className="overflow-visible select-none shrink-0 drop-shadow-sm"
+      viewBox="0 0 100 106"
+      className="overflow-visible select-none shrink-0 drop-shadow-md"
     >
-      {/* Background Glow Circle */}
-      <circle cx="40" cy="42" r="34" fill={skin.badgeBg} opacity="0.22" />
+      {/* Soft Character Aura & Ground Shadow */}
+      <circle cx="50" cy="52" r="44" fill={skin.badgeBg} opacity="0.18" />
+      <ellipse cx="50" cy="98" rx="30" ry="6" fill="#0f172a" opacity="0.22" />
+
+      {/* Hamster Feet */}
+      <ellipse cx="34" cy="94" rx="10" ry="5.5" fill={skin.earInnerHex} stroke="#0f172a" strokeWidth="2.4" />
+      <ellipse cx="66" cy="94" rx="10" ry="5.5" fill={skin.earInnerHex} stroke="#0f172a" strokeWidth="2.4" />
+
+      {/* Plump Full-Body Hamster Torso */}
+      <path
+        d="M 22 62 C 18 45, 28 38, 50 38 C 72 38, 82 45, 78 62 C 82 82, 72 95, 50 95 C 28 95, 18 82, 22 62 Z"
+        fill={skin.furHex}
+        stroke="#0f172a"
+        strokeWidth="2.8"
+      />
+
+      {/* Soft Cream Belly Patch */}
+      <ellipse cx="50" cy="73" rx="20" ry="16" fill={skin.bellyHex} />
+
+      {/* Tactical Paintball Chest Vest */}
+      <path
+        d="M 27 58 L 73 58 L 69 89 C 69 92, 31 92, 31 89 Z"
+        fill={skin.vestHex}
+        stroke="#0f172a"
+        strokeWidth="2.4"
+      />
+      {/* Vest Neon Paint Stripes & Chest Emblem */}
+      <line x1="36" y1="60" x2="36" y2="88" stroke={skin.paintHex} strokeWidth="3" strokeLinecap="round" />
+      <line x1="64" y1="60" x2="64" y2="88" stroke={skin.paintHex} strokeWidth="3" strokeLinecap="round" />
+      <rect
+        x="42"
+        y="67"
+        width="16"
+        height="11"
+        rx="3"
+        fill="#0f172a"
+        stroke={skin.visorHex}
+        strokeWidth="1.8"
+      />
+      <circle cx="50" cy="72.5" r="2.8" fill={skin.paintHex} />
+
       {/* Left & Right Round Hamster Ears */}
-      <circle cx="19" cy="21" r="11" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.5" />
-      <circle cx="19" cy="21" r="6" fill={skin.earInnerHex} />
-      <circle cx="61" cy="21" r="11" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.5" />
-      <circle cx="61" cy="21" r="6" fill={skin.earInnerHex} />
+      <circle cx="24" cy="21" r="12" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.8" />
+      <circle cx="24" cy="21" r="6.8" fill={skin.earInnerHex} />
+      <circle cx="76" cy="21" r="12" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.8" />
+      <circle cx="76" cy="21" r="6.8" fill={skin.earInnerHex} />
 
       {/* Plump Hamster Head & Chubby Cheeks */}
       <path
-        d="M 14 45 C 12 24, 25 16, 40 16 C 55 16, 68 24, 66 45 C 69 57, 57 67, 40 67 C 23 67, 11 57, 14 45 Z"
+        d="M 18 44 C 15 22, 30 14, 50 14 C 70 14, 85 22, 82 44 C 86 58, 72 67, 50 67 C 28 67, 14 58, 18 44 Z"
         fill={skin.furHex}
         stroke="#0f172a"
-        strokeWidth="2.5"
+        strokeWidth="2.8"
       />
 
-      {/* Cream Belly/Muzzle Patch */}
-      <ellipse cx="40" cy="52" rx="18" ry="12" fill={skin.bellyHex} />
+      {/* Face Muzzle Patch */}
+      <ellipse cx="50" cy="53" rx="20" ry="11.5" fill={skin.bellyHex} />
 
-      {/* Rosy Cheeks */}
-      <ellipse cx="21" cy="49" rx="5.5" ry="3.5" fill="#fb7185" opacity="0.7" />
-      <ellipse cx="59" cy="49" rx="5.5" ry="3.5" fill="#fb7185" opacity="0.7" />
+      {/* Rosy Chubby Cheeks & Whiskers */}
+      <ellipse cx="26" cy="50" rx="6" ry="3.8" fill="#fb7185" opacity="0.78" />
+      <ellipse cx="74" cy="50" rx="6" ry="3.8" fill="#fb7185" opacity="0.78" />
+      <line x1="11" y1="47" x2="21" y2="48" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="12" y1="52" x2="21" y2="51" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="89" y1="47" x2="79" y2="48" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="88" y1="52" x2="79" y2="51" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
 
-      {/* Character Headgear */}
+      {/* Distinct Character Headgear */}
       {skin.headgear === 'Bandana' && (
-        <path
-          d="M 16 29 Q 40 21 64 29 L 62 22 Q 40 15 18 22 Z"
-          fill="#ef4444"
-          stroke="#0f172a"
-          strokeWidth="2"
-        />
+        <g>
+          <path
+            d="M 20 28 Q 50 19 80 28 L 77 20 Q 50 12 23 20 Z"
+            fill="#ef4444"
+            stroke="#0f172a"
+            strokeWidth="2.2"
+          />
+          <circle cx="50" cy="21" r="2.5" fill="#fef08a" />
+        </g>
       )}
       {skin.headgear === 'Helmet' && (
         <path
-          d="M 17 30 C 19 16, 61 16, 63 30 Z"
+          d="M 21 29 C 23 12, 77 12, 79 29 Z"
           fill="#0f172a"
           stroke="#22d3ee"
-          strokeWidth="2"
+          strokeWidth="2.4"
         />
+      )}
+      {skin.headgear === 'SpecOps' && (
+        <g>
+          <path
+            d="M 22 27 C 26 14, 74 14, 78 27 Z"
+            fill="#18181b"
+            stroke="#f43f5e"
+            strokeWidth="2.2"
+          />
+          <circle cx="38" cy="20" r="3.5" fill="#22c55e" stroke="#0f172a" strokeWidth="1.5" />
+          <circle cx="62" cy="20" r="3.5" fill="#22c55e" stroke="#0f172a" strokeWidth="1.5" />
+        </g>
       )}
       {skin.headgear === 'Crown' && (
         <polygon
-          points="27,18 32,8 40,15 48,8 53,18"
+          points="32,18 39,5 50,14 61,5 68,18"
           fill="#facc15"
           stroke="#0f172a"
-          strokeWidth="2"
+          strokeWidth="2.2"
         />
+      )}
+      {skin.headgear === 'Cyber' && (
+        <g>
+          <polygon
+            points="30,19 50,7 70,19"
+            fill="#facc15"
+            stroke="#0f172a"
+            strokeWidth="2.2"
+          />
+          <circle cx="50" cy="14" r="3" fill="#7c3aed" />
+        </g>
+      )}
+      {skin.headgear === 'Blossom' && (
+        <g>
+          <circle cx="33" cy="16" r="6" fill="#fbcfe8" stroke="#0f172a" strokeWidth="2" />
+          <circle cx="33" cy="16" r="2.5" fill="#facc15" />
+          <circle cx="67" cy="16" r="6" fill="#fbcfe8" stroke="#0f172a" strokeWidth="2" />
+          <circle cx="67" cy="16" r="2.5" fill="#facc15" />
+        </g>
       )}
 
       {/* Pro Paintball Tactical Goggles / Visor */}
       <rect
-        x="17"
-        y="29"
-        width="46"
-        height="16"
-        rx="8"
+        x="21"
+        y="28"
+        width="58"
+        height="18"
+        rx="9"
         fill={skin.visorHex}
         stroke="#0f172a"
-        strokeWidth="2.8"
+        strokeWidth="3"
       />
-      {/* Goggle Glare Highlight */}
-      <path
-        d="M 23 33 L 36 33 L 32 41 L 21 41 Z"
-        fill="#ffffff"
-        opacity="0.55"
-      />
-      <circle cx="53" cy="35" r="2.2" fill="#ffffff" opacity="0.75" />
+      {/* Goggle Lens Shine & Eyes */}
+      <path d="M 28 32 L 43 32 L 38 42 L 25 42 Z" fill="#ffffff" opacity="0.55" />
+      <circle cx="37" cy="37" r="2.6" fill="#0f172a" />
+      <circle cx="63" cy="37" r="2.6" fill="#0f172a" />
+      <circle cx="38" cy="36" r="1" fill="#ffffff" />
+      <circle cx="64" cy="36" r="1" fill="#ffffff" />
 
-      {/* Cute Pink Nose & Happy Mouth */}
-      <ellipse cx="40" cy="49" rx="4" ry="2.8" fill="#f43f5e" stroke="#0f172a" strokeWidth="1.5" />
+      {/* Cute Pink Nose, Smile & Hamster Tooth */}
+      <ellipse cx="50" cy="49" rx="4.5" ry="3.2" fill="#f43f5e" stroke="#0f172a" strokeWidth="1.6" />
       <path
-        d="M 35 54 Q 40 58 45 54"
+        d="M 44 54 Q 50 59 56 54"
         fill="none"
         stroke="#0f172a"
-        strokeWidth="2.2"
+        strokeWidth="2.3"
         strokeLinecap="round"
       />
-      {/* Cute Buck Tooth */}
-      <rect x="38.5" y="55" width="3.2" height="3.8" rx="1" fill="#ffffff" stroke="#0f172a" strokeWidth="1.2" />
-
-      {/* Mini Paintball Marker Icon on Corner */}
-      <circle
-        cx="64"
-        cy="62"
-        r="9"
-        fill={skin.paintHex}
+      <rect
+        x="48"
+        y="55.5"
+        width="4"
+        height="4.5"
+        rx="1.2"
+        fill="#ffffff"
         stroke="#0f172a"
-        strokeWidth="2.2"
+        strokeWidth="1.3"
       />
-      <circle cx="62" cy="60" r="2.5" fill="#ffffff" opacity="0.7" />
+
+      {/* Left Hamster Paw */}
+      <circle cx="25" cy="72" r="7" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.4" />
+
+      {/* Paintball Marker Blaster Held Across Chest */}
+      <g transform="rotate(-10 62 72)">
+        {/* Hopper (Paintball Tank on top) */}
+        <ellipse
+          cx="58"
+          cy="60"
+          rx="9"
+          ry="6"
+          fill={skin.paintHex}
+          stroke="#0f172a"
+          strokeWidth="2.2"
+        />
+        {/* Blaster Body & Barrel */}
+        <rect
+          x="48"
+          y="66"
+          width="32"
+          height="9"
+          rx="4"
+          fill="#38bdf8"
+          stroke="#0f172a"
+          strokeWidth="2.2"
+        />
+        <rect
+          x="76"
+          y="67.5"
+          width="12"
+          height="6"
+          rx="2.5"
+          fill={skin.paintHex}
+          stroke="#0f172a"
+          strokeWidth="2"
+        />
+        {/* Grip */}
+        <rect
+          x="53"
+          y="73"
+          width="7"
+          height="10"
+          rx="2.5"
+          fill="#1e293b"
+          stroke="#0f172a"
+          strokeWidth="2"
+        />
+      </g>
+
+      {/* Right Hamster Paw Holding Blaster */}
+      <circle cx="75" cy="74" r="7" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.4" />
     </svg>
   );
 }
@@ -674,24 +914,31 @@ export default function HamsterPaintball({
   // -------------------------------------------------------------
   const hasLoadedQuestions = Boolean(
     initialGame &&
-      ((Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0) ||
-        (Array.isArray(initialGame.questions) && initialGame.questions.length > 0))
+      normalizePaintballQuestions(
+        Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0
+          ? initialGame.customQuestions
+          : initialGame.questions
+      ).length > 0
   );
 
   const [activeQuiz, setActiveQuiz] = useState<Quiz>(() => {
     if (initialGame && !initialSetup.current.isJoiningStudent) {
-      const qList =
+      const rawList =
         Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0
           ? initialGame.customQuestions
           : Array.isArray(initialGame.questions) && initialGame.questions.length > 0
           ? initialGame.questions
-          : [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }];
+          : [];
+      const normalizedQs = normalizePaintballQuestions(rawList);
       return {
         id: initialGame.id || Date.now(),
         title: initialGame.name || initialGame.title || initialGame.topic || '',
         topic: initialGame.topic || initialGame.name || '',
         classLevel: initialGame.className || initialGame.classLevel || '',
-        questions: qList,
+        questions:
+          normalizedQs.length > 0
+            ? normalizedQs
+            : [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }],
         folderId: initialGame.folderId || ''
       };
     }
@@ -751,16 +998,20 @@ export default function HamsterPaintball({
     if (initialGame.roomCode && String(initialGame.roomCode).trim()) {
       const codeClean = String(initialGame.roomCode).trim().slice(0, 6);
       setRoomCode(codeClean);
+      if (initialGame.playerName) {
+        setPlayerName(String(initialGame.playerName).slice(0, 16));
+      }
       setRole('player');
       setScreen('join');
       return;
     }
-    const qList =
+    const rawList =
       Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0
         ? initialGame.customQuestions
         : Array.isArray(initialGame.questions) && initialGame.questions.length > 0
         ? initialGame.questions
-        : [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }];
+        : [];
+    const normalizedQs = normalizePaintballQuestions(rawList);
 
     setActiveQuiz({
       id: initialGame.id || Date.now(),
@@ -768,14 +1019,14 @@ export default function HamsterPaintball({
       folderId: initialGame.folderId || '',
       topic: initialGame.topic || initialGame.name || '',
       classLevel: initialGame.className || initialGame.classLevel || '',
-      questions: qList
+      questions:
+        normalizedQs.length > 0
+          ? normalizedQs
+          : [{ id: Date.now(), text: '', options: ['', '', '', ''], answerIndex: 0 }]
     });
+    setTriviaDeckIndex(0);
 
-    const loaded =
-      (Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0) ||
-      (Array.isArray(initialGame.questions) && initialGame.questions.length > 0);
-
-    if (!initialGame.editMode && loaded) {
+    if (!initialGame.editMode && normalizedQs.length > 0) {
       setRole('host');
       setScreen('lobby');
     } else {
@@ -932,6 +1183,7 @@ export default function HamsterPaintball({
   const [triviaStreak, setTriviaStreak] = useState<number>(0);
   const [triviaDeckIndex, setTriviaDeckIndex] = useState<number>(0);
   const [triviaFeedback, setTriviaFeedback] = useState<string | null>(null);
+  const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
 
   // Mobile Touch Virtual Joystick State
   const [joystickVec, setJoystickVec] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -946,13 +1198,20 @@ export default function HamsterPaintball({
 
   const liveDisplayHost = 'www.hamsterenglish.online';
 
-  // Effective questions list (always falls back to DEFAULT_TRIVIA if questions are blank)
+  // Effective questions list (normalized across all schemas; falls back to DEFAULT_TRIVIA if blank)
   const effectiveQuestions = React.useMemo(() => {
-    const valid = (activeQuiz.questions || []).filter(
-      q => (q.text && q.text.trim().length > 0) || q.image
-    );
+    const valid = normalizePaintballQuestions(activeQuiz.questions);
     return valid.length > 0 ? valid : DEFAULT_TRIVIA;
   }, [activeQuiz.questions]);
+
+  // Enforce: Answer questions ONLY during the active game (`matchStatus === 'playing'`)
+  useEffect(() => {
+    if (matchStatus !== 'playing') {
+      setIsQuestionModalOpen(false);
+      setTriviaFeedback(null);
+      setSelectedOptionIdx(null);
+    }
+  }, [matchStatus]);
 
   // Keep roomCode in sessionStorage
   useEffect(() => {
@@ -1197,13 +1456,16 @@ export default function HamsterPaintball({
         const data = snap.data();
         if (role === 'player') {
           if (Array.isArray(data?.questions) && data.questions.length > 0) {
-            setActiveQuiz(prev => ({
-              ...prev,
-              title: data.quizTitle || prev.title || 'Hamster Paintball',
-              topic: data.topic || prev.topic || '',
-              classLevel: data.classLevel || prev.classLevel || '',
-              questions: data.questions
-            }));
+            const normRoomQs = normalizePaintballQuestions(data.questions);
+            if (normRoomQs.length > 0) {
+              setActiveQuiz(prev => ({
+                ...prev,
+                title: data.quizTitle || prev.title || 'Hamster Paintball',
+                topic: data.topic || prev.topic || '',
+                classLevel: data.classLevel || prev.classLevel || '',
+                questions: normRoomQs
+              }));
+            }
           }
           if (data?.matchMode) setMatchMode(data.matchMode);
           if (typeof data?.ballsPerQuestion === 'number') {
@@ -1308,8 +1570,22 @@ export default function HamsterPaintball({
           });
         } else if (msg.type === 'match_start' && stateSnapRef.current.role === 'player') {
           sfx.playKO();
+          if (Array.isArray(msg.questions) && msg.questions.length > 0) {
+            const normQs = normalizePaintballQuestions(msg.questions);
+            if (normQs.length > 0) {
+              setActiveQuiz(prev => ({
+                ...prev,
+                title: msg.quizTitle || prev.title,
+                topic: msg.topic || prev.topic,
+                classLevel: msg.classLevel || prev.classLevel,
+                questions: normQs
+              }));
+            }
+          }
           setMatchStatus('playing');
           setMatchSeconds(msg.durationSec || 180);
+          setHp(100);
+          setShield(100);
           if (gameRef.current) {
             const sp = getTeamSpawnPosition(
               stateSnapRef.current.myTeam,
@@ -1319,6 +1595,8 @@ export default function HamsterPaintball({
             gameRef.current.z = sp.z;
             gameRef.current.rotY = sp.rotY;
           }
+          setPickupBannerText('🚀 HOST STARTED THE GAME! ANSWER QUESTIONS & GO SPLAT!');
+          setTimeout(() => setPickupBannerText(null), 3000);
           if (stateSnapRef.current.screen !== 'join') {
             setScreen('game');
           }
@@ -1515,7 +1793,18 @@ export default function HamsterPaintball({
       clearInterval(syncInterval);
       if (bc) bc.close();
     };
-  }, [roomCode, role, screen, activeQuiz.title, matchMode, configuredDurationSec, ballsPerQuestion]);
+  }, [
+    roomCode,
+    role,
+    screen,
+    activeQuiz.title,
+    activeQuiz.topic,
+    activeQuiz.classLevel,
+    effectiveQuestions,
+    matchMode,
+    configuredDurationSec,
+    ballsPerQuestion
+  ]);
 
   // Apply incoming paintball damage to local student player
   const applyIncomingDamage = (damage: number, attackerName: string, attackerId: string) => {
@@ -2356,9 +2645,12 @@ export default function HamsterPaintball({
     scene.background = new THREE.Color(0x7dd3fc);
     scene.fog = new THREE.FogExp2(0xbae6fd, 0.005);
 
+    const initW = container.clientWidth || window.innerWidth;
+    const initH = container.clientHeight || window.innerHeight;
+
     const camera = new THREE.PerspectiveCamera(
       48,
-      window.innerWidth / window.innerHeight,
+      initW / Math.max(1, initH),
       0.1,
       400
     );
@@ -2366,7 +2658,7 @@ export default function HamsterPaintball({
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(initW, initH);
 
     const gl = renderer.getContext();
     const debugBasic = gl.getExtension('WEBGL_debug_renderer_info');
@@ -3099,7 +3391,13 @@ export default function HamsterPaintball({
       const k = e.key.toLowerCase();
       gameRef.current.keys[k] = true;
 
-      if (k === 'q' && stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') {
+      // Enforce: Answer questions ONLY during the active game (`matchStatus === 'playing'`)
+      if (
+        k === 'q' &&
+        stateSnapRef.current.role === 'player' &&
+        stateSnapRef.current.screen === 'game' &&
+        stateSnapRef.current.matchStatus === 'playing'
+      ) {
         setIsQuestionModalOpen(prev => !prev);
       }
     };
@@ -3122,7 +3420,11 @@ export default function HamsterPaintball({
         return;
       }
       gameRef.current.mouseDown = true;
-      if (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') {
+      if (
+        stateSnapRef.current.role === 'player' &&
+        stateSnapRef.current.screen === 'game' &&
+        stateSnapRef.current.matchStatus === 'playing'
+      ) {
         fireShot();
       }
     };
@@ -3133,11 +3435,21 @@ export default function HamsterPaintball({
     };
 
     const handleResize = () => {
-      if (!gameRef.current) return;
-      gameRef.current.camera.aspect = window.innerWidth / window.innerHeight;
+      if (!gameRef.current || !container) return;
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || window.innerHeight;
+      gameRef.current.camera.aspect = w / Math.max(1, h);
       gameRef.current.camera.updateProjectionMatrix();
-      gameRef.current.renderer.setSize(window.innerWidth, window.innerHeight);
+      gameRef.current.renderer.setSize(w, h);
     };
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => handleResize())
+        : null;
+    if (resizeObserver) {
+      resizeObserver.observe(container);
+    }
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -3321,8 +3633,11 @@ export default function HamsterPaintball({
           g.aimWorldX = g.x + Math.sin(g.rotY) * 12;
           g.aimWorldZ = g.z + Math.cos(g.rotY) * 12;
         } else {
-          const ndcX = (g.mouseScreenX / window.innerWidth) * 2 - 1;
-          const ndcY = -(g.mouseScreenY / window.innerHeight) * 2 + 1;
+          const rect = container.getBoundingClientRect();
+          const localX = g.mouseScreenX - rect.left;
+          const localY = g.mouseScreenY - rect.top;
+          const ndcX = (localX / Math.max(1, rect.width)) * 2 - 1;
+          const ndcY = -(localY / Math.max(1, rect.height)) * 2 + 1;
           raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
           if (raycaster.ray.intersectPlane(groundPlane, hitPt)) {
             g.aimWorldX = hitPt.x;
@@ -3502,6 +3817,7 @@ export default function HamsterPaintball({
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('resize', handleResize);
+      if (resizeObserver) resizeObserver.disconnect();
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       pmremGenerator.dispose();
       renderer.dispose();
@@ -3513,11 +3829,12 @@ export default function HamsterPaintball({
   // -------------------------------------------------------------
   const fireShot = () => {
     const g = gameRef.current;
-    if (!g || role !== 'player') return;
+    // Shooting & question reload ONLY active during the game (`matchStatus === 'playing'`)
+    if (!g || role !== 'player' || stateSnapRef.current.matchStatus !== 'playing') return;
     const now = performance.now();
     if (now - g.lastShotTime < 190) return;
 
-    // Players MUST answer questions to earn paintball ammunition!
+    // Players MUST answer questions during the game to earn paintball ammunition!
     if (ammo <= 0) {
       setIsQuestionModalOpen(true);
       return;
@@ -3687,7 +4004,11 @@ export default function HamsterPaintball({
         gameRef.current.broadcastChannel.postMessage({
           type: 'match_start',
           id: clientIdRef.current,
-          durationSec: configuredDurationSec
+          durationSec: configuredDurationSec,
+          quizTitle: activeQuiz.title || activeQuiz.topic || 'Hamster Paintball',
+          topic: activeQuiz.topic || '',
+          classLevel: activeQuiz.classLevel || '',
+          questions: effectiveQuestions
         });
       } catch {}
     }
@@ -3700,6 +4021,10 @@ export default function HamsterPaintball({
           matchMode,
           configuredDurationSec,
           ballsPerQuestion,
+          quizTitle: activeQuiz.title || activeQuiz.topic || 'Hamster Paintball',
+          topic: activeQuiz.topic || '',
+          classLevel: activeQuiz.classLevel || '',
+          questions: effectiveQuestions,
           startedAt: Date.now(),
           latestEvent: startEv
         },
@@ -3730,20 +4055,27 @@ export default function HamsterPaintball({
     }
   };
 
-  // Trivia Answer Handler (Players earn `ballsPerQuestion` Paintballs + 10 Score Points!)
+  // Trivia Answer Handler (Players answer ONLY during the game to earn `ballsPerQuestion` Paintballs + 10 Score Points!)
   const handleTriviaAnswer = (optIdx: number) => {
+    if (matchStatus !== 'playing' || triviaFeedback !== null) return;
     const qList = effectiveQuestions;
     const currentQ = qList[triviaDeckIndex % qList.length];
     if (!currentQ) return;
 
-    if (optIdx === currentQ.answerIndex) {
+    setSelectedOptionIdx(optIdx);
+    const correctIdx =
+      typeof currentQ.answerIndex === 'number' && !Number.isNaN(currentQ.answerIndex)
+        ? currentQ.answerIndex
+        : 0;
+
+    if (Number(optIdx) === Number(correctIdx)) {
       sfx.playCorrect();
       setTriviaStreak(s => s + 1);
       setAmmo(a => a + ballsPerQuestion);
       setScore(s => s + 10);
       setQuestionsAnswered(q => q + 1);
       setTriviaFeedback(
-        `CORRECT! +${ballsPerQuestion} Paintballs Loaded & +10 Score Points!`
+        `✅ CORRECT! +${ballsPerQuestion} Paintballs Loaded & +10 Score Points!`
       );
 
       const evText = `🎯 ${playerName} answered correctly (+${ballsPerQuestion} Paintballs & +10 PTS)!`;
@@ -3765,16 +4097,22 @@ export default function HamsterPaintball({
 
       setTimeout(() => {
         setTriviaFeedback(null);
+        setSelectedOptionIdx(null);
         setTriviaDeckIndex(i => i + 1);
-      }, 650);
+      }, 700);
     } else {
       sfx.playWrong();
       setTriviaStreak(0);
-      setTriviaFeedback('Incorrect! Try the next question to earn paintballs!');
+      const rightOptParsed = parseOptionContent(currentQ.options[correctIdx] || '');
+      const rightLabel = rightOptParsed.text || OPTION_LETTERS[correctIdx] || ' Option';
+      setTriviaFeedback(
+        `❌ Incorrect! Correct answer: ${OPTION_LETTERS[correctIdx]}. ${rightLabel}`
+      );
       setTimeout(() => {
         setTriviaFeedback(null);
+        setSelectedOptionIdx(null);
         setTriviaDeckIndex(i => i + 1);
-      }, 850);
+      }, 1100);
     }
   };
 
@@ -3858,12 +4196,15 @@ export default function HamsterPaintball({
   // RENDER INTERFACE
   // =============================================================
   return (
-    <div className="relative w-full h-full min-h-screen bg-slate-900 overflow-x-hidden overflow-y-auto touch-pan-y font-sans select-none text-slate-100">
+    <div
+      id="paintball-game-container"
+      className="relative w-full h-full flex-1 min-h-0 bg-slate-900 overflow-hidden font-sans select-none text-slate-100"
+    >
       {/* 3D WebGL Canvas Layer */}
       <div
         ref={canvasContainerRef}
         onTouchStart={e => {
-          if (role !== 'player' || screen !== 'game') return;
+          if (role !== 'player' || screen !== 'game' || matchStatus !== 'playing') return;
           const touch = e.touches[0];
           if (touch && gameRef.current) {
             gameRef.current.mouseScreenX = touch.clientX;
@@ -3871,13 +4212,13 @@ export default function HamsterPaintball({
             fireShot();
           }
         }}
-        className="fixed inset-0 w-full h-full z-0 cursor-crosshair"
+        className="absolute inset-0 w-full h-full z-0 cursor-crosshair"
       />
 
       {/* -------------------------------------------------------------
           TOP ARCADE NAVIGATION HEADER
          ------------------------------------------------------------- */}
-      <div className="fixed top-2.5 inset-x-3 z-30 flex items-center justify-between pointer-events-none gap-2">
+      <div className="absolute top-2.5 inset-x-3 z-30 flex items-center justify-between pointer-events-none gap-2">
         <button
           onClick={() => {
             if (role === 'player' && roomCode) {
@@ -3934,7 +4275,11 @@ export default function HamsterPaintball({
             )}
           </button>
 
-          <FullscreenButton className="bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 shadow-lg" />
+          <FullscreenButton
+            targetId="paintball-game-container"
+            showLabel
+            className="bg-slate-900/95 hover:bg-slate-800 text-white border border-lime-400/40 shadow-lg"
+          />
         </div>
       </div>
 
@@ -3942,7 +4287,7 @@ export default function HamsterPaintball({
           SCREEN 1: QUIZ EDITOR (EXACT BUBBLE POP GAME SETUP DESIGN)
          ------------------------------------------------------------- */}
       {screen === 'editor' && (
-        <div className="relative z-50 w-full min-h-screen bg-[#f4f7f9] pt-14 pb-10">
+        <div className="absolute inset-0 z-50 w-full h-full overflow-y-auto bg-[#f4f7f9] pt-14 pb-10">
           <QuizEditor
             quiz={activeQuiz}
             folders={folders}
@@ -3960,33 +4305,34 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 2: STUDENT JOIN MODAL (CHOOSE YOUR CHARACTER & ENTER 3D PARK LOBBY)
+          SCREEN 2: STUDENT JOIN MODAL (CHOOSE YOUR HAMSTER CHARACTER & ENTER LOBBY TO WAIT FOR HOST)
          ------------------------------------------------------------- */}
       {screen === 'join' && (
-        <div className="relative z-40 min-h-screen w-full bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4 py-16 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[500px] p-5 sm:p-7 flex flex-col items-center border-2 border-slate-200 relative overflow-hidden text-slate-900 my-auto">
+        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/85 flex items-center justify-center p-4 py-14 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[520px] p-5 sm:p-6 flex flex-col items-center border-2 border-slate-200 relative overflow-hidden text-slate-900 my-auto">
             <div className="absolute top-0 inset-x-0 h-2.5 bg-gradient-to-r from-lime-400 via-pink-500 to-cyan-400" />
 
-            <div className="text-center mb-3.5 mt-1">
+            <div className="text-center mb-3 mt-1">
               <div className="inline-flex items-center gap-1.5 bg-lime-100 text-lime-800 font-black text-[11px] px-3 py-1 rounded-full mb-1.5 border border-lime-300">
-                <Globe size={13} className="text-emerald-600" /> WWW.HAMSTERENGLISH.ONLINE • PLAYER JOIN
+                <Globe size={13} className="text-emerald-600" /> WWW.HAMSTERENGLISH.ONLINE • STUDENT LOBBY
               </div>
               <h1 className="font-black text-2xl sm:text-3xl tracking-tight text-slate-900 leading-none">
                 HAMSTER PAINTBALL
               </h1>
               <p className="text-xs font-bold text-slate-500 mt-1">
-                Choose your Hamster Character, enter your name, and roam the 3D Park Lobby!
+                Choose your Hamster Character, then enter the Lobby to wait for your Host to start the game!
               </p>
             </div>
 
-            {/* CHOOSE YOUR CHARACTER (6 ILLUSTRATED HAMSTER CHARACTERS) */}
-            <div className="w-full bg-slate-100 rounded-2xl p-3 mb-3.5 border border-slate-200">
-              <div className="flex items-center justify-between text-xs font-black text-slate-600 uppercase tracking-wider mb-2">
-                <span>Choose Your Character</span>
-                <span className="text-indigo-700 font-black">
+            {/* CHOOSE YOUR HAMSTER CHARACTER (6 FULL-BODY ILLUSTRATED HAMSTER CHARACTERS) */}
+            <div className="w-full bg-slate-100 rounded-2xl p-3 mb-3 border border-slate-200">
+              <div className="flex items-center justify-between text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                <span>🐹 Choose Your Hamster Character</span>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-black text-[10px]">
                   {HAMSTER_SKINS[selectedSkinIdx]?.name} • {HAMSTER_SKINS[selectedSkinIdx]?.roleTitle}
                 </span>
               </div>
+
               <div className="grid grid-cols-3 gap-2">
                 {HAMSTER_SKINS.map((skin, idx) => {
                   const isSelected = idx === selectedSkinIdx;
@@ -4000,15 +4346,20 @@ export default function HamsterPaintball({
                       }}
                       className={`p-2 rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer relative ${
                         isSelected
-                          ? 'border-indigo-600 bg-indigo-50/90 shadow-md scale-[1.02]'
+                          ? 'border-indigo-600 bg-indigo-50 shadow-md scale-[1.02] ring-2 ring-indigo-400/50'
                           : 'border-slate-200 bg-white hover:bg-slate-50'
                       }`}
                     >
-                      <HamsterCharacterAvatar skin={skin} size={52} />
+                      {isSelected && (
+                        <span className="absolute top-1.5 right-1.5 px-1.5 py-0.2 rounded-full bg-indigo-600 text-white font-black text-[8px] uppercase">
+                          Selected
+                        </span>
+                      )}
+                      <HamsterCharacterAvatar skin={skin} size={62} />
                       <span className="mt-1 font-black text-[11px] text-slate-900 leading-tight text-center">
                         {skin.name}
                       </span>
-                      <span className="text-[9px] font-bold text-slate-500 leading-tight">
+                      <span className="text-[9px] font-bold text-indigo-600 leading-tight">
                         {skin.roleTitle}
                       </span>
                     </button>
@@ -4018,7 +4369,7 @@ export default function HamsterPaintball({
             </div>
 
             {/* Student Name Input */}
-            <div className="w-full mb-3">
+            <div className="w-full mb-2.5">
               <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
                 Student Callsign (Your Name)
               </label>
@@ -4033,7 +4384,7 @@ export default function HamsterPaintball({
             </div>
 
             {/* Choose Initial Squad Preference */}
-            <div className="w-full mb-3">
+            <div className="w-full mb-2.5">
               <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
                 Select Squad Team
               </label>
@@ -4058,7 +4409,7 @@ export default function HamsterPaintball({
             </div>
 
             {/* Room Code Input */}
-            <div className="w-full mb-4">
+            <div className="w-full mb-3.5">
               <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
                 6-Digit Park Room Code (from Host Screen)
               </label>
@@ -4070,11 +4421,11 @@ export default function HamsterPaintball({
                   setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6))
                 }
                 placeholder="e.g. 482910"
-                className="w-full h-12 px-3 text-center font-mono text-2xl font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-700"
+                className="w-full h-11 px-3 text-center font-mono text-2xl font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-700"
               />
             </div>
 
-            {/* Enter Lobby (Immediately spawns student in their Team's Left/Right Corner Spawn Area!) */}
+            {/* Enter Lobby to Wait for Host to Start the Game */}
             <button
               type="button"
               onClick={async () => {
@@ -4087,6 +4438,7 @@ export default function HamsterPaintball({
                 setRoomCode(cleanCode);
                 setPlayerName(cleanName);
                 setRole('player');
+                setIsQuestionModalOpen(false);
                 hasJoinedRoomRef.current = true;
                 sfx.playCorrect();
 
@@ -4127,35 +4479,43 @@ export default function HamsterPaintball({
                   { merge: true }
                 ).catch(() => {});
 
-                // Fetch room state if available
+                // Fetch room state & normalized custom questions if available
                 try {
                   const snap = await getDoc(getRoomDocRef(cleanCode));
                   if (snap.exists()) {
                     const data = snap.data();
                     if (Array.isArray(data.questions) && data.questions.length > 0) {
-                      setActiveQuiz(prev => ({
-                        ...prev,
-                        title: data.quizTitle || prev.title,
-                        topic: data.topic || prev.topic,
-                        classLevel: data.classLevel || prev.classLevel,
-                        questions: data.questions
-                      }));
+                      const normQs = normalizePaintballQuestions(data.questions);
+                      if (normQs.length > 0) {
+                        setActiveQuiz(prev => ({
+                          ...prev,
+                          title: data.quizTitle || prev.title,
+                          topic: data.topic || prev.topic,
+                          classLevel: data.classLevel || prev.classLevel,
+                          questions: normQs
+                        }));
+                        setTriviaDeckIndex(0);
+                      }
                     }
                     if (data.matchStatus === 'playing') {
                       setMatchStatus('playing');
                     } else {
                       setMatchStatus('lobby');
                     }
+                  } else {
+                    setMatchStatus('lobby');
                   }
-                } catch {}
+                } catch {
+                  setMatchStatus('lobby');
+                }
 
-                // Student immediately enters the 3D Park (`screen === 'game'`) to roam around!
+                // Student enters the 3D Park Lobby (`screen === 'game'`) to wait for Host to start!
                 setScreen('game');
               }}
               className="w-full py-3.5 bg-[#160269] hover:bg-[#220699] active:scale-[0.99] text-white font-black text-base rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-[#0c013d] cursor-pointer"
             >
               <Play size={18} fill="currentColor" />
-              <span>Enter Park Lobby &amp; Roam 3D Arena</span>
+              <span>Enter Lobby &amp; Wait for Host</span>
             </button>
           </div>
         </div>
@@ -4166,19 +4526,26 @@ export default function HamsterPaintball({
           Clean Popup Banner over the live 3D Park with BIG QR Code!
          ------------------------------------------------------------- */}
       {screen === 'lobby' && role === 'host' && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-5 pt-14 overflow-y-auto pointer-events-none">
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-3 sm:p-5 pt-14 overflow-y-auto pointer-events-none">
           {!isLobbyMinimized ? (
             <div className="pointer-events-auto relative w-full max-w-4xl my-auto bg-[#1b1130]/96 p-5 sm:p-7 rounded-3xl shadow-2xl border-2 border-lime-400/50 space-y-4">
-              {/* Popup Minimize / Close Toggle in Top-Right Corner */}
-              <button
-                type="button"
-                onClick={() => setIsLobbyMinimized(true)}
-                className="absolute top-3.5 right-3.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-extrabold text-xs flex items-center gap-1.5 border border-white/15 transition cursor-pointer"
-                title="Minimize Lobby Popup to view 3D Park"
-              >
-                <Eye size={13} className="text-lime-400" />
-                <span>Peek 3D Park</span>
-              </button>
+              {/* Popup Minimize / Full Screen Toggle in Top-Right Corner */}
+              <div className="absolute top-3.5 right-3.5 flex items-center gap-2">
+                <FullscreenButton
+                  targetId="paintball-game-container"
+                  showLabel
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 border border-white/15 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsLobbyMinimized(true)}
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-extrabold text-xs flex items-center gap-1.5 border border-white/15 transition cursor-pointer"
+                  title="Minimize Lobby Popup to view 3D Park"
+                >
+                  <Eye size={13} className="text-lime-400" />
+                  <span>Peek 3D Park</span>
+                </button>
+              </div>
 
               {/* Top Section: Join Instructions, Huge 6-Digit Room Code & BIG Scannable QR Code */}
               <div className="flex flex-col md:flex-row items-center justify-between gap-5 pt-2">
@@ -4514,7 +4881,7 @@ export default function HamsterPaintball({
 
           {/* Enlarged Classroom QR Modal */}
           {isQrModalOpen && (
-            <div className="pointer-events-auto fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4">
+            <div className="pointer-events-auto absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4">
               <div className="bg-white text-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border-4 border-lime-400 flex flex-col items-center text-center relative">
                 <button
                   onClick={() => setIsQrModalOpen(false)}
@@ -4566,7 +4933,7 @@ export default function HamsterPaintball({
           SCREEN 4: IN-GAME 3D PARK HUD (STUDENT ROAM/PLAY HUD VS. HOST BROADCAST HUD)
          ------------------------------------------------------------- */}
       {screen === 'game' && (
-        <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-2.5 sm:p-4 pt-14">
+        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-2.5 sm:p-4 pt-14">
           <div className="w-full flex flex-wrap items-start justify-between gap-2">
             {role === 'player' ? (
               /* STUDENT TOP-LEFT: CHARACTER AVATAR, HEALTH & DEFENCE BARS + SCORE */
@@ -4787,6 +5154,12 @@ export default function HamsterPaintball({
                   <span>🐹 Character</span>
                 </button>
               )}
+
+              <FullscreenButton
+                targetId="paintball-game-container"
+                showLabel
+                className="h-9 px-3 rounded-xl bg-slate-900/95 hover:bg-slate-800 text-white border border-lime-400/50 shadow"
+              />
             </div>
           </div>
 
@@ -4808,79 +5181,105 @@ export default function HamsterPaintball({
             )}
           </div>
 
-          {/* BOTTOM ROW: MOBILE-OPTIMIZED CONTROLS (SHOOT ON LEFT, AMMO IN CENTER, MOVEMENT ON RIGHT) */}
-          {role === 'player' ? (
-            <div className="w-full flex items-end justify-between gap-2 pb-1 sm:pb-2 px-1">
-              {/* LEFT SIDE: SHOOT BUTTON (Swapped to Left for fast mobile two-thumb play!) */}
-              <div className="flex flex-col items-center">
-                <span className="mb-1 text-[10px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
-                  SHOOT
-                </span>
-                <button
-                  type="button"
-                  onTouchStart={e => {
-                    e.preventDefault();
-                    fireShot();
-                  }}
-                  onClick={fireShot}
-                  className="pointer-events-auto w-22 h-22 sm:w-26 sm:h-26 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-4 border-white/90 shadow-2xl flex flex-col items-center justify-center text-white font-black text-xs sm:text-sm cursor-pointer select-none touch-none"
-                >
-                  <Crosshair size={28} />
-                  <span className="mt-0.5">SHOOT</span>
-                </button>
-              </div>
+            {/* BOTTOM ROW: LOBBY WAITING MODE vs. ACTIVE GAME COMBAT CONTROLS */}
+            {role === 'player' ? (
+              <div className="w-full flex items-end justify-between gap-2 pb-1 sm:pb-2 px-1">
+                {matchStatus === 'playing' ? (
+                  <>
+                    {/* LEFT SIDE: SHOOT BUTTON (Only active during the game!) */}
+                    <div className="flex flex-col items-center">
+                      <span className="mb-1 text-[10px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
+                        SHOOT
+                      </span>
+                      <button
+                        type="button"
+                        onTouchStart={e => {
+                          e.preventDefault();
+                          fireShot();
+                        }}
+                        onClick={fireShot}
+                        className="pointer-events-auto w-22 h-22 sm:w-26 sm:h-26 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-4 border-white/90 shadow-2xl flex flex-col items-center justify-center text-white font-black text-xs sm:text-sm cursor-pointer select-none touch-none"
+                      >
+                        <Crosshair size={28} />
+                        <span className="mt-0.5">SHOOT</span>
+                      </button>
+                    </div>
 
-              {/* CENTER: Compact Mobile-Friendly Ammo Hopper & Answer Question Button */}
-              <div className="pointer-events-auto bg-slate-900/94 rounded-2xl p-2.5 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 border border-white/15 shadow-2xl max-w-[210px] sm:max-w-none">
-                <div className="text-center sm:text-left">
-                  <div className="text-[9px] sm:text-[10px] font-black text-pink-400 uppercase leading-none">
-                    PAINTBALL AMMO
-                  </div>
-                  <div className="text-lg sm:text-2xl font-black font-mono text-white leading-tight mt-0.5">
-                    {ammo} <span className="text-[10px] sm:text-xs text-slate-400 font-sans">BALLS</span>
-                  </div>
-                </div>
+                    {/* CENTER: Ammo Hopper & Answer Question Button (ONLY during active game!) */}
+                    <div className="pointer-events-auto bg-slate-900/94 rounded-2xl p-2.5 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 border border-white/15 shadow-2xl max-w-[220px] sm:max-w-none">
+                      <div className="text-center sm:text-left">
+                        <div className="text-[9px] sm:text-[10px] font-black text-pink-400 uppercase leading-none">
+                          PAINTBALL AMMO
+                        </div>
+                        <div className="text-lg sm:text-2xl font-black font-mono text-white leading-tight mt-0.5">
+                          {ammo}{' '}
+                          <span className="text-[10px] sm:text-xs text-slate-400 font-sans">
+                            BALLS
+                          </span>
+                        </div>
+                      </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsQuestionModalOpen(true)}
-                  className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-black text-[11px] sm:text-sm shadow-lg transition flex items-center gap-1.5 cursor-pointer ${
-                    ammo === 0
-                      ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border-2 border-white'
-                      : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
-                  }`}
-                >
-                  <Zap size={15} className={ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'} />
-                  <span className="truncate">
-                    {ammo === 0
-                      ? `Get +${ballsPerQuestion} Balls!`
-                      : `+${ballsPerQuestion} Balls (Q)`}
+                      <button
+                        type="button"
+                        onClick={() => setIsQuestionModalOpen(true)}
+                        className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-black text-[11px] sm:text-sm shadow-lg transition flex items-center gap-1.5 cursor-pointer ${
+                          ammo === 0
+                            ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border-2 border-white'
+                            : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
+                        }`}
+                      >
+                        <Zap
+                          size={15}
+                          className={
+                            ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'
+                          }
+                        />
+                        <span className="truncate">
+                          {ammo === 0
+                            ? `Answer for +${ballsPerQuestion} Balls!`
+                            : `+${ballsPerQuestion} Balls (Q)`}
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* LOBBY WAITING BANNER: Questions & Shooting are locked until Host starts the game! */
+                  <div className="pointer-events-auto flex-1 max-w-md bg-slate-900/95 border-2 border-lime-400/70 rounded-2xl p-3 sm:p-4 shadow-2xl">
+                    <div className="flex items-center gap-2 text-lime-300 font-black text-xs sm:text-sm">
+                      <span className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-ping shrink-0" />
+                      <span>⏳ WAITING IN LOBBY FOR HOST TO START THE GAME...</span>
+                    </div>
+                    <p className="text-[11px] sm:text-xs font-bold text-slate-300 mt-1">
+                      Questions &amp; Paintball Shooting unlock as soon as the Host clicks{' '}
+                      <strong className="text-white">START GAME</strong>! Use{' '}
+                      <strong className="text-lime-300">MOVE</strong> on the right to roam the 3D
+                      Park Lobby while waiting.
+                    </p>
+                  </div>
+                )}
+
+                {/* RIGHT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK (Always available so player can roam Lobby & Arena!) */}
+                <div className="flex flex-col items-center">
+                  <span className="mb-1 text-[10px] font-black uppercase text-lime-300 tracking-wider drop-shadow">
+                    MOVE
                   </span>
-                </button>
-              </div>
-
-              {/* RIGHT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK (Swapped to Right!) */}
-              <div className="flex flex-col items-center">
-                <span className="mb-1 text-[10px] font-black uppercase text-lime-300 tracking-wider drop-shadow">
-                  MOVE
-                </span>
-                <div
-                  onTouchStart={handleJoystickStart}
-                  onTouchMove={handleJoystickMove}
-                  onTouchEnd={handleJoystickEnd}
-                  onTouchCancel={handleJoystickEnd}
-                  className="pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900/80 border-2 border-lime-400/50 flex items-center justify-center relative touch-none shadow-2xl select-none"
-                >
                   <div
-                    className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-lime-400 border-2 border-white shadow-md transition-transform duration-75"
-                    style={{
-                      transform: `translate(${joystickVec.x * 28}px, ${joystickVec.y * 28}px)`
-                    }}
-                  />
+                    onTouchStart={handleJoystickStart}
+                    onTouchMove={handleJoystickMove}
+                    onTouchEnd={handleJoystickEnd}
+                    onTouchCancel={handleJoystickEnd}
+                    className="pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900/80 border-2 border-lime-400/50 flex items-center justify-center relative touch-none shadow-2xl select-none"
+                  >
+                    <div
+                      className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-lime-400 border-2 border-white shadow-md transition-transform duration-75"
+                      style={{
+                        transform: `translate(${joystickVec.x * 28}px, ${joystickVec.y * 28}px)`
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
+            ) : (
             /* HOST BOTTOM LIVE LEADERBOARD STRIP (Click any player card to Track 1 Player!) */
             <div className="pointer-events-auto w-full max-w-4xl mx-auto bg-slate-900/92 p-3 rounded-2xl border border-white/15 shadow-2xl">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-black text-cyan-300 mb-2">
@@ -4951,7 +5350,7 @@ export default function HamsterPaintball({
           SCREEN 5: FINAL RESULTS & TEAM/SOLO PODIUM MODAL
          ------------------------------------------------------------- */}
       {screen === 'results' && (
-        <div className="fixed inset-0 z-50 bg-slate-950/90 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="absolute inset-0 z-50 bg-slate-950/90 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border-2 border-lime-400 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 my-auto text-center">
             <Award size={48} className="text-amber-400 mx-auto" />
             <div>
@@ -5039,10 +5438,10 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          QUESTION DECK MODAL (PLAYERS ANSWER TO GET PAINTBALL AMMO!)
+          QUESTION DECK MODAL (AVAILABLE ONLY DURING ACTIVE GAME!)
          ------------------------------------------------------------- */}
-      {isQuestionModalOpen && currentTriviaQ && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
+      {isQuestionModalOpen && matchStatus === 'playing' && currentTriviaQ && (
+        <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border-4 border-indigo-600 text-slate-900 my-auto">
             <div className="bg-gradient-to-r from-indigo-700 to-purple-800 text-white px-5 py-4 flex items-center justify-between">
               <div>
@@ -5064,64 +5463,102 @@ export default function HamsterPaintball({
               </button>
             </div>
 
-            <div className="p-5 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-[11px] uppercase px-2.5 py-0.5 rounded-full">
-                  AMMO RELOAD QUESTION
-                </span>
-                <span className="text-xs font-black text-emerald-700">
-                  Current Ammo: {ammo} Balls
-                </span>
-              </div>
+            {(() => {
+              const parsedQuestion = parseOptionContent(currentTriviaQ.text || '');
+              const displayQText = parsedQuestion.text || currentTriviaQ.text;
+              const displayQImage = currentTriviaQ.image || parsedQuestion.imageUrl;
+              const correctIdx =
+                typeof currentTriviaQ.answerIndex === 'number' ? currentTriviaQ.answerIndex : 0;
 
-              {currentTriviaQ.image && (
-                <div className="mb-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 max-h-44 flex items-center justify-center">
-                  <img
-                    src={currentTriviaQ.image}
-                    alt={currentTriviaQ.text || 'Question'}
-                    referrerPolicy="no-referrer"
-                    className="max-h-44 w-auto object-contain"
-                  />
-                </div>
-              )}
+              return (
+                <div className="p-5 sm:p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-[11px] uppercase px-2.5 py-0.5 rounded-full">
+                      QUESTION {(triviaDeckIndex % effectiveQuestions.length) + 1} OF{' '}
+                      {effectiveQuestions.length}
+                    </span>
+                    <span className="text-xs font-black text-emerald-700">
+                      Current Ammo: {ammo} Balls
+                    </span>
+                  </div>
 
-              <h2 className="font-extrabold text-lg sm:text-2xl text-slate-800 mb-4">
-                {currentTriviaQ.text}
-              </h2>
+                  {displayQImage && (
+                    <div className="mb-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 max-h-44 flex items-center justify-center">
+                      <img
+                        src={displayQImage}
+                        alt={displayQText || 'Question'}
+                        referrerPolicy="no-referrer"
+                        className="max-h-44 w-auto object-contain"
+                      />
+                    </div>
+                  )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {currentTriviaQ.options.map((opt, idx) => {
-                  const parsed = parseOptionContent(opt);
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleTriviaAnswer(idx)}
-                      className="p-3.5 rounded-xl border-b-4 font-extrabold text-sm text-left transition shadow bg-slate-100 hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-800 cursor-pointer active:scale-95 flex items-center gap-2.5"
+                  <h2 className="font-extrabold text-lg sm:text-2xl text-slate-800 mb-4">
+                    {displayQText}
+                  </h2>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {currentTriviaQ.options.map((opt, idx) => {
+                      const parsed = parseOptionContent(opt);
+                      const isAnswered = selectedOptionIdx !== null;
+                      const isThisSelected = selectedOptionIdx === idx;
+                      const isThisCorrect = idx === correctIdx;
+
+                      let btnClasses =
+                        'bg-slate-100 hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-800';
+                      if (isAnswered) {
+                        if (isThisCorrect) {
+                          btnClasses = 'bg-emerald-500 border-emerald-700 text-white shadow-md';
+                        } else if (isThisSelected) {
+                          btnClasses = 'bg-rose-500 border-rose-700 text-white';
+                        } else {
+                          btnClasses = 'bg-slate-100 border-slate-200 text-slate-400 opacity-75';
+                        }
+                      }
+
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          disabled={isAnswered}
+                          onClick={() => handleTriviaAnswer(idx)}
+                          className={`p-3.5 rounded-xl border-b-4 font-extrabold text-sm text-left transition shadow cursor-pointer active:scale-95 flex items-center gap-2.5 ${btnClasses}`}
+                        >
+                          <span
+                            className={`font-bold shrink-0 ${
+                              isAnswered && (isThisCorrect || isThisSelected)
+                                ? 'text-white'
+                                : 'text-indigo-600'
+                            }`}
+                          >
+                            {OPTION_LETTERS[idx]}.
+                          </span>
+                          {parsed.imageUrl && (
+                            <img
+                              src={parsed.imageUrl}
+                              alt={parsed.text || 'Option'}
+                              referrerPolicy="no-referrer"
+                              className="w-10 h-10 rounded-lg object-cover border border-slate-300 shrink-0 bg-white"
+                            />
+                          )}
+                          <span className="flex-1">{parsed.text || opt}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {triviaFeedback && (
+                    <div
+                      className={`mt-4 p-3 text-white font-black text-center text-xs sm:text-sm rounded-xl ${
+                        selectedOptionIdx === correctIdx ? 'bg-emerald-600' : 'bg-rose-600'
+                      }`}
                     >
-                      <span className="font-bold text-indigo-600 shrink-0">
-                        {OPTION_LETTERS[idx]}.
-                      </span>
-                      {parsed.imageUrl && (
-                        <img
-                          src={parsed.imageUrl}
-                          alt={parsed.text || 'Option'}
-                          referrerPolicy="no-referrer"
-                          className="w-10 h-10 rounded-lg object-cover border border-slate-300 shrink-0 bg-white"
-                        />
-                      )}
-                      <span className="flex-1">{parsed.text || opt}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {triviaFeedback && (
-                <div className="mt-4 p-3 bg-emerald-600 text-white font-black text-center text-xs sm:text-sm rounded-xl">
-                  {triviaFeedback}
+                      {triviaFeedback}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -5130,7 +5567,7 @@ export default function HamsterPaintball({
           LIVE SCOREBOARD MODAL (TEAM & INDIVIDUAL)
          ------------------------------------------------------------- */}
       {isLeaderboardOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border-2 border-cyan-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 my-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
@@ -5250,8 +5687,9 @@ function QuizEditor({
   const [autoPhotosEnabled, setAutoPhotosEnabled] = useState(true);
 
   const [questions, setQuestions] = useState<Question[]>(() => {
-    if (quiz.questions && quiz.questions.length > 0) {
-      return quiz.questions.map((q, idx) => ({
+    const norm = normalizePaintballQuestions(quiz.questions);
+    if (norm.length > 0) {
+      return norm.map((q, idx) => ({
         ...q,
         id: q.id || idx + 1,
         options: Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['', '', '', ''],

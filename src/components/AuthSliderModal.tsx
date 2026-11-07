@@ -121,6 +121,14 @@ export function AuthSliderModal({
     const code = roomCode.trim().toUpperCase();
 
     try {
+      const pbTttRef = doc(db, 'ttt_rooms', `pb_room_${code}`);
+      const pbTttSnap = await getDoc(pbTttRef);
+      if (pbTttSnap.exists() && onJoinRoom) {
+        onJoinRoom(code, nickname.trim(), 'hamster-paintball');
+        onClose();
+        return;
+      }
+
       const pbRef = doc(db, 'paintball_rooms', code);
       const pbSnap = await getDoc(pbRef);
       if (pbSnap.exists() && onJoinRoom) {
