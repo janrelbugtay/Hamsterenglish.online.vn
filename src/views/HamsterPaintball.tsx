@@ -1240,6 +1240,7 @@ interface PlayerNetworkState {
   kos: number;
   hitsLanded?: number;
   bestStreak?: number;
+  immuneUntil?: number;
   questionsAnswered: number;
   updatedAt: number;
   kicked?: boolean;
@@ -1556,7 +1557,7 @@ export default function HamsterPaintball({
   const [hostCameraMode, setHostCameraMode] = useState<'overview' | 'track_one' | 'auto_track'>('auto_track');
   const [hostFollowIndex, setHostFollowIndex] = useState<number>(0);
 
-  // Helper: Calculate Left Corner (Red Squad) or Right Corner (Blue Squad) Spawn Position
+  // Helper: Calculate Left Corner (Red Squad) or Right Corner (Blue Squad) Square Spawn Position
   const getTeamSpawnPosition = (team: TeamId, mode: 'solo' | 'teams') => {
     const resolvedTeam: 'red' | 'blue' =
       mode === 'teams'
@@ -1566,11 +1567,11 @@ export default function HamsterPaintball({
         : Math.random() < 0.5
         ? 'red'
         : 'blue';
-    // Left Corner Spawn Base: (-35, -22), Right Corner Spawn Base: (35, -22)
+    // Left Corner Square Spawn Center: (-35, -23), Right Corner Square Spawn Center: (35, -23)
     const baseX = resolvedTeam === 'red' ? -35 : 35;
-    const baseZ = -22;
-    const jitterX = Number(((Math.random() - 0.5) * 4.2).toFixed(2));
-    const jitterZ = Number(((Math.random() - 0.5) * 4.2).toFixed(2));
+    const baseZ = -23;
+    const jitterX = Number(((Math.random() - 0.5) * 6.4).toFixed(2));
+    const jitterZ = Number(((Math.random() - 0.5) * 4.8).toFixed(2));
     const rotY = resolvedTeam === 'red' ? Math.PI * 0.22 : -Math.PI * 0.22;
     return {
       x: Number((baseX + jitterX).toFixed(2)),
@@ -1579,12 +1580,15 @@ export default function HamsterPaintball({
     };
   };
 
-  // Student Combat Vitals, Ammo, Collectible Cans & Upgraded Points System
+  // Student Combat Vitals, 10-Second Respawn Immunity, Ammo, Collectible Cans & Upgraded Points System
   // Players start with 0 paintballs in match and MUST answer questions to earn paintball ammunition!
+  const RESPAWN_IMMUNITY_MS = 10000; // 10 seconds immunity after respawn (cannot be hit!)
   const [hp, setHp] = useState<number>(100);
   const [maxHp] = useState<number>(100);
   const [shield, setShield] = useState<number>(100);
   const [maxShield] = useState<number>(100);
+  const [immuneUntil, setImmuneUntil] = useState<number>(0);
+  const [immunitySecondsLeft, setImmunitySecondsLeft] = useState<number>(0);
   const [ammo, setAmmo] = useState<number>(0);
   const [score, setScore] = useState<number>(0);
   const [kos, setKos] = useState<number>(0);
@@ -1782,6 +1786,7 @@ export default function HamsterPaintball({
     myTeam,
     hp,
     shield,
+    immuneUntil,
     score,
     kos,
     koStreak,
@@ -1810,6 +1815,7 @@ export default function HamsterPaintball({
       myTeam,
       hp,
       shield,
+      immuneUntil,
       score,
       kos,
       koStreak,
@@ -1836,6 +1842,7 @@ export default function HamsterPaintball({
     myTeam,
     hp,
     shield,
+    immuneUntil,
     score,
     kos,
     koStreak,
@@ -1855,6 +1862,25 @@ export default function HamsterPaintball({
     hostFollowIndex,
     roomPlayers
   ]);
+
+  // 10-Second Respawn Immunity Countdown Ticker
+  useEffect(() => {
+    if (immuneUntil <= Date.now()) {
+      setImmunitySecondsLeft(0);
+      return;
+    }
+    const updateImmunity = () => {
+      const remMs = immuneUntil - Date.now();
+      if (remMs <= 0) {
+        setImmunitySecondsLeft(0);
+      } else {
+        setImmunitySecondsLeft(Math.ceil(remMs / 1000));
+      }
+    };
+    updateImmunity();
+    const interval = setInterval(updateImmunity, 200);
+    return () => clearInterval(interval);
+  }, [immuneUntil]);
 
   // Long-Press Handler to Use Health Can (+45 HP) or Defence Can (+50 Shield)
   const stopCanLongPress = () => {
@@ -2355,6 +2381,7 @@ export default function HamsterPaintball({
               kos: typeof data.kos === 'number' ? data.kos : 0,
               hitsLanded: typeof data.hitsLanded === 'number' ? data.hitsLanded : 0,
               bestStreak: typeof data.bestStreak === 'number' ? data.bestStreak : 0,
+              immuneUntil: typeof data.immuneUntil === 'number' ? data.immuneUntil : 0,
               questionsAnswered:
                 typeof data.questionsAnswered === 'number' ? data.questionsAnswered : 0,
               updatedAt: data.updatedAt || now
@@ -2494,6 +2521,7 @@ export default function HamsterPaintball({
         rotY: g ? Number(g.rotY.toFixed(2)) : 0,
         hp: snapState.hp,
         shield: snapState.shield,
+        immuneUntil: snapState.immuneUntil,
         score: snapState.score,
         kos: snapState.kos,
         hitsLanded: snapState.hitsLanded,
@@ -2538,8 +2566,13 @@ export default function HamsterPaintball({
     ballsPerQuestion
   ]);
 
-  // Apply incoming paintball damage to local student player
+  // Apply incoming paintball damage to local student player (Respects 10-Second Respawn Immunity!)
   const applyIncomingDamage = (damage: number, attackerName: string, attackerId: string) => {
+    // 10-SECOND RESPAWN IMMUNITY: Player CANNOT be hit within 10 seconds after respawning!
+    if (Date.now() < stateSnapRef.current.immuneUntil) {
+      return;
+    }
+
     sfx.playSplat();
     setShield(prevShield => {
       if (prevShield >= damage) {
@@ -2549,7 +2582,11 @@ export default function HamsterPaintball({
       setHp(prevHp => {
         const nextHp = prevHp - rem;
         if (nextHp <= 0) {
-          // Eliminated! Reset local KO streak and respawn inside player's Team Corner Spawn Area
+          // Eliminated! Grant 10-Second Respawn Immunity & Respawn inside player's Team Square Spawn!
+          const newImmuneUntil = Date.now() + RESPAWN_IMMUNITY_MS;
+          stateSnapRef.current.immuneUntil = newImmuneUntil;
+          setImmuneUntil(newImmuneUntil);
+          setImmunitySecondsLeft(10);
           setKoStreak(0);
           const sp = getTeamSpawnPosition(
             stateSnapRef.current.myTeam,
@@ -2564,16 +2601,16 @@ export default function HamsterPaintball({
           const spawnSide =
             stateSnapRef.current.matchMode === 'teams'
               ? stateSnapRef.current.myTeam === 'blue'
-                ? 'BLUE RIGHT CORNER SPAWN'
-                : 'RED LEFT CORNER SPAWN'
-              : 'CORNER SPAWN AREA';
+                ? 'BLUE SQUARE SPAWN'
+                : 'RED SQUARE SPAWN'
+              : 'SQUARE SPAWN';
           setKoBannerText(
-            `SPLATTERED BY ${attackerName.toUpperCase()}! RESPAWNING AT ${spawnSide}...`
+            `SPLATTERED BY ${attackerName.toUpperCase()}! RESPAWNED AT ${spawnSide} (10s IMMUNITY)!`
           );
-          setTimeout(() => setKoBannerText(null), 2600);
+          setTimeout(() => setKoBannerText(null), 2800);
 
           const koId = `ko-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-          // Notify attacker of KO (+50 PTS) via BroadcastChannel & Firestore
+          // Notify attacker of KO via BroadcastChannel & Firestore
           if (gameRef.current?.broadcastChannel) {
             try {
               gameRef.current.broadcastChannel.postMessage({
@@ -2593,6 +2630,7 @@ export default function HamsterPaintball({
                 rotY: sp.rotY,
                 hp: 100,
                 shield: 100,
+                immuneUntil: newImmuneUntil,
                 lastKo: {
                   koId,
                   attackerId,
@@ -2602,7 +2640,7 @@ export default function HamsterPaintball({
               { merge: true }
             ).catch(() => {});
           }
-          const evText = `💥 ${attackerName} splattered ${stateSnapRef.current.playerName} (+50 PTS)!`;
+          const evText = `💥 ${attackerName} splattered ${stateSnapRef.current.playerName} (+60 PTS)!`;
           pushLiveEvent(evText, '#f43f5e');
           if (roomCode) {
             setDoc(
@@ -3613,6 +3651,39 @@ export default function HamsterPaintball({
     canAuraRing.visible = false;
     root.add(canAuraRing);
 
+    // 7b. 3D 10-Second Respawn Immunity Forcefield Shield (Visible when player has active 10s Respawn Immunity!)
+    const immunityShieldGroup = new THREE.Group();
+    const immunityBubble = new THREE.Mesh(
+      new THREE.SphereGeometry(1.52, 24, 18),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xfacc15,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 0.35,
+        transparent: true,
+        opacity: 0.28,
+        roughness: 0.1,
+        clearcoat: 1.0,
+        depthWrite: false
+      })
+    );
+    immunityBubble.position.y = 1.25;
+    immunityShieldGroup.add(immunityBubble);
+
+    const immunityHalo = new THREE.Mesh(
+      new THREE.TorusGeometry(1.45, 0.055, 12, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xfef08a,
+        transparent: true,
+        opacity: 0.9
+      })
+    );
+    immunityHalo.rotation.x = Math.PI / 2;
+    immunityHalo.position.y = 0.22;
+    immunityShieldGroup.add(immunityHalo);
+
+    immunityShieldGroup.visible = false;
+    root.add(immunityShieldGroup);
+
     // 8. Floating 3D Callsign Tag
     const nameSprite = createPlayerNameSprite(callsign, skin, isHostReferee, team);
     root.add(nameSprite);
@@ -3627,6 +3698,7 @@ export default function HamsterPaintball({
       rightArmGroup,
       heldCanMesh,
       canAuraRing,
+      immunityShieldGroup,
       bodyGroup,
       headGroup,
       markerGroup,
@@ -4133,31 +4205,31 @@ export default function HamsterPaintball({
       ctx.arc(512, 512, 96, 0, Math.PI * 2);
       ctx.stroke();
 
-      // LEFT CORNER SPAWN AREA (RED SQUAD: world x = -35, z = -22 -> canvas ~256, 350)
-      ctx.fillStyle = 'rgba(244, 63, 94, 0.42)';
+      // LEFT CORNER SQUARE SPAWN AREA (RED SQUAD: centered at world x = -35, z = -23 -> canvas x = 256, y = 344)
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.45)';
       ctx.beginPath();
-      ctx.roundRect(108, 120, 210, 170, 28);
+      ctx.roundRect(186, 286, 140, 116, 22);
       ctx.fill();
       ctx.lineWidth = 6;
       ctx.strokeStyle = '#fda4af';
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 24px "Inter", system-ui, sans-serif';
+      ctx.font = '900 22px "Inter", system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('RED SPAWN', 213, 212);
+      ctx.fillText('RED SPAWN', 256, 350);
 
-      // RIGHT CORNER SPAWN AREA (BLUE SQUAD: world x = +35, z = -22 -> canvas ~768, 350)
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.42)';
+      // RIGHT CORNER SQUARE SPAWN AREA (BLUE SQUAD: centered at world x = +35, z = -23 -> canvas x = 768, y = 344)
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
       ctx.beginPath();
-      ctx.roundRect(706, 120, 210, 170, 28);
+      ctx.roundRect(698, 286, 140, 116, 22);
       ctx.fill();
       ctx.lineWidth = 6;
       ctx.strokeStyle = '#7dd3fc';
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 24px "Inter", system-ui, sans-serif';
+      ctx.font = '900 22px "Inter", system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('BLUE SPAWN', 811, 212);
+      ctx.fillText('BLUE SPAWN', 768, 350);
 
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -4178,7 +4250,7 @@ export default function HamsterPaintball({
     const obstacles: Array<{ x: number; z: number; r: number; h: number }> = [];
 
     // =========================================================
-    // 3D LEFT CORNER & RIGHT CORNER TEAM SPAWN BASES (100% ACCESSIBLE, ZERO BLOCKING OBSTACLES)
+    // 3D LEFT CORNER & RIGHT CORNER SQUARE SPAWN BASES (ONLY SQUARE SPAWN — NO CIRCLE PAD!)
     // =========================================================
     const createTeamCornerSpawnBase = (
       x: number,
@@ -4190,44 +4262,59 @@ export default function HamsterPaintball({
       const spawnGroup = new THREE.Group();
       spawnGroup.position.set(x, 0, z);
 
-      // Glowing Circular Spawn Pad on Turf
-      const padMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(5.6, 5.9, 0.14, 36),
-        new THREE.MeshStandardMaterial({
-          color: teamColorHex,
-          roughness: 0.35,
-          metalness: 0.15
-        })
-      );
-      padMesh.position.y = 0.07;
-      padMesh.receiveShadow = true;
-      spawnGroup.add(padMesh);
+      // 3D Square Spawn Perimeter Frame on Turf (Matches the Square Spawn on the turf; NO circular pad!)
+      const borderMat = new THREE.MeshStandardMaterial({
+        color: teamColorHex,
+        emissive: teamColorHex,
+        emissiveIntensity: 0.25,
+        roughness: 0.3,
+        metalness: 0.2
+      });
+      const halfW = 9.4;
+      const halfD = 7.8;
+      const barThick = 0.38;
+      const barH = 0.14;
 
-      const outerGlowRing = new THREE.Mesh(
-        new THREE.RingGeometry(5.65, 6.25, 36),
-        new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.85
-        })
+      const northBar = new THREE.Mesh(
+        new THREE.BoxGeometry(halfW * 2 + barThick, barH, barThick),
+        borderMat
       );
-      outerGlowRing.rotation.x = -Math.PI / 2;
-      outerGlowRing.position.y = 0.09;
-      spawnGroup.add(outerGlowRing);
+      northBar.position.set(0, barH / 2, -halfD);
+      spawnGroup.add(northBar);
 
-      // Overhead Team Spawn Archway Banner (No collision obstacle so players walk freely!)
+      const southBar = new THREE.Mesh(
+        new THREE.BoxGeometry(halfW * 2 + barThick, barH, barThick),
+        borderMat
+      );
+      southBar.position.set(0, barH / 2, halfD);
+      spawnGroup.add(southBar);
+
+      const westBar = new THREE.Mesh(
+        new THREE.BoxGeometry(barThick, barH, halfD * 2),
+        borderMat
+      );
+      westBar.position.set(-halfW, barH / 2, 0);
+      spawnGroup.add(westBar);
+
+      const eastBar = new THREE.Mesh(
+        new THREE.BoxGeometry(barThick, barH, halfD * 2),
+        borderMat
+      );
+      eastBar.position.set(halfW, barH / 2, 0);
+      spawnGroup.add(eastBar);
+
+      // Overhead Team Spawn Archway Banner at the back edge of the Square Spawn (No collision obstacle!)
       const pillarMat = new THREE.MeshStandardMaterial({
         color: teamColorHex,
         roughness: 0.3,
         metalness: 0.5
       });
       const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5.2, 14), pillarMat);
-      leftPost.position.set(-4.8, 2.6, -2.5);
+      leftPost.position.set(-5.2, 2.6, -halfD);
       spawnGroup.add(leftPost);
 
       const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5.2, 14), pillarMat);
-      rightPost.position.set(4.8, 2.6, -2.5);
+      rightPost.position.set(5.2, 2.6, -halfD);
       spawnGroup.add(rightPost);
 
       // Overhead Banner Canvas Texture
@@ -4249,18 +4336,18 @@ export default function HamsterPaintball({
       bannerTex.colorSpace = THREE.SRGBColorSpace;
 
       const headerBoard = new THREE.Mesh(
-        new THREE.BoxGeometry(10.2, 1.8, 0.35),
+        new THREE.BoxGeometry(10.8, 1.8, 0.35),
         new THREE.MeshBasicMaterial({ map: bannerTex })
       );
-      headerBoard.position.set(0, 5.2, -2.5);
+      headerBoard.position.set(0, 5.2, -halfD);
       spawnGroup.add(headerBoard);
 
       scene.add(spawnGroup);
     };
 
-    // Left Corner Spawn Area (Red Squad) & Right Corner Spawn Area (Blue Squad)
-    createTeamCornerSpawnBase(-35, -22, 0xf43f5e, 'RED SQUAD SPAWN', '#f43f5e');
-    createTeamCornerSpawnBase(35, -22, 0x38bdf8, 'BLUE SQUAD SPAWN', '#38bdf8');
+    // Left Corner Square Spawn Area (Red Squad) & Right Corner Square Spawn Area (Blue Squad)
+    createTeamCornerSpawnBase(-35, -23, 0xf43f5e, 'RED SQUAD SPAWN', '#f43f5e');
+    createTeamCornerSpawnBase(35, -23, 0x38bdf8, 'BLUE SQUAD SPAWN', '#38bdf8');
 
     // Inflatable PVC Bunker Bump & Color Textures
     const createRibbedBumpTexture = () => {
@@ -4688,14 +4775,14 @@ export default function HamsterPaintball({
     };
 
     [
-      [-43, -30, 1.25],
-      [43, -30, 1.25],
-      [-42, 26, 1.2],
-      [42, 26, 1.3],
-      [-18, -31, 1.15],
-      [18, -31, 1.15],
-      [-43, 2, 1.2],
-      [43, 2, 1.2]
+      [-50, -36, 1.25],
+      [50, -36, 1.25],
+      [-48, 26, 1.2],
+      [48, 26, 1.3],
+      [-18, -36, 1.15],
+      [18, -36, 1.15],
+      [-48, 2, 1.2],
+      [48, 2, 1.2]
     ].forEach(([tx, tz, sc]) => createTree(tx, tz, sc));
 
     // =========================================================
@@ -5137,6 +5224,15 @@ export default function HamsterPaintball({
           true
         );
 
+        // Update 3D 10-Second Respawn Immunity Shield on Local Hamster
+        if (ud && ud.immunityShieldGroup) {
+          const isLocalImmune = Date.now() < snapState.immuneUntil;
+          ud.immunityShieldGroup.visible = isLocalImmune;
+          if (isLocalImmune) {
+            ud.immunityShieldGroup.rotation.y += dt * 3.2;
+          }
+        }
+
         // Update 3D Ground Aim Reticle & Laser Sight Line from Gun Barrel Muzzle (`muzzleTip`)
         if (g.aimReticle && g.aimLaserLine && ud?.muzzleTip) {
           const showAim = snapState.screen === 'game';
@@ -5235,6 +5331,19 @@ export default function HamsterPaintball({
             const rz = entry.mesh.position.z;
             if (Math.hypot(p.mesh.position.x - rx, p.mesh.position.z - rz) < 1.4) {
               hit = true;
+              // Check if target player has active 10-Second Respawn Immunity!
+              if (
+                typeof entry.data.immuneUntil === 'number' &&
+                Date.now() < entry.data.immuneUntil
+              ) {
+                sfx.playDamageHit();
+                const remSec = Math.max(1, Math.ceil((entry.data.immuneUntil - Date.now()) / 1000));
+                setPickupBannerText(
+                  `🛡️ ${entry.data.name.toUpperCase()} HAS RESPAWN IMMUNITY (${remSec}s LEFT)!`
+                );
+                setTimeout(() => setPickupBannerText(null), 1500);
+                return;
+              }
               sfx.playSplat();
               spawnPaintSplatEffect(scene, g.splatDecals, g.particles, rx, 1.2, rz, p.color);
               // Only award score & apply damage during the active game ('playing')
@@ -5292,9 +5401,14 @@ export default function HamsterPaintball({
             Math.hypot(p.mesh.position.x - g.x, p.mesh.position.z - g.z) < 1.35
           ) {
             hit = true;
-            spawnPaintSplatEffect(scene, g.splatDecals, g.particles, g.x, 1.1, g.z, p.color);
-            if (snapState.matchStatus === 'playing') {
-              applyIncomingDamage(p.damage, p.ownerName || 'Opponent', p.ownerId);
+            // Enforce 10-Second Respawn Immunity: Local player CANNOT be hit within 10s of respawning!
+            if (Date.now() < snapState.immuneUntil) {
+              sfx.playDamageHit();
+            } else {
+              spawnPaintSplatEffect(scene, g.splatDecals, g.particles, g.x, 1.1, g.z, p.color);
+              if (snapState.matchStatus === 'playing') {
+                applyIncomingDamage(p.damage, p.ownerName || 'Opponent', p.ownerId);
+              }
             }
           }
         }
@@ -5336,7 +5450,7 @@ export default function HamsterPaintball({
         }
       }
 
-      // Smoothly Interpolate Remote Student Players
+      // Smoothly Interpolate Remote Student Players & Update their 3D Respawn Immunity Shield
       g.remotePlayers.forEach(entry => {
         const dx = entry.data.x - entry.mesh.position.x;
         const dz = entry.data.z - entry.mesh.position.z;
@@ -5344,6 +5458,15 @@ export default function HamsterPaintball({
         entry.mesh.position.x += dx * Math.min(1, dt * 10);
         entry.mesh.position.z += dz * Math.min(1, dt * 10);
         entry.mesh.rotation.y = entry.data.rotY;
+        const rUd = entry.mesh.userData;
+        if (rUd && rUd.immunityShieldGroup) {
+          const isRemoteImmune =
+            typeof entry.data.immuneUntil === 'number' && Date.now() < entry.data.immuneUntil;
+          rUd.immunityShieldGroup.visible = isRemoteImmune;
+          if (isRemoteImmune) {
+            rUd.immunityShieldGroup.rotation.y += dt * 3.2;
+          }
+        }
         entry.walkPhase = animateHamsterRig(entry.mesh, dist > 0.08, entry.walkPhase, dt);
       });
 
@@ -6927,8 +7050,18 @@ export default function HamsterPaintball({
             </div>
           </div>
 
-          {/* CENTER ALERTS: KO, PICKUP, OR LONG-PRESS CAN PROGRESS BAR */}
+          {/* CENTER ALERTS: 10s RESPAWN IMMUNITY, KO, PICKUP, OR LONG-PRESS CAN PROGRESS BAR */}
           <div className="self-center flex flex-col items-center gap-1.5">
+            {role === 'player' && immunitySecondsLeft > 0 && (
+              <div className="bg-slate-900/95 border-2 border-amber-400 px-4 py-1.5 rounded-2xl text-center shadow-2xl">
+                <div className="text-[11px] sm:text-xs font-black uppercase text-amber-300 flex items-center justify-center gap-1.5">
+                  <Shield size={13} className="text-amber-400 fill-amber-400" />
+                  <span>
+                    RESPAWN IMMUNITY: {immunitySecondsLeft}s • CANNOT BE HIT!
+                  </span>
+                </div>
+              </div>
+            )}
             {holdingCanType && (
               <div className="bg-slate-900/95 border-2 border-white px-4 py-2 rounded-2xl text-center shadow-2xl min-w-[210px]">
                 <div className="text-[11px] sm:text-xs font-black uppercase text-white flex items-center justify-center gap-1.5 mb-1">
