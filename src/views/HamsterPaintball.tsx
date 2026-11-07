@@ -254,7 +254,7 @@ function normalizePaintballQuestions(rawList: any): Question[] {
 }
 
 // =============================================================
-// HAMSTER PAINTBALL CHARACTERS (6 FULL-BODY ILLUSTRATED CHARACTERS)
+// HAMSTER PAINTBALL CHARACTERS (12 FULL-BODY ILLUSTRATED & 3D CHARACTERS)
 // =============================================================
 interface HamsterSkin {
   id: string;
@@ -273,7 +273,19 @@ interface HamsterSkin {
   paintColor: number;
   paintHex: string;
   badgeBg: string;
-  headgear: 'Bandana' | 'Helmet' | 'SpecOps' | 'Crown' | 'Cyber' | 'Blossom';
+  headgear:
+    | 'Bandana'
+    | 'Helmet'
+    | 'SpecOps'
+    | 'Crown'
+    | 'Cyber'
+    | 'Blossom'
+    | 'Flame'
+    | 'Astro'
+    | 'Samurai'
+    | 'Headphones'
+    | 'Cowboy'
+    | 'Viking';
 }
 
 const HAMSTER_SKINS: HamsterSkin[] = [
@@ -390,6 +402,120 @@ const HAMSTER_SKINS: HamsterSkin[] = [
     paintHex: '#f472b6',
     badgeBg: '#db2777',
     headgear: 'Blossom'
+  },
+  {
+    id: 'blaze',
+    name: 'Blaze Inferno',
+    roleTitle: 'Pyro Striker',
+    furColor: 0xea580c,
+    furHex: '#ea580c',
+    earInnerHex: '#fed7aa',
+    bellyColor: 0xffedd5,
+    bellyHex: '#ffedd5',
+    visorColor: 0xfef08a,
+    visorHex: '#fef08a',
+    strapColor: 0x9a3412,
+    vestColor: 0x450a0a,
+    vestHex: '#450a0a',
+    paintColor: 0xf97316,
+    paintHex: '#f97316',
+    badgeBg: '#ea580c',
+    headgear: 'Flame'
+  },
+  {
+    id: 'astro',
+    name: 'Astro Nibbles',
+    roleTitle: 'Galaxy Ranger',
+    furColor: 0x2563eb,
+    furHex: '#2563eb',
+    earInnerHex: '#bfdbfe',
+    bellyColor: 0xeff6ff,
+    bellyHex: '#eff6ff',
+    visorColor: 0x22d3ee,
+    visorHex: '#22d3ee',
+    strapColor: 0x1e40af,
+    vestColor: 0x0f172a,
+    vestHex: '#0f172a',
+    paintColor: 0x38bdf8,
+    paintHex: '#38bdf8',
+    badgeBg: '#2563eb',
+    headgear: 'Astro'
+  },
+  {
+    id: 'samurai',
+    name: 'Shogun Whiskers',
+    roleTitle: 'Samurai Duelist',
+    furColor: 0x334155,
+    furHex: '#334155',
+    earInnerHex: '#fda4af',
+    bellyColor: 0xe2e8f0,
+    bellyHex: '#e2e8f0',
+    visorColor: 0xef4444,
+    visorHex: '#ef4444',
+    strapColor: 0x991b1b,
+    vestColor: 0x09090b,
+    vestHex: '#09090b',
+    paintColor: 0xef4444,
+    paintHex: '#ef4444',
+    badgeBg: '#dc2626',
+    headgear: 'Samurai'
+  },
+  {
+    id: 'dj',
+    name: 'DJ Cheeks',
+    roleTitle: 'Bass Dropper',
+    furColor: 0x65a30d,
+    furHex: '#65a30d',
+    earInnerHex: '#d9f99d',
+    bellyColor: 0xf7fee7,
+    bellyHex: '#f7fee7',
+    visorColor: 0xe879f9,
+    visorHex: '#e879f9',
+    strapColor: 0x86198f,
+    vestColor: 0x1e1b4b,
+    vestHex: '#1e1b4b',
+    paintColor: 0xa3e635,
+    paintHex: '#a3e635',
+    badgeBg: '#65a30d',
+    headgear: 'Headphones'
+  },
+  {
+    id: 'sheriff',
+    name: 'Sheriff Peanut',
+    roleTitle: 'Wild West Ace',
+    furColor: 0xb45309,
+    furHex: '#b45309',
+    earInnerHex: '#fde68a',
+    bellyColor: 0xfef9c3,
+    bellyHex: '#fef9c3',
+    visorColor: 0x38bdf8,
+    visorHex: '#38bdf8',
+    strapColor: 0x78350f,
+    vestColor: 0x422006,
+    vestHex: '#422006',
+    paintColor: 0xfacc15,
+    paintHex: '#facc15',
+    badgeBg: '#d97706',
+    headgear: 'Cowboy'
+  },
+  {
+    id: 'viking',
+    name: 'Viking Chonk',
+    roleTitle: 'Nordic Berserker',
+    furColor: 0x9a3412,
+    furHex: '#9a3412',
+    earInnerHex: '#fed7aa',
+    bellyColor: 0xffedd5,
+    bellyHex: '#ffedd5',
+    visorColor: 0x10b981,
+    visorHex: '#10b981',
+    strapColor: 0x065f46,
+    vestColor: 0x1c1917,
+    vestHex: '#1c1917',
+    paintColor: 0x10b981,
+    paintHex: '#10b981',
+    badgeBg: '#059669',
+    headgear: 'Viking'
   }
 ];
 
@@ -542,6 +668,84 @@ function HamsterCharacterAvatar({
           <circle cx="33" cy="16" r="2.5" fill="#facc15" />
           <circle cx="67" cy="16" r="6" fill="#fbcfe8" stroke="#0f172a" strokeWidth="2" />
           <circle cx="67" cy="16" r="2.5" fill="#facc15" />
+        </g>
+      )}
+      {skin.headgear === 'Flame' && (
+        <g>
+          <polygon
+            points="35,20 44,5 50,15 56,3 65,20"
+            fill="#f97316"
+            stroke="#0f172a"
+            strokeWidth="2.2"
+          />
+          <polygon points="43,19 50,8 57,19" fill="#fef08a" />
+        </g>
+      )}
+      {skin.headgear === 'Astro' && (
+        <g>
+          <line x1="50" y1="16" x2="50" y2="5" stroke="#0f172a" strokeWidth="2.6" />
+          <circle cx="50" cy="5" r="4.5" fill="#38bdf8" stroke="#0f172a" strokeWidth="2" />
+          <path
+            d="M 24 25 Q 50 13 76 25"
+            fill="none"
+            stroke="#e0f2fe"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+        </g>
+      )}
+      {skin.headgear === 'Samurai' && (
+        <g>
+          <path
+            d="M 22 25 L 78 25 L 72 15 L 28 15 Z"
+            fill="#18181b"
+            stroke="#0f172a"
+            strokeWidth="2.2"
+          />
+          <polygon
+            points="50,18 32,4 42,19"
+            fill="#facc15"
+            stroke="#0f172a"
+            strokeWidth="1.8"
+          />
+          <polygon
+            points="50,18 68,4 58,19"
+            fill="#facc15"
+            stroke="#0f172a"
+            strokeWidth="1.8"
+          />
+        </g>
+      )}
+      {skin.headgear === 'Headphones' && (
+        <g>
+          <path
+            d="M 16 36 C 16 10, 84 10, 84 36"
+            fill="none"
+            stroke="#a3e635"
+            strokeWidth="4.5"
+            strokeLinecap="round"
+          />
+          <rect x="10" y="28" width="9" height="16" rx="4" fill="#ec4899" stroke="#0f172a" strokeWidth="2" />
+          <rect x="81" y="28" width="9" height="16" rx="4" fill="#ec4899" stroke="#0f172a" strokeWidth="2" />
+        </g>
+      )}
+      {skin.headgear === 'Cowboy' && (
+        <g>
+          <ellipse cx="50" cy="19" rx="34" ry="6" fill="#92400e" stroke="#0f172a" strokeWidth="2.2" />
+          <path
+            d="M 31 19 C 33 6, 44 8, 50 11 C 56 8, 67 6, 69 19 Z"
+            fill="#b45309"
+            stroke="#0f172a"
+            strokeWidth="2.2"
+          />
+          <polygon points="50,11 52,15 56,15 53,17 54,21 50,18 46,21 47,17 44,15 48,15" fill="#facc15" />
+        </g>
+      )}
+      {skin.headgear === 'Viking' && (
+        <g>
+          <path d="M 28 22 C 20 8, 12 10, 16 4 C 24 4, 30 12, 34 18 Z" fill="#fef3c7" stroke="#0f172a" strokeWidth="2" />
+          <path d="M 72 22 C 80 8, 88 10, 84 4 C 76 4, 70 12, 66 18 Z" fill="#fef3c7" stroke="#0f172a" strokeWidth="2" />
+          <path d="M 26 24 C 30 12, 70 12, 74 24 Z" fill="#57534e" stroke="#0f172a" strokeWidth="2.2" />
         </g>
       )}
 
@@ -1497,6 +1701,9 @@ export default function HamsterPaintball({
     >;
     teacherJanNpc?: THREE.Group;
     waterMesh?: THREE.Mesh;
+    aimReticle?: THREE.Group;
+    aimLaserLine?: THREE.Line;
+    shootButtonHeld?: boolean;
     broadcastChannel?: BroadcastChannel;
   } | null>(null);
 
@@ -2264,7 +2471,101 @@ export default function HamsterPaintball({
     }
   };
 
-  // Spawn Network Paintball Shot
+  // Build a High-Visibility 3D Paintball Projectile with Aerodynamic Streak Tail
+  const createPaintballProjectileMesh = (paintColor: number): THREE.Group => {
+    const projGroup = new THREE.Group();
+
+    const coreBall = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 16, 16),
+      new THREE.MeshPhysicalMaterial({
+        color: paintColor,
+        emissive: paintColor,
+        emissiveIntensity: 0.35,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.04,
+        roughness: 0.08,
+        metalness: 0.12
+      })
+    );
+    coreBall.castShadow = true;
+    projGroup.add(coreBall);
+
+    // Bright Outer Energy Halo around the Paintball
+    const glowShell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.36, 12, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.32
+      })
+    );
+    projGroup.add(glowShell);
+
+    // Aerodynamic Paint Streak Tail Behind the Ball
+    const streakTail = new THREE.Mesh(
+      new THREE.ConeGeometry(0.21, 1.25, 12),
+      new THREE.MeshBasicMaterial({
+        color: paintColor,
+        transparent: true,
+        opacity: 0.68
+      })
+    );
+    streakTail.rotation.x = -Math.PI / 2;
+    streakTail.position.z = -0.68;
+    projGroup.add(streakTail);
+
+    return projGroup;
+  };
+
+  // Spawn 3D Muzzle CO2 Gas & Paint Mist Burst at the Exact Gun Barrel Nozzle
+  const spawnGunMuzzleBlastEffect = (
+    scene: THREE.Scene,
+    particles: Array<{
+      mesh: THREE.Mesh;
+      vx: number;
+      vy: number;
+      vz: number;
+      life: number;
+      maxLife: number;
+    }>,
+    muzzlePos: THREE.Vector3,
+    shotAngle: number,
+    paintColor: number
+  ) => {
+    const gasMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.9
+    });
+    const paintMistMat = new THREE.MeshBasicMaterial({
+      color: paintColor,
+      transparent: true,
+      opacity: 0.95
+    });
+
+    for (let i = 0; i < 7; i++) {
+      const isPaintDrop = i % 2 === 0;
+      const pMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(isPaintDrop ? 0.095 : 0.12, 8, 8),
+        isPaintDrop ? paintMistMat : gasMat
+      );
+      pMesh.position.copy(muzzlePos);
+      scene.add(pMesh);
+
+      const spread = (Math.random() - 0.5) * 0.38;
+      const speed = 10 + Math.random() * 14;
+      particles.push({
+        mesh: pMesh,
+        vx: Math.sin(shotAngle + spread) * speed,
+        vy: 1.2 + (Math.random() - 0.3) * 3.5,
+        vz: Math.cos(shotAngle + spread) * speed,
+        life: 0,
+        maxLife: 0.16 + Math.random() * 0.1
+      });
+    }
+  };
+
+  // Spawn Network Paintball Shot Directly from the Remote Shooter's 3D Gun Barrel Muzzle!
   const spawnNetworkProjectile = (
     ownerId: string,
     ownerName: string,
@@ -2276,35 +2577,47 @@ export default function HamsterPaintball({
   ) => {
     const g = gameRef.current;
     if (!g) return;
-    const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(0.32, 16, 16),
-      new THREE.MeshPhysicalMaterial({
-        color: paintColor,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.05,
-        roughness: 0.1,
-        metalness: 0.15
-      })
+
+    const muzzlePos = new THREE.Vector3(
+      startX + Math.sin(angle) * 1.65,
+      1.32,
+      startZ + Math.cos(angle) * 1.65
     );
-    ball.castShadow = true;
-    ball.position.set(startX + Math.sin(angle) * 1.4, 1.55, startZ + Math.cos(angle) * 1.4);
+
+    // Extract exact 3D world position of the remote shooter's gun barrel tip (`muzzleTip`)
+    const shooterEntry = g.remotePlayers.get(ownerId);
+    if (shooterEntry && shooterEntry.mesh) {
+      shooterEntry.mesh.rotation.y = angle;
+      const ud = shooterEntry.mesh.userData;
+      if (ud) {
+        if (ud.markerGroup) {
+          ud.markerGroup.position.z = 0.55;
+          ud.markerGroup.rotation.x = 0;
+        }
+        shooterEntry.mesh.updateMatrixWorld(true);
+        if (ud.muzzleTip) {
+          ud.muzzleTip.getWorldPosition(muzzlePos);
+        }
+        ud.recoil = 1.0;
+      }
+    }
+
+    const ball = createPaintballProjectileMesh(paintColor);
+    ball.position.copy(muzzlePos);
+    ball.rotation.y = angle;
     g.scene.add(ball);
 
-    // Trigger recoil animation on remote shooter's 3D hamster
-    const shooterEntry = g.remotePlayers.get(ownerId);
-    if (shooterEntry && shooterEntry.mesh.userData) {
-      shooterEntry.mesh.userData.recoil = 1.0;
-    }
+    spawnGunMuzzleBlastEffect(g.scene, g.particles, muzzlePos, angle, paintColor);
 
     g.projectiles.push({
       ownerId,
       ownerName,
       ownerTeam,
       mesh: ball,
-      vx: Math.sin(angle) * 36,
-      vy: 2.0,
-      vz: Math.cos(angle) * 36,
-      gravity: 9.8,
+      vx: Math.sin(angle) * 40,
+      vy: 1.65,
+      vz: Math.cos(angle) * 40,
+      gravity: 9.2,
       damage: 28,
       color: paintColor
     });
@@ -2706,6 +3019,93 @@ export default function HamsterPaintball({
         flower.position.set(bx, 0.72, 0.22);
         headgearGroup.add(flower);
       });
+    } else if (skin.headgear === 'Flame') {
+      [-0.22, 0, 0.22].forEach((fx, fi) => {
+        const flameCone = new THREE.Mesh(
+          new THREE.ConeGeometry(fi === 1 ? 0.22 : 0.16, fi === 1 ? 0.62 : 0.45, 8),
+          new THREE.MeshStandardMaterial({
+            color: fi === 1 ? 0xfef08a : 0xf97316,
+            emissive: 0xf97316,
+            emissiveIntensity: 0.55
+          })
+        );
+        flameCone.position.set(fx, 0.85, 0.08);
+        headgearGroup.add(flameCone);
+      });
+    } else if (skin.headgear === 'Astro') {
+      const stalk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, 0.45, 10),
+        new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8 })
+      );
+      stalk.position.set(0, 0.88, 0.05);
+      headgearGroup.add(stalk);
+      const orb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 14, 14),
+        new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          emissive: 0x38bdf8,
+          emissiveIntensity: 0.85
+        })
+      );
+      orb.position.set(0, 1.12, 0.05);
+      headgearGroup.add(orb);
+    } else if (skin.headgear === 'Samurai') {
+      const kabutoCrest = new THREE.Mesh(
+        new THREE.TorusGeometry(0.38, 0.06, 10, 20, Math.PI),
+        new THREE.MeshPhysicalMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.15 })
+      );
+      kabutoCrest.rotation.z = Math.PI;
+      kabutoCrest.position.set(0, 0.92, 0.42);
+      headgearGroup.add(kabutoCrest);
+    } else if (skin.headgear === 'Headphones') {
+      const arcBand = new THREE.Mesh(
+        new THREE.TorusGeometry(0.78, 0.065, 12, 24, Math.PI),
+        new THREE.MeshStandardMaterial({
+          color: 0xa3e635,
+          emissive: 0xa3e635,
+          emissiveIntensity: 0.3
+        })
+      );
+      arcBand.position.set(0, 0.08, 0);
+      headgearGroup.add(arcBand);
+      [-0.78, 0.78].forEach(hx => {
+        const cup = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.24, 0.24, 0.18, 16),
+          new THREE.MeshPhysicalMaterial({ color: 0xec4899, clearcoat: 1.0, roughness: 0.15 })
+        );
+        cup.rotation.z = Math.PI / 2;
+        cup.position.set(hx, 0.08, 0.05);
+        headgearGroup.add(cup);
+      });
+    } else if (skin.headgear === 'Cowboy') {
+      const brim = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.05, 1.05, 0.07, 24),
+        new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 })
+      );
+      brim.position.set(0, 0.66, 0.04);
+      headgearGroup.add(brim);
+      const hatTop = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.48, 0.58, 0.38, 20),
+        new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6 })
+      );
+      hatTop.position.set(0, 0.86, 0.04);
+      headgearGroup.add(hatTop);
+    } else if (skin.headgear === 'Viking') {
+      const helm = new THREE.Mesh(
+        new THREE.SphereGeometry(0.79, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.45),
+        new THREE.MeshStandardMaterial({ color: 0x57534e, metalness: 0.7, roughness: 0.35 })
+      );
+      helm.position.y = 0.12;
+      headgearGroup.add(helm);
+      [-1, 1].forEach(side => {
+        const horn = new THREE.Mesh(
+          new THREE.ConeGeometry(0.14, 0.55, 12),
+          new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.3 })
+        );
+        horn.position.set(side * 0.76, 0.68, 0.1);
+        horn.rotation.z = -side * 0.55;
+        headgearGroup.add(horn);
+      });
     }
     headGroup.add(headgearGroup);
 
@@ -2774,7 +3174,7 @@ export default function HamsterPaintball({
     hipShieldCan.rotation.z = -0.22;
     bodyGroup.add(hipShieldCan);
 
-    // 6. Articulated Arms, Held Canister & Marker Gun
+    // 6. Articulated Arms, Held Canister & Pro Mechanical Paintball Marker Gun
     const leftArmGroup = new THREE.Group();
     leftArmGroup.position.set(-0.78, 1.18, 0.35);
     const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.38, 12, 16), furMat);
@@ -2798,14 +3198,18 @@ export default function HamsterPaintball({
     leftArmGroup.add(heldCanMesh);
     bodyGroup.add(leftArmGroup);
 
+    const rightArmGroup = new THREE.Group();
+    rightArmGroup.position.set(0.76, 1.18, 0.42);
     const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.38, 12, 16), furMat);
-    rightArm.position.set(0.76, 1.18, 0.42);
     rightArm.rotation.x = Math.PI / 2.4;
     rightArm.castShadow = true;
-    bodyGroup.add(rightArm);
+    rightArmGroup.add(rightArm);
+    bodyGroup.add(rightArmGroup);
 
     const markerGroup = new THREE.Group();
     markerGroup.position.set(0.82, 1.24, 0.55);
+    // Subtle inward toe-in so the gun barrel naturally converges on the forward crosshair line
+    markerGroup.rotation.y = -0.055;
 
     const anodizedMat = new THREE.MeshPhysicalMaterial({
       color: teamColorNum,
@@ -2828,8 +3232,26 @@ export default function HamsterPaintball({
     receiver.castShadow = true;
     markerGroup.add(receiver);
 
+    // Reciprocating Mechanical Bolt on Top-Rear of Receiver (Slams back & forth on every shot!)
+    const boltMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.068, 0.068, 0.44, 14),
+      chromeMat
+    );
+    boltMesh.rotation.x = Math.PI / 2;
+    boltMesh.position.set(0, 0.15, -0.22);
+    markerGroup.add(boltMesh);
+
+    // Chambered Paintball visible travelling down the Barrel Breach when firing
+    const chamberBallMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.085, 12, 12),
+      new THREE.MeshBasicMaterial({ color: teamColorNum })
+    );
+    chamberBallMesh.position.set(0, 0.05, 0.25);
+    chamberBallMesh.visible = false;
+    markerGroup.add(chamberBallMesh);
+
     const barrelBack = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.068, 0.075, 0.65, 16),
+      new THREE.CylinderGeometry(0.072, 0.08, 0.65, 16),
       carbonMat
     );
     barrelBack.rotation.x = Math.PI / 2;
@@ -2837,24 +3259,73 @@ export default function HamsterPaintball({
     markerGroup.add(barrelBack);
 
     const barrelTip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.058, 0.065, 0.65, 16),
+      new THREE.CylinderGeometry(0.064, 0.07, 0.68, 16),
       anodizedMat
     );
     barrelTip.rotation.x = Math.PI / 2;
-    barrelTip.position.set(0, 0.05, 1.28);
+    barrelTip.position.set(0, 0.05, 1.3);
     markerGroup.add(barrelTip);
 
-    // 3D Muzzle Flash Sphere at Barrel Tip (Flashes on shot recoil!)
-    const muzzleFlash = new THREE.Mesh(
-      new THREE.SphereGeometry(0.24, 12, 12),
+    // Ported Muzzle Brake & Hollow Dark Barrel Bore at the Tip of the Gun
+    const muzzleBrake = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.082, 0.072, 0.18, 16),
+      chromeMat
+    );
+    muzzleBrake.rotation.x = Math.PI / 2;
+    muzzleBrake.position.set(0, 0.05, 1.64);
+    markerGroup.add(muzzleBrake);
+
+    const barrelBore = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.052, 0.052, 0.06, 14),
+      new THREE.MeshBasicMaterial({ color: 0x020617 })
+    );
+    barrelBore.rotation.x = Math.PI / 2;
+    barrelBore.position.set(0, 0.05, 1.71);
+    markerGroup.add(barrelBore);
+
+    // Exact 3D Muzzle Spawn Point at the Front Opening of the Gun Barrel!
+    const muzzleTip = new THREE.Object3D();
+    muzzleTip.position.set(0, 0.05, 1.75);
+    markerGroup.add(muzzleTip);
+
+    // Multi-Part 3D Muzzle Blast & Gas Ring at the Gun Barrel Tip (Flashes when bullet exits!)
+    const muzzleFlash = new THREE.Group();
+    muzzleFlash.position.set(0, 0.05, 1.76);
+    muzzleFlash.visible = false;
+
+    const flashCore = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 12, 12),
       new THREE.MeshBasicMaterial({
         color: 0xfef08a,
+        transparent: true,
+        opacity: 0.95
+      })
+    );
+    muzzleFlash.add(flashCore);
+
+    const flashCone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.19, 0.58, 12),
+      new THREE.MeshBasicMaterial({
+        color: teamColorNum,
+        transparent: true,
+        opacity: 0.85
+      })
+    );
+    flashCone.rotation.x = Math.PI / 2;
+    flashCone.position.z = 0.28;
+    muzzleFlash.add(flashCone);
+
+    const flashRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.24, 0.035, 8, 18),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
         transparent: true,
         opacity: 0.9
       })
     );
-    muzzleFlash.position.set(0, 0.05, 1.68);
-    muzzleFlash.visible = false;
+    flashRing.position.z = 0.08;
+    muzzleFlash.add(flashRing);
+
     markerGroup.add(muzzleFlash);
 
     const pistolGrip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.38, 0.2), carbonMat);
@@ -2896,13 +3367,37 @@ export default function HamsterPaintball({
       new THREE.MeshPhysicalMaterial({
         color: 0x1e293b,
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.68,
         roughness: 0.12,
         clearcoat: 1.0
       })
     );
     hopperShell.scale.set(0.92, 0.82, 1.38);
     hopperGroup.add(hopperShell);
+
+    // Visible 3D Paintballs inside the Translucent Hopper that Agitate & Feed into the Gun when Shooting!
+    const hopperBallsGroup = new THREE.Group();
+    const hopperBallOffsets = [
+      [-0.08, -0.04, -0.1],
+      [0.08, -0.03, -0.08],
+      [0, -0.02, 0.1],
+      [-0.09, 0.04, 0.06],
+      [0.09, 0.05, 0.08],
+      [0, 0.06, -0.04]
+    ];
+    hopperBallOffsets.forEach(([bx, by, bz], bi) => {
+      const hb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.072, 10, 10),
+        new THREE.MeshPhysicalMaterial({
+          color: bi % 2 === 0 ? teamColorNum : skin.paintColor,
+          clearcoat: 1.0,
+          roughness: 0.1
+        })
+      );
+      hb.position.set(bx, by, bz);
+      hopperBallsGroup.add(hb);
+    });
+    hopperGroup.add(hopperBallsGroup);
 
     const speedFeed = new THREE.Mesh(
       new THREE.TorusGeometry(0.15, 0.03, 10, 20),
@@ -2942,11 +3437,16 @@ export default function HamsterPaintball({
       rightEar,
       tail,
       leftArmGroup,
+      rightArmGroup,
       heldCanMesh,
       canAuraRing,
       bodyGroup,
       headGroup,
       markerGroup,
+      boltMesh,
+      chamberBallMesh,
+      hopperBallsGroup,
+      muzzleTip,
       muzzleFlash,
       recoil: 0,
       skinIdx,
@@ -3120,27 +3620,35 @@ export default function HamsterPaintball({
     let nextPhase = walkPhase;
 
     if (isMoving) {
-      nextPhase += dt * 15.5;
+      nextPhase += dt * 15.8;
       if (playStepAudio) {
         sfx.playFootstep();
       }
       if (ud.leftLeg) {
-        ud.leftLeg.rotation.x = Math.sin(nextPhase) * 0.72;
-        ud.leftLeg.position.y = 0.38 + Math.max(0, Math.sin(nextPhase)) * 0.1;
+        ud.leftLeg.rotation.x = Math.sin(nextPhase) * 0.78;
+        ud.leftLeg.position.y = 0.38 + Math.max(0, Math.sin(nextPhase)) * 0.13;
       }
       if (ud.rightLeg) {
-        ud.rightLeg.rotation.x = -Math.sin(nextPhase) * 0.72;
-        ud.rightLeg.position.y = 0.38 + Math.max(0, -Math.sin(nextPhase)) * 0.1;
+        ud.rightLeg.rotation.x = -Math.sin(nextPhase) * 0.78;
+        ud.rightLeg.position.y = 0.38 + Math.max(0, -Math.sin(nextPhase)) * 0.13;
       }
       if (ud.bodyGroup) {
-        ud.bodyGroup.position.y = Math.abs(Math.sin(nextPhase * 2)) * 0.12;
-        ud.bodyGroup.rotation.z = Math.sin(nextPhase) * 0.065;
+        ud.bodyGroup.position.y = Math.abs(Math.sin(nextPhase * 2)) * 0.14;
+        ud.bodyGroup.rotation.z = Math.sin(nextPhase) * 0.075;
+        ud.bodyGroup.rotation.x = 0.08; // Athletic forward sprint lean
       }
-      if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + Math.sin(nextPhase * 2) * 0.14;
-      if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - Math.sin(nextPhase * 2) * 0.14;
-      if (ud.tail) ud.tail.rotation.y = Math.sin(nextPhase * 2) * 0.35;
+      if (ud.headGroup) {
+        ud.headGroup.rotation.z = -Math.sin(nextPhase) * 0.04;
+        ud.headGroup.position.y = 1.72 + Math.abs(Math.cos(nextPhase * 2)) * 0.04;
+      }
+      if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + Math.sin(nextPhase * 2) * 0.16;
+      if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - Math.sin(nextPhase * 2) * 0.16;
+      if (ud.tail) ud.tail.rotation.y = Math.sin(nextPhase * 2.5) * 0.42;
+      if (ud.hopperBallsGroup) {
+        ud.hopperBallsGroup.position.y = Math.abs(Math.sin(nextPhase * 2)) * 0.03;
+      }
     } else {
-      nextPhase += dt * 2.6;
+      nextPhase += dt * 2.8;
       if (ud.leftLeg) {
         ud.leftLeg.rotation.x *= 0.84;
         ud.leftLeg.position.y = 0.38;
@@ -3150,28 +3658,65 @@ export default function HamsterPaintball({
         ud.rightLeg.position.y = 0.38;
       }
       if (ud.bodyGroup) {
-        ud.bodyGroup.position.y = Math.sin(nextPhase) * 0.03;
+        ud.bodyGroup.position.y = Math.sin(nextPhase) * 0.035;
         ud.bodyGroup.rotation.z *= 0.84;
+        ud.bodyGroup.rotation.x *= 0.84;
+      }
+      if (ud.headGroup) {
+        ud.headGroup.rotation.z = Math.sin(nextPhase * 0.5) * 0.02;
+        ud.headGroup.position.y = 1.72 + Math.sin(nextPhase) * 0.015;
       }
       if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + Math.sin(nextPhase) * 0.04;
       if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - Math.sin(nextPhase) * 0.04;
     }
 
-    // Marker Shot Recoil & Muzzle Flash Animation
+    // Mechanical Gun Shot Recoil, Reciprocating Bolt, Chambered Bullet & Muzzle Blast Animation
+    const runSwayY = isMoving ? Math.sin(nextPhase) * 0.035 : Math.sin(nextPhase) * 0.01;
     if (typeof ud.recoil === 'number' && ud.recoil > 0.01) {
-      ud.recoil = Math.max(0, ud.recoil - dt * 6.5);
+      ud.recoil = Math.max(0, ud.recoil - dt * 6.8);
       if (ud.markerGroup) {
-        ud.markerGroup.position.z = 0.55 - ud.recoil * 0.24;
-        ud.markerGroup.rotation.x = -ud.recoil * 0.18;
+        ud.markerGroup.position.z = 0.55 - ud.recoil * 0.28;
+        ud.markerGroup.position.y = 1.24 + runSwayY + ud.recoil * 0.05;
+        ud.markerGroup.rotation.x = -ud.recoil * 0.22;
+      }
+      if (ud.rightArmGroup) {
+        ud.rightArmGroup.position.z = 0.42 - ud.recoil * 0.2;
+        ud.rightArmGroup.rotation.x = -ud.recoil * 0.18;
+      }
+      if (ud.boltMesh) {
+        // Mechanical bolt slams backward & cycles forward
+        ud.boltMesh.position.z = -0.22 - Math.sin(ud.recoil * Math.PI) * 0.32;
+      }
+      if (ud.chamberBallMesh) {
+        // Show paintball travelling down the barrel from hopper to muzzle!
+        ud.chamberBallMesh.visible = ud.recoil > 0.25;
+        ud.chamberBallMesh.position.z = 0.25 + (1 - ud.recoil) * 1.45;
+      }
+      if (ud.hopperBallsGroup) {
+        ud.hopperBallsGroup.rotation.y += dt * 18;
+        ud.hopperBallsGroup.position.y = Math.sin(ud.recoil * Math.PI * 2) * 0.055;
       }
       if (ud.muzzleFlash) {
-        ud.muzzleFlash.visible = ud.recoil > 0.65;
-        ud.muzzleFlash.scale.setScalar(0.8 + ud.recoil * 0.6);
+        ud.muzzleFlash.visible = ud.recoil > 0.48;
+        const flashScale = 0.75 + ud.recoil * 0.85;
+        ud.muzzleFlash.scale.setScalar(flashScale);
+        ud.muzzleFlash.rotation.z += dt * 25;
       }
     } else {
       if (ud.markerGroup) {
         ud.markerGroup.position.z = 0.55;
+        ud.markerGroup.position.y = 1.24 + runSwayY;
         ud.markerGroup.rotation.x = 0;
+      }
+      if (ud.rightArmGroup) {
+        ud.rightArmGroup.position.z = 0.42;
+        ud.rightArmGroup.rotation.x = 0;
+      }
+      if (ud.boltMesh) {
+        ud.boltMesh.position.z = -0.22;
+      }
+      if (ud.chamberBallMesh) {
+        ud.chamberBallMesh.visible = false;
       }
       if (ud.muzzleFlash) {
         ud.muzzleFlash.visible = false;
@@ -4001,12 +4546,65 @@ export default function HamsterPaintball({
     }
     scene.add(localHamster);
 
+    // 3D Tactical Ground Aim Reticle & Laser Sight Line from Gun Barrel Muzzle!
+    const aimColorNum =
+      stateSnapRef.current.matchMode === 'teams' && stateSnapRef.current.myTeam !== 'solo'
+        ? TEAM_CONFIG[stateSnapRef.current.myTeam].colorNum
+        : HAMSTER_SKINS[selectedSkinIdx % HAMSTER_SKINS.length].paintColor;
+
+    const aimReticle = new THREE.Group();
+    const reticleOuter = new THREE.Mesh(
+      new THREE.RingGeometry(0.52, 0.72, 24),
+      new THREE.MeshBasicMaterial({
+        color: aimColorNum,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85
+      })
+    );
+    reticleOuter.rotation.x = -Math.PI / 2;
+    aimReticle.add(reticleOuter);
+
+    const reticleCenter = new THREE.Mesh(
+      new THREE.CircleGeometry(0.18, 16),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9
+      })
+    );
+    reticleCenter.rotation.x = -Math.PI / 2;
+    reticleCenter.position.y = 0.01;
+    aimReticle.add(reticleCenter);
+    aimReticle.position.set(startX, 0.06, startZ + 6);
+    aimReticle.visible = !isHostRole;
+    scene.add(aimReticle);
+
+    const laserGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(startX, 1.3, startZ),
+      new THREE.Vector3(startX, 0.12, startZ + 6)
+    ]);
+    const aimLaserLine = new THREE.Line(
+      laserGeom,
+      new THREE.LineBasicMaterial({
+        color: aimColorNum,
+        transparent: true,
+        opacity: 0.42
+      })
+    );
+    aimLaserLine.visible = !isHostRole;
+    scene.add(aimLaserLine);
+
     gameRef.current = {
       scene,
       camera,
       renderer,
       localHamster,
       teacherJanNpc,
+      aimReticle,
+      aimLaserLine,
+      shootButtonHeld: false,
       x: startX,
       z: startZ,
       rotY: isHostRole ? 0 : initialSpawn.rotY,
@@ -4335,6 +4933,14 @@ export default function HamsterPaintball({
 
         g.localHamster.position.set(g.x, 0, g.z);
         g.localHamster.rotation.y = g.rotY;
+
+        // Converge the 3D Gun Barrel (`markerGroup`) toward the Aim Target so bullets clearly exit along the barrel!
+        const ud = g.localHamster.userData;
+        if (ud && ud.markerGroup) {
+          const aimDist = Math.max(3.2, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
+          ud.markerGroup.rotation.y = -Math.atan2(0.82, aimDist);
+        }
+
         g.walkPhase = animateHamsterRig(
           g.localHamster,
           isMoving,
@@ -4343,15 +4949,64 @@ export default function HamsterPaintball({
           snapState.holdingCanType,
           true
         );
+
+        // Update 3D Ground Aim Reticle & Laser Sight Line from Gun Barrel Muzzle (`muzzleTip`)
+        if (g.aimReticle && g.aimLaserLine && ud?.muzzleTip) {
+          const showAim = snapState.screen === 'game';
+          g.aimReticle.visible = showAim;
+          g.aimLaserLine.visible = showAim;
+          if (showAim) {
+            g.aimReticle.position.set(g.aimWorldX, 0.06, g.aimWorldZ);
+            g.aimReticle.rotation.y += dt * 2.5;
+            g.localHamster.updateMatrixWorld(true);
+            const muzzleWorld = new THREE.Vector3();
+            ud.muzzleTip.getWorldPosition(muzzleWorld);
+            const posAttr = g.aimLaserLine.geometry.getAttribute(
+              'position'
+            ) as THREE.BufferAttribute;
+            if (posAttr) {
+              posAttr.setXYZ(0, muzzleWorld.x, muzzleWorld.y, muzzleWorld.z);
+              posAttr.setXYZ(1, g.aimWorldX, 0.12, g.aimWorldZ);
+              posAttr.needsUpdate = true;
+            }
+          }
+        }
+
+        // Continuous Rapid Semi-Auto Firing while holding Mouse, Shoot Button, or Spacebar
+        if (
+          snapState.screen === 'game' &&
+          (g.mouseDown || g.shootButtonHeld || g.keys[' '])
+        ) {
+          fireShot();
+        }
       }
 
-      // Update Projectiles & Collisions
+      // Update Projectiles & Collisions (Orient bullet + tail streak along flight vector!)
       for (let i = g.projectiles.length - 1; i >= 0; i--) {
         const p = g.projectiles[i];
         p.vy -= p.gravity * dt;
         p.mesh.position.x += p.vx * dt;
         p.mesh.position.y += p.vy * dt;
         p.mesh.position.z += p.vz * dt;
+        p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
+
+        // Emit subtle trailing paint micro-droplets behind flying paintballs
+        if (Math.random() < 0.42) {
+          const trailDrop = new THREE.Mesh(
+            new THREE.SphereGeometry(0.065, 6, 6),
+            new THREE.MeshBasicMaterial({ color: p.color })
+          );
+          trailDrop.position.copy(p.mesh.position);
+          scene.add(trailDrop);
+          g.particles.push({
+            mesh: trailDrop,
+            vx: (Math.random() - 0.5) * 1.2,
+            vy: (Math.random() - 0.5) * 1.2,
+            vz: (Math.random() - 0.5) * 1.2,
+            life: 0,
+            maxLife: 0.14
+          });
+        }
 
         let hit = false;
 
@@ -4523,20 +5178,20 @@ export default function HamsterPaintball({
   }, [selectedSkinIdx, role, myTeam]);
 
   // -------------------------------------------------------------
-  // 7. FIRE PAINTBALL & EARN AMMO VIA QUESTIONS
+  // 7. FIRE PAINTBALL DIRECTLY OUT OF THE 3D GUN BARREL MUZZLE & EARN AMMO VIA QUESTIONS
   // -------------------------------------------------------------
   const fireShot = () => {
     const g = gameRef.current;
     if (!g || role !== 'player' || stateSnapRef.current.screen !== 'game') return;
     const now = performance.now();
-    if (now - g.lastShotTime < 190) return;
+    if (now - g.lastShotTime < 185) return;
 
     const isPlayingMatch = stateSnapRef.current.matchStatus === 'playing';
 
     // During the Lobby ('lobby'), players can shoot freely!
     // During the active Game ('playing'), players answer questions to earn paintballs.
     if (isPlayingMatch) {
-      if (ammo <= 0) {
+      if (stateSnapRef.current.ammo <= 0) {
         setIsQuestionModalOpen(true);
         return;
       }
@@ -4544,43 +5199,68 @@ export default function HamsterPaintball({
     }
 
     g.lastShotTime = now;
-    if (g.localHamster.userData) {
-      g.localHamster.userData.recoil = 1.0;
-    }
     sfx.playMarkerShot();
 
+    const skinObj = HAMSTER_SKINS[selectedSkinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
     const teamPaint =
       matchMode === 'teams' && myTeam !== 'solo'
         ? TEAM_CONFIG[myTeam].colorNum
-        : HAMSTER_SKINS[selectedSkinIdx].paintColor;
+        : skinObj.paintColor;
 
+    // 1. Face the Hamster toward the Aim Target & Align Gun Barrel
     const dx = g.aimWorldX - g.x;
     const dz = g.aimWorldZ - g.z;
-    const angle = Math.hypot(dx, dz) > 0.2 ? Math.atan2(dx, dz) : g.rotY;
+    const aimDist = Math.hypot(dx, dz);
+    const bodyAngle = aimDist > 0.25 ? Math.atan2(dx, dz) : g.rotY;
+    g.rotY = bodyAngle;
+    g.localHamster.position.set(g.x, 0, g.z);
+    g.localHamster.rotation.y = bodyAngle;
 
-    const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(0.32, 16, 16),
-      new THREE.MeshPhysicalMaterial({
-        color: teamPaint,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.04,
-        roughness: 0.08,
-        metalness: 0.15
-      })
+    // 2. Compute Exact 3D World Position of the Gun Barrel Tip (`muzzleTip`) BEFORE applying kickback!
+    const muzzleWorldPos = new THREE.Vector3(
+      g.x + Math.sin(bodyAngle) * 1.65,
+      1.32,
+      g.z + Math.cos(bodyAngle) * 1.65
     );
-    ball.castShadow = true;
-    ball.position.set(g.x + Math.sin(angle) * 1.4, 1.55, g.z + Math.cos(angle) * 1.4);
+    const ud = g.localHamster.userData;
+    if (ud) {
+      if (ud.markerGroup) {
+        ud.markerGroup.position.z = 0.55;
+        ud.markerGroup.rotation.x = 0;
+        ud.markerGroup.rotation.y = -Math.atan2(0.82, Math.max(3.2, aimDist));
+      }
+      g.localHamster.updateMatrixWorld(true);
+      if (ud.muzzleTip) {
+        ud.muzzleTip.getWorldPosition(muzzleWorldPos);
+      }
+      // Trigger mechanical bolt cycle, chambered ball feed & 3D muzzle flash!
+      ud.recoil = 1.0;
+    }
+
+    // 3. Calculate Exact Trajectory from the Gun Barrel Tip (`muzzleWorldPos`) to Target Crosshair!
+    const shotAngle =
+      aimDist > 2.4
+        ? Math.atan2(g.aimWorldX - muzzleWorldPos.x, g.aimWorldZ - muzzleWorldPos.z)
+        : bodyAngle;
+
+    // 4. Spawn 3D Paintball Projectile + Aerodynamic Streak directly out of the Gun Barrel Nozzle!
+    const ball = createPaintballProjectileMesh(teamPaint);
+    ball.position.copy(muzzleWorldPos);
+    ball.rotation.y = shotAngle;
     g.scene.add(ball);
+
+    // 5. Spawn 3D Pressurized CO2 Gas & Paint Mist Burst at the Gun Barrel Nozzle!
+    spawnGunMuzzleBlastEffect(g.scene, g.particles, muzzleWorldPos, shotAngle, teamPaint);
 
     g.projectiles.push({
       ownerId: clientIdRef.current,
       ownerName: playerName || 'Student',
       ownerTeam: matchMode === 'teams' ? myTeam : 'solo',
       mesh: ball,
-      vx: Math.sin(angle) * 36,
-      vy: 2.0,
-      vz: Math.cos(angle) * 36,
-      gravity: 9.8,
+      vx: Math.sin(shotAngle) * 40,
+      vy: 1.65,
+      vz: Math.cos(shotAngle) * 40,
+      gravity: 9.2,
       damage: 28,
       color: teamPaint
     });
@@ -4595,7 +5275,7 @@ export default function HamsterPaintball({
           ownerTeam: matchMode === 'teams' ? myTeam : 'solo',
           x: g.x,
           z: g.z,
-          angle,
+          angle: shotAngle,
           paintColor: teamPaint
         });
       } catch {}
@@ -4610,7 +5290,7 @@ export default function HamsterPaintball({
             shotId,
             x: Number(g.x.toFixed(2)),
             z: Number(g.z.toFixed(2)),
-            angle: Number(angle.toFixed(2)),
+            angle: Number(shotAngle.toFixed(2)),
             paintColor: teamPaint
           }
         },
@@ -5015,32 +5695,32 @@ export default function HamsterPaintball({
           SCREEN 2: STUDENT JOIN MODAL (CHOOSE YOUR HAMSTER CHARACTER & ENTER LOBBY TO WAIT FOR HOST)
          ------------------------------------------------------------- */}
       {screen === 'join' && (
-        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/85 flex items-center justify-center p-4 py-14 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[520px] p-5 sm:p-6 flex flex-col items-center border-2 border-slate-200 relative overflow-hidden text-slate-900 my-auto">
+        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/85 flex items-center justify-center p-3 sm:p-4 py-14 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[600px] p-4 sm:p-6 flex flex-col items-center border-2 border-slate-200 relative overflow-hidden text-slate-900 my-auto">
             <div className="absolute top-0 inset-x-0 h-2.5 bg-gradient-to-r from-lime-400 via-pink-500 to-cyan-400" />
 
-            <div className="text-center mb-3 mt-1">
-              <div className="inline-flex items-center gap-1.5 bg-lime-100 text-lime-800 font-black text-[11px] px-3 py-1 rounded-full mb-1.5 border border-lime-300">
+            <div className="text-center mb-2.5 mt-1">
+              <div className="inline-flex items-center gap-1.5 bg-lime-100 text-lime-800 font-black text-[11px] px-3 py-1 rounded-full mb-1 border border-lime-300">
                 <Globe size={13} className="text-emerald-600" /> WWW.HAMSTERENGLISH.ONLINE • STUDENT LOBBY
               </div>
               <h1 className="font-black text-2xl sm:text-3xl tracking-tight text-slate-900 leading-none">
                 HAMSTER PAINTBALL
               </h1>
               <p className="text-xs font-bold text-slate-500 mt-1">
-                Choose your Hamster Character, then enter the Lobby to wait for your Host to start the game!
+                Choose from 12 Hamster Characters, then enter the Lobby to wait for your Host!
               </p>
             </div>
 
-            {/* CHOOSE YOUR HAMSTER CHARACTER (6 FULL-BODY ILLUSTRATED HAMSTER CHARACTERS) */}
-            <div className="w-full bg-slate-100 rounded-2xl p-3 mb-3 border border-slate-200">
-              <div className="flex items-center justify-between text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
-                <span>🐹 Choose Your Hamster Character</span>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-black text-[10px]">
-                  {HAMSTER_SKINS[selectedSkinIdx]?.name} • {HAMSTER_SKINS[selectedSkinIdx]?.roleTitle}
+            {/* CHOOSE YOUR HAMSTER CHARACTER (12 FULL-BODY ILLUSTRATED & 3D HAMSTER CHARACTERS) */}
+            <div className="w-full bg-slate-100 rounded-2xl p-2.5 sm:p-3 mb-3 border border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                <span>🐹 Choose Your Hamster Character (12 Heroes)</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-indigo-600 text-white font-black text-[10px] shadow-sm">
+                  ✓ {HAMSTER_SKINS[selectedSkinIdx]?.name} • {HAMSTER_SKINS[selectedSkinIdx]?.roleTitle}
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 sm:gap-2 max-h-[250px] sm:max-h-[280px] overflow-y-auto pr-0.5">
                 {HAMSTER_SKINS.map((skin, idx) => {
                   const isSelected = idx === selectedSkinIdx;
                   return (
@@ -5051,22 +5731,22 @@ export default function HamsterPaintball({
                         setSelectedSkinIdx(idx);
                         sfx.playCorrect();
                       }}
-                      className={`p-2 rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer relative ${
+                      className={`p-1.5 sm:p-2 rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer relative ${
                         isSelected
                           ? 'border-indigo-600 bg-indigo-50 shadow-md scale-[1.02] ring-2 ring-indigo-400/50'
                           : 'border-slate-200 bg-white hover:bg-slate-50'
                       }`}
                     >
                       {isSelected && (
-                        <span className="absolute top-1.5 right-1.5 px-1.5 py-0.2 rounded-full bg-indigo-600 text-white font-black text-[8px] uppercase">
-                          Selected
+                        <span className="absolute top-1 right-1 px-1.5 py-0.2 rounded-full bg-indigo-600 text-white font-black text-[7px] uppercase">
+                          Pick
                         </span>
                       )}
-                      <HamsterCharacterAvatar skin={skin} size={62} />
-                      <span className="mt-1 font-black text-[11px] text-slate-900 leading-tight text-center">
+                      <HamsterCharacterAvatar skin={skin} size={52} />
+                      <span className="mt-0.5 font-black text-[10px] sm:text-[11px] text-slate-900 leading-tight text-center truncate w-full">
                         {skin.name}
                       </span>
-                      <span className="text-[9px] font-bold text-indigo-600 leading-tight">
+                      <span className="text-[8px] sm:text-[9px] font-bold text-indigo-600 leading-tight truncate w-full text-center">
                         {skin.roleTitle}
                       </span>
                     </button>
@@ -5894,18 +6574,35 @@ export default function HamsterPaintball({
           {/* BOTTOM ROW: COMPACT MOBILE CONTROLS + LONG-PRESS HEALTH & DEFENCE CANS */}
           {role === 'player' ? (
             <div className="w-full flex items-end justify-between gap-1.5 sm:gap-2 pb-0.5 sm:pb-1.5 px-1">
-              {/* LEFT SIDE: SHOOT BUTTON (Active in BOTH Lobby & Game!) */}
+              {/* LEFT SIDE: SHOOT BUTTON (Tap or Hold for Rapid Fire in BOTH Lobby & Game!) */}
               <div className="flex flex-col items-center">
                 <span className="mb-0.5 text-[9px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
-                  {matchStatus === 'lobby' ? 'FREE SHOOT' : 'SHOOT'}
+                  {matchStatus === 'lobby' ? 'FREE SHOOT' : 'HOLD / SHOOT'}
                 </span>
                 <button
                   type="button"
-                  onTouchStart={e => {
-                    e.preventDefault();
+                  onMouseDown={() => {
+                    if (gameRef.current) gameRef.current.shootButtonHeld = true;
                     fireShot();
                   }}
-                  onClick={fireShot}
+                  onMouseUp={() => {
+                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                  }}
+                  onMouseLeave={() => {
+                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                  }}
+                  onTouchStart={e => {
+                    e.preventDefault();
+                    if (gameRef.current) gameRef.current.shootButtonHeld = true;
+                    fireShot();
+                  }}
+                  onTouchEnd={() => {
+                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                  }}
+                  onTouchCancel={() => {
+                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                  }}
+                  onContextMenu={e => e.preventDefault()}
                   className="pointer-events-auto w-16 h-16 sm:w-22 sm:h-22 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-3 border-white/90 shadow-xl flex flex-col items-center justify-center text-white font-black text-[10px] sm:text-xs cursor-pointer select-none touch-none"
                 >
                   <Crosshair size={22} />
