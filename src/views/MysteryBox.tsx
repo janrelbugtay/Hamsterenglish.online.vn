@@ -2883,8 +2883,8 @@ function QuizEditor({
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
   const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
-  const [contentMode, setContentMode] = useState<OptionContentMode>("both");
-  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
+  const [contentMode, setContentMode] = useState<OptionContentMode>("words");
+  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(false);
   const [questions, setQuestions] = useState<Question[]>(() => (quiz.questions && quiz.questions.length > 0 ? quiz.questions.slice(0, 30) : [{ id: Date.now(), text: "", options: ["", "", "", ""], answerIndex: 0, optionImages: [null, null, null, null] }]));
   const [errorMsg, setErrorMsg] = useState("");
   const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question', initialQuery?: string } | null>(null);

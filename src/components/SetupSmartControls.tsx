@@ -17,6 +17,14 @@ import {
   fetchRecommendedCartoonPng,
   normalizeKeyword,
 } from '../utils/mediaAndPresets';
+import { db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  mergeAllFolders,
+  fetchAllAvailableFolders,
+  createUnifiedFolder,
+  UnifiedFolderItem,
+} from '../lib/gameStore';
 
 function cleanOptionPlaceholder(placeholder?: string): string {
   if (!placeholder) return 'Option';
@@ -73,43 +81,44 @@ export function SetupCurriculumHeader({
     [setAutoPhotosEnabled, setAutoRecommendPhoto]
   );
 
-  const [customFolders, setCustomFolders] = useState<{ id: string; name: string }[]>(() => {
-    try {
-      const saved = localStorage.getItem('esl_custom_setup_folders');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const { user } = useAuth();
+  const [syncedFolders, setSyncedFolders] = useState<UnifiedFolderItem[]>(() =>
+    mergeAllFolders(folders)
+  );
   const [isAddingFolder, setIsAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
 
-  // Merge user folders + custom folders without preset clutter
-  const allFolders = React.useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>();
-    (folders || []).forEach((f) => map.set(f.id, f));
-    customFolders.forEach((f) => map.set(f.id, f));
-    return Array.from(map.values());
-  }, [folders, customFolders]);
+  useEffect(() => {
+    let active = true;
+    fetchAllAvailableFolders(db, user?.uid).then((loaded) => {
+      if (active) {
+        setSyncedFolders(loaded);
+      }
+    });
 
-  const handleCreateFolder = () => {
+    const handleUpdated = () => {
+      setSyncedFolders(mergeAllFolders(folders));
+    };
+    window.addEventListener('hamster-folders-updated', handleUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener('hamster-folders-updated', handleUpdated);
+    };
+  }, [user?.uid, folders]);
+
+  // Merge passed folders + Firestore/cached user folders + custom setup folders + saved folders
+  const allFolders = React.useMemo(() => {
+    return mergeAllFolders(folders, syncedFolders);
+  }, [folders, syncedFolders]);
+
+  const handleCreateFolder = async () => {
     const clean = newFolderName.trim();
     if (!clean) return;
-    const newF = { id: `custom-folder-${Date.now()}`, name: clean };
-    const updated = [...customFolders, newF];
-    setCustomFolders(updated);
-    try {
-      localStorage.setItem('esl_custom_setup_folders', JSON.stringify(updated));
-    } catch {
-      // Ignore storage error
-    }
-    if (typeof onCreateFolder === 'function') {
-      onCreateFolder(clean);
-    } else {
-      setFolderId(newF.id);
-    }
     setNewFolderName('');
     setIsAddingFolder(false);
+    const created = await createUnifiedFolder(db, user?.uid, clean);
+    setSyncedFolders((prev) => mergeAllFolders([created], prev, folders));
+    setFolderId(created.id);
   };
 
   return (
@@ -298,7 +307,7 @@ export function SmartOptionInput({
   isCorrect = false,
   onSelectCorrect,
   radioName,
-  contentMode = 'both',
+  contentMode = 'words',
 }: SmartOptionInputProps) {
   // Auto-recommend is automatic whenever contentMode is 'photos_gifs' or 'both'
   const isAutoPhotos = contentMode !== 'words';

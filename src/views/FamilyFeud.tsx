@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
 import { collection, addDoc, updateDoc, doc, getDocs, query, where } from 'firebase/firestore';
 import { Plus, Folder } from 'lucide-react';
+import { fetchAllAvailableFolders, mergeAllFolders } from '../lib/gameStore';
 
 const GAME_DATA = [
   {
@@ -211,16 +212,10 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
   
   useEffect(() => {
-    if (user) {
-      const fetchFolders = async () => {
-        const qFolders = query(collection(db, "gameFolders"), where("userId", "==", user.uid));
-        const foldersSnap = await getDocs(qFolders);
-        const f: any[] = [];
-        foldersSnap.forEach(doc => f.push({ id: doc.id, ...doc.data() }));
-        setFolders(f);
-      };
-      fetchFolders();
-    }
+    setFolders(mergeAllFolders());
+    fetchAllAvailableFolders(db, user?.uid).then((loaded) => {
+      setFolders(loaded);
+    });
   }, [user]);
 
   const normalizeFeudRounds = (rawList: any[]) => {

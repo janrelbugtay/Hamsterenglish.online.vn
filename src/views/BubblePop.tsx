@@ -3387,8 +3387,8 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   const [questions, setQuestions] = useState<Question[]>(quiz.questions);
   const [errorMsg, setErrorMsg] = useState("");
   const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question', query?: string } | null>(null);
-  const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
-  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(true);
+  const [contentMode, setContentMode] = useState<AnswerContentMode>('words');
+  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(false);
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);

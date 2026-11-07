@@ -10,6 +10,7 @@ import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput } from "../components/SetupSmartControls";
 import { AnswerContentMode, formatOptionContent, parseOptionContent } from "../utils/mediaAndPresets";
+import { fetchAllAvailableFolders, mergeAllFolders } from "../lib/gameStore";
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'study';
 
@@ -113,16 +114,10 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
   }, [activeGame, selectedTheme]);
 
   useEffect(() => {
-    if (user) {
-      const fetchFolders = async () => {
-        const qFolders = query(collection(db, "gameFolders"), where("userId", "==", user.uid));
-        const foldersSnap = await getDocs(qFolders);
-        const f: any[] = [];
-        foldersSnap.forEach(doc => f.push({ id: doc.id, ...doc.data() }));
-        setFolders(f);
-      };
-      fetchFolders();
-    }
+    setFolders(mergeAllFolders());
+    fetchAllAvailableFolders(db, user?.uid).then((loaded) => {
+      setFolders(loaded);
+    });
   }, [user]);
 
   const saveGame = async (gameData: GameData) => {
@@ -690,8 +685,8 @@ function GameEditor({
   }, [folderId, topic, classLevel, mode, sentences, questions]);
 
   const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question' | 'sentence', initialQuery?: string } | null>(null);
-  const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
-  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(true);
+  const [contentMode, setContentMode] = useState<AnswerContentMode>('words');
+  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState<boolean>(false);
   const [showVideoGuide, setShowVideoGuide] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [toastMsg, setToastMsg] = useState("");

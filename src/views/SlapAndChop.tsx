@@ -6666,8 +6666,8 @@ function QuizEditor({
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
   const [folderId, setFolderId] = useState(quiz.folderId || "");
   const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
-  const [contentMode, setContentMode] = useState<OptionContentMode>("both");
-  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
+  const [contentMode, setContentMode] = useState<OptionContentMode>("words");
+  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(false);
   const [questions, setQuestions] = useState<Question[]>(
     quiz.questions && quiz.questions.length > 0
       ? quiz.questions

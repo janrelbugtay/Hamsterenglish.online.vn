@@ -64,7 +64,7 @@ export function parseOptionContent(rawOpt: string): ParsedOptionContent {
 export function formatOptionContent(
   text: string,
   imageUrl: string | null | undefined,
-  mode: AnswerContentMode = 'both'
+  mode: AnswerContentMode = 'words'
 ): string {
   const cleanText = (text || '').replace(/\|\|\|/g, ' ').trim();
   const cleanUrl = (imageUrl || '').trim();

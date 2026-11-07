@@ -8,7 +8,7 @@ import { GameThumbnail } from '../components/GameThumbnail';
 import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '../components/GameModeModal';
 import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
 import { logUserActivity } from '../utils/activityTracker';
-import { getSavedGames, getSavedFolders } from '../lib/gameStore';
+import { getSavedGames, getSavedFolders, mergeAllFolders, createUnifiedFolder } from '../lib/gameStore';
 
 const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
 
@@ -228,31 +228,20 @@ export const GamesLibrary = ({
         }
       }
 
-      if (userFolders.length > 0) {
-        setFolders(userFolders);
-        try { localStorage.setItem('hamster_cached_user_folders', JSON.stringify(userFolders)); } catch (e) {}
-      } else {
-        try {
-          const cachedF = localStorage.getItem('hamster_cached_user_folders');
-          if (cachedF) {
-            setFolders(JSON.parse(cachedF));
-          } else {
-            setFolders(getSavedFolders());
-          }
-        } catch (e) {
-          setFolders(getSavedFolders());
-        }
-      }
+      const mergedFolders = mergeAllFolders(userFolders);
+      setFolders(mergedFolders);
+      try {
+        localStorage.setItem('hamster_cached_user_folders', JSON.stringify(mergedFolders));
+      } catch (e) {}
     } catch (error: any) {
       console.warn("Notice fetching library from cloud (using local cache):", error?.message || error);
       try {
         const cached = localStorage.getItem('hamster_cached_user_games');
         setGames(cached ? JSON.parse(cached) : getSavedGames());
-        const cachedF = localStorage.getItem('hamster_cached_user_folders');
-        setFolders(cachedF ? JSON.parse(cachedF) : getSavedFolders());
+        setFolders(mergeAllFolders());
       } catch (e) {
         setGames(getSavedGames());
-        setFolders(getSavedFolders());
+        setFolders(mergeAllFolders());
       }
     } finally {
       setLoading(false);
@@ -308,19 +297,17 @@ export const GamesLibrary = ({
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      const newFolder = {
-        name: newFolderName,
-        userId: user!.uid,
-        parentId: selectedFolderId || null,
-        createdAt: new Date().toISOString()
-      };
-      const docRef = await addDoc(collection(db, "gameFolders"), newFolder);
-      setFolders([...folders, { id: docRef.id, ...newFolder }]);
+      const created = await createUnifiedFolder(
+        db,
+        user?.uid,
+        newFolderName.trim(),
+        selectedFolderId || null
+      );
+      setFolders((prev) => mergeAllFolders([created], prev));
       setShowNewFolderModal(false);
       setNewFolderName("");
     } catch (error) {
       console.error("Error creating folder:", error);
-      alert("Failed to create folder");
     }
   };
 
@@ -450,8 +437,12 @@ export const GamesLibrary = ({
     );
   }
 
-  const baseFilteredGames = selectedFolderId 
-    ? games.filter(g => g.folderId === selectedFolderId)
+  const selectedFolderObj = selectedFolderId ? folders.find(f => f.id === selectedFolderId) : null;
+  const baseFilteredGames = selectedFolderId
+    ? games.filter(g =>
+        g.folderId === selectedFolderId ||
+        (selectedFolderObj && g.folderId && String(g.folderId).toLowerCase() === String(selectedFolderObj.name).toLowerCase())
+      )
     : games.filter(g => !g.folderId);
 
   const filteredGames = baseFilteredGames.filter(g => g.gameType === 'hamster-paintball' || isAdmin || effectivePublishedGames[g.gameType || "mystery-box"] !== false);

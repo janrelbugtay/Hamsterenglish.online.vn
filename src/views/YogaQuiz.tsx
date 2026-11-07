@@ -633,8 +633,8 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
   const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
-  const [contentMode, setContentMode] = useState<OptionContentMode>("both");
-  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
+  const [contentMode, setContentMode] = useState<OptionContentMode>("words");
+  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(false);
   const [questions, setQuestions] = useState<Question[]>(() => {
     return quiz.questions.map(q => ({
       ...q,

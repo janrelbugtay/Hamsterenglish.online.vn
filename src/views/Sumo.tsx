@@ -1561,8 +1561,8 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
   const [topic, setTopic] = useState(game.topic || "");
   const [classLevel, setClassLevel] = useState(game.classLevel || "");
   const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
-  const [contentMode, setContentMode] = useState<OptionContentMode>("both");
-  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(true);
+  const [contentMode, setContentMode] = useState<OptionContentMode>("words");
+  const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(false);
   const [questions, setQuestions] = useState<Question[]>(() => {
     return game.questions.map(q => {
         if (!q.options || q.options.length < 2) return { ...q, options: ['', ''], answerIndex: 0 };

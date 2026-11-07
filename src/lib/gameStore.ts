@@ -149,12 +149,16 @@ export function getSavedFolders(): { id: string; name: string }[] {
     const raw = localStorage.getItem(LOCAL_FOLDERS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch (e) {}
   return [
     { id: 'folder-grammar', name: 'Grammar Sets' },
     { id: 'folder-vocab', name: 'Vocabulary' },
+    { id: 'folder-phonics', name: 'Phonics & Reading' },
+    { id: 'folder-speaking', name: 'Speaking & Conversation' },
+    { id: 'folder-exam', name: 'Exam Prep (KET / Starters)' },
+    { id: 'folder-warmup', name: 'Classroom Warm-Ups' },
   ];
 }
 
@@ -163,3 +167,191 @@ export function saveFoldersList(folders: { id: string; name: string }[]) {
     localStorage.setItem(LOCAL_FOLDERS_KEY, JSON.stringify(folders));
   } catch (e) {}
 }
+
+export interface UnifiedFolderItem {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  userId?: string;
+  createdAt?: any;
+}
+
+/**
+ * Merges folders from Firestore, cached user folders, custom setup folders, and default saved folders,
+ * deduplicating by both ID and case-insensitive name (preferring real Firestore/user folders first).
+ */
+export function mergeAllFolders(
+  ...sources: Array<Array<{ id: string; name: string; parentId?: string | null; [key: string]: any }> | undefined | null>
+): UnifiedFolderItem[] {
+  const result: UnifiedFolderItem[] = [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+
+  const addList = (list?: Array<any> | null) => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      if (!item || !item.id || !item.name) continue;
+      const cleanId = String(item.id).trim();
+      const cleanName = String(item.name).trim();
+      if (!cleanId || !cleanName) continue;
+      const nameKey = `${item.parentId || 'root'}::${cleanName.toLowerCase()}`;
+      if (seenIds.has(cleanId) || seenNames.has(nameKey)) continue;
+      seenIds.add(cleanId);
+      seenNames.add(nameKey);
+      result.push({
+        ...item,
+        id: cleanId,
+        name: cleanName,
+        parentId: item.parentId || null,
+      });
+    }
+  };
+
+  // 1. Explicit passed sources (e.g. Firestore folders from caller)
+  for (const src of sources) {
+    addList(src);
+  }
+
+  // 2. Cached user folders from GamesLibrary
+  try {
+    const cachedUser = localStorage.getItem('hamster_cached_user_folders');
+    if (cachedUser) addList(JSON.parse(cachedUser));
+  } catch {}
+
+  // 3. Custom setup folders created in Game Setup
+  try {
+    const customSetup = localStorage.getItem('esl_custom_setup_folders');
+    if (customSetup) addList(JSON.parse(customSetup));
+  } catch {}
+
+  // 4. Saved folders / default preset curriculum folders
+  addList(getSavedFolders());
+
+  return result;
+}
+
+/**
+ * Fetches all folders from Firestore `gameFolders` (both user-specific and all accessible folders),
+ * syncs them to localStorage cache, and merges with local/preset folders.
+ */
+export async function fetchAllAvailableFolders(
+  db: any,
+  userId?: string | null
+): Promise<UnifiedFolderItem[]> {
+  const firestoreFolders: UnifiedFolderItem[] = [];
+  if (db) {
+    try {
+      const { collection, getDocs, query, where } = await import('firebase/firestore');
+      if (userId) {
+        try {
+          const userSnap = await getDocs(
+            query(collection(db, 'gameFolders'), where('userId', '==', userId))
+          );
+          userSnap.docs.forEach((d) => {
+            const data = d.data() as any;
+            if (data?.name) {
+              firestoreFolders.push({
+                id: d.id,
+                name: data.name,
+                parentId: data.parentId || null,
+                userId: data.userId,
+                createdAt: data.createdAt,
+              });
+            }
+          });
+        } catch {}
+      }
+
+      // Also fetch any other accessible gameFolders in the collection so shared/existing folders are never missing
+      try {
+        const allSnap = await getDocs(collection(db, 'gameFolders'));
+        allSnap.docs.forEach((d) => {
+          const data = d.data() as any;
+          if (data?.name && !firestoreFolders.some((f) => f.id === d.id)) {
+            if (!userId || !data.userId || data.userId === userId) {
+              firestoreFolders.push({
+                id: d.id,
+                name: data.name,
+                parentId: data.parentId || null,
+                userId: data.userId,
+                createdAt: data.createdAt,
+              });
+            }
+          }
+        });
+      } catch {}
+
+      if (firestoreFolders.length > 0) {
+        try {
+          localStorage.setItem('hamster_cached_user_folders', JSON.stringify(firestoreFolders));
+        } catch {}
+      }
+    } catch {}
+  }
+
+  return mergeAllFolders(firestoreFolders);
+}
+
+/**
+ * Creates a new folder in Firestore `gameFolders` (if possible) AND saves it to local caches,
+ * returning the created folder object with its real ID.
+ */
+export async function createUnifiedFolder(
+  db: any,
+  userId: string | null | undefined,
+  name: string,
+  parentId: string | null = null
+): Promise<UnifiedFolderItem> {
+  const cleanName = name.trim();
+  let folderId = `folder-${Date.now()}`;
+  const createdAt = new Date().toISOString();
+
+  if (db) {
+    try {
+      const { collection, addDoc } = await import('firebase/firestore');
+      const docRef = await addDoc(collection(db, 'gameFolders'), {
+        name: cleanName,
+        parentId: parentId || null,
+        userId: userId || 'teacher-studio-user',
+        createdAt,
+      });
+      folderId = docRef.id;
+    } catch {}
+  }
+
+  const newFolder: UnifiedFolderItem = {
+    id: folderId,
+    name: cleanName,
+    parentId: parentId || null,
+    userId: userId || 'teacher-studio-user',
+    createdAt,
+  };
+
+  try {
+    const cachedRaw = localStorage.getItem('hamster_cached_user_folders');
+    const cachedList = cachedRaw ? JSON.parse(cachedRaw) : [];
+    const nextCached = mergeAllFolders([newFolder], Array.isArray(cachedList) ? cachedList : []);
+    localStorage.setItem('hamster_cached_user_folders', JSON.stringify(nextCached));
+  } catch {}
+
+  try {
+    const customRaw = localStorage.getItem('esl_custom_setup_folders');
+    const customList = customRaw ? JSON.parse(customRaw) : [];
+    const nextCustom = Array.isArray(customList) ? [...customList, newFolder] : [newFolder];
+    localStorage.setItem('esl_custom_setup_folders', JSON.stringify(nextCustom));
+  } catch {}
+
+  try {
+    const savedList = getSavedFolders();
+    if (!savedList.some((f) => f.name.toLowerCase() === cleanName.toLowerCase())) {
+      saveFoldersList([...savedList, { id: newFolder.id, name: newFolder.name }]);
+    }
+  } catch {}
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('hamster-folders-updated', { detail: newFolder }));
+  }
+
+  return newFolder;
+}
+

@@ -8629,8 +8629,8 @@ function QuizEditor({
   const [topic, setTopic] = useState(quiz.topic || '');
   const [classLevel, setClassLevel] = useState(quiz.classLevel || '');
   const [folderId, setFolderId] = useState(quiz.folderId || '');
-  const [contentMode, setContentMode] = useState<AnswerContentMode>('both');
-  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState(true);
+  const [contentMode, setContentMode] = useState<AnswerContentMode>('words');
+  const [autoPhotosEnabled, setAutoPhotosEnabled] = useState(false);
 
   const [questions, setQuestions] = useState<Question[]>(() => {
     const norm = normalizePaintballQuestions(quiz.questions);

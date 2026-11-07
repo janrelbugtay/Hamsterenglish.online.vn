@@ -5,6 +5,7 @@ import { FullscreenButton } from '../components/FullscreenButton';
 import { MediaPickerModal } from '../components/MediaPickerModal';
 import { GameModeModal } from '../components/GameModeModal';
 import { parseOptionContent, isDirectMediaUrl, formatOptionContent } from '../utils/mediaAndPresets';
+import { fetchAllAvailableFolders, mergeAllFolders, createUnifiedFolder } from '../lib/gameStore';
 import {
   ArrowLeft,
   BookOpen,
@@ -300,7 +301,7 @@ export function FlashcardsMatch({
 
   // Config: 1-Sided vs 2-Sided & Content Mode & Theme
   const [cardSides, setCardSides] = useState<1 | 2>(2); // 1 = Single Side, 2 = Double-Side Flip
-  const [contentMode, setContentMode] = useState<'text' | 'photo' | 'both'>('both');
+  const [contentMode, setContentMode] = useState<'text' | 'photo' | 'both'>('text');
   const [theme, setTheme] = useState<'london' | 'cyber' | 'jungle' | 'space' | 'classroom'>('london');
   const [cards, setCards] = useState<FlashcardItem[]>([BLANK_CARD('1')]);
 
@@ -397,20 +398,10 @@ export function FlashcardsMatch({
 
   // Load Folders from Firestore
   useEffect(() => {
-    if (user) {
-      const fetchFolders = async () => {
-        try {
-          const qFolders = query(collection(db, 'gameFolders'), where('userId', '==', user.uid));
-          const snap = await getDocs(qFolders);
-          const f: any[] = [];
-          snap.forEach((d) => f.push({ id: d.id, ...d.data() }));
-          setFolders(f);
-        } catch (err) {
-          console.warn('Could not load folders:', err);
-        }
-      };
-      fetchFolders();
-    }
+    setFolders(mergeAllFolders());
+    fetchAllAvailableFolders(db, user?.uid).then((loaded) => {
+      setFolders(loaded);
+    });
   }, [user]);
 
   // Play Timer effect
@@ -1225,11 +1216,8 @@ export function FlashcardsMatch({
                         className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-3.5 py-2.5 rounded-xl focus:border-blue-500 appearance-none cursor-pointer transition-colors pr-8"
                       >
                         <option value="">No Folder (Root Library)</option>
-                        <option value="Vocabulary & Idioms">Vocabulary &amp; Idioms</option>
-                        <option value="Grammar Drills">Grammar Drills</option>
-                        <option value="Cambridge Starters/Movers">Cambridge Starters/Movers</option>
                         {folders.map((f) => (
-                          <option key={f.id} value={f.name}>
+                          <option key={f.id} value={f.id}>
                             {f.name}
                           </option>
                         ))}
@@ -2225,19 +2213,11 @@ export function FlashcardsMatch({
                 onClick={async () => {
                   if (!newFolderName.trim()) return;
                   const name = newFolderName.trim();
-                  setFolderId(name);
-                  if (user) {
-                    try {
-                      await addDoc(collection(db, 'gameFolders'), {
-                        name,
-                        userId: user.uid,
-                        createdAt: new Date().toISOString(),
-                      });
-                      setFolders((prev) => [...prev, { id: Date.now().toString(), name }]);
-                    } catch {}
-                  }
                   setNewFolderName('');
                   setShowNewFolderModal(false);
+                  const created = await createUnifiedFolder(db, user?.uid, name);
+                  setFolders((prev) => mergeAllFolders([created], prev));
+                  setFolderId(created.id);
                   showToast(`Folder "${name}" created!`);
                 }}
                 className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold cursor-pointer"
