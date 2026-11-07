@@ -1177,6 +1177,47 @@ class PaintballAudioEngine {
       osc.stop(now + i * 0.05 + 0.32);
     });
   }
+
+  // Countdown Timer Tick (Crisp clock tick, urgent double-beep in final 10s)
+  playTimerTick(isUrgent: boolean = false) {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = isUrgent ? 'triangle' : 'sine';
+    osc.frequency.setValueAtTime(isUrgent ? 987.77 : 660, now);
+    osc.frequency.exponentialRampToValueAtTime(isUrgent ? 1318.5 : 440, now + 0.065);
+    g.gain.setValueAtTime(isUrgent ? 0.18 : 0.1, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
+  // Ascending Points Combo Chime
+  playScoreCombo(streak: number = 1) {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const baseFreq = 523.25 * Math.min(1.6, 1 + streak * 0.08);
+    [baseFreq, baseFreq * 1.25, baseFreq * 1.5].forEach((freq, i) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.045);
+      g.gain.setValueAtTime(0.18, now + i * 0.045);
+      g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.045 + 0.18);
+      osc.connect(g);
+      g.connect(this.ctx.destination);
+      osc.start(now + i * 0.045);
+      osc.stop(now + i * 0.045 + 0.2);
+    });
+  }
 }
 
 const sfx = new PaintballAudioEngine();
@@ -1197,6 +1238,8 @@ interface PlayerNetworkState {
   shield: number;
   score: number;
   kos: number;
+  hitsLanded?: number;
+  bestStreak?: number;
   questionsAnswered: number;
   updatedAt: number;
   kicked?: boolean;
@@ -1497,8 +1540,9 @@ export default function HamsterPaintball({
   const [configuredDurationSec, setConfiguredDurationSec] = useState<number>(180); // 3 mins default
   const [ballsPerQuestion, setBallsPerQuestion] = useState<number>(10); // 10 balls per question
 
-  // Live Match Clock & Events
+  // Live Match Clock, Pause State & Events
   const [matchSeconds, setMatchSeconds] = useState<number>(180);
+  const [isTimerPaused, setIsTimerPaused] = useState<boolean>(false);
   const [liveEvents, setLiveEvents] = useState<LiveFeedEvent[]>([
     {
       id: 'init-1',
@@ -1535,7 +1579,7 @@ export default function HamsterPaintball({
     };
   };
 
-  // Student Combat Vitals, Ammo, Collectible Cans & Score
+  // Student Combat Vitals, Ammo, Collectible Cans & Upgraded Points System
   // Players start with 0 paintballs in match and MUST answer questions to earn paintball ammunition!
   const [hp, setHp] = useState<number>(100);
   const [maxHp] = useState<number>(100);
@@ -1544,9 +1588,26 @@ export default function HamsterPaintball({
   const [ammo, setAmmo] = useState<number>(0);
   const [score, setScore] = useState<number>(0);
   const [kos, setKos] = useState<number>(0);
+  const [koStreak, setKoStreak] = useState<number>(0);
+  const [hitsLanded, setHitsLanded] = useState<number>(0);
+  const [bestStreak, setBestStreak] = useState<number>(0);
   const [questionsAnswered, setQuestionsAnswered] = useState<number>(0);
   const [koBannerText, setKoBannerText] = useState<string | null>(null);
   const [pickupBannerText, setPickupBannerText] = useState<string | null>(null);
+  const [scorePopups, setScorePopups] = useState<
+    Array<{ id: string; points: number; label: string; color: string }>
+  >([]);
+
+  // Helper to award points with floating HUD popup & streak tracking
+  const awardPoints = (points: number, label: string, color: string = '#facc15') => {
+    if (points <= 0) return;
+    setScore(s => s + points);
+    const popupId = `pts-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setScorePopups(prev => [...prev.slice(-4), { id: popupId, points, label, color }]);
+    setTimeout(() => {
+      setScorePopups(prev => prev.filter(p => p.id !== popupId));
+    }, 1850);
+  };
 
   // Collectible Health Cans & Defence Cans (Players pick up cans around the arena and LONG-PRESS to use them!)
   const [healthCans, setHealthCans] = useState<number>(1);
@@ -1562,11 +1623,13 @@ export default function HamsterPaintball({
   const seenNetworkEventsRef = useRef<Set<string>>(new Set());
   const hasJoinedRoomRef = useRef<boolean>(false);
 
-  // Trivia Question State
+  // Trivia Question State + 15-Second Per-Question Countdown Timer
+  const QUESTION_TIME_LIMIT_SEC = 15;
   const [triviaStreak, setTriviaStreak] = useState<number>(0);
   const [triviaDeckIndex, setTriviaDeckIndex] = useState<number>(0);
   const [triviaFeedback, setTriviaFeedback] = useState<string | null>(null);
   const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
+  const [questionTimeLeft, setQuestionTimeLeft] = useState<number>(QUESTION_TIME_LIMIT_SEC);
 
   // Mobile Touch Virtual Joystick State
   const [joystickVec, setJoystickVec] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -1721,6 +1784,9 @@ export default function HamsterPaintball({
     shield,
     score,
     kos,
+    koStreak,
+    hitsLanded,
+    bestStreak,
     questionsAnswered,
     ammo,
     healthCans,
@@ -1729,6 +1795,7 @@ export default function HamsterPaintball({
     screen,
     matchMode,
     matchStatus,
+    matchSeconds,
     ballsPerQuestion,
     hostCameraMode,
     hostFollowIndex,
@@ -1745,6 +1812,9 @@ export default function HamsterPaintball({
       shield,
       score,
       kos,
+      koStreak,
+      hitsLanded,
+      bestStreak,
       questionsAnswered,
       ammo,
       healthCans,
@@ -1753,6 +1823,7 @@ export default function HamsterPaintball({
       screen,
       matchMode,
       matchStatus,
+      matchSeconds,
       ballsPerQuestion,
       hostCameraMode,
       hostFollowIndex,
@@ -1767,6 +1838,9 @@ export default function HamsterPaintball({
     shield,
     score,
     kos,
+    koStreak,
+    hitsLanded,
+    bestStreak,
     questionsAnswered,
     ammo,
     healthCans,
@@ -1775,6 +1849,7 @@ export default function HamsterPaintball({
     screen,
     matchMode,
     matchStatus,
+    matchSeconds,
     ballsPerQuestion,
     hostCameraMode,
     hostFollowIndex,
@@ -1892,13 +1967,23 @@ export default function HamsterPaintball({
             setHealthCans(c => Math.max(0, c - 1));
           }
           setHp(h => Math.min(100, h + 45));
-          setPickupBannerText('🧪 HEALTH CAN USED! +45 HP RESTORED!');
+          if (stateSnapRef.current.matchStatus === 'playing') {
+            awardPoints(10, '🧪 HEALTH CAN BONUS', '#4ade80');
+            setPickupBannerText('🧪 HEALTH CAN USED! +45 HP & +10 PTS!');
+          } else {
+            setPickupBannerText('🧪 HEALTH CAN USED! +45 HP RESTORED!');
+          }
         } else {
           if (!consumedArenaCan) {
             setShieldCans(c => Math.max(0, c - 1));
           }
           setShield(s => Math.min(100, s + 50));
-          setPickupBannerText('🛡️ DEFENCE CAN USED! +50 SHIELD CHARGED!');
+          if (stateSnapRef.current.matchStatus === 'playing') {
+            awardPoints(10, '🛡️ DEFENCE CAN BONUS', '#38bdf8');
+            setPickupBannerText('🛡️ DEFENCE CAN USED! +50 SHIELD & +10 PTS!');
+          } else {
+            setPickupBannerText('🛡️ DEFENCE CAN USED! +50 SHIELD CHARGED!');
+          }
         }
         setTimeout(() => setPickupBannerText(null), 2200);
       }
@@ -1930,22 +2015,58 @@ export default function HamsterPaintball({
     }
   }, [role, screen]);
 
-  // Match Countdown Timer (Only ticks down once Host clicks START GAME -> matchStatus === 'playing')
+  // Match Countdown Timer (Only ticks down once Host clicks START GAME -> matchStatus === 'playing' and !isTimerPaused)
   useEffect(() => {
-    if (screen !== 'game') return;
+    if (screen !== 'game' || isTimerPaused) return;
     if (role === 'player' && matchStatus !== 'playing') return;
     const timer = setInterval(() => {
       setMatchSeconds(prev => {
         if (prev <= 1) {
+          sfx.playKO();
           setMatchStatus('results');
           setScreen('results');
           return 0;
         }
-        return prev - 1;
+        const nextSec = prev - 1;
+        if (nextSec <= 10) {
+          sfx.playTimerTick(true);
+        } else if (nextSec === 30 || nextSec === 60) {
+          sfx.playTimerTick(false);
+        }
+        return nextSec;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [screen, role, matchStatus]);
+  }, [screen, role, matchStatus, isTimerPaused]);
+
+  // 15-Second Per-Question Countdown Timer inside Question Modal
+  useEffect(() => {
+    if (!isQuestionModalOpen || matchStatus !== 'playing' || triviaFeedback !== null) {
+      return;
+    }
+    setQuestionTimeLeft(QUESTION_TIME_LIMIT_SEC);
+    const qInterval = setInterval(() => {
+      setQuestionTimeLeft(prev => {
+        if (prev <= 1) {
+          sfx.playWrong();
+          setTriviaStreak(0);
+          setSelectedOptionIdx(-1);
+          setTriviaFeedback('⏰ TIME UP! Moving to next question...');
+          setTimeout(() => {
+            setTriviaFeedback(null);
+            setSelectedOptionIdx(null);
+            setTriviaDeckIndex(i => i + 1);
+          }, 950);
+          return 0;
+        }
+        if (prev <= 5) {
+          sfx.playTimerTick(false);
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(qInterval);
+  }, [isQuestionModalOpen, matchStatus, triviaDeckIndex, triviaFeedback]);
 
   // Helper to get cross-device public room doc & player collection refs
   // Uses `ttt_rooms/pb_room_${code}` which has public cross-device read/write enabled in production
@@ -2018,16 +2139,30 @@ export default function HamsterPaintball({
             setConfiguredDurationSec(data.configuredDurationSec);
             setMatchSeconds(data.configuredDurationSec);
           }
+          if (typeof data?.isTimerPaused === 'boolean') {
+            setIsTimerPaused(data.isTimerPaused);
+          }
+          if (typeof data?.timerSyncSeconds === 'number' && data?.timerSyncedAt) {
+            const elapsed = Math.max(0, Math.floor((Date.now() - data.timerSyncedAt) / 1000));
+            const nextSec = data.isTimerPaused
+              ? data.timerSyncSeconds
+              : Math.max(0, data.timerSyncSeconds - elapsed);
+            setMatchSeconds(nextSec);
+          }
           if (data?.matchStatus === 'playing') {
             if (stateSnapRef.current.matchStatus !== 'playing') {
               sfx.playKO();
               setMatchStatus('playing');
+              setIsTimerPaused(Boolean(data.isTimerPaused));
               setMatchSeconds(data.configuredDurationSec || 180);
               setHp(100);
               setShield(100);
               setAmmo(0);
               setScore(0);
               setKos(0);
+              setKoStreak(0);
+              setHitsLanded(0);
+              setBestStreak(0);
               // Place player in their team's Left/Right Corner Spawn Area when match starts!
               if (gameRef.current) {
                 const sp = getTeamSpawnPosition(
@@ -2095,9 +2230,28 @@ export default function HamsterPaintball({
           }
         } else if (msg.type === 'award_ko') {
           if (msg.attackerId === clientIdRef.current) {
+            const nextKoStreak = stateSnapRef.current.koStreak + 1;
+            const isFrenzy = stateSnapRef.current.matchSeconds <= 30;
+            const baseKoPts = isFrenzy ? 90 : 60;
+            const streakBonusPts = nextKoStreak >= 3 ? 50 : nextKoStreak === 2 ? 25 : 0;
+            const totalKoPts = baseKoPts + streakBonusPts;
             setKos(k => k + 1);
-            setScore(s => s + 50);
-            setKoBannerText(`SPLATTERED ${msg.victimName.toUpperCase()}! (+50 PTS)`);
+            setKoStreak(nextKoStreak);
+            setBestStreak(b => Math.max(b, nextKoStreak));
+            awardPoints(
+              totalKoPts,
+              nextKoStreak >= 2
+                ? `💥 ${nextKoStreak}x MULTI-SPLAT!`
+                : isFrenzy
+                ? '🔥 FRENZY SPLAT!'
+                : '💥 SPLAT KO!',
+              '#f43f5e'
+            );
+            setKoBannerText(
+              `SPLATTERED ${msg.victimName.toUpperCase()}! (+${totalKoPts} PTS${
+                nextKoStreak >= 2 ? ` • ${nextKoStreak}x STREAK!` : ''
+              })`
+            );
             sfx.playKO();
             setTimeout(() => setKoBannerText(null), 2600);
           }
@@ -2111,6 +2265,13 @@ export default function HamsterPaintball({
             if (prev.some(e => e.id === msg.event.id)) return prev;
             return [msg.event, ...prev].slice(0, 12);
           });
+        } else if (msg.type === 'timer_control') {
+          if (typeof msg.matchSeconds === 'number') {
+            setMatchSeconds(msg.matchSeconds);
+          }
+          if (typeof msg.isTimerPaused === 'boolean') {
+            setIsTimerPaused(msg.isTimerPaused);
+          }
         } else if (msg.type === 'match_start' && stateSnapRef.current.role === 'player') {
           sfx.playKO();
           if (Array.isArray(msg.questions) && msg.questions.length > 0) {
@@ -2126,12 +2287,16 @@ export default function HamsterPaintball({
             }
           }
           setMatchStatus('playing');
+          setIsTimerPaused(false);
           setMatchSeconds(msg.durationSec || 180);
           setHp(100);
           setShield(100);
           setAmmo(0);
           setScore(0);
           setKos(0);
+          setKoStreak(0);
+          setHitsLanded(0);
+          setBestStreak(0);
           if (gameRef.current) {
             const sp = getTeamSpawnPosition(
               stateSnapRef.current.myTeam,
@@ -2188,6 +2353,8 @@ export default function HamsterPaintball({
               shield: typeof data.shield === 'number' ? data.shield : 100,
               score: typeof data.score === 'number' ? data.score : 0,
               kos: typeof data.kos === 'number' ? data.kos : 0,
+              hitsLanded: typeof data.hitsLanded === 'number' ? data.hitsLanded : 0,
+              bestStreak: typeof data.bestStreak === 'number' ? data.bestStreak : 0,
               questionsAnswered:
                 typeof data.questionsAnswered === 'number' ? data.questionsAnswered : 0,
               updatedAt: data.updatedAt || now
@@ -2256,10 +2423,27 @@ export default function HamsterPaintball({
                 !seenNetworkEventsRef.current.has(data.lastKo.koId)
               ) {
                 seenNetworkEventsRef.current.add(data.lastKo.koId);
+                const nextKoStreak = stateSnapRef.current.koStreak + 1;
+                const isFrenzy = stateSnapRef.current.matchSeconds <= 30;
+                const baseKoPts = isFrenzy ? 90 : 60;
+                const streakBonusPts = nextKoStreak >= 3 ? 50 : nextKoStreak === 2 ? 25 : 0;
+                const totalKoPts = baseKoPts + streakBonusPts;
                 setKos(k => k + 1);
-                setScore(s => s + 50);
+                setKoStreak(nextKoStreak);
+                setBestStreak(b => Math.max(b, nextKoStreak));
+                awardPoints(
+                  totalKoPts,
+                  nextKoStreak >= 2
+                    ? `💥 ${nextKoStreak}x MULTI-SPLAT!`
+                    : isFrenzy
+                    ? '🔥 FRENZY SPLAT!'
+                    : '💥 SPLAT KO!',
+                  '#f43f5e'
+                );
                 setKoBannerText(
-                  `SPLATTERED ${(data.lastKo.victimName || 'OPPONENT').toUpperCase()}! (+50 PTS)`
+                  `SPLATTERED ${(data.lastKo.victimName || 'OPPONENT').toUpperCase()}! (+${totalKoPts} PTS${
+                    nextKoStreak >= 2 ? ` • ${nextKoStreak}x STREAK!` : ''
+                  })`
                 );
                 sfx.playKO();
                 setTimeout(() => setKoBannerText(null), 2600);
@@ -2312,6 +2496,8 @@ export default function HamsterPaintball({
         shield: snapState.shield,
         score: snapState.score,
         kos: snapState.kos,
+        hitsLanded: snapState.hitsLanded,
+        bestStreak: snapState.bestStreak,
         questionsAnswered: snapState.questionsAnswered,
         updatedAt: Date.now()
       };
@@ -2363,7 +2549,8 @@ export default function HamsterPaintball({
       setHp(prevHp => {
         const nextHp = prevHp - rem;
         if (nextHp <= 0) {
-          // Eliminated! Respawn inside player's Team Corner Spawn Area (Left Corner for Red, Right Corner for Blue)
+          // Eliminated! Reset local KO streak and respawn inside player's Team Corner Spawn Area
+          setKoStreak(0);
           const sp = getTeamSpawnPosition(
             stateSnapRef.current.myTeam,
             stateSnapRef.current.matchMode
@@ -5052,7 +5239,9 @@ export default function HamsterPaintball({
               spawnPaintSplatEffect(scene, g.splatDecals, g.particles, rx, 1.2, rz, p.color);
               // Only award score & apply damage during the active game ('playing')
               if (snapState.matchStatus === 'playing') {
-                setScore(s => s + 15);
+                const hitPts = 20 + Math.min(15, snapState.koStreak * 5);
+                setHitsLanded(h => h + 1);
+                awardPoints(hitPts, `🎯 PAINT HIT!`, '#38bdf8');
                 const hitId = `hit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
                 if (g.broadcastChannel) {
                   try {
@@ -5374,6 +5563,7 @@ export default function HamsterPaintball({
   const handleStartMultiplayerMatch = () => {
     sfx.playKO();
     setMatchStatus('playing');
+    setIsTimerPaused(false);
     setMatchSeconds(configuredDurationSec);
     setHostCameraMode('auto_track');
     setHostFollowIndex(0);
@@ -5408,6 +5598,9 @@ export default function HamsterPaintball({
           matchMode,
           configuredDurationSec,
           ballsPerQuestion,
+          isTimerPaused: false,
+          timerSyncSeconds: configuredDurationSec,
+          timerSyncedAt: Date.now(),
           quizTitle: activeQuiz.title || activeQuiz.topic || 'Hamster Paintball',
           topic: activeQuiz.topic || '',
           classLevel: activeQuiz.classLevel || '',
@@ -5418,6 +5611,70 @@ export default function HamsterPaintball({
         { merge: true }
       ).catch(() => {});
     }
+  };
+
+  // Teacher Host Live Timer Controls: Add +30 Seconds or Pause/Resume Match Timer
+  const handleHostAddTime = (extraSeconds: number = 30) => {
+    sfx.playCorrect();
+    setMatchSeconds(prev => {
+      const next = prev + extraSeconds;
+      if (gameRef.current?.broadcastChannel) {
+        try {
+          gameRef.current.broadcastChannel.postMessage({
+            type: 'timer_control',
+            id: clientIdRef.current,
+            matchSeconds: next,
+            isTimerPaused
+          });
+        } catch {}
+      }
+      if (roomCode) {
+        setDoc(
+          getRoomDocRef(roomCode),
+          {
+            timerSyncSeconds: next,
+            timerSyncedAt: Date.now(),
+            isTimerPaused
+          },
+          { merge: true }
+        ).catch(() => {});
+      }
+      return next;
+    });
+    pushLiveEvent(`⏱️ Host added +${extraSeconds}s to the Match Timer!`, '#38bdf8');
+  };
+
+  const handleHostTogglePauseTimer = () => {
+    sfx.playTimerTick(false);
+    setIsTimerPaused(prev => {
+      const nextPaused = !prev;
+      if (gameRef.current?.broadcastChannel) {
+        try {
+          gameRef.current.broadcastChannel.postMessage({
+            type: 'timer_control',
+            id: clientIdRef.current,
+            matchSeconds,
+            isTimerPaused: nextPaused
+          });
+        } catch {}
+      }
+      if (roomCode) {
+        setDoc(
+          getRoomDocRef(roomCode),
+          {
+            timerSyncSeconds: matchSeconds,
+            timerSyncedAt: Date.now(),
+            isTimerPaused: nextPaused
+          },
+          { merge: true }
+        ).catch(() => {});
+      }
+      pushLiveEvent(
+        nextPaused ? '⏸️ Host paused the Match Timer.' : '▶️ Host resumed the Match Timer!',
+        '#facc15'
+      );
+      return nextPaused;
+    });
   };
 
   // Teacher Host Action: End Match & Show Final Standings
@@ -5442,7 +5699,7 @@ export default function HamsterPaintball({
     }
   };
 
-  // Trivia Answer Handler (Players answer ONLY during the game to earn `ballsPerQuestion` Paintballs + 10 Score Points!)
+  // Trivia Answer Handler (Upgraded Points System: Base +15 PTS + Streak Multiplier Bonus + Fast-Answer Speed Bonus!)
   const handleTriviaAnswer = (optIdx: number) => {
     if (matchStatus !== 'playing' || triviaFeedback !== null) return;
     const qList = effectiveQuestions;
@@ -5456,16 +5713,34 @@ export default function HamsterPaintball({
         : 0;
 
     if (Number(optIdx) === Number(correctIdx)) {
-      sfx.playCorrect();
-      setTriviaStreak(s => s + 1);
+      const nextStreak = triviaStreak + 1;
+      const basePts = 15;
+      const streakBonusPts = Math.min(25, triviaStreak * 5);
+      const speedBonusPts = questionTimeLeft >= 10 ? 10 : questionTimeLeft >= 5 ? 5 : 0;
+      const totalEarnedPts = basePts + streakBonusPts + speedBonusPts;
+
+      sfx.playScoreCombo(nextStreak);
+      setTriviaStreak(nextStreak);
+      setBestStreak(b => Math.max(b, nextStreak));
       setAmmo(a => a + ballsPerQuestion);
-      setScore(s => s + 10);
       setQuestionsAnswered(q => q + 1);
-      setTriviaFeedback(
-        `✅ CORRECT! +${ballsPerQuestion} Paintballs Loaded & +10 Score Points!`
+      awardPoints(
+        totalEarnedPts,
+        speedBonusPts > 0
+          ? `⚡ FAST +${totalEarnedPts} PTS (${nextStreak}x)`
+          : `✅ +${totalEarnedPts} PTS (${nextStreak}x)`,
+        '#a3e635'
       );
 
-      const evText = `🎯 ${playerName} answered correctly (+${ballsPerQuestion} Paintballs & +10 PTS)!`;
+      const bonusBreakdown: string[] = [`+${ basePts } Base`];
+      if (streakBonusPts > 0) bonusBreakdown.push(`+${streakBonusPts} Streak (${nextStreak}x)`);
+      if (speedBonusPts > 0) bonusBreakdown.push(`+${speedBonusPts} Speed Bonus`);
+
+      setTriviaFeedback(
+        `✅ CORRECT! +${ballsPerQuestion} Paintballs & +${totalEarnedPts} PTS (${bonusBreakdown.join(' • ')})!`
+      );
+
+      const evText = `🎯 ${playerName} answered in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${ballsPerQuestion} Balls & +${totalEarnedPts} PTS • ${nextStreak}x Streak)!`;
       pushLiveEvent(evText, '#a3e635');
       if (roomCode) {
         setDoc(
@@ -5486,14 +5761,14 @@ export default function HamsterPaintball({
         setTriviaFeedback(null);
         setSelectedOptionIdx(null);
         setTriviaDeckIndex(i => i + 1);
-      }, 700);
+      }, 750);
     } else {
       sfx.playWrong();
       setTriviaStreak(0);
       const rightOptParsed = parseOptionContent(currentQ.options[correctIdx] || '');
       const rightLabel = rightOptParsed.text || OPTION_LETTERS[correctIdx] || ' Option';
       setTriviaFeedback(
-        `❌ Incorrect! Correct answer: ${OPTION_LETTERS[correctIdx]}. ${rightLabel}`
+        `❌ Incorrect! Streak reset. Correct answer: ${OPTION_LETTERS[correctIdx]}. ${rightLabel}`
       );
       setTimeout(() => {
         setTriviaFeedback(null);
@@ -6070,15 +6345,22 @@ export default function HamsterPaintball({
 
                 {/* 2. Match Timer Duration */}
                 <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-pink-300">
-                    2. Match Timer
-                  </span>
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-pink-300">
+                      2. Match Timer
+                    </span>
+                    <span className="text-[10px] font-mono font-black text-white">
+                      {Math.floor(configuredDurationSec / 60)}m 00s
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-6 gap-1">
                     {[
+                      { label: '1m', sec: 60 },
                       { label: '2m', sec: 120 },
                       { label: '3m', sec: 180 },
                       { label: '5m', sec: 300 },
-                      { label: '8m', sec: 480 }
+                      { label: '8m', sec: 480 },
+                      { label: '10m', sec: 600 }
                     ].map(t => (
                       <button
                         key={t.sec}
@@ -6087,7 +6369,7 @@ export default function HamsterPaintball({
                           setConfiguredDurationSec(t.sec);
                           setMatchSeconds(t.sec);
                         }}
-                        className={`py-1.5 rounded-xl font-black text-xs transition cursor-pointer ${
+                        className={`py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
                           configuredDurationSec === t.sec
                             ? 'bg-pink-600 text-white border border-pink-400 shadow'
                             : 'bg-slate-800 text-slate-400 hover:text-white'
@@ -6324,9 +6606,9 @@ export default function HamsterPaintball({
           {/* TOP HUD BAR: COMPACT NON-COVERING LAYOUT */}
           <div className="w-full flex items-start justify-between gap-1.5 sm:gap-2">
             {role === 'player' ? (
-              /* STUDENT TOP-LEFT: SCORE ON TOP + SMALLER HEALTH & SHIELD BARS (DOES NOT COVER ARENA) */
-              <div className="pointer-events-auto bg-slate-900/90 rounded-xl p-1.5 sm:p-2 w-40 sm:w-52 border-l-3 border-l-lime-400 border border-white/15 shadow-lg">
-                {/* SCORE ON TOP ROW */}
+              /* STUDENT TOP-LEFT: SCORE, STREAK MULTIPLIER, FLOATING +PTS POPUPS + SMALLER HEALTH & SHIELD BARS */
+              <div className="relative pointer-events-auto bg-slate-900/90 rounded-xl p-1.5 sm:p-2 w-44 sm:w-56 border-l-3 border-l-lime-400 border border-white/15 shadow-lg">
+                {/* SCORE & STREAK ON TOP ROW */}
                 <div className="flex items-center justify-between gap-1 pb-1 mb-1 border-b border-white/10">
                   <div className="flex items-center gap-1 min-w-0">
                     <HamsterCharacterAvatar
@@ -6346,6 +6628,20 @@ export default function HamsterPaintball({
                     </span>
                   </div>
                 </div>
+
+                {/* ACTIVE STREAK / COMBO MULTIPLIER ROW */}
+                {(triviaStreak > 0 || koStreak > 0 || hitsLanded > 0) && (
+                  <div className="flex items-center justify-between gap-1 mb-1 text-[8px] sm:text-[9px] font-black">
+                    <span className="px-1.5 py-0.2 rounded bg-indigo-500/30 border border-indigo-400/40 text-indigo-200">
+                      🎯 Hits: {hitsLanded} • Qs: {questionsAnswered}
+                    </span>
+                    {(triviaStreak >= 2 || koStreak >= 2) && (
+                      <span className="px-1.5 py-0.2 rounded bg-amber-500/30 border border-amber-400 text-amber-300 animate-pulse">
+                        🔥 {Math.max(triviaStreak, koStreak)}x STREAK
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* SMALLER HEALTH & SHIELD BARS */}
                 <div className="space-y-1">
@@ -6379,6 +6675,21 @@ export default function HamsterPaintball({
                     </div>
                   </div>
                 </div>
+
+                {/* FLOATING +PTS POPUP BADGES */}
+                {scorePopups.length > 0 && (
+                  <div className="pointer-events-none absolute -bottom-7 left-1 right-1 flex flex-wrap items-center gap-1">
+                    {scorePopups.slice(-2).map(pop => (
+                      <span
+                        key={pop.id}
+                        className="px-2 py-0.5 rounded-full bg-slate-950/95 border border-amber-400 text-[9px] sm:text-[10px] font-black shadow-lg animate-bounce"
+                        style={{ color: pop.color }}
+                      >
+                        +{pop.points} PTS • {pop.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               /* HOST TOP-LEFT: CURRENT PLAYER VIEW INDICATOR + LIVE FEED */
@@ -6411,23 +6722,110 @@ export default function HamsterPaintball({
               </div>
             )}
 
-            {/* CENTER: COMPACT ROOM & TIMER PILL (NO RED/BLUE BAR) */}
+            {/* CENTER: UPGRADED MATCH COUNTDOWN TIMER WITH PROGRESS BAR, URGENCY STATES & HOST CONTROLS */}
             <div className="pointer-events-auto flex flex-col items-center mx-auto">
-              <div className="bg-slate-900/90 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl flex items-center gap-2 border border-white/15 shadow-lg">
-                <span className="text-[10px] sm:text-xs font-mono font-black text-lime-300 flex items-center gap-1">
-                  <QrCode size={11} /> {roomCode}
-                </span>
-                {role === 'player' && matchStatus === 'lobby' ? (
-                  <span className="px-2 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-[9px] sm:text-[11px]">
-                    🟢 LOBBY
+              <div
+                className={`bg-slate-900/95 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl flex flex-col items-center gap-1 border shadow-lg transition ${
+                  matchStatus === 'playing' && matchSeconds <= 30
+                    ? 'border-rose-500 ring-2 ring-rose-500/40'
+                    : matchStatus === 'playing' && matchSeconds <= 60
+                    ? 'border-amber-400/70'
+                    : 'border-white/15'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] sm:text-xs font-mono font-black text-lime-300 flex items-center gap-1">
+                    <QrCode size={11} /> {roomCode}
                   </span>
-                ) : (
-                  <div className="flex items-center gap-1 text-white font-mono font-black text-xs sm:text-sm">
-                    <Clock size={13} className="text-pink-400" />
-                    <span>
-                      {Math.floor(matchSeconds / 60)}:
-                      {(matchSeconds % 60).toString().padStart(2, '0')}
+
+                  {role === 'player' && matchStatus === 'lobby' ? (
+                    <span className="px-2 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-[9px] sm:text-[11px]">
+                      🟢 LOBBY
                     </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className={`flex items-center gap-1 font-mono font-black text-xs sm:text-base px-2 py-0.5 rounded-lg border ${
+                          isTimerPaused
+                            ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                            : matchSeconds <= 30
+                            ? 'bg-rose-600/30 border-rose-400 text-rose-300 animate-pulse'
+                            : matchSeconds <= 60
+                            ? 'bg-amber-500/20 border-amber-400/60 text-amber-200'
+                            : 'bg-slate-950/90 border-white/15 text-white'
+                        }`}
+                      >
+                        <Clock
+                          size={13}
+                          className={
+                            matchSeconds <= 30
+                              ? 'text-rose-400'
+                              : matchSeconds <= 60
+                              ? 'text-amber-300'
+                              : 'text-lime-400'
+                          }
+                        />
+                        <span>
+                          {Math.floor(matchSeconds / 60)}:
+                          {(matchSeconds % 60).toString().padStart(2, '0')}
+                        </span>
+                        {isTimerPaused && (
+                          <span className="text-[9px] font-sans uppercase text-amber-300 ml-0.5">
+                            PAUSED
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Host Live Timer Controls: Pause/Resume & +30s */}
+                      {role === 'host' && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={handleHostTogglePauseTimer}
+                            className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[9px] font-black text-amber-300 border border-white/15 cursor-pointer"
+                            title={isTimerPaused ? 'Resume Timer' : 'Pause Timer'}
+                          >
+                            {isTimerPaused ? '▶ Resume' : '⏸ Pause'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleHostAddTime(30)}
+                            className="px-1.5 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/35 text-[9px] font-black text-cyan-300 border border-cyan-400/40 cursor-pointer"
+                            title="Add +30 Seconds to Match Timer"
+                          >
+                            +30s
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Match Timer Progress Bar & Final 30s Frenzy Indicator */}
+                {(role === 'host' || matchStatus === 'playing') && (
+                  <div className="w-full min-w-[125px] sm:min-w-[165px] flex flex-col gap-0.5">
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-white/10">
+                      <div
+                        className={`h-full transition-all duration-300 rounded-full ${
+                          matchSeconds <= 30
+                            ? 'bg-gradient-to-r from-rose-600 to-amber-400'
+                            : matchSeconds <= 60
+                            ? 'bg-gradient-to-r from-amber-500 to-yellow-300'
+                            : 'bg-gradient-to-r from-emerald-500 to-lime-400'
+                        }`}
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.max(0, (matchSeconds / Math.max(1, configuredDurationSec)) * 100)
+                          )}%`
+                        }}
+                      />
+                    </div>
+                    {matchSeconds <= 30 && matchSeconds > 0 && (
+                      <div className="text-[8px] sm:text-[9px] font-black text-rose-300 text-center uppercase tracking-wider">
+                        🔥 FINAL {matchSeconds}s FRENZY • +90 PTS PER SPLAT!
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -6904,9 +7302,15 @@ export default function HamsterPaintball({
                       </span>
                     )}
                   </div>
-                  <span className="text-lime-300">
-                    {rp.score} PTS • {rp.kos} Splats
-                  </span>
+                  <div className="text-right">
+                    <div className="text-lime-300 font-black">
+                      ⭐ {rp.score} PTS • {rp.kos} Splats
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      🎯 {rp.hitsLanded || 0} Hits • 📚 {rp.questionsAnswered || 0} Qs • 🔥 Best{' '}
+                      {rp.bestStreak || 0}x
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -6936,29 +7340,61 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          QUESTION DECK MODAL (AVAILABLE ONLY DURING ACTIVE GAME!)
+          QUESTION DECK MODAL (WITH 15-SECOND QUESTION TIMER & SPEED BONUS!)
          ------------------------------------------------------------- */}
       {isQuestionModalOpen && matchStatus === 'playing' && currentTriviaQ && (
         <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border-4 border-indigo-600 text-slate-900 my-auto">
-            <div className="bg-gradient-to-r from-indigo-700 to-purple-800 text-white px-5 py-4 flex items-center justify-between">
+            <div className="bg-gradient-to-r from-indigo-700 to-purple-800 text-white px-5 py-3.5 flex items-center justify-between gap-2">
               <div>
                 <h3 className="font-black text-base sm:text-lg leading-none">
-                  ANSWER TO EARN PAINTBALL AMMO!
+                  ANSWER TO EARN PAINTBALL AMMO &amp; POINTS!
                 </h3>
                 <p className="text-xs text-indigo-100 mt-1">
-                  Correct Answer ={' '}
-                  <strong className="text-lime-300">+{ballsPerQuestion} Paintballs</strong> &amp;{' '}
-                  <strong className="text-amber-300">+10 Score PTS</strong> (Streak: {triviaStreak}
-                  x)
+                  Correct ={' '}
+                  <strong className="text-lime-300">+{ballsPerQuestion} Balls</strong> +{' '}
+                  <strong className="text-amber-300">+15 Base PTS</strong> +{' '}
+                  <strong className="text-cyan-300">Streak ({triviaStreak}x)</strong> &amp;{' '}
+                  <strong className="text-pink-300">Speed Bonus!</strong>
                 </p>
               </div>
-              <button
-                onClick={() => setIsQuestionModalOpen(false)}
-                className="text-xs px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg font-bold cursor-pointer"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {/* 15s Per-Question Countdown Badge */}
+                <div
+                  className={`px-2.5 py-1 rounded-xl font-mono font-black text-xs sm:text-sm flex items-center gap-1 border ${
+                    questionTimeLeft <= 5
+                      ? 'bg-rose-600 text-white border-rose-300 animate-pulse'
+                      : questionTimeLeft >= 10
+                      ? 'bg-emerald-500 text-slate-950 border-lime-200'
+                      : 'bg-amber-400 text-slate-950 border-amber-200'
+                  }`}
+                >
+                  <Clock size={13} />
+                  <span>{questionTimeLeft}s</span>
+                </div>
+                <button
+                  onClick={() => setIsQuestionModalOpen(false)}
+                  className="text-xs px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg font-bold cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* 15-Second Question Timer Bar */}
+            <div className="w-full h-2 bg-slate-200 overflow-hidden">
+              <div
+                className={`h-full transition-all duration-300 ${
+                  questionTimeLeft <= 5
+                    ? 'bg-rose-500'
+                    : questionTimeLeft >= 10
+                    ? 'bg-emerald-500'
+                    : 'bg-amber-500'
+                }`}
+                style={{
+                  width: `${Math.max(0, (questionTimeLeft / QUESTION_TIME_LIMIT_SEC) * 100)}%`
+                }}
+              />
             </div>
 
             {(() => {
@@ -6967,17 +7403,25 @@ export default function HamsterPaintball({
               const displayQImage = currentTriviaQ.image || parsedQuestion.imageUrl;
               const correctIdx =
                 typeof currentTriviaQ.answerIndex === 'number' ? currentTriviaQ.answerIndex : 0;
+              const liveSpeedBonus = questionTimeLeft >= 10 ? 10 : questionTimeLeft >= 5 ? 5 : 0;
 
               return (
                 <div className="p-5 sm:p-6">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <span className="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-[11px] uppercase px-2.5 py-0.5 rounded-full">
                       QUESTION {(triviaDeckIndex % effectiveQuestions.length) + 1} OF{' '}
                       {effectiveQuestions.length}
                     </span>
-                    <span className="text-xs font-black text-emerald-700">
-                      Current Ammo: {ammo} Balls
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {liveSpeedBonus > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 font-black text-[11px]">
+                          ⚡ Speed Bonus +{liveSpeedBonus} PTS
+                        </span>
+                      )}
+                      <span className="text-xs font-black text-emerald-700">
+                        Ammo: {ammo} Balls
+                      </span>
+                    </div>
                   </div>
 
                   {displayQImage && (
@@ -7062,11 +7506,11 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          LIVE SCOREBOARD MODAL (TEAM & INDIVIDUAL)
+          LIVE SCOREBOARD MODAL (TEAM & INDIVIDUAL + POINTS SYSTEM BREAKDOWN)
          ------------------------------------------------------------- */}
       {isLeaderboardOpen && (
         <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border-2 border-cyan-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 my-auto">
+          <div className="bg-slate-900 border-2 border-cyan-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 my-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <Trophy className="text-amber-400" size={20} />
@@ -7080,6 +7524,30 @@ export default function HamsterPaintball({
               >
                 Close
               </button>
+            </div>
+
+            {/* Points System Legend */}
+            <div className="grid grid-cols-4 gap-1.5 text-center bg-slate-950/90 p-2 rounded-2xl border border-white/10">
+              <div className="p-1.5 rounded-xl bg-lime-500/10 border border-lime-400/30">
+                <div className="text-[9px] font-black text-lime-300 uppercase">Question</div>
+                <div className="text-xs font-black text-white">+15–50 PTS</div>
+                <div className="text-[8px] text-slate-400">Speed + Streak</div>
+              </div>
+              <div className="p-1.5 rounded-xl bg-cyan-500/10 border border-cyan-400/30">
+                <div className="text-[9px] font-black text-cyan-300 uppercase">Paint Hit</div>
+                <div className="text-xs font-black text-white">+20 PTS</div>
+                <div className="text-[8px] text-slate-400">+5x Combo</div>
+              </div>
+              <div className="p-1.5 rounded-xl bg-rose-500/10 border border-rose-400/30">
+                <div className="text-[9px] font-black text-rose-300 uppercase">KO Splat</div>
+                <div className="text-xs font-black text-white">+60 PTS</div>
+                <div className="text-[8px] text-slate-400">+90s Frenzy</div>
+              </div>
+              <div className="p-1.5 rounded-xl bg-amber-500/10 border border-amber-400/30">
+                <div className="text-[9px] font-black text-amber-300 uppercase">Use Can</div>
+                <div className="text-xs font-black text-white">+10 PTS</div>
+                <div className="text-[8px] text-slate-400">HP / Shield</div>
+              </div>
             </div>
 
             {matchMode === 'teams' && (
@@ -7121,9 +7589,15 @@ export default function HamsterPaintball({
                         </span>
                       )}
                     </div>
-                    <span className="text-lime-300">
-                      {rp.score} PTS · {rp.kos} Splats
-                    </span>
+                    <div className="text-right">
+                      <div className="text-lime-300 font-black">
+                        ⭐ {rp.score} PTS · {rp.kos} Splats
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        🎯 {rp.hitsLanded || 0} Hits · 📚 {rp.questionsAnswered || 0} Qs · 🔥{' '}
+                        {rp.bestStreak || 0}x
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
