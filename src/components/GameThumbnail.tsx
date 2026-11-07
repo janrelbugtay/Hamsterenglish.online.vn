@@ -1,6 +1,8 @@
 import React from 'react';
 import { Gamepad2, Sparkles, HelpCircle, CheckCircle2, Gift, Trophy, Zap, Play } from 'lucide-react';
 
+const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
+
 export interface GameThumbnailProps {
   gameType: string;
   info?: any;
@@ -408,7 +410,17 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
   // Compact 64x64 mode for small icons in My Games folder list
   if (compact) {
-    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box' || normalizedType === 'hamster-paintball')) {
+    if (normalizedType === 'hamster-paintball') {
+      return (
+        <img
+          src={hamsterPaintballCardImg}
+          referrerPolicy="no-referrer"
+          alt={info?.title || cleanTitle}
+          className="absolute inset-0 w-full h-full object-cover scale-110 pointer-events-none select-none"
+        />
+      );
+    }
+    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
       return (
         <img
           src={info.icon}
@@ -429,17 +441,22 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
   }
 
   // Template card mode (no custom game object passed) for Roller Coaster Quiz, Slap & Chop, Shark Attack, Name Picker, Mystery Box, and Hamster Paintball
-  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box' || normalizedType === 'hamster-paintball')) {
+  if (!game && normalizedType === 'hamster-paintball') {
+    return (
+      <img
+        src={hamsterPaintballCardImg}
+        referrerPolicy="no-referrer"
+        alt={info?.title || cleanTitle}
+        className="absolute inset-0 w-full h-full object-cover scale-[1.12] group-hover:scale-[1.20] transition-transform duration-500"
+      />
+    );
+  }
+  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
     return (
       <img
         src={info.icon}
         referrerPolicy="no-referrer"
         alt={info?.title || cleanTitle}
-        onError={(e: any) => {
-          if (normalizedType === 'hamster-paintball') {
-            e.currentTarget.src = '/images/hamster-paintball-card.png';
-          }
-        }}
         className="absolute inset-0 w-full h-full object-cover scale-[1.12] group-hover:scale-[1.20] transition-transform duration-500"
       />
     );

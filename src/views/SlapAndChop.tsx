@@ -793,8 +793,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       },
       homeX: baseX,
       headX: baseX,
-      headY: 0.36,
-      headScale: 1.08,
+      headY: 0.34,
+      headScale: 1.0,
       headTilt: 0,
       headDetected: false,
       lastHeadTime: 0,
@@ -802,7 +802,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       handY: 0.58,
       prevHandX: baseX,
       prevHandY: 0.58,
-      handScale: 1.35,
+      handScale: 1.0,
       vx: 0,
       vy: 0,
       speed: 0,
@@ -837,7 +837,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         speed: 0,
         angle: -0.18,
         knifeAngle: -0.45,
-        scale: 1.35,
+        scale: 1.0,
         openness: 1.0,
         slapAnim: 0,
         detected: false,
@@ -855,7 +855,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         speed: 0,
         angle: 0.18,
         knifeAngle: -2.69,
-        scale: 1.35,
+        scale: 1.0,
         openness: 1.0,
         slapAnim: 0,
         detected: false,
@@ -867,7 +867,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   };
 
   // Compute dynamic 3D hand scale & finger openness from 21 MediaPipe landmarks
-  // Tracks real hand size so moving hands closer to the camera scales gloves & knives up, and further away scales them down!
+  // Tracks real hand size proportionally so gloves & knives fit the player's actual hand without becoming oversized!
   const analyzeHandGeometry = (landmarks: any[]) => {
     const wrist = landmarks[0];
     const thumbTip = landmarks[4];
@@ -881,7 +881,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     const palmLength = Math.hypot(middleMcp.x - wrist.x, middleMcp.y - wrist.y);
     const palmWidth = Math.hypot(indexMcp.x - pinkyMcp.x, indexMcp.y - pinkyMcp.y);
-    const coreSize = palmLength * 0.64 + palmWidth * 0.52;
+    const coreSize = palmLength * 0.62 + palmWidth * 0.48;
 
     let minX = 1, maxX = 0, minY = 1, maxY = 0;
     for (let i = 0; i < landmarks.length; i++) {
@@ -894,9 +894,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const bboxDiag = Math.hypot(maxX - minX, maxY - minY);
     const thumbPinkySpan = Math.hypot(thumbTip.x - pinkyTip.x, thumbTip.y - pinkyTip.y);
 
-    // Responsive 3D depth scaling based on real hand size in camera frame
-    const rawScale = (coreSize * 7.2) + (bboxDiag * 1.55) + (thumbPinkySpan * 0.65);
-    const scale = Math.max(0.55, Math.min(2.25, rawScale));
+    // Proportional depth scaling calibrated around 1.0 for normal webcam distance
+    const rawScale = (coreSize * 4.8) + (bboxDiag * 1.05) + (thumbPinkySpan * 0.35);
+    const scale = Math.max(0.72, Math.min(1.38, rawScale));
 
     const avgTipDist = (
       Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y) +
@@ -1237,9 +1237,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         const closingVel = Math.max(0, prevSep - sepDist);
 
         // =========================================================================
-        // STATE MACHINE STEP 1: ARM CLAP ONLY WHEN TWO HANDS ARE CLEARLY SEPARATED
+        // STATE MACHINE STEP 1: ARM CLAP WHEN TWO HANDS ARE SEPARATED
         // =========================================================================
-        if (sepDist >= 0.13 && wristSep >= 0.095 && vertDiff <= 0.24) {
+        if (sepDist >= 0.095 && wristSep >= 0.072 && vertDiff <= 0.28) {
           player.clapArmed = true;
           player.lastArmedTime = now;
           player.peakArmedSep = Math.max(player.peakArmedSep || 0, sepDist);
@@ -1252,22 +1252,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         player.lastClosingVel = closingVel;
 
         // =========================================================================
-        // STATE MACHINE STEP 2: TRIGGER CLAP ONLY WHEN ARMED HANDS CONVERGE & MEET
-        // (Fixed normalized screen thresholds — never inflated by handScale!)
+        // STATE MACHINE STEP 2: TRIGGER CLAP WHEN ARMED HANDS CONVERGE & MEET
         // =========================================================================
-        const isArmedRecently = Boolean(player.clapArmed && (now - (player.lastArmedTime || 0) < 1200));
+        const isArmedRecently = Boolean(player.clapArmed && (now - (player.lastArmedTime || 0) < 1500));
         const hasConvergedFromOpen = Boolean(
-          closingVel >= 0.006 ||
-          sepDist <= (player.peakArmedSep || 0.16) * 0.62
+          closingVel >= 0.0045 ||
+          sepDist <= (player.peakArmedSep || 0.14) * 0.68
         );
         const handsPhysicallyTouching = Boolean(
-          vertDiff <= 0.12 &&
-          (sepDist <= 0.082 || (minLandmarkDist <= 0.032 && sepDist <= 0.104))
+          vertDiff <= 0.15 &&
+          (sepDist <= 0.096 || (minLandmarkDist <= 0.042 && sepDist <= 0.125))
         );
 
         if (isArmedRecently && hasConvergedFromOpen && handsPhysicallyTouching) {
           player.isClapping = true;
-          player.clapTimer = 0.22;
+          player.clapTimer = 0.28;
           player.clapArmed = false; // Disarm so holding hands together never re-triggers!
           player.peakArmedSep = 0;
           player.slapAnim = 1.0;
@@ -1284,8 +1283,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           : { ...leftData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y };
       } else {
         // ONLY 1 HAND RETURNED BY MEDIAPIPE IN THIS FRAME:
-        // Only bridge a clap if 2 armed hands were ALREADY closing fast at close range (<140ms ago)
-        // and converged right onto their previous midpoint!
+        // Bridge a clap if 2 hands were recently active and converged onto their midpoint as they overlapped!
         const hData = handsForPlayer[0];
         const prevMidX = (lh.x + rh.x) * 0.5;
         const prevMidY = (lh.y + rh.y) * 0.5;
@@ -1295,10 +1293,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
         const justClappedFromTwoHands = Boolean(
           player.clapArmed &&
-          (now - (player.lastTrueTwoHandsTime || 0) < 140) &&
-          (player.lastTwoHandSepDist || 1) <= 0.125 &&
-          (player.lastClosingVel || 0) >= 0.010 &&
-          distToPrevMid <= 0.058
+          (now - (player.lastTrueTwoHandsTime || 0) < 280) &&
+          (player.lastTwoHandSepDist || 1) <= 0.18 &&
+          distToPrevMid <= 0.095
         );
 
         if (justClappedFromTwoHands) {
@@ -1308,9 +1305,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           lh.prevY = lh.y;
           rh.prevX = rh.x;
           rh.prevY = rh.y;
-          lh.x = hData.clampedX - 0.015;
+          lh.x = hData.clampedX - 0.014;
           lh.y = hData.clampedY;
-          rh.x = hData.clampedX + 0.015;
+          rh.x = hData.clampedX + 0.014;
           rh.y = hData.clampedY;
           lh.vx = lh.x - lh.prevX;
           lh.vy = lh.y - lh.prevY;
@@ -1326,31 +1323,39 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           rh.landmarks = hData.landmarks;
           lh.detected = true;
           rh.detected = true;
+          lh.lastSeenTime = now;
+          rh.lastSeenTime = now;
           lh.slapAnim = 1.0;
           rh.slapAnim = 1.0;
 
           player.isClapping = true;
-          player.clapTimer = 0.22;
+          player.clapTimer = 0.28;
           player.slapAnim = 1.0;
           player.swordLunge = 1.0;
           player.clapMidX = hData.clampedX;
           player.clapMidY = hData.clampedY;
           fastestHand = { ...hData, speed: Math.max(0.06, lh.speed, rh.speed), vx: lh.vx, vy: lh.vy, x: hData.clampedX, y: hData.clampedY };
         } else {
-          // Strictly 1 physical hand is raised: only 1 glove is active, and NO clap can trigger!
-          player.dualHandsArmed = false;
-          player.clapArmed = false;
-          player.peakArmedSep = 0;
-          player.isClapping = false;
-          player.clapTimer = 0;
+          // Preserve active clapTimer if a clap just triggered in the last 280ms!
+          if (!player.clapTimer || player.clapTimer <= 0) {
+            player.isClapping = false;
+          }
+          // Only expire clapArmed if two hands haven't been seen for > 450ms
+          if (now - (player.lastTrueTwoHandsTime || 0) > 450) {
+            player.dualHandsArmed = false;
+            player.clapArmed = false;
+            player.peakArmedSep = 0;
+          }
 
-          const courtCenter = is2P ? (pIdx === 0 ? 0.25 : 0.75) : 0.50;
-          // MediaPipe 'Right' label on raw unmirrored video corresponds to the user's Left hand on mirrored screen
-          let isLeftHand = hData.handedness ? (hData.handedness === 'Right') : (hData.clampedX < courtCenter);
-          if (lh.detected && !rh.detected && distToLeft < 0.30) {
+          // Determine whether this detected hand is the player's Left or Right hand on the mirrored screen
+          const anchorCenter = player.headDetected ? player.headX : (is2P ? (pIdx === 0 ? 0.25 : 0.75) : 0.50);
+          let isLeftHand = hData.handedness ? (hData.handedness === 'Right') : (hData.clampedX < anchorCenter);
+          if (lh.detected && !rh.detected && distToLeft < 0.28) {
             isLeftHand = true;
-          } else if (rh.detected && !lh.detected && distToRight < 0.30) {
+          } else if (rh.detected && !lh.detected && distToRight < 0.28) {
             isLeftHand = false;
+          } else if (lh.detected && rh.detected) {
+            isLeftHand = distToLeft <= distToRight;
           }
 
           if (isLeftHand) {
@@ -1371,15 +1376,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             lh.trail.push({ x: lh.x, y: lh.y, life: 1.0 });
             if (lh.trail.length > 16) lh.trail.shift();
 
-            // Keep rightHand scale synced with leftHand so the second glove matches size!
             rh.scale = lh.scale;
             if (now - (rh.lastSeenTime || 0) > HAND_GRACE_MS) {
               rh.detected = false;
               rh.landmarks = null;
+              rh.vx = 0;
+              rh.vy = 0;
+              rh.speed = 0;
             }
-            rh.vx = 0;
-            rh.vy = 0;
-            rh.speed = 0;
             fastestHand = { ...hData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y };
           } else {
             rh.prevX = rh.detected ? rh.x : hData.clampedX;
@@ -1399,15 +1403,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
             if (rh.trail.length > 16) rh.trail.shift();
 
-            // Keep leftHand scale synced with rightHand so the second glove matches size!
             lh.scale = rh.scale;
             if (now - (lh.lastSeenTime || 0) > HAND_GRACE_MS) {
               lh.detected = false;
               lh.landmarks = null;
+              lh.vx = 0;
+              lh.vy = 0;
+              lh.speed = 0;
             }
-            lh.vx = 0;
-            lh.vy = 0;
-            lh.speed = 0;
             fastestHand = { ...hData, speed: rh.speed, vx: rh.vx, vy: rh.vy, x: rh.x, y: rh.y };
           }
         }
@@ -1415,27 +1418,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
       player.handScale = player.handScale + (fastestHand.scale - player.handScale) * 0.5;
       updatePlayerArm(pIdx, fastestHand.x ?? fastestHand.clampedX, fastestHand.y ?? fastestHand.clampedY, fastestHand.pointingAngle, fastestHand.scale);
-
-      // Gentle kinematic head guidance only when visual head tracker hasn't locked recently
-      if (now - (player.lastHeadTime || 0) > 650) {
-        let targetHeadX = player.homeX;
-        if (lh.detected && rh.detected) {
-          targetHeadX = (lh.x + rh.x) * 0.5;
-        } else if (lh.detected) {
-          targetHeadX = lh.x + 0.20;
-        } else if (rh.detected) {
-          targetHeadX = rh.x - 0.20;
-        }
-        if (is2P) {
-          targetHeadX = pIdx === 0
-            ? Math.min(0.41, Math.max(0.09, targetHeadX))
-            : Math.max(0.59, Math.min(0.91, targetHeadX));
-        } else {
-          targetHeadX = Math.max(0.18, Math.min(0.82, targetHeadX));
-        }
-        player.headX += (targetHeadX - player.headX) * 0.14;
-        player.headY += (0.36 - player.headY) * 0.10;
-      }
     });
   };
 
@@ -1534,7 +1516,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
   onFaceResultsRef.current = onFaceDetectionResults;
 
-  // High-Precision Head Tracker (Browser FaceDetector + Dual-Mode Front-Lit & Backlit Portrait Silhouette Tracker)
+  // High-Precision Player Head Tracker (Browser FaceDetector + 2D Multi-Scale Head-Oval vs. Surround Integral Detector)
+  // Accurately tracks the player's actual head position (X, Y), head scale, and tilt in both front-lit and backlit rooms!
   const trackHeadsFromVideoFrame = async (video: HTMLVideoElement) => {
     const eng = engineRef.current;
     if (!eng || !video || video.readyState < 2) return;
@@ -1575,14 +1558,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             if (is2P && canvasX > 0.45 && canvasX < 0.55) return;
 
             const clampedX = is2P
-              ? (pIdx === 0 ? Math.min(0.41, Math.max(0.08, canvasX)) : Math.max(0.59, Math.min(0.92, canvasX)))
-              : Math.max(0.12, Math.min(0.88, canvasX));
-            const targetY = Math.max(0.24, Math.min(0.54, canvasY));
-            const targetScale = Math.max(0.95, Math.min(1.55, faceCanvasWidthRatio * 4.6));
+              ? (pIdx === 0 ? Math.min(0.43, Math.max(0.07, canvasX)) : Math.max(0.57, Math.min(0.93, canvasX)))
+              : Math.max(0.08, Math.min(0.92, canvasX));
+            const targetY = Math.max(0.16, Math.min(0.62, canvasY));
+            const targetScale = Math.max(0.78, Math.min(1.30, faceCanvasWidthRatio * 4.8));
 
-            player.headX += (clampedX - player.headX) * 0.52;
-            player.headY += (targetY - player.headY) * 0.52;
-            player.headScale += (targetScale - player.headScale) * 0.40;
+            player.headX += (clampedX - player.headX) * 0.60;
+            player.headY += (targetY - player.headY) * 0.60;
+            player.headScale += (targetScale - player.headScale) * 0.45;
             player.headDetected = true;
             player.lastHeadTime = now;
           });
@@ -1591,23 +1574,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       } catch (e) {}
     }
 
-    // 2. Dual-Mode Portrait Head Tracker on 1:1 Object-Cover Aligned Canvas
-    //    Accurately tracks the head in BOTH front-lit rooms AND strongly backlit rooms (silhouette mode)!
+    // 2. Multi-Scale 2D Head-Oval vs. Surround Integral Detector on 1:1 Object-Cover Aligned Canvas
+    //    Finds the compact human head column (flanked by background on left, right, and top crown, with neck/shoulders below)
     try {
       if (!headTrackCanvasRef.current) {
         const c = document.createElement('canvas');
-        c.width = 96;
-        c.height = 54;
+        c.width = 120;
+        c.height = 68;
         headTrackCanvasRef.current = c;
       }
       const hc = headTrackCanvasRef.current;
+      if (hc.width !== 120 || hc.height !== 68) {
+        hc.width = 120;
+        hc.height = 68;
+      }
       const hctx = hc.getContext('2d', { willReadFrequently: true });
       if (!hctx) return;
 
       const W = hc.width;
       const H = hc.height;
 
-      // Project video into WxH using the exact same object-cover crop as the main canvas!
       const scaleToMiniX = W / cw;
       const scaleToMiniY = H / ch;
       hctx.clearRect(0, 0, W, H);
@@ -1625,138 +1611,251 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
       const img = hctx.getImageData(0, 0, W, H).data;
 
-      const scanZone = (pIdx: number, minXNorm: number, maxXNorm: number) => {
+      // Build 2D Integral Images (Summed-Area Tables) for O(1) region queries
+      const stride = W + 1;
+      const nCells = (W + 1) * (H + 1);
+      const satLuma = new Float32Array(nCells);
+      const satSkin = new Float32Array(nCells);
+      const satEdge = new Float32Array(nCells);
+      const satHand = new Float32Array(nCells);
+      const rawLuma = new Float32Array(W * H);
+
+      const isPixelNearAnyHand = (nx: number, ny: number) => {
+        for (let pi = 0; pi < eng.players.length; pi++) {
+          if (pi === 1 && !is2P) continue;
+          const pl = eng.players[pi];
+          if (!pl) continue;
+          for (const hand of [pl.leftHand, pl.rightHand]) {
+            if (!hand || !hand.detected) continue;
+            if (Math.hypot(nx - hand.x, ny - hand.y) < 0.11) return true;
+            if (hand.landmarks && hand.landmarks.length >= 21) {
+              const wrist = hand.landmarks[0];
+              const midMcp = hand.landmarks[9];
+              const midTip = hand.landmarks[12];
+              if (wrist && Math.hypot(nx - wrist.x, ny - wrist.y) < 0.09) return true;
+              if (midMcp && Math.hypot(nx - midMcp.x, ny - midMcp.y) < 0.09) return true;
+              if (midTip && Math.hypot(nx - midTip.x, ny - midTip.y) < 0.09) return true;
+              if (wrist && Math.abs(nx - wrist.x) < 0.08 && ny >= wrist.y && ny <= wrist.y + 0.15) return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      for (let y = 0; y < H; y++) {
+        const ny = y / H;
+        let rowLuma = 0;
+        let rowSkin = 0;
+        let rowEdge = 0;
+        let rowHand = 0;
+        const prevRowOffset = y * stride;
+        const curRowOffset = (y + 1) * stride;
+
+        for (let x = 0; x < W; x++) {
+          const nx = x / W;
+          const idx = (y * W + x) * 4;
+          const r = img[idx];
+          const g = img[idx + 1];
+          const b = img[idx + 2];
+          const luma = r * 0.299 + g * 0.587 + b * 0.114;
+          rawLuma[y * W + x] = luma;
+
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          const isSkin = (
+            r >= 40 && g >= 24 && b >= 16 &&
+            r > g && g >= b - 5 &&
+            (r - g) >= 5 && (r - g) <= 82 &&
+            (r - b) >= 8 && (r - b) <= 122 &&
+            (maxC - minC) >= 10 &&
+            luma < 232
+          ) ? 1.0 : 0.0;
+
+          // Facial horizontal & vertical edge energy (brows, eyes, nose, mouth, hairline)
+          let edge = 0;
+          if (y > 0 && x > 0) {
+            const dyLuma = Math.abs(luma - rawLuma[(y - 1) * W + x]);
+            const dxLuma = Math.abs(luma - rawLuma[y * W + (x - 1)]);
+            edge = Math.min(45, dyLuma * 1.25 + dxLuma * 0.65);
+          }
+
+          const inHand = isPixelNearAnyHand(nx, ny) ? 1.0 : 0.0;
+
+          rowLuma += luma;
+          rowSkin += isSkin;
+          rowEdge += edge;
+          rowHand += inHand;
+
+          satLuma[curRowOffset + x + 1] = satLuma[prevRowOffset + x + 1] + rowLuma;
+          satSkin[curRowOffset + x + 1] = satSkin[prevRowOffset + x + 1] + rowSkin;
+          satEdge[curRowOffset + x + 1] = satEdge[prevRowOffset + x + 1] + rowEdge;
+          satHand[curRowOffset + x + 1] = satHand[prevRowOffset + x + 1] + rowHand;
+        }
+      }
+
+      const boxAvg = (sat: Float32Array, x0: number, y0: number, x1: number, y1: number) => {
+        const cx0 = Math.max(0, Math.min(W - 1, Math.round(x0)));
+        const cy0 = Math.max(0, Math.min(H - 1, Math.round(y0)));
+        const cx1 = Math.max(cx0 + 1, Math.min(W, Math.round(x1)));
+        const cy1 = Math.max(cy0 + 1, Math.min(H, Math.round(y1)));
+        const area = (cx1 - cx0) * (cy1 - cy0);
+        if (area <= 0) return 0;
+        const sum =
+          sat[cy1 * stride + cx1] -
+          sat[cy0 * stride + cx1] -
+          sat[cy1 * stride + cx0] +
+          sat[cy0 * stride + cx0];
+        return sum / area;
+      };
+
+      const scanPlayerHead = (pIdx: number, minXNorm: number, maxXNorm: number) => {
         const player = eng.players[pIdx];
         if (!player) return;
 
-        const startX = Math.floor(minXNorm * W);
-        const endX = Math.floor(maxXNorm * W);
-        const startY = Math.floor(0.16 * H);
-        const endY = Math.floor(0.56 * H);
+        const minCx = Math.floor((minXNorm + 0.06) * W);
+        const maxCx = Math.floor((maxXNorm - 0.06) * W);
+        const minCy = Math.floor(0.15 * H);
+        const maxCy = Math.floor(0.56 * H);
 
-        const lh = player.leftHand;
-        const rh = player.rightHand;
+        const prevX = player.headDetected ? player.headX : player.homeX;
+        const prevY = player.headDetected ? player.headY : 0.34;
+        const hasRecentHead = player.headDetected && (now - (player.lastHeadTime || 0) < 1200);
 
-        // Helper to reject pixels belonging to raised hands/arms so hands never pull the headgear
-        const isNearTrackedHand = (nx: number, ny: number) => {
-          for (const hand of [lh, rh]) {
-            if (!hand || !hand.detected) continue;
-            if (Math.hypot(nx - hand.x, ny - hand.y) < 0.14) return true;
-            if (hand.landmarks && hand.landmarks.length >= 21) {
-              const wrist = hand.landmarks[0];
-              const midTip = hand.landmarks[12];
-              if (wrist && Math.hypot(nx - wrist.x, ny - wrist.y) < 0.12) return true;
-              if (midTip && Math.hypot(nx - midTip.x, ny - midTip.y) < 0.12) return true;
-              // Also mask forearm directly below wrist
-              if (wrist && Math.abs(nx - wrist.x) < 0.10 && ny >= wrist.y && ny <= wrist.y + 0.18) return true;
-            }
-          }
-          return false;
-        };
+        let bestScore = -1;
+        let bestCx = prevX * W;
+        let bestCy = prevY * H;
+        let bestRx = 10;
 
-        // Pass 1: Measure average background brightness in the upper zone (outside hands)
-        let bgLumaSum = 0;
-        let bgCount = 0;
-        for (let y = startY; y < Math.floor(0.44 * H); y += 2) {
-          for (let x = startX; x < endX; x += 2) {
-            const nx = x / W;
-            const ny = y / H;
-            if (isNearTrackedHand(nx, ny)) continue;
-            const idx = (y * W + x) * 4;
-            const luma = img[idx] * 0.299 + img[idx + 1] * 0.587 + img[idx + 2] * 0.114;
-            bgLumaSum += luma;
-            bgCount++;
-          }
-        }
-        const avgZoneLuma = bgCount > 0 ? bgLumaSum / bgCount : 120;
+        // Candidate head half-widths rx in mini-canvas pixels (W=120 -> rx=8..13 is 13%..22% of screen width)
+        const candidateRadii = is2P ? [7, 9, 11] : [8, 10, 12, 14];
 
-        // Kinematic X prior from body/hands so we prefer the central head column over side clutter
-        let priorX = player.headDetected ? player.headX : player.homeX;
-        if (lh?.detected && rh?.detected) {
-          priorX = (lh.x + rh.x) * 0.5;
-        } else if (lh?.detected && !rh?.detected) {
-          priorX = Math.min(maxXNorm - 0.10, lh.x + 0.21);
-        } else if (rh?.detected && !lh?.detected) {
-          priorX = Math.max(minXNorm + 0.10, rh.x - 0.21);
-        }
+        for (let rIdx = 0; rIdx < candidateRadii.length; rIdx++) {
+          const rx = candidateRadii[rIdx];
+          const ry = Math.round(rx * 1.25);
 
-        let sumX = 0;
-        let sumY = 0;
-        let minHeadX = endX;
-        let maxHeadX = startX;
-        let totalWeight = 0;
+          for (let cy = minCy; cy <= maxCy; cy += 2) {
+            const ny = cy / H;
+            for (let cx = minCx; cx <= maxCx; cx += 2) {
+              const nx = cx / W;
 
-        for (let y = startY; y < endY; y++) {
-          const ny = y / H;
-          // Bell-curve vertical weight centered around natural face height (ny = 0.35)
-          const vertPrior = Math.max(0.25, 1.0 - Math.abs(ny - 0.35) * 2.4);
+              // Reject candidate if it overlaps a raised hand
+              const handOverlap = boxAvg(satHand, cx - rx, cy - ry, cx + rx, cy + ry);
+              if (handOverlap > 0.18) continue;
 
-          for (let x = startX; x < endX; x++) {
-            const nx = x / W;
-            if (isNearTrackedHand(nx, ny)) continue;
+              // Head interior statistics
+              const inLuma = boxAvg(satLuma, cx - rx, cy - ry, cx + rx, cy + ry);
+              const inSkin = boxAvg(satSkin, cx - rx * 0.85, cy - ry * 0.75, cx + rx * 0.85, cy + ry * 0.85);
+              const inEdge = boxAvg(satEdge, cx - rx * 0.85, cy - ry * 0.75, cx + rx * 0.85, cy + ry * 0.85);
 
-            const idx = (y * W + x) * 4;
-            const r = img[idx];
-            const g = img[idx + 1];
-            const b = img[idx + 2];
-            const luma = r * 0.299 + g * 0.587 + b * 0.114;
-            const maxC = Math.max(r, g, b);
-            const minC = Math.min(r, g, b);
+              // Surrounding background boxes: Left of left ear, Right of right ear, and Top above crown
+              const leftBgLuma = boxAvg(satLuma, cx - rx * 2.1, cy - ry * 0.8, cx - rx * 1.15, cy + ry * 0.8);
+              const rightBgLuma = boxAvg(satLuma, cx + rx * 1.15, cy - ry * 0.8, cx + rx * 2.1, cy + ry * 0.8);
+              const topBgLuma = boxAvg(satLuma, cx - rx * 0.9, cy - ry * 1.85, cx + rx * 0.9, cy - ry * 1.1);
 
-            // A) Front-lit or shadowed warm skin tone (excludes bright orange shirts where r - b > 115)
-            const isWarmSkin = (
-              r >= 42 && g >= 28 && b >= 20 &&
-              r > g && g >= b - 3 &&
-              (r - g) >= 5 && (r - g) <= 75 &&
-              (r - b) >= 8 && (r - b) <= 115 &&
-              (maxC - minC) >= 10 &&
-              luma < 225
-            );
+              const leftBgSkin = boxAvg(satSkin, cx - rx * 2.1, cy - ry * 0.8, cx - rx * 1.15, cy + ry * 0.8);
+              const rightBgSkin = boxAvg(satSkin, cx + rx * 1.15, cy - ry * 0.8, cx + rx * 2.1, cy + ry * 0.8);
 
-            // B) Backlit head silhouette / dark hair & face core against a bright room/window
-            const isBacklitHead = (
-              avgZoneLuma > 135 &&
-              luma >= 14 &&
-              luma < avgZoneLuma * 0.64 &&
-              Math.abs(nx - priorX) < 0.22
-            );
+              // Neck & upper chest below the head
+              const neckTorsoLuma = boxAvg(satLuma, cx - rx * 1.35, cy + ry * 1.05, cx + rx * 1.35, cy + ry * 1.95);
 
-            if (isWarmSkin || isBacklitHead) {
-              const horizPrior = Math.max(0.25, 1.0 - Math.abs(nx - priorX) * 1.9);
-              const pixelScore = (isWarmSkin ? 1.35 : 1.0) * vertPrior * horizPrior;
-              sumX += nx * pixelScore;
-              sumY += ny * pixelScore;
-              totalWeight += pixelScore;
-              if (x < minHeadX) minHeadX = x;
-              if (x > maxHeadX) maxHeadX = x;
+              // Bilateral contrast: A true head contrasts with BOTH its left and right background!
+              // (Wide torso or wall edges fail Math.min(leftDiff, rightDiff))
+              const leftContrast = Math.abs(inLuma - leftBgLuma) + Math.max(0, inSkin - leftBgSkin) * 85;
+              const rightContrast = Math.abs(inLuma - rightBgLuma) + Math.max(0, inSkin - rightBgSkin) * 85;
+              const bilateralContrast = Math.min(leftContrast, rightContrast) * 1.35 + (leftContrast + rightContrast) * 0.25;
+              if (bilateralContrast < 12) continue;
+
+              // Crown contrast above the head
+              const crownContrast = Math.abs(inLuma - topBgLuma) * 0.55;
+
+              // Torso connection below head (head + torso belong to the player silhouette)
+              const avgSurroundLuma = (leftBgLuma + rightBgLuma) * 0.5;
+              const torsoPresence = Math.max(0, Math.abs(neckTorsoLuma - avgSurroundLuma) - Math.abs(inLuma - neckTorsoLuma) * 0.45) * 0.40;
+
+              // Facial skin & internal eye/brow/mouth feature score
+              const faceFeatureScore = inSkin * 52 + Math.min(26, inEdge * 1.15);
+
+              // Smooth temporal continuity prior (never restricts full-court movement)
+              const distFromPrev = Math.hypot(nx - prevX, ny - prevY);
+              const continuityWeight = hasRecentHead
+                ? Math.max(0.68, 1.18 - distFromPrev * 1.35)
+                : Math.max(0.75, 1.05 - Math.abs(nx - player.homeX) * 0.5);
+
+              // Natural vertical head zone prior (allows y from 0.15 to 0.56)
+              const vertWeight = Math.max(0.72, 1.06 - Math.abs(ny - 0.32) * 0.85);
+
+              const score = (bilateralContrast + crownContrast + torsoPresence + faceFeatureScore) * continuityWeight * vertWeight;
+              if (score > bestScore) {
+                bestScore = score;
+                bestCx = cx;
+                bestCy = cy;
+                bestRx = rx;
+              }
             }
           }
         }
 
-        if (totalWeight > 12) {
-          const cx = sumX / totalWeight;
-          const cy = sumY / totalWeight;
-          const spanX = Math.max(0.14, Math.min(0.34, (maxHeadX - minHeadX) / W));
+        if (bestScore > 26) {
+          // Refine centroid & estimate subtle head tilt inside the winning head oval
+          const rx = bestRx;
+          const ry = Math.round(rx * 1.25);
+          const x0 = Math.max(1, Math.floor(bestCx - rx));
+          const x1 = Math.min(W - 2, Math.ceil(bestCx + rx));
+          const y0 = Math.max(1, Math.floor(bestCy - ry));
+          const y1 = Math.min(H - 2, Math.ceil(bestCy + ry));
+          const surroundLuma = (
+            boxAvg(satLuma, bestCx - rx * 2.0, bestCy - ry * 0.7, bestCx - rx * 1.15, bestCy + ry * 0.7) +
+            boxAvg(satLuma, bestCx + rx * 1.15, bestCy - ry * 0.7, bestCx + rx * 2.0, bestCy + ry * 0.7)
+          ) * 0.5;
+
+          let sumX = 0, sumY = 0, sumW = 0;
+          let leftY = 0, leftW = 0, rightY = 0, rightW = 0;
+
+          for (let y = y0; y <= y1; y++) {
+            for (let x = x0; x <= x1; x++) {
+              const dx = (x - bestCx) / rx;
+              const dy = (y - bestCy) / ry;
+              if (dx * dx + dy * dy > 1.05) continue;
+              const luma = rawLuma[y * W + x];
+              const w = Math.abs(luma - surroundLuma) + 8;
+              sumX += x * w;
+              sumY += y * w;
+              sumW += w;
+              if (dx < -0.15) { leftY += y * w; leftW += w; }
+              else if (dx > 0.15) { rightY += y * w; rightW += w; }
+            }
+          }
+
+          const refinedNormX = sumW > 0 ? (sumX / sumW) / W : (bestCx / W);
+          const refinedNormY = sumW > 0 ? (sumY / sumW) / H : (bestCy / H);
 
           const clampedX = is2P
-            ? (pIdx === 0 ? Math.min(0.41, Math.max(0.09, cx)) : Math.max(0.59, Math.min(0.91, cx)))
-            : Math.max(0.14, Math.min(0.86, cx));
-          const clampedY = Math.max(0.28, Math.min(0.48, cy));
-          const targetScale = Math.max(0.95, Math.min(1.42, spanX * 4.2));
+            ? (pIdx === 0 ? Math.min(0.43, Math.max(0.07, refinedNormX)) : Math.max(0.57, Math.min(0.93, refinedNormX)))
+            : Math.max(0.08, Math.min(0.92, refinedNormX));
+          const clampedY = Math.max(0.16, Math.min(0.58, refinedNormY));
+          const headWidthRatio = (bestRx * 2) / W;
+          const targetScale = Math.max(0.80, Math.min(1.26, headWidthRatio * 5.6));
 
-          player.headX += (clampedX - player.headX) * 0.42;
-          player.headY += (clampedY - player.headY) * 0.42;
-          player.headScale += (targetScale - player.headScale) * 0.28;
+          let targetTilt = 0;
+          if (leftW > 0 && rightW > 0) {
+            const dyTilt = (rightY / rightW - leftY / leftW) / Math.max(6, bestRx);
+            targetTilt = Math.max(-0.28, Math.min(0.28, dyTilt * 0.65));
+          }
+
+          player.headX += (clampedX - player.headX) * 0.52;
+          player.headY += (clampedY - player.headY) * 0.52;
+          player.headScale += (targetScale - player.headScale) * 0.35;
+          player.headTilt = (player.headTilt || 0) + (targetTilt - (player.headTilt || 0)) * 0.35;
           player.headDetected = true;
           player.lastHeadTime = now;
         }
       };
 
       if (is2P) {
-        scanZone(0, 0.04, 0.46);
-        scanZone(1, 0.54, 0.96);
+        scanPlayerHead(0, 0.02, 0.48);
+        scanPlayerHead(1, 0.52, 0.98);
       } else {
-        scanZone(0, 0.12, 0.88);
+        scanPlayerHead(0, 0.04, 0.96);
       }
     } catch (e) {}
   };
@@ -1859,9 +1958,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           lastFrameTime = time;
           frameCount++;
           try {
-            if (frameCount % 2 === 0) {
-              await trackHeadsFromVideoFrame(videoRef.current);
-            }
+            await trackHeadsFromVideoFrame(videoRef.current);
             ensureHandsInitialized();
             if (handsRef.current) {
               await handsRef.current.send({ image: videoRef.current });
@@ -2109,12 +2206,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     if (!is2P) {
       if (mode === 'chop') {
         // 1 Player CHOP MODE: 4 distinct horizontal lanes launching UPWARD from below the bottom of the screen!
+        // Dynamically scale launch velocity to screen height so fruits always arc into the upper-middle play zone!
         const laneXs = [width * 0.20, width * 0.40, width * 0.60, width * 0.80];
+        const gBase = 0.135 * curSpd * Math.max(0.85, height / 600);
         opts.forEach((optText, i) => {
           const homeX = laneXs[i % laneXs.length];
           const startX = homeX + (Math.random() - 0.5) * 20;
           const startY = height + 40 + (i % 2) * 34;
-          const upVy = -(9.8 + (i % 2) * 0.85) * Math.sqrt(curSpd);
+          const peakY = Math.max(168, height * (0.26 + (i % 2) * 0.07));
+          const riseDist = Math.max(240, startY - peakY);
+          const upVy = -Math.sqrt(2 * gBase * riseDist);
           const sideVx = (Math.random() - 0.5) * 1.1 * curSpd;
 
           targets.push({
@@ -2128,7 +2229,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             y: startY,
             vx: sideVx,
             vy: upVy,
-            gravity: 0.135 * curSpd,
+            gravity: gBase,
             wobblePhase: Math.random() * 10,
             wingPhase: Math.random() * 10,
             rotation: Math.random() * Math.PI,
@@ -2190,11 +2291,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       if (mode === 'chop') {
         const p1Lanes = [width * 0.11, width * 0.21, width * 0.30, width * 0.40];
         const p2Lanes = [width * 0.60, width * 0.70, width * 0.79, width * 0.89];
+        const gBase = 0.135 * curSpd * Math.max(0.85, height / 600);
 
         opts.forEach((optText, i) => {
           const homeX = p1Lanes[i % p1Lanes.length];
           const startY = height + 40 + (i % 2) * 36;
-          const upVy = -(9.7 + (i % 2) * 0.85) * Math.sqrt(curSpd);
+          const peakY = Math.max(168, height * (0.26 + (i % 2) * 0.07));
+          const riseDist = Math.max(240, startY - peakY);
+          const upVy = -Math.sqrt(2 * gBase * riseDist);
 
           targets.push({
             optionIndex: i,
@@ -2207,7 +2311,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             y: startY,
             vx: (Math.random() - 0.5) * 0.9 * curSpd,
             vy: upVy,
-            gravity: 0.135 * curSpd,
+            gravity: gBase,
             wobblePhase: Math.random() * 10,
             wingPhase: Math.random() * 10,
             rotation: Math.random() * Math.PI,
@@ -2226,7 +2330,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         opts.forEach((optText, i) => {
           const homeX = p2Lanes[i % p2Lanes.length];
           const startY = height + 40 + (i % 2) * 36;
-          const upVy = -(9.7 + (i % 2) * 0.85) * Math.sqrt(curSpd);
+          const peakY = Math.max(168, height * (0.26 + (i % 2) * 0.07));
+          const riseDist = Math.max(240, startY - peakY);
+          const upVy = -Math.sqrt(2 * gBase * riseDist);
 
           targets.push({
             optionIndex: i,
@@ -2239,7 +2345,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             y: startY,
             vx: (Math.random() - 0.5) * 0.9 * curSpd,
             vy: upVy,
-            gravity: 0.135 * curSpd,
+            gravity: gBase,
             wobblePhase: Math.random() * 10 + 5,
             wingPhase: Math.random() * 10 + 5,
             rotation: Math.random() * Math.PI,
@@ -2600,26 +2706,32 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
 
     // =========================================================================
-    // MOSQUITO SLAP MODE: SELECTION TRIGGERS ONLY WHEN TWO GLOVES / HANDS MEET!
+    // MOSQUITO SLAP MODE: TWO-GLOVE CLAP OR BRISK HAND SLAP OVER A MOSQUITO!
     // =========================================================================
     if (eng.roundMode === 'mosquito') {
-      const isTwoGlovesMeeting = Boolean(p.isClapping || (p.clapTimer && p.clapTimer > 0));
-
-      // Do NOT select any mosquito unless the two gloves/hands actually clapped together!
-      if (!isTwoGlovesMeeting) return;
-
-      // Debounce so a single clap only triggers one selection
+      // Debounce so a single slap/clap only triggers one target selection
       if (now - (p.lastSlapSelectTime || 0) < 420) return;
 
-      const clapX = (p.clapMidX !== undefined)
+      const isTwoGlovesMeeting = Boolean(p.isClapping || (p.clapTimer && p.clapTimer > 0));
+      const leftSpeed = p.leftHand?.speed || 0;
+      const rightSpeed = p.rightHand?.speed || 0;
+      const isLeftSwat = Boolean(showLeft && leftSpeed >= 0.015);
+      const isRightSwat = Boolean(showRight && rightSpeed >= 0.015);
+
+      // Require either a two-glove clap OR an intentional brisk hand swat
+      if (!isTwoGlovesMeeting && !isLeftSwat && !isRightSwat) return;
+
+      const clapX = (p.clapMidX !== undefined && isTwoGlovesMeeting)
         ? p.clapMidX * cw
         : (lx + rx) * 0.5;
-      const clapY = (p.clapMidY !== undefined)
+      const clapY = (p.clapMidY !== undefined && isTwoGlovesMeeting)
         ? p.clapMidY * ch
         : (ly + ry) * 0.5;
 
       let bestTarget: any = null;
       let bestDist = 99999;
+      let hitX = clapX;
+      let hitY = clapY;
 
       for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
         const t = eng.targets[tIdx];
@@ -2629,26 +2741,66 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           if (pIdx === 1 && t.team === 'p1') continue;
         }
 
-        // Measure distance strictly from the meeting point of the two clapped gloves to the mosquito / option card
-        const dClap = distToTargetOrOptionCard(
-          t,
-          { x: clapX, y: clapY - 38 },
-          { x: clapX, y: clapY + 24 }
-        );
+        const slapHitRadius = (t.radius || 56) + 52;
+        let dCandidate = 99999;
+        let candX = clapX;
+        let candY = clapY;
 
-        const slapHitRadius = (t.radius || 56) + 46;
-        if (dClap <= slapHitRadius && dClap < bestDist) {
-          bestDist = dClap;
+        if (isTwoGlovesMeeting) {
+          const dClap = distToTargetOrOptionCard(
+            t,
+            { x: clapX, y: clapY - 42 },
+            { x: clapX, y: clapY + 28 }
+          );
+          if (dClap < dCandidate) {
+            dCandidate = dClap;
+            candX = clapX;
+            candY = clapY;
+          }
+        }
+
+        if (isLeftSwat) {
+          const dLeftSwat = distToTargetOrOptionCard(
+            t,
+            { x: prevLx, y: prevLy },
+            { x: lx, y: ly }
+          );
+          if (dLeftSwat < dCandidate) {
+            dCandidate = dLeftSwat;
+            candX = lx;
+            candY = ly;
+          }
+        }
+
+        if (isRightSwat) {
+          const dRightSwat = distToTargetOrOptionCard(
+            t,
+            { x: prevRx, y: prevRy },
+            { x: rx, y: ry }
+          );
+          if (dRightSwat < dCandidate) {
+            dCandidate = dRightSwat;
+            candX = rx;
+            candY = ry;
+          }
+        }
+
+        if (dCandidate <= slapHitRadius && dCandidate < bestDist) {
+          bestDist = dCandidate;
           bestTarget = t;
+          hitX = candX;
+          hitY = candY;
         }
       }
 
       if (bestTarget) {
         p.lastSlapSelectTime = now;
-        p.isClapping = false;
-        p.clapTimer = 0;
+        p.isClapping = true;
+        p.clapTimer = 0.22;
         p.clapArmed = false;
         p.peakArmedSep = 0;
+        p.clapMidX = hitX / cw;
+        p.clapMidY = hitY / ch;
         p.slapAnim = 1.0;
         p.swordLunge = 1.0;
         if (p.leftHand) p.leftHand.slapAnim = 1.0;
@@ -2659,11 +2811,20 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
 
     // =========================================================================
-    // CHOP MODE: SLICING RISING FRUITS
+    // CHOP MODE: FULL 3D CLEAVER BLADE SEGMENT + HAND SLICING RISING FRUITS
     // =========================================================================
     const leftMovePx = Math.hypot(lx - prevLx, ly - prevLy);
     const rightMovePx = Math.hypot(rx - prevRx, ry - prevRy);
     const isMouseClick = Boolean(p.clapTimer && p.clapTimer > 0);
+
+    const lAngle = p.leftHand?.knifeAngle ?? -0.45;
+    const rAngle = p.rightHand?.knifeAngle ?? -2.69;
+    const lBladeLen = 118 * Math.max(0.75, Math.min(1.25, leftScale * 0.92));
+    const rBladeLen = 118 * Math.max(0.75, Math.min(1.25, rightScale * 0.92));
+    const lTipX = lx + Math.cos(lAngle) * lBladeLen;
+    const lTipY = ly + Math.sin(lAngle) * lBladeLen;
+    const rTipX = rx + Math.cos(rAngle) * rBladeLen;
+    const rTipY = ry + Math.sin(rAngle) * rBladeLen;
 
     for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
       if (eng.resolved) break;
@@ -2674,28 +2835,41 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         if (pIdx === 1 && t.team === 'p1') continue;
       }
 
-      const hitRadiusL = t.radius + 64 * leftScale;
-      const hitRadiusR = t.radius + 64 * rightScale;
+      const hitRadiusL = (t.radius || 56) + 48 * leftScale;
+      const hitRadiusR = (t.radius || 56) + 48 * rightScale;
 
-      let dLeft = showLeft ? distToTargetOrOptionCard(t, { x: prevLx, y: prevLy }, { x: lx, y: ly }) : 99999;
+      let dLeft = showLeft
+        ? Math.min(
+            distToTargetOrOptionCard(t, { x: prevLx, y: prevLy }, { x: lx, y: ly }),
+            distToTargetOrOptionCard(t, { x: lx, y: ly }, { x: lTipX, y: lTipY })
+          )
+        : 99999;
       for (let k = 0; k < leftPts.length; k++) {
         const dPt = distToTargetOrOptionCard(t, leftPts[k], leftPts[k]);
         if (dPt < dLeft) dLeft = dPt;
       }
 
-      let dRight = showRight ? distToTargetOrOptionCard(t, { x: prevRx, y: prevRy }, { x: rx, y: ry }) : 99999;
+      let dRight = showRight
+        ? Math.min(
+            distToTargetOrOptionCard(t, { x: prevRx, y: prevRy }, { x: rx, y: ry }),
+            distToTargetOrOptionCard(t, { x: rx, y: ry }, { x: rTipX, y: rTipY })
+          )
+        : 99999;
       for (let k = 0; k < rightPts.length; k++) {
         const dPt = distToTargetOrOptionCard(t, rightPts[k], rightPts[k]);
         if (dPt < dRight) dRight = dPt;
       }
 
-      const leftHit = showLeft && dLeft < hitRadiusL && (isMouseClick || leftMovePx > 2.2);
-      const rightHit = showRight && dRight < hitRadiusR && (isMouseClick || rightMovePx > 2.2);
+      const leftActiveMotion = isMouseClick || leftMovePx > 0.9 || (p.leftHand?.speed || 0) > 0.004 || Math.abs(t.vy || 0) > 2.5;
+      const rightActiveMotion = isMouseClick || rightMovePx > 0.9 || (p.rightHand?.speed || 0) > 0.004 || Math.abs(t.vy || 0) > 2.5;
+
+      const leftHit = showLeft && dLeft < hitRadiusL && leftActiveMotion;
+      const rightHit = showRight && dRight < hitRadiusR && rightActiveMotion;
 
       if (leftHit || rightHit) {
         const sliceAng = leftHit
-          ? (leftMovePx > 2 ? Math.atan2(ly - prevLy, lx - prevLx) : -0.42)
-          : (rightMovePx > 2 ? Math.atan2(ry - prevRy, rx - prevRx) : -2.72);
+          ? (leftMovePx > 2 ? Math.atan2(ly - prevLy, lx - prevLx) : lAngle)
+          : (rightMovePx > 2 ? Math.atan2(ry - prevRy, rx - prevRx) : rAngle);
         if (leftHit) {
           t.leftKnifeHitTime = now;
           p.leftHand.slapAnim = 1.0;
@@ -3061,9 +3235,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
               // Re-launch fruit upward from below the bottom of the screen when it falls back down!
               if (t.y > ch + 68 && t.vy > 0) {
+                const gBase = t.gravity || (0.135 * curSpd * Math.max(0.85, ch / 600));
                 t.y = ch + 46;
                 t.x = (t.homeX || t.x) + (Math.random() - 0.5) * 24;
-                t.vy = -(9.6 + Math.random() * 1.15) * Math.sqrt(curSpd);
+                const peakY = Math.max(168, ch * (0.26 + ((t.optionIndex || 0) % 2) * 0.07));
+                const riseDist = Math.max(240, t.y - peakY);
+                t.vy = -Math.sqrt(2 * gBase * riseDist);
                 t.vx = (Math.random() - 0.5) * 1.1 * curSpd;
               }
             } else if (t.frozen) {
@@ -3720,18 +3897,18 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
   };
 
-  // Mosquito Net Headgear Covering the User's Face (Centered on Face Center `(headX, headY)` so Visor Covers Eyes/Nose/Mouth!)
+  // Mosquito Net Headgear Covering the User's Face (Proportioned & Centered on Player's Tracked Face `(headX, headY)`)
   const drawPurpleMosquitoNetHat = (ctx: CanvasRenderingContext2D, p: any, cw: number, ch: number) => {
     const hx = p.headX * cw;
     const hy = p.headY * ch;
-    const baseScale = Math.max(0.88, Math.min(1.52, cw / 900)) * (p.headScale || 1.08);
+    const baseScale = Math.max(0.54, Math.min(1.04, (cw / 1280) * 0.72 * (p.headScale || 1.0)));
 
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(p.headTilt || 0);
     ctx.scale(baseScale, baseScale);
-    // Shift local coordinates up by 74 units so (0, 0) is the center of the player's face inside the visor!
-    ctx.translate(0, -74);
+    // Shift local coordinates by -58 units so (0, 0) is the center of the player's face inside the visor!
+    ctx.translate(0, -58);
 
     // 1. FULL-FACE FROSTED WHITE MOSQUITO NET VISOR (Matches Reference Photo: Clean Translucent White Cylinder Over Face)
     const veilTopY = -24;
@@ -3911,14 +4088,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const draw3DChefHat = (ctx: CanvasRenderingContext2D, p: any, cw: number, ch: number) => {
     const hx = p.headX * cw;
     const hy = p.headY * ch;
-    const baseScale = Math.max(0.75, Math.min(1.45, cw / 950)) * (p.headScale || 1.0);
+    const baseScale = Math.max(0.62, Math.min(1.16, (cw / 1280) * 0.85 * (p.headScale || 1.0)));
     const th = p.theme;
 
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(p.headTilt || 0);
     ctx.scale(baseScale, baseScale);
-    ctx.translate(0, -64);
+    ctx.translate(0, -24);
 
     ctx.shadowColor = 'rgba(15, 23, 42, 0.35)';
     ctx.shadowBlur = 16;
@@ -4031,9 +4208,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
   };
 
-  // Sleek Cartoon Side-Profile Slap Glove (Matches Reference Image `/public/assets/aistudio/image_b9f250b0.png` 1:1 & Scales to Cover Real Hand!)
-  // Features: Gathered upright fingers with 3 rounded tips, 2 dark interior finger crease lines,
-  // vibrant purple body with outer highlight & inner shadow, and a puffy horizontal wrist cuff roll!
+  // Sleek Cartoon Side-Profile Slap Glove (Proportioned to Fit the Player's Real Hand Without Oversizing!)
   const drawSingleCartoonGlove = (
     ctx: CanvasRenderingContext2D,
     gx: number,
@@ -4056,38 +4231,41 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const shadowColor = isFrozen ? '#0284c7' : (th?.isP2 ? '#e11d48' : '#4e28d4');
     const outlineColor = isFrozen ? '#0c4a6e' : '#230b42';
 
-    // Keep glove upright in natural inward-tilted clap pose (matching reference photo)
-    const defaultTilt = isRightHand ? -0.20 : 0.20;
+    // Follow the player's real hand tilt angle smoothly
+    const defaultTilt = isRightHand ? -0.18 : 0.18;
     let normalizedTilt = defaultTilt;
     if (Number.isFinite(angle)) {
       const wrapped = Math.atan2(Math.sin(angle), Math.cos(angle));
-      normalizedTilt = defaultTilt + Math.max(-0.30, Math.min(0.30, wrapped * 0.25));
+      normalizedTilt = Math.max(-1.05, Math.min(1.05, wrapped * 0.72));
     }
 
-    // Dynamically size the cartoon glove to cover the player's real hand on screen!
-    // Local glove height is ~132 units (y = -68 to +65).
-    const minResponsiveScale = Math.max(1.75, (cw / 920) * 1.95);
-    let computedScale = Math.max(minResponsiveScale, minResponsiveScale * (0.85 + (scale - 1.0) * 0.45));
+    // Proportional glove sizing based on the player's actual hand landmarks (never giant or tiny!)
+    // Local glove height is ~134 units (y = -68 to +66).
+    const baseScreenScale = Math.max(0.76, Math.min(1.12, (cw / 1280) * 0.92));
+    let computedScale = Math.max(0.75, Math.min(1.38, baseScreenScale * (0.85 + (scale - 1.0) * 0.45)));
 
     if (landmarks && landmarks.length >= 21) {
-      let minX = 1, maxX = 0, minY = 1, maxY = 0;
-      for (let i = 0; i < landmarks.length; i++) {
-        const lm = landmarks[i];
-        if (!lm) continue;
-        if (lm.x < minX) minX = lm.x;
-        if (lm.x > maxX) maxX = lm.x;
-        if (lm.y < minY) minY = lm.y;
-        if (lm.y > maxY) maxY = lm.y;
-      }
-      const bboxW = (maxX - minX) * cw;
-      const bboxH = (maxY - minY) * ch;
       const wrist = landmarks[0];
+      const indexMcp = landmarks[5];
+      const middleMcp = landmarks[9];
+      const pinkyMcp = landmarks[17];
       const midTip = landmarks[12];
+
       const wristToTipPx = (wrist && midTip)
         ? Math.hypot((midTip.x - wrist.x) * cw, (midTip.y - wrist.y) * ch)
-        : bboxH;
-      const realHandPx = Math.max(wristToTipPx * 1.24, Math.hypot(bboxW, bboxH) * 0.92);
-      computedScale = Math.max(minResponsiveScale, Math.min(3.35, realHandPx / 120));
+        : 0;
+      const palmLenPx = (wrist && middleMcp)
+        ? Math.hypot((middleMcp.x - wrist.x) * cw, (middleMcp.y - wrist.y) * ch)
+        : 0;
+      const palmWidthPx = (indexMcp && pinkyMcp)
+        ? Math.hypot((indexMcp.x - pinkyMcp.x) * cw, (indexMcp.y - pinkyMcp.y) * ch)
+        : 0;
+
+      const anatomicalHandPx = Math.max(wristToTipPx, palmLenPx * 1.82, palmWidthPx * 2.10);
+      if (anatomicalHandPx > 24) {
+        const targetGlovePx = Math.max(104, Math.min(186, anatomicalHandPx * 1.04));
+        computedScale = Math.max(0.78, Math.min(1.46, targetGlovePx / 128));
+      }
     }
 
     const finalScale = computedScale * (1 + slapBoost * 0.14);
@@ -4095,8 +4273,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.save();
     ctx.translate(gx + offsetDx, gy + offsetDy);
     ctx.rotate(normalizedTilt);
-    // In local space, Left Glove has outer back on left (-X) and inner palm facing right (+X);
-    // Right Glove mirrors horizontally so its inner palm faces left (-X) toward the clap center!
     ctx.scale(isRightHand ? -finalScale : finalScale, finalScale);
 
     ctx.lineJoin = 'round';
@@ -4277,8 +4453,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.save();
     ctx.translate(kx, ky);
     ctx.rotate(angle);
-    const s = Math.max(0.68, Math.min(1.65, scale * (1 + chopBoost * 0.18)));
-    ctx.scale(s, isRightHand ? -s : s);
+    const s = Math.max(0.72, Math.min(1.28, scale * 0.92 * (1 + chopBoost * 0.16)));
+    // Keep the razor cutting edge facing downward regardless of whether blade points left or right!
+    const flipY = Math.cos(angle) < 0 ? -1 : 1;
+    ctx.scale(s, s * flipY);
 
     ctx.shadowColor = 'rgba(15, 23, 42, 0.36)';
     ctx.shadowBlur = 14;

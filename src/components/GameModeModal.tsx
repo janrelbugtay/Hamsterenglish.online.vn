@@ -4,6 +4,8 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ViewState } from '../types';
 
+const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
+
 export type PlayableGameMode =
   | 'bubble-pop'
   | 'roller-coaster-quiz'
@@ -66,6 +68,24 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     accentText: 'text-blue-600 dark:text-blue-400',
   },
   {
+    id: 'hamster-paintball',
+    title: 'Hamster Paintball',
+    shortAction: 'Play in Paintball',
+    tagline: '3D Multiplayer Lobby (QR & Room Code)',
+    description: 'Generates a live Room Code & QR on www.hamsterenglish.online! Students join the lobby and battle in 3D speedball.',
+    players: 'Multiplayer · QR & Code Lobby',
+    category: 'battle',
+    emoji: '🐹🎯',
+    image: hamsterPaintballCardImg,
+    fallbackImage: '/images/hamster-paintball-card.jpg',
+    gradient: 'from-lime-500 via-emerald-600 to-slate-900',
+    cardBg: 'bg-lime-50/70 dark:bg-lime-950/25 hover:bg-lime-100/80 dark:hover:bg-lime-900/35',
+    cardBorder: 'border-lime-300 dark:border-lime-700/70',
+    btnBg: 'bg-lime-600 hover:bg-lime-700',
+    btnShadow: 'shadow-[0_4px_0_#3f6212]',
+    accentText: 'text-lime-600 dark:text-lime-400',
+  },
+  {
     id: 'roller-coaster-quiz',
     title: 'Roller Coaster Quiz',
     shortAction: 'Play in Coaster Quiz',
@@ -81,24 +101,6 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     btnBg: 'bg-amber-500 hover:bg-amber-600',
     btnShadow: 'shadow-[0_4px_0_#b45309]',
     accentText: 'text-amber-600 dark:text-amber-400',
-  },
-  {
-    id: 'hamster-paintball',
-    title: 'Hamster Paintball',
-    shortAction: 'Play in Paintball',
-    tagline: '3D Speedball Park & Trivia Blitz',
-    description: 'Fire glossy paintballs, slide across the park, deploy inflatable bunkers, and earn ammo through trivia!',
-    players: '1–5 Players / Bots · Tactical 3D',
-    category: 'battle',
-    emoji: '🐹🎯',
-    image: '/images/hamster-paintball-card.jpg',
-    fallbackImage: '/images/hamster-paintball-card.png',
-    gradient: 'from-lime-500 via-emerald-600 to-slate-900',
-    cardBg: 'bg-lime-50/70 dark:bg-lime-950/25 hover:bg-lime-100/80 dark:hover:bg-lime-900/35',
-    cardBorder: 'border-lime-300 dark:border-lime-700/70',
-    btnBg: 'bg-lime-600 hover:bg-lime-700',
-    btnShadow: 'shadow-[0_4px_0_#3f6212]',
-    accentText: 'text-lime-600 dark:text-lime-400',
   },
   {
     id: 'slap-and-chop',
@@ -314,13 +316,10 @@ export function isGameModePublished(
   modeId: PlayableGameMode,
   publishedMap: Record<string, boolean>
 ): boolean {
+  // Always keep Hamster Paintball available in "Or Play This Set in Another Game Mode"
+  if (modeId === 'hamster-paintball') return true;
   if (!publishedMap || Object.keys(publishedMap).length === 0) return true;
   if (publishedMap[modeId] === false) return false;
-
-  // Aliases check to ensure exact compatibility with AdminDashboard IDs
-  if (modeId === 'hamster-paintball' && (publishedMap['hamster-paintball'] === false || publishedMap['hamsterpaintball'] === false || publishedMap['paintball'] === false)) {
-    return false;
-  }
   if (modeId === 'sumo' && (publishedMap['sumo-tags'] === false || publishedMap['sumo-showdown'] === false)) {
     return false;
   }
@@ -441,7 +440,10 @@ export function GameModeModal({
   const filteredOtherOptions =
     activeFilter === 'all'
       ? otherOptions
-      : otherOptions.filter((opt) => opt.category === activeFilter);
+      : otherOptions.filter((opt) =>
+          opt.category === activeFilter ||
+          (opt.id === 'hamster-paintball' && (activeFilter === 'battle' || activeFilter === 'camera'))
+        );
 
   const handlePlayInterchangeable = (targetType: PlayableGameMode) => {
     const rawQuestions = gameData.customQuestions || gameData.questions || [];

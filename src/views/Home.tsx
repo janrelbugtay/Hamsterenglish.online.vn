@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Play, Users, Clock, PlusCircle } from "lucide-react";
+import { Play, Users, Clock, PlusCircle, QrCode, LogIn } from "lucide-react";
 import { Game, ViewState } from "../types";
 import { cn } from "../lib/utils";
 import { GameThumbnail } from "../components/GameThumbnail";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
+
+const hamsterPaintballCardImg = "/images/hamster-paintball-card.jpg";
 
 export function Home({
   onViewChange,
@@ -17,10 +19,19 @@ export function Home({
   openAuthModal?: () => void;
   openGoogleAuthModal?: (feature?: string) => void;
 }) {
+  const [joinRoomInput, setJoinRoomInput] = useState("");
+
+  const handleQuickJoinRoom = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = joinRoomInput.replace(/[^0-9A-Za-z]/g, "").trim();
+    if (!cleaned || !onViewChange) return;
+    onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
+  };
+
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col gap-6">
       {/* Top Banner / Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
         <div>
           <h2 className="text-2xl font-black text-slate-800 dark:text-white">
             Welcome to the Studio
@@ -29,7 +40,31 @@ export function Home({
             Play, create, and share amazing learning games
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Student Quick Join Multiplayer Lobby by 6-Digit Code */}
+          <form
+            onSubmit={handleQuickJoinRoom}
+            className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/90 p-1.5 pl-3.5 rounded-2xl border-2 border-lime-400/70 shadow-sm"
+          >
+            <QrCode size={18} className="text-lime-600 dark:text-lime-400 shrink-0" />
+            <input
+              type="text"
+              maxLength={6}
+              value={joinRoomInput}
+              onChange={(e) => setJoinRoomInput(e.target.value.replace(/[^0-9A-Za-z]/g, "").slice(0, 6))}
+              placeholder="Enter 6-Digit Room Code..."
+              className="w-40 sm:w-44 bg-transparent text-xs sm:text-sm font-black font-mono tracking-wider text-slate-800 dark:text-white placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!joinRoomInput.trim()}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 disabled:opacity-40 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
+            >
+              <LogIn size={14} />
+              <span>Join Lobby</span>
+            </button>
+          </form>
+
           <button 
             type="button"
             onClick={() => {
@@ -166,11 +201,11 @@ function FeaturedGamesSection({
       description:
         "3D Outdoor Tactical Speedball Park Arena! Fire glossy paintballs, slide across the duck pond, deploy inflatable air bunkers, and earn ammo through trivia!",
       difficulty: "Medium",
-      players: "1-5 Players / Bots",
+      players: "Multiplayer Lobby (QR & Code)",
       time: "5-15m",
       subject: "ESL & Science Trivia",
       grade: "All",
-      imageUrl: "/images/hamster-paintball-card.jpg",
+      imageUrl: hamsterPaintballCardImg,
       isNew: true,
       isAI: false,
       color: "from-lime-500 to-emerald-600",
@@ -353,7 +388,7 @@ function FeaturedGamesSection({
     }
   ];
 
-  const games = allGames.filter(g => isAdmin || publishedGames[g.id] !== false);
+  const games = allGames.filter(g => g.id === 'hamster-paintball' || isAdmin || publishedGames[g.id] !== false);
 
   return (
     <section className="py-6">

@@ -1561,12 +1561,12 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     let currentMode = 'part1a';
     let score = 0;
-    let p1aIndex = 0;
-    let p1bIndex = 0;
+    let p1aIndex = -1;
+    let p1bIndex = -1;
     let p1bStep = 'select'; // 'select' ("Which is the book?") -> 'place' ("Put the book under the table.")
-    let p2Index = 0;
+    let p2Index = -1;
     let p3CardIndex = 0;
-    let p3StepIndex = 0;
+    let p3StepIndex = -1;
     let p3ShowAllGrid = false;
     let pairTalkMode = false;
     let useOriginalBookArt = false;
@@ -1742,8 +1742,8 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     }
 
     function updateDropZonesVisibility() {
-      const shouldShowZones = showDropZonesHint || (currentMode === 'part1b' && p1bStep === 'place');
-      const shouldMakeClickable = currentMode === 'part1b' && p1bStep === 'place';
+      const shouldShowZones = showDropZonesHint || (currentMode === 'part1b' && p1bIndex >= 0 && p1bStep === 'place');
+      const shouldMakeClickable = currentMode === 'part1b' && p1bIndex >= 0 && p1bStep === 'place';
       document.querySelectorAll('.drop-zone').forEach(dz => {
         if (shouldShowZones) {
           dz.classList.add('show-hint');
@@ -1800,6 +1800,10 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     function switchMode(mode) {
       currentMode = mode;
       showAnswer = false;
+      p1aIndex = -1;
+      p1bIndex = -1;
+      p2Index = -1;
+      p3StepIndex = -1;
       if (mode === 'part1b') {
         p1bStep = 'select';
       } else {
@@ -1942,7 +1946,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       const idx = PART3_QUESTIONS.findIndex(q => q.cardId === cardId);
       if (idx !== -1) {
         p3CardIndex = idx;
-        p3StepIndex = 0;
+        p3StepIndex = -1;
         showAnswer = false;
         playChime('pop');
         renderCurrentMode();
@@ -1951,7 +1955,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     function prevPart3Card() {
       p3CardIndex = (p3CardIndex - 1 + PART3_QUESTIONS.length) % PART3_QUESTIONS.length;
-      p3StepIndex = 0;
+      p3StepIndex = -1;
       showAnswer = false;
       playChime('pop');
       renderCurrentMode();
@@ -1959,7 +1963,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     function nextPart3Card() {
       p3CardIndex = (p3CardIndex + 1) % PART3_QUESTIONS.length;
-      p3StepIndex = 0;
+      p3StepIndex = -1;
       showAnswer = false;
       playChime('pop');
       renderCurrentMode();
@@ -2000,15 +2004,9 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     }
 
     function renderCurrentMode() {
-      const partBadge = document.getElementById('part-badge') || {};
-      const qCounter = document.getElementById('question-counter') || {};
-      const promptText = document.getElementById('examiner-prompt-text') || {};
-      const subHint = document.getElementById('examiner-sub-hint') || {};
       const panel = document.getElementById('activity-panel');
       const sceneContainer = document.getElementById('scene-canvas-container');
       const part3BigStage = document.getElementById('part3-big-stage');
-      const statusText = document.getElementById('scene-status-bar');
-      const bookArtBtn = document.getElementById('btn-footer-book-art');
       const cardsTray = document.getElementById('object-cards-tray-container');
 
       // Show Test 1 Object Cards Tray ONLY in Part 1B
@@ -2024,14 +2022,10 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       if (currentMode === 'part3') {
         if (sceneContainer) sceneContainer.classList.add('hidden');
         if (part3BigStage) part3BigStage.classList.remove('hidden');
-        if (bookArtBtn) bookArtBtn.classList.add('hidden');
-        if (statusText) statusText.textContent = "Part 3 Object Cards Stage — Answer the Examiner's question about the big card!";
         renderPart3BigStage();
       } else {
         if (sceneContainer) sceneContainer.classList.remove('hidden');
         if (part3BigStage) part3BigStage.classList.add('hidden');
-        if (bookArtBtn) bookArtBtn.classList.remove('hidden');
-        if (statusText) statusText.textContent = "Interactive Scene Ready — Click any object or drag an Object Card onto the room!";
       }
 
       updateDropZonesVisibility();
@@ -2047,39 +2041,46 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       \`;
 
       if (currentMode === 'part1a') {
-        const task = PART1A_TASKS[p1aIndex];
-        partBadge.textContent = "Part 1 • Task A: Point to Things in the Big Picture";
-        qCounter.textContent = \`Question \${p1aIndex + 1} of \${PART1A_TASKS.length}\`;
-        promptText.textContent = \`"\${task.prompt}"\`;
-        subHint.textContent = \`👉 \${task.subHint}\`;
-        renderAnswerChips(task.chips, []);
+        const task = p1aIndex >= 0 ? PART1A_TASKS[p1aIndex] : null;
 
         panel.innerHTML = \`
           <div class="flex-1 flex flex-col justify-between bg-indigo-50/90 border-2 border-indigo-200 rounded-3xl p-5 sm:p-6 gap-4">
-            <div class="space-y-4">
-              <div class="flex items-center justify-between gap-2 flex-wrap">
-                <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
-                  Question \${p1aIndex + 1}
-                </span>
-                \${showHideBtnHtml}
+            \${task ? \`
+              <div class="space-y-4">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
+                    Question \${p1aIndex + 1}
+                  </span>
+                  \${showHideBtnHtml}
+                </div>
+                <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-2">
+                  \${task.prompt}
+                </div>
               </div>
-              <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-2">
-                \${task.prompt}
-              </div>
-            </div>
 
-            <div>
-              \${showAnswer ? \`
-                <button onclick="practiceSentence('\${task.answer.replace(/'/g, "\\\\'")}')" class="w-full text-left px-5 py-4 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl lg:text-2xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
-                  <span>🗣️ "\${task.answer}"</span>
-                  <span class="text-emerald-600 text-base font-extrabold shrink-0">🔊 Listen</span>
-                </button>
-              \` : \`
-                <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
-                  👁️ Click to Show Sample Answer
-                </button>
-              \`}
-            </div>
+              <div>
+                \${showAnswer ? \`
+                  <button onclick="practiceSentence('\${task.answer.replace(/'/g, "\\\\'")}')" class="w-full text-left px-5 py-4 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl lg:text-2xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
+                    <span>🗣️ "\${task.answer}"</span>
+                    <span class="text-emerald-600 text-base font-extrabold shrink-0">🔊 Listen</span>
+                  </button>
+                \` : \`
+                  <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
+                    👁️ Click to Show Sample Answer
+                  </button>
+                \`}
+              </div>
+            \` : \`
+              <div class="flex-1 flex flex-col items-center justify-center text-center p-4 gap-3">
+                <span class="text-4xl">👆</span>
+                <div class="font-kid font-extrabold text-2xl sm:text-3xl text-indigo-950">
+                  Select a Question Below
+                </div>
+                <p class="text-sm sm:text-base font-semibold text-slate-600">
+                  Click any question button (Q1 – Q8) below to display and hear the question.
+                </p>
+              </div>
+            \`}
           </div>
 
           <div class="grid grid-cols-4 gap-2.5 shrink-0 pt-1">
@@ -2097,55 +2098,57 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       }
 
       else if (currentMode === 'part1b') {
-        const task = PART1B_TASKS[p1bIndex];
+        const task = p1bIndex >= 0 ? PART1B_TASKS[p1bIndex] : null;
         const isSelectStep = p1bStep === 'select';
-        const activePrompt = isSelectStep ? task.selectPrompt : task.placePrompt;
-        const activeSubHint = isSelectStep ? task.selectSubHint : task.placeSubHint;
-
-        partBadge.textContent = isSelectStep
-          ? "Part 1 • Task B (Step 1/2): Find the Object Card"
-          : "Part 1 • Task B (Step 2/2): Place the Card in the Room";
-        qCounter.textContent = \`Task \${p1bIndex + 1} of \${PART1B_TASKS.length} • Step \${isSelectStep ? 1 : 2}/2\`;
-        promptText.textContent = \`"\${activePrompt}"\`;
-        subHint.textContent = \`🃏 \${activeSubHint}\`;
-        renderAnswerChips(isSelectStep ? task.selectChips : task.placeChips, []);
-
-        const sampleAnswerText = isSelectStep ? task.selectChips[0] : task.successLabel;
+        const activePrompt = task ? (isSelectStep ? task.selectPrompt : task.placePrompt) : '';
+        const sampleAnswerText = task ? (isSelectStep ? task.selectChips[0] : task.successLabel) : '';
 
         panel.innerHTML = \`
-          <div class="flex-1 flex flex-col justify-between \${isSelectStep ? 'bg-indigo-50/90 border-indigo-200' : 'bg-emerald-50 border-emerald-300'} border-2 rounded-3xl p-4 sm:p-5 gap-3">
-            <div class="space-y-3">
-              <div class="flex items-center justify-between gap-2 flex-wrap">
-                <span class="px-3.5 py-1.5 rounded-xl \${isSelectStep ? 'bg-indigo-600' : 'bg-emerald-600'} text-white font-kid font-extrabold uppercase text-xs sm:text-sm tracking-wider shadow-sm">
-                  Question \${p1bIndex + 1} • \${isSelectStep ? 'Step 1: Select Card' : 'Step 2: Place Card'}
-                </span>
-                \${showHideBtnHtml}
-              </div>
+          <div class="flex-1 flex flex-col justify-between \${task && !isSelectStep ? 'bg-emerald-50 border-emerald-300' : 'bg-indigo-50/90 border-indigo-200'} border-2 rounded-3xl p-4 sm:p-5 gap-3">
+            \${task ? \`
+              <div class="space-y-3">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <span class="px-3.5 py-1.5 rounded-xl \${isSelectStep ? 'bg-indigo-600' : 'bg-emerald-600'} text-white font-kid font-extrabold uppercase text-xs sm:text-sm tracking-wider shadow-sm">
+                    Question \${p1bIndex + 1} • \${isSelectStep ? 'Step 1: Select Card' : 'Step 2: Place Card'}
+                  </span>
+                  \${showHideBtnHtml}
+                </div>
 
-              <div class="flex items-center gap-3">
-                \${!isSelectStep ? \`
-                  <div class="w-16 h-16 rounded-2xl bg-white border-2 border-emerald-400 p-1.5 shrink-0 shadow-sm">
-                    \${OBJECT_CARDS.find(c => c.id === task.cardId).svg}
+                <div class="flex items-center gap-3">
+                  \${!isSelectStep ? \`
+                    <div class="w-16 h-16 rounded-2xl bg-white border-2 border-emerald-400 p-1.5 shrink-0 shadow-sm">
+                      \${OBJECT_CARDS.find(c => c.id === task.cardId).svg}
+                    </div>
+                  \` : ''}
+                  <div class="font-kid font-extrabold text-xl sm:text-2xl lg:text-3xl text-slate-900 leading-tight">
+                    "\${activePrompt}"
                   </div>
-                \` : ''}
-                <div class="font-kid font-extrabold text-xl sm:text-2xl lg:text-3xl text-slate-900 leading-tight">
-                  "\${activePrompt}"
                 </div>
               </div>
-            </div>
 
-            <div>
-              \${showAnswer ? \`
-                <button onclick="practiceSentence('\${sampleAnswerText.replace(/'/g, "\\\\'")}')" class="w-full text-left px-4 py-3.5 rounded-2xl bg-white hover:bg-emerald-100 border-2 border-emerald-400 text-base sm:text-lg lg:text-xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-2 transition shadow-md">
-                  <span>🗣️ "\${sampleAnswerText}"</span>
-                  <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
-                </button>
-              \` : \`
-                <button onclick="toggleShowAnswer()" class="w-full py-3.5 px-4 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition">
-                  👁️ Click to Show Sample Answer
-                </button>
-              \`}
-            </div>
+              <div>
+                \${showAnswer ? \`
+                  <button onclick="practiceSentence('\${sampleAnswerText.replace(/'/g, "\\\\'")}')" class="w-full text-left px-4 py-3.5 rounded-2xl bg-white hover:bg-emerald-100 border-2 border-emerald-400 text-base sm:text-lg lg:text-xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-2 transition shadow-md">
+                    <span>🗣️ "\${sampleAnswerText}"</span>
+                    <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
+                  </button>
+                \` : \`
+                  <button onclick="toggleShowAnswer()" class="w-full py-3.5 px-4 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition">
+                    👁️ Click to Show Sample Answer
+                  </button>
+                \`}
+              </div>
+            \` : \`
+              <div class="flex-1 flex flex-col items-center justify-center text-center p-4 gap-2">
+                <span class="text-3xl">🃏</span>
+                <div class="font-kid font-extrabold text-xl sm:text-2xl text-indigo-950">
+                  Select a Question Below
+                </div>
+                <p class="text-xs sm:text-sm font-semibold text-slate-600">
+                  Click any question button (Q1 – Q8) below to start placing an Object Card.
+                </p>
+              </div>
+            \`}
           </div>
 
           <div class="grid grid-cols-4 gap-2 shrink-0 pt-1">
@@ -2163,48 +2166,56 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       }
 
       else if (currentMode === 'part2') {
-        const q = PART2_QUESTIONS[p2Index];
-        partBadge.textContent = "Part 2 • One Question at a Time (Wait for Answer)";
-        qCounter.textContent = \`Question \${p2Index + 1} of \${PART2_QUESTIONS.length}\`;
-        promptText.textContent = \`"\${q.prompt}"\`;
-        subHint.textContent = \`🔍 \${q.subHint}\`;
+        const q = p2Index >= 0 ? PART2_QUESTIONS[p2Index] : null;
 
         clearAllSceneHighlights();
-        const spotEl = document.getElementById(\`item-\${q.spotlightId}\`);
-        if (spotEl) spotEl.classList.add('glow-spotlight');
-        if (q.secondarySpotlightId) {
-          const secEl = document.getElementById(\`item-\${q.secondarySpotlightId}\`);
-          if (secEl) secEl.classList.add('glow-spotlight');
+        if (q) {
+          const spotEl = document.getElementById(\`item-\${q.spotlightId}\`);
+          if (spotEl) spotEl.classList.add('glow-spotlight');
+          if (q.secondarySpotlightId) {
+            const secEl = document.getElementById(\`item-\${q.secondarySpotlightId}\`);
+            if (secEl) secEl.classList.add('glow-spotlight');
+          }
         }
-
-        renderAnswerChips(q.chips, q.keywords);
 
         panel.innerHTML = \`
           <div class="flex-1 flex flex-col justify-between bg-indigo-50/90 border-2 border-indigo-200 rounded-3xl p-5 sm:p-6 gap-4">
-            <div class="space-y-4">
-              <div class="flex items-center justify-between gap-2 flex-wrap">
-                <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
-                  Question \${p2Index + 1}
-                </span>
-                \${showHideBtnHtml}
+            \${q ? \`
+              <div class="space-y-4">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
+                    Question \${p2Index + 1}
+                  </span>
+                  \${showHideBtnHtml}
+                </div>
+                <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-1">
+                  \${q.prompt}
+                </div>
               </div>
-              <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-1">
-                \${q.prompt}
-              </div>
-            </div>
 
-            <div class="flex flex-col gap-2.5">
-              \${showAnswer ? q.chips.map(sentence => \`
-                <button onclick="practiceSentence('\${sentence.replace(/'/g, "\\\\'")}')" class="text-left px-5 py-3.5 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
-                  <span>🗣️ "\${sentence}"</span>
-                  <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
-                </button>
-              \`).join('') : \`
-                <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
-                  👁️ Click to Show Sample Answer
-                </button>
-              \`}
-            </div>
+              <div class="flex flex-col gap-2.5">
+                \${showAnswer ? q.chips.map(sentence => \`
+                  <button onclick="practiceSentence('\${sentence.replace(/'/g, "\\\\'")}')" class="text-left px-5 py-3.5 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
+                    <span>🗣️ "\${sentence}"</span>
+                    <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
+                  </button>
+                \`).join('') : \`
+                  <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
+                    👁️ Click to Show Sample Answer
+                  </button>
+                \`}
+              </div>
+            \` : \`
+              <div class="flex-1 flex flex-col items-center justify-center text-center p-4 gap-3">
+                <span class="text-4xl">🔍</span>
+                <div class="font-kid font-extrabold text-2xl sm:text-3xl text-indigo-950">
+                  Select a Question Below
+                </div>
+                <p class="text-sm sm:text-base font-semibold text-slate-600">
+                  Click any question button (Q1 – Q12) below to spotlight the scene and hear the question.
+                </p>
+              </div>
+            \`}
           </div>
 
           <div class="grid grid-cols-4 gap-2.5 shrink-0 pt-1">
@@ -2223,40 +2234,46 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
       else if (currentMode === 'part3') {
         const cardObj = PART3_QUESTIONS[p3CardIndex];
-        const stepObj = cardObj.steps[p3StepIndex];
-
-        partBadge.textContent = "Part 3 • Object Cards Q&A (One Question at a Time)";
-        qCounter.textContent = \`Card \${p3CardIndex + 1} of 8 • Question \${p3StepIndex + 1} of \${cardObj.steps.length}\`;
-        promptText.textContent = \`"\${stepObj.q}"\`;
-        subHint.textContent = \`💬 Look at the big Object Card on the left and answer the Examiner's question!\`;
-        renderAnswerChips(stepObj.a, stepObj.keywords);
+        const stepObj = p3StepIndex >= 0 ? cardObj.steps[p3StepIndex] : null;
 
         panel.innerHTML = \`
           <div class="flex-1 flex flex-col justify-between bg-indigo-50/90 border-2 border-indigo-200 rounded-3xl p-5 sm:p-6 gap-4">
-            <div class="space-y-4">
-              <div class="flex items-center justify-between gap-2 flex-wrap">
-                <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
-                  Card \${p3CardIndex + 1} • Question \${p3StepIndex + 1}
-                </span>
-                \${showHideBtnHtml}
+            \${stepObj ? \`
+              <div class="space-y-4">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-kid font-extrabold uppercase text-sm sm:text-base tracking-wider shadow-sm">
+                    Card \${p3CardIndex + 1} • Question \${p3StepIndex + 1}
+                  </span>
+                  \${showHideBtnHtml}
+                </div>
+                <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-2">
+                  "\${stepObj.q}"
+                </div>
               </div>
-              <div class="font-kid font-extrabold text-2xl sm:text-3xl lg:text-4xl text-slate-900 leading-tight py-2">
-                "\${stepObj.q}"
-              </div>
-            </div>
 
-            <div class="flex flex-col gap-2.5">
-              \${showAnswer ? stepObj.a.map(ans => \`
-                <button onclick="practiceSentence('\${ans.replace(/'/g, "\\\\'")}', true)" class="text-left px-5 py-4 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl lg:text-2xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
-                  <span>🗣️ "\${ans}"</span>
-                  <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
-                </button>
-              \`).join('') : \`
-                <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
-                  👁️ Click to Show Sample Answer
-                </button>
-              \`}
-            </div>
+              <div class="flex flex-col gap-2.5">
+                \${showAnswer ? stepObj.a.map(ans => \`
+                  <button onclick="practiceSentence('\${ans.replace(/'/g, "\\\\'")}', true)" class="text-left px-5 py-4 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-emerald-400 text-lg sm:text-xl lg:text-2xl font-kid font-extrabold text-slate-800 flex items-center justify-between gap-3 transition shadow-md">
+                    <span>🗣️ "\${ans}"</span>
+                    <span class="text-emerald-600 text-sm font-extrabold shrink-0">🔊 Listen</span>
+                  </button>
+                \`).join('') : \`
+                  <button onclick="toggleShowAnswer()" class="w-full py-4 px-5 rounded-2xl bg-white/75 hover:bg-white border-2 border-dashed border-indigo-300 text-indigo-600 font-kid font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition">
+                    👁️ Click to Show Sample Answer
+                  </button>
+                \`}
+              </div>
+            \` : \`
+              <div class="flex-1 flex flex-col items-center justify-center text-center p-4 gap-3">
+                <span class="text-4xl">💬</span>
+                <div class="font-kid font-extrabold text-2xl sm:text-3xl text-indigo-950">
+                  Select a Question Below
+                </div>
+                <p class="text-sm sm:text-base font-semibold text-slate-600">
+                  Click any question button (Q1 – Q\${cardObj.steps.length}) below to display and hear the question for Card \${p3CardIndex + 1}.
+                </p>
+              </div>
+            \`}
           </div>
 
           <div class="grid grid-cols-4 gap-2.5 shrink-0 pt-1">
@@ -2280,7 +2297,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       if (event) event.stopPropagation();
       const el = document.getElementById(\`item-\${itemId}\`);
 
-      if (currentMode === 'part1a') {
+      if (currentMode === 'part1a' && p1aIndex >= 0) {
         const task = PART1A_TASKS[p1aIndex];
         if (task.targets.includes(itemId)) {
           clearAllSceneHighlights();
@@ -2302,7 +2319,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
           showSceneToast(msg, '🤔', true);
           speakText(\`That's \${clickedInfo ? clickedInfo.name : 'not it'}. \${task.prompt}\`);
         }
-      } else if (currentMode === 'part1b' && p1bStep === 'select') {
+      } else if (currentMode === 'part1b' && p1bIndex >= 0 && p1bStep === 'select') {
         const task = PART1B_TASKS[p1bIndex];
         showSceneToast(\`First select the object card on the right: "\${task.selectPrompt}"\`, '👉');
         speakText(task.selectPrompt);
@@ -2320,7 +2337,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
 
     function handleDropZoneClick(zoneId, event) {
       if (event) event.stopPropagation();
-      if (currentMode !== 'part1b') return;
+      if (currentMode !== 'part1b' || p1bIndex < 0) return;
       const task = PART1B_TASKS[p1bIndex];
       if (p1bStep === 'select') {
         showSceneToast(\`First click the object card: "\${task.selectPrompt}"\`, '👉', true);
@@ -2392,7 +2409,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         const isPlaced = Boolean(placedCards[card.id]);
         const isCurrentP3 = currentMode === 'part3' && PART3_QUESTIONS[p3CardIndex].cardId === card.id;
         // Only highlight the target card in Part 1B AFTER the student has correctly selected it in Step 1!
-        const isSelectedP1B = currentMode === 'part1b' && p1bStep === 'place' && PART1B_TASKS[p1bIndex].cardId === card.id;
+        const isSelectedP1B = currentMode === 'part1b' && p1bIndex >= 0 && p1bStep === 'place' && PART1B_TASKS[p1bIndex].cardId === card.id;
         const tags = cardPersonalTags[card.id];
 
         return \`
@@ -2425,6 +2442,10 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
       if (!card) return;
 
       if (currentMode === 'part1b') {
+        if (p1bIndex < 0) {
+          showSceneToast("Select a question (Q1 – Q8) above first!", '👉');
+          return;
+        }
         const task = PART1B_TASKS[p1bIndex];
         if (p1bStep === 'select') {
           if (cardId === task.cardId) {
@@ -2460,7 +2481,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
         const idx = PART3_QUESTIONS.findIndex(q => q.cardId === cardId);
         if (idx !== -1) {
           p3CardIndex = idx;
-          p3StepIndex = 0;
+          p3StepIndex = -1;
           renderCurrentMode();
         }
       } else {
@@ -2478,7 +2499,7 @@ const MONSTER_ART_STUDIO_HTML = `<!DOCTYPE html>
     function startCardDrag(e, cardId) {
       if (e.button !== undefined && e.button !== 0) return;
       // In Part 1B Step 1 ('select'), require clicking/selecting the card first before dragging!
-      if (currentMode === 'part1b' && p1bStep === 'select') {
+      if (currentMode === 'part1b' && (p1bIndex < 0 || p1bStep === 'select')) {
         return;
       }
       draggingCardId = cardId;

@@ -10,6 +10,8 @@ import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
 import { logUserActivity } from '../utils/activityTracker';
 import { getSavedGames, getSavedFolders } from '../lib/gameStore';
 
+const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
+
 export const GamesLibrary = ({ 
   onViewChange, 
   publishedGames = {},
@@ -109,7 +111,7 @@ export const GamesLibrary = ({
     
     { id: "bubble-pop", title: "Bubble Pop", icon: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000", color: "bg-blue-100 text-blue-600" },
     { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "/images/roller-coaster-quiz-card.jpg", color: "bg-amber-100 text-amber-600" },
-    { id: "hamster-paintball", title: "Hamster Paintball", icon: "/images/hamster-paintball-card.jpg", color: "bg-lime-100 text-lime-700" },
+    { id: "hamster-paintball", title: "Hamster Paintball", icon: hamsterPaintballCardImg, color: "bg-lime-100 text-lime-700" },
     { id: "slap-and-chop", title: "Slap & Chop", icon: "/images/slap-and-chop-card.jpg", color: "bg-purple-100 text-purple-600" },
     { id: "shark-attack", title: "Shark Attack", icon: "/images/shark-attack-card.jpg", color: "bg-cyan-100 text-cyan-600" },
     { id: "flashcards-match", title: "Flashcards Match", icon: "https://drive.google.com/thumbnail?id=1UtaZtVX0onrqj3VorxedOxy1iVXdFAHk&sz=w1000", color: "bg-indigo-100 text-indigo-600" },
@@ -125,7 +127,7 @@ export const GamesLibrary = ({
     { id: "phonemic-master", title: "Phonemic Master", icon: "https://images.unsplash.com/photo-1546410531-bf4caa381ce6?q=80&w=1000&auto=format&fit=crop", color: "bg-emerald-100 text-emerald-600" },
   ];
 
-  const gameTemplates = allGameTemplates.filter(g => isAdmin || effectivePublishedGames[g.id] !== false);
+  const gameTemplates = allGameTemplates.filter(g => g.id === 'hamster-paintball' || isAdmin || effectivePublishedGames[g.id] !== false);
 
   useEffect(() => {
     if (user) {
@@ -452,7 +454,7 @@ export const GamesLibrary = ({
     ? games.filter(g => g.folderId === selectedFolderId)
     : games.filter(g => !g.folderId);
 
-  const filteredGames = baseFilteredGames.filter(g => isAdmin || effectivePublishedGames[g.gameType || "mystery-box"] !== false);
+  const filteredGames = baseFilteredGames.filter(g => g.gameType === 'hamster-paintball' || isAdmin || effectivePublishedGames[g.gameType || "mystery-box"] !== false);
 
   const getFolderTree = (parentId: string | null = null, depth = 0): {folder: any, depth: number}[] => {
     const children = folders.filter(f => (f.parentId || null) === parentId);
