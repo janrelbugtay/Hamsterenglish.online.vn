@@ -884,8 +884,31 @@ export default function HamsterPaintball({
   ]);
 
   // Host Camera Target (when Teacher Jan watches the live match happenings)
-  const [hostCameraMode, setHostCameraMode] = useState<'overview' | 'follow'>('overview');
+  const [hostCameraMode, setHostCameraMode] = useState<'overview' | 'track_one' | 'auto_track'>('overview');
   const [hostFollowIndex, setHostFollowIndex] = useState<number>(0);
+
+  // Helper: Calculate Left Corner (Red Squad) or Right Corner (Blue Squad) Spawn Position
+  const getTeamSpawnPosition = (team: TeamId, mode: 'solo' | 'teams') => {
+    const resolvedTeam: 'red' | 'blue' =
+      mode === 'teams'
+        ? team === 'blue'
+          ? 'blue'
+          : 'red'
+        : Math.random() < 0.5
+        ? 'red'
+        : 'blue';
+    // Left Corner Spawn Base: (-35, -22), Right Corner Spawn Base: (35, -22)
+    const baseX = resolvedTeam === 'red' ? -35 : 35;
+    const baseZ = -22;
+    const jitterX = Number(((Math.random() - 0.5) * 4.2).toFixed(2));
+    const jitterZ = Number(((Math.random() - 0.5) * 4.2).toFixed(2));
+    const rotY = resolvedTeam === 'red' ? Math.PI * 0.22 : -Math.PI * 0.22;
+    return {
+      x: Number((baseX + jitterX).toFixed(2)),
+      z: Number((baseZ + jitterZ).toFixed(2)),
+      rotY
+    };
+  };
 
   // Student Combat Vitals, Ammo & Score
   // Players start with 0 paintballs and MUST answer questions to earn paintball ammunition!
@@ -1034,6 +1057,7 @@ export default function HamsterPaintball({
         walkPhase: number;
       }
     >;
+    teacherJanNpc?: THREE.Group;
     waterMesh?: THREE.Mesh;
     broadcastChannel?: BroadcastChannel;
   } | null>(null);
@@ -1199,6 +1223,16 @@ export default function HamsterPaintball({
               setMatchSeconds(data.configuredDurationSec || 180);
               setHp(100);
               setShield(100);
+              // Place player in their team's Left/Right Corner Spawn Area when match starts!
+              if (gameRef.current) {
+                const sp = getTeamSpawnPosition(
+                  stateSnapRef.current.myTeam,
+                  data.matchMode || stateSnapRef.current.matchMode
+                );
+                gameRef.current.x = sp.x;
+                gameRef.current.z = sp.z;
+                gameRef.current.rotY = sp.rotY;
+              }
               setPickupBannerText('🚀 HOST STARTED THE GAME! GO SPLAT!');
               setTimeout(() => setPickupBannerText(null), 3000);
             }
@@ -1276,6 +1310,15 @@ export default function HamsterPaintball({
           sfx.playKO();
           setMatchStatus('playing');
           setMatchSeconds(msg.durationSec || 180);
+          if (gameRef.current) {
+            const sp = getTeamSpawnPosition(
+              stateSnapRef.current.myTeam,
+              stateSnapRef.current.matchMode
+            );
+            gameRef.current.x = sp.x;
+            gameRef.current.z = sp.z;
+            gameRef.current.rotY = sp.rotY;
+          }
           if (stateSnapRef.current.screen !== 'join') {
             setScreen('game');
           }
@@ -1328,15 +1371,21 @@ export default function HamsterPaintball({
             activePlayers.push(pState);
             seenIds.add(playerId);
 
-            // If this is my own player document and the Host moved my team in the lobby, sync it
+            // If this is my own player document and the Host moved my team in the lobby, sync it & move to team Corner Spawn
             if (
               playerId === clientIdRef.current &&
               data.team &&
               data.team !== stateSnapRef.current.myTeam
             ) {
               setMyTeam(data.team);
+              if (gameRef.current) {
+                const sp = getTeamSpawnPosition(data.team, stateSnapRef.current.matchMode);
+                gameRef.current.x = sp.x;
+                gameRef.current.z = sp.z;
+                gameRef.current.rotY = sp.rotY;
+              }
               setPickupBannerText(
-                `👑 HOST MOVED YOU TO ${TEAM_CONFIG[data.team]?.label.toUpperCase() || data.team.toUpperCase()}!`
+                `👑 HOST MOVED YOU TO ${TEAM_CONFIG[data.team]?.label.toUpperCase() || data.team.toUpperCase()} SPAWN!`
               );
               setTimeout(() => setPickupBannerText(null), 2400);
             }
@@ -1479,15 +1528,27 @@ export default function HamsterPaintball({
       setHp(prevHp => {
         const nextHp = prevHp - rem;
         if (nextHp <= 0) {
-          // Eliminated! Respawn at safe perimeter spot with full HP & Defence
+          // Eliminated! Respawn inside player's Team Corner Spawn Area (Left Corner for Red, Right Corner for Blue)
+          const sp = getTeamSpawnPosition(
+            stateSnapRef.current.myTeam,
+            stateSnapRef.current.matchMode
+          );
           if (gameRef.current) {
-            const angle = Math.random() * Math.PI * 2;
-            gameRef.current.x = Math.cos(angle) * 28;
-            gameRef.current.z = Math.sin(angle) * 20;
+            gameRef.current.x = sp.x;
+            gameRef.current.z = sp.z;
+            gameRef.current.rotY = sp.rotY;
           }
           setShield(100);
-          setKoBannerText(`SPLATTERED BY ${attackerName.toUpperCase()}! RESPAWNING...`);
-          setTimeout(() => setKoBannerText(null), 2500);
+          const spawnSide =
+            stateSnapRef.current.matchMode === 'teams'
+              ? stateSnapRef.current.myTeam === 'blue'
+                ? 'BLUE RIGHT CORNER SPAWN'
+                : 'RED LEFT CORNER SPAWN'
+              : 'CORNER SPAWN AREA';
+          setKoBannerText(
+            `SPLATTERED BY ${attackerName.toUpperCase()}! RESPAWNING AT ${spawnSide}...`
+          );
+          setTimeout(() => setKoBannerText(null), 2600);
 
           const koId = `ko-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
           // Notify attacker of KO (+50 PTS) via BroadcastChannel & Firestore
@@ -1505,6 +1566,11 @@ export default function HamsterPaintball({
             setDoc(
               getPlayerDocRef(roomCode, clientIdRef.current),
               {
+                x: sp.x,
+                z: sp.z,
+                rotY: sp.rotY,
+                hp: 100,
+                shield: 100,
                 lastKo: {
                   koId,
                   attackerId,
@@ -2340,7 +2406,7 @@ export default function HamsterPaintball({
     sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
-    // Pro Astro-Turf & Tournament Boundary Markings
+    // Pro Astro-Turf & Accessible Corner Spawn Markings
     const createProArenaTurfTexture = () => {
       const c = document.createElement('canvas');
       c.width = 1024;
@@ -2354,22 +2420,33 @@ export default function HamsterPaintball({
         ctx.fillRect(i * stripeW, 0, stripeW, c.height);
       }
 
-      for (let i = 0; i < 16000; i++) {
+      for (let i = 0; i < 14000; i++) {
         const gx = Math.random() * c.width;
         const gy = Math.random() * c.height;
         ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(15,40,10,0.08)';
         ctx.fillRect(gx, gy, 2, 4);
       }
 
-      // Park Walkways
-      ctx.fillStyle = '#c2b280';
-      ctx.fillRect(0, 468, 1024, 88);
-      ctx.fillRect(468, 0, 88, 1024);
+      // Wide Accessible Park Walkways (Cross + Diagonal Lanes from Corner Spawns)
+      ctx.fillStyle = 'rgba(194, 178, 128, 0.72)';
+      ctx.fillRect(60, 472, 904, 80);
+      ctx.fillRect(472, 80, 80, 864);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(194, 178, 128, 0.55)';
+      ctx.lineWidth = 56;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(200, 260);
+      ctx.lineTo(512, 512);
+      ctx.lineTo(824, 260);
+      ctx.stroke();
+      ctx.restore();
 
       // Tournament Boundary Lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.lineWidth = 8;
-      ctx.strokeRect(86, 100, 852, 824);
+      ctx.strokeRect(72, 88, 880, 848);
 
       // 50-Yard Center Line
       ctx.save();
@@ -2377,23 +2454,43 @@ export default function HamsterPaintball({
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.lineWidth = 6;
       ctx.beginPath();
-      ctx.moveTo(512, 100);
-      ctx.lineTo(512, 924);
+      ctx.moveTo(512, 88);
+      ctx.lineTo(512, 936);
       ctx.stroke();
       ctx.restore();
 
       // Center Circle
-      ctx.strokeStyle = 'rgba(250, 204, 21, 0.85)';
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.88)';
       ctx.lineWidth = 7;
       ctx.beginPath();
-      ctx.arc(512, 512, 92, 0, Math.PI * 2);
+      ctx.arc(512, 512, 96, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Team Start Boxes
-      ctx.fillStyle = 'rgba(244, 63, 94, 0.38)';
-      ctx.fillRect(86, 442, 50, 140);
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.38)';
-      ctx.fillRect(888, 442, 50, 140);
+      // LEFT CORNER SPAWN AREA (RED SQUAD: world x = -35, z = -22 -> canvas ~256, 350)
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.42)';
+      ctx.beginPath();
+      ctx.roundRect(108, 120, 210, 170, 28);
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#fda4af';
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 24px "Inter", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('RED SPAWN', 213, 212);
+
+      // RIGHT CORNER SPAWN AREA (BLUE SQUAD: world x = +35, z = -22 -> canvas ~768, 350)
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.42)';
+      ctx.beginPath();
+      ctx.roundRect(706, 120, 210, 170, 28);
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#7dd3fc';
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 24px "Inter", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('BLUE SPAWN', 811, 212);
 
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -2412,6 +2509,91 @@ export default function HamsterPaintball({
     scene.add(ground);
 
     const obstacles: Array<{ x: number; z: number; r: number; h: number }> = [];
+
+    // =========================================================
+    // 3D LEFT CORNER & RIGHT CORNER TEAM SPAWN BASES (100% ACCESSIBLE, ZERO BLOCKING OBSTACLES)
+    // =========================================================
+    const createTeamCornerSpawnBase = (
+      x: number,
+      z: number,
+      teamColorHex: number,
+      bannerLabel: string,
+      primaryHexStr: string
+    ) => {
+      const spawnGroup = new THREE.Group();
+      spawnGroup.position.set(x, 0, z);
+
+      // Glowing Circular Spawn Pad on Turf
+      const padMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(5.6, 5.9, 0.14, 36),
+        new THREE.MeshStandardMaterial({
+          color: teamColorHex,
+          roughness: 0.35,
+          metalness: 0.15
+        })
+      );
+      padMesh.position.y = 0.07;
+      padMesh.receiveShadow = true;
+      spawnGroup.add(padMesh);
+
+      const outerGlowRing = new THREE.Mesh(
+        new THREE.RingGeometry(5.65, 6.25, 36),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.85
+        })
+      );
+      outerGlowRing.rotation.x = -Math.PI / 2;
+      outerGlowRing.position.y = 0.09;
+      spawnGroup.add(outerGlowRing);
+
+      // Overhead Team Spawn Archway Banner (No collision obstacle so players walk freely!)
+      const pillarMat = new THREE.MeshStandardMaterial({
+        color: teamColorHex,
+        roughness: 0.3,
+        metalness: 0.5
+      });
+      const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5.2, 14), pillarMat);
+      leftPost.position.set(-4.8, 2.6, -2.5);
+      spawnGroup.add(leftPost);
+
+      const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5.2, 14), pillarMat);
+      rightPost.position.set(4.8, 2.6, -2.5);
+      spawnGroup.add(rightPost);
+
+      // Overhead Banner Canvas Texture
+      const bc = document.createElement('canvas');
+      bc.width = 512;
+      bc.height = 128;
+      const bctx = bc.getContext('2d')!;
+      bctx.fillStyle = '#0f172a';
+      bctx.fillRect(0, 0, 512, 128);
+      bctx.strokeStyle = primaryHexStr;
+      bctx.lineWidth = 10;
+      bctx.strokeRect(5, 5, 502, 118);
+      bctx.fillStyle = '#ffffff';
+      bctx.font = '900 42px "Inter", system-ui, sans-serif';
+      bctx.textAlign = 'center';
+      bctx.textBaseline = 'middle';
+      bctx.fillText(bannerLabel, 256, 64);
+      const bannerTex = new THREE.CanvasTexture(bc);
+      bannerTex.colorSpace = THREE.SRGBColorSpace;
+
+      const headerBoard = new THREE.Mesh(
+        new THREE.BoxGeometry(10.2, 1.8, 0.35),
+        new THREE.MeshBasicMaterial({ map: bannerTex })
+      );
+      headerBoard.position.set(0, 5.2, -2.5);
+      spawnGroup.add(headerBoard);
+
+      scene.add(spawnGroup);
+    };
+
+    // Left Corner Spawn Area (Red Squad) & Right Corner Spawn Area (Blue Squad)
+    createTeamCornerSpawnBase(-35, -22, 0xf43f5e, 'RED SQUAD SPAWN', '#f43f5e');
+    createTeamCornerSpawnBase(35, -22, 0x38bdf8, 'BLUE SQUAD SPAWN', '#38bdf8');
 
     // Inflatable PVC Bunker Bump & Color Textures
     const createRibbedBumpTexture = () => {
@@ -2503,7 +2685,7 @@ export default function HamsterPaintball({
         reflectivity: 0.9
       });
 
-    // Bunker Builders
+    // Bunker Builders (with accessible collision radii so walkways never trap players)
     const createDorito = (
       x: number,
       z: number,
@@ -2514,55 +2696,55 @@ export default function HamsterPaintball({
     ) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, c3, 'DORITO'));
-      const body = new THREE.Mesh(new THREE.ConeGeometry(2.85, 4.9, 3), mat);
-      body.position.y = 2.45;
+      const body = new THREE.Mesh(new THREE.ConeGeometry(2.6, 4.6, 3), mat);
+      body.position.y = 2.3;
       body.castShadow = true;
       body.receiveShadow = true;
       g.add(body);
 
       const cap = new THREE.Mesh(
-        new THREE.TorusGeometry(1.15, 0.34, 16, 28),
+        new THREE.TorusGeometry(1.05, 0.3, 16, 28),
         new THREE.MeshPhysicalMaterial({ color: c3, clearcoat: 1.0, roughness: 0.15 })
       );
       cap.rotation.x = Math.PI / 2;
-      cap.position.y = 4.15;
+      cap.position.y = 3.95;
       g.add(cap);
 
       g.position.set(x, 0, z);
       g.rotation.y = rot;
       scene.add(g);
-      obstacles.push({ x, z, r: 2.35, h: 4.8 });
+      obstacles.push({ x, z, r: 2.0, h: 4.6 });
     };
 
     const createCan = (x: number, z: number, c1: string, c2: string, c3: string) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, c3, 'PRO CAN'));
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(2.15, 2.25, 4.6, 28), mat);
-      cyl.position.y = 2.3;
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 2.05, 4.4, 28), mat);
+      cyl.position.y = 2.2;
       cyl.castShadow = true;
       cyl.receiveShadow = true;
       g.add(cyl);
 
       const topRing = new THREE.Mesh(
-        new THREE.TorusGeometry(2.05, 0.25, 14, 32),
+        new THREE.TorusGeometry(1.85, 0.22, 14, 32),
         new THREE.MeshPhysicalMaterial({ color: c2, clearcoat: 1.0, roughness: 0.15 })
       );
       topRing.rotation.x = Math.PI / 2;
-      topRing.position.y = 4.55;
+      topRing.position.y = 4.35;
       g.add(topRing);
 
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 2.35, h: 4.7 });
+      obstacles.push({ x, z, r: 2.0, h: 4.5 });
     };
 
     const createBrick = (x: number, z: number, rot: number, c1: string, c2: string) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, '#facc15', 'WALL'));
       for (let i = 0; i < 3; i++) {
-        const tube = new THREE.Mesh(new THREE.CapsuleGeometry(0.68, 4.6, 16, 24), mat);
+        const tube = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 4.2, 16, 24), mat);
         tube.rotation.z = Math.PI / 2;
-        tube.position.y = 0.72 + i * 1.15;
+        tube.position.y = 0.68 + i * 1.1;
         tube.castShadow = true;
         tube.receiveShadow = true;
         g.add(tube);
@@ -2570,7 +2752,7 @@ export default function HamsterPaintball({
       g.position.set(x, 0, z);
       g.rotation.y = rot;
       scene.add(g);
-      obstacles.push({ x, z, r: 2.8, h: 3.6 });
+      obstacles.push({ x, z, r: 2.3, h: 3.5 });
     };
 
     const createCenterXBunker = (x: number, z: number) => {
@@ -2578,15 +2760,15 @@ export default function HamsterPaintball({
       const mat = makeInflatableMat(
         createProBunkerTexture('#1e1b4b', '#ec4899', '#a3e635', 'X-BALL 50')
       );
-      const leg1 = new THREE.Mesh(new THREE.CapsuleGeometry(0.95, 5.2, 16, 24), mat);
-      leg1.position.y = 2.8;
+      const leg1 = new THREE.Mesh(new THREE.CapsuleGeometry(0.88, 4.8, 16, 24), mat);
+      leg1.position.y = 2.6;
       leg1.rotation.z = Math.PI / 4;
       leg1.castShadow = true;
       leg1.receiveShadow = true;
       g.add(leg1);
 
-      const leg2 = new THREE.Mesh(new THREE.CapsuleGeometry(0.95, 5.2, 16, 24), mat);
-      leg2.position.y = 2.8;
+      const leg2 = new THREE.Mesh(new THREE.CapsuleGeometry(0.88, 4.8, 16, 24), mat);
+      leg2.position.y = 2.6;
       leg2.rotation.z = -Math.PI / 4;
       leg2.castShadow = true;
       leg2.receiveShadow = true;
@@ -2594,59 +2776,7 @@ export default function HamsterPaintball({
 
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 3.1, h: 5.2 });
-    };
-
-    const createSnakeBeam = (x: number, z: number, c1: string, c2: string) => {
-      const g = new THREE.Group();
-      const mat = makeInflatableMat(createProBunkerTexture(c1, c2, '#ffffff', 'SNAKE'));
-      const beam = new THREE.Mesh(new THREE.CapsuleGeometry(0.75, 5.5, 14, 20), mat);
-      beam.rotation.x = Math.PI / 2;
-      beam.position.y = 0.75;
-      beam.castShadow = true;
-      beam.receiveShadow = true;
-      g.add(beam);
-
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.15, 2.6, 20), mat);
-      post.position.set(0, 1.3, 0);
-      post.castShadow = true;
-      g.add(post);
-
-      g.position.set(x, 0, z);
-      scene.add(g);
-      obstacles.push({ x, z, r: 2.4, h: 2.6 });
-    };
-
-    // NEW EXTRA HIDING SPOTS: Wooden Fort Bunkers, L-Shaped Tactical Shields & Tire Stacks
-    const createWoodenFortBunker = (x: number, z: number, rot = 0) => {
-      const g = new THREE.Group();
-      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.78 });
-      const trimMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.85 });
-
-      const frontWall = new THREE.Mesh(new THREE.BoxGeometry(5.2, 3.2, 0.55), woodMat);
-      frontWall.position.set(0, 1.6, 1.2);
-      frontWall.castShadow = true;
-      frontWall.receiveShadow = true;
-      g.add(frontWall);
-
-      const sideWallL = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.8, 3.2), woodMat);
-      sideWallL.position.set(-2.35, 1.4, -0.1);
-      sideWallL.castShadow = true;
-      g.add(sideWallL);
-
-      const sideWallR = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.8, 3.2), woodMat);
-      sideWallR.position.set(2.35, 1.4, -0.1);
-      sideWallR.castShadow = true;
-      g.add(sideWallR);
-
-      const roofBeam = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.3, 1.6), trimMat);
-      roofBeam.position.set(0, 3.3, 0.8);
-      g.add(roofBeam);
-
-      g.position.set(x, 0, z);
-      g.rotation.y = rot;
-      scene.add(g);
-      obstacles.push({ x, z, r: 2.9, h: 3.4 });
+      obstacles.push({ x, z, r: 2.6, h: 4.9 });
     };
 
     const createTireStack = (x: number, z: number) => {
@@ -2654,88 +2784,83 @@ export default function HamsterPaintball({
       const tireMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
       const rimMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
       const offsets = [
-        [-0.9, 0],
-        [0.9, 0],
-        [0, 0.9]
+        [-0.85, 0],
+        [0.85, 0],
+        [0, 0.85]
       ];
       offsets.forEach(([ox, oz], idx) => {
         for (let level = 0; level < (idx === 2 ? 4 : 3); level++) {
-          const tire = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.34, 12, 20), tireMat);
+          const tire = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.32, 12, 20), tireMat);
           tire.rotation.x = Math.PI / 2;
-          tire.position.set(ox, 0.34 + level * 0.64, oz);
+          tire.position.set(ox, 0.32 + level * 0.6, oz);
           tire.castShadow = true;
           g.add(tire);
         }
-        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.1, 16), rimMat);
-        cap.position.set(ox, (idx === 2 ? 4 : 3) * 0.64, oz);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.1, 16), rimMat);
+        cap.position.set(ox, (idx === 2 ? 4 : 3) * 0.6, oz);
         g.add(cap);
       });
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 2.1, h: 2.8 });
+      obstacles.push({ x, z, r: 1.85, h: 2.6 });
     };
 
     const createAztecaTempleBunker = (x: number, z: number, c1: string, c2: string) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, '#facc15', 'MAYA'));
       for (let step = 0; step < 3; step++) {
-        const w = 4.6 - step * 1.1;
-        const box = new THREE.Mesh(new THREE.BoxGeometry(w, 1.35, w * 0.65), mat);
-        box.position.y = 0.68 + step * 1.3;
+        const w = 4.2 - step * 1.0;
+        const box = new THREE.Mesh(new THREE.BoxGeometry(w, 1.25, w * 0.65), mat);
+        box.position.y = 0.62 + step * 1.2;
         box.castShadow = true;
         box.receiveShadow = true;
         g.add(box);
       }
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 2.6, h: 4.1 });
+      obstacles.push({ x, z, r: 2.2, h: 3.9 });
     };
 
-    // Place Dense Pro Speedball & Woodsball Hiding Spots Across Entire Arena
-    createCenterXBunker(-4, -2);
-    createDorito(-13, 7, '#1d4ed8', '#eab308', '#38bdf8', 0.4);
-    createDorito(-11, -15, '#1d4ed8', '#facc15', '#ffffff', -0.3);
-    createDorito(18, 11, '#be185d', '#84cc16', '#f472b6', 0.9);
-    createDorito(14, -21, '#0284c7', '#facc15', '#38bdf8', -0.5);
-    createDorito(-24, -20, '#7c3aed', '#a3e635', '#ffffff', 0.2);
+    // =========================================================
+    // SYMMETRICAL, OPEN & ACCESSIBLE SPEEDBALL ARENA LAYOUT
+    // Clear, wide sightlines and walkways from Left Corner (-35,-22) & Right Corner (35,-22)
+    // =========================================================
+    createCenterXBunker(0, 0);
 
-    createCan(-20, -4, '#eab308', '#1e293b', '#fef08a');
-    createCan(16, 18, '#db2777', '#f8fafc', '#f472b6');
-    createCan(-26, 15, '#9333ea', '#a3e635', '#e9d5ff');
-    createCan(28, 12, '#0d9488', '#facc15', '#ffffff');
+    // Symmetrical Mid-Field Doritos (Left Red Side & Right Blue Side)
+    createDorito(-15, -8, '#e11d48', '#facc15', '#ffffff', 0.35);
+    createDorito(15, -8, '#0284c7', '#facc15', '#38bdf8', -0.35);
+    createDorito(-15, 10, '#e11d48', '#84cc16', '#f472b6', -0.35);
+    createDorito(15, 10, '#0284c7', '#84cc16', '#38bdf8', 0.35);
 
-    createBrick(-19, 14, 0.25, '#0d9488', '#f8fafc');
-    createBrick(7, 21, 0.05, '#7c3aed', '#facc15');
-    createBrick(-6, 22, -0.15, '#e11d48', '#f8fafc');
-    createBrick(2, -23, 0.1, '#2563eb', '#a3e635');
+    // Symmetrical Wing Cans (Wide open outer lanes)
+    createCan(-28, -2, '#eab308', '#1e293b', '#fef08a');
+    createCan(28, -2, '#eab308', '#1e293b', '#fef08a');
+    createCan(-26, 16, '#9333ea', '#a3e635', '#e9d5ff');
+    createCan(26, 16, '#0d9488', '#facc15', '#ffffff');
 
-    createSnakeBeam(-32, -12, '#ea580c', '#facc15');
-    createSnakeBeam(-32, 3, '#ea580c', '#facc15');
-    createSnakeBeam(-32, 16, '#ea580c', '#facc15');
+    // Symmetrical Tactical Walls & Maya Bunkers
+    createBrick(-10, -18, 0.18, '#e11d48', '#f8fafc');
+    createBrick(10, -18, -0.18, '#2563eb', '#a3e635');
+    createAztecaTempleBunker(-22, 4, '#059669', '#facc15');
+    createAztecaTempleBunker(22, 4, '#dc2626', '#facc15');
 
-    // Extra Woodland Fort Bunkers, Maya Temples & Tire Barricades
-    createWoodenFortBunker(-34, -22, 0.6);
-    createWoodenFortBunker(32, 22, -2.4);
-    createWoodenFortBunker(0, 12, Math.PI);
-    createAztecaTempleBunker(-18, -22, '#059669', '#facc15');
-    createAztecaTempleBunker(24, 3, '#dc2626', '#facc15');
-    createTireStack(-9, 16);
-    createTireStack(11, 4);
-    createTireStack(-15, -9);
-    createTireStack(15, -15);
+    // Symmetrical Low Tire Stacks (Great cover while shooting over)
+    createTireStack(-8, 12);
+    createTireStack(8, 12);
 
     // =========================================================
     // COLLECTIBLE HEALTH & DEFENCE SHIELD POWER-UP CRATES
     // =========================================================
     const powerupConfigs: Array<{ type: 'health' | 'shield'; x: number; z: number }> = [
-      { type: 'health', x: -16, z: 2 },
-      { type: 'shield', x: -2, z: -14 },
-      { type: 'health', x: 14, z: 14 },
-      { type: 'shield', x: -24, z: -10 },
-      { type: 'health', x: 22, z: -20 },
-      { type: 'shield', x: 4, z: 24 },
-      { type: 'health', x: -28, z: 22 },
-      { type: 'shield', x: 32, z: 8 }
+      { type: 'health', x: -22, z: -12 },
+      { type: 'health', x: 22, z: -12 },
+      { type: 'shield', x: -8, z: -8 },
+      { type: 'shield', x: 8, z: -8 },
+      { type: 'health', x: -18, z: 18 },
+      { type: 'health', x: 18, z: 18 },
+      { type: 'shield', x: 0, z: -20 },
+      { type: 'shield', x: 0, z: 22 }
     ];
 
     const powerups: PowerupNode[] = powerupConfigs.map((cfg, idx) => {
@@ -2795,24 +2920,23 @@ export default function HamsterPaintball({
       scene.add(flag);
     });
 
-    // Central Woodland Gazebo Pavilion
+    // North-Center Woodland Gazebo Pavilion (Walk-Through Accessible Deck — No Blocking Pillar Collisions!)
     const gazebo = new THREE.Group();
     const deckMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.65 });
-    const deck = new THREE.Mesh(new THREE.CylinderGeometry(8.2, 8.7, 0.75, 8), deckMat);
-    deck.position.y = 0.38;
+    const deck = new THREE.Mesh(new THREE.CylinderGeometry(6.8, 7.4, 0.32, 8), deckMat);
+    deck.position.y = 0.16;
     deck.receiveShadow = true;
     gazebo.add(deck);
 
     const pillarMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.75 });
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      const px = Math.cos(a) * 6.9;
-      const pz = Math.sin(a) * 6.9;
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 5.8, 14), pillarMat);
-      pillar.position.set(px, 3.2, pz);
+      const px = Math.cos(a) * 5.9;
+      const pz = Math.sin(a) * 5.9;
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 5.6, 12), pillarMat);
+      pillar.position.set(px, 2.9, pz);
       pillar.castShadow = true;
       gazebo.add(pillar);
-      obstacles.push({ x: 5 + px, z: -8 + pz, r: 0.58, h: 5.8 });
     }
 
     const roofMat = new THREE.MeshPhysicalMaterial({
@@ -2820,21 +2944,21 @@ export default function HamsterPaintball({
       roughness: 0.35,
       clearcoat: 0.6
     });
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(9.6, 5.2, 8), roofMat);
-    roof.position.y = 8.4;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(8.2, 4.6, 8), roofMat);
+    roof.position.y = 7.8;
     roof.castShadow = true;
     gazebo.add(roof);
 
-    gazebo.position.set(5, 0, -8);
+    gazebo.position.set(0, 0, -12);
     scene.add(gazebo);
 
-    // Shimmering Hydroplane Pond
+    // South-Center Shimmering Hydroplane Pond (Accessible Speed-Boost Zone)
     const pondGroup = new THREE.Group();
     const rim = new THREE.Mesh(
-      new THREE.CylinderGeometry(13.6, 14.2, 0.42, 36),
+      new THREE.CylinderGeometry(9.6, 10.2, 0.24, 36),
       new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.75 })
     );
-    rim.position.y = 0.16;
+    rim.position.y = 0.1;
     rim.receiveShadow = true;
     pondGroup.add(rim);
 
@@ -2846,26 +2970,26 @@ export default function HamsterPaintball({
       clearcoatRoughness: 0.04,
       transmission: 0.25
     });
-    const water = new THREE.Mesh(new THREE.CylinderGeometry(12.9, 12.9, 0.46, 36), waterMat);
-    water.position.y = 0.2;
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(9.1, 9.1, 0.28, 36), waterMat);
+    water.position.y = 0.14;
     pondGroup.add(water);
 
     const lilyMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.6 });
     [
-      [-3, 4],
-      [4, -5],
-      [-5, -3],
-      [2, 6]
+      [-2.5, 2.5],
+      [3, -2.5],
+      [-3, -2],
+      [2, 3.5]
     ].forEach(([lx, lz]) => {
-      const lily = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.08, 18), lilyMat);
-      lily.position.set(lx, 0.45, lz);
+      const lily = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.06, 18), lilyMat);
+      lily.position.set(lx, 0.3, lz);
       pondGroup.add(lily);
     });
 
-    pondGroup.position.set(27, 0, -9);
+    pondGroup.position.set(0, 0, 15);
     scene.add(pondGroup);
 
-    // Perimeter Trees
+    // Perimeter Trees (Placed strictly along outer boundary so they NEVER block Corner Spawns!)
     const createTree = (x: number, z: number, scale = 1) => {
       const tg = new THREE.Group();
       const trunk = new THREE.Mesh(
@@ -2889,25 +3013,27 @@ export default function HamsterPaintball({
 
       tg.position.set(x, 0, z);
       scene.add(tg);
-      obstacles.push({ x, z, r: 0.9 * scale, h: 6 * scale });
     };
 
     [
-      [-38, -26, 1.3],
-      [-36, 24, 1.2],
-      [38, 25, 1.4],
-      [36, -26, 1.15],
-      [-16, -28, 1.25],
-      [16, -28, 1.1],
-      [-40, 2, 1.35]
+      [-43, -30, 1.25],
+      [43, -30, 1.25],
+      [-42, 26, 1.2],
+      [42, 26, 1.3],
+      [-18, -31, 1.15],
+      [18, -31, 1.15],
+      [-43, 2, 1.2],
+      [43, 2, 1.2]
     ].forEach(([tx, tz, sc]) => createTree(tx, tz, sc));
 
     // =========================================================
-    // BUILD ONLY 1 CHARACTER IN LOBBY BY DEFAULT:
-    // - If Host (Teacher Jan): Build Teacher Jan's Host Referee Hamster at the Gazebo (5, 0.75, -8)
-    // - If Student Player: Build the local Student Hamster at the Start Gate (-4, 0, 8)
-    // NO EXTRA AI BOTS ARE SPAWNED!
+    // 1 CHARACTER "TEACHER JAN" IN THE PARK DURING LOBBY ONLY!
+    // When Start Game is clicked (`matchStatus === 'playing'`), Teacher Jan does NOT join!
     // =========================================================
+    const teacherJanNpc = buildHighDefHamster(0, 'Teacher Jan', true, 'solo');
+    teacherJanNpc.position.set(0, 0.32, -10.5);
+    scene.add(teacherJanNpc);
+
     const isHostRole = stateSnapRef.current.role === 'host';
     const localLabel = isHostRole
       ? 'Teacher Jan'
@@ -2922,9 +3048,17 @@ export default function HamsterPaintball({
       stateSnapRef.current.myTeam
     );
 
-    const startX = isHostRole ? 5 : -6;
-    const startZ = isHostRole ? -5.5 : 8;
-    localHamster.position.set(startX, isHostRole ? 0.75 : 0, startZ);
+    const initialSpawn = getTeamSpawnPosition(
+      stateSnapRef.current.myTeam,
+      stateSnapRef.current.matchMode
+    );
+    const startX = isHostRole ? 0 : initialSpawn.x;
+    const startZ = isHostRole ? -10.5 : initialSpawn.z;
+    localHamster.position.set(startX, isHostRole ? 0.32 : 0, startZ);
+    // Host uses `teacherJanNpc` in Lobby and hides when match starts
+    if (isHostRole) {
+      localHamster.visible = false;
+    }
     scene.add(localHamster);
 
     gameRef.current = {
@@ -2932,9 +3066,10 @@ export default function HamsterPaintball({
       camera,
       renderer,
       localHamster,
+      teacherJanNpc,
       x: startX,
       z: startZ,
-      rotY: 0,
+      rotY: isHostRole ? 0 : initialSpawn.rotY,
       vx: 0,
       vz: 0,
       walkPhase: 0,
@@ -2945,10 +3080,10 @@ export default function HamsterPaintball({
       mouseScreenX: window.innerWidth / 2,
       mouseScreenY: window.innerHeight / 2,
       aimWorldX: 0,
-      aimWorldZ: 15,
+      aimWorldZ: 0,
       lastShotTime: 0,
       hostCamX: 0,
-      hostCamZ: 8,
+      hostCamZ: 4,
       obstacles,
       powerups,
       projectiles: [],
@@ -3030,7 +3165,21 @@ export default function HamsterPaintball({
 
       // Water ripple animation
       if (g.waterMesh) {
-        g.waterMesh.position.y = 0.2 + Math.sin(now * 0.003) * 0.03;
+        g.waterMesh.position.y = 0.14 + Math.sin(now * 0.003) * 0.025;
+      }
+
+      // Teacher Jan 3D Character is ONLY in the Park during the Lobby!
+      // When the game starts (`matchStatus === 'playing'` or Host enters `screen === 'game'`), Teacher Jan does NOT join!
+      if (g.teacherJanNpc) {
+        const showTeacherJanInLobby =
+          snapState.matchStatus === 'lobby' &&
+          !(snapState.role === 'host' && snapState.screen === 'game');
+        g.teacherJanNpc.visible = showTeacherJanInLobby;
+        if (showTeacherJanInLobby) {
+          g.teacherJanNpc.position.set(0, 0.32, -10.5);
+          g.teacherJanNpc.rotation.y = Math.sin(now * 0.0012) * 0.4;
+          animateHamsterRig(g.teacherJanNpc, false, now * 0.002, dt);
+        }
       }
 
       // Animate Floating Powerup Crates (Health & Defence Shield)
@@ -3064,23 +3213,29 @@ export default function HamsterPaintball({
 
       if (snapState.role === 'host') {
         // ---------------------------------------------------
-        // TEACHER JAN (HOST) CAMERA & REFEREE DISPLAY
+        // TEACHER JAN (HOST) CAMERA: OVERVIEW, TRACK 1 PLAYER, OR AUTO-TRACK
+        // Teacher Jan's character does NOT join when match starts!
         // ---------------------------------------------------
-        g.localHamster.position.set(5, 0.75, -5.5);
-        g.localHamster.rotation.y = Math.sin(now * 0.001) * 0.35;
-        g.walkPhase = animateHamsterRig(g.localHamster, false, g.walkPhase, dt);
+        g.localHamster.visible = false;
 
-        if (snapState.screen === 'game' && snapState.hostCameraMode === 'follow') {
+        if (
+          snapState.screen === 'game' &&
+          (snapState.hostCameraMode === 'track_one' || snapState.hostCameraMode === 'auto_track')
+        ) {
           const remotes = Array.from(g.remotePlayers.values());
           if (remotes.length > 0) {
-            const targetPlayer = remotes[snapState.hostFollowIndex % remotes.length];
+            const activeIdx =
+              snapState.hostCameraMode === 'auto_track'
+                ? Math.floor(now / 5000) % remotes.length
+                : snapState.hostFollowIndex % remotes.length;
+            const targetPlayer = remotes[activeIdx];
             const tx = targetPlayer.mesh.position.x;
             const tz = targetPlayer.mesh.position.z;
             g.hostCamX += (tx - g.hostCamX) * 6 * dt;
             g.hostCamZ += (tz - g.hostCamZ) * 6 * dt;
             camera.position.x += (g.hostCamX - camera.position.x) * 6 * dt;
-            camera.position.y += (24 - camera.position.y) * 6 * dt;
-            camera.position.z += (g.hostCamZ + 20 - camera.position.z) * 6 * dt;
+            camera.position.y += (23 - camera.position.y) * 6 * dt;
+            camera.position.z += (g.hostCamZ + 19 - camera.position.z) * 6 * dt;
             camera.lookAt(g.hostCamX, 1.2, g.hostCamZ);
           } else {
             camera.position.x += (0 - camera.position.x) * 4 * dt;
@@ -3091,36 +3246,37 @@ export default function HamsterPaintball({
         } else {
           // Host Overview Camera (can pan smoothly with WASD/Arrow keys during match)
           if (isMoving && snapState.screen === 'game') {
-            g.hostCamX = Math.max(-35, Math.min(35, g.hostCamX + moveX * 22 * dt));
-            g.hostCamZ = Math.max(-25, Math.min(25, g.hostCamZ + moveZ * 22 * dt));
+            g.hostCamX = Math.max(-36, Math.min(36, g.hostCamX + moveX * 24 * dt));
+            g.hostCamZ = Math.max(-26, Math.min(26, g.hostCamZ + moveZ * 24 * dt));
           }
-          const targetY = snapState.screen === 'game' ? 38 : 28;
-          const targetZ = snapState.screen === 'game' ? g.hostCamZ + 32 : 24;
+          const targetY = snapState.screen === 'game' ? 40 : 28;
+          const targetZ = snapState.screen === 'game' ? g.hostCamZ + 33 : 22;
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
-          camera.lookAt(g.hostCamX, 1.2, g.hostCamZ - 2);
+          camera.lookAt(g.hostCamX, 1.2, g.hostCamZ - 4);
         }
       } else {
         // ---------------------------------------------------
         // STUDENT PLAYER MOVEMENT, STABLE CAMERA & AIMING
         // ---------------------------------------------------
-        const distToPond = Math.hypot(g.x - 27, g.z - -9);
-        const inPondBoost = distToPond < 12.6 ? 1.32 : 1.0;
-        const speed = 14.0 * inPondBoost;
+        g.localHamster.visible = true;
+        const distToPond = Math.hypot(g.x - 0, g.z - 15);
+        const inPondBoost = distToPond < 9.2 ? 1.32 : 1.0;
+        const speed = 14.5 * inPondBoost;
 
         g.vx = moveX * speed;
         g.vz = moveZ * speed;
 
-        g.x = Math.max(-44, Math.min(44, g.x + g.vx * dt));
-        g.z = Math.max(-32, Math.min(32, g.z + g.vz * dt));
+        g.x = Math.max(-43, Math.min(43, g.x + g.vx * dt));
+        g.z = Math.max(-30, Math.min(30, g.z + g.vz * dt));
 
-        // Obstacle Collisions
+        // Accessible Smooth Obstacle Collisions
         g.obstacles.forEach(obs => {
           const dx = g.x - obs.x;
           const dz = g.z - obs.z;
           const d = Math.hypot(dx, dz);
-          const minDist = obs.r + 1.05;
+          const minDist = obs.r + 0.85;
           if (d < minDist && d > 0.001) {
             const push = minDist - d;
             g.x += (dx / d) * push;
@@ -3441,28 +3597,38 @@ export default function HamsterPaintball({
     }
   };
 
-  // Teacher Host Action: Auto-Group / Shuffle Joined Players into Red & Blue Teams
+  // Teacher Host Action: Auto-Group / Shuffle Joined Players into Red & Blue Teams (and place at Corner Spawn Bases)
   const handleShuffleTeams = async () => {
     sfx.playCorrect();
     const teamCycle: TeamId[] = ['red', 'blue'];
     const shuffled = [...roomPlayers].sort(() => Math.random() - 0.5);
     for (let i = 0; i < shuffled.length; i++) {
       const assigned = teamCycle[i % teamCycle.length];
+      const sp = getTeamSpawnPosition(assigned, 'teams');
       const pRef = getPlayerDocRef(roomCode, shuffled[i].id);
-      setDoc(pRef, { team: assigned, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+      setDoc(
+        pRef,
+        { team: assigned, x: sp.x, z: sp.z, rotY: sp.rotY, updatedAt: Date.now() },
+        { merge: true }
+      ).catch(() => {});
     }
-    pushLiveEvent('🔀 Host grouped & shuffled players into Red & Blue Squads!', '#38bdf8');
+    pushLiveEvent('🔀 Host grouped & shuffled players into Left (Red) & Right (Blue) Corner Spawns!', '#38bdf8');
   };
 
-  // Teacher Host Action: Move a specific student to Red or Blue Team (or cycle teams)
+  // Teacher Host Action: Move a specific student to Red or Blue Team (and teleport to team's Corner Spawn Area)
   const handleMovePlayerTeam = (player: PlayerNetworkState, targetTeam?: TeamId) => {
     sfx.playCorrect();
     const nextTeam: TeamId =
       targetTeam || (player.team === 'red' ? 'blue' : 'red');
+    const sp = getTeamSpawnPosition(nextTeam, 'teams');
     const pRef = getPlayerDocRef(roomCode, player.id);
-    setDoc(pRef, { team: nextTeam, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+    setDoc(
+      pRef,
+      { team: nextTeam, x: sp.x, z: sp.z, rotY: sp.rotY, updatedAt: Date.now() },
+      { merge: true }
+    ).catch(() => {});
     pushLiveEvent(
-      `⇄ Host moved ${player.name} to ${TEAM_CONFIG[nextTeam].label}!`,
+      `⇄ Host moved ${player.name} to ${TEAM_CONFIG[nextTeam].label} (${nextTeam === 'red' ? 'Left' : 'Right'} Corner Spawn)!`,
       nextTeam === 'red' ? '#f43f5e' : '#38bdf8'
     );
   };
@@ -3908,7 +4074,7 @@ export default function HamsterPaintball({
               />
             </div>
 
-            {/* Enter Lobby (Immediately spawns student in 3D Park to roam around!) */}
+            {/* Enter Lobby (Immediately spawns student in their Team's Left/Right Corner Spawn Area!) */}
             <button
               type="button"
               onClick={async () => {
@@ -3924,13 +4090,13 @@ export default function HamsterPaintball({
                 hasJoinedRoomRef.current = true;
                 sfx.playCorrect();
 
-                // Spawn student in the 3D Park right away so they can walk around while waiting for Host!
+                // Spawn student in their team's Left Corner (Red) or Right Corner (Blue) Spawn Area!
                 const g = gameRef.current;
-                const startX = Number(((Math.random() - 0.5) * 14).toFixed(2));
-                const startZ = Number((8 + (Math.random() - 0.5) * 8).toFixed(2));
+                const sp = getTeamSpawnPosition(myTeam, matchMode);
                 if (g) {
-                  g.x = startX;
-                  g.z = startZ;
+                  g.x = sp.x;
+                  g.z = sp.z;
+                  g.rotY = sp.rotY;
                 }
 
                 // Immediately register this player in Firestore so the Host sees them in the Live Park Lobby!
@@ -3940,9 +4106,9 @@ export default function HamsterPaintball({
                   role: 'player',
                   team: matchMode === 'solo' ? 'solo' : myTeam,
                   skinIdx: selectedSkinIdx,
-                  x: startX,
-                  z: startZ,
-                  rotY: 0,
+                  x: sp.x,
+                  z: sp.z,
+                  rotY: sp.rotY,
                   hp: 100,
                   shield: 100,
                   score,
@@ -3996,56 +4162,26 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 3: HOST-ONLY LIVE PARK LOBBY (TEACHER HOST CONTROLS)
-          Only the Host (`role === 'host'`) sees this Live Park Lobby!
-          Students (`role === 'player'`) roam inside the 3D Park (`screen === 'game'`).
+          SCREEN 3: HOST LIVE PARK LOBBY POPUP BANNER MODAL
+          Clean Popup Banner over the live 3D Park with BIG QR Code!
          ------------------------------------------------------------- */}
       {screen === 'lobby' && role === 'host' && (
-        <div className="relative z-30 min-h-screen w-full flex flex-col justify-between p-3 sm:p-5 pt-14 pb-6 overflow-y-auto pointer-events-none">
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-5 pt-14 overflow-y-auto pointer-events-none">
           {!isLobbyMinimized ? (
-            <div className="pointer-events-auto w-full max-w-5xl mx-auto bg-[#1e1336]/92 backdrop-blur-md p-4 sm:p-6 rounded-3xl shadow-2xl border border-white/20 space-y-4">
-              {/* Active Quiz Set Banner */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-white/15">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-3 py-1 rounded-full bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 font-black text-xs flex items-center gap-1.5">
-                    <Sparkles size={13} className="text-amber-300" />
-                    <span>
-                      Active Question Set:{' '}
-                      {activeQuiz.topic || activeQuiz.title || 'Hamster Paintball Quiz'}
-                    </span>
-                  </span>
-                  {activeQuiz.classLevel && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/30 text-cyan-200 font-bold text-[11px]">
-                      Class: {activeQuiz.classLevel}
-                    </span>
-                  )}
-                  <span className="px-2.5 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/40 text-lime-300 font-black text-[11px]">
-                    {effectiveQuestions.length} Question
-                    {effectiveQuestions.length === 1 ? '' : 's'} Ready
-                  </span>
-                </div>
+            <div className="pointer-events-auto relative w-full max-w-4xl my-auto bg-[#1b1130]/96 p-5 sm:p-7 rounded-3xl shadow-2xl border-2 border-lime-400/50 space-y-4">
+              {/* Popup Minimize / Close Toggle in Top-Right Corner */}
+              <button
+                type="button"
+                onClick={() => setIsLobbyMinimized(true)}
+                className="absolute top-3.5 right-3.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-extrabold text-xs flex items-center gap-1.5 border border-white/15 transition cursor-pointer"
+                title="Minimize Lobby Popup to view 3D Park"
+              >
+                <Eye size={13} className="text-lime-400" />
+                <span>Peek 3D Park</span>
+              </button>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsLobbyMinimized(true)}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-200 font-extrabold text-xs flex items-center gap-1.5 border border-emerald-400/40 transition cursor-pointer"
-                  >
-                    <Eye size={13} className="text-emerald-300" />
-                    <span>Watch 3D Park Lobby</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setScreen('editor')}
-                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs flex items-center gap-1.5 border border-white/15 transition cursor-pointer"
-                  >
-                    <Edit3 size={13} className="text-lime-400" />
-                    <span>Game Setup / Edit Questions</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              {/* Top Section: Join Instructions, Huge 6-Digit Room Code & BIG Scannable QR Code */}
+              <div className="flex flex-col md:flex-row items-center justify-between gap-5 pt-2">
                 {/* Left: Step-by-Step www.hamsterenglish.online Join Instructions & 6-Digit Room Code */}
                 <div className="flex-1 flex flex-col items-center md:items-start text-center md:text-left">
                   <div className="text-white text-xs sm:text-sm font-semibold tracking-wide flex flex-wrap items-center justify-center md:justify-start gap-2">
@@ -4053,7 +4189,7 @@ export default function HamsterPaintball({
                       <Globe size={12} /> HOST LIVE PARK LOBBY
                     </span>
                     <span>
-                      1. Students scan QR or visit{' '}
+                      1. Scan QR or visit{' '}
                       <strong className="underline decoration-pink-400 text-lime-300 font-black">
                         www.hamsterenglish.online
                       </strong>{' '}
@@ -4061,20 +4197,20 @@ export default function HamsterPaintball({
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mt-2.5">
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-3.5 mt-3">
                     <div
                       onClick={handleCopyRoomCode}
-                      className="bg-slate-950/90 border-2 border-lime-400/70 px-4 py-2 rounded-2xl text-white font-black text-4xl sm:text-6xl tracking-[0.2em] leading-none cursor-pointer hover:text-lime-300 hover:border-lime-300 transition select-all drop-shadow-md font-mono"
+                      className="bg-slate-950 border-2 border-lime-400/80 px-5 py-3 rounded-2xl text-white font-black text-5xl sm:text-6xl tracking-[0.2em] leading-none cursor-pointer hover:text-lime-300 hover:border-lime-300 transition select-all shadow-lg font-mono"
                       title="Click to Copy Room Code"
                     >
                       {roomCode}
                     </div>
 
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-2">
                       <button
                         type="button"
                         onClick={handleCopyJoinLink}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
+                        className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
                       >
                         {copiedType === 'link' ? <Check size={14} /> : <Copy size={14} />}
                         <span>
@@ -4088,7 +4224,7 @@ export default function HamsterPaintball({
                         <button
                           type="button"
                           onClick={handleCopyRoomCode}
-                          className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer"
                         >
                           {copiedType === 'code' ? (
                             <Check size={12} className="text-lime-400" />
@@ -4101,7 +4237,7 @@ export default function HamsterPaintball({
                         <button
                           type="button"
                           onClick={handleGenerateNewRoomCode}
-                          className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-amber-300 font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-amber-300 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
                         >
                           <RotateCw size={12} />
                           <span>New Code</span>
@@ -4111,24 +4247,24 @@ export default function HamsterPaintball({
                   </div>
                 </div>
 
-                {/* Right: Scannable QR Code for www.hamsterenglish.online */}
+                {/* Right: BIG Scannable QR Code for www.hamsterenglish.online */}
                 <div
                   onClick={() => setIsQrModalOpen(true)}
-                  className="bg-white p-3 rounded-2xl shadow-xl border-4 border-lime-400 flex flex-col items-center cursor-pointer hover:scale-105 transition shrink-0"
-                  title="Click to enlarge QR Code for classroom projector"
+                  className="bg-white p-4 rounded-3xl shadow-2xl border-4 border-lime-400 flex flex-col items-center cursor-pointer hover:scale-[1.03] transition shrink-0"
+                  title="Click to enlarge QR Code fullscreen"
                 >
                   <QRCodeSVG
                     value={liveJoinUrl}
-                    size={112}
+                    size={176}
                     level="M"
                     includeMargin={false}
                     bgColor="#ffffff"
                     fgColor="#0f172a"
                   />
-                  <span className="mt-1.5 text-[10px] font-black text-slate-900 uppercase tracking-wider flex items-center gap-1">
-                    <QrCode size={12} className="text-indigo-600" /> SCAN TO JOIN LOBBY
+                  <span className="mt-2 text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1">
+                    <QrCode size={14} className="text-indigo-600" /> SCAN TO JOIN LOBBY
                   </span>
-                  <span className="text-[9px] font-extrabold text-indigo-600">
+                  <span className="text-[11px] font-extrabold text-indigo-600">
                     www.hamsterenglish.online
                   </span>
                 </div>
@@ -4137,7 +4273,7 @@ export default function HamsterPaintball({
               {/* TEACHER HOST CONFIGURATION BAR (Teams/Solo, Timer, Balls per Question) */}
               <div className="pt-3 border-t border-white/15 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* 1. Group into Teams or Solo */}
-                <div className="bg-slate-900/80 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
+                <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
                       1. Group Players
@@ -4148,7 +4284,7 @@ export default function HamsterPaintball({
                         onClick={handleShuffleTeams}
                         className="px-2 py-0.5 rounded-lg bg-amber-400/20 border border-amber-400/40 text-[10px] font-black text-amber-300 hover:bg-amber-400/30 flex items-center gap-1 cursor-pointer"
                       >
-                        <Shuffle size={11} /> Auto-Group Squads
+                        <Shuffle size={11} /> Auto-Group
                       </button>
                     )}
                   </div>
@@ -4179,7 +4315,7 @@ export default function HamsterPaintball({
                 </div>
 
                 {/* 2. Match Timer Duration */}
-                <div className="bg-slate-900/80 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
+                <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-pink-300">
                     2. Match Timer
                   </span>
@@ -4210,7 +4346,7 @@ export default function HamsterPaintball({
                 </div>
 
                 {/* 3. Paintballs Earned Per Question */}
-                <div className="bg-slate-900/80 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
+                <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-lime-300">
                     3. Balls Per Question
                   </span>
@@ -4234,42 +4370,37 @@ export default function HamsterPaintball({
               </div>
 
               {/* HOST LOBBY ROSTER: Group, Move Player Team & Delete Player Controls */}
-              <div className="pt-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-300 mb-2.5">
+              <div className="pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-300 mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-white font-black">
                       Joined Players in 3D Park Lobby ({roomPlayers.length})
                     </span>
                     {matchMode === 'teams' && (
                       <span className="text-[11px] font-black text-slate-400">
-                        (Red: {teamTotals.red.count} • Blue: {teamTotals.blue.count})
+                        (Red Left Corner: {teamTotals.red.count} • Blue Right Corner: {teamTotals.blue.count})
                       </span>
                     )}
                   </div>
 
-                  {roomPlayers.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      {matchMode === 'teams' && (
-                        <button
-                          type="button"
-                          onClick={handleShuffleTeams}
-                          className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[11px] flex items-center gap-1 shadow cursor-pointer"
-                        >
-                          <Shuffle size={12} /> Group / Shuffle Red &amp; Blue
-                        </button>
-                      )}
-                    </div>
+                  {roomPlayers.length > 0 && matchMode === 'teams' && (
+                    <button
+                      type="button"
+                      onClick={handleShuffleTeams}
+                      className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[11px] flex items-center gap-1 shadow cursor-pointer"
+                    >
+                      <Shuffle size={12} /> Group / Shuffle Red &amp; Blue
+                    </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
-                  {/* Joined Student Players with Move Team & Delete Player buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
                   {roomPlayers.length === 0 ? (
-                    <div className="sm:col-span-2 md:col-span-3 p-4 rounded-2xl bg-slate-900/60 border border-dashed border-white/20 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-300 font-semibold">
+                    <div className="sm:col-span-2 md:col-span-3 p-3.5 rounded-2xl bg-slate-900/70 border border-dashed border-white/20 flex items-center justify-between gap-2 text-xs text-slate-300 font-semibold">
                       <span>
                         Waiting for students to scan QR or enter code{' '}
                         <strong className="text-lime-300 font-mono">{roomCode}</strong> at
-                        www.hamsterenglish.online... (Joined players roam live in the 3D Park!)
+                        www.hamsterenglish.online... (Joined players spawn in Left &amp; Right Corners!)
                       </span>
                     </div>
                   ) : (
@@ -4282,10 +4413,10 @@ export default function HamsterPaintball({
                       return (
                         <div
                           key={p.id}
-                          className={`p-2.5 rounded-2xl bg-slate-900/90 border-2 ${tCfg.borderClass} flex items-center justify-between gap-2 shadow-md`}
+                          className={`p-2.5 rounded-2xl bg-slate-900/95 border-2 ${tCfg.borderClass} flex items-center justify-between gap-2 shadow-md`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <HamsterCharacterAvatar skin={charSkin} size={38} />
+                            <HamsterCharacterAvatar skin={charSkin} size={36} />
                             <div className="min-w-0">
                               <div className="font-black text-xs text-white truncate">
                                 {p.name}
@@ -4297,7 +4428,7 @@ export default function HamsterPaintball({
                                   {tCfg.label}
                                 </span>
                                 <span className="text-[9px] font-bold text-lime-400">
-                                  • Roaming Park
+                                  • {p.team === 'blue' ? 'Right Spawn' : 'Left Spawn'}
                                 </span>
                               </div>
                             </div>
@@ -4334,18 +4465,49 @@ export default function HamsterPaintball({
                   )}
                 </div>
               </div>
+
+              {/* Integrated Popup Footer: Live Status + START GAME Button */}
+              <div className="pt-3 border-t border-white/15 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white">
+                  <span className="w-2.5 h-2.5 rounded-full bg-lime-400 shrink-0" />
+                  <Users size={16} className="text-cyan-300 shrink-0" />
+                  <span>
+                    {roomPlayers.length === 0
+                      ? `Teacher Jan is in the 3D Park Lobby • Waiting for students to join Room ${roomCode}`
+                      : `${roomPlayers.length} Player${roomPlayers.length > 1 ? 's' : ''} in Park Lobby — Ready to Start!`}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleStartMultiplayerMatch}
+                  className="w-full sm:w-auto bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 active:scale-95 text-slate-950 font-black text-sm px-8 py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-emerald-800 cursor-pointer"
+                >
+                  <Play size={16} fill="currentColor" />
+                  <span>START GAME</span>
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="pointer-events-auto mx-auto bg-slate-900/90 border border-lime-400/50 px-5 py-2.5 rounded-2xl shadow-2xl flex items-center gap-4">
-              <span className="text-xs font-black text-lime-300">
-                🟢 Watching 3D Park Lobby • Code: <span className="font-mono text-white">{roomCode}</span> • {roomPlayers.length} Player{roomPlayers.length === 1 ? '' : 's'} Roaming
+            /* Minimized Floating Banner when Host is peeking the 3D Park Lobby */
+            <div className="pointer-events-auto self-end mb-4 mx-auto bg-[#1b1130]/95 border-2 border-lime-400/70 px-5 py-3 rounded-2xl shadow-2xl flex flex-wrap items-center gap-4">
+              <span className="text-xs sm:text-sm font-black text-lime-300">
+                🟢 3D Park Lobby • Code: <span className="font-mono text-white">{roomCode}</span> • {roomPlayers.length} Player{roomPlayers.length === 1 ? '' : 's'} Roaming
               </span>
               <button
                 type="button"
                 onClick={() => setIsLobbyMinimized(false)}
-                className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs cursor-pointer"
               >
-                Open Lobby Roster
+                Open Lobby Popup
+              </button>
+              <button
+                type="button"
+                onClick={handleStartMultiplayerMatch}
+                className="px-4 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Play size={13} fill="currentColor" />
+                <span>START GAME</span>
               </button>
             </div>
           )}
@@ -4369,7 +4531,7 @@ export default function HamsterPaintball({
                 <div className="my-4 p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-inner">
                   <QRCodeSVG
                     value={liveJoinUrl}
-                    size={220}
+                    size={240}
                     level="H"
                     includeMargin={true}
                     bgColor="#ffffff"
@@ -4397,28 +4559,6 @@ export default function HamsterPaintball({
               </div>
             </div>
           )}
-
-          {/* Bottom Host Lobby Launch Bar */}
-          <div className="pointer-events-auto w-full max-w-3xl mx-auto bg-[#1e1336]/95 py-3.5 px-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-3 border border-white/20 shadow-2xl mt-4">
-            <div className="flex items-center gap-2.5 text-xs sm:text-sm font-bold text-white">
-              <span className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-ping shrink-0" />
-              <Users size={16} className="text-cyan-300 shrink-0" />
-              <span>
-                {roomPlayers.length === 0
-                  ? `Waiting for players to join Room ${roomCode} (Players roam live in 3D Park)`
-                  : `${roomPlayers.length} Player${roomPlayers.length > 1 ? 's' : ''} Roaming in Park Lobby — Ready to Start!`}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleStartMultiplayerMatch}
-              className="w-full sm:w-auto bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 active:scale-95 text-slate-950 font-black text-sm px-7 py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-emerald-800 cursor-pointer"
-            >
-              <Play size={16} fill="currentColor" />
-              <span>START GAME</span>
-            </button>
-          </div>
         </div>
       )}
 
@@ -4430,12 +4570,12 @@ export default function HamsterPaintball({
           <div className="w-full flex flex-wrap items-start justify-between gap-2">
             {role === 'player' ? (
               /* STUDENT TOP-LEFT: CHARACTER AVATAR, HEALTH & DEFENCE BARS + SCORE */
-              <div className="pointer-events-auto bg-slate-900/92 rounded-2xl p-3 w-64 sm:w-76 border-l-4 border-l-lime-400 border border-white/15 shadow-2xl">
-                <div className="flex items-center justify-between mb-2">
+              <div className="pointer-events-auto bg-slate-900/92 rounded-2xl p-2.5 sm:p-3 w-60 sm:w-72 border-l-4 border-l-lime-400 border border-white/15 shadow-2xl">
+                <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <HamsterCharacterAvatar
                       skin={HAMSTER_SKINS[selectedSkinIdx] || HAMSTER_SKINS[0]}
-                      size={36}
+                      size={34}
                     />
                     <div>
                       <div className="font-black text-white text-xs sm:text-sm leading-tight">
@@ -4453,16 +4593,16 @@ export default function HamsterPaintball({
                 </div>
 
                 {/* HEALTH BAR (TOP-LEFT) */}
-                <div className="mb-2">
-                  <div className="flex items-center justify-between text-[11px] font-black text-lime-300 mb-0.5">
+                <div className="mb-1.5">
+                  <div className="flex items-center justify-between text-[10px] font-black text-lime-300 mb-0.5">
                     <span className="flex items-center gap-1">
-                      <Heart size={12} className="text-rose-400 fill-rose-400" /> HEALTH (HP)
+                      <Heart size={11} className="text-rose-400 fill-rose-400" /> HEALTH (HP)
                     </span>
                     <span>
                       {hp} / {maxHp}
                     </span>
                   </div>
-                  <div className="w-full h-3.5 bg-slate-950 rounded-full p-0.5 border border-lime-500/40">
+                  <div className="w-full h-3 bg-slate-950 rounded-full p-0.5 border border-lime-500/40">
                     <div
                       className="h-full bg-gradient-to-r from-emerald-500 to-lime-400 rounded-full transition-all duration-200"
                       style={{ width: `${Math.max(0, (hp / maxHp) * 100)}%` }}
@@ -4472,15 +4612,15 @@ export default function HamsterPaintball({
 
                 {/* DEFENCE / SHIELD BAR (TOP-LEFT) */}
                 <div>
-                  <div className="flex items-center justify-between text-[11px] font-black text-cyan-300 mb-0.5">
+                  <div className="flex items-center justify-between text-[10px] font-black text-cyan-300 mb-0.5">
                     <span className="flex items-center gap-1">
-                      <Shield size={12} className="text-cyan-400 fill-cyan-400" /> DEFENCE (SHIELD)
+                      <Shield size={11} className="text-cyan-400 fill-cyan-400" /> DEFENCE (SHIELD)
                     </span>
                     <span>
                       {shield} / {maxShield}
                     </span>
                   </div>
-                  <div className="w-full h-3.5 bg-slate-950 rounded-full p-0.5 border border-cyan-500/40">
+                  <div className="w-full h-3 bg-slate-950 rounded-full p-0.5 border border-cyan-500/40">
                     <div
                       className="h-full bg-gradient-to-r from-sky-500 to-cyan-300 rounded-full transition-all duration-200"
                       style={{ width: `${Math.max(0, (shield / maxShield) * 100)}%` }}
@@ -4490,16 +4630,16 @@ export default function HamsterPaintball({
               </div>
             ) : (
               /* TEACHER JAN HOST TOP-LEFT: LIVE IN-GAME HAPPENINGS TICKER */
-              <div className="pointer-events-auto bg-slate-900/92 rounded-2xl p-3.5 w-72 sm:w-88 border-l-4 border-l-amber-400 border border-white/15 shadow-2xl max-h-56 flex flex-col">
+              <div className="pointer-events-auto bg-slate-900/92 rounded-2xl p-3.5 w-72 sm:w-84 border-l-4 border-l-amber-400 border border-white/15 shadow-2xl max-h-52 flex flex-col">
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
                   <div className="flex items-center gap-2">
-                    <Radio size={16} className="text-rose-400 animate-pulse" />
+                    <Radio size={15} className="text-rose-400" />
                     <span className="font-black text-xs uppercase tracking-wider text-amber-300">
                       LIVE ARENA HAPPENINGS
                     </span>
                   </div>
                   <span className="text-[10px] font-bold text-slate-400">
-                    Host: Teacher Jan
+                    Spectator Host
                   </span>
                 </div>
                 <div className="space-y-1.5 overflow-y-auto pr-1 text-xs">
@@ -4517,14 +4657,14 @@ export default function HamsterPaintball({
             )}
 
             {/* CENTER: MATCH CLOCK + LOBBY ROAM BANNER + TEAM SCOREBOARD */}
-            <div className="pointer-events-auto flex flex-col items-center gap-2 mx-auto">
+            <div className="pointer-events-auto flex flex-col items-center gap-1.5 mx-auto">
               <div className="bg-slate-900/92 px-4 py-2 rounded-2xl flex items-center gap-3 border border-white/15 shadow-xl">
                 <span className="text-xs font-mono font-black text-lime-300 flex items-center gap-1">
                   <QrCode size={13} /> ROOM: {roomCode}
                 </span>
                 {role === 'player' && matchStatus === 'lobby' ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-xs animate-pulse">
-                    🟢 LOBBY ROAM — Waiting for Host to Start Game...
+                  <span className="px-2.5 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-xs">
+                    🟢 LOBBY ROAM — Waiting for Host to Start...
                   </span>
                 ) : (
                   <div className="flex items-center gap-1.5 text-white font-mono font-black text-base">
@@ -4542,21 +4682,21 @@ export default function HamsterPaintball({
                 <div className="flex items-center gap-2 bg-slate-900/92 px-3.5 py-1.5 rounded-2xl border border-white/15 shadow-lg text-xs font-black">
                   <div className="flex items-center gap-1.5 text-rose-400">
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                    <span>RED: {teamTotals.red.score} PTS</span>
+                    <span>RED (LEFT): {teamTotals.red.score} PTS</span>
                     <span className="text-[10px] text-slate-400">({teamTotals.red.kos} KOs)</span>
                   </div>
                   <span className="text-slate-500">VS</span>
                   <div className="flex items-center gap-1.5 text-sky-400">
                     <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
-                    <span>BLUE: {teamTotals.blue.score} PTS</span>
+                    <span>BLUE (RIGHT): {teamTotals.blue.score} PTS</span>
                     <span className="text-[10px] text-slate-400">({teamTotals.blue.kos} KOs)</span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* TOP-RIGHT: CAMERA & SCOREBOARD CONTROLS */}
-            <div className="pointer-events-auto flex items-center gap-2">
+            {/* TOP-RIGHT: HOST CAMERA TRACKING MODES (OVERVIEW, TRACK 1 PLAYER, AUTO-TRACK) & SCOREBOARD */}
+            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1.5">
               {role === 'host' && (
                 <>
                   <button
@@ -4567,30 +4707,58 @@ export default function HamsterPaintball({
                     className="h-9 px-3 rounded-xl bg-emerald-600/95 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 transition shadow cursor-pointer"
                   >
                     <Users size={14} />
-                    <span>Lobby Roster ({roomPlayers.length})</span>
+                    <span>Lobby ({roomPlayers.length})</span>
                   </button>
+
+                  {/* 1. Overview Camera */}
+                  <button
+                    onClick={() => setHostCameraMode('overview')}
+                    className={`h-9 px-3 rounded-xl font-black text-xs flex items-center gap-1 transition shadow cursor-pointer ${
+                      hostCameraMode === 'overview'
+                        ? 'bg-indigo-600 text-white border border-indigo-300'
+                        : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-white/15'
+                    }`}
+                  >
+                    <Eye size={13} />
+                    <span>Overview</span>
+                  </button>
+
+                  {/* 2. Track 1 Player (Click again to cycle next player) */}
                   <button
                     onClick={() => {
-                      if (hostCameraMode === 'overview') {
-                        setHostCameraMode('follow');
-                      } else if (
-                        roomPlayers.length > 1 &&
-                        hostFollowIndex < roomPlayers.length - 1
-                      ) {
-                        setHostFollowIndex(i => i + 1);
-                      } else {
-                        setHostFollowIndex(0);
-                        setHostCameraMode('overview');
+                      if (hostCameraMode !== 'track_one') {
+                        setHostCameraMode('track_one');
+                      } else if (roomPlayers.length > 0) {
+                        setHostFollowIndex(i => (i + 1) % roomPlayers.length);
                       }
                     }}
-                    className="h-9 px-3 rounded-xl bg-indigo-600/95 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow cursor-pointer"
+                    className={`h-9 px-3 rounded-xl font-black text-xs flex items-center gap-1.5 transition shadow cursor-pointer ${
+                      hostCameraMode === 'track_one'
+                        ? 'bg-cyan-500 text-slate-950 border border-white'
+                        : 'bg-slate-900/90 hover:bg-slate-800 text-cyan-300 border border-white/15'
+                    }`}
+                    title="Lock camera onto 1 player (Click again to switch player)"
                   >
-                    <Eye size={14} className="text-cyan-300" />
+                    <Crosshair size={13} />
                     <span>
-                      {hostCameraMode === 'overview'
-                        ? 'Cam: Arena Overview'
-                        : `Following: ${roomPlayers[hostFollowIndex % Math.max(1, roomPlayers.length)]?.name || 'Arena'}`}
+                      {hostCameraMode === 'track_one' && roomPlayers.length > 0
+                        ? `Track 1: ${roomPlayers[hostFollowIndex % roomPlayers.length]?.name} ⏭`
+                        : 'Track 1 Player'}
                     </span>
+                  </button>
+
+                  {/* 3. Auto-Track Camera (Automatically cycles active players every 5s) */}
+                  <button
+                    onClick={() => setHostCameraMode('auto_track')}
+                    className={`h-9 px-3 rounded-xl font-black text-xs flex items-center gap-1.5 transition shadow cursor-pointer ${
+                      hostCameraMode === 'auto_track'
+                        ? 'bg-lime-400 text-slate-950 border border-white'
+                        : 'bg-slate-900/90 hover:bg-slate-800 text-lime-300 border border-white/15'
+                    }`}
+                    title="Automatically tour and track active players every 5 seconds"
+                  >
+                    <RotateCw size={13} />
+                    <span>Auto-Track</span>
                   </button>
                 </>
               )}
@@ -4640,97 +4808,131 @@ export default function HamsterPaintball({
             )}
           </div>
 
-          {/* BOTTOM ROW */}
+          {/* BOTTOM ROW: MOBILE-OPTIMIZED CONTROLS (SHOOT ON LEFT, AMMO IN CENTER, MOVEMENT ON RIGHT) */}
           {role === 'player' ? (
-            <div className="w-full flex items-end justify-between gap-2 pb-1">
-              {/* Mobile Touch Joystick (Left) */}
-              <div
-                onTouchStart={handleJoystickStart}
-                onTouchMove={handleJoystickMove}
-                onTouchEnd={handleJoystickEnd}
-                onTouchCancel={handleJoystickEnd}
-                className="pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900/75 border-2 border-white/25 flex items-center justify-center relative touch-none shadow-xl"
-              >
-                <div
-                  className="w-11 h-11 rounded-full bg-lime-400/90 border-2 border-white shadow-md transition-transform duration-75"
-                  style={{
-                    transform: `translate(${joystickVec.x * 28}px, ${joystickVec.y * 28}px)`
-                  }}
-                />
-                <span className="absolute -top-5 text-[9px] font-black uppercase text-white/80 tracking-wider">
-                  MOVE
+            <div className="w-full flex items-end justify-between gap-2 pb-1 sm:pb-2 px-1">
+              {/* LEFT SIDE: SHOOT BUTTON (Swapped to Left for fast mobile two-thumb play!) */}
+              <div className="flex flex-col items-center">
+                <span className="mb-1 text-[10px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
+                  SHOOT
                 </span>
+                <button
+                  type="button"
+                  onTouchStart={e => {
+                    e.preventDefault();
+                    fireShot();
+                  }}
+                  onClick={fireShot}
+                  className="pointer-events-auto w-22 h-22 sm:w-26 sm:h-26 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-4 border-white/90 shadow-2xl flex flex-col items-center justify-center text-white font-black text-xs sm:text-sm cursor-pointer select-none touch-none"
+                >
+                  <Crosshair size={28} />
+                  <span className="mt-0.5">SHOOT</span>
+                </button>
               </div>
 
-              {/* Center Ammo Hopper & Answer Question for Ammunition Button */}
-              <div className="pointer-events-auto bg-slate-900/92 rounded-2xl p-3 flex flex-col sm:flex-row items-center gap-3 border border-white/15 shadow-2xl">
+              {/* CENTER: Compact Mobile-Friendly Ammo Hopper & Answer Question Button */}
+              <div className="pointer-events-auto bg-slate-900/94 rounded-2xl p-2.5 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 border border-white/15 shadow-2xl max-w-[210px] sm:max-w-none">
                 <div className="text-center sm:text-left">
-                  <div className="text-[10px] font-black text-pink-400 uppercase">
+                  <div className="text-[9px] sm:text-[10px] font-black text-pink-400 uppercase leading-none">
                     PAINTBALL AMMO
                   </div>
-                  <div className="text-xl sm:text-2xl font-black font-mono text-white">
-                    {ammo} <span className="text-xs text-slate-400 font-sans">BALLS</span>
+                  <div className="text-lg sm:text-2xl font-black font-mono text-white leading-tight mt-0.5">
+                    {ammo} <span className="text-[10px] sm:text-xs text-slate-400 font-sans">BALLS</span>
                   </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setIsQuestionModalOpen(true)}
-                  className={`px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-lg transition flex items-center gap-2 cursor-pointer ${
+                  className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-black text-[11px] sm:text-sm shadow-lg transition flex items-center gap-1.5 cursor-pointer ${
                     ammo === 0
-                      ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 animate-pulse border-2 border-white'
+                      ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border-2 border-white'
                       : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
                   }`}
                 >
-                  <Zap size={16} className={ammo === 0 ? 'text-slate-950' : 'text-amber-300'} />
-                  <span>
+                  <Zap size={15} className={ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'} />
+                  <span className="truncate">
                     {ammo === 0
-                      ? `Answer Question (+${ballsPerQuestion} Balls!)`
-                      : `Get +${ballsPerQuestion} Balls (Q)`}
+                      ? `Get +${ballsPerQuestion} Balls!`
+                      : `+${ballsPerQuestion} Balls (Q)`}
                   </span>
                 </button>
               </div>
 
-              {/* Right Fire Button (Thumb-Friendly for Mobile & Tablet) */}
-              <button
-                type="button"
-                onClick={fireShot}
-                className="pointer-events-auto w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-4 border-white/80 shadow-2xl flex flex-col items-center justify-center text-white font-black text-xs cursor-pointer"
-              >
-                <Crosshair size={24} />
-                <span className="mt-0.5">SHOOT</span>
-              </button>
+              {/* RIGHT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK (Swapped to Right!) */}
+              <div className="flex flex-col items-center">
+                <span className="mb-1 text-[10px] font-black uppercase text-lime-300 tracking-wider drop-shadow">
+                  MOVE
+                </span>
+                <div
+                  onTouchStart={handleJoystickStart}
+                  onTouchMove={handleJoystickMove}
+                  onTouchEnd={handleJoystickEnd}
+                  onTouchCancel={handleJoystickEnd}
+                  className="pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900/80 border-2 border-lime-400/50 flex items-center justify-center relative touch-none shadow-2xl select-none"
+                >
+                  <div
+                    className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-lime-400 border-2 border-white shadow-md transition-transform duration-75"
+                    style={{
+                      transform: `translate(${joystickVec.x * 28}px, ${joystickVec.y * 28}px)`
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
-            /* HOST BOTTOM LIVE LEADERBOARD STRIP */
+            /* HOST BOTTOM LIVE LEADERBOARD STRIP (Click any player card to Track 1 Player!) */
             <div className="pointer-events-auto w-full max-w-4xl mx-auto bg-slate-900/92 p-3 rounded-2xl border border-white/15 shadow-2xl">
-              <div className="flex items-center justify-between text-xs font-black text-cyan-300 mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-black text-cyan-300 mb-2">
                 <span>🏆 LIVE PLAYER &amp; TEAM STANDINGS ({roomPlayers.length} Players)</span>
-                <span className="text-[11px] text-slate-400">
-                  Use WASD / Arrows to pan camera or click a player card to follow
+                <span className="text-[11px] text-slate-300">
+                  Camera Mode:{' '}
+                  <strong className="text-lime-300 uppercase">
+                    {hostCameraMode === 'overview'
+                      ? 'Arena Overview (WASD to Pan)'
+                      : hostCameraMode === 'auto_track'
+                      ? 'Auto-Track (Cycling Players)'
+                      : `Tracking ${roomPlayers[hostFollowIndex % Math.max(1, roomPlayers.length)]?.name || 'Player'}`}
+                  </strong>{' '}
+                  • Click any player card below to Track 1 Player
                 </span>
               </div>
               {roomPlayers.length === 0 ? (
                 <div className="text-xs text-slate-400 text-center py-2">
-                  No students have joined yet. Click &quot;Lobby Roster&quot; at the top right to show the QR code!
+                  No students have joined yet. Click &quot;Lobby&quot; at the top right to show the QR code popup!
                 </div>
               ) : (
                 <div className="flex items-center gap-2 overflow-x-auto pb-1">
                   {roomPlayers.map((rp, i) => {
                     const tCfg =
                       matchMode === 'teams' ? TEAM_CONFIG[rp.team || 'red'] : TEAM_CONFIG.solo;
+                    const isTracked =
+                      hostCameraMode === 'track_one' &&
+                      roomPlayers.length > 0 &&
+                      hostFollowIndex % roomPlayers.length === i;
                     return (
                       <div
                         key={rp.id}
                         onClick={() => {
-                          setHostCameraMode('follow');
+                          setHostCameraMode('track_one');
                           setHostFollowIndex(i);
                         }}
-                        className={`shrink-0 px-3 py-2 rounded-xl bg-slate-950 border ${tCfg.borderClass} flex items-center gap-2.5 cursor-pointer hover:bg-slate-800 transition`}
+                        className={`shrink-0 px-3 py-2 rounded-xl border flex items-center gap-2.5 cursor-pointer transition ${
+                          isTracked
+                            ? 'bg-cyan-950/90 border-cyan-300 ring-2 ring-cyan-400/60'
+                            : `bg-slate-950 ${tCfg.borderClass} hover:bg-slate-800`
+                        }`}
                       >
                         <span className="font-black text-xs text-amber-300">#{i + 1}</span>
                         <div>
-                          <div className="font-black text-xs text-white">{rp.name}</div>
+                          <div className="font-black text-xs text-white flex items-center gap-1">
+                            <span>{rp.name}</span>
+                            {isTracked && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-400 text-slate-950 font-black">
+                                TRACKING
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] font-bold text-lime-300">
                             {rp.score} PTS • {rp.kos} Splats
                           </div>
