@@ -521,11 +521,20 @@ const HAMSTER_SKINS: HamsterSkin[] = [
 
 function HamsterCharacterAvatar({
   skin,
-  size = 64
+  size = 64,
+  team = 'solo'
 }: {
   skin: HamsterSkin;
   size?: number;
+  team?: TeamId;
 }) {
+  const isRedTeam = team === 'red';
+  const isBlueTeam = team === 'blue';
+  const hasTeamBand = isRedTeam || isBlueTeam;
+  const teamBandHex = isRedTeam ? '#ef4444' : isBlueTeam ? '#2563eb' : skin.paintHex;
+  const teamBandBorderHex = isRedTeam ? '#fecaca' : isBlueTeam ? '#bfdbfe' : '#0f172a';
+  const activePaintHex = hasTeamBand ? teamBandHex : skin.paintHex;
+
   return (
     <svg
       width={size}
@@ -534,7 +543,7 @@ function HamsterCharacterAvatar({
       className="overflow-visible select-none shrink-0 drop-shadow-md"
     >
       {/* Soft Character Aura & Ground Shadow */}
-      <circle cx="50" cy="52" r="44" fill={skin.badgeBg} opacity="0.18" />
+      <circle cx="50" cy="52" r="44" fill={hasTeamBand ? teamBandHex : skin.badgeBg} opacity="0.22" />
       <ellipse cx="50" cy="98" rx="30" ry="6" fill="#0f172a" opacity="0.22" />
 
       {/* Hamster Feet */}
@@ -560,8 +569,8 @@ function HamsterCharacterAvatar({
         strokeWidth="2.4"
       />
       {/* Vest Neon Paint Stripes & Chest Emblem */}
-      <line x1="36" y1="60" x2="36" y2="88" stroke={skin.paintHex} strokeWidth="3" strokeLinecap="round" />
-      <line x1="64" y1="60" x2="64" y2="88" stroke={skin.paintHex} strokeWidth="3" strokeLinecap="round" />
+      <line x1="36" y1="60" x2="36" y2="88" stroke={activePaintHex} strokeWidth="3" strokeLinecap="round" />
+      <line x1="64" y1="60" x2="64" y2="88" stroke={activePaintHex} strokeWidth="3" strokeLinecap="round" />
       <rect
         x="42"
         y="67"
@@ -569,10 +578,10 @@ function HamsterCharacterAvatar({
         height="11"
         rx="3"
         fill="#0f172a"
-        stroke={skin.visorHex}
+        stroke={hasTeamBand ? teamBandHex : skin.visorHex}
         strokeWidth="1.8"
       />
-      <circle cx="50" cy="72.5" r="2.8" fill={skin.paintHex} />
+      <circle cx="50" cy="72.5" r="2.8" fill={activePaintHex} />
 
       {/* Tactical Belt Clips: Mini Health Can (Left Hip) & Defence Can (Right Hip) */}
       <g transform="translate(23, 77) rotate(-8)">
@@ -616,7 +625,7 @@ function HamsterCharacterAvatar({
         <g>
           <path
             d="M 20 28 Q 50 19 80 28 L 77 20 Q 50 12 23 20 Z"
-            fill="#ef4444"
+            fill={teamBandHex}
             stroke="#0f172a"
             strokeWidth="2.2"
           />
@@ -749,6 +758,46 @@ function HamsterCharacterAvatar({
         </g>
       )}
 
+      {/* Team Identification Headband (Red Headband on Red Team, Blue Headband on Blue Team) */}
+      {hasTeamBand && (
+        <g>
+          {/* Flowing Tied Headband Tails on Left/Right */}
+          <path
+            d="M 80 24 L 93 18 L 90 25 L 95 29 L 81 28 Z"
+            fill={teamBandHex}
+            stroke="#0f172a"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          {/* Forehead Team Headband Wrap */}
+          <path
+            d="M 19 29 Q 50 21 81 29 L 80 21 Q 50 13 20 21 Z"
+            fill={teamBandHex}
+            stroke="#0f172a"
+            strokeWidth="2.2"
+          />
+          {/* Crisp Team Headband Highlight Trim & Center Badge */}
+          <path
+            d="M 22 25 Q 50 17.5 78 25"
+            fill="none"
+            stroke={teamBandBorderHex}
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <rect
+            x="43"
+            y="20.5"
+            width="14"
+            height="5.5"
+            rx="2"
+            fill="#ffffff"
+            stroke="#0f172a"
+            strokeWidth="1.4"
+          />
+          <circle cx="50" cy="23.2" r="1.8" fill={teamBandHex} />
+        </g>
+      )}
+
       {/* Pro Paintball Tactical Goggles / Visor */}
       <rect
         x="21"
@@ -798,7 +847,7 @@ function HamsterCharacterAvatar({
           cy="60"
           rx="9"
           ry="6"
-          fill={skin.paintHex}
+          fill={activePaintHex}
           stroke="#0f172a"
           strokeWidth="2.2"
         />
@@ -809,7 +858,7 @@ function HamsterCharacterAvatar({
           width="32"
           height="9"
           rx="4"
-          fill="#38bdf8"
+          fill={hasTeamBand ? teamBandHex : '#38bdf8'}
           stroke="#0f172a"
           strokeWidth="2.2"
         />
@@ -819,7 +868,7 @@ function HamsterCharacterAvatar({
           width="12"
           height="6"
           rx="2.5"
-          fill={skin.paintHex}
+          fill={activePaintHex}
           stroke="#0f172a"
           strokeWidth="2"
         />
@@ -857,17 +906,17 @@ const TEAM_CONFIG: Record<
   },
   red: {
     label: 'Red Squad',
-    colorHex: '#f43f5e',
-    colorNum: 0xf43f5e,
-    bgClass: 'bg-rose-500/25 text-rose-300',
-    borderClass: 'border-rose-500'
+    colorHex: '#ef4444',
+    colorNum: 0xef4444,
+    bgClass: 'bg-red-500/25 text-red-300',
+    borderClass: 'border-red-500'
   },
   blue: {
     label: 'Blue Squad',
-    colorHex: '#38bdf8',
-    colorNum: 0x38bdf8,
-    bgClass: 'bg-sky-500/25 text-sky-300',
-    borderClass: 'border-sky-400'
+    colorHex: '#2563eb',
+    colorNum: 0x2563eb,
+    bgClass: 'bg-blue-500/25 text-blue-300',
+    borderClass: 'border-blue-500'
   },
   green: {
     label: 'Emerald Squad',
@@ -892,6 +941,12 @@ class PaintballAudioEngine {
   ctx: AudioContext | null = null;
   noiseBuffer: AudioBuffer | null = null;
   enabled: boolean = true;
+  musicEnabled: boolean = true;
+  shouldPlayMusic: boolean = false;
+  isMusicPlaying: boolean = false;
+  isFrenzyTempo: boolean = false;
+  musicTimer: number | null = null;
+  musicStep: number = 0;
   lastFootstepTime: number = 0;
 
   init() {
@@ -902,7 +957,7 @@ class PaintballAudioEngine {
       if (AudioCtx) this.ctx = new AudioCtx();
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
     if (this.ctx && !this.noiseBuffer) {
       const sr = this.ctx.sampleRate;
@@ -912,6 +967,9 @@ class PaintballAudioEngine {
         data[i] = Math.random() * 2 - 1;
       }
       this.noiseBuffer = buf;
+    }
+    if (this.shouldPlayMusic && this.enabled && this.musicEnabled && !this.isMusicPlaying) {
+      this.startMusicLoopInternal();
     }
   }
 
@@ -1217,6 +1275,149 @@ class PaintballAudioEngine {
       osc.start(now + i * 0.045);
       osc.stop(now + i * 0.045 + 0.2);
     });
+  }
+
+  // Upbeat Arcade Paintball Battle Soundtrack (Multi-Layered Synth Bass, Lead Melody & Drum Groove)
+  setFrenzyTempo(frenzy: boolean) {
+    if (this.isFrenzyTempo === frenzy) return;
+    this.isFrenzyTempo = frenzy;
+    if (this.isMusicPlaying) {
+      this.stopMusicLoopInternal();
+      this.startMusicLoopInternal();
+    }
+  }
+
+  startMusic() {
+    this.shouldPlayMusic = true;
+    if (!this.enabled || !this.musicEnabled) return;
+    this.init();
+    if (!this.isMusicPlaying) {
+      this.startMusicLoopInternal();
+    }
+  }
+
+  stopMusic() {
+    this.shouldPlayMusic = false;
+    this.stopMusicLoopInternal();
+  }
+
+  private stopMusicLoopInternal() {
+    if (this.musicTimer !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+    this.isMusicPlaying = false;
+  }
+
+  private startMusicLoopInternal() {
+    if (typeof window === 'undefined') return;
+    this.stopMusicLoopInternal();
+    if (!this.enabled || !this.musicEnabled || !this.shouldPlayMusic) return;
+    this.isMusicPlaying = true;
+    const stepMs = this.isFrenzyTempo ? 105 : 120; // ~125 BPM normal, ~142 BPM final 30s frenzy
+    this.musicTimer = window.setInterval(() => {
+      this.playMusicStep();
+    }, stepMs);
+  }
+
+  private playMusicStep() {
+    if (!this.enabled || !this.musicEnabled || !this.shouldPlayMusic) {
+      this.stopMusicLoopInternal();
+      return;
+    }
+    if (!this.ctx) {
+      this.init();
+      if (!this.ctx) return;
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+      return;
+    }
+
+    const now = this.ctx.currentTime;
+    const step = this.musicStep % 32;
+    this.musicStep = (this.musicStep + 1) % 32;
+
+    // 1. Punchy Synth Bassline (A minor -> F major -> C major -> G major arcade progression)
+    const bassProgression = [
+      110.0, 0, 110.0, 110.0, 0, 110.0, 130.81, 146.83,
+      87.31, 0, 87.31, 87.31, 0, 87.31, 110.0, 130.81,
+      130.81, 0, 130.81, 130.81, 0, 130.81, 146.83, 164.81,
+      98.0, 0, 98.0, 98.0, 110.0, 0, 123.47, 98.0
+    ];
+    const bassFreq = bassProgression[step];
+    if (bassFreq > 0) {
+      const bOsc = this.ctx.createOscillator();
+      const bFilter = this.ctx.createBiquadFilter();
+      const bGain = this.ctx.createGain();
+      bOsc.type = 'sawtooth';
+      bOsc.frequency.setValueAtTime(bassFreq, now);
+      bFilter.type = 'lowpass';
+      bFilter.frequency.setValueAtTime(480, now);
+      bFilter.frequency.exponentialRampToValueAtTime(160, now + 0.1);
+      bGain.gain.setValueAtTime(0.052, now);
+      bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+      bOsc.connect(bFilter);
+      bFilter.connect(bGain);
+      bGain.connect(this.ctx.destination);
+      bOsc.start(now);
+      bOsc.stop(now + 0.115);
+    }
+
+    // 2. Heroic Arcade Lead Melody Hook
+    const leadMelody = [
+      440.0, 0, 523.25, 659.25, 587.33, 0, 523.25, 440.0,
+      349.23, 0, 440.0, 523.25, 659.25, 0, 587.33, 523.25,
+      523.25, 0, 659.25, 783.99, 659.25, 0, 587.33, 523.25,
+      392.0, 440.0, 493.88, 0, 587.33, 523.25, 493.88, 392.0
+    ];
+    const leadFreq = leadMelody[step];
+    if (leadFreq > 0) {
+      const lOsc = this.ctx.createOscillator();
+      const lGain = this.ctx.createGain();
+      lOsc.type = 'triangle';
+      const pitchMult = this.isFrenzyTempo ? 1.12246 : 1.0; // +2 semitones energy boost in Frenzy
+      lOsc.frequency.setValueAtTime(leadFreq * pitchMult, now);
+      lGain.gain.setValueAtTime(0.045, now);
+      lGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      lOsc.connect(lGain);
+      lGain.connect(this.ctx.destination);
+      lOsc.start(now);
+      lOsc.stop(now + 0.145);
+    }
+
+    // 3. Kick Drum on beats 0, 4, 8, 12...
+    if (step % 4 === 0) {
+      const kOsc = this.ctx.createOscillator();
+      const kGain = this.ctx.createGain();
+      kOsc.type = 'sine';
+      kOsc.frequency.setValueAtTime(125, now);
+      kOsc.frequency.exponentialRampToValueAtTime(36, now + 0.085);
+      kGain.gain.setValueAtTime(0.075, now);
+      kGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      kOsc.connect(kGain);
+      kGain.connect(this.ctx.destination);
+      kOsc.start(now);
+      kOsc.stop(now + 0.095);
+    }
+
+    // 4. Snare / Hi-Hat Groove
+    if (this.noiseBuffer && (step % 4 === 2 || step % 2 === 1)) {
+      const isSnare = step % 4 === 2;
+      const nSrc = this.ctx.createBufferSource();
+      nSrc.buffer = this.noiseBuffer;
+      const nFilt = this.ctx.createBiquadFilter();
+      nFilt.type = isSnare ? 'bandpass' : 'highpass';
+      nFilt.frequency.setValueAtTime(isSnare ? 1600 : 5200, now);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(isSnare ? 0.032 : 0.014, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + (isSnare ? 0.07 : 0.03));
+      nSrc.connect(nFilt);
+      nFilt.connect(nGain);
+      nGain.connect(this.ctx.destination);
+      nSrc.start(now);
+      nSrc.stop(now + (isSnare ? 0.075 : 0.035));
+    }
   }
 }
 
@@ -1530,6 +1731,7 @@ export default function HamsterPaintball({
   const [isJoiningRoomModal, setIsJoiningRoomModal] = useState<boolean>(false);
   const [copiedType, setCopiedType] = useState<'link' | 'code' | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
   const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
@@ -1558,7 +1760,7 @@ export default function HamsterPaintball({
   const [hostFollowIndex, setHostFollowIndex] = useState<number>(0);
 
   // Helper: Calculate Left Corner (Red Squad) or Right Corner (Blue Squad) Square Spawn Position
-  const getTeamSpawnPosition = (team: TeamId, mode: 'solo' | 'teams') => {
+  const getTeamSpawnPosition = (team: TeamId, mode: 'solo' | 'teams', slotIndex?: number) => {
     const resolvedTeam: 'red' | 'blue' =
       mode === 'teams'
         ? team === 'blue'
@@ -1570,8 +1772,17 @@ export default function HamsterPaintball({
     // Left Corner Square Spawn Center: (-35, -23), Right Corner Square Spawn Center: (35, -23)
     const baseX = resolvedTeam === 'red' ? -35 : 35;
     const baseZ = -23;
-    const jitterX = Number(((Math.random() - 0.5) * 6.4).toFixed(2));
-    const jitterZ = Number(((Math.random() - 0.5) * 4.8).toFixed(2));
+    let jitterX: number;
+    let jitterZ: number;
+    if (typeof slotIndex === 'number') {
+      const col = slotIndex % 3;
+      const row = Math.floor(slotIndex / 3) % 3;
+      jitterX = (col - 1) * 2.4;
+      jitterZ = (row - 1) * 2.0;
+    } else {
+      jitterX = Number(((Math.random() - 0.5) * 6.0).toFixed(2));
+      jitterZ = Number(((Math.random() - 0.5) * 4.4).toFixed(2));
+    }
     const rotY = resolvedTeam === 'red' ? Math.PI * 0.22 : -Math.PI * 0.22;
     return {
       x: Number((baseX + jitterX).toFixed(2)),
@@ -1580,15 +1791,20 @@ export default function HamsterPaintball({
     };
   };
 
-  // Student Combat Vitals, 10-Second Respawn Immunity, Ammo, Collectible Cans & Upgraded Points System
+  // Student Combat Vitals, 10-Second Respawn Immunity, Match Start Spawn Hold, Ammo, Collectible Cans & Upgraded Points System
   // Players start with 0 paintballs in match and MUST answer questions to earn paintball ammunition!
   const RESPAWN_IMMUNITY_MS = 10000; // 10 seconds immunity after respawn (cannot be hit!)
+  const MATCH_START_SPAWN_HOLD_MS = 6000; // 6 seconds at match start where Red stays in Red Spawn & Blue stays in Blue Spawn!
   const [hp, setHp] = useState<number>(100);
   const [maxHp] = useState<number>(100);
   const [shield, setShield] = useState<number>(100);
   const [maxShield] = useState<number>(100);
   const [immuneUntil, setImmuneUntil] = useState<number>(0);
   const [immunitySecondsLeft, setImmunitySecondsLeft] = useState<number>(0);
+  const [spawnHoldUntil, setSpawnHoldUntil] = useState<number>(0);
+  const [spawnHoldSecondsLeft, setSpawnHoldSecondsLeft] = useState<number>(0);
+  const lastStartedAtRef = useRef<number>(0);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const [ammo, setAmmo] = useState<number>(0);
   const [score, setScore] = useState<number>(0);
   const [kos, setKos] = useState<number>(0);
@@ -1776,7 +1992,33 @@ export default function HamsterPaintball({
 
   useEffect(() => {
     sfx.enabled = soundEnabled;
-  }, [soundEnabled]);
+    sfx.musicEnabled = musicEnabled;
+    const shouldPlay =
+      soundEnabled && musicEnabled && (screen === 'game' || screen === 'lobby');
+    if (shouldPlay) {
+      sfx.startMusic();
+    } else {
+      sfx.stopMusic();
+    }
+  }, [soundEnabled, musicEnabled, screen]);
+
+  useEffect(() => {
+    sfx.setFrenzyTempo(matchStatus === 'playing' && matchSeconds <= 30 && matchSeconds > 0);
+  }, [matchStatus, matchSeconds]);
+
+  // Unlock Web Audio Context & start background music on first user gesture
+  useEffect(() => {
+    const unlockAudio = () => {
+      sfx.init();
+    };
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      sfx.stopMusic();
+    };
+  }, []);
 
   // Keep latest state snapshot for network & physics loop
   const stateSnapRef = useRef({
@@ -1787,6 +2029,7 @@ export default function HamsterPaintball({
     hp,
     shield,
     immuneUntil,
+    spawnHoldUntil,
     score,
     kos,
     koStreak,
@@ -1816,6 +2059,7 @@ export default function HamsterPaintball({
       hp,
       shield,
       immuneUntil,
+      spawnHoldUntil,
       score,
       kos,
       koStreak,
@@ -1843,6 +2087,7 @@ export default function HamsterPaintball({
     hp,
     shield,
     immuneUntil,
+    spawnHoldUntil,
     score,
     kos,
     koStreak,
@@ -1881,6 +2126,25 @@ export default function HamsterPaintball({
     const interval = setInterval(updateImmunity, 200);
     return () => clearInterval(interval);
   }, [immuneUntil]);
+
+  // Match Start Spawn Hold Ticker (Red Team stays first in Red Spawn, Blue Team stays first in Blue Spawn!)
+  useEffect(() => {
+    if (spawnHoldUntil <= Date.now()) {
+      setSpawnHoldSecondsLeft(0);
+      return;
+    }
+    const updateHold = () => {
+      const remMs = spawnHoldUntil - Date.now();
+      if (remMs <= 0) {
+        setSpawnHoldSecondsLeft(0);
+      } else {
+        setSpawnHoldSecondsLeft(Math.ceil(remMs / 1000));
+      }
+    };
+    updateHold();
+    const interval = setInterval(updateHold, 200);
+    return () => clearInterval(interval);
+  }, [spawnHoldUntil]);
 
   // Long-Press Handler to Use Health Can (+45 HP) or Defence Can (+50 Shield)
   const stopCanLongPress = () => {
@@ -2096,19 +2360,141 @@ export default function HamsterPaintball({
 
   // Helper to get cross-device public room doc & player collection refs
   // Uses `ttt_rooms/pb_room_${code}` which has public cross-device read/write enabled in production
-  const getRoomDocRef = (code: string) => doc(db, 'ttt_rooms', `pb_room_${code}`);
+  const normalizeCode = (code: string) => code.trim().toUpperCase();
+  const getRoomDocRef = (code: string) =>
+    doc(db, 'ttt_rooms', `pb_room_${normalizeCode(code)}`);
   const getPlayersColRef = (code: string) =>
-    collection(db, 'ttt_rooms', `pb_room_${code}`, 'actions');
+    collection(db, 'ttt_rooms', `pb_room_${normalizeCode(code)}`, 'actions');
   const getPlayerDocRef = (code: string, pId: string) =>
-    doc(db, 'ttt_rooms', `pb_room_${code}`, 'actions', `player_${pId}`);
+    doc(db, 'ttt_rooms', `pb_room_${normalizeCode(code)}`, 'actions', `player_${pId}`);
+
+  // Helper: Trigger Student Match Start Sequence (Brings player into the game, places Red in Red Spawn & Blue in Blue Spawn, and locks spawn first!)
+  const triggerStudentMatchStart = (
+    durationSec: number,
+    activeMode: 'solo' | 'teams',
+    startedAtTs: number,
+    isPaused: boolean = false,
+    incomingBallsPerQuestion?: number
+  ) => {
+    lastStartedAtRef.current = startedAtTs;
+    sfx.playKO();
+    sfx.startMusic();
+    if (typeof incomingBallsPerQuestion === 'number' && incomingBallsPerQuestion > 0) {
+      setBallsPerQuestion(incomingBallsPerQuestion);
+      stateSnapRef.current.ballsPerQuestion = incomingBallsPerQuestion;
+    }
+
+    const cleanName =
+      stateSnapRef.current.playerName.trim() &&
+      stateSnapRef.current.playerName.trim() !== 'Teacher Jan'
+        ? stateSnapRef.current.playerName.trim()
+        : `Hamster${Math.floor(10 + Math.random() * 89)}`;
+    if (cleanName !== stateSnapRef.current.playerName) {
+      setPlayerName(cleanName);
+      stateSnapRef.current.playerName = cleanName;
+    }
+
+    hasJoinedRoomRef.current = true;
+    setMatchStatus('playing');
+    setIsTimerPaused(isPaused);
+    setMatchSeconds(durationSec || 180);
+    setHp(100);
+    setShield(100);
+    setAmmo(0);
+    setScore(0);
+    setKos(0);
+    setKoStreak(0);
+    setHitsLanded(0);
+    setBestStreak(0);
+    setIsQuestionModalOpen(false);
+
+    // Place Red Team in Red Square Spawn (-35, -23) and Blue Team in Blue Square Spawn (35, -23)
+    const effectiveTeam: TeamId =
+      activeMode === 'solo'
+        ? 'solo'
+        : stateSnapRef.current.myTeam === 'blue'
+        ? 'blue'
+        : 'red';
+    const sp = getTeamSpawnPosition(effectiveTeam, activeMode);
+    if (gameRef.current) {
+      gameRef.current.x = sp.x;
+      gameRef.current.z = sp.z;
+      gameRef.current.rotY = sp.rotY;
+      gameRef.current.vx = 0;
+      gameRef.current.vz = 0;
+      gameRef.current.localHamster.position.set(sp.x, 0, sp.z);
+      gameRef.current.localHamster.rotation.y = sp.rotY;
+    }
+
+    // Hold Red in Red Spawn and Blue in Blue Spawn first when match starts!
+    const holdUntil = Date.now() + MATCH_START_SPAWN_HOLD_MS;
+    stateSnapRef.current.spawnHoldUntil = holdUntil;
+    setSpawnHoldUntil(holdUntil);
+    setSpawnHoldSecondsLeft(Math.ceil(MATCH_START_SPAWN_HOLD_MS / 1000));
+
+    // Ensure student is inside the active 3D game screen immediately!
+    setScreen('game');
+
+    // Immediately broadcast student's spawn position to Firestore & BroadcastChannel so all players see each other in spawn!
+    const startPayload: PlayerNetworkState = {
+      id: clientIdRef.current,
+      name: cleanName,
+      role: 'player',
+      team: effectiveTeam,
+      skinIdx: stateSnapRef.current.selectedSkinIdx,
+      x: sp.x,
+      z: sp.z,
+      rotY: sp.rotY,
+      hp: 100,
+      shield: 100,
+      immuneUntil: 0,
+      score: 0,
+      kos: 0,
+      hitsLanded: 0,
+      bestStreak: 0,
+      questionsAnswered: stateSnapRef.current.questionsAnswered,
+      kicked: false,
+      updatedAt: Date.now()
+    };
+
+    if (broadcastChannelRef.current) {
+      try {
+        broadcastChannelRef.current.postMessage({
+          type: 'player_update',
+          id: clientIdRef.current,
+          payload: startPayload
+        });
+      } catch {}
+    }
+
+    if (roomCode) {
+      setDoc(
+        getPlayerDocRef(roomCode, clientIdRef.current),
+        {
+          ...startPayload,
+          lastSeen: serverTimestamp()
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
+
+    const teamLabel = effectiveTeam === 'blue' ? 'BLUE SQUARE SPAWN' : 'RED SQUARE SPAWN';
+    const activeRewardBalls =
+      incomingBallsPerQuestion || stateSnapRef.current.ballsPerQuestion || ballsPerQuestion || 10;
+    setPickupBannerText(
+      `🚀 GAME STARTED! STAY FIRST IN ${teamLabel} & ANSWER QUESTIONS TO GAIN +${activeRewardBalls} BALLS!`
+    );
+    setTimeout(() => setPickupBannerText(null), 4000);
+  };
 
   // -------------------------------------------------------------
   // 4. REAL-TIME MULTIPLAYER SYNC (FIRESTORE + BROADCAST CHANNEL)
   // -------------------------------------------------------------
   useEffect(() => {
-    if (!roomCode) return;
+    const cleanCode = normalizeCode(roomCode);
+    if (!cleanCode) return;
 
-    const roomDocRef = getRoomDocRef(roomCode);
+    const roomDocRef = getRoomDocRef(cleanCode);
 
     // If Host (Teacher Jan), publish room configuration & custom quiz questions to Firestore
     if (role === 'host') {
@@ -2117,9 +2503,9 @@ export default function HamsterPaintball({
       setDoc(
         roomDocRef,
         {
-          roomCode,
+          roomCode: cleanCode,
           website: 'www.hamsterenglish.online',
-          joinUrl: `https://www.hamsterenglish.online/?game=hamster-paintball&room=${roomCode}`,
+          joinUrl: `https://www.hamsterenglish.online/?game=hamster-paintball&room=${cleanCode}`,
           hostName: 'Teacher Jan',
           quizTitle: activeQuiz.title || activeQuiz.topic || 'Hamster Paintball',
           topic: activeQuiz.topic || '',
@@ -2176,33 +2562,20 @@ export default function HamsterPaintball({
             setMatchSeconds(nextSec);
           }
           if (data?.matchStatus === 'playing') {
-            if (stateSnapRef.current.matchStatus !== 'playing') {
-              sfx.playKO();
-              setMatchStatus('playing');
-              setIsTimerPaused(Boolean(data.isTimerPaused));
-              setMatchSeconds(data.configuredDurationSec || 180);
-              setHp(100);
-              setShield(100);
-              setAmmo(0);
-              setScore(0);
-              setKos(0);
-              setKoStreak(0);
-              setHitsLanded(0);
-              setBestStreak(0);
-              // Place player in their team's Left/Right Corner Spawn Area when match starts!
-              if (gameRef.current) {
-                const sp = getTeamSpawnPosition(
-                  stateSnapRef.current.myTeam,
-                  data.matchMode || stateSnapRef.current.matchMode
-                );
-                gameRef.current.x = sp.x;
-                gameRef.current.z = sp.z;
-                gameRef.current.rotY = sp.rotY;
-              }
-              setPickupBannerText('🚀 GAME STARTED! ANSWER QUESTIONS TO LOAD PAINTBALLS!');
-              setTimeout(() => setPickupBannerText(null), 3000);
-            }
-            if (stateSnapRef.current.screen !== 'join') {
+            const incomingStartTs =
+              typeof data.startedAt === 'number' ? data.startedAt : 1;
+            if (
+              stateSnapRef.current.matchStatus !== 'playing' ||
+              incomingStartTs !== lastStartedAtRef.current
+            ) {
+              triggerStudentMatchStart(
+                data.configuredDurationSec || 180,
+                data.matchMode || stateSnapRef.current.matchMode,
+                incomingStartTs,
+                Boolean(data.isTimerPaused),
+                typeof data.ballsPerQuestion === 'number' ? data.ballsPerQuestion : undefined
+              );
+            } else if (stateSnapRef.current.screen !== 'game') {
               setScreen('game');
             }
           } else if (data?.matchStatus === 'results' && stateSnapRef.current.screen === 'game') {
@@ -2228,7 +2601,8 @@ export default function HamsterPaintball({
     // BroadcastChannel for instant local cross-tab multiplayer
     let bc: BroadcastChannel | null = null;
     try {
-      bc = new BroadcastChannel(`hamster_paintball_net_${roomCode}`);
+      bc = new BroadcastChannel(`hamster_paintball_net_${cleanCode}`);
+      broadcastChannelRef.current = bc;
       if (gameRef.current) {
         gameRef.current.broadcastChannel = bc;
       }
@@ -2237,8 +2611,15 @@ export default function HamsterPaintball({
         if (!msg || msg.id === clientIdRef.current) return;
         if (msg.type === 'player_update') {
           const pState = msg.payload as PlayerNetworkState;
-          if (pState.role === 'player') {
+          if (pState.role === 'player' && !pState.kicked) {
             upsertRemotePlayer(pState);
+            setRoomPlayers(prev => {
+              const idx = prev.findIndex(p => p.id === pState.id);
+              if (idx === -1) return [...prev, pState];
+              const copy = [...prev];
+              copy[idx] = { ...copy[idx], ...pState };
+              return copy;
+            });
           }
         } else if (msg.type === 'fire_shot' && gameRef.current) {
           spawnNetworkProjectile(
@@ -2298,8 +2679,16 @@ export default function HamsterPaintball({
           if (typeof msg.isTimerPaused === 'boolean') {
             setIsTimerPaused(msg.isTimerPaused);
           }
+        } else if (msg.type === 'balls_config') {
+          if (typeof msg.ballsPerQuestion === 'number' && msg.ballsPerQuestion > 0) {
+            setBallsPerQuestion(msg.ballsPerQuestion);
+            stateSnapRef.current.ballsPerQuestion = msg.ballsPerQuestion;
+          }
         } else if (msg.type === 'match_start' && stateSnapRef.current.role === 'player') {
-          sfx.playKO();
+          if (typeof msg.ballsPerQuestion === 'number' && msg.ballsPerQuestion > 0) {
+            setBallsPerQuestion(msg.ballsPerQuestion);
+            stateSnapRef.current.ballsPerQuestion = msg.ballsPerQuestion;
+          }
           if (Array.isArray(msg.questions) && msg.questions.length > 0) {
             const normQs = normalizePaintballQuestions(msg.questions);
             if (normQs.length > 0) {
@@ -2312,30 +2701,16 @@ export default function HamsterPaintball({
               }));
             }
           }
-          setMatchStatus('playing');
-          setIsTimerPaused(false);
-          setMatchSeconds(msg.durationSec || 180);
-          setHp(100);
-          setShield(100);
-          setAmmo(0);
-          setScore(0);
-          setKos(0);
-          setKoStreak(0);
-          setHitsLanded(0);
-          setBestStreak(0);
-          if (gameRef.current) {
-            const sp = getTeamSpawnPosition(
-              stateSnapRef.current.myTeam,
-              stateSnapRef.current.matchMode
+          const incomingStartTs =
+            typeof msg.startedAt === 'number' ? msg.startedAt : Date.now();
+          if (incomingStartTs !== lastStartedAtRef.current) {
+            triggerStudentMatchStart(
+              msg.durationSec || 180,
+              msg.matchMode || stateSnapRef.current.matchMode,
+              incomingStartTs,
+              false,
+              typeof msg.ballsPerQuestion === 'number' ? msg.ballsPerQuestion : undefined
             );
-            gameRef.current.x = sp.x;
-            gameRef.current.z = sp.z;
-            gameRef.current.rotY = sp.rotY;
-          }
-          setPickupBannerText('🚀 GAME STARTED! ANSWER QUESTIONS TO LOAD PAINTBALLS!');
-          setTimeout(() => setPickupBannerText(null), 3000);
-          if (stateSnapRef.current.screen !== 'join') {
-            setScreen('game');
           }
         } else if (msg.type === 'match_end' && stateSnapRef.current.role === 'player') {
           setMatchStatus('results');
@@ -2344,8 +2719,8 @@ export default function HamsterPaintball({
       };
     } catch {}
 
-    // Listen to all joined players in `ttt_rooms/pb_room_${roomCode}/actions`
-    const playersCol = getPlayersColRef(roomCode);
+    // Listen to all joined players in `ttt_rooms/pb_room_${cleanCode}/actions`
+    const playersCol = getPlayersColRef(cleanCode);
     const unsubPlayers = onSnapshot(
       playersCol,
       snap => {
@@ -2372,8 +2747,8 @@ export default function HamsterPaintball({
               role: 'player',
               team: data.team || 'red',
               skinIdx: typeof data.skinIdx === 'number' ? data.skinIdx : 0,
-              x: typeof data.x === 'number' ? data.x : 0,
-              z: typeof data.z === 'number' ? data.z : 10,
+              x: typeof data.x === 'number' ? data.x : -35,
+              z: typeof data.z === 'number' ? data.z : -23,
               rotY: typeof data.rotY === 'number' ? data.rotY : 0,
               hp: typeof data.hp === 'number' ? data.hp : 100,
               shield: typeof data.shield === 'number' ? data.shield : 100,
@@ -2502,13 +2877,10 @@ export default function HamsterPaintball({
       const snapState = stateSnapRef.current;
       // Only joined students ('player' role who have entered the 3D park) write to the player list!
       // Teacher Jan ('host') is non-playing and does NOT join as a combat player.
-      if (
-        snapState.role !== 'player' ||
-        snapState.screen === 'join' ||
-        !hasJoinedRoomRef.current
-      ) {
+      if (snapState.role !== 'player' || snapState.screen === 'join') {
         return;
       }
+      hasJoinedRoomRef.current = true;
 
       const payload: PlayerNetworkState = {
         id: clientIdRef.current,
@@ -2516,8 +2888,8 @@ export default function HamsterPaintball({
         role: 'player',
         team: snapState.matchMode === 'solo' ? 'solo' : snapState.myTeam,
         skinIdx: snapState.selectedSkinIdx,
-        x: g ? Number(g.x.toFixed(2)) : 0,
-        z: g ? Number(g.z.toFixed(2)) : 12,
+        x: g ? Number(g.x.toFixed(2)) : -35,
+        z: g ? Number(g.z.toFixed(2)) : -23,
         rotY: g ? Number(g.rotY.toFixed(2)) : 0,
         hp: snapState.hp,
         shield: snapState.shield,
@@ -2536,7 +2908,7 @@ export default function HamsterPaintball({
         } catch {}
       }
 
-      const playerRef = getPlayerDocRef(roomCode, clientIdRef.current);
+      const playerRef = getPlayerDocRef(cleanCode, clientIdRef.current);
       setDoc(
         playerRef,
         {
@@ -2545,13 +2917,16 @@ export default function HamsterPaintball({
         },
         { merge: true }
       ).catch(() => {});
-    }, 450);
+    }, 350);
 
     return () => {
       unsubRoom();
       unsubPlayers();
       clearInterval(syncInterval);
       if (bc) bc.close();
+      if (broadcastChannelRef.current === bc) {
+        broadcastChannelRef.current = null;
+      }
     };
   }, [
     roomCode,
@@ -2683,17 +3058,41 @@ export default function HamsterPaintball({
       entry = { data: rState, mesh, walkPhase: 0 };
       g.remotePlayers.set(rState.id, entry);
     } else {
-      // Rebuild name badge if team changed
-      if (entry.data.team !== rState.team || entry.data.name !== rState.name) {
+      // Rebuild 3D hamster (including Red/Blue Team Headband, gun & name badge) if team, name, or skin changed
+      if (
+        entry.data.team !== rState.team ||
+        entry.data.name !== rState.name ||
+        entry.data.skinIdx !== rState.skinIdx
+      ) {
         g.scene.remove(entry.mesh);
         const mesh = buildHighDefHamster(rState.skinIdx, label, false, rState.team);
         mesh.position.set(rState.x, 0, rState.z);
         mesh.rotation.y = rState.rotY;
         g.scene.add(mesh);
         entry.mesh = mesh;
+      } else if (
+        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 9
+      ) {
+        // Snap immediately when player teleports to Red/Blue Square Spawn at match start or respawn!
+        entry.mesh.position.set(rState.x, 0, rState.z);
+        entry.mesh.rotation.y = rState.rotY;
       }
       entry.data = rState;
     }
+  };
+
+  // Resolve Strict Team Paint Color: Red Team ALWAYS fires Red Paint (0xef4444), Blue Team ALWAYS fires Blue Paint (0x2563eb)
+  const resolveTeamPaintColor = (
+    team: TeamId | undefined,
+    fallbackColor?: number,
+    skinIdx: number = 0
+  ): number => {
+    if (team === 'red') return 0xef4444;
+    if (team === 'blue') return 0x2563eb;
+    if (team && team !== 'solo' && TEAM_CONFIG[team]) return TEAM_CONFIG[team].colorNum;
+    if (typeof fallbackColor === 'number' && fallbackColor > 0) return fallbackColor;
+    const skin = HAMSTER_SKINS[skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
+    return skin.paintColor;
   };
 
   // Build a High-Visibility 3D Paintball Projectile with Aerodynamic Streak Tail
@@ -2701,42 +3100,42 @@ export default function HamsterPaintball({
     const projGroup = new THREE.Group();
 
     const coreBall = new THREE.Mesh(
-      new THREE.SphereGeometry(0.28, 16, 16),
+      new THREE.SphereGeometry(0.29, 16, 16),
       new THREE.MeshPhysicalMaterial({
         color: paintColor,
         emissive: paintColor,
-        emissiveIntensity: 0.35,
+        emissiveIntensity: 0.48,
         clearcoat: 1.0,
         clearcoatRoughness: 0.04,
-        roughness: 0.08,
-        metalness: 0.12
+        roughness: 0.06,
+        metalness: 0.1
       })
     );
     coreBall.castShadow = true;
     projGroup.add(coreBall);
 
-    // Bright Outer Energy Halo around the Paintball
+    // Bright Team-Colored Outer Energy Halo around the Paintball
     const glowShell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.36, 12, 12),
+      new THREE.SphereGeometry(0.38, 12, 12),
       new THREE.MeshBasicMaterial({
-        color: 0xffffff,
+        color: paintColor,
         transparent: true,
-        opacity: 0.32
+        opacity: 0.38
       })
     );
     projGroup.add(glowShell);
 
     // Aerodynamic Paint Streak Tail Behind the Ball
     const streakTail = new THREE.Mesh(
-      new THREE.ConeGeometry(0.21, 1.25, 12),
+      new THREE.ConeGeometry(0.22, 1.35, 12),
       new THREE.MeshBasicMaterial({
         color: paintColor,
         transparent: true,
-        opacity: 0.68
+        opacity: 0.78
       })
     );
     streakTail.rotation.x = -Math.PI / 2;
-    streakTail.position.z = -0.68;
+    streakTail.position.z = -0.7;
     projGroup.add(streakTail);
 
     return projGroup;
@@ -2811,6 +3210,18 @@ export default function HamsterPaintball({
 
     // Extract exact 3D world position of the remote shooter's gun barrel tip (`muzzleTip`)
     const shooterEntry = g.remotePlayers.get(ownerId);
+    const effectiveTeam: TeamId =
+      ownerTeam && ownerTeam !== 'solo'
+        ? ownerTeam
+        : shooterEntry?.data?.team || 'solo';
+
+    // Enforce: Red Team fires Red Paint (0xef4444) and Blue Team fires Blue Paint (0x2563eb)!
+    const resolvedPaintColor = resolveTeamPaintColor(
+      effectiveTeam,
+      paintColor,
+      shooterEntry?.data?.skinIdx || 0
+    );
+
     if (shooterEntry && shooterEntry.mesh) {
       shooterEntry.mesh.rotation.y = angle;
       const ud = shooterEntry.mesh.userData;
@@ -2827,24 +3238,24 @@ export default function HamsterPaintball({
       }
     }
 
-    const ball = createPaintballProjectileMesh(paintColor);
+    const ball = createPaintballProjectileMesh(resolvedPaintColor);
     ball.position.copy(muzzlePos);
     ball.rotation.y = angle;
     g.scene.add(ball);
 
-    spawnGunMuzzleBlastEffect(g.scene, g.particles, muzzlePos, angle, paintColor);
+    spawnGunMuzzleBlastEffect(g.scene, g.particles, muzzlePos, angle, resolvedPaintColor);
 
     g.projectiles.push({
       ownerId,
       ownerName,
-      ownerTeam,
+      ownerTeam: effectiveTeam,
       mesh: ball,
       vx: Math.sin(angle) * 40,
       vy: 1.65,
       vz: Math.cos(angle) * 40,
       gravity: 9.2,
       damage: 28,
-      color: paintColor
+      color: resolvedPaintColor
     });
   };
 
@@ -2921,39 +3332,74 @@ export default function HamsterPaintball({
     canvas.height = 128;
     const ctx = canvas.getContext('2d')!;
 
+    const isRed = !isHostReferee && team === 'red';
+    const isBlue = !isHostReferee && team === 'blue';
+
     const borderHex = isHostReferee
       ? '#facc15'
+      : isRed
+      ? '#ef4444'
+      : isBlue
+      ? '#3b82f6'
       : team !== 'solo'
       ? TEAM_CONFIG[team].colorHex
       : skin.paintHex;
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    const bgHex = isHostReferee
+      ? 'rgba(15, 23, 42, 0.92)'
+      : isRed
+      ? 'rgba(127, 29, 29, 0.92)'
+      : isBlue
+      ? 'rgba(30, 58, 138, 0.92)'
+      : 'rgba(15, 23, 42, 0.88)';
+
+    ctx.fillStyle = bgHex;
     ctx.beginPath();
-    ctx.roundRect(24, 20, 464, 88, 44);
+    ctx.roundRect(18, 18, 476, 92, 46);
     ctx.fill();
 
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 8;
     ctx.strokeStyle = borderHex;
     ctx.stroke();
 
-    ctx.fillStyle = borderHex;
-    ctx.beginPath();
-    ctx.arc(72, 64, 16, 0, Math.PI * 2);
-    ctx.fill();
+    // Left Team Pill Tag (RED or BLUE) for instant team identification
+    if (isRed || isBlue) {
+      ctx.fillStyle = isRed ? '#ef4444' : '#2563eb';
+      ctx.beginPath();
+      ctx.roundRect(30, 30, 118, 68, 34);
+      ctx.fill();
 
-    ctx.font = '900 30px "Inter", system-ui, sans-serif';
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const label = isHostReferee ? '👑 TEACHER JAN [HOST]' : name.toUpperCase();
-    ctx.fillText(label.slice(0, 20), 270, 64);
+      ctx.font = '900 26px "Inter", system-ui, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(isRed ? 'RED' : 'BLUE', 89, 64);
+
+      const cleanCallsign = name.replace(/^\[(RED|BLUE)\]\s*/i, '').toUpperCase();
+      ctx.font = '900 30px "Inter", system-ui, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText(cleanCallsign.slice(0, 14), 312, 64);
+    } else {
+      ctx.fillStyle = borderHex;
+      ctx.beginPath();
+      ctx.arc(72, 64, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = '900 30px "Inter", system-ui, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = isHostReferee ? '👑 TEACHER JAN [HOST]' : name.toUpperCase();
+      ctx.fillText(label.slice(0, 20), 270, 64);
+    }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(3.4, 0.85, 1);
-    sprite.position.set(0, 3.1, 0);
+    sprite.scale.set(3.55, 0.88, 1);
+    sprite.position.set(0, 3.15, 0);
     return sprite;
   }
 
@@ -3084,16 +3530,21 @@ export default function HamsterPaintball({
     );
     podPackGroup.add(packBelt);
 
-    const podColors = [0xa3e635, 0xec4899, 0x22d3ee, 0xfacc15];
+    const podColors =
+      team === 'red' || team === 'blue'
+        ? [teamColorNum, teamColorNum, teamColorNum, teamColorNum]
+        : [0xa3e635, 0xec4899, 0x22d3ee, 0xfacc15];
     for (let p = 0; p < 4; p++) {
       const px = -0.3 + p * 0.2;
       const podTube = new THREE.Mesh(
         new THREE.CylinderGeometry(0.085, 0.085, 0.58, 12),
         new THREE.MeshPhysicalMaterial({
           color: podColors[p],
+          emissive: podColors[p],
+          emissiveIntensity: team === 'red' || team === 'blue' ? 0.25 : 0,
           transmission: 0.35,
           transparent: true,
-          opacity: 0.9,
+          opacity: 0.92,
           clearcoat: 1.0,
           roughness: 0.1
         })
@@ -3177,40 +3628,34 @@ export default function HamsterPaintball({
       });
     });
 
-    // Character-Specific 3D Headgear (Bandana, Helmet, SpecOps, Crown, Cyber, Blossom)
+    // Character-Specific 3D Headgear (Positioned cleanly above the Team Headband so the Red/Blue Headband is ALWAYS 100% visible!)
     const headgearGroup = new THREE.Group();
     if (skin.headgear === 'Bandana') {
       const band = new THREE.Mesh(
         new THREE.CylinderGeometry(0.77, 0.78, 0.16, 28),
-        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.45 })
+        new THREE.MeshStandardMaterial({ color: teamColorNum, roughness: 0.45 })
       );
       band.position.set(0, 0.42, 0);
       headgearGroup.add(band);
-      const knot = new THREE.Mesh(
-        new THREE.SphereGeometry(0.13, 12, 12),
-        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.45 })
-      );
-      knot.position.set(0, 0.42, -0.78);
-      headgearGroup.add(knot);
     } else if (skin.headgear === 'Helmet') {
       const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(0.81, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.48),
+        new THREE.SphereGeometry(0.79, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.36),
         new THREE.MeshPhysicalMaterial({ color: 0x0f172a, clearcoat: 1.0, roughness: 0.15 })
       );
-      dome.position.y = 0.08;
+      dome.position.y = 0.24;
       headgearGroup.add(dome);
       const crest = new THREE.Mesh(
         new THREE.BoxGeometry(0.16, 0.14, 0.85),
-        new THREE.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x22d3ee, emissiveIntensity: 0.4 })
+        new THREE.MeshStandardMaterial({ color: teamColorNum, emissive: teamColorNum, emissiveIntensity: 0.45 })
       );
-      crest.position.set(0, 0.82, 0.05);
+      crest.position.set(0, 0.88, 0.05);
       headgearGroup.add(crest);
     } else if (skin.headgear === 'SpecOps') {
       const mount = new THREE.Mesh(
         new THREE.BoxGeometry(0.58, 0.16, 0.24),
         new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.7, roughness: 0.3 })
       );
-      mount.position.set(0, 0.48, 0.62);
+      mount.position.set(0, 0.62, 0.56);
       headgearGroup.add(mount);
       [-0.17, 0.17].forEach(ox => {
         const nvg = new THREE.Mesh(
@@ -3218,7 +3663,7 @@ export default function HamsterPaintball({
           new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.75 })
         );
         nvg.rotation.x = Math.PI / 2;
-        nvg.position.set(ox, 0.48, 0.74);
+        nvg.position.set(ox, 0.62, 0.68);
         headgearGroup.add(nvg);
       });
     } else if (skin.headgear === 'Crown') {
@@ -3226,14 +3671,14 @@ export default function HamsterPaintball({
         new THREE.CylinderGeometry(0.46, 0.4, 0.26, 16),
         new THREE.MeshPhysicalMaterial({ color: 0xfacc15, metalness: 0.85, roughness: 0.15, clearcoat: 1.0 })
       );
-      crownBase.position.set(0, 0.82, 0.05);
+      crownBase.position.set(0, 0.84, 0.05);
       headgearGroup.add(crownBase);
     } else if (skin.headgear === 'Cyber') {
       const cyberFin = new THREE.Mesh(
         new THREE.ConeGeometry(0.28, 0.62, 4),
         new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.35 })
       );
-      cyberFin.position.set(0, 0.92, 0.12);
+      cyberFin.position.set(0, 0.94, 0.12);
       headgearGroup.add(cyberFin);
     } else if (skin.headgear === 'Blossom') {
       [-0.42, 0.42].forEach(bx => {
@@ -3241,7 +3686,7 @@ export default function HamsterPaintball({
           new THREE.DodecahedronGeometry(0.18, 0),
           new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.4 })
         );
-        flower.position.set(bx, 0.72, 0.22);
+        flower.position.set(bx, 0.76, 0.22);
         headgearGroup.add(flower);
       });
     } else if (skin.headgear === 'Flame') {
@@ -3254,7 +3699,7 @@ export default function HamsterPaintball({
             emissiveIntensity: 0.55
           })
         );
-        flameCone.position.set(fx, 0.85, 0.08);
+        flameCone.position.set(fx, 0.88, 0.08);
         headgearGroup.add(flameCone);
       });
     } else if (skin.headgear === 'Astro') {
@@ -3280,7 +3725,7 @@ export default function HamsterPaintball({
         new THREE.MeshPhysicalMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.15 })
       );
       kabutoCrest.rotation.z = Math.PI;
-      kabutoCrest.position.set(0, 0.92, 0.42);
+      kabutoCrest.position.set(0, 0.96, 0.42);
       headgearGroup.add(kabutoCrest);
     } else if (skin.headgear === 'Headphones') {
       const arcBand = new THREE.Mesh(
@@ -3291,7 +3736,7 @@ export default function HamsterPaintball({
           emissiveIntensity: 0.3
         })
       );
-      arcBand.position.set(0, 0.08, 0);
+      arcBand.position.set(0, 0.12, 0);
       headgearGroup.add(arcBand);
       [-0.78, 0.78].forEach(hx => {
         const cup = new THREE.Mesh(
@@ -3304,37 +3749,37 @@ export default function HamsterPaintball({
       });
     } else if (skin.headgear === 'Cowboy') {
       const brim = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.05, 1.05, 0.07, 24),
+        new THREE.CylinderGeometry(1.02, 1.02, 0.07, 24),
         new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 })
       );
-      brim.position.set(0, 0.66, 0.04);
+      brim.position.set(0, 0.72, 0.02);
       headgearGroup.add(brim);
       const hatTop = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.48, 0.58, 0.38, 20),
+        new THREE.CylinderGeometry(0.46, 0.56, 0.36, 20),
         new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6 })
       );
-      hatTop.position.set(0, 0.86, 0.04);
+      hatTop.position.set(0, 0.92, 0.02);
       headgearGroup.add(hatTop);
     } else if (skin.headgear === 'Viking') {
       const helm = new THREE.Mesh(
-        new THREE.SphereGeometry(0.79, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.45),
+        new THREE.SphereGeometry(0.77, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.35),
         new THREE.MeshStandardMaterial({ color: 0x57534e, metalness: 0.7, roughness: 0.35 })
       );
-      helm.position.y = 0.12;
+      helm.position.y = 0.25;
       headgearGroup.add(helm);
       [-1, 1].forEach(side => {
         const horn = new THREE.Mesh(
           new THREE.ConeGeometry(0.14, 0.55, 12),
           new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.3 })
         );
-        horn.position.set(side * 0.76, 0.68, 0.1);
+        horn.position.set(side * 0.76, 0.74, 0.1);
         horn.rotation.z = -side * 0.55;
         headgearGroup.add(horn);
       });
     }
     headGroup.add(headgearGroup);
 
-    // 5. Pro Paintball Mask & Iridescent Thermal Goggles
+    // 5. Pro Paintball Mask, High-Visibility Team Headband & Iridescent Thermal Goggles
     const maskGroup = new THREE.Group();
     const maskGrillMat = new THREE.MeshStandardMaterial({
       map: createMaskGrillTexture(),
@@ -3356,12 +3801,77 @@ export default function HamsterPaintball({
     goggleStrap.position.set(0, 0.14, 0);
     maskGroup.add(goggleStrap);
 
+    // PROMINENT 3D TEAM IDENTIFICATION HEADBAND (Red Headband on Red Team, Blue Headband on Blue Team!)
+    const headbandColorNum =
+      isHostReferee
+        ? 0xfacc15
+        : team === 'red'
+        ? 0xef4444
+        : team === 'blue'
+        ? 0x2563eb
+        : teamColorNum;
+
+    const headbandMat = new THREE.MeshStandardMaterial({
+      color: headbandColorNum,
+      emissive: headbandColorNum,
+      emissiveIntensity: 0.34,
+      roughness: 0.35,
+      metalness: 0.1
+    });
+
+    // Main Forehead Cloth Band (Radius 0.825 so it wraps outside the 0.805 head fur radius all the way around!)
     const headband = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.76, 0.77, 0.14, 28),
-      new THREE.MeshStandardMaterial({ color: teamColorNum, roughness: 0.5 })
+      new THREE.CylinderGeometry(0.822, 0.828, 0.23, 32),
+      headbandMat
     );
-    headband.position.set(0, 0.38, 0);
+    headband.position.set(0, 0.43, 0.02);
     maskGroup.add(headband);
+
+    // Crisp White Top & Bottom Contrast Trim Rings on the Headband so Red/Blue pops on any fur color
+    const trimMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    [0.32, 0.54].forEach(ty => {
+      const trimRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.826, 0.02, 10, 32),
+        trimMat
+      );
+      trimRing.rotation.x = Math.PI / 2;
+      trimRing.position.set(0, ty, 0.02);
+      maskGroup.add(trimRing);
+    });
+
+    // Front Forehead Team Plate Emblem on the Headband
+    const frontEmblemPlate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.48, 0.19, 0.08),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
+    );
+    frontEmblemPlate.position.set(0, 0.43, 0.82);
+    maskGroup.add(frontEmblemPlate);
+
+    const frontEmblemCore = new THREE.Mesh(
+      new THREE.BoxGeometry(0.38, 0.11, 0.095),
+      headbandMat
+    );
+    frontEmblemCore.position.set(0, 0.43, 0.825);
+    maskGroup.add(frontEmblemCore);
+
+    // Back Tied Headband Knot & Two Flowing Bandana Tails
+    const headbandKnot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.17, 14, 14),
+      headbandMat
+    );
+    headbandKnot.position.set(0, 0.43, -0.82);
+    maskGroup.add(headbandKnot);
+
+    [-1, 1].forEach(side => {
+      const tailRibbon = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.48, 0.05),
+        headbandMat
+      );
+      tailRibbon.position.set(side * 0.18, 0.24, -0.92);
+      tailRibbon.rotation.z = side * 0.42;
+      tailRibbon.rotation.x = 0.35;
+      maskGroup.add(tailRibbon);
+    });
 
     const visorFrame = new THREE.Mesh(
       new THREE.BoxGeometry(1.12, 0.44, 0.42),
@@ -3611,10 +4121,18 @@ export default function HamsterPaintball({
       [0, 0.06, -0.04]
     ];
     hopperBallOffsets.forEach(([bx, by, bz], bi) => {
+      const hbColor =
+        team === 'red' || team === 'blue'
+          ? teamColorNum
+          : bi % 2 === 0
+          ? teamColorNum
+          : skin.paintColor;
       const hb = new THREE.Mesh(
         new THREE.SphereGeometry(0.072, 10, 10),
         new THREE.MeshPhysicalMaterial({
-          color: bi % 2 === 0 ? teamColorNum : skin.paintColor,
+          color: hbColor,
+          emissive: hbColor,
+          emissiveIntensity: 0.28,
           clearcoat: 1.0,
           roughness: 0.1
         })
@@ -3635,6 +4153,22 @@ export default function HamsterPaintball({
     markerGroup.add(hopperGroup);
     bodyGroup.add(markerGroup);
     root.add(bodyGroup);
+
+    // 6b. 3D Team Identification Ground Ring under the Hamster's Feet (Red Ring for Red Team, Blue Ring for Blue Team)
+    if (!isHostReferee && (team === 'red' || team === 'blue')) {
+      const teamGroundRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.92, 1.18, 32),
+        new THREE.MeshBasicMaterial({
+          color: teamColorNum,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.88
+        })
+      );
+      teamGroundRing.rotation.x = -Math.PI / 2;
+      teamGroundRing.position.y = 0.05;
+      root.add(teamGroundRing);
+    }
 
     // 7. 3D Ground Aura Ring when Long-Pressing a Health/Defence Can
     const canAuraRing = new THREE.Mesh(
@@ -4902,8 +5436,16 @@ export default function HamsterPaintball({
       splatDecals: [],
       particles: [],
       remotePlayers: new Map(),
-      waterMesh: water
+      waterMesh: water,
+      broadcastChannel: broadcastChannelRef.current || undefined
     };
+
+    // Re-populate any already-connected remote players into the freshly created scene
+    stateSnapRef.current.roomPlayers.forEach(rp => {
+      if (rp.id !== clientIdRef.current && rp.role === 'player' && !rp.kicked) {
+        upsertRemotePlayer(rp);
+      }
+    });
 
     // Keyboard & Mouse Listeners
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -4974,10 +5516,20 @@ export default function HamsterPaintball({
       if (!gameRef.current || !container) return;
       const w = container.clientWidth || window.innerWidth;
       const h = container.clientHeight || window.innerHeight;
-      gameRef.current.camera.aspect = w / Math.max(1, h);
+      const aspect = w / Math.max(1, h);
+      gameRef.current.camera.aspect = aspect;
+      // Dynamically adapt FOV to span the arena widely on Mobile & Tablet in both Portrait & Landscape
+      if (aspect < 1.0) {
+        gameRef.current.camera.fov = THREE.MathUtils.clamp(48 / Math.pow(aspect, 0.45), 54, 74);
+      } else if (w < 1200) {
+        gameRef.current.camera.fov = 54;
+      } else {
+        gameRef.current.camera.fov = 48;
+      }
       gameRef.current.camera.updateProjectionMatrix();
       gameRef.current.renderer.setSize(w, h);
     };
+    handleResize();
 
     const resizeObserver =
       typeof ResizeObserver !== 'undefined'
@@ -4993,6 +5545,8 @@ export default function HamsterPaintball({
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
 
     // =========================================================
     // MAIN 60FPS ANIMATION LOOP (STABLE CAMERA — NO SPIN FEEDBACK LOOP!)
@@ -5085,12 +5639,15 @@ export default function HamsterPaintball({
               remotes[snapState.hostFollowIndex % remotes.length];
             const tx = matchedEntry.mesh.position.x;
             const tz = matchedEntry.mesh.position.z;
+            const camAspect = camera.aspect || 1.5;
+            const portraitOffset =
+              camAspect < 1.0 ? Math.min(7.5, (1.0 - camAspect) * 14) : camAspect < 1.4 ? 1.8 : 0;
             // Match exact student player follow-camera view perspective
             g.hostCamX += (tx - g.hostCamX) * 8 * dt;
             g.hostCamZ += (tz - g.hostCamZ) * 8 * dt;
             camera.position.x += (g.hostCamX - camera.position.x) * 8 * dt;
-            camera.position.y += (23.5 - camera.position.y) * 8 * dt;
-            camera.position.z += (g.hostCamZ + 19.5 - camera.position.z) * 8 * dt;
+            camera.position.y += (23.5 + portraitOffset - camera.position.y) * 8 * dt;
+            camera.position.z += (g.hostCamZ + 19.5 + portraitOffset * 0.85 - camera.position.z) * 8 * dt;
             camera.lookAt(g.hostCamX, 1.2, g.hostCamZ - 1.5);
           } else {
             camera.position.x += (0 - camera.position.x) * 5 * dt;
@@ -5104,8 +5661,10 @@ export default function HamsterPaintball({
             g.hostCamX = Math.max(-36, Math.min(36, g.hostCamX + moveX * 24 * dt));
             g.hostCamZ = Math.max(-26, Math.min(26, g.hostCamZ + moveZ * 24 * dt));
           }
-          const targetY = snapState.screen === 'game' ? 40 : 28;
-          const targetZ = snapState.screen === 'game' ? g.hostCamZ + 33 : 22;
+          const camAspect = camera.aspect || 1.5;
+          const portraitZoomOut = camAspect < 1.0 ? Math.min(10, (1.0 - camAspect) * 18) : 0;
+          const targetY = (snapState.screen === 'game' ? 40 : 28) + portraitZoomOut;
+          const targetZ = (snapState.screen === 'game' ? g.hostCamZ + 33 : 22) + portraitZoomOut * 0.8;
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
@@ -5125,6 +5684,18 @@ export default function HamsterPaintball({
 
         g.x = Math.max(-43, Math.min(43, g.x + g.vx * dt));
         g.z = Math.max(-30, Math.min(30, g.z + g.vz * dt));
+
+        // ENFORCE: When Host starts the game, Red Team players MUST stay first in the Red Square Spawn
+        // and Blue Team players MUST stay first in the Blue Square Spawn during the opening Spawn Hold!
+        if (snapState.matchStatus === 'playing' && Date.now() < snapState.spawnHoldUntil) {
+          const isBluePlayer = snapState.myTeam === 'blue';
+          const minSpawnX = isBluePlayer ? 29.8 : -40.2;
+          const maxSpawnX = isBluePlayer ? 40.2 : -29.8;
+          const minSpawnZ = -27.5;
+          const maxSpawnZ = -18.5;
+          g.x = Math.max(minSpawnX, Math.min(maxSpawnX, g.x));
+          g.z = Math.max(minSpawnZ, Math.min(maxSpawnZ, g.z));
+        }
 
         // Accessible Smooth Obstacle Collisions
         g.obstacles.forEach(obs => {
@@ -5172,10 +5743,13 @@ export default function HamsterPaintball({
           prev?.id === closestCan?.id && prev?.type === closestCan?.type ? prev : closestCan
         );
 
-        // STABLE FOLLOW CAMERA (Decoupled from mouse rotation so screen NEVER spins uncontrollably!)
+        // STABLE FOLLOW CAMERA (Adapted to span widely on Mobile & Tablet in Portrait & Landscape!)
+        const camAspect = camera.aspect || 1.5;
+        const portraitOffset =
+          camAspect < 1.0 ? Math.min(7.5, (1.0 - camAspect) * 14) : camAspect < 1.4 ? 1.8 : 0;
         const targetCamX = g.x;
-        const targetCamY = 23.5;
-        const targetCamZ = g.z + 19.5;
+        const targetCamY = 23.5 + portraitOffset;
+        const targetCamZ = g.z + 19.5 + portraitOffset * 0.85;
         camera.position.x += (targetCamX - camera.position.x) * 8 * dt;
         camera.position.y += (targetCamY - camera.position.y) * 8 * dt;
         camera.position.z += (targetCamZ - camera.position.z) * 8 * dt;
@@ -5450,6 +6024,15 @@ export default function HamsterPaintball({
         }
       }
 
+      // Guarantee All Remote Players in `roomPlayers` are Always Visible in the 3D Arena!
+      snapState.roomPlayers.forEach(rp => {
+        if (rp.id !== clientIdRef.current && rp.role === 'player' && !rp.kicked) {
+          if (!g.remotePlayers.has(rp.id)) {
+            upsertRemotePlayer(rp);
+          }
+        }
+      });
+
       // Smoothly Interpolate Remote Student Players & Update their 3D Respawn Immunity Shield
       g.remotePlayers.forEach(entry => {
         const dx = entry.data.x - entry.mesh.position.x;
@@ -5482,28 +6065,72 @@ export default function HamsterPaintball({
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
       if (resizeObserver) resizeObserver.disconnect();
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       pmremGenerator.dispose();
       renderer.dispose();
     };
-  }, [selectedSkinIdx, role, myTeam]);
+  }, []);
+
+  // Keep Local Student Hamster's 3D Name Tag, Team Headband & Aim Laser synced when playerName, team, skin, or role changes
+  useEffect(() => {
+    const g = gameRef.current;
+    if (!g) return;
+    const isHostRole = role === 'host';
+    const activeTeam: TeamId =
+      matchMode === 'solo' ? 'solo' : myTeam === 'blue' ? 'blue' : 'red';
+    const localLabel = isHostRole
+      ? 'Teacher Jan'
+      : activeTeam !== 'solo'
+      ? `[${activeTeam.toUpperCase()}] ${playerName || 'Student'}`
+      : playerName || 'Student';
+    g.scene.remove(g.localHamster);
+    const updatedHamster = buildHighDefHamster(
+      selectedSkinIdx,
+      localLabel,
+      isHostRole,
+      activeTeam
+    );
+    updatedHamster.position.set(g.x, isHostRole ? 0.32 : 0, g.z);
+    updatedHamster.rotation.y = g.rotY;
+    updatedHamster.visible = !isHostRole;
+    g.scene.add(updatedHamster);
+    g.localHamster = updatedHamster;
+
+    const aimColorNum = resolveTeamPaintColor(activeTeam, undefined, selectedSkinIdx);
+    if (g.aimReticle) {
+      g.aimReticle.visible = !isHostRole;
+      const outerMesh = g.aimReticle.children[0] as THREE.Mesh;
+      if (outerMesh && outerMesh.material) {
+        (outerMesh.material as THREE.MeshBasicMaterial).color.setHex(aimColorNum);
+      }
+    }
+    if (g.aimLaserLine) {
+      g.aimLaserLine.visible = !isHostRole;
+      (g.aimLaserLine.material as THREE.LineBasicMaterial).color.setHex(aimColorNum);
+    }
+  }, [playerName, selectedSkinIdx, myTeam, matchMode, role]);
 
   // -------------------------------------------------------------
   // 7. FIRE PAINTBALL DIRECTLY OUT OF THE 3D GUN BARREL MUZZLE & EARN AMMO VIA QUESTIONS
   // -------------------------------------------------------------
   const fireShot = () => {
     const g = gameRef.current;
-    if (!g || role !== 'player' || stateSnapRef.current.screen !== 'game') return;
+    const snap = stateSnapRef.current;
+    if (!g || snap.role !== 'player' || snap.screen !== 'game') return;
     const now = performance.now();
     if (now - g.lastShotTime < 185) return;
 
-    const isPlayingMatch = stateSnapRef.current.matchStatus === 'playing';
+    const isPlayingMatch = snap.matchStatus === 'playing';
 
     // During the Lobby ('lobby'), players can shoot freely!
-    // During the active Game ('playing'), players answer questions to earn paintballs.
+    // During the active Game ('playing'), players must answer questions to gain paintballs.
     if (isPlayingMatch) {
-      if (stateSnapRef.current.ammo <= 0) {
+      if (snap.ammo <= 0) {
+        g.shootButtonHeld = false;
+        g.mouseDown = false;
         setIsQuestionModalOpen(true);
         return;
       }
@@ -5513,11 +6140,14 @@ export default function HamsterPaintball({
     g.lastShotTime = now;
     sfx.playMarkerShot();
 
-    const skinObj = HAMSTER_SKINS[selectedSkinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
-    const teamPaint =
-      matchMode === 'teams' && myTeam !== 'solo'
-        ? TEAM_CONFIG[myTeam].colorNum
-        : skinObj.paintColor;
+    // Enforce: Red Team ALWAYS fires Red Paint (0xef4444) and Blue Team ALWAYS fires Blue Paint (0x2563eb)!
+    const activeTeam: TeamId =
+      snap.matchMode === 'solo'
+        ? 'solo'
+        : snap.myTeam === 'blue'
+        ? 'blue'
+        : 'red';
+    const teamPaint = resolveTeamPaintColor(activeTeam, undefined, snap.selectedSkinIdx);
 
     // 1. Face the Hamster toward the Aim Target & Align Gun Barrel
     const dx = g.aimWorldX - g.x;
@@ -5566,8 +6196,8 @@ export default function HamsterPaintball({
 
     g.projectiles.push({
       ownerId: clientIdRef.current,
-      ownerName: playerName || 'Student',
-      ownerTeam: matchMode === 'teams' ? myTeam : 'solo',
+      ownerName: snap.playerName || 'Student',
+      ownerTeam: activeTeam,
       mesh: ball,
       vx: Math.sin(shotAngle) * 40,
       vy: 1.65,
@@ -5583,8 +6213,8 @@ export default function HamsterPaintball({
           type: 'fire_shot',
           id: clientIdRef.current,
           ownerId: clientIdRef.current,
-          ownerName: playerName || 'Student',
-          ownerTeam: matchMode === 'teams' ? myTeam : 'solo',
+          ownerName: snap.playerName || 'Student',
+          ownerTeam: activeTeam,
           x: g.x,
           z: g.z,
           angle: shotAngle,
@@ -5682,29 +6312,91 @@ export default function HamsterPaintball({
     pushLiveEvent(`🗑️ Host removed ${player.name} from the lobby.`, '#f43f5e');
   };
 
-  // Teacher Host Action: Start Match & Immediately Take the View of the Players
+  // Teacher Host Action: Start Match & Place All Red Players in Red Spawn and Blue Players in Blue Spawn
   const handleStartMultiplayerMatch = () => {
+    const startTs = Date.now();
+    lastStartedAtRef.current = startTs;
     sfx.playKO();
+    sfx.startMusic();
     setMatchStatus('playing');
     setIsTimerPaused(false);
     setMatchSeconds(configuredDurationSec);
     setHostCameraMode('auto_track');
     setHostFollowIndex(0);
     setScreen('game');
+
+    // Place ALL joined players into their Red Square Spawn (-35, -23) or Blue Square Spawn (35, -23) first!
+    let redSlot = 0;
+    let blueSlot = 0;
+    const updatedPlayers: PlayerNetworkState[] = roomPlayers.map(p => {
+      const assignedTeam: TeamId =
+        matchMode === 'solo'
+          ? 'solo'
+          : p.team === 'blue'
+          ? 'blue'
+          : 'red';
+      const slot = assignedTeam === 'blue' ? blueSlot++ : redSlot++;
+      const sp = getTeamSpawnPosition(assignedTeam, matchMode, slot);
+      const nextP: PlayerNetworkState = {
+        ...p,
+        team: assignedTeam,
+        x: sp.x,
+        z: sp.z,
+        rotY: sp.rotY,
+        hp: 100,
+        shield: 100,
+        score: 0,
+        kos: 0,
+        hitsLanded: 0,
+        bestStreak: 0,
+        immuneUntil: 0,
+        updatedAt: startTs
+      };
+      if (roomCode) {
+        setDoc(
+          getPlayerDocRef(roomCode, p.id),
+          {
+            team: assignedTeam,
+            x: sp.x,
+            z: sp.z,
+            rotY: sp.rotY,
+            hp: 100,
+            shield: 100,
+            score: 0,
+            kos: 0,
+            hitsLanded: 0,
+            bestStreak: 0,
+            immuneUntil: 0,
+            updatedAt: startTs
+          },
+          { merge: true }
+        ).catch(() => {});
+      }
+      upsertRemotePlayer(nextP);
+      return nextP;
+    });
+    if (updatedPlayers.length > 0) {
+      setRoomPlayers(updatedPlayers);
+    }
+
     const startEv: LiveFeedEvent = {
-      id: `start-${Date.now()}`,
-      text: `🚀 Match Started! (${matchMode === 'teams' ? 'Team Battle' : 'Solo Free-For-All'} • ${ballsPerQuestion} Balls/Question)`,
+      id: `start-${startTs}`,
+      text: `🚀 Match Started! Red Team in Red Spawn & Blue Team in Blue Spawn (${ballsPerQuestion} Balls/Question)!`,
       color: '#a3e635',
-      timestamp: Date.now()
+      timestamp: startTs
     };
     setLiveEvents(prev => [startEv, ...prev]);
 
-    if (gameRef.current?.broadcastChannel) {
+    const bcChannel = broadcastChannelRef.current || gameRef.current?.broadcastChannel;
+    if (bcChannel) {
       try {
-        gameRef.current.broadcastChannel.postMessage({
+        bcChannel.postMessage({
           type: 'match_start',
           id: clientIdRef.current,
+          startedAt: startTs,
+          matchMode,
           durationSec: configuredDurationSec,
+          ballsPerQuestion,
           quizTitle: activeQuiz.title || activeQuiz.topic || 'Hamster Paintball',
           topic: activeQuiz.topic || '',
           classLevel: activeQuiz.classLevel || '',
@@ -5723,13 +6415,43 @@ export default function HamsterPaintball({
           ballsPerQuestion,
           isTimerPaused: false,
           timerSyncSeconds: configuredDurationSec,
-          timerSyncedAt: Date.now(),
+          timerSyncedAt: startTs,
           quizTitle: activeQuiz.title || activeQuiz.topic || 'Hamster Paintball',
           topic: activeQuiz.topic || '',
           classLevel: activeQuiz.classLevel || '',
           questions: effectiveQuestions,
-          startedAt: Date.now(),
+          startedAt: startTs,
           latestEvent: startEv
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
+  };
+
+  // Teacher Host Action: Update Balls Per Question (Lobby & Live Game) & Sync Immediately
+  const handleHostUpdateBallsPerQuestion = (nextCount: number) => {
+    const clamped = Math.max(1, Math.min(50, Math.round(nextCount)));
+    sfx.playCorrect();
+    setBallsPerQuestion(clamped);
+    stateSnapRef.current.ballsPerQuestion = clamped;
+
+    const bcChannel = broadcastChannelRef.current || gameRef.current?.broadcastChannel;
+    if (bcChannel) {
+      try {
+        bcChannel.postMessage({
+          type: 'balls_config',
+          id: clientIdRef.current,
+          ballsPerQuestion: clamped
+        });
+      } catch {}
+    }
+
+    if (roomCode) {
+      setDoc(
+        getRoomDocRef(roomCode),
+        {
+          ballsPerQuestion: clamped,
+          updatedAt: Date.now()
         },
         { merge: true }
       ).catch(() => {});
@@ -5841,11 +6563,12 @@ export default function HamsterPaintball({
       const streakBonusPts = Math.min(25, triviaStreak * 5);
       const speedBonusPts = questionTimeLeft >= 10 ? 10 : questionTimeLeft >= 5 ? 5 : 0;
       const totalEarnedPts = basePts + streakBonusPts + speedBonusPts;
+      const earnedBalls = stateSnapRef.current.ballsPerQuestion || ballsPerQuestion || 10;
 
       sfx.playScoreCombo(nextStreak);
       setTriviaStreak(nextStreak);
       setBestStreak(b => Math.max(b, nextStreak));
-      setAmmo(a => a + ballsPerQuestion);
+      setAmmo(a => a + earnedBalls);
       setQuestionsAnswered(q => q + 1);
       awardPoints(
         totalEarnedPts,
@@ -5855,15 +6578,15 @@ export default function HamsterPaintball({
         '#a3e635'
       );
 
-      const bonusBreakdown: string[] = [`+${ basePts } Base`];
+      const bonusBreakdown: string[] = [`+${basePts} Base`];
       if (streakBonusPts > 0) bonusBreakdown.push(`+${streakBonusPts} Streak (${nextStreak}x)`);
       if (speedBonusPts > 0) bonusBreakdown.push(`+${speedBonusPts} Speed Bonus`);
 
       setTriviaFeedback(
-        `✅ CORRECT! +${ballsPerQuestion} Paintballs & +${totalEarnedPts} PTS (${bonusBreakdown.join(' • ')})!`
+        `✅ CORRECT! +${earnedBalls} Paintballs & +${totalEarnedPts} PTS (${bonusBreakdown.join(' • ')})!`
       );
 
-      const evText = `🎯 ${playerName} answered in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${ballsPerQuestion} Balls & +${totalEarnedPts} PTS • ${nextStreak}x Streak)!`;
+      const evText = `🎯 ${playerName} answered in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${earnedBalls} Balls & +${totalEarnedPts} PTS • ${nextStreak}x Streak)!`;
       pushLiveEvent(evText, '#a3e635');
       if (roomCode) {
         setDoc(
@@ -5983,7 +6706,7 @@ export default function HamsterPaintball({
   return (
     <div
       id="paintball-game-container"
-      className="relative w-full h-full flex-1 min-h-0 bg-slate-900 overflow-hidden font-sans select-none text-slate-100"
+      className="fixed inset-0 z-[60] w-screen h-[100dvh] xl:relative xl:inset-auto xl:z-auto xl:w-full xl:h-full flex-1 min-h-0 bg-slate-900 overflow-hidden font-sans select-none text-slate-100 touch-manipulation"
     >
       {/* 3D WebGL Canvas Layer */}
       <div
@@ -6001,9 +6724,9 @@ export default function HamsterPaintball({
       />
 
       {/* -------------------------------------------------------------
-          TOP ARCADE NAVIGATION HEADER
+          TOP ARCADE NAVIGATION HEADER (SINGLE-LINE NON-OVERLAPPING ON MOBILE & TABLET)
          ------------------------------------------------------------- */}
-      <div className="absolute top-2.5 inset-x-3 z-30 flex items-center justify-between pointer-events-none gap-2">
+      <div className="absolute top-1.5 sm:top-2 inset-x-2 sm:inset-x-3 z-30 flex items-center justify-between pointer-events-none gap-1.5 flex-nowrap">
         <button
           onClick={() => {
             if (role === 'player' && roomCode) {
@@ -6012,30 +6735,33 @@ export default function HamsterPaintball({
             }
             onViewChange('games');
           }}
-          className="pointer-events-auto flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm border border-white/20 shadow-xl transition active:scale-95 cursor-pointer"
+          className="pointer-events-auto shrink-0 flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white font-extrabold text-[11px] sm:text-xs border border-white/20 shadow-xl transition active:scale-95 cursor-pointer"
         >
-          <ArrowLeft size={16} className="text-lime-400" />
+          <ArrowLeft size={14} className="text-lime-400" />
           <span>Back</span>
         </button>
 
-        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+        <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 flex-nowrap justify-end min-w-0">
           {role === 'host' && screen === 'lobby' && (
             <button
               onClick={() => setIsLobbyMinimized(prev => !prev)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-emerald-600/95 hover:bg-emerald-500 text-white font-extrabold text-xs border border-emerald-400/40 shadow-lg transition cursor-pointer"
+              className="shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-emerald-600/95 hover:bg-emerald-500 text-white font-extrabold text-[11px] sm:text-xs border border-emerald-400/40 shadow-lg transition cursor-pointer"
             >
-              <Eye size={14} />
-              <span>{isLobbyMinimized ? 'Show Live Lobby Card' : 'Peek 3D Park'}</span>
+              <Eye size={13} />
+              <span className="hidden sm:inline">
+                {isLobbyMinimized ? 'Show Live Lobby Card' : 'Peek 3D Park'}
+              </span>
+              <span className="sm:hidden">{isLobbyMinimized ? 'Lobby' : 'Peek'}</span>
             </button>
           )}
 
           {role === 'host' && (
             <button
               onClick={() => setScreen('editor')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-indigo-600/95 hover:bg-indigo-500 text-white font-bold text-xs border border-indigo-400/30 shadow-lg transition cursor-pointer"
+              className="shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-indigo-600/95 hover:bg-indigo-500 text-white font-bold text-[11px] sm:text-xs border border-indigo-400/30 shadow-lg transition cursor-pointer"
             >
-              <Edit3 size={14} />
-              <span className="hidden sm:inline">Edit Questions</span>
+              <Edit3 size={13} />
+              <span className="hidden md:inline">Edit Questions</span>
               <span>({activeQuiz.questions.length})</span>
             </button>
           )}
@@ -6043,27 +6769,40 @@ export default function HamsterPaintball({
           {role === 'host' && (
             <button
               onClick={() => setShowModeModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-sky-600/95 hover:bg-sky-500 text-white font-bold text-xs border border-sky-400/30 shadow-lg transition cursor-pointer"
+              className="shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-sky-600/95 hover:bg-sky-500 text-white font-bold text-[11px] sm:text-xs border border-sky-400/30 shadow-lg transition cursor-pointer"
             >
-              <span>🎮 Switch Game</span>
+              <span>🎮</span>
+              <span className="hidden sm:inline">Switch Game</span>
             </button>
           )}
 
           <button
+            onClick={() => setMusicEnabled(!musicEnabled)}
+            className={`shrink-0 px-2 sm:px-2.5 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border flex items-center gap-1 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black ${
+              musicEnabled && soundEnabled ? 'border-lime-400/50 text-lime-300' : 'border-white/20 text-slate-400'
+            }`}
+            title={musicEnabled ? 'Mute Arena Music' : 'Play Arena Music'}
+          >
+            <span>{musicEnabled && soundEnabled ? '🎵' : '🔇'}</span>
+            <span className="hidden md:inline">Music</span>
+          </button>
+
+          <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className="w-9 h-9 rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center justify-center transition shadow-lg cursor-pointer"
+            className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center justify-center transition shadow-lg cursor-pointer"
+            title={soundEnabled ? 'Mute All Audio' : 'Unmute Audio'}
           >
             {soundEnabled ? (
-              <Volume2 size={16} className="text-lime-400" />
+              <Volume2 size={15} className="text-lime-400" />
             ) : (
-              <VolumeX size={16} className="text-rose-400" />
+              <VolumeX size={15} className="text-rose-400" />
             )}
           </button>
 
           <FullscreenButton
             targetId="paintball-game-container"
             showLabel
-            className="bg-slate-900/95 hover:bg-slate-800 text-white border border-lime-400/40 shadow-lg"
+            className="shrink-0 bg-slate-900/95 hover:bg-slate-800 text-white border border-lime-400/40 shadow-lg text-[11px] sm:text-xs px-2 sm:px-3 py-1.5"
           />
         </div>
       </div>
@@ -6093,8 +6832,8 @@ export default function HamsterPaintball({
           SCREEN 2: STUDENT JOIN MODAL (CHOOSE YOUR HAMSTER CHARACTER & ENTER LOBBY TO WAIT FOR HOST)
          ------------------------------------------------------------- */}
       {screen === 'join' && (
-        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/85 flex items-center justify-center p-3 sm:p-4 py-14 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[600px] p-4 sm:p-6 flex flex-col items-center border-2 border-slate-200 relative overflow-hidden text-slate-900 my-auto">
+        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/85 flex items-center justify-center p-2.5 sm:p-4 pt-12 pb-3 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[600px] max-h-[86dvh] overflow-y-auto p-3.5 sm:p-6 flex flex-col items-center border-2 border-slate-200 relative text-slate-900 my-auto">
             <div className="absolute top-0 inset-x-0 h-2.5 bg-gradient-to-r from-lime-400 via-pink-500 to-cyan-400" />
 
             <div className="text-center mb-2.5 mt-1">
@@ -6140,7 +6879,11 @@ export default function HamsterPaintball({
                           Pick
                         </span>
                       )}
-                      <HamsterCharacterAvatar skin={skin} size={52} />
+                      <HamsterCharacterAvatar
+                        skin={skin}
+                        size={52}
+                        team={matchMode === 'teams' ? myTeam : 'solo'}
+                      />
                       <span className="mt-0.5 font-black text-[10px] sm:text-[11px] text-slate-900 leading-tight text-center truncate w-full">
                         {skin.name}
                       </span>
@@ -6282,8 +7025,21 @@ export default function HamsterPaintball({
                         setTriviaDeckIndex(0);
                       }
                     }
+                    if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
+                      setBallsPerQuestion(data.ballsPerQuestion);
+                      stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
+                    }
+                    if (data.matchMode) {
+                      setMatchMode(data.matchMode);
+                    }
                     if (data.matchStatus === 'playing') {
-                      setMatchStatus('playing');
+                      triggerStudentMatchStart(
+                        data.configuredDurationSec || 180,
+                        data.matchMode || matchMode,
+                        typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
+                        Boolean(data.isTimerPaused),
+                        typeof data.ballsPerQuestion === 'number' ? data.ballsPerQuestion : undefined
+                      );
                     } else {
                       setMatchStatus('lobby');
                     }
@@ -6311,9 +7067,9 @@ export default function HamsterPaintball({
           Clean Popup Banner over the live 3D Park with BIG QR Code!
          ------------------------------------------------------------- */}
       {screen === 'lobby' && role === 'host' && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center p-3 sm:p-5 pt-14 overflow-y-auto pointer-events-none">
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-2.5 sm:p-5 pt-12 pb-3 overflow-y-auto pointer-events-none">
           {!isLobbyMinimized ? (
-            <div className="pointer-events-auto relative w-full max-w-4xl my-auto bg-[#1b1130]/96 p-5 sm:p-7 rounded-3xl shadow-2xl border-2 border-lime-400/50 space-y-4">
+            <div className="pointer-events-auto relative w-full max-w-4xl max-h-[86dvh] overflow-y-auto my-auto bg-[#1b1130]/96 p-4 sm:p-6 rounded-3xl shadow-2xl border-2 border-lime-400/50 space-y-3.5">
               {/* Popup Minimize / Full Screen Toggle in Top-Right Corner */}
               <div className="absolute top-3.5 right-3.5 flex items-center gap-2">
                 <FullscreenButton
@@ -6504,24 +7260,47 @@ export default function HamsterPaintball({
                   </div>
                 </div>
 
-                {/* 3. Paintballs Earned Per Question */}
+                {/* 3. Paintballs Earned Per Question (Host Assigns Balls Per Question: Presets + Custom Stepper) */}
                 <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-lime-300">
-                    3. Balls Per Question
-                  </span>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {[5, 10, 15, 25].map(count => (
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-lime-300">
+                      3. Balls Per Question
+                    </span>
+                    <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-lime-400/40">
+                      <button
+                        type="button"
+                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
+                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                        title="Decrease Balls per Question"
+                      >
+                        -
+                      </button>
+                      <span className="text-[11px] font-mono font-black text-lime-300 px-1">
+                        +{ballsPerQuestion}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
+                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                        title="Increase Balls per Question"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-6 gap-1">
+                    {[3, 5, 10, 15, 20, 25].map(count => (
                       <button
                         key={count}
                         type="button"
-                        onClick={() => setBallsPerQuestion(count)}
-                        className={`py-1.5 rounded-xl font-black text-xs transition cursor-pointer ${
+                        onClick={() => handleHostUpdateBallsPerQuestion(count)}
+                        className={`py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
                           ballsPerQuestion === count
                             ? 'bg-lime-400 text-slate-950 border border-white shadow'
                             : 'bg-slate-800 text-slate-400 hover:text-white'
                         }`}
                       >
-                        +{count} 🟢
+                        +{count}
                       </button>
                     ))}
                   </div>
@@ -6575,7 +7354,11 @@ export default function HamsterPaintball({
                           className={`p-2.5 rounded-2xl bg-slate-900/95 border-2 ${tCfg.borderClass} flex items-center justify-between gap-2 shadow-md`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <HamsterCharacterAvatar skin={charSkin} size={36} />
+                            <HamsterCharacterAvatar
+                              skin={charSkin}
+                              size={36}
+                              team={matchMode === 'teams' ? p.team || 'red' : 'solo'}
+                            />
                             <div className="min-w-0">
                               <div className="font-black text-xs text-white truncate">
                                 {p.name}
@@ -6725,57 +7508,71 @@ export default function HamsterPaintball({
           SCREEN 4: IN-GAME 3D PARK HUD (STUDENT ROAM/PLAY HUD VS. HOST BROADCAST HUD)
          ------------------------------------------------------------- */}
       {screen === 'game' && (
-        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-2 sm:p-3.5 pt-12 sm:pt-14">
-          {/* TOP HUD BAR: COMPACT NON-COVERING LAYOUT */}
-          <div className="w-full flex items-start justify-between gap-1.5 sm:gap-2">
+        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-1.5 sm:p-3 pt-11 sm:pt-12">
+          {/* TOP HUD BAR: NON-OVERLAPPING RESPONSIVE 3-COLUMN LAYOUT FOR MOBILE & TABLET (PORTRAIT & LANDSCAPE) */}
+          <div className="w-full flex items-start justify-between gap-1 sm:gap-2 flex-nowrap">
             {role === 'player' ? (
-              /* STUDENT TOP-LEFT: SCORE, STREAK MULTIPLIER, FLOATING +PTS POPUPS + SMALLER HEALTH & SHIELD BARS */
-              <div className="relative pointer-events-auto bg-slate-900/90 rounded-xl p-1.5 sm:p-2 w-44 sm:w-56 border-l-3 border-l-lime-400 border border-white/15 shadow-lg">
+              /* STUDENT TOP-LEFT: SCORE, STREAK MULTIPLIER, FLOATING +PTS POPUPS + COMPACT HEALTH & SHIELD BARS */
+              <div className="relative pointer-events-auto shrink-0 bg-slate-900/90 rounded-xl p-1.5 sm:p-2 w-[132px] sm:w-48 md:w-56 border-l-3 border-l-lime-400 border border-white/15 shadow-lg">
                 {/* SCORE & STREAK ON TOP ROW */}
                 <div className="flex items-center justify-between gap-1 pb-1 mb-1 border-b border-white/10">
                   <div className="flex items-center gap-1 min-w-0">
-                    <HamsterCharacterAvatar
-                      skin={HAMSTER_SKINS[selectedSkinIdx] || HAMSTER_SKINS[0]}
-                      size={20}
-                    />
-                    <span className="font-black text-white text-[10px] sm:text-xs truncate">
+                    <div className="hidden sm:block shrink-0">
+                      <HamsterCharacterAvatar
+                        skin={HAMSTER_SKINS[selectedSkinIdx] || HAMSTER_SKINS[0]}
+                        size={20}
+                        team={matchMode === 'teams' ? myTeam : 'solo'}
+                      />
+                    </div>
+                    {matchMode === 'teams' && (
+                      <span
+                        className={`px-1 py-0.2 rounded font-black text-[7px] sm:text-[8px] uppercase text-white shrink-0 ${
+                          myTeam === 'blue' ? 'bg-blue-600' : 'bg-red-600'
+                        }`}
+                      >
+                        {myTeam === 'blue' ? 'BLUE' : 'RED'}
+                      </span>
+                    )}
+                    <span className="font-black text-white text-[9px] sm:text-xs truncate">
                       {playerName.toUpperCase()}
                     </span>
                   </div>
-                  <div className="shrink-0 bg-amber-400/15 border border-amber-400/40 px-1.5 py-0.5 rounded-md text-right">
-                    <span className="text-[10px] sm:text-xs font-black text-amber-300">
-                      ⭐ {score} PTS
+                  <div className="shrink-0 bg-amber-400/15 border border-amber-400/40 px-1 sm:px-1.5 py-0.5 rounded-md text-right">
+                    <span className="text-[9px] sm:text-xs font-black text-amber-300">
+                      ⭐{score}
                     </span>
-                    <span className="text-[8px] sm:text-[9px] font-bold text-pink-400 ml-1">
+                    <span className="hidden sm:inline text-[8px] sm:text-[9px] font-bold text-pink-400 ml-1">
                       • {kos} KOs
                     </span>
                   </div>
                 </div>
 
-                {/* ACTIVE STREAK / COMBO MULTIPLIER ROW */}
+                {/* ACTIVE STREAK / COMBO MULTIPLIER ROW (Hidden on ultra-short landscape viewports to avoid vertical crowding) */}
                 {(triviaStreak > 0 || koStreak > 0 || hitsLanded > 0) && (
-                  <div className="flex items-center justify-between gap-1 mb-1 text-[8px] sm:text-[9px] font-black">
-                    <span className="px-1.5 py-0.2 rounded bg-indigo-500/30 border border-indigo-400/40 text-indigo-200">
-                      🎯 Hits: {hitsLanded} • Qs: {questionsAnswered}
+                  <div className="hidden min-[440px]:flex items-center justify-between gap-1 mb-1 text-[8px] sm:text-[9px] font-black">
+                    <span className="px-1 py-0.2 rounded bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 truncate">
+                      🎯 {hitsLanded} • Qs: {questionsAnswered}
                     </span>
                     {(triviaStreak >= 2 || koStreak >= 2) && (
-                      <span className="px-1.5 py-0.2 rounded bg-amber-500/30 border border-amber-400 text-amber-300 animate-pulse">
-                        🔥 {Math.max(triviaStreak, koStreak)}x STREAK
+                      <span className="px-1 py-0.2 rounded bg-amber-500/30 border border-amber-400 text-amber-300 animate-pulse shrink-0">
+                        🔥 {Math.max(triviaStreak, koStreak)}x
                       </span>
                     )}
                   </div>
                 )}
 
-                {/* SMALLER HEALTH & SHIELD BARS */}
-                <div className="space-y-1">
+                {/* COMPACT HEALTH & SHIELD BARS */}
+                <div className="space-y-0.5 sm:space-y-1">
                   <div>
-                    <div className="flex items-center justify-between text-[8px] sm:text-[9px] font-black text-lime-300 leading-none mb-0.5">
+                    <div className="flex items-center justify-between text-[7px] sm:text-[9px] font-black text-lime-300 leading-none mb-0.5">
                       <span className="flex items-center gap-0.5">
-                        <Heart size={9} className="text-rose-400 fill-rose-400" /> HP
+                        <Heart size={8} className="text-rose-400 fill-rose-400" /> HP
                       </span>
-                      <span>{hp}/{maxHp}</span>
+                      <span>
+                        {hp}/{maxHp}
+                      </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-lime-500/40">
+                    <div className="w-full h-1 sm:h-1.5 bg-slate-950 rounded-full overflow-hidden border border-lime-500/40">
                       <div
                         className="h-full bg-gradient-to-r from-emerald-500 to-lime-400 rounded-full transition-all duration-200"
                         style={{ width: `${Math.max(0, (hp / maxHp) * 100)}%` }}
@@ -6784,13 +7581,15 @@ export default function HamsterPaintball({
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between text-[8px] sm:text-[9px] font-black text-cyan-300 leading-none mb-0.5">
+                    <div className="flex items-center justify-between text-[7px] sm:text-[9px] font-black text-cyan-300 leading-none mb-0.5">
                       <span className="flex items-center gap-0.5">
-                        <Shield size={9} className="text-cyan-400 fill-cyan-400" /> SHIELD
+                        <Shield size={8} className="text-cyan-400 fill-cyan-400" /> SHD
                       </span>
-                      <span>{shield}/{maxShield}</span>
+                      <span>
+                        {shield}/{maxShield}
+                      </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-cyan-500/40">
+                    <div className="w-full h-1 sm:h-1.5 bg-slate-950 rounded-full overflow-hidden border border-cyan-500/40">
                       <div
                         className="h-full bg-gradient-to-r from-sky-500 to-cyan-300 rounded-full transition-all duration-200"
                         style={{ width: `${Math.max(0, (shield / maxShield) * 100)}%` }}
@@ -6801,11 +7600,11 @@ export default function HamsterPaintball({
 
                 {/* FLOATING +PTS POPUP BADGES */}
                 {scorePopups.length > 0 && (
-                  <div className="pointer-events-none absolute -bottom-7 left-1 right-1 flex flex-wrap items-center gap-1">
-                    {scorePopups.slice(-2).map(pop => (
+                  <div className="pointer-events-none absolute -bottom-6 left-0 right-0 flex flex-wrap items-center gap-1">
+                    {scorePopups.slice(-1).map(pop => (
                       <span
                         key={pop.id}
-                        className="px-2 py-0.5 rounded-full bg-slate-950/95 border border-amber-400 text-[9px] sm:text-[10px] font-black shadow-lg animate-bounce"
+                        className="px-1.5 py-0.5 rounded-full bg-slate-950/95 border border-amber-400 text-[8px] sm:text-[10px] font-black shadow-lg animate-bounce truncate"
                         style={{ color: pop.color }}
                       >
                         +{pop.points} PTS • {pop.label}
@@ -6816,27 +7615,27 @@ export default function HamsterPaintball({
               </div>
             ) : (
               /* HOST TOP-LEFT: CURRENT PLAYER VIEW INDICATOR + LIVE FEED */
-              <div className="pointer-events-auto bg-slate-900/90 rounded-2xl p-2.5 sm:p-3 w-64 sm:w-80 border-l-4 border-l-lime-400 border border-white/15 shadow-2xl flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Radio size={14} className="text-lime-400 animate-pulse" />
-                    <span className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-lime-300">
+              <div className="pointer-events-auto shrink-0 bg-slate-900/90 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 w-44 sm:w-68 md:w-76 border-l-4 border-l-lime-400 border border-white/15 shadow-2xl flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <Radio size={12} className="text-lime-400 animate-pulse shrink-0" />
+                    <span className="font-black text-[9px] sm:text-xs uppercase tracking-wider text-lime-300 truncate">
                       {hostCameraMode === 'overview'
                         ? 'ARENA OVERVIEW'
                         : hostCameraMode === 'auto_track'
-                        ? 'AUTO SHUFFLE PLAYER VIEW'
-                        : 'FOCUS ON 1 PLAYER VIEW'}
+                        ? 'AUTO SHUFFLE VIEW'
+                        : 'FOCUS 1 PLAYER'}
                     </span>
                   </div>
-                  <span className="text-[10px] font-bold text-amber-300">
+                  <span className="text-[9px] sm:text-[10px] font-bold text-amber-300 shrink-0">
                     {roomPlayers.length > 0 && hostCameraMode !== 'overview'
                       ? `🎥 ${roomPlayers[hostFollowIndex % roomPlayers.length]?.name}`
-                      : `${roomPlayers.length} Players`}
+                      : `${roomPlayers.length}P`}
                   </span>
                 </div>
                 {liveEvents[0] && (
                   <div
-                    className="px-2 py-1 rounded-lg bg-slate-950/85 border border-white/10 text-[11px] font-bold truncate"
+                    className="hidden sm:block px-2 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 text-[10px] font-bold truncate"
                     style={{ color: liveEvents[0].color }}
                   >
                     {liveEvents[0].text}
@@ -6845,10 +7644,10 @@ export default function HamsterPaintball({
               </div>
             )}
 
-            {/* CENTER: UPGRADED MATCH COUNTDOWN TIMER WITH PROGRESS BAR, URGENCY STATES & HOST CONTROLS */}
-            <div className="pointer-events-auto flex flex-col items-center mx-auto">
+            {/* CENTER: UPGRADED MATCH COUNTDOWN TIMER + BALLS/Q INDICATOR & HOST CONTROLS */}
+            <div className="pointer-events-auto flex flex-col items-center mx-auto shrink-0">
               <div
-                className={`bg-slate-900/95 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl flex flex-col items-center gap-1 border shadow-lg transition ${
+                className={`bg-slate-900/95 px-2 sm:px-3 py-1 rounded-xl flex flex-col items-center gap-0.5 sm:gap-1 border shadow-lg transition ${
                   matchStatus === 'playing' && matchSeconds <= 30
                     ? 'border-rose-500 ring-2 ring-rose-500/40'
                     : matchStatus === 'playing' && matchSeconds <= 60
@@ -6856,19 +7655,19 @@ export default function HamsterPaintball({
                     : 'border-white/15'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] sm:text-xs font-mono font-black text-lime-300 flex items-center gap-1">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="hidden sm:flex text-[10px] sm:text-xs font-mono font-black text-lime-300 items-center gap-1">
                     <QrCode size={11} /> {roomCode}
                   </span>
 
                   {role === 'player' && matchStatus === 'lobby' ? (
                     <span className="px-2 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-[9px] sm:text-[11px]">
-                      🟢 LOBBY
+                      🟢 LOBBY ({roomCode})
                     </span>
                   ) : (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1 sm:gap-1.5">
                       <div
-                        className={`flex items-center gap-1 font-mono font-black text-xs sm:text-base px-2 py-0.5 rounded-lg border ${
+                        className={`flex items-center gap-1 font-mono font-black text-[11px] sm:text-sm px-1.5 sm:px-2 py-0.5 rounded-lg border ${
                           isTimerPaused
                             ? 'bg-amber-500/20 border-amber-400 text-amber-300'
                             : matchSeconds <= 30
@@ -6879,7 +7678,7 @@ export default function HamsterPaintball({
                         }`}
                       >
                         <Clock
-                          size={13}
+                          size={12}
                           className={
                             matchSeconds <= 30
                               ? 'text-rose-400'
@@ -6893,13 +7692,13 @@ export default function HamsterPaintball({
                           {(matchSeconds % 60).toString().padStart(2, '0')}
                         </span>
                         {isTimerPaused && (
-                          <span className="text-[9px] font-sans uppercase text-amber-300 ml-0.5">
+                          <span className="text-[8px] font-sans uppercase text-amber-300 ml-0.5">
                             PAUSED
                           </span>
                         )}
                       </div>
 
-                      {/* Host Live Timer Controls: Pause/Resume & +30s */}
+                      {/* Host Live Timer & Balls/Question Controls */}
                       {role === 'host' && (
                         <div className="flex items-center gap-1">
                           <button
@@ -6908,7 +7707,7 @@ export default function HamsterPaintball({
                             className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[9px] font-black text-amber-300 border border-white/15 cursor-pointer"
                             title={isTimerPaused ? 'Resume Timer' : 'Pause Timer'}
                           >
-                            {isTimerPaused ? '▶ Resume' : '⏸ Pause'}
+                            {isTimerPaused ? '▶' : '⏸'}
                           </button>
                           <button
                             type="button"
@@ -6918,6 +7717,26 @@ export default function HamsterPaintball({
                           >
                             +30s
                           </button>
+                          <div
+                            className="hidden md:flex items-center gap-0.5 bg-lime-400/15 border border-lime-400/40 px-1.5 py-0.5 rounded text-[9px] font-black text-lime-300"
+                            title="Adjust Paintballs Awarded Per Correct Question"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
+                              className="px-1 hover:text-white cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span>+{ballsPerQuestion}🟢/Q</span>
+                            <button
+                              type="button"
+                              onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
+                              className="px-1 hover:text-white cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -6926,8 +7745,8 @@ export default function HamsterPaintball({
 
                 {/* Match Timer Progress Bar & Final 30s Frenzy Indicator */}
                 {(role === 'host' || matchStatus === 'playing') && (
-                  <div className="w-full min-w-[125px] sm:min-w-[165px] flex flex-col gap-0.5">
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-white/10">
+                  <div className="w-full min-w-[96px] sm:min-w-[155px] flex flex-col gap-0.5">
+                    <div className="w-full h-1 sm:h-1.5 bg-slate-950 rounded-full overflow-hidden border border-white/10">
                       <div
                         className={`h-full transition-all duration-300 rounded-full ${
                           matchSeconds <= 30
@@ -6945,8 +7764,8 @@ export default function HamsterPaintball({
                       />
                     </div>
                     {matchSeconds <= 30 && matchSeconds > 0 && (
-                      <div className="text-[8px] sm:text-[9px] font-black text-rose-300 text-center uppercase tracking-wider">
-                        🔥 FINAL {matchSeconds}s FRENZY • +90 PTS PER SPLAT!
+                      <div className="hidden sm:block text-[8px] font-black text-rose-300 text-center uppercase tracking-wider">
+                        🔥 FINAL {matchSeconds}s FRENZY!
                       </div>
                     )}
                   </div>
@@ -6954,8 +7773,8 @@ export default function HamsterPaintball({
               </div>
             </div>
 
-            {/* TOP-RIGHT: HOST PLAYER-VIEW CONTROLS (FOCUS 1 PLAYER / AUTO SHUFFLE) & COMPACT ACTIONS */}
-            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1 sm:gap-1.5">
+            {/* TOP-RIGHT: HOST PLAYER-VIEW CONTROLS & COMPACT STUDENT ACTIONS */}
+            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1 sm:gap-1.5 shrink-0">
               {role === 'host' && (
                 <>
                   <button
@@ -6963,9 +7782,9 @@ export default function HamsterPaintball({
                       setIsLobbyMinimized(false);
                       setScreen('lobby');
                     }}
-                    className="h-8 px-2.5 rounded-xl bg-emerald-600/95 hover:bg-emerald-500 text-white font-black text-[11px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
+                    className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-emerald-600/95 hover:bg-emerald-500 text-white font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
                   >
-                    <Users size={13} />
+                    <Users size={12} />
                     <span>Lobby ({roomPlayers.length})</span>
                   </button>
 
@@ -6978,46 +7797,48 @@ export default function HamsterPaintball({
                         setHostFollowIndex(i => (i + 1) % roomPlayers.length);
                       }
                     }}
-                    className={`h-8 px-2.5 rounded-xl font-black text-[11px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer ${
+                    className={`h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer ${
                       hostCameraMode === 'track_one'
                         ? 'bg-cyan-400 text-slate-950 border-2 border-white'
                         : 'bg-slate-900/90 hover:bg-slate-800 text-cyan-300 border border-white/15'
                     }`}
                     title="Focus on 1 Player (Click again to switch player)"
                   >
-                    <Crosshair size={13} />
-                    <span>
+                    <Crosshair size={12} />
+                    <span className="hidden md:inline">
                       {hostCameraMode === 'track_one' && roomPlayers.length > 0
                         ? `Focus: ${roomPlayers[hostFollowIndex % roomPlayers.length]?.name} ⏭`
                         : 'Focus 1 Player'}
                     </span>
+                    <span className="md:hidden">Focus</span>
                   </button>
 
                   {/* 2. Auto Shuffle Players' Views */}
                   <button
                     onClick={() => setHostCameraMode('auto_track')}
-                    className={`h-8 px-2.5 rounded-xl font-black text-[11px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer ${
+                    className={`h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer ${
                       hostCameraMode === 'auto_track'
                         ? 'bg-lime-400 text-slate-950 border-2 border-white'
                         : 'bg-slate-900/90 hover:bg-slate-800 text-lime-300 border border-white/15'
                     }`}
                     title="Auto Shuffle between players' views every 4.5 seconds"
                   >
-                    <RotateCw size={13} />
-                    <span>Auto Shuffle</span>
+                    <RotateCw size={12} />
+                    <span className="hidden md:inline">Auto Shuffle</span>
+                    <span className="md:hidden">Shuffle</span>
                   </button>
 
                   {/* 3. Arena Overview */}
                   <button
                     onClick={() => setHostCameraMode('overview')}
-                    className={`h-8 px-2.5 rounded-xl font-black text-[11px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer ${
+                    className={`h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer ${
                       hostCameraMode === 'overview'
                         ? 'bg-indigo-600 text-white border border-indigo-300'
                         : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-white/15'
                     }`}
                   >
-                    <Eye size={13} />
-                    <span className="hidden sm:inline">Overview</span>
+                    <Eye size={12} />
+                    <span className="hidden lg:inline">Overview</span>
                   </button>
                 </>
               )}
@@ -7027,15 +7848,15 @@ export default function HamsterPaintball({
                 className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
               >
                 <Trophy size={12} />
-                <span>Scores</span>
+                <span className="hidden sm:inline">Scores</span>
               </button>
 
               {role === 'host' ? (
                 <button
                   onClick={handleEndMatch}
-                  className="h-7 sm:h-8 px-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
+                  className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
                 >
-                  <span>End Match</span>
+                  <span>End</span>
                 </button>
               ) : (
                 <button
@@ -7044,18 +7865,35 @@ export default function HamsterPaintball({
                   title="Change Character"
                 >
                   <span>🐹</span>
-                  <span className="hidden sm:inline">Character</span>
+                  <span className="hidden md:inline">Character</span>
                 </button>
               )}
             </div>
           </div>
 
-          {/* CENTER ALERTS: 10s RESPAWN IMMUNITY, KO, PICKUP, OR LONG-PRESS CAN PROGRESS BAR */}
-          <div className="self-center flex flex-col items-center gap-1.5">
+          {/* CENTER ALERTS: MATCH START SPAWN HOLD, 10s RESPAWN IMMUNITY, KO, PICKUP, OR LONG-PRESS CAN PROGRESS BAR */}
+          <div className="self-center flex flex-col items-center gap-1 max-w-[92vw]">
+            {role === 'player' && matchStatus === 'playing' && spawnHoldSecondsLeft > 0 && (
+              <div
+                className={`bg-slate-900/95 border-2 px-3 py-1 rounded-xl text-center shadow-2xl ${
+                  myTeam === 'blue' ? 'border-blue-500' : 'border-red-500'
+                }`}
+              >
+                <div
+                  className={`text-[10px] sm:text-xs font-black uppercase flex items-center justify-center gap-1 ${
+                    myTeam === 'blue' ? 'text-blue-300' : 'text-red-300'
+                  }`}
+                >
+                  <span>
+                    🚩 STAY IN {myTeam === 'blue' ? 'BLUE' : 'RED'} SPAWN FIRST ({spawnHoldSecondsLeft}s) • ANSWER QUESTIONS FOR +{ballsPerQuestion} BALLS!
+                  </span>
+                </div>
+              </div>
+            )}
             {role === 'player' && immunitySecondsLeft > 0 && (
-              <div className="bg-slate-900/95 border-2 border-amber-400 px-4 py-1.5 rounded-2xl text-center shadow-2xl">
-                <div className="text-[11px] sm:text-xs font-black uppercase text-amber-300 flex items-center justify-center gap-1.5">
-                  <Shield size={13} className="text-amber-400 fill-amber-400" />
+              <div className="bg-slate-900/95 border-2 border-amber-400 px-3 py-1 rounded-xl text-center shadow-2xl">
+                <div className="text-[10px] sm:text-xs font-black uppercase text-amber-300 flex items-center justify-center gap-1">
+                  <Shield size={12} className="text-amber-400 fill-amber-400" />
                   <span>
                     RESPAWN IMMUNITY: {immunitySecondsLeft}s • CANNOT BE HIT!
                   </span>
@@ -7063,15 +7901,15 @@ export default function HamsterPaintball({
               </div>
             )}
             {holdingCanType && (
-              <div className="bg-slate-900/95 border-2 border-white px-4 py-2 rounded-2xl text-center shadow-2xl min-w-[210px]">
-                <div className="text-[11px] sm:text-xs font-black uppercase text-white flex items-center justify-center gap-1.5 mb-1">
+              <div className="bg-slate-900/95 border-2 border-white px-3.5 py-1.5 rounded-2xl text-center shadow-2xl min-w-[190px]">
+                <div className="text-[10px] sm:text-xs font-black uppercase text-white flex items-center justify-center gap-1 mb-1">
                   <span>
                     {holdingCanType === 'health'
                       ? `🧪 USING HEALTH CAN... ${canHoldProgress}%`
                       : `🛡️ CHARGING DEFENCE CAN... ${canHoldProgress}%`}
                   </span>
                 </div>
-                <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-white/25">
+                <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-white/25">
                   <div
                     className={`h-full transition-all duration-75 ${
                       holdingCanType === 'health'
@@ -7081,34 +7919,173 @@ export default function HamsterPaintball({
                     style={{ width: `${canHoldProgress}%` }}
                   />
                 </div>
-                <div className="text-[9px] font-bold text-slate-300 mt-0.5">
-                  Keep holding to complete!
-                </div>
               </div>
             )}
             {koBannerText && (
-              <div className="bg-slate-900/95 border-2 border-pink-500 px-4 py-1.5 rounded-2xl text-center shadow-2xl animate-bounce">
-                <div className="text-xs sm:text-base font-black text-pink-400 uppercase">
+              <div className="bg-slate-900/95 border-2 border-pink-500 px-3.5 py-1 rounded-xl text-center shadow-2xl animate-bounce">
+                <div className="text-[11px] sm:text-sm font-black text-pink-400 uppercase">
                   {koBannerText}
                 </div>
               </div>
             )}
             {pickupBannerText && (
-              <div className="bg-slate-900/95 border-2 border-lime-400 px-3.5 py-1 rounded-xl text-center shadow-xl">
-                <div className="text-[11px] sm:text-sm font-black text-lime-300 uppercase">
+              <div className="bg-slate-900/95 border-2 border-lime-400 px-3 py-1 rounded-xl text-center shadow-xl">
+                <div className="text-[10px] sm:text-xs font-black text-lime-300 uppercase">
                   {pickupBannerText}
                 </div>
               </div>
             )}
           </div>
 
-          {/* BOTTOM ROW: COMPACT MOBILE CONTROLS + LONG-PRESS HEALTH & DEFENCE CANS */}
+          {/* BOTTOM ROW: SWAPPED CONTROLS (LEFT = MOVE/SCROLL JOYSTICK, CENTER = CANS & AMMO/QUESTIONS, RIGHT = SHOOT BUTTON)
+              Responsive sizing for Mobile & Tablet in both Portrait & Landscape so elements never overlap! */}
           {role === 'player' ? (
-            <div className="w-full flex items-end justify-between gap-1.5 sm:gap-2 pb-0.5 sm:pb-1.5 px-1">
-              {/* LEFT SIDE: SHOOT BUTTON (Tap or Hold for Rapid Fire in BOTH Lobby & Game!) */}
-              <div className="flex flex-col items-center">
-                <span className="mb-0.5 text-[9px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
-                  {matchStatus === 'lobby' ? 'FREE SHOOT' : 'HOLD / SHOOT'}
+            <div className="w-full flex items-end justify-between gap-1 sm:gap-2.5 pb-0.5 sm:pb-1 px-0.5 sm:px-1.5 flex-nowrap">
+              {/* LEFT SIDE: VIRTUAL TOUCH MOVEMENT / SCROLL JOYSTICK */}
+              <div className="flex flex-col items-center shrink-0">
+                <span className="mb-0.5 text-[8px] sm:text-[9px] font-black uppercase text-lime-300 tracking-wider drop-shadow">
+                  MOVE
+                </span>
+                <div
+                  onTouchStart={handleJoystickStart}
+                  onTouchMove={handleJoystickMove}
+                  onTouchEnd={handleJoystickEnd}
+                  onTouchCancel={handleJoystickEnd}
+                  className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-slate-900/85 border-2 border-lime-400/60 flex items-center justify-center relative touch-none shadow-xl select-none"
+                >
+                  <div
+                    className="w-7 h-7 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-full bg-lime-400 border-2 border-white shadow-md transition-transform duration-75"
+                    style={{
+                      transform: `translate(${joystickVec.x * 18}px, ${joystickVec.y * 18}px)`
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* CENTER DOCK: LONG-PRESS HEALTH CAN + DEFENCE CAN + AMMO / ANSWER QUESTION FOR BALLS */}
+              <div className="pointer-events-auto flex flex-col md:flex-row items-center justify-center gap-1 sm:gap-1.5 min-w-0 max-w-[calc(100%-9rem)] sm:max-w-none">
+                {/* LONG-PRESS HEALTH CAN & DEFENCE CAN BAR */}
+                <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-900/92 px-1.5 sm:px-2 py-1 rounded-xl border border-white/15 shadow-xl">
+                  {/* HEALTH CAN (LONG-PRESS TO USE) */}
+                  <button
+                    type="button"
+                    onMouseDown={() => startCanLongPress('health')}
+                    onMouseUp={stopCanLongPress}
+                    onMouseLeave={stopCanLongPress}
+                    onTouchStart={e => {
+                      e.preventDefault();
+                      startCanLongPress('health');
+                    }}
+                    onTouchEnd={stopCanLongPress}
+                    onTouchCancel={stopCanLongPress}
+                    onContextMenu={e => e.preventDefault()}
+                    className={`relative px-1.5 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1 select-none touch-none cursor-pointer transition ${
+                      holdingCanType === 'health'
+                        ? 'bg-emerald-600 text-white border-white scale-105'
+                        : healthCans > 0 || nearbyArenaCan?.type === 'health'
+                        ? 'bg-emerald-950/90 hover:bg-emerald-900 text-lime-300 border-lime-400/60'
+                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
+                    }`}
+                    title="Long-press (Hold 1.2s or Hold Key 1) to use Health Can (+45 HP)"
+                  >
+                    <span className="text-xs sm:text-sm">🧪</span>
+                    <div className="text-left leading-none">
+                      <div className="text-[8px] sm:text-[10px] font-black uppercase whitespace-nowrap">
+                        <span className="hidden sm:inline">Health </span>HP{' '}
+                        <span className="text-white">
+                          {nearbyArenaCan?.type === 'health' ? 'NEAR' : `x${healthCans}`}
+                        </span>
+                      </div>
+                      <div className="hidden sm:block text-[8px] font-bold text-emerald-200/90">
+                        Hold • +45 HP
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* DEFENCE CAN (LONG-PRESS TO USE) */}
+                  <button
+                    type="button"
+                    onMouseDown={() => startCanLongPress('shield')}
+                    onMouseUp={stopCanLongPress}
+                    onMouseLeave={stopCanLongPress}
+                    onTouchStart={e => {
+                      e.preventDefault();
+                      startCanLongPress('shield');
+                    }}
+                    onTouchEnd={stopCanLongPress}
+                    onTouchCancel={stopCanLongPress}
+                    onContextMenu={e => e.preventDefault()}
+                    className={`relative px-1.5 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1 select-none touch-none cursor-pointer transition ${
+                      holdingCanType === 'shield'
+                        ? 'bg-cyan-500 text-slate-950 border-white scale-105'
+                        : shieldCans > 0 || nearbyArenaCan?.type === 'shield'
+                        ? 'bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border-cyan-400/60'
+                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
+                    }`}
+                    title="Long-press (Hold 1.2s or Hold Key 2) to use Defence Can (+50 Shield)"
+                  >
+                    <span className="text-xs sm:text-sm">🛡️</span>
+                    <div className="text-left leading-none">
+                      <div className="text-[8px] sm:text-[10px] font-black uppercase whitespace-nowrap">
+                        <span className="hidden sm:inline">Defence </span>SHD{' '}
+                        <span className="text-white">
+                          {nearbyArenaCan?.type === 'shield' ? 'NEAR' : `x${shieldCans}`}
+                        </span>
+                      </div>
+                      <div className="hidden sm:block text-[8px] font-bold text-cyan-200/90">
+                        Hold • +50 SHD
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* LOBBY STATUS PILL OR ACTIVE GAME QUESTION RELOAD (+ballsPerQuestion BALLS PER QUESTION) */}
+                {matchStatus === 'playing' ? (
+                  <div className="bg-slate-900/95 rounded-xl px-2 sm:px-2.5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 border border-white/15 shadow-xl">
+                    <div className="text-left leading-none">
+                      <div className="text-[7px] sm:text-[9px] font-black text-pink-400 uppercase">
+                        BALLS
+                      </div>
+                      <div className="text-xs sm:text-base font-black font-mono text-white leading-tight">
+                        {ammo}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsQuestionModalOpen(true)}
+                      className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-black text-[9px] sm:text-xs shadow-md transition flex items-center gap-1 cursor-pointer ${
+                        ammo === 0
+                          ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border border-white animate-pulse'
+                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
+                      }`}
+                    >
+                      <Zap
+                        size={12}
+                        className={
+                          ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'
+                        }
+                      />
+                      <span className="whitespace-nowrap">
+                        {ammo === 0
+                          ? `Answer (+${ballsPerQuestion} Balls)`
+                          : `Get +${ballsPerQuestion} Balls`}
+                      </span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-slate-900/88 border border-lime-400/60 rounded-xl px-2.5 py-1 shadow-lg text-center">
+                    <div className="text-[9px] sm:text-xs font-black text-lime-300 leading-tight whitespace-nowrap">
+                      🎯 FREE SHOOT LOBBY
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT SIDE: SHOOT BUTTON (Tap or Hold for Rapid Fire in BOTH Lobby & Game!) */}
+              <div className="flex flex-col items-center shrink-0">
+                <span className="mb-0.5 text-[8px] sm:text-[9px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
+                  {matchStatus === 'lobby' ? 'FREE SHOOT' : 'SHOOT'}
                 </span>
                 <button
                   type="button"
@@ -7134,155 +8111,11 @@ export default function HamsterPaintball({
                     if (gameRef.current) gameRef.current.shootButtonHeld = false;
                   }}
                   onContextMenu={e => e.preventDefault()}
-                  className="pointer-events-auto w-16 h-16 sm:w-22 sm:h-22 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-3 border-white/90 shadow-xl flex flex-col items-center justify-center text-white font-black text-[10px] sm:text-xs cursor-pointer select-none touch-none"
+                  className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-3 border-white/90 shadow-xl flex flex-col items-center justify-center text-white font-black text-[9px] sm:text-xs cursor-pointer select-none touch-none"
                 >
-                  <Crosshair size={22} />
+                  <Crosshair size={20} />
                   <span className="mt-0.5">SHOOT</span>
                 </button>
-              </div>
-
-              {/* CENTER DOCK: LONG-PRESS HEALTH CAN + DEFENCE CAN + AMMO/QUESTION */}
-              <div className="pointer-events-auto flex flex-col items-center gap-1.5">
-                {/* LONG-PRESS HEALTH CAN & DEFENCE CAN BAR */}
-                <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-900/92 px-2 py-1 rounded-xl border border-white/15 shadow-xl">
-                  {/* HEALTH CAN (LONG-PRESS TO USE) */}
-                  <button
-                    type="button"
-                    onMouseDown={() => startCanLongPress('health')}
-                    onMouseUp={stopCanLongPress}
-                    onMouseLeave={stopCanLongPress}
-                    onTouchStart={e => {
-                      e.preventDefault();
-                      startCanLongPress('health');
-                    }}
-                    onTouchEnd={stopCanLongPress}
-                    onTouchCancel={stopCanLongPress}
-                    onContextMenu={e => e.preventDefault()}
-                    className={`relative px-2 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1.5 select-none touch-none cursor-pointer transition ${
-                      holdingCanType === 'health'
-                        ? 'bg-emerald-600 text-white border-white scale-105'
-                        : healthCans > 0 || nearbyArenaCan?.type === 'health'
-                        ? 'bg-emerald-950/90 hover:bg-emerald-900 text-lime-300 border-lime-400/60'
-                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
-                    }`}
-                    title="Long-press (Hold 1.2s or Hold Key 1) to use Health Can (+45 HP)"
-                  >
-                    <span className="text-xs sm:text-sm">🧪</span>
-                    <div className="text-left leading-none">
-                      <div className="text-[9px] sm:text-[10px] font-black uppercase whitespace-nowrap">
-                        Health Can{' '}
-                        <span className="text-white">
-                          {nearbyArenaCan?.type === 'health' ? 'NEAR' : `x${healthCans}`}
-                        </span>
-                      </div>
-                      <div className="text-[8px] font-bold text-emerald-200/90">
-                        Hold • +45 HP
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* DEFENCE CAN (LONG-PRESS TO USE) */}
-                  <button
-                    type="button"
-                    onMouseDown={() => startCanLongPress('shield')}
-                    onMouseUp={stopCanLongPress}
-                    onMouseLeave={stopCanLongPress}
-                    onTouchStart={e => {
-                      e.preventDefault();
-                      startCanLongPress('shield');
-                    }}
-                    onTouchEnd={stopCanLongPress}
-                    onTouchCancel={stopCanLongPress}
-                    onContextMenu={e => e.preventDefault()}
-                    className={`relative px-2 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1.5 select-none touch-none cursor-pointer transition ${
-                      holdingCanType === 'shield'
-                        ? 'bg-cyan-500 text-slate-950 border-white scale-105'
-                        : shieldCans > 0 || nearbyArenaCan?.type === 'shield'
-                        ? 'bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border-cyan-400/60'
-                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
-                    }`}
-                    title="Long-press (Hold 1.2s or Hold Key 2) to use Defence Can (+50 Shield)"
-                  >
-                    <span className="text-xs sm:text-sm">🛡️</span>
-                    <div className="text-left leading-none">
-                      <div className="text-[9px] sm:text-[10px] font-black uppercase whitespace-nowrap">
-                        Defence Can{' '}
-                        <span className="text-white">
-                          {nearbyArenaCan?.type === 'shield' ? 'NEAR' : `x${shieldCans}`}
-                        </span>
-                      </div>
-                      <div className="text-[8px] font-bold text-cyan-200/90">
-                        Hold • +50 SHD
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                {/* LOBBY STATUS PILL OR ACTIVE GAME QUESTION RELOAD */}
-                {matchStatus === 'playing' ? (
-                  <div className="bg-slate-900/92 rounded-xl px-2.5 py-1.5 sm:p-2 flex items-center gap-2 sm:gap-3 border border-white/15 shadow-xl">
-                    <div className="text-left">
-                      <div className="text-[8px] sm:text-[9px] font-black text-pink-400 uppercase leading-none">
-                        AMMO
-                      </div>
-                      <div className="text-sm sm:text-lg font-black font-mono text-white leading-tight">
-                        {ammo}{' '}
-                        <span className="text-[9px] sm:text-[10px] text-slate-400 font-sans">
-                          BALLS
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsQuestionModalOpen(true)}
-                      className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg font-black text-[10px] sm:text-xs shadow-md transition flex items-center gap-1 cursor-pointer ${
-                        ammo === 0
-                          ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border border-white'
-                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
-                      }`}
-                    >
-                      <Zap
-                        size={13}
-                        className={
-                          ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'
-                        }
-                      />
-                      <span className="whitespace-nowrap">
-                        {ammo === 0
-                          ? `Answer (+${ballsPerQuestion} Balls)`
-                          : `+${ballsPerQuestion} Balls`}
-                      </span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-slate-900/88 border border-lime-400/60 rounded-xl px-3 py-1 shadow-lg text-center">
-                    <div className="text-[10px] sm:text-xs font-black text-lime-300 leading-tight">
-                      🎯 FREE SHOOT LOBBY • Hold Can Buttons to Test!
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* RIGHT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK */}
-              <div className="flex flex-col items-center">
-                <span className="mb-0.5 text-[9px] font-black uppercase text-lime-300 tracking-wider drop-shadow">
-                  MOVE
-                </span>
-                <div
-                  onTouchStart={handleJoystickStart}
-                  onTouchMove={handleJoystickMove}
-                  onTouchEnd={handleJoystickEnd}
-                  onTouchCancel={handleJoystickEnd}
-                  className="pointer-events-auto w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-900/80 border-2 border-lime-400/50 flex items-center justify-center relative touch-none shadow-xl select-none"
-                >
-                  <div
-                    className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-lime-400 border-2 border-white shadow-md transition-transform duration-75"
-                    style={{
-                      transform: `translate(${joystickVec.x * 22}px, ${joystickVec.y * 22}px)`
-                    }}
-                  />
-                </div>
               </div>
             </div>
           ) : (
@@ -7351,6 +8184,7 @@ export default function HamsterPaintball({
                         <HamsterCharacterAvatar
                           skin={HAMSTER_SKINS[rp.skinIdx] || HAMSTER_SKINS[0]}
                           size={24}
+                          team={matchMode === 'teams' ? rp.team || 'red' : 'solo'}
                         />
                         <div>
                           <div className="font-black text-xs text-white flex items-center gap-1">
@@ -7476,25 +8310,24 @@ export default function HamsterPaintball({
           QUESTION DECK MODAL (WITH 15-SECOND QUESTION TIMER & SPEED BONUS!)
          ------------------------------------------------------------- */}
       {isQuestionModalOpen && matchStatus === 'playing' && currentTriviaQ && (
-        <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border-4 border-indigo-600 text-slate-900 my-auto">
-            <div className="bg-gradient-to-r from-indigo-700 to-purple-800 text-white px-5 py-3.5 flex items-center justify-between gap-2">
+        <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-2.5 sm:p-4 pt-12 pb-3 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[85dvh] overflow-y-auto border-4 border-indigo-600 text-slate-900 my-auto">
+            <div className="bg-gradient-to-r from-indigo-700 to-purple-800 text-white px-4 sm:px-5 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sticky top-0 z-10">
               <div>
-                <h3 className="font-black text-base sm:text-lg leading-none">
-                  ANSWER TO EARN PAINTBALL AMMO &amp; POINTS!
+                <h3 className="font-black text-sm sm:text-lg leading-none">
+                  ANSWER TO GAIN +{ballsPerQuestion} PAINTBALLS!
                 </h3>
-                <p className="text-xs text-indigo-100 mt-1">
-                  Correct ={' '}
-                  <strong className="text-lime-300">+{ballsPerQuestion} Balls</strong> +{' '}
+                <p className="text-[11px] sm:text-xs text-indigo-100 mt-1">
+                  Correct Answer ={' '}
+                  <strong className="text-lime-300">+{ballsPerQuestion} Paintballs</strong> +{' '}
                   <strong className="text-amber-300">+15 Base PTS</strong> +{' '}
-                  <strong className="text-cyan-300">Streak ({triviaStreak}x)</strong> &amp;{' '}
-                  <strong className="text-pink-300">Speed Bonus!</strong>
+                  <strong className="text-cyan-300">Streak ({triviaStreak}x)</strong>
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {/* 15s Per-Question Countdown Badge */}
                 <div
-                  className={`px-2.5 py-1 rounded-xl font-mono font-black text-xs sm:text-sm flex items-center gap-1 border ${
+                  className={`px-2 py-1 rounded-xl font-mono font-black text-xs sm:text-sm flex items-center gap-1 border ${
                     questionTimeLeft <= 5
                       ? 'bg-rose-600 text-white border-rose-300 animate-pulse'
                       : questionTimeLeft >= 10
@@ -7502,12 +8335,20 @@ export default function HamsterPaintball({
                       : 'bg-amber-400 text-slate-950 border-amber-200'
                   }`}
                 >
-                  <Clock size={13} />
+                  <Clock size={12} />
                   <span>{questionTimeLeft}s</span>
                 </div>
+                {ammo > 0 && (
+                  <button
+                    onClick={() => setIsQuestionModalOpen(false)}
+                    className="text-xs px-2.5 sm:px-3 py-1.5 bg-lime-400 hover:bg-lime-300 text-slate-950 rounded-lg font-black shadow cursor-pointer"
+                  >
+                    🎯 Shoot ({ammo})
+                  </button>
+                )}
                 <button
                   onClick={() => setIsQuestionModalOpen(false)}
-                  className="text-xs px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg font-bold cursor-pointer"
+                  className="text-xs px-2.5 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg font-bold cursor-pointer"
                 >
                   Close
                 </button>
@@ -7539,20 +8380,20 @@ export default function HamsterPaintball({
               const liveSpeedBonus = questionTimeLeft >= 10 ? 10 : questionTimeLeft >= 5 ? 5 : 0;
 
               return (
-                <div className="p-5 sm:p-6">
+                <div className="p-4 sm:p-6">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <span className="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-[11px] uppercase px-2.5 py-0.5 rounded-full">
+                    <span className="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-[10px] sm:text-[11px] uppercase px-2.5 py-0.5 rounded-full">
                       QUESTION {(triviaDeckIndex % effectiveQuestions.length) + 1} OF{' '}
-                      {effectiveQuestions.length}
+                      {effectiveQuestions.length} • REWARD: +{ballsPerQuestion} BALLS
                     </span>
                     <div className="flex items-center gap-2">
                       {liveSpeedBonus > 0 && (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 font-black text-[11px]">
-                          ⚡ Speed Bonus +{liveSpeedBonus} PTS
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 font-black text-[10px] sm:text-[11px]">
+                          ⚡ Speed +{liveSpeedBonus} PTS
                         </span>
                       )}
-                      <span className="text-xs font-black text-emerald-700">
-                        Ammo: {ammo} Balls
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-xs font-black text-emerald-800">
+                        🟢 Ammo: {ammo} Balls
                       </span>
                     </div>
                   </div>
