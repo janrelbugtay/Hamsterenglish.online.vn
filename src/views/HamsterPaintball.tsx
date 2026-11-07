@@ -448,6 +448,18 @@ function HamsterCharacterAvatar({
       />
       <circle cx="50" cy="72.5" r="2.8" fill={skin.paintHex} />
 
+      {/* Tactical Belt Clips: Mini Health Can (Left Hip) & Defence Can (Right Hip) */}
+      <g transform="translate(23, 77) rotate(-8)">
+        <rect x="0" y="0" width="8" height="12" rx="2.5" fill="#10b981" stroke="#0f172a" strokeWidth="1.6" />
+        <rect x="1.5" y="-2" width="5" height="2.2" rx="1" fill="#e2e8f0" stroke="#0f172a" strokeWidth="1.2" />
+        <path d="M 4 3.5 L 4 8.5 M 1.8 6 L 6.2 6" stroke="#ffffff" strokeWidth="1.6" strokeLinecap="round" />
+      </g>
+      <g transform="translate(69, 77) rotate(8)">
+        <rect x="0" y="0" width="8" height="12" rx="2.5" fill="#06b6d4" stroke="#0f172a" strokeWidth="1.6" />
+        <rect x="1.5" y="-2" width="5" height="2.2" rx="1" fill="#e2e8f0" stroke="#0f172a" strokeWidth="1.2" />
+        <polygon points="4,3 6.5,5 4,9 1.5,5" fill="#ffffff" />
+      </g>
+
       {/* Left & Right Round Hamster Ears */}
       <circle cx="24" cy="21" r="12" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.8" />
       <circle cx="24" cy="21" r="6.8" fill={skin.earInnerHex} />
@@ -544,12 +556,12 @@ function HamsterCharacterAvatar({
         stroke="#0f172a"
         strokeWidth="3"
       />
-      {/* Goggle Lens Shine & Eyes */}
-      <path d="M 28 32 L 43 32 L 38 42 L 25 42 Z" fill="#ffffff" opacity="0.55" />
-      <circle cx="37" cy="37" r="2.6" fill="#0f172a" />
-      <circle cx="63" cy="37" r="2.6" fill="#0f172a" />
-      <circle cx="38" cy="36" r="1" fill="#ffffff" />
-      <circle cx="64" cy="36" r="1" fill="#ffffff" />
+      {/* Goggle Lens Shine & Expressive Eyes */}
+      <path d="M 28 32 L 43 32 L 38 42 L 25 42 Z" fill="#ffffff" opacity="0.58" />
+      <circle cx="37" cy="37" r="2.8" fill="#0f172a" />
+      <circle cx="63" cy="37" r="2.8" fill="#0f172a" />
+      <circle cx="38" cy="36" r="1.1" fill="#ffffff" />
+      <circle cx="64" cy="36" r="1.1" fill="#ffffff" />
 
       {/* Cute Pink Nose, Smile & Hamster Tooth */}
       <ellipse cx="50" cy="49" rx="4.5" ry="3.2" fill="#f43f5e" stroke="#0f172a" strokeWidth="1.6" />
@@ -670,11 +682,13 @@ const TEAM_CONFIG: Record<
 };
 
 // =============================================================
-// PROCEDURAL WEB AUDIO SOUND ENGINE
+// PROCEDURAL WEB AUDIO SOUND ENGINE (MULTI-LAYERED SYNTHESIS)
 // =============================================================
 class PaintballAudioEngine {
   ctx: AudioContext | null = null;
+  noiseBuffer: AudioBuffer | null = null;
   enabled: boolean = true;
+  lastFootstepTime: number = 0;
 
   init() {
     if (!this.ctx && typeof window !== 'undefined') {
@@ -686,62 +700,218 @@ class PaintballAudioEngine {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
+    if (this.ctx && !this.noiseBuffer) {
+      const sr = this.ctx.sampleRate;
+      const buf = this.ctx.createBuffer(1, sr * 0.4, sr);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      this.noiseBuffer = buf;
+    }
   }
 
+  // Pneumatic CO2 Paintball Marker Pop + Mechanical Bolt Click
   playMarkerShot() {
     if (!this.enabled) return;
     this.init();
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
+
+    // 1. Sub-bass pneumatic pop
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(290, now);
-    osc.frequency.exponentialRampToValueAtTime(62, now + 0.085);
-    gain.gain.setValueAtTime(0.32, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    osc.frequency.setValueAtTime(340, now);
+    osc.frequency.exponentialRampToValueAtTime(58, now + 0.09);
+    gain.gain.setValueAtTime(0.36, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.095);
+    osc.stop(now + 0.1);
+
+    // 2. Crisp CO2 air burst
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1400, now);
+      filter.Q.setValueAtTime(1.8, now);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.22, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(this.ctx.destination);
+      noise.start(now);
+      noise.stop(now + 0.07);
+    }
   }
 
+  // Juicy Wet Paintball Splat
   playSplat() {
     if (!this.enabled) return;
     this.init();
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
+
+    // 1. Liquid bubble pop
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(420, now);
-    osc.frequency.exponentialRampToValueAtTime(95, now + 0.12);
-    gain.gain.setValueAtTime(0.26, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    osc.frequency.setValueAtTime(480, now);
+    osc.frequency.exponentialRampToValueAtTime(85, now + 0.13);
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.13);
+    osc.stop(now + 0.145);
+
+    // 2. Wet paint splash noise
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1900, now);
+      filter.frequency.exponentialRampToValueAtTime(320, now + 0.12);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.18, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.125);
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(this.ctx.destination);
+      noise.start(now);
+      noise.stop(now + 0.13);
+    }
   }
 
-  playPowerup() {
+  // Metallic Canister Pickup Chime (when collecting a Health Can or Defence Can in the arena)
+  playCanPickup() {
     if (!this.enabled) return;
     this.init();
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    [440, 660, 880].forEach((freq, i) => {
+    [587.33, 880].forEach((freq, i) => {
       if (!this.ctx) return;
       const osc = this.ctx.createOscillator();
       const g = this.ctx.createGain();
-      osc.type = 'sine';
+      osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, now + i * 0.055);
-      g.gain.setValueAtTime(0.2, now + i * 0.055);
-      g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.18);
+      g.gain.setValueAtTime(0.22, now + i * 0.055);
+      g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.16);
       osc.connect(g);
       g.connect(this.ctx.destination);
       osc.start(now + i * 0.055);
-      osc.stop(now + i * 0.055 + 0.2);
+      osc.stop(now + i * 0.055 + 0.17);
     });
+  }
+
+  // Rising Pressurized Fizz / Charge Tick while Long-Pressing a Health or Defence Can
+  playCanHoldTick(progress: number, type: 'health' | 'shield') {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type === 'health' ? 'sine' : 'triangle';
+    const baseFreq = type === 'health' ? 340 : 400;
+    osc.frequency.setValueAtTime(baseFreq + progress * 560, now);
+    g.gain.setValueAtTime(0.11, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
+  // Can Pop-Tab Open + Fizzy Restore Fanfare when Long-Press Finishes (100%)
+  playCanUseComplete(type: 'health' | 'shield') {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // 1. Crisp metallic pull-tab pop
+    const tabOsc = this.ctx.createOscillator();
+    const tabGain = this.ctx.createGain();
+    tabOsc.type = 'square';
+    tabOsc.frequency.setValueAtTime(1350, now);
+    tabOsc.frequency.exponentialRampToValueAtTime(2400, now + 0.035);
+    tabGain.gain.setValueAtTime(0.16, now);
+    tabGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    tabOsc.connect(tabGain);
+    tabGain.connect(this.ctx.destination);
+    tabOsc.start(now);
+    tabOsc.stop(now + 0.045);
+
+    // 2. Harmonic restore arpeggio
+    const notes =
+      type === 'health'
+        ? [523.25, 659.25, 783.99, 1046.5]
+        : [440, 659.25, 880, 1318.5];
+    notes.forEach((freq, i) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = type === 'health' ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(freq, now + 0.04 + i * 0.055);
+      g.gain.setValueAtTime(0.24, now + 0.04 + i * 0.055);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.04 + i * 0.055 + 0.24);
+      osc.connect(g);
+      g.connect(this.ctx.destination);
+      osc.start(now + 0.04 + i * 0.055);
+      osc.stop(now + 0.04 + i * 0.055 + 0.26);
+    });
+  }
+
+  // Subtle Turf Footstep Thump
+  playFootstep() {
+    if (!this.enabled) return;
+    const nowMs = performance.now();
+    if (nowMs - this.lastFootstepTime < 240) return;
+    this.lastFootstepTime = nowMs;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95, now);
+    osc.frequency.exponentialRampToValueAtTime(38, now + 0.045);
+    g.gain.setValueAtTime(0.08, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.055);
+  }
+
+  // Armor / Shield Hit Impact
+  playDamageHit() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(190, now);
+    osc.frequency.exponentialRampToValueAtTime(52, now + 0.14);
+    g.gain.setValueAtTime(0.26, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+
+  playPowerup() {
+    this.playCanUseComplete('health');
   }
 
   playCorrect() {
@@ -1161,8 +1331,8 @@ export default function HamsterPaintball({
     };
   };
 
-  // Student Combat Vitals, Ammo & Score
-  // Players start with 0 paintballs and MUST answer questions to earn paintball ammunition!
+  // Student Combat Vitals, Ammo, Collectible Cans & Score
+  // Players start with 0 paintballs in match and MUST answer questions to earn paintball ammunition!
   const [hp, setHp] = useState<number>(100);
   const [maxHp] = useState<number>(100);
   const [shield, setShield] = useState<number>(100);
@@ -1173,6 +1343,15 @@ export default function HamsterPaintball({
   const [questionsAnswered, setQuestionsAnswered] = useState<number>(0);
   const [koBannerText, setKoBannerText] = useState<string | null>(null);
   const [pickupBannerText, setPickupBannerText] = useState<string | null>(null);
+
+  // Collectible Health Cans & Defence Cans (Players pick up cans around the arena and LONG-PRESS to use them!)
+  const [healthCans, setHealthCans] = useState<number>(1);
+  const [shieldCans, setShieldCans] = useState<number>(1);
+  const [nearbyArenaCan, setNearbyArenaCan] = useState<{ id: string; type: 'health' | 'shield' } | null>(null);
+  const [holdingCanType, setHoldingCanType] = useState<'health' | 'shield' | null>(null);
+  const [canHoldProgress, setCanHoldProgress] = useState<number>(0); // 0 to 100
+  const canHoldIntervalRef = useRef<number | null>(null);
+  const holdingCanTypeRef = useRef<'health' | 'shield' | null>(null);
 
   // Connected Players in Room (Excluding Non-Playing Host Teacher Jan)
   const [roomPlayers, setRoomPlayers] = useState<PlayerNetworkState[]>([]);
@@ -1337,6 +1516,9 @@ export default function HamsterPaintball({
     kos,
     questionsAnswered,
     ammo,
+    healthCans,
+    shieldCans,
+    holdingCanType,
     screen,
     matchMode,
     matchStatus,
@@ -1358,6 +1540,9 @@ export default function HamsterPaintball({
       kos,
       questionsAnswered,
       ammo,
+      healthCans,
+      shieldCans,
+      holdingCanType,
       screen,
       matchMode,
       matchStatus,
@@ -1377,6 +1562,9 @@ export default function HamsterPaintball({
     kos,
     questionsAnswered,
     ammo,
+    healthCans,
+    shieldCans,
+    holdingCanType,
     screen,
     matchMode,
     matchStatus,
@@ -1385,6 +1573,138 @@ export default function HamsterPaintball({
     hostFollowIndex,
     roomPlayers
   ]);
+
+  // Long-Press Handler to Use Health Can (+45 HP) or Defence Can (+50 Shield)
+  const stopCanLongPress = () => {
+    if (canHoldIntervalRef.current) {
+      window.clearInterval(canHoldIntervalRef.current);
+      canHoldIntervalRef.current = null;
+    }
+    holdingCanTypeRef.current = null;
+    setHoldingCanType(null);
+    setCanHoldProgress(0);
+  };
+
+  const startCanLongPress = (type: 'health' | 'shield') => {
+    if (role !== 'player' || screen !== 'game') return;
+    if (holdingCanTypeRef.current === type) return;
+
+    const snap = stateSnapRef.current;
+    const hasCanInBelt = type === 'health' ? snap.healthCans > 0 : snap.shieldCans > 0;
+    const hasNearbyCan = nearbyArenaCan?.type === type;
+
+    if (!hasCanInBelt && !hasNearbyCan) {
+      sfx.playWrong();
+      setPickupBannerText(
+        type === 'health'
+          ? '🧪 NO HEALTH CANS! COLLECT A GREEN CAN IN THE ARENA!'
+          : '🛡️ NO DEFENCE CANS! COLLECT A BLUE CAN IN THE ARENA!'
+      );
+      setTimeout(() => setPickupBannerText(null), 1800);
+      return;
+    }
+
+    stopCanLongPress();
+    holdingCanTypeRef.current = type;
+    setHoldingCanType(type);
+    setCanHoldProgress(6);
+    sfx.playCanHoldTick(0.05, type);
+
+    const startTime = performance.now();
+    const holdDurationMs = 1150; // 1.15s long press to drink/charge can
+    let lastTickStep = 0;
+
+    canHoldIntervalRef.current = window.setInterval(() => {
+      const elapsed = performance.now() - startTime;
+      const pct = Math.min(100, Math.round((elapsed / holdDurationMs) * 100));
+      setCanHoldProgress(pct);
+
+      const step = Math.floor(pct / 18);
+      if (step > lastTickStep && pct < 100) {
+        lastTickStep = step;
+        sfx.playCanHoldTick(pct / 100, type);
+      }
+
+      // Spawn rising 3D energy sparkles on the hamster while holding
+      const g = gameRef.current;
+      if (g) {
+        const sparkColor = type === 'health' ? 0x4ade80 : 0x38bdf8;
+        const pMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.11, 8, 8),
+          new THREE.MeshBasicMaterial({ color: sparkColor })
+        );
+        const ang = Math.random() * Math.PI * 2;
+        pMesh.position.set(
+          g.x + Math.cos(ang) * 0.85,
+          0.5 + Math.random() * 1.1,
+          g.z + Math.sin(ang) * 0.85
+        );
+        g.scene.add(pMesh);
+        g.particles.push({
+          mesh: pMesh,
+          vx: Math.cos(ang) * 0.8,
+          vy: 3.8 + Math.random() * 2.2,
+          vz: Math.sin(ang) * 0.8,
+          life: 0,
+          maxLife: 0.35
+        });
+      }
+
+      if (pct >= 100) {
+        stopCanLongPress();
+        sfx.playCanUseComplete(type);
+
+        // Consume nearby arena can first if standing right on it, otherwise consume from belt
+        const gNow = gameRef.current;
+        let consumedArenaCan = false;
+        if (gNow) {
+          for (const pu of gNow.powerups) {
+            if (pu.active && pu.type === type && Math.hypot(gNow.x - pu.x, gNow.z - pu.z) < 2.8) {
+              pu.active = false;
+              pu.mesh.visible = false;
+              pu.respawnAt = performance.now() + 11000;
+              consumedArenaCan = true;
+              break;
+            }
+          }
+          // Burst celebratory 3D healing/shield aura particles
+          const burstColor = type === 'health' ? 0x22c55e : 0x06b6d4;
+          spawnPaintSplatEffect(
+            gNow.scene,
+            gNow.splatDecals,
+            gNow.particles,
+            gNow.x,
+            1.4,
+            gNow.z,
+            burstColor
+          );
+        }
+
+        if (type === 'health') {
+          if (!consumedArenaCan) {
+            setHealthCans(c => Math.max(0, c - 1));
+          }
+          setHp(h => Math.min(100, h + 45));
+          setPickupBannerText('🧪 HEALTH CAN USED! +45 HP RESTORED!');
+        } else {
+          if (!consumedArenaCan) {
+            setShieldCans(c => Math.max(0, c - 1));
+          }
+          setShield(s => Math.min(100, s + 50));
+          setPickupBannerText('🛡️ DEFENCE CAN USED! +50 SHIELD CHARGED!');
+        }
+        setTimeout(() => setPickupBannerText(null), 2200);
+      }
+    }, 45);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (canHoldIntervalRef.current) {
+        window.clearInterval(canHoldIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Auto-shuffle Host's player view every 4.5 seconds when in 'auto_track' mode
   useEffect(() => {
@@ -1970,6 +2290,12 @@ export default function HamsterPaintball({
     ball.position.set(startX + Math.sin(angle) * 1.4, 1.55, startZ + Math.cos(angle) * 1.4);
     g.scene.add(ball);
 
+    // Trigger recoil animation on remote shooter's 3D hamster
+    const shooterEntry = g.remotePlayers.get(ownerId);
+    if (shooterEntry && shooterEntry.mesh.userData) {
+      shooterEntry.mesh.userData.recoil = 1.0;
+    }
+
     g.projectiles.push({
       ownerId,
       ownerName,
@@ -2279,7 +2605,9 @@ export default function HamsterPaintball({
       earG.add(innerEar);
       return earG;
     };
-    headGroup.add(buildEar(-1), buildEar(1));
+    const leftEar = buildEar(-1);
+    const rightEar = buildEar(1);
+    headGroup.add(leftEar, rightEar);
 
     const snout = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 14), bellyMat);
     snout.scale.set(1.1, 0.8, 0.9);
@@ -2292,6 +2620,94 @@ export default function HamsterPaintball({
     );
     nose.position.set(0, -0.04, 0.92);
     headGroup.add(nose);
+
+    // Cute 3D Buck Tooth & Whiskers
+    const buckTooth = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.12, 0.04),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
+    );
+    buckTooth.position.set(0, -0.2, 0.88);
+    headGroup.add(buckTooth);
+
+    const whiskerMat = new THREE.MeshBasicMaterial({ color: 0x1e293b });
+    [-1, 1].forEach(side => {
+      [-0.04, 0.04].forEach((wy, wi) => {
+        const whisker = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.36, 6), whiskerMat);
+        whisker.rotation.z = (Math.PI / 2) + side * (wi === 0 ? 0.12 : -0.12);
+        whisker.position.set(side * 0.68, -0.12 + wy, 0.56);
+        headGroup.add(whisker);
+      });
+    });
+
+    // Character-Specific 3D Headgear (Bandana, Helmet, SpecOps, Crown, Cyber, Blossom)
+    const headgearGroup = new THREE.Group();
+    if (skin.headgear === 'Bandana') {
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.77, 0.78, 0.16, 28),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.45 })
+      );
+      band.position.set(0, 0.42, 0);
+      headgearGroup.add(band);
+      const knot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.13, 12, 12),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.45 })
+      );
+      knot.position.set(0, 0.42, -0.78);
+      headgearGroup.add(knot);
+    } else if (skin.headgear === 'Helmet') {
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.81, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.48),
+        new THREE.MeshPhysicalMaterial({ color: 0x0f172a, clearcoat: 1.0, roughness: 0.15 })
+      );
+      dome.position.y = 0.08;
+      headgearGroup.add(dome);
+      const crest = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.14, 0.85),
+        new THREE.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x22d3ee, emissiveIntensity: 0.4 })
+      );
+      crest.position.set(0, 0.82, 0.05);
+      headgearGroup.add(crest);
+    } else if (skin.headgear === 'SpecOps') {
+      const mount = new THREE.Mesh(
+        new THREE.BoxGeometry(0.58, 0.16, 0.24),
+        new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.7, roughness: 0.3 })
+      );
+      mount.position.set(0, 0.48, 0.62);
+      headgearGroup.add(mount);
+      [-0.17, 0.17].forEach(ox => {
+        const nvg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.09, 0.26, 14),
+          new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.75 })
+        );
+        nvg.rotation.x = Math.PI / 2;
+        nvg.position.set(ox, 0.48, 0.74);
+        headgearGroup.add(nvg);
+      });
+    } else if (skin.headgear === 'Crown') {
+      const crownBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.46, 0.4, 0.26, 16),
+        new THREE.MeshPhysicalMaterial({ color: 0xfacc15, metalness: 0.85, roughness: 0.15, clearcoat: 1.0 })
+      );
+      crownBase.position.set(0, 0.82, 0.05);
+      headgearGroup.add(crownBase);
+    } else if (skin.headgear === 'Cyber') {
+      const cyberFin = new THREE.Mesh(
+        new THREE.ConeGeometry(0.28, 0.62, 4),
+        new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.35 })
+      );
+      cyberFin.position.set(0, 0.92, 0.12);
+      headgearGroup.add(cyberFin);
+    } else if (skin.headgear === 'Blossom') {
+      [-0.42, 0.42].forEach(bx => {
+        const flower = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(0.18, 0),
+          new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.4 })
+        );
+        flower.position.set(bx, 0.72, 0.22);
+        headgearGroup.add(flower);
+      });
+    }
+    headGroup.add(headgearGroup);
 
     // 5. Pro Paintball Mask & Iridescent Thermal Goggles
     const maskGroup = new THREE.Group();
@@ -2341,13 +2757,46 @@ export default function HamsterPaintball({
     headGroup.add(maskGroup);
     bodyGroup.add(headGroup);
 
-    // 6. Articulated Arms & Marker Gun
+    // Hip-Holstered Mini Health Can (Left Hip) & Defence Can (Right Hip) on Tactical Belt
+    const hipHealthCan = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.11, 0.32, 12),
+      new THREE.MeshPhysicalMaterial({ color: 0x22c55e, clearcoat: 1.0, roughness: 0.15 })
+    );
+    hipHealthCan.position.set(-0.88, 0.78, 0.18);
+    hipHealthCan.rotation.z = 0.22;
+    bodyGroup.add(hipHealthCan);
+
+    const hipShieldCan = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.11, 0.32, 12),
+      new THREE.MeshPhysicalMaterial({ color: 0x06b6d4, clearcoat: 1.0, roughness: 0.15 })
+    );
+    hipShieldCan.position.set(0.88, 0.78, -0.15);
+    hipShieldCan.rotation.z = -0.22;
+    bodyGroup.add(hipShieldCan);
+
+    // 6. Articulated Arms, Held Canister & Marker Gun
+    const leftArmGroup = new THREE.Group();
+    leftArmGroup.position.set(-0.78, 1.18, 0.35);
     const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.38, 12, 16), furMat);
-    leftArm.position.set(-0.78, 1.18, 0.35);
     leftArm.rotation.x = Math.PI / 3;
     leftArm.rotation.z = -0.25;
     leftArm.castShadow = true;
-    bodyGroup.add(leftArm);
+    leftArmGroup.add(leftArm);
+
+    // 3D Canister in Left Paw (Visible when player Long-Presses Health/Defence Can!)
+    const heldCanMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 0.38, 14),
+      new THREE.MeshStandardMaterial({
+        color: 0x22c55e,
+        emissive: 0x22c55e,
+        emissiveIntensity: 0.45,
+        roughness: 0.2
+      })
+    );
+    heldCanMesh.position.set(0.15, 0.18, 0.32);
+    heldCanMesh.visible = false;
+    leftArmGroup.add(heldCanMesh);
+    bodyGroup.add(leftArmGroup);
 
     const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.38, 12, 16), furMat);
     rightArm.position.set(0.76, 1.18, 0.42);
@@ -2394,6 +2843,19 @@ export default function HamsterPaintball({
     barrelTip.rotation.x = Math.PI / 2;
     barrelTip.position.set(0, 0.05, 1.28);
     markerGroup.add(barrelTip);
+
+    // 3D Muzzle Flash Sphere at Barrel Tip (Flashes on shot recoil!)
+    const muzzleFlash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.24, 12, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xfef08a,
+        transparent: true,
+        opacity: 0.9
+      })
+    );
+    muzzleFlash.position.set(0, 0.05, 1.68);
+    muzzleFlash.visible = false;
+    markerGroup.add(muzzleFlash);
 
     const pistolGrip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.38, 0.2), carbonMat);
     pistolGrip.position.set(0, -0.24, -0.15);
@@ -2454,16 +2916,39 @@ export default function HamsterPaintball({
     bodyGroup.add(markerGroup);
     root.add(bodyGroup);
 
-    // 7. Floating 3D Callsign Tag
+    // 7. 3D Ground Aura Ring when Long-Pressing a Health/Defence Can
+    const canAuraRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.95, 1.35, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x4ade80,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85
+      })
+    );
+    canAuraRing.rotation.x = -Math.PI / 2;
+    canAuraRing.position.y = 0.08;
+    canAuraRing.visible = false;
+    root.add(canAuraRing);
+
+    // 8. Floating 3D Callsign Tag
     const nameSprite = createPlayerNameSprite(callsign, skin, isHostReferee, team);
     root.add(nameSprite);
 
     root.userData = {
       leftLeg,
       rightLeg,
+      leftEar,
+      rightEar,
+      tail,
+      leftArmGroup,
+      heldCanMesh,
+      canAuraRing,
       bodyGroup,
       headGroup,
       markerGroup,
+      muzzleFlash,
+      recoil: 0,
       skinIdx,
       callsign
     };
@@ -2471,81 +2956,154 @@ export default function HamsterPaintball({
     return root;
   }
 
-  // Build 3D Collectible Health & Defence/Shield Powerup Crates
+  // Build 3D Pressurized Health Cans & Defence Cans Around the Arena
   function buildPowerupCrate(type: 'health' | 'shield'): THREE.Group {
     const g = new THREE.Group();
     const isHealth = type === 'health';
-    const mainColor = isHealth ? 0x22c55e : 0x06b6d4;
+    const mainColor = isHealth ? 0x10b981 : 0x06b6d4;
     const glowColor = isHealth ? 0x4ade80 : 0x38bdf8;
+    const primaryHex = isHealth ? '#10b981' : '#06b6d4';
+    const badgeLabel = isHealth ? 'HEALTH CAN' : 'DEFENCE CAN';
+    const subLabel = isHealth ? '+45 HP' : '+50 SHIELD';
 
-    // Glowing Base Ring on Turf
+    // 1. Glowing Base Pad & Outer Ring on Turf
+    const basePad = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.85, 0.95, 0.08, 28),
+      new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.4,
+        metalness: 0.5
+      })
+    );
+    basePad.position.y = 0.04;
+    g.add(basePad);
+
     const baseRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.75, 1.05, 24),
+      new THREE.RingGeometry(0.92, 1.22, 32),
       new THREE.MeshBasicMaterial({
         color: glowColor,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.75
+        opacity: 0.85
       })
     );
     baseRing.rotation.x = -Math.PI / 2;
-    baseRing.position.y = 0.04;
+    baseRing.position.y = 0.05;
     g.add(baseRing);
 
-    // Floating Rotating 3D Core
+    // 2. Floating Rotating 3D Pressurized Energy Canister
     const floater = new THREE.Group();
-    floater.position.y = 1.05;
+    floater.position.y = 1.15;
 
-    if (isHealth) {
-      // 3D Medkit Box + White/Green Cross
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(0.95, 0.72, 0.95),
-        new THREE.MeshPhysicalMaterial({
-          color: 0xffffff,
-          clearcoat: 1.0,
-          roughness: 0.15
-        })
-      );
-      box.castShadow = true;
-      floater.add(box);
+    // Procedural Wrap-Around Canister Label Texture
+    const lc = document.createElement('canvas');
+    lc.width = 256;
+    lc.height = 256;
+    const lctx = lc.getContext('2d')!;
+    lctx.fillStyle = primaryHex;
+    lctx.fillRect(0, 0, 256, 256);
 
-      const crossMat = new THREE.MeshStandardMaterial({
+    lctx.fillStyle = '#0f172a';
+    lctx.fillRect(0, 26, 256, 40);
+    lctx.fillRect(0, 190, 256, 40);
+
+    lctx.fillStyle = '#ffffff';
+    lctx.font = '900 26px "Inter", system-ui, sans-serif';
+    lctx.textAlign = 'center';
+    lctx.textBaseline = 'middle';
+    lctx.fillText(badgeLabel, 128, 108);
+    lctx.fillStyle = '#fef08a';
+    lctx.font = '900 30px "Inter", system-ui, sans-serif';
+    lctx.fillText(subLabel, 128, 148);
+
+    const canTex = new THREE.CanvasTexture(lc);
+    canTex.colorSpace = THREE.SRGBColorSpace;
+
+    const chromeRimMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      metalness: 0.92,
+      roughness: 0.14
+    });
+
+    // Main Cylindrical Can Body
+    const canBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.46, 0.46, 1.12, 28),
+      new THREE.MeshPhysicalMaterial({
+        map: canTex,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.08,
+        roughness: 0.18,
+        metalness: 0.25
+      })
+    );
+    canBody.castShadow = true;
+    floater.add(canBody);
+
+    // Bottom & Top Metallic Beveled Rims
+    const bottomRim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.48, 0.45, 0.1, 28),
+      chromeRimMat
+    );
+    bottomRim.position.y = -0.56;
+    floater.add(bottomRim);
+
+    const topShoulder = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.38, 0.48, 0.14, 28),
+      chromeRimMat
+    );
+    topShoulder.position.y = 0.58;
+    floater.add(topShoulder);
+
+    // Top Pull-Tab & Drinking Nozzle
+    const topCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.2, 0.12, 18),
+      new THREE.MeshStandardMaterial({
         color: mainColor,
         emissive: mainColor,
-        emissiveIntensity: 0.45
-      });
-      const vBar = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.76, 1.0), crossMat);
-      const hBar = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.24, 1.0), crossMat);
-      floater.add(vBar, hBar);
-    } else {
-      // 3D Octahedron Defence Shield Crystal + Energy Torus
-      const crystal = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.62, 0),
-        new THREE.MeshPhysicalMaterial({
-          color: mainColor,
-          emissive: mainColor,
-          emissiveIntensity: 0.35,
-          metalness: 0.4,
-          roughness: 0.1,
-          clearcoat: 1.0
-        })
-      );
-      crystal.castShadow = true;
-      floater.add(crystal);
+        emissiveIntensity: 0.5
+      })
+    );
+    topCap.position.y = 0.7;
+    floater.add(topCap);
 
-      const shieldRing = new THREE.Mesh(
-        new THREE.TorusGeometry(0.75, 0.06, 12, 24),
-        new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          emissive: glowColor,
-          emissiveIntensity: 0.6
-        })
-      );
-      floater.add(shieldRing);
-    }
+    // Orbiting Energy Halo Ring around the Can
+    const haloRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.68, 0.045, 12, 28),
+      new THREE.MeshBasicMaterial({ color: glowColor })
+    );
+    haloRing.rotation.x = Math.PI / 3;
+    floater.add(haloRing);
 
     g.add(floater);
-    g.userData = { floater, baseRing };
+
+    // 3. Floating 3D Label Badge Above the Can
+    const bc = document.createElement('canvas');
+    bc.width = 256;
+    bc.height = 64;
+    const bctx = bc.getContext('2d')!;
+    bctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+    bctx.beginPath();
+    bctx.roundRect(8, 6, 240, 52, 26);
+    bctx.fill();
+    bctx.lineWidth = 4;
+    bctx.strokeStyle = primaryHex;
+    bctx.stroke();
+    bctx.fillStyle = '#ffffff';
+    bctx.font = '900 22px "Inter", system-ui, sans-serif';
+    bctx.textAlign = 'center';
+    bctx.textBaseline = 'middle';
+    bctx.fillText(`${isHealth ? '🧪' : '🛡️'} ${badgeLabel}`, 128, 32);
+
+    const badgeTex = new THREE.CanvasTexture(bc);
+    badgeTex.colorSpace = THREE.SRGBColorSpace;
+    const badgeSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: badgeTex, transparent: true, depthTest: false })
+    );
+    badgeSprite.scale.set(2.2, 0.55, 1);
+    badgeSprite.position.set(0, 2.25, 0);
+    g.add(badgeSprite);
+
+    g.userData = { floater, baseRing, haloRing };
     return g;
   }
 
@@ -2553,28 +3111,94 @@ export default function HamsterPaintball({
     hamsterGroup: THREE.Group,
     isMoving: boolean,
     walkPhase: number,
-    dt: number
+    dt: number,
+    holdingCanType: 'health' | 'shield' | null = null,
+    playStepAudio: boolean = false
   ): number => {
     const ud = hamsterGroup.userData;
     if (!ud) return walkPhase;
     let nextPhase = walkPhase;
+
     if (isMoving) {
-      nextPhase += dt * 15;
-      if (ud.leftLeg) ud.leftLeg.rotation.x = Math.sin(nextPhase) * 0.65;
-      if (ud.rightLeg) ud.rightLeg.rotation.x = -Math.sin(nextPhase) * 0.65;
+      nextPhase += dt * 15.5;
+      if (playStepAudio) {
+        sfx.playFootstep();
+      }
+      if (ud.leftLeg) {
+        ud.leftLeg.rotation.x = Math.sin(nextPhase) * 0.72;
+        ud.leftLeg.position.y = 0.38 + Math.max(0, Math.sin(nextPhase)) * 0.1;
+      }
+      if (ud.rightLeg) {
+        ud.rightLeg.rotation.x = -Math.sin(nextPhase) * 0.72;
+        ud.rightLeg.position.y = 0.38 + Math.max(0, -Math.sin(nextPhase)) * 0.1;
+      }
       if (ud.bodyGroup) {
-        ud.bodyGroup.position.y = Math.abs(Math.sin(nextPhase * 2)) * 0.1;
-        ud.bodyGroup.rotation.z = Math.sin(nextPhase) * 0.05;
+        ud.bodyGroup.position.y = Math.abs(Math.sin(nextPhase * 2)) * 0.12;
+        ud.bodyGroup.rotation.z = Math.sin(nextPhase) * 0.065;
+      }
+      if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + Math.sin(nextPhase * 2) * 0.14;
+      if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - Math.sin(nextPhase * 2) * 0.14;
+      if (ud.tail) ud.tail.rotation.y = Math.sin(nextPhase * 2) * 0.35;
+    } else {
+      nextPhase += dt * 2.6;
+      if (ud.leftLeg) {
+        ud.leftLeg.rotation.x *= 0.84;
+        ud.leftLeg.position.y = 0.38;
+      }
+      if (ud.rightLeg) {
+        ud.rightLeg.rotation.x *= 0.84;
+        ud.rightLeg.position.y = 0.38;
+      }
+      if (ud.bodyGroup) {
+        ud.bodyGroup.position.y = Math.sin(nextPhase) * 0.03;
+        ud.bodyGroup.rotation.z *= 0.84;
+      }
+      if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + Math.sin(nextPhase) * 0.04;
+      if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - Math.sin(nextPhase) * 0.04;
+    }
+
+    // Marker Shot Recoil & Muzzle Flash Animation
+    if (typeof ud.recoil === 'number' && ud.recoil > 0.01) {
+      ud.recoil = Math.max(0, ud.recoil - dt * 6.5);
+      if (ud.markerGroup) {
+        ud.markerGroup.position.z = 0.55 - ud.recoil * 0.24;
+        ud.markerGroup.rotation.x = -ud.recoil * 0.18;
+      }
+      if (ud.muzzleFlash) {
+        ud.muzzleFlash.visible = ud.recoil > 0.65;
+        ud.muzzleFlash.scale.setScalar(0.8 + ud.recoil * 0.6);
       }
     } else {
-      nextPhase += dt * 2.5;
-      if (ud.leftLeg) ud.leftLeg.rotation.x *= 0.85;
-      if (ud.rightLeg) ud.rightLeg.rotation.x *= 0.85;
-      if (ud.bodyGroup) {
-        ud.bodyGroup.position.y = Math.sin(nextPhase) * 0.025;
-        ud.bodyGroup.rotation.z *= 0.85;
+      if (ud.markerGroup) {
+        ud.markerGroup.position.z = 0.55;
+        ud.markerGroup.rotation.x = 0;
+      }
+      if (ud.muzzleFlash) {
+        ud.muzzleFlash.visible = false;
       }
     }
+
+    // Long-Press Can Drinking / Charging 3D Pose & Aura Ring
+    if (ud.leftArmGroup && ud.heldCanMesh && ud.canAuraRing) {
+      if (holdingCanType) {
+        const canColor = holdingCanType === 'health' ? 0x22c55e : 0x06b6d4;
+        ud.heldCanMesh.visible = true;
+        (ud.heldCanMesh.material as THREE.MeshStandardMaterial).color.setHex(canColor);
+        (ud.heldCanMesh.material as THREE.MeshStandardMaterial).emissive.setHex(canColor);
+        ud.leftArmGroup.rotation.x = -0.85 + Math.sin(nextPhase * 4) * 0.12;
+        ud.leftArmGroup.rotation.y = 0.45;
+        ud.canAuraRing.visible = true;
+        (ud.canAuraRing.material as THREE.MeshBasicMaterial).color.setHex(canColor);
+        const pulseScale = 1.0 + Math.sin(nextPhase * 5) * 0.15;
+        ud.canAuraRing.scale.setScalar(pulseScale);
+      } else {
+        ud.heldCanMesh.visible = false;
+        ud.leftArmGroup.rotation.x = 0;
+        ud.leftArmGroup.rotation.y = 0;
+        ud.canAuraRing.visible = false;
+      }
+    }
+
     return nextPhase;
   };
 
@@ -3161,17 +3785,22 @@ export default function HamsterPaintball({
     createTireStack(8, 12);
 
     // =========================================================
-    // COLLECTIBLE HEALTH & DEFENCE SHIELD POWER-UP CRATES
+    // 12 3D HEALTH CANS & DEFENCE CANS AROUND THE ARENA
+    // Players collect them around the arena and LONG-PRESS to use them!
     // =========================================================
     const powerupConfigs: Array<{ type: 'health' | 'shield'; x: number; z: number }> = [
-      { type: 'health', x: -22, z: -12 },
-      { type: 'health', x: 22, z: -12 },
-      { type: 'shield', x: -8, z: -8 },
-      { type: 'shield', x: 8, z: -8 },
+      { type: 'health', x: -24, z: -13 },
+      { type: 'health', x: 24, z: -13 },
+      { type: 'shield', x: -9, z: -9 },
+      { type: 'shield', x: 9, z: -9 },
       { type: 'health', x: -18, z: 18 },
       { type: 'health', x: 18, z: 18 },
       { type: 'shield', x: 0, z: -20 },
-      { type: 'shield', x: 0, z: 22 }
+      { type: 'shield', x: 0, z: 22 },
+      { type: 'health', x: -32, z: 6 },
+      { type: 'shield', x: 32, z: 6 },
+      { type: 'shield', x: -14, z: 2 },
+      { type: 'health', x: 14, z: 2 }
     ];
 
     const powerups: PowerupNode[] = powerupConfigs.map((cfg, idx) => {
@@ -3419,11 +4048,28 @@ export default function HamsterPaintball({
       ) {
         setIsQuestionModalOpen(prev => !prev);
       }
+
+      // Keyboard Long-Press Shortcuts for Health Can ('1' or 'h') & Defence Can ('2', 'f', or 'e')
+      if (
+        !e.repeat &&
+        stateSnapRef.current.role === 'player' &&
+        stateSnapRef.current.screen === 'game'
+      ) {
+        if (k === '1' || k === 'h') {
+          startCanLongPress('health');
+        } else if (k === '2' || k === 'f' || k === 'e') {
+          startCanLongPress('shield');
+        }
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (!gameRef.current) return;
-      gameRef.current.keys[e.key.toLowerCase()] = false;
+      const k = e.key.toLowerCase();
+      gameRef.current.keys[k] = false;
+      if (k === '1' || k === 'h' || k === '2' || k === 'f' || k === 'e') {
+        stopCanLongPress();
+      }
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -3512,15 +4158,18 @@ export default function HamsterPaintball({
         }
       }
 
-      // Animate Floating Powerup Crates (Health & Defence Shield)
+      // Animate 3D Health Cans & Defence Cans Around the Arena
       g.powerups.forEach(pu => {
         if (!pu.active && now >= pu.respawnAt) {
           pu.active = true;
           pu.mesh.visible = true;
         }
         if (pu.active && pu.mesh.userData.floater) {
-          pu.mesh.userData.floater.rotation.y += dt * 2.2;
-          pu.mesh.userData.floater.position.y = 1.05 + Math.sin(now * 0.004 + pu.x) * 0.18;
+          pu.mesh.userData.floater.rotation.y += dt * 2.4;
+          pu.mesh.userData.floater.position.y = 1.12 + Math.sin(now * 0.0045 + pu.x) * 0.16;
+          if (pu.mesh.userData.haloRing) {
+            pu.mesh.userData.haloRing.rotation.z += dt * 3.2;
+          }
         }
       });
 
@@ -3618,24 +4267,38 @@ export default function HamsterPaintball({
           }
         });
 
-        // Collectible Health & Defence Shield Powerup Pickups
+        // Collectible Health Cans & Defence Cans Around the Arena
+        // Walking over a can collects it into the player's Can Belt (up to 3 each); players LONG-PRESS to use it!
+        let closestCan: { id: string; type: 'health' | 'shield' } | null = null;
         g.powerups.forEach(pu => {
           if (!pu.active) return;
-          if (Math.hypot(g.x - pu.x, g.z - pu.z) < 1.85) {
-            pu.active = false;
-            pu.mesh.visible = false;
-            pu.respawnAt = now + 12000; // Respawn in 12 seconds
-            sfx.playPowerup();
-            if (pu.type === 'health') {
-              setHp(h => Math.min(100, h + 35));
-              setPickupBannerText('❤️ +35 HEALTH RESTORED!');
-            } else {
-              setShield(s => Math.min(100, s + 40));
-              setPickupBannerText('🛡️ +40 DEFENCE SHIELD CHARGED!');
+          const dist = Math.hypot(g.x - pu.x, g.z - pu.z);
+          if (dist < 2.6 && !closestCan) {
+            closestCan = { id: pu.id, type: pu.type };
+          }
+          if (dist < 1.95) {
+            if (pu.type === 'health' && snapState.healthCans < 3) {
+              pu.active = false;
+              pu.mesh.visible = false;
+              pu.respawnAt = now + 11000;
+              sfx.playCanPickup();
+              setHealthCans(c => Math.min(3, c + 1));
+              setPickupBannerText('🧪 COLLECTED HEALTH CAN! LONG-PRESS CAN BUTTON TO USE!');
+              setTimeout(() => setPickupBannerText(null), 2200);
+            } else if (pu.type === 'shield' && snapState.shieldCans < 3) {
+              pu.active = false;
+              pu.mesh.visible = false;
+              pu.respawnAt = now + 11000;
+              sfx.playCanPickup();
+              setShieldCans(c => Math.min(3, c + 1));
+              setPickupBannerText('🛡️ COLLECTED DEFENCE CAN! LONG-PRESS CAN BUTTON TO USE!');
+              setTimeout(() => setPickupBannerText(null), 2200);
             }
-            setTimeout(() => setPickupBannerText(null), 2000);
           }
         });
+        setNearbyArenaCan(prev =>
+          prev?.id === closestCan?.id && prev?.type === closestCan?.type ? prev : closestCan
+        );
 
         // STABLE FOLLOW CAMERA (Decoupled from mouse rotation so screen NEVER spins uncontrollably!)
         const targetCamX = g.x;
@@ -3672,7 +4335,14 @@ export default function HamsterPaintball({
 
         g.localHamster.position.set(g.x, 0, g.z);
         g.localHamster.rotation.y = g.rotY;
-        g.walkPhase = animateHamsterRig(g.localHamster, isMoving, g.walkPhase, dt);
+        g.walkPhase = animateHamsterRig(
+          g.localHamster,
+          isMoving,
+          g.walkPhase,
+          dt,
+          snapState.holdingCanType,
+          true
+        );
       }
 
       // Update Projectiles & Collisions
@@ -3874,6 +4544,9 @@ export default function HamsterPaintball({
     }
 
     g.lastShotTime = now;
+    if (g.localHamster.userData) {
+      g.localHamster.userData.recoil = 1.0;
+    }
     sfx.playMarkerShot();
 
     const teamPaint =
@@ -5176,8 +5849,32 @@ export default function HamsterPaintball({
             </div>
           </div>
 
-          {/* CENTER ALERTS: KO OR HEALTH/DEFENCE PICKUP BANNER */}
+          {/* CENTER ALERTS: KO, PICKUP, OR LONG-PRESS CAN PROGRESS BAR */}
           <div className="self-center flex flex-col items-center gap-1.5">
+            {holdingCanType && (
+              <div className="bg-slate-900/95 border-2 border-white px-4 py-2 rounded-2xl text-center shadow-2xl min-w-[210px]">
+                <div className="text-[11px] sm:text-xs font-black uppercase text-white flex items-center justify-center gap-1.5 mb-1">
+                  <span>
+                    {holdingCanType === 'health'
+                      ? `🧪 USING HEALTH CAN... ${canHoldProgress}%`
+                      : `🛡️ CHARGING DEFENCE CAN... ${canHoldProgress}%`}
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-white/25">
+                  <div
+                    className={`h-full transition-all duration-75 ${
+                      holdingCanType === 'health'
+                        ? 'bg-gradient-to-r from-emerald-500 to-lime-400'
+                        : 'bg-gradient-to-r from-sky-500 to-cyan-300'
+                    }`}
+                    style={{ width: `${canHoldProgress}%` }}
+                  />
+                </div>
+                <div className="text-[9px] font-bold text-slate-300 mt-0.5">
+                  Keep holding to complete!
+                </div>
+              </div>
+            )}
             {koBannerText && (
               <div className="bg-slate-900/95 border-2 border-pink-500 px-4 py-1.5 rounded-2xl text-center shadow-2xl animate-bounce">
                 <div className="text-xs sm:text-base font-black text-pink-400 uppercase">
@@ -5194,9 +5891,9 @@ export default function HamsterPaintball({
             )}
           </div>
 
-          {/* BOTTOM ROW: COMPACT MOBILE CONTROLS (FREE SHOOTING IN LOBBY + QUESTION AMMO IN GAME) */}
+          {/* BOTTOM ROW: COMPACT MOBILE CONTROLS + LONG-PRESS HEALTH & DEFENCE CANS */}
           {role === 'player' ? (
-            <div className="w-full flex items-end justify-between gap-2 pb-0.5 sm:pb-1.5 px-1">
+            <div className="w-full flex items-end justify-between gap-1.5 sm:gap-2 pb-0.5 sm:pb-1.5 px-1">
               {/* LEFT SIDE: SHOOT BUTTON (Active in BOTH Lobby & Game!) */}
               <div className="flex flex-col items-center">
                 <span className="mb-0.5 text-[9px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
@@ -5216,53 +5913,128 @@ export default function HamsterPaintball({
                 </button>
               </div>
 
-              {/* CENTER: COMPACT LOBBY PILL OR ACTIVE GAME QUESTION RELOAD */}
-              {matchStatus === 'playing' ? (
-                <div className="pointer-events-auto bg-slate-900/92 rounded-xl px-2.5 py-1.5 sm:p-2.5 flex items-center gap-2 sm:gap-3 border border-white/15 shadow-xl">
-                  <div className="text-left">
-                    <div className="text-[8px] sm:text-[9px] font-black text-pink-400 uppercase leading-none">
-                      AMMO
-                    </div>
-                    <div className="text-sm sm:text-xl font-black font-mono text-white leading-tight">
-                      {ammo}{' '}
-                      <span className="text-[9px] sm:text-[10px] text-slate-400 font-sans">
-                        BALLS
-                      </span>
-                    </div>
-                  </div>
-
+              {/* CENTER DOCK: LONG-PRESS HEALTH CAN + DEFENCE CAN + AMMO/QUESTION */}
+              <div className="pointer-events-auto flex flex-col items-center gap-1.5">
+                {/* LONG-PRESS HEALTH CAN & DEFENCE CAN BAR */}
+                <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-900/92 px-2 py-1 rounded-xl border border-white/15 shadow-xl">
+                  {/* HEALTH CAN (LONG-PRESS TO USE) */}
                   <button
                     type="button"
-                    onClick={() => setIsQuestionModalOpen(true)}
-                    className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg font-black text-[10px] sm:text-xs shadow-md transition flex items-center gap-1 cursor-pointer ${
-                      ammo === 0
-                        ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border border-white'
-                        : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
+                    onMouseDown={() => startCanLongPress('health')}
+                    onMouseUp={stopCanLongPress}
+                    onMouseLeave={stopCanLongPress}
+                    onTouchStart={e => {
+                      e.preventDefault();
+                      startCanLongPress('health');
+                    }}
+                    onTouchEnd={stopCanLongPress}
+                    onTouchCancel={stopCanLongPress}
+                    onContextMenu={e => e.preventDefault()}
+                    className={`relative px-2 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1.5 select-none touch-none cursor-pointer transition ${
+                      holdingCanType === 'health'
+                        ? 'bg-emerald-600 text-white border-white scale-105'
+                        : healthCans > 0 || nearbyArenaCan?.type === 'health'
+                        ? 'bg-emerald-950/90 hover:bg-emerald-900 text-lime-300 border-lime-400/60'
+                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
                     }`}
+                    title="Long-press (Hold 1.2s or Hold Key 1) to use Health Can (+45 HP)"
                   >
-                    <Zap
-                      size={13}
-                      className={
-                        ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'
-                      }
-                    />
-                    <span className=" whitespace-nowrap">
-                      {ammo === 0
-                        ? `Answer (+${ballsPerQuestion} Balls)`
-                        : `+${ballsPerQuestion} Balls`}
-                    </span>
+                    <span className="text-xs sm:text-sm">🧪</span>
+                    <div className="text-left leading-none">
+                      <div className="text-[9px] sm:text-[10px] font-black uppercase whitespace-nowrap">
+                        Health Can{' '}
+                        <span className="text-white">
+                          {nearbyArenaCan?.type === 'health' ? 'NEAR' : `x${healthCans}`}
+                        </span>
+                      </div>
+                      <div className="text-[8px] font-bold text-emerald-200/90">
+                        Hold • +45 HP
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* DEFENCE CAN (LONG-PRESS TO USE) */}
+                  <button
+                    type="button"
+                    onMouseDown={() => startCanLongPress('shield')}
+                    onMouseUp={stopCanLongPress}
+                    onMouseLeave={stopCanLongPress}
+                    onTouchStart={e => {
+                      e.preventDefault();
+                      startCanLongPress('shield');
+                    }}
+                    onTouchEnd={stopCanLongPress}
+                    onTouchCancel={stopCanLongPress}
+                    onContextMenu={e => e.preventDefault()}
+                    className={`relative px-2 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1.5 select-none touch-none cursor-pointer transition ${
+                      holdingCanType === 'shield'
+                        ? 'bg-cyan-500 text-slate-950 border-white scale-105'
+                        : shieldCans > 0 || nearbyArenaCan?.type === 'shield'
+                        ? 'bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border-cyan-400/60'
+                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
+                    }`}
+                    title="Long-press (Hold 1.2s or Hold Key 2) to use Defence Can (+50 Shield)"
+                  >
+                    <span className="text-xs sm:text-sm">🛡️</span>
+                    <div className="text-left leading-none">
+                      <div className="text-[9px] sm:text-[10px] font-black uppercase whitespace-nowrap">
+                        Defence Can{' '}
+                        <span className="text-white">
+                          {nearbyArenaCan?.type === 'shield' ? 'NEAR' : `x${shieldCans}`}
+                        </span>
+                      </div>
+                      <div className="text-[8px] font-bold text-cyan-200/90">
+                        Hold • +50 SHD
+                      </div>
+                    </div>
                   </button>
                 </div>
-              ) : (
-                <div className="pointer-events-auto bg-slate-900/88 border border-lime-400/60 rounded-xl px-3 py-1.5 shadow-lg text-center max-w-[200px] sm:max-w-xs">
-                  <div className="text-[10px] sm:text-xs font-black text-lime-300 leading-tight">
-                    🎯 FREE SHOOT LOBBY
+
+                {/* LOBBY STATUS PILL OR ACTIVE GAME QUESTION RELOAD */}
+                {matchStatus === 'playing' ? (
+                  <div className="bg-slate-900/92 rounded-xl px-2.5 py-1.5 sm:p-2 flex items-center gap-2 sm:gap-3 border border-white/15 shadow-xl">
+                    <div className="text-left">
+                      <div className="text-[8px] sm:text-[9px] font-black text-pink-400 uppercase leading-none">
+                        AMMO
+                      </div>
+                      <div className="text-sm sm:text-lg font-black font-mono text-white leading-tight">
+                        {ammo}{' '}
+                        <span className="text-[9px] sm:text-[10px] text-slate-400 font-sans">
+                          BALLS
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsQuestionModalOpen(true)}
+                      className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg font-black text-[10px] sm:text-xs shadow-md transition flex items-center gap-1 cursor-pointer ${
+                        ammo === 0
+                          ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border border-white'
+                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
+                      }`}
+                    >
+                      <Zap
+                        size={13}
+                        className={
+                          ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'
+                        }
+                      />
+                      <span className="whitespace-nowrap">
+                        {ammo === 0
+                          ? `Answer (+${ballsPerQuestion} Balls)`
+                          : `+${ballsPerQuestion} Balls`}
+                      </span>
+                    </button>
                   </div>
-                  <div className="text-[9px] sm:text-[10px] font-bold text-slate-300 leading-tight">
-                    Shoot &amp; roam freely while waiting for Host!
+                ) : (
+                  <div className="bg-slate-900/88 border border-lime-400/60 rounded-xl px-3 py-1 shadow-lg text-center">
+                    <div className="text-[10px] sm:text-xs font-black text-lime-300 leading-tight">
+                      🎯 FREE SHOOT LOBBY • Hold Can Buttons to Test!
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* RIGHT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK */}
               <div className="flex flex-col items-center">
