@@ -1883,7 +1883,7 @@ export default function HamsterPaintball({
   const [hostCameraMode, setHostCameraMode] = useState<'overview' | 'track_one' | 'auto_track'>('auto_track');
   const [hostFollowIndex, setHostFollowIndex] = useState<number>(0);
 
-  // Helper: Calculate Top Middle (Red Squad) or Bottom Middle (Blue Squad) Square Spawn Position
+  // Helper: Calculate Top Middle (Red Squad) or Bottom Middle (Blue Squad) Square Spawn Position in the Expanded Stadium Arena
   const getTeamSpawnPosition = (team: TeamId, mode: 'solo' | 'teams', slotIndex?: number) => {
     const resolvedTeam: 'red' | 'blue' =
       mode === 'teams'
@@ -1893,19 +1893,19 @@ export default function HamsterPaintball({
         : Math.random() < 0.5
         ? 'red'
         : 'blue';
-    // Top Middle Square Spawn Center (Red): (0, -26), Bottom Middle Square Spawn Center (Blue): (0, 26)
+    // Top Middle Square Spawn Center (Red): (0, -44), Bottom Middle Square Spawn Center (Blue): (0, 44)
     const baseX = 0;
-    const baseZ = resolvedTeam === 'red' ? -26 : 26;
+    const baseZ = resolvedTeam === 'red' ? -44 : 44;
     let jitterX: number;
     let jitterZ: number;
     if (typeof slotIndex === 'number') {
       const col = slotIndex % 4;
       const row = Math.floor(slotIndex / 4) % 2;
-      jitterX = (col - 1.5) * 3.0;
-      jitterZ = (row - 0.5) * 2.2;
+      jitterX = (col - 1.5) * 3.6;
+      jitterZ = (row - 0.5) * 2.6;
     } else {
-      jitterX = Number(((Math.random() - 0.5) * 9.0).toFixed(2));
-      jitterZ = Number(((Math.random() - 0.5) * 3.8).toFixed(2));
+      jitterX = Number(((Math.random() - 0.5) * 11.0).toFixed(2));
+      jitterZ = Number(((Math.random() - 0.5) * 4.4).toFixed(2));
     }
     const rotY = resolvedTeam === 'red' ? 0 : Math.PI;
     return {
@@ -2806,7 +2806,7 @@ export default function HamsterPaintball({
         }
 
         if (data.role === 'player' && !data.kicked) {
-          const defaultZ = data.team === 'blue' ? 26 : -26;
+          const defaultZ = data.team === 'blue' ? 44 : -44;
           const pState: PlayerNetworkState = {
             id: playerId,
             name: data.name || 'Student',
@@ -3740,7 +3740,8 @@ export default function HamsterPaintball({
     skinIdx: number,
     callsign: string,
     isHostReferee: boolean = false,
-    team: TeamId = 'solo'
+    team: TeamId = 'solo',
+    showNameTag: boolean = true
   ): THREE.Group {
     const skin = HAMSTER_SKINS[skinIdx % HAMSTER_SKINS.length];
     const teamColorNum =
@@ -4642,8 +4643,9 @@ export default function HamsterPaintball({
     immunityShieldGroup.visible = false;
     root.add(immunityShieldGroup);
 
-    // 8. Floating 3D Callsign Tag
+    // 8. Floating 3D Callsign Tag (Hidden for personal view; visible to all other players!)
     const nameSprite = createPlayerNameSprite(callsign, skin, isHostReferee, team);
+    nameSprite.visible = showNameTag;
     root.add(nameSprite);
 
     root.userData = {
@@ -4815,10 +4817,10 @@ export default function HamsterPaintball({
     const badgeTex = new THREE.CanvasTexture(bc);
     badgeTex.colorSpace = THREE.SRGBColorSpace;
     const badgeSprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: badgeTex, transparent: true, depthTest: false })
+      new THREE.SpriteMaterial({ map: badgeTex, transparent: true, depthTest: true })
     );
-    badgeSprite.scale.set(2.2, 0.55, 1);
-    badgeSprite.position.set(0, 2.25, 0);
+    badgeSprite.scale.set(1.75, 0.44, 1);
+    badgeSprite.position.set(0, 2.1, 0);
     g.add(badgeSprite);
 
     g.userData = { floater, baseRing, haloRing };
@@ -5093,14 +5095,14 @@ export default function HamsterPaintball({
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x4d7c0f, 0.92);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.25);
-    sunLight.position.set(36, 65, 28);
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.28);
+    sunLight.position.set(48, 82, 38);
     sunLight.castShadow = !isSoftwareGl;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
     sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 160;
-    const d = 60;
+    sunLight.shadow.camera.far = 220;
+    const d = 82;
     sunLight.shadow.camera.left = -d;
     sunLight.shadow.camera.right = d;
     sunLight.shadow.camera.top = d;
@@ -5108,93 +5110,156 @@ export default function HamsterPaintball({
     sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
-    // Pro Astro-Turf & Top-Middle (Red) / Bottom-Middle (Blue) Square Spawn Markings
+    // Outer Park Meadow Backdrop so the horizon is lush and natural
+    const outerMeadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(420, 420),
+      new THREE.MeshStandardMaterial({ color: 0x3f8226, roughness: 0.92, metalness: 0.02 })
+    );
+    outerMeadow.rotation.x = -Math.PI / 2;
+    outerMeadow.position.y = -0.04;
+    scene.add(outerMeadow);
+
+    // Expanded Championship Stadium Turf (240m x 240m) with Top-Middle Red Spawn (0, -44) & Bottom-Middle Blue Spawn (0, +44)
     const createProArenaTurfTexture = () => {
       const c = document.createElement('canvas');
-      c.width = 1024;
-      c.height = 1024;
+      c.width = 2048;
+      c.height = 2048;
       const ctx = c.getContext('2d')!;
 
-      const stripeCount = 16;
+      // Helper to map world (x, z) on 240x240 ground plane to 2048x2048 canvas pixels
+      const toPxX = (wx: number) => ((wx / 240) + 0.5) * 2048;
+      const toPxY = (wz: number) => ((wz / 240) + 0.5) * 2048;
+      const toPxLen = (wLen: number) => (wLen / 240) * 2048;
+
+      // 1. Alternating Mowed Championship Turf Stripes
+      const stripeCount = 24;
       const stripeW = c.width / stripeCount;
       for (let i = 0; i < stripeCount; i++) {
         ctx.fillStyle = i % 2 === 0 ? '#4d9c2d' : '#5cb338';
         ctx.fillRect(i * stripeW, 0, stripeW, c.height);
       }
 
-      for (let i = 0; i < 14000; i++) {
+      // Cross-hatch subtle grass blade texture
+      for (let i = 0; i < 20000; i++) {
         const gx = Math.random() * c.width;
         const gy = Math.random() * c.height;
         ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(15,40,10,0.08)';
         ctx.fillRect(gx, gy, 2, 4);
       }
 
-      // Wide Accessible Park Walkways (North-South & East-West Lanes from Top-Middle & Bottom-Middle Spawns)
-      ctx.fillStyle = 'rgba(194, 178, 128, 0.72)';
-      ctx.fillRect(60, 472, 904, 80);
-      ctx.fillRect(472, 80, 80, 864);
+      const fieldLeft = toPxX(-68);
+      const fieldRight = toPxX(68);
+      const fieldTop = toPxY(-56);
+      const fieldBottom = toPxY(56);
+      const fieldW = fieldRight - fieldLeft;
+      const fieldH = fieldBottom - fieldTop;
 
+      // 2. Stadium Outer Track Apron around the Playable Field
+      ctx.strokeStyle = 'rgba(30, 41, 59, 0.45)';
+      ctx.lineWidth = toPxLen(4.2);
+      ctx.strokeRect(
+        fieldLeft - toPxLen(2.4),
+        fieldTop - toPxLen(2.4),
+        fieldW + toPxLen(4.8),
+        fieldH + toPxLen(4.8)
+      );
+
+      // 3. Tactical Sand/Stone Lanes Connecting Top-Middle & Bottom-Middle Spawns & Flanks
+      ctx.fillStyle = 'rgba(214, 199, 152, 0.55)';
+      ctx.fillRect(fieldLeft + toPxLen(4), toPxY(-3.2), fieldW - toPxLen(8), toPxLen(6.4));
+      ctx.fillRect(toPxX(-3.2), toPxY(-44), toPxLen(6.4), toPxLen(88));
+
+      // Diamond Tactical Lane Ring Connecting Spawns to Midfield Flanks
       ctx.save();
-      ctx.strokeStyle = 'rgba(194, 178, 128, 0.52)';
-      ctx.lineWidth = 48;
+      ctx.strokeStyle = 'rgba(214, 199, 152, 0.44)';
+      ctx.lineWidth = toPxLen(4.5);
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(512, 322);
-      ctx.lineTo(256, 512);
-      ctx.lineTo(512, 702);
-      ctx.lineTo(768, 512);
+      ctx.moveTo(toPxX(0), toPxY(-38));
+      ctx.lineTo(toPxX(-42), toPxY(0));
+      ctx.lineTo(toPxX(0), toPxY(38));
+      ctx.lineTo(toPxX(42), toPxY(0));
       ctx.closePath();
       ctx.stroke();
       ctx.restore();
 
-      // Tournament Boundary Lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.lineWidth = 8;
-      ctx.strokeRect(72, 88, 880, 848);
+      // 4. Crisp White Stadium Boundary Lines (x = ±68, z = ±56)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.94)';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(fieldLeft, fieldTop, fieldW, fieldH);
 
-      // 50-Yard Horizontal Midfield Line (Separating Top Red Half & Bottom Blue Half)
+      // Quarter-Field Tactical Lines (z = -22 and z = +22)
       ctx.save();
-      ctx.setLineDash([24, 16]);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.lineWidth = 6;
+      ctx.setLineDash([20, 20]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(72, 512);
-      ctx.lineTo(952, 512);
+      ctx.moveTo(fieldLeft, toPxY(-22));
+      ctx.lineTo(fieldRight, toPxY(-22));
+      ctx.moveTo(fieldLeft, toPxY(22));
+      ctx.lineTo(fieldRight, toPxY(22));
       ctx.stroke();
       ctx.restore();
 
-      // Center Circle
-      ctx.strokeStyle = 'rgba(250, 204, 21, 0.88)';
-      ctx.lineWidth = 7;
+      // 50-Yard Horizontal Midfield Line (Separating Top Red Half & Bottom Blue Half)
+      ctx.save();
+      ctx.setLineDash([32, 18]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.lineWidth = 8;
       ctx.beginPath();
-      ctx.arc(512, 512, 96, 0, Math.PI * 2);
+      ctx.moveTo(fieldLeft, toPxY(0));
+      ctx.lineTo(fieldRight, toPxY(0));
+      ctx.stroke();
+      ctx.restore();
+
+      // Grand Center Championship Circle
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
+      ctx.beginPath();
+      ctx.arc(toPxX(0), toPxY(0), toPxLen(13.5), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)';
+      ctx.lineWidth = 9;
       ctx.stroke();
 
-      // TOP MIDDLE SQUARE SPAWN AREA (RED SQUAD: centered at world x = 0, z = -26 -> canvas x = 512, y = 322)
-      ctx.fillStyle = 'rgba(244, 63, 94, 0.52)';
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.roundRect(443, 277, 138, 90, 20);
+      ctx.arc(toPxX(0), toPxY(0), toPxLen(9.2), 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 5. TOP MIDDLE SQUARE SPAWN AREA (RED SQUAD: centered at world x = 0, z = -44)
+      const spW = toPxLen(22);
+      const spH = toPxLen(13);
+      const redTopX = toPxX(-11);
+      const redTopY = toPxY(-44) - spH / 2;
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.56)';
+      ctx.beginPath();
+      ctx.roundRect(redTopX, redTopY, spW, spH, 24);
       ctx.fill();
-      ctx.lineWidth = 6;
+      ctx.lineWidth = 8;
       ctx.strokeStyle = '#fda4af';
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 22px "Inter", system-ui, sans-serif';
+      ctx.font = '900 34px "Inter", system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('RED SPAWN', 512, 329);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('RED SQUAD SPAWN', toPxX(0), toPxY(-44));
 
-      // BOTTOM MIDDLE SQUARE SPAWN AREA (BLUE SQUAD: centered at world x = 0, z = +26 -> canvas x = 512, y = 702)
-      ctx.fillStyle = 'rgba(37, 99, 235, 0.52)';
+      // 6. BOTTOM MIDDLE SQUARE SPAWN AREA (BLUE SQUAD: centered at world x = 0, z = +44)
+      const blueTopX = toPxX(-11);
+      const blueTopY = toPxY(44) - spH / 2;
+      ctx.fillStyle = 'rgba(37, 99, 235, 0.56)';
       ctx.beginPath();
-      ctx.roundRect(443, 657, 138, 90, 20);
+      ctx.roundRect(blueTopX, blueTopY, spW, spH, 24);
       ctx.fill();
-      ctx.lineWidth = 6;
+      ctx.lineWidth = 8;
       ctx.strokeStyle = '#7dd3fc';
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 22px "Inter", system-ui, sans-serif';
+      ctx.font = '900 34px "Inter", system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('BLUE SPAWN', 512, 709);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('BLUE SQUAD SPAWN', toPxX(0), toPxY(44));
 
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -5204,10 +5269,10 @@ export default function HamsterPaintball({
 
     const groundMat = new THREE.MeshStandardMaterial({
       map: createProArenaTurfTexture(),
-      roughness: 0.84,
+      roughness: 0.82,
       metalness: 0.04
     });
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 140), groundMat);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
@@ -5215,7 +5280,7 @@ export default function HamsterPaintball({
     const obstacles: Array<{ x: number; z: number; r: number; h: number }> = [];
 
     // =========================================================
-    // 3D TOP MIDDLE (RED) & BOTTOM MIDDLE (BLUE) SQUARE SPAWN BASES (ONLY SQUARE SPAWN — NO CIRCLE PAD!)
+    // 3D TOP MIDDLE (RED: 0, -44) & BOTTOM MIDDLE (BLUE: 0, +44) SQUARE SPAWN BASES
     // =========================================================
     const createTeamCornerSpawnBase = (
       x: number,
@@ -5227,18 +5292,18 @@ export default function HamsterPaintball({
       const spawnGroup = new THREE.Group();
       spawnGroup.position.set(x, 0, z);
 
-      // 3D Square Spawn Perimeter Frame on Turf (Matches the Square Spawn on the turf; NO circular pad!)
+      // 3D Square Spawn Perimeter Frame on Turf (Expanded 22m x 13m Team Spawn Base)
       const borderMat = new THREE.MeshStandardMaterial({
         color: teamColorHex,
         emissive: teamColorHex,
-        emissiveIntensity: 0.25,
-        roughness: 0.3,
-        metalness: 0.2
+        emissiveIntensity: 0.3,
+        roughness: 0.28,
+        metalness: 0.25
       });
-      const halfW = 9.4;
-      const halfD = 6.2;
-      const barThick = 0.38;
-      const barH = 0.14;
+      const halfW = 11.0;
+      const halfD = 6.5;
+      const barThick = 0.44;
+      const barH = 0.18;
 
       const northBar = new THREE.Mesh(
         new THREE.BoxGeometry(halfW * 2 + barThick, barH, barThick),
@@ -5268,6 +5333,19 @@ export default function HamsterPaintball({
       eastBar.position.set(halfW, barH / 2, 0);
       spawnGroup.add(eastBar);
 
+      // 4 Glowing Corner Beacons on the Spawn Perimeter
+      const beaconGeom = new THREE.CylinderGeometry(0.32, 0.38, 0.65, 16);
+      [
+        [-halfW, -halfD],
+        [halfW, -halfD],
+        [-halfW, halfD],
+        [halfW, halfD]
+      ].forEach(([cx, cz]) => {
+        const beacon = new THREE.Mesh(beaconGeom, borderMat);
+        beacon.position.set(cx, 0.32, cz);
+        spawnGroup.add(beacon);
+      });
+
       // Ground-level Spawn Zone Floor Sign (Never blocks camera behind Red or Blue Spawn!)
       const bc = document.createElement('canvas');
       bc.width = 512;
@@ -5287,11 +5365,11 @@ export default function HamsterPaintball({
       bannerTex.colorSpace = THREE.SRGBColorSpace;
 
       const groundPlaque = new THREE.Mesh(
-        new THREE.PlaneGeometry(8.6, 1.8),
-        new THREE.MeshBasicMaterial({ map: bannerTex })
+        new THREE.PlaneGeometry(10.0, 2.0),
+        new THREE.MeshBasicMaterial({ map: bannerTex, polygonOffset: true, polygonOffsetFactor: -1 })
       );
       groundPlaque.rotation.x = -Math.PI / 2;
-      groundPlaque.position.set(0, 0.04, z < 0 ? -halfD + 1.2 : halfD - 1.2);
+      groundPlaque.position.set(0, 0.04, z < 0 ? -halfD + 1.4 : halfD - 1.4);
       if (z < 0) {
         groundPlaque.rotation.z = Math.PI;
       }
@@ -5300,9 +5378,84 @@ export default function HamsterPaintball({
       scene.add(spawnGroup);
     };
 
-    // Top Middle Square Spawn Area (Red Squad: x = 0, z = -26) & Bottom Middle Square Spawn Area (Blue Squad: x = 0, z = +26)
-    createTeamCornerSpawnBase(0, -26, 0xf43f5e, 'RED SQUAD SPAWN', '#f43f5e');
-    createTeamCornerSpawnBase(0, 26, 0x2563eb, 'BLUE SQUAD SPAWN', '#38bdf8');
+    // Top Middle Square Spawn Area (Red Squad: x = 0, z = -44) & Bottom Middle Square Spawn Area (Blue Squad: x = 0, z = +44)
+    createTeamCornerSpawnBase(0, -44, 0xf43f5e, 'RED SQUAD SPAWN', '#f43f5e');
+    createTeamCornerSpawnBase(0, 44, 0x2563eb, 'BLUE SQUAD SPAWN', '#38bdf8');
+
+    // =========================================================
+    // 3D CHAMPIONSHIP STADIUM PERIMETER DASHER WALLS (x = ±70, z = ±58)
+    // =========================================================
+    const buildStadiumPerimeter = () => {
+      const perimGroup = new THREE.Group();
+      const wallBaseMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.45,
+        metalness: 0.55
+      });
+      const redRailMat = new THREE.MeshStandardMaterial({
+        color: 0xe11d48,
+        emissive: 0xe11d48,
+        emissiveIntensity: 0.18,
+        roughness: 0.3
+      });
+      const blueRailMat = new THREE.MeshStandardMaterial({
+        color: 0x2563eb,
+        emissive: 0x2563eb,
+        emissiveIntensity: 0.18,
+        roughness: 0.3
+      });
+      const goldCapMat = new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        metalness: 0.65,
+        roughness: 0.25
+      });
+
+      // North & South Perimeter Dasher Walls (at z = -58 and z = +58, width 140m)
+      [-58, 58].forEach(wz => {
+        const isNorthRed = wz < 0;
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(140, 1.35, 0.8), wallBaseMat);
+        wall.position.set(0, 0.68, wz);
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        perimGroup.add(wall);
+
+        const topCushion = new THREE.Mesh(
+          new THREE.BoxGeometry(140.2, 0.28, 0.96),
+          isNorthRed ? redRailMat : blueRailMat
+        );
+        topCushion.position.set(0, 1.42, wz);
+        perimGroup.add(topCushion);
+      });
+
+      // West & East Perimeter Dasher Walls (split into Red North half & Blue South half, length 58m each)
+      [-70, 70].forEach(wx => {
+        // North Red Half (z from -58 to 0)
+        const nWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.35, 58), wallBaseMat);
+        nWall.position.set(wx, 0.68, -29);
+        nWall.castShadow = true;
+        perimGroup.add(nWall);
+        const nRail = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.28, 58), redRailMat);
+        nRail.position.set(wx, 1.42, -29);
+        perimGroup.add(nRail);
+
+        // South Blue Half (z from 0 to +58)
+        const sWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.35, 58), wallBaseMat);
+        sWall.position.set(wx, 0.68, 29);
+        sWall.castShadow = true;
+        perimGroup.add(sWall);
+        const sRail = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.28, 58), blueRailMat);
+        sRail.position.set(wx, 1.42, 29);
+        perimGroup.add(sRail);
+
+        // Midfield Gold Divider Pillar at (wx, 0)
+        const midPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 2.4, 20), goldCapMat);
+        midPillar.position.set(wx, 1.2, 0);
+        perimGroup.add(midPillar);
+      });
+
+      scene.add(perimGroup);
+    };
+    buildStadiumPerimeter();
 
     // Inflatable PVC Bunker Bump & Color Textures
     const createRibbedBumpTexture = () => {
@@ -5405,55 +5558,55 @@ export default function HamsterPaintball({
     ) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, c3, 'DORITO'));
-      const body = new THREE.Mesh(new THREE.ConeGeometry(2.6, 4.6, 3), mat);
-      body.position.y = 2.3;
+      const body = new THREE.Mesh(new THREE.ConeGeometry(2.8, 4.9, 3), mat);
+      body.position.y = 2.45;
       body.castShadow = true;
       body.receiveShadow = true;
       g.add(body);
 
       const cap = new THREE.Mesh(
-        new THREE.TorusGeometry(1.05, 0.3, 16, 28),
+        new THREE.TorusGeometry(1.1, 0.32, 16, 28),
         new THREE.MeshPhysicalMaterial({ color: c3, clearcoat: 1.0, roughness: 0.15 })
       );
       cap.rotation.x = Math.PI / 2;
-      cap.position.y = 3.95;
+      cap.position.y = 4.2;
       g.add(cap);
 
       g.position.set(x, 0, z);
       g.rotation.y = rot;
       scene.add(g);
-      obstacles.push({ x, z, r: 2.0, h: 4.6 });
+      obstacles.push({ x, z, r: 2.15, h: 4.9 });
     };
 
     const createCan = (x: number, z: number, c1: string, c2: string, c3: string) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, c3, 'PRO CAN'));
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 2.05, 4.4, 28), mat);
-      cyl.position.y = 2.2;
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.2, 4.7, 28), mat);
+      cyl.position.y = 2.35;
       cyl.castShadow = true;
       cyl.receiveShadow = true;
       g.add(cyl);
 
       const topRing = new THREE.Mesh(
-        new THREE.TorusGeometry(1.85, 0.22, 14, 32),
+        new THREE.TorusGeometry(2.0, 0.24, 14, 32),
         new THREE.MeshPhysicalMaterial({ color: c2, clearcoat: 1.0, roughness: 0.15 })
       );
       topRing.rotation.x = Math.PI / 2;
-      topRing.position.y = 4.35;
+      topRing.position.y = 4.65;
       g.add(topRing);
 
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 2.0, h: 4.5 });
+      obstacles.push({ x, z, r: 2.15, h: 4.8 });
     };
 
     const createBrick = (x: number, z: number, rot: number, c1: string, c2: string) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, '#facc15', 'WALL'));
       for (let i = 0; i < 3; i++) {
-        const tube = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 4.2, 16, 24), mat);
+        const tube = new THREE.Mesh(new THREE.CapsuleGeometry(0.66, 4.6, 16, 24), mat);
         tube.rotation.z = Math.PI / 2;
-        tube.position.y = 0.68 + i * 1.1;
+        tube.position.y = 0.72 + i * 1.15;
         tube.castShadow = true;
         tube.receiveShadow = true;
         g.add(tube);
@@ -5461,31 +5614,39 @@ export default function HamsterPaintball({
       g.position.set(x, 0, z);
       g.rotation.y = rot;
       scene.add(g);
-      obstacles.push({ x, z, r: 2.3, h: 3.5 });
+      obstacles.push({ x, z, r: 2.45, h: 3.7 });
     };
 
-    const createCenterXBunker = (x: number, z: number) => {
+    const createCenterXBunker = (x: number, z: number, scale = 1.0) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(
         createProBunkerTexture('#1e1b4b', '#ec4899', '#a3e635', 'X-BALL 50')
       );
-      const leg1 = new THREE.Mesh(new THREE.CapsuleGeometry(0.88, 4.8, 16, 24), mat);
-      leg1.position.y = 2.6;
+      const leg1 = new THREE.Mesh(new THREE.CapsuleGeometry(0.95 * scale, 5.2 * scale, 16, 24), mat);
+      leg1.position.y = 2.8 * scale;
       leg1.rotation.z = Math.PI / 4;
       leg1.castShadow = true;
       leg1.receiveShadow = true;
       g.add(leg1);
 
-      const leg2 = new THREE.Mesh(new THREE.CapsuleGeometry(0.88, 4.8, 16, 24), mat);
-      leg2.position.y = 2.6;
+      const leg2 = new THREE.Mesh(new THREE.CapsuleGeometry(0.95 * scale, 5.2 * scale, 16, 24), mat);
+      leg2.position.y = 2.8 * scale;
       leg2.rotation.z = -Math.PI / 4;
       leg2.castShadow = true;
       leg2.receiveShadow = true;
       g.add(leg2);
 
+      const coreHub = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.25 * scale, 1.25 * scale, 1.2 * scale, 20),
+        new THREE.MeshPhysicalMaterial({ color: 0xfacc15, clearcoat: 1.0, roughness: 0.15 })
+      );
+      coreHub.rotation.x = Math.PI / 2;
+      coreHub.position.y = 2.8 * scale;
+      g.add(coreHub);
+
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 2.6, h: 4.9 });
+      obstacles.push({ x, z, r: 2.8 * scale, h: 5.2 * scale });
     };
 
     const createTireStack = (x: number, z: number) => {
@@ -5493,88 +5654,113 @@ export default function HamsterPaintball({
       const tireMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
       const rimMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
       const offsets = [
-        [-0.85, 0],
-        [0.85, 0],
-        [0, 0.85]
+        [-0.9, 0],
+        [0.9, 0],
+        [0, 0.9]
       ];
       offsets.forEach(([ox, oz], idx) => {
         for (let level = 0; level < (idx === 2 ? 4 : 3); level++) {
-          const tire = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.32, 12, 20), tireMat);
+          const tire = new THREE.Mesh(new THREE.TorusGeometry(0.74, 0.34, 12, 20), tireMat);
           tire.rotation.x = Math.PI / 2;
-          tire.position.set(ox, 0.32 + level * 0.6, oz);
+          tire.position.set(ox, 0.34 + level * 0.62, oz);
           tire.castShadow = true;
           g.add(tire);
         }
-        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.1, 16), rimMat);
-        cap.position.set(ox, (idx === 2 ? 4 : 3) * 0.6, oz);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.1, 16), rimMat);
+        cap.position.set(ox, (idx === 2 ? 4 : 3) * 0.62, oz);
         g.add(cap);
       });
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 1.85, h: 2.6 });
+      obstacles.push({ x, z, r: 1.95, h: 2.7 });
     };
 
     const createAztecaTempleBunker = (x: number, z: number, c1: string, c2: string) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, '#facc15', 'MAYA'));
       for (let step = 0; step < 3; step++) {
-        const w = 4.2 - step * 1.0;
-        const box = new THREE.Mesh(new THREE.BoxGeometry(w, 1.25, w * 0.65), mat);
-        box.position.y = 0.62 + step * 1.2;
+        const w = 4.6 - step * 1.1;
+        const box = new THREE.Mesh(new THREE.BoxGeometry(w, 1.35, w * 0.68), mat);
+        box.position.y = 0.67 + step * 1.3;
         box.castShadow = true;
         box.receiveShadow = true;
         g.add(box);
       }
       g.position.set(x, 0, z);
       scene.add(g);
-      obstacles.push({ x, z, r: 2.2, h: 3.9 });
+      obstacles.push({ x, z, r: 2.4, h: 4.1 });
     };
 
     // =========================================================
-    // SYMMETRICAL, OPEN & ACCESSIBLE SPEEDBALL ARENA LAYOUT
-    // Clear, wide sightlines from Top-Middle Red Spawn (0, -26) & Bottom-Middle Blue Spawn (0, +26)
+    // EXPANDED SYMMETRICAL CHAMPIONSHIP SPEEDBALL ARENA LAYOUT (136m x 112m)
+    // Wide sightlines from Top-Middle Red Spawn (0, -44) & Bottom-Middle Blue Spawn (0, +44)
     // =========================================================
-    createCenterXBunker(0, 0);
+    // 1. Center 50-Yard X-Bunker Citadel + Flanking Midfield X-Towers
+    createCenterXBunker(0, 0, 1.1);
+    createCenterXBunker(-42, 0, 0.85);
+    createCenterXBunker(42, 0, 0.85);
 
-    // Symmetrical Mid-Field Doritos (Top Red Half & Bottom Blue Half)
-    createDorito(-15, -8, '#e11d48', '#facc15', '#ffffff', 0.35);
-    createDorito(15, -8, '#0284c7', '#facc15', '#38bdf8', -0.35);
-    createDorito(-15, 10, '#e11d48', '#84cc16', '#f472b6', -0.35);
-    createDorito(15, 10, '#0284c7', '#84cc16', '#38bdf8', 0.35);
+    // 2. Symmetrical Mid-Field Doritos (Inner & Outer Diamond Lanes)
+    createDorito(-16, -11, '#e11d48', '#facc15', '#ffffff', 0.35);
+    createDorito(16, -11, '#0284c7', '#facc15', '#38bdf8', -0.35);
+    createDorito(-16, 11, '#e11d48', '#84cc16', '#f472b6', -0.35);
+    createDorito(16, 11, '#0284c7', '#84cc16', '#38bdf8', 0.35);
+    createDorito(-48, -16, '#9333ea', '#facc15', '#ffffff', 0.5);
+    createDorito(48, -16, '#0d9488', '#facc15', '#ffffff', -0.5);
+    createDorito(-48, 16, '#9333ea', '#a3e635', '#ffffff', -0.5);
+    createDorito(48, 16, '#0d9488', '#a3e635', '#ffffff', 0.5);
 
-    // Symmetrical Wing Cans (Wide open outer lanes)
-    createCan(-28, -2, '#eab308', '#1e293b', '#fef08a');
-    createCan(28, -2, '#eab308', '#1e293b', '#fef08a');
-    createCan(-26, 16, '#9333ea', '#a3e635', '#e9d5ff');
-    createCan(26, 16, '#0d9488', '#facc15', '#ffffff');
+    // 3. Symmetrical Wing Cans (Wide Flank Corridors)
+    createCan(-32, -8, '#eab308', '#1e293b', '#fef08a');
+    createCan(32, -8, '#eab308', '#1e293b', '#fef08a');
+    createCan(-32, 8, '#9333ea', '#a3e635', '#e9d5ff');
+    createCan(32, 8, '#0d9488', '#facc15', '#ffffff');
+    createCan(-54, -28, '#e11d48', '#facc15', '#ffffff');
+    createCan(54, -28, '#e11d48', '#facc15', '#ffffff');
+    createCan(-54, 28, '#2563eb', '#38bdf8', '#ffffff');
+    createCan(54, 28, '#2563eb', '#38bdf8', '#ffffff');
 
-    // Symmetrical Tactical Walls & Maya Bunkers
-    createBrick(-12, -16, 0.18, '#e11d48', '#f8fafc');
-    createBrick(12, -16, -0.18, '#2563eb', '#a3e635');
-    createAztecaTempleBunker(-22, 4, '#059669', '#facc15');
-    createAztecaTempleBunker(22, 4, '#dc2626', '#facc15');
+    // 4. Symmetrical Tactical Snake Walls & Maya Temple Bunkers
+    createBrick(-14, -26, 0.16, '#e11d48', '#f8fafc');
+    createBrick(14, -26, -0.16, '#e11d48', '#facc15');
+    createBrick(-14, 26, -0.16, '#2563eb', '#f8fafc');
+    createBrick(14, 26, 0.16, '#2563eb', '#a3e635');
+    createBrick(-38, -28, 0.38, '#f97316', '#1e293b');
+    createBrick(38, -28, -0.38, '#f97316', '#1e293b');
+    createBrick(-38, 28, -0.38, '#06b6d4', '#1e293b');
+    createBrick(38, 28, 0.38, '#06b6d4', '#1e293b');
 
-    // Symmetrical Low Tire Stacks (Great cover while shooting over)
-    createTireStack(-11, 13);
-    createTireStack(11, 13);
+    createAztecaTempleBunker(-25, -18, '#059669', '#facc15');
+    createAztecaTempleBunker(25, -18, '#dc2626', '#facc15');
+    createAztecaTempleBunker(-25, 18, '#2563eb', '#facc15');
+    createAztecaTempleBunker(25, 18, '#7c3aed', '#facc15');
+
+    // 5. Symmetrical Low Tire Stacks (Home-Field Forward Shields)
+    createTireStack(-18, -35);
+    createTireStack(18, -35);
+    createTireStack(-18, 35);
+    createTireStack(18, 35);
 
     // =========================================================
-    // 12 3D HEALTH CANS & DEFENCE CANS AROUND THE ARENA
-    // Players collect them around the arena and LONG-PRESS to use them!
+    // 16 3D HEALTH CANS & DEFENCE CANS ACROSS THE EXPANDED ARENA
     // =========================================================
     const powerupConfigs: Array<{ type: 'health' | 'shield'; x: number; z: number }> = [
-      { type: 'health', x: -24, z: -13 },
-      { type: 'health', x: 24, z: -13 },
-      { type: 'shield', x: -9, z: -9 },
-      { type: 'shield', x: 9, z: -9 },
-      { type: 'health', x: -18, z: 18 },
-      { type: 'health', x: 18, z: 18 },
-      { type: 'shield', x: -16, z: -20 },
-      { type: 'shield', x: 16, z: 20 },
-      { type: 'health', x: -32, z: 6 },
-      { type: 'shield', x: 32, z: 6 },
-      { type: 'shield', x: -14, z: 2 },
-      { type: 'health', x: 14, z: 2 }
+      { type: 'health', x: -26, z: -12 },
+      { type: 'health', x: 26, z: -12 },
+      { type: 'shield', x: -10, z: -16 },
+      { type: 'shield', x: 10, z: -16 },
+      { type: 'health', x: -26, z: 12 },
+      { type: 'health', x: 26, z: 12 },
+      { type: 'shield', x: -10, z: 16 },
+      { type: 'shield', x: 10, z: 16 },
+      { type: 'health', x: -46, z: -6 },
+      { type: 'shield', x: 46, z: -6 },
+      { type: 'shield', x: -46, z: 6 },
+      { type: 'health', x: 46, z: 6 },
+      { type: 'health', x: -30, z: -34 },
+      { type: 'shield', x: 30, z: -34 },
+      { type: 'shield', x: -30, z: 34 },
+      { type: 'health', x: 30, z: 34 }
     ];
 
     const powerups: PowerupNode[] = powerupConfigs.map((cfg, idx) => {
@@ -5592,89 +5778,150 @@ export default function HamsterPaintball({
       };
     });
 
-    // Arena Perimeter Truss Towers (Keeping Top-Middle & Bottom-Middle Spawn Centers Clear!)
-    const trussMat = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      metalness: 0.8,
-      roughness: 0.25
-    });
-    const bannerColors = [0xa3e635, 0xec4899, 0x38bdf8, 0xfacc15];
-    [
-      [-46, -34],
-      [-23, -34],
-      [23, -34],
-      [46, -34],
-      [-46, 34],
-      [-23, 34],
-      [23, 34],
-      [46, 34],
-      [-46, -17],
-      [-46, 0],
-      [-46, 17],
-      [46, -17],
-      [46, 0],
-      [46, 17]
-    ].forEach(([px, pz], idx) => {
-      const tower = new THREE.Mesh(new THREE.BoxGeometry(0.7, 9.5, 0.7), trussMat);
-      tower.position.set(px, 4.75, pz);
-      tower.castShadow = true;
-      scene.add(tower);
+    // =========================================================
+    // COMPOSITE MULTI-PART STADIUM FLOODLIGHT & BANNER TOWERS
+    // =========================================================
+    const buildStadiumFloodlightTower = (px: number, pz: number, accentHex: number) => {
+      const tg = new THREE.Group();
+      tg.position.set(px, 0, pz);
 
-      const flag = new THREE.Mesh(
-        new THREE.BoxGeometry(1.8, 0.9, 0.12),
-        new THREE.MeshStandardMaterial({
-          color: bannerColors[idx % bannerColors.length],
-          emissive: bannerColors[idx % bannerColors.length],
-          emissiveIntensity: 0.2
-        })
+      const steelMat = new THREE.MeshStandardMaterial({
+        color: 0x334155,
+        metalness: 0.78,
+        roughness: 0.26
+      });
+      const pedestalMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.5,
+        metalness: 0.4
+      });
+      const bannerMat = new THREE.MeshStandardMaterial({
+        color: accentHex,
+        emissive: accentHex,
+        emissiveIntensity: 0.25,
+        roughness: 0.3
+      });
+
+      // 1. Flared Base Pedestal
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.45, 1.4, 16), pedestalMat);
+      base.position.y = 0.7;
+      base.castShadow = true;
+      tg.add(base);
+
+      // 2. Dual Vertical Truss Columns + Cross Braces
+      [-0.42, 0.42].forEach(ox => {
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 12.5, 12), steelMat);
+        col.position.set(ox, 6.8, 0);
+        col.castShadow = true;
+        tg.add(col);
+      });
+
+      for (let h = 2.8; h <= 11.5; h += 2.2) {
+        const brace = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.16, 0.18), steelMat);
+        brace.position.set(0, h, 0);
+        tg.add(brace);
+      }
+
+      // 3. Vertical Championship Pennant Banner
+      const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.2, 1.45), bannerMat);
+      pennant.position.set(0, 7.6, px < 0 ? 0.85 : -0.85);
+      tg.add(pennant);
+
+      // 4. Overhead Stadium LED Floodlight Array Bank (aimed toward center of arena)
+      const hoodGroup = new THREE.Group();
+      hoodGroup.position.set(0, 13.2, 0);
+      hoodGroup.lookAt(0, 0, 0);
+
+      const hoodBox = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.3, 0.55), pedestalMat);
+      hoodGroup.add(hoodBox);
+
+      const ledPanel = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.4, 0.95),
+        new THREE.MeshBasicMaterial({ color: 0xfef9c3, side: THREE.DoubleSide })
       );
-      flag.position.set(px + 0.8, 9.0, pz);
-      scene.add(flag);
+      ledPanel.position.z = 0.29;
+      hoodGroup.add(ledPanel);
+
+      tg.add(hoodGroup);
+      scene.add(tg);
+    };
+
+    const bannerColors = [0xf43f5e, 0x38bdf8, 0xa3e635, 0xfacc15];
+    [
+      [-72, -59],
+      [-32, -59],
+      [32, -59],
+      [72, -59],
+      [-72, 59],
+      [-32, 59],
+      [32, 59],
+      [72, 59],
+      [-72, -30],
+      [-72, 0],
+      [-72, 30],
+      [72, -30],
+      [72, 0],
+      [72, 30]
+    ].forEach(([px, pz], idx) => {
+      buildStadiumFloodlightTower(px, pz, bannerColors[idx % bannerColors.length]);
     });
 
-    // Perimeter Trees (Placed strictly along outer boundary so they NEVER block Top-Middle or Bottom-Middle Spawns!)
+    // =========================================================
+    // NATURAL OUTER PARK FOREST TREES & BOULDER OUTCROPS
+    // =========================================================
     const createTree = (x: number, z: number, scale = 1) => {
       const tg = new THREE.Group();
       const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.45 * scale, 0.68 * scale, 3.4 * scale, 12),
+        new THREE.CylinderGeometry(0.48 * scale, 0.74 * scale, 3.8 * scale, 12),
         new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.85 })
       );
-      trunk.position.y = 1.7 * scale;
+      trunk.position.y = 1.9 * scale;
       trunk.castShadow = true;
       tg.add(trunk);
 
       const leavesMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.65 });
-      const l1 = new THREE.Mesh(new THREE.DodecahedronGeometry(2.3 * scale, 1), leavesMat);
-      l1.position.y = 4.3 * scale;
+      const leavesLightMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.6 });
+      const l1 = new THREE.Mesh(new THREE.DodecahedronGeometry(2.5 * scale, 1), leavesMat);
+      l1.position.y = 4.6 * scale;
       l1.castShadow = true;
       tg.add(l1);
 
-      const l2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.7 * scale, 1), leavesMat);
-      l2.position.set(0.8 * scale, 5.6 * scale, 0.4 * scale);
+      const l2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.9 * scale, 1), leavesLightMat);
+      l2.position.set(0.85 * scale, 6.0 * scale, 0.4 * scale);
       l2.castShadow = true;
       tg.add(l2);
+
+      const l3 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.6 * scale, 1), leavesMat);
+      l3.position.set(-0.75 * scale, 5.5 * scale, -0.35 * scale);
+      l3.castShadow = true;
+      tg.add(l3);
 
       tg.position.set(x, 0, z);
       scene.add(tg);
     };
 
     [
-      [-50, -36, 1.25],
-      [50, -36, 1.25],
-      [-48, 26, 1.2],
-      [48, 26, 1.3],
-      [-18, -36, 1.15],
-      [18, -36, 1.15],
-      [-48, 2, 1.2],
-      [48, 2, 1.2]
+      [-82, -64, 1.4],
+      [82, -64, 1.4],
+      [-82, 64, 1.35],
+      [82, 64, 1.4],
+      [-50, -65, 1.25],
+      [50, -65, 1.25],
+      [-50, 65, 1.25],
+      [50, 65, 1.3],
+      [-82, -22, 1.3],
+      [82, -22, 1.3],
+      [-82, 22, 1.3],
+      [82, 22, 1.3],
+      [-78, 0, 1.25],
+      [78, 0, 1.25]
     ].forEach(([tx, tz, sc]) => createTree(tx, tz, sc));
 
     // =========================================================
     // 1 CHARACTER "TEACHER JAN" IN THE PARK DURING LOBBY ONLY!
-    // When Start Game is clicked (`matchStatus === 'playing'`), Teacher Jan does NOT join!
     // =========================================================
-    const teacherJanNpc = buildHighDefHamster(0, 'Teacher Jan', true, 'solo');
-    teacherJanNpc.position.set(0, 0.32, -10.5);
+    const teacherJanNpc = buildHighDefHamster(0, 'Teacher Jan', true, 'solo', true);
+    teacherJanNpc.position.set(0, 0.32, -14.0);
     scene.add(teacherJanNpc);
 
     const isHostRole = stateSnapRef.current.role === 'host';
@@ -5684,11 +5931,13 @@ export default function HamsterPaintball({
       ? `[${stateSnapRef.current.myTeam.toUpperCase()}] ${stateSnapRef.current.playerName || 'Student'}`
       : stateSnapRef.current.playerName || 'Student';
 
+    // Hide nameSprite on localHamster (`showNameTag = false`) so personal view is 100% clean!
     const localHamster = buildHighDefHamster(
       selectedSkinIdx,
       localLabel,
       isHostRole,
-      stateSnapRef.current.myTeam
+      stateSnapRef.current.myTeam,
+      false
     );
 
     const initialSpawn = getTeamSpawnPosition(
@@ -6154,13 +6403,13 @@ export default function HamsterPaintball({
             const followHeight = 4.6 + portraitOffset * 0.35;
             const desiredCamX = THREE.MathUtils.clamp(
               tx - Math.sin(tYaw) * followDist,
-              -44,
-              44
+              -68,
+              68
             );
             const desiredCamZ = THREE.MathUtils.clamp(
               tz - Math.cos(tYaw) * followDist,
-              -34,
-              34
+              -56,
+              56
             );
             const lookX = tx + Math.sin(tYaw) * 11.0;
             const lookZ = tz + Math.cos(tYaw) * 11.0;
@@ -6173,8 +6422,8 @@ export default function HamsterPaintball({
           } else {
             // Bright central arena view when waiting for students
             camera.position.x += (0 - camera.position.x) * 5 * dt;
-            camera.position.y += (16.0 - camera.position.y) * 5 * dt;
-            camera.position.z += (22.0 - camera.position.z) * 5 * dt;
+            camera.position.y += (20.0 - camera.position.y) * 5 * dt;
+            camera.position.z += (30.0 - camera.position.z) * 5 * dt;
             camera.lookAt(0, 1.2, 0);
           }
         } else {
@@ -6184,15 +6433,15 @@ export default function HamsterPaintball({
               rp.mesh.userData.nameSprite.visible = true;
             }
           });
-          // Host Overview Camera (can pan smoothly with WASD/Arrow keys)
+          // Host Overview Camera (can pan smoothly with WASD/Arrow keys across the 136m x 112m stadium)
           if (isMoving) {
-            g.hostCamX = Math.max(-36, Math.min(36, g.hostCamX + rawX * 24 * dt));
-            g.hostCamZ = Math.max(-28, Math.min(28, g.hostCamZ + rawZ * 24 * dt));
+            g.hostCamX = Math.max(-60, Math.min(60, g.hostCamX + rawX * 30 * dt));
+            g.hostCamZ = Math.max(-48, Math.min(48, g.hostCamZ + rawZ * 30 * dt));
           }
           const camAspect = camera.aspect || 1.5;
-          const portraitZoomOut = camAspect < 1.0 ? Math.min(10, (1.0 - camAspect) * 18) : 0;
-          const targetY = 30 + portraitZoomOut;
-          const targetZ = g.hostCamZ + 26 + portraitZoomOut * 0.8;
+          const portraitZoomOut = camAspect < 1.0 ? Math.min(12, (1.0 - camAspect) * 20) : 0;
+          const targetY = 38 + portraitZoomOut;
+          const targetZ = g.hostCamZ + 34 + portraitZoomOut * 0.8;
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
@@ -6204,7 +6453,7 @@ export default function HamsterPaintball({
         // CAMERA-RELATIVE MOVEMENT (UP/DOWN/LEFT/RIGHT), MOUSE LOOK & TOUCH FREE LOOK
         // ---------------------------------------------------
         g.localHamster.visible = true;
-        const speed = 15.0;
+        const speed = 16.0;
 
         // Move Up/Down/Left/Right relative to the camera's current facing angle (`g.camYaw`)
         const forwardInput = -rawZ; // Up / W = +1 (forward), Down / S = -1 (backward)
@@ -6220,17 +6469,17 @@ export default function HamsterPaintball({
         g.vx = moveWorldX * speed;
         g.vz = moveWorldZ * speed;
 
-        g.x = Math.max(-43, Math.min(43, g.x + g.vx * dt));
-        g.z = Math.max(-33, Math.min(33, g.z + g.vz * dt));
+        g.x = Math.max(-67.5, Math.min(67.5, g.x + g.vx * dt));
+        g.z = Math.max(-55.5, Math.min(55.5, g.z + g.vz * dt));
 
-        // ENFORCE: When Host starts the game, Red Team players MUST stay first in the Top-Middle Red Square Spawn (0, -26)
-        // and Blue Team players MUST stay first in the Bottom-Middle Blue Square Spawn (0, +26) during the opening Spawn Hold!
+        // ENFORCE: When Host starts the game, Red Team players MUST stay first in the Top-Middle Red Square Spawn (0, -44)
+        // and Blue Team players MUST stay first in the Bottom-Middle Blue Square Spawn (0, +44) during the opening Spawn Hold!
         if (snapState.matchStatus === 'playing' && Date.now() < snapState.spawnHoldUntil) {
           const isBluePlayer = snapState.myTeam === 'blue';
-          const minSpawnX = -8.5;
-          const maxSpawnX = 8.5;
-          const minSpawnZ = isBluePlayer ? 20.8 : -31.2;
-          const maxSpawnZ = isBluePlayer ? 31.2 : -20.8;
+          const minSpawnX = -10.5;
+          const maxSpawnX = 10.5;
+          const minSpawnZ = isBluePlayer ? 37.8 : -50.2;
+          const maxSpawnZ = isBluePlayer ? 50.2 : -37.8;
           g.x = Math.max(minSpawnX, Math.min(maxSpawnX, g.x));
           g.z = Math.max(minSpawnZ, Math.min(maxSpawnZ, g.z));
         }
@@ -6263,7 +6512,7 @@ export default function HamsterPaintball({
               pu.respawnAt = now + 11000;
               sfx.playCanPickup();
               setHealthCans(c => Math.min(3, c + 1));
-              setPickupBannerText('🧪 COLLECTED HEALTH CAN! LONG-PRESS CAN BUTTON TO USE!');
+              setPickupBannerText('🧪 COLLECTED HEALTH CAN (+45 HP)!');
               setTimeout(() => setPickupBannerText(null), 2200);
             } else if (pu.type === 'shield' && snapState.shieldCans < 3) {
               pu.active = false;
@@ -6271,7 +6520,7 @@ export default function HamsterPaintball({
               pu.respawnAt = now + 11000;
               sfx.playCanPickup();
               setShieldCans(c => Math.min(3, c + 1));
-              setPickupBannerText('🛡️ COLLECTED DEFENCE CAN! LONG-PRESS CAN BUTTON TO USE!');
+              setPickupBannerText('🛡️ COLLECTED DEFENCE CAN (+50 SHIELD)!');
               setTimeout(() => setPickupBannerText(null), 2200);
             }
           }
@@ -6307,8 +6556,8 @@ export default function HamsterPaintball({
         // Converge the 3D Gun Barrel (`markerGroup`) toward the Aim Target so bullets clearly exit along the barrel!
         const ud = g.localHamster.userData;
         if (ud && ud.nameSprite) {
-          // Show name badge on Host character in Lobby, hide on Student's own local character so it never blocks crosshair
-          ud.nameSprite.visible = snapState.role === 'host';
+          // Always hide name badge on the player's own personal view; other players see your name on their screens!
+          ud.nameSprite.visible = false;
         }
         if (ud && ud.markerGroup) {
           const aimDist = Math.max(3.2, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
@@ -6630,7 +6879,8 @@ export default function HamsterPaintball({
       selectedSkinIdx,
       localLabel,
       isHostRole,
-      activeTeam
+      activeTeam,
+      false
     );
     updatedHamster.position.set(g.x, 0, g.z);
     updatedHamster.rotation.y = g.rotY;
@@ -7722,24 +7972,26 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 3: SIMPLE & INTERACTIVE HOST LIVE 3D PARK LOBBY HUD
-          Host character moves freely in the 3D Park while students join via BIG QR Code!
+          SCREEN 3: REDESIGNED NON-OVERLAPPING HOST LIVE 3D PARK LOBBY HUD
+          - Positioned cleanly below top navigation bar (`pt-14 sm:pt-16`) so it NEVER overlaps Back, Settings, or Full Screen!
+          - Enhanced Teams vs Solo & Balls/Question cards
+          - Smooth Match Timer Slider up to 30 Minutes (1m to 30m)
          ------------------------------------------------------------- */}
       {screen === 'lobby' && role === 'host' && (
-        <div className="absolute inset-0 z-30 flex flex-col justify-between p-2.5 sm:p-4 pt-12 pb-3 pointer-events-none overflow-y-auto">
-          {/* Top / Side Split HUD leaving the center of the 3D Park open so the Host 3D Character can walk around interactively */}
-          <div className="w-full flex flex-col lg:flex-row items-center lg:items-start justify-between gap-3 sm:gap-4 my-auto lg:my-0">
-            {/* LEFT PANEL: Simple Room Code, Quick Match Controls, Live Players & Start Game */}
-            <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-md bg-[#1b1130]/92 backdrop-blur-md p-3.5 sm:p-4 rounded-3xl shadow-2xl border-2 border-lime-400/50 space-y-3">
-              {/* Room Code + Quick Copy / New Code */}
-              <div className="flex items-center justify-between gap-3">
+        <div className="absolute inset-0 z-25 flex flex-col justify-between px-3 sm:px-5 pt-14 sm:pt-16 pb-3 pointer-events-none overflow-y-auto">
+          {/* Top / Side Split HUD leaving the center of the 3D Park open and 100% clear of the top header buttons */}
+          <div className="w-full flex flex-col lg:flex-row items-center lg:items-start justify-between gap-3 sm:gap-5">
+            {/* LEFT PANEL: Redesigned Host Match Command Card */}
+            <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-[440px] bg-slate-950/95 p-4 sm:p-4.5 rounded-3xl shadow-2xl border border-white/15 space-y-3">
+              {/* 1. Room Code Header + Copy Link / Code / New Actions */}
+              <div className="flex items-center justify-between gap-3 bg-slate-900/90 p-3 rounded-2xl border border-white/10">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-wider text-lime-300">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">
                     www.hamsterenglish.online • Room Code
                   </div>
                   <div
                     onClick={handleCopyRoomCode}
-                    className="mt-1 bg-slate-950 border-2 border-lime-400/80 px-3.5 py-1.5 rounded-2xl text-white font-black text-3xl sm:text-4xl tracking-[0.18em] leading-none cursor-pointer hover:text-lime-300 transition select-all font-mono inline-block"
+                    className="mt-1 bg-slate-950 border-2 border-lime-400/80 px-3.5 py-1.5 rounded-xl text-white font-black text-2xl sm:text-3xl tracking-[0.18em] leading-none cursor-pointer hover:text-lime-300 transition select-all font-mono inline-block tabular-nums"
                     title="Click to Copy Room Code"
                   >
                     {roomCode}
@@ -7750,7 +8002,7 @@ export default function HamsterPaintball({
                   <button
                     type="button"
                     onClick={handleCopyJoinLink}
-                    className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow transition cursor-pointer"
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow transition cursor-pointer whitespace-nowrap"
                   >
                     {copiedType === 'link' ? <Check size={13} /> : <Copy size={13} />}
                     <span>{copiedType === 'link' ? 'Copied Link!' : 'Copy Link'}</span>
@@ -7759,7 +8011,7 @@ export default function HamsterPaintball({
                     <button
                       type="button"
                       onClick={handleCopyRoomCode}
-                      className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] border border-white/10 flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
                     >
                       {copiedType === 'code' ? (
                         <Check size={11} className="text-lime-400" />
@@ -7771,7 +8023,7 @@ export default function HamsterPaintball({
                     <button
                       type="button"
                       onClick={handleGenerateNewRoomCode}
-                      className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-amber-300 font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] border border-white/10 flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
                     >
                       <RotateCw size={11} />
                       <span>New</span>
@@ -7780,90 +8032,210 @@ export default function HamsterPaintball({
                 </div>
               </div>
 
-              {/* Compact 1-Block Match Settings: Mode, Timer, Balls/Q */}
-              <div className="bg-slate-900/90 p-2.5 rounded-2xl border border-white/10 space-y-2">
-                {/* Mode & Balls/Q Row */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="grid grid-cols-2 gap-1 flex-1">
+              {/* 2. Redesigned Match Mode (Teams vs Solo) & Paintballs Per Question */}
+              <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 space-y-2.5">
+                {/* Teams vs Solo Cards */}
+                <div>
+                  <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
+                    <span>Match Mode</span>
+                    <span className="text-slate-300">
+                      {matchMode === 'teams' ? 'Red Squad vs Blue Squad' : 'Free-For-All Arena'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setMatchMode('teams')}
-                      className={`py-1.5 px-2 rounded-xl font-black text-[11px] transition cursor-pointer ${
+                      className={`p-2.5 rounded-xl border-2 text-left transition flex items-center gap-2.5 cursor-pointer ${
                         matchMode === 'teams'
-                          ? 'bg-indigo-600 text-white border border-indigo-400 shadow'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                          ? 'bg-gradient-to-r from-rose-600/35 via-indigo-600/35 to-blue-600/35 border-cyan-400 text-white shadow-lg'
+                          : 'bg-slate-950/80 border-white/10 text-slate-400 hover:text-white hover:border-white/25'
                       }`}
                     >
-                      👥 Teams
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-black text-xs ${
+                          matchMode === 'teams'
+                            ? 'bg-gradient-to-br from-rose-500 to-blue-600 text-white'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <Users size={15} />
+                      </div>
+                      <div className="min-w-0 leading-tight">
+                        <div className="font-black text-xs text-white truncate">Teams</div>
+                        <div className="text-[10px] font-bold text-cyan-300 truncate">
+                          Red vs Blue
+                        </div>
+                      </div>
                     </button>
+
                     <button
                       type="button"
                       onClick={() => setMatchMode('solo')}
-                      className={`py-1.5 px-2 rounded-xl font-black text-[11px] transition cursor-pointer ${
+                      className={`p-2.5 rounded-xl border-2 text-left transition flex items-center gap-2.5 cursor-pointer ${
                         matchMode === 'solo'
-                          ? 'bg-lime-500 text-slate-950 border border-lime-300 shadow'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                          ? 'bg-gradient-to-r from-lime-500/30 to-emerald-500/30 border-lime-400 text-white shadow-lg'
+                          : 'bg-slate-950/80 border-white/10 text-slate-400 hover:text-white hover:border-white/25'
                       }`}
                     >
-                      🐹 Solo
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-black text-xs ${
+                          matchMode === 'solo'
+                            ? 'bg-lime-400 text-slate-950'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <Trophy size={15} />
+                      </div>
+                      <div className="min-w-0 leading-tight">
+                        <div className="font-black text-xs text-white truncate">Solo</div>
+                        <div className="text-[10px] font-bold text-lime-300 truncate">
+                          Free-For-All
+                        </div>
+                      </div>
                     </button>
                   </div>
+                </div>
 
-                  {/* Balls per Question Stepper */}
-                  <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-xl border border-lime-400/40 shrink-0">
-                    <span className="text-[10px] font-black text-slate-300 uppercase mr-0.5">
-                      Balls/Q
+                {/* Redesigned Paintballs Per Question Control */}
+                <div className="bg-slate-950/90 p-2.5 rounded-xl border border-white/10">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-lime-400/20 border border-lime-400/50 flex items-center justify-center text-sm shrink-0">
+                        🟢
+                      </div>
+                      <div className="min-w-0 leading-tight">
+                        <div className="text-[11px] font-black text-white truncate">
+                          Paintballs / Question
+                        </div>
+                        <div className="text-[9px] font-semibold text-slate-400 truncate">
+                          Awarded per correct answer
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-1 rounded-xl border border-lime-400/40 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
+                        className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                      >
+                        -
+                      </button>
+                      <span className="text-xs font-mono font-black text-lime-300 px-2 tabular-nums">
+                        +{ballsPerQuestion}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
+                        className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Quick Balls Presets */}
+                  <div className="grid grid-cols-5 gap-1 mt-2">
+                    {[5, 10, 15, 20, 25].map(bCount => (
+                      <button
+                        key={bCount}
+                        type="button"
+                        onClick={() => handleHostUpdateBallsPerQuestion(bCount)}
+                        className={`py-1 rounded-lg font-black text-[10px] transition cursor-pointer tabular-nums ${
+                          ballsPerQuestion === bCount
+                            ? 'bg-lime-400 text-slate-950 shadow'
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-white/5'
+                        }`}
+                      >
+                        +{bCount} 🟢
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Match Timer Slider (1 Minute up to 30 Minutes) */}
+                <div className="bg-slate-950/90 p-2.5 rounded-xl border border-white/10 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-black text-white">
+                      <Clock size={13} className="text-cyan-400 shrink-0" />
+                      <span>Match Timer</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-lg bg-cyan-500/20 border border-cyan-400/50 font-mono font-black text-xs text-cyan-200 tabular-nums">
+                      {Math.round(configuredDurationSec / 60)} Min (
+                      {Math.floor(configuredDurationSec / 60)}:
+                      {(configuredDurationSec % 60).toString().padStart(2, '0')})
                     </span>
+                  </div>
+
+                  {/* Slider Row (1m to 30m) */}
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
-                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                      onClick={() => {
+                        const nextMin = Math.max(1, Math.round(configuredDurationSec / 60) - 1);
+                        setConfiguredDurationSec(nextMin * 60);
+                        setMatchSeconds(nextMin * 60);
+                      }}
+                      className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center shrink-0 cursor-pointer"
+                      title="Decrease 1 Minute"
                     >
                       -
                     </button>
-                    <span className="text-xs font-mono font-black text-lime-300 px-1">
-                      +{ballsPerQuestion}
-                    </span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={30}
+                      step={1}
+                      value={Math.max(1, Math.min(30, Math.round(configuredDurationSec / 60)))}
+                      onChange={e => {
+                        const mins = Math.max(1, Math.min(30, parseInt(e.target.value, 10) || 3));
+                        setConfiguredDurationSec(mins * 60);
+                        setMatchSeconds(mins * 60);
+                      }}
+                      className="w-full accent-cyan-400 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                    />
                     <button
                       type="button"
-                      onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
-                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                      onClick={() => {
+                        const nextMin = Math.min(30, Math.round(configuredDurationSec / 60) + 1);
+                        setConfiguredDurationSec(nextMin * 60);
+                        setMatchSeconds(nextMin * 60);
+                      }}
+                      className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center shrink-0 cursor-pointer"
+                      title="Increase 1 Minute"
                     >
                       +
                     </button>
                   </div>
-                </div>
 
-                {/* Timer Pills */}
-                <div className="grid grid-cols-6 gap-1">
-                  {[
-                    { label: '1m', sec: 60 },
-                    { label: '2m', sec: 120 },
-                    { label: '3m', sec: 180 },
-                    { label: '5m', sec: 300 },
-                    { label: '8m', sec: 480 },
-                    { label: '10m', sec: 600 }
-                  ].map(t => (
-                    <button
-                      key={t.sec}
-                      type="button"
-                      onClick={() => {
-                        setConfiguredDurationSec(t.sec);
-                        setMatchSeconds(t.sec);
-                      }}
-                      className={`py-1 rounded-lg font-black text-[11px] transition cursor-pointer ${
-                        configuredDurationSec === t.sec
-                          ? 'bg-pink-600 text-white border border-pink-400 shadow'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
+                  {/* Quick Timer Milestones up to 30m */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {[1, 3, 5, 10, 15, 20, 30].map(mins => {
+                      const sec = mins * 60;
+                      return (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => {
+                            setConfiguredDurationSec(sec);
+                            setMatchSeconds(sec);
+                          }}
+                          className={`py-1 rounded-lg font-black text-[10px] transition cursor-pointer tabular-nums ${
+                            configuredDurationSec === sec
+                              ? 'bg-cyan-400 text-slate-950 shadow'
+                              : 'bg-slate-900 text-slate-400 hover:text-white border border-white/5'
+                          }`}
+                        >
+                          {mins}m
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
-              {/* Joined Players Roster */}
+              {/* 4. Joined Players Roster */}
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs font-black text-white mb-1.5">
                   <span>
@@ -7878,14 +8250,14 @@ export default function HamsterPaintball({
                     <button
                       type="button"
                       onClick={handleShuffleTeams}
-                      className="px-2 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] flex items-center gap-1 cursor-pointer"
                     >
                       <Shuffle size={11} /> Shuffle
                     </button>
                   )}
                 </div>
 
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
                   {roomPlayers.length === 0 ? (
                     <div className="p-2.5 rounded-xl bg-slate-900/70 border border-dashed border-white/20 text-[11px] text-slate-300 font-semibold text-center">
                       Waiting for players to scan QR or enter{' '}
@@ -7906,7 +8278,7 @@ export default function HamsterPaintball({
                           <div className="flex items-center gap-2 min-w-0">
                             <HamsterCharacterAvatar
                               skin={charSkin}
-                              size={30}
+                              size={28}
                               team={matchMode === 'teams' ? p.team || 'red' : 'solo'}
                             />
                             <div className="min-w-0">
@@ -7951,7 +8323,7 @@ export default function HamsterPaintball({
                 </div>
               </div>
 
-              {/* Prominent Start Game Button */}
+              {/* 5. Prominent Start Game Button */}
               <button
                 type="button"
                 onClick={handleStartMultiplayerMatch}
@@ -7962,7 +8334,7 @@ export default function HamsterPaintball({
               </button>
             </div>
 
-            {/* RIGHT PANEL: BIGGER, UNOBSTRUCTED SCANNABLE QR CODE (Zero overlapping icons!) */}
+            {/* RIGHT PANEL: BIGGER, UNOBSTRUCTED SCANNABLE QR CODE (Positioned below top-right buttons so ZERO overlap!) */}
             <div
               onClick={() => setIsQrModalOpen(true)}
               className="host-lobby-interactive-panel pointer-events-auto bg-white p-4 sm:p-5 rounded-3xl shadow-2xl border-4 border-lime-400 flex flex-col items-center cursor-pointer hover:scale-[1.02] transition shrink-0"
@@ -7970,7 +8342,7 @@ export default function HamsterPaintball({
             >
               <QRCodeSVG
                 value={liveJoinUrl}
-                size={236}
+                size={228}
                 level="M"
                 includeMargin={false}
                 bgColor="#ffffff"
