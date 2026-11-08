@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   ArrowLeft,
@@ -34,7 +35,9 @@ import {
   Eye,
   ClipboardList,
   Info,
-  Globe
+  Globe,
+  Settings,
+  Sliders
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { FullscreenButton } from '../components/FullscreenButton';
@@ -527,365 +530,320 @@ function HamsterCharacterAvatar({
   size?: number;
   team?: TeamId;
 }) {
+  const uid = `h3d-${skin.id}-${team || 'solo'}`;
   const isRedTeam = team === 'red';
   const isBlueTeam = team === 'blue';
   const hasTeamBand = isRedTeam || isBlueTeam;
   const teamBandHex = isRedTeam ? '#ef4444' : isBlueTeam ? '#2563eb' : skin.paintHex;
-  const teamBandBorderHex = isRedTeam ? '#fecaca' : isBlueTeam ? '#bfdbfe' : '#0f172a';
+  const teamBandHiHex = isRedTeam ? '#fca5a5' : isBlueTeam ? '#93c5fd' : '#ffffff';
+  const teamBandDarkHex = isRedTeam ? '#7f1d1d' : isBlueTeam ? '#1e3a8a' : '#0f172a';
   const activePaintHex = hasTeamBand ? teamBandHex : skin.paintHex;
 
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 100 106"
-      className="overflow-visible select-none shrink-0 drop-shadow-md"
+      viewBox="0 0 110 116"
+      className="overflow-visible select-none shrink-0 drop-shadow-[0_6px_10px_rgba(15,23,42,0.32)]"
     >
-      {/* Soft Character Aura & Ground Shadow */}
-      <circle cx="50" cy="52" r="44" fill={hasTeamBand ? teamBandHex : skin.badgeBg} opacity="0.22" />
-      <ellipse cx="50" cy="98" rx="30" ry="6" fill="#0f172a" opacity="0.22" />
+      <defs>
+        {/* 3D Spherical Fur Lighting Gradient */}
+        <radialGradient id={`${uid}-fur`} cx="34%" cy="26%" r="72%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.62" />
+          <stop offset="22%" stopColor={skin.furHex} />
+          <stop offset="72%" stopColor={skin.furHex} />
+          <stop offset="100%" stopColor="#0f172a" stopOpacity="0.88" />
+        </radialGradient>
 
-      {/* Hamster Feet */}
-      <ellipse cx="34" cy="94" rx="10" ry="5.5" fill={skin.earInnerHex} stroke="#0f172a" strokeWidth="2.4" />
-      <ellipse cx="66" cy="94" rx="10" ry="5.5" fill={skin.earInnerHex} stroke="#0f172a" strokeWidth="2.4" />
+        {/* 3D Ear & Sneaker Rim Shadow Gradient */}
+        <radialGradient id={`${uid}-ear`} cx="30%" cy="28%" r="72%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
+          <stop offset="30%" stopColor={skin.furHex} />
+          <stop offset="100%" stopColor="#090d16" />
+        </radialGradient>
 
-      {/* Plump Full-Body Hamster Torso */}
-      <path
-        d="M 22 62 C 18 45, 28 38, 50 38 C 72 38, 82 45, 78 62 C 82 82, 72 95, 50 95 C 28 95, 18 82, 22 62 Z"
-        fill={skin.furHex}
-        stroke="#0f172a"
-        strokeWidth="2.8"
+        {/* 3D Inner Ear & Blush Gradient */}
+        <radialGradient id={`${uid}-inner`} cx="36%" cy="32%" r="68%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
+          <stop offset="35%" stopColor={skin.earInnerHex} />
+          <stop offset="100%" stopColor="#be123c" stopOpacity="0.85" />
+        </radialGradient>
+
+        {/* 3D Belly Plush Sphere Gradient */}
+        <radialGradient id={`${uid}-belly`} cx="36%" cy="28%" r="70%">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="62%" stopColor={skin.bellyHex} />
+          <stop offset="100%" stopColor={skin.furHex} />
+        </radialGradient>
+
+        {/* 3D Molded Tactical Chest Armor Gradient */}
+        <linearGradient id={`${uid}-vest`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#475569" />
+          <stop offset="40%" stopColor={skin.vestHex} />
+          <stop offset="100%" stopColor="#020617" />
+        </linearGradient>
+
+        {/* 3D Team Headband Cylindrical Gradient */}
+        <linearGradient id={`${uid}-band`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor={teamBandHiHex} />
+          <stop offset="32%" stopColor={teamBandHex} />
+          <stop offset="78%" stopColor={teamBandHex} />
+          <stop offset="100%" stopColor={teamBandDarkHex} />
+        </linearGradient>
+
+        {/* 3D Curved Glass Visor Gradient */}
+        <linearGradient id={`${uid}-visor`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.92" />
+          <stop offset="22%" stopColor={skin.visorHex} />
+          <stop offset="75%" stopColor={skin.visorHex} />
+          <stop offset="100%" stopColor="#020617" />
+        </linearGradient>
+
+        {/* 3D Blaster Metallic Receiver Gradient */}
+        <linearGradient id={`${uid}-gun`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor={teamBandHiHex} />
+          <stop offset="35%" stopColor={hasTeamBand ? teamBandHex : '#0284c7'} />
+          <stop offset="100%" stopColor="#090d16" />
+        </linearGradient>
+
+        {/* 3D Paint Hopper Sphere Gradient */}
+        <radialGradient id={`${uid}-pod`} cx="34%" cy="28%" r="70%">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="32%" stopColor={activePaintHex} />
+          <stop offset="100%" stopColor="#020617" />
+        </radialGradient>
+      </defs>
+
+      {/* 3D Ground Pedestal Glow & Ambient Occlusion Drop Shadow */}
+      <ellipse cx="55" cy="105" rx="35" ry="7.5" fill="rgba(2,6,23,0.34)" />
+      <ellipse
+        cx="55"
+        cy="104"
+        rx="29"
+        ry="5"
+        fill={hasTeamBand ? teamBandHex : skin.badgeBg}
+        opacity="0.42"
       />
 
-      {/* Soft Cream Belly Patch */}
-      <ellipse cx="50" cy="73" rx="20" ry="16" fill={skin.bellyHex} />
-
-      {/* Tactical Paintball Chest Vest */}
-      <path
-        d="M 27 58 L 73 58 L 69 89 C 69 92, 31 92, 31 89 Z"
-        fill={skin.vestHex}
-        stroke="#0f172a"
-        strokeWidth="2.4"
-      />
-      {/* Vest Neon Paint Stripes & Chest Emblem */}
-      <line x1="36" y1="60" x2="36" y2="88" stroke={activePaintHex} strokeWidth="3" strokeLinecap="round" />
-      <line x1="64" y1="60" x2="64" y2="88" stroke={activePaintHex} strokeWidth="3" strokeLinecap="round" />
-      <rect
-        x="42"
-        y="67"
-        width="16"
-        height="11"
-        rx="3"
-        fill="#0f172a"
-        stroke={hasTeamBand ? teamBandHex : skin.visorHex}
-        strokeWidth="1.8"
-      />
-      <circle cx="50" cy="72.5" r="2.8" fill={activePaintHex} />
-
-      {/* Tactical Belt Clips: Mini Health Can (Left Hip) & Defence Can (Right Hip) */}
-      <g transform="translate(23, 77) rotate(-8)">
-        <rect x="0" y="0" width="8" height="12" rx="2.5" fill="#10b981" stroke="#0f172a" strokeWidth="1.6" />
-        <rect x="1.5" y="-2" width="5" height="2.2" rx="1" fill="#e2e8f0" stroke="#0f172a" strokeWidth="1.2" />
-        <path d="M 4 3.5 L 4 8.5 M 1.8 6 L 6.2 6" stroke="#ffffff" strokeWidth="1.6" strokeLinecap="round" />
-      </g>
-      <g transform="translate(69, 77) rotate(8)">
-        <rect x="0" y="0" width="8" height="12" rx="2.5" fill="#06b6d4" stroke="#0f172a" strokeWidth="1.6" />
-        <rect x="1.5" y="-2" width="5" height="2.2" rx="1" fill="#e2e8f0" stroke="#0f172a" strokeWidth="1.2" />
-        <polygon points="4,3 6.5,5 4,9 1.5,5" fill="#ffffff" />
-      </g>
-
-      {/* Left & Right Round Hamster Ears */}
-      <circle cx="24" cy="21" r="12" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.8" />
-      <circle cx="24" cy="21" r="6.8" fill={skin.earInnerHex} />
-      <circle cx="76" cy="21" r="12" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.8" />
-      <circle cx="76" cy="21" r="6.8" fill={skin.earInnerHex} />
-
-      {/* Plump Hamster Head & Chubby Cheeks */}
-      <path
-        d="M 18 44 C 15 22, 30 14, 50 14 C 70 14, 85 22, 82 44 C 86 58, 72 67, 50 67 C 28 67, 14 58, 18 44 Z"
-        fill={skin.furHex}
-        stroke="#0f172a"
-        strokeWidth="2.8"
-      />
-
-      {/* Face Muzzle Patch */}
-      <ellipse cx="50" cy="53" rx="20" ry="11.5" fill={skin.bellyHex} />
-
-      {/* Rosy Chubby Cheeks & Whiskers */}
-      <ellipse cx="26" cy="50" rx="6" ry="3.8" fill="#fb7185" opacity="0.78" />
-      <ellipse cx="74" cy="50" rx="6" ry="3.8" fill="#fb7185" opacity="0.78" />
-      <line x1="11" y1="47" x2="21" y2="48" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="12" y1="52" x2="21" y2="51" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="89" y1="47" x2="79" y2="48" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="88" y1="52" x2="79" y2="51" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
-
-      {/* Distinct Character Headgear */}
-      {skin.headgear === 'Bandana' && (
-        <g>
-          <path
-            d="M 20 28 Q 50 19 80 28 L 77 20 Q 50 12 23 20 Z"
-            fill={teamBandHex}
-            stroke="#0f172a"
-            strokeWidth="2.2"
-          />
-          <circle cx="50" cy="21" r="2.5" fill="#fef08a" />
-        </g>
-      )}
-      {skin.headgear === 'Helmet' && (
+      {/* 3D Flowing Team Headband Knot & Tails Behind Head */}
+      <g>
         <path
-          d="M 21 29 C 23 12, 77 12, 79 29 Z"
-          fill="#0f172a"
-          stroke="#22d3ee"
-          strokeWidth="2.4"
+          d="M 81 26 C 95 19, 104 26, 106 35 C 98 38, 89 34, 81 30 Z"
+          fill={`url(#${uid}-band)`}
         />
+        <path
+          d="M 80 31 C 93 32, 100 41, 100 49 C 91 48, 85 40, 79 34 Z"
+          fill={`url(#${uid}-band)`}
+        />
+        <circle cx="83" cy="29" r="5.5" fill={`url(#${uid}-band)`} />
+      </g>
+
+      {/* 3D Sculpted Round Hamster Ears */}
+      <g>
+        <circle cx="28" cy="21" r="13" fill={`url(#${uid}-ear)`} />
+        <circle cx="28" cy="21" r="7.5" fill={`url(#${uid}-inner)`} />
+        <ellipse cx="25.5" cy="17.5" rx="3.2" ry="2" fill="#ffffff" opacity="0.52" />
+
+        <circle cx="82" cy="21" r="13" fill={`url(#${uid}-ear)`} />
+        <circle cx="82" cy="21" r="7.5" fill={`url(#${uid}-inner)`} />
+        <ellipse cx="79.5" cy="17.5" rx="3.2" ry="2" fill="#ffffff" opacity="0.52" />
+      </g>
+
+      {/* 3D Volumetric Sneakers / Paws at Base */}
+      <g>
+        <ellipse cx="39" cy="98" rx="12" ry="7" fill="#0f172a" />
+        <ellipse cx="39" cy="96.5" rx="10.5" ry="5.5" fill={`url(#${uid}-ear)`} />
+        <ellipse cx="36.5" cy="95" rx="4.5" ry="2" fill="#ffffff" opacity="0.5" />
+
+        <ellipse cx="71" cy="98" rx="12" ry="7" fill="#0f172a" />
+        <ellipse cx="71" cy="96.5" rx="10.5" ry="5.5" fill={`url(#${uid}-ear)`} />
+        <ellipse cx="68.5" cy="95" rx="4.5" ry="2" fill="#ffffff" opacity="0.5" />
+      </g>
+
+      {/* 3D Sculpted Plump Hamster Torso */}
+      <path
+        d="M 25 62 C 21 46, 32 39, 55 39 C 78 39, 89 46, 85 62 C 89 83, 78 96, 55 96 C 32 96, 21 83, 25 62 Z"
+        fill={`url(#${uid}-fur)`}
+      />
+
+      {/* 3D Plush Cream Belly */}
+      <ellipse cx="55" cy="74" rx="21" ry="16.5" fill={`url(#${uid}-belly)`} />
+
+      {/* 3D Shoulder Armor Pauldrons */}
+      <ellipse cx="26" cy="65" rx="8.5" ry="6.5" fill={`url(#${uid}-vest)`} />
+      <ellipse cx="84" cy="65" rx="8.5" ry="6.5" fill={`url(#${uid}-vest)`} />
+
+      {/* 3D Tactical Paintball Chest Vest */}
+      <path
+        d="M 31 58 Q 55 63 79 58 L 75 91 Q 55 96 35 91 Z"
+        fill={`url(#${uid}-vest)`}
+      />
+      {/* 3D Team Ribbons & Glowing Chest Reactor Core */}
+      <path d="M 35 60 L 43 61 L 41 89 L 35 87 Z" fill={`url(#${uid}-band)`} opacity="0.92" />
+      <path d="M 75 60 L 67 61 L 69 89 L 75 87 Z" fill={`url(#${uid}-band)`} opacity="0.92" />
+      <rect x="46.5" y="66.5" width="17" height="12.5" rx="4" fill="#020617" />
+      <rect x="48.5" y="68.5" width="13" height="8.5" rx="2.8" fill={`url(#${uid}-visor)`} />
+      <ellipse cx="52.5" cy="71" rx="3.2" ry="1.4" fill="#ffffff" opacity="0.8" />
+
+      {/* 3D Belt Canisters (Health Can on Left Hip, Defence Can on Right Hip) */}
+      <g transform="translate(25, 76) rotate(-8)">
+        <rect x="0" y="0" width="8.5" height="12.5" rx="3" fill="#059669" />
+        <rect x="1.2" y="1" width="3" height="10" rx="1.2" fill="#6ee7b7" opacity="0.7" />
+        <rect x="1.8" y="-2" width="5" height="2.4" rx="1" fill="#f8fafc" />
+      </g>
+      <g transform="translate(76, 76) rotate(8)">
+        <rect x="0" y="0" width="8.5" height="12.5" rx="3" fill="#0284c7" />
+        <rect x="1.2" y="1" width="3" height="10" rx="1.2" fill="#7dd3fc" opacity="0.7" />
+        <rect x="1.8" y="-2" width="5" height="2.4" rx="1" fill="#f8fafc" />
+      </g>
+
+      {/* 3D Spherical Hamster Head & Sculpted Chubby Cheeks */}
+      <ellipse cx="55" cy="41" rx="32" ry="26" fill={`url(#${uid}-fur)`} />
+      <circle cx="27" cy="47" r="12" fill={`url(#${uid}-fur)`} />
+      <circle cx="83" cy="47" r="12" fill={`url(#${uid}-fur)`} />
+
+      {/* 3D Plush Muzzle & Soft Cheek Glow */}
+      <ellipse cx="55" cy="50" rx="21" ry="13" fill={`url(#${uid}-belly)`} />
+      <ellipse cx="30" cy="50" rx="6" ry="3.8" fill="#fb7185" opacity="0.78" />
+      <ellipse cx="80" cy="50" rx="6" ry="3.8" fill="#fb7185" opacity="0.78" />
+      {/* 3D Forehead Specular Highlight */}
+      <ellipse cx="44" cy="22" rx="13" ry="5" fill="#ffffff" opacity="0.38" />
+
+      {/* 3D Character Headgear */}
+      {skin.headgear === 'Helmet' && (
+        <path d="M 25 27 C 27 10, 83 10, 85 27 Z" fill={`url(#${uid}-vest)`} />
       )}
       {skin.headgear === 'SpecOps' && (
         <g>
-          <path
-            d="M 22 27 C 26 14, 74 14, 78 27 Z"
-            fill="#18181b"
-            stroke="#f43f5e"
-            strokeWidth="2.2"
-          />
-          <circle cx="38" cy="20" r="3.5" fill="#22c55e" stroke="#0f172a" strokeWidth="1.5" />
-          <circle cx="62" cy="20" r="3.5" fill="#22c55e" stroke="#0f172a" strokeWidth="1.5" />
+          <path d="M 26 26 C 30 12, 80 12, 84 26 Z" fill="#090d16" />
+          <circle cx="43" cy="18" r="4" fill="#22c55e" />
+          <circle cx="42" cy="17" r="1.4" fill="#ffffff" />
+          <circle cx="67" cy="18" r="4" fill="#22c55e" />
+          <circle cx="66" cy="17" r="1.4" fill="#ffffff" />
         </g>
       )}
       {skin.headgear === 'Crown' && (
-        <polygon
-          points="32,18 39,5 50,14 61,5 68,18"
-          fill="#facc15"
-          stroke="#0f172a"
-          strokeWidth="2.2"
-        />
+        <polygon points="36,19 43,5 55,14 67,5 74,19" fill="#facc15" />
       )}
       {skin.headgear === 'Cyber' && (
         <g>
-          <polygon
-            points="30,19 50,7 70,19"
-            fill="#facc15"
-            stroke="#0f172a"
-            strokeWidth="2.2"
-          />
-          <circle cx="50" cy="14" r="3" fill="#7c3aed" />
+          <polygon points="34,19 55,6 76,19" fill="#facc15" />
+          <circle cx="55" cy="14" r="3.5" fill="#7c3aed" />
         </g>
       )}
       {skin.headgear === 'Blossom' && (
         <g>
-          <circle cx="33" cy="16" r="6" fill="#fbcfe8" stroke="#0f172a" strokeWidth="2" />
-          <circle cx="33" cy="16" r="2.5" fill="#facc15" />
-          <circle cx="67" cy="16" r="6" fill="#fbcfe8" stroke="#0f172a" strokeWidth="2" />
-          <circle cx="67" cy="16" r="2.5" fill="#facc15" />
+          <circle cx="37" cy="15" r="6.2" fill="#f472b6" />
+          <circle cx="37" cy="15" r="2.6" fill="#fef08a" />
+          <circle cx="73" cy="15" r="6.2" fill="#f472b6" />
+          <circle cx="73" cy="15" r="2.6" fill="#fef08a" />
         </g>
       )}
       {skin.headgear === 'Flame' && (
         <g>
-          <polygon
-            points="35,20 44,5 50,15 56,3 65,20"
-            fill="#f97316"
-            stroke="#0f172a"
-            strokeWidth="2.2"
-          />
-          <polygon points="43,19 50,8 57,19" fill="#fef08a" />
+          <polygon points="39,20 48,4 55,14 62,2 71,20" fill="#f97316" />
+          <polygon points="46,19 55,7 64,19" fill="#fef08a" />
         </g>
       )}
       {skin.headgear === 'Astro' && (
         <g>
-          <line x1="50" y1="16" x2="50" y2="5" stroke="#0f172a" strokeWidth="2.6" />
-          <circle cx="50" cy="5" r="4.5" fill="#38bdf8" stroke="#0f172a" strokeWidth="2" />
-          <path
-            d="M 24 25 Q 50 13 76 25"
-            fill="none"
-            stroke="#e0f2fe"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
+          <line x1="55" y1="16" x2="55" y2="4" stroke="#94a3b8" strokeWidth="3.2" strokeLinecap="round" />
+          <circle cx="55" cy="4.5" r="5" fill={`url(#${uid}-visor)`} />
+          <circle cx="53.5" cy="3" r="1.8" fill="#ffffff" />
         </g>
       )}
       {skin.headgear === 'Samurai' && (
         <g>
-          <path
-            d="M 22 25 L 78 25 L 72 15 L 28 15 Z"
-            fill="#18181b"
-            stroke="#0f172a"
-            strokeWidth="2.2"
-          />
-          <polygon
-            points="50,18 32,4 42,19"
-            fill="#facc15"
-            stroke="#0f172a"
-            strokeWidth="1.8"
-          />
-          <polygon
-            points="50,18 68,4 58,19"
-            fill="#facc15"
-            stroke="#0f172a"
-            strokeWidth="1.8"
-          />
+          <polygon points="55,18 35,3 46,19" fill="#facc15" />
+          <polygon points="55,18 75,3 64,19" fill="#facc15" />
         </g>
       )}
       {skin.headgear === 'Headphones' && (
         <g>
-          <path
-            d="M 16 36 C 16 10, 84 10, 84 36"
-            fill="none"
-            stroke="#a3e635"
-            strokeWidth="4.5"
-            strokeLinecap="round"
-          />
-          <rect x="10" y="28" width="9" height="16" rx="4" fill="#ec4899" stroke="#0f172a" strokeWidth="2" />
-          <rect x="81" y="28" width="9" height="16" rx="4" fill="#ec4899" stroke="#0f172a" strokeWidth="2" />
+          <path d="M 20 35 C 20 9, 90 9, 90 35" fill="none" stroke="#a3e635" strokeWidth="4.5" strokeLinecap="round" />
+          <rect x="14" y="27" width="9.5" height="17" rx="4.5" fill="#ec4899" />
+          <rect x="86.5" y="27" width="9.5" height="17" rx="4.5" fill="#ec4899" />
         </g>
       )}
       {skin.headgear === 'Cowboy' && (
         <g>
-          <ellipse cx="50" cy="19" rx="34" ry="6" fill="#92400e" stroke="#0f172a" strokeWidth="2.2" />
-          <path
-            d="M 31 19 C 33 6, 44 8, 50 11 C 56 8, 67 6, 69 19 Z"
-            fill="#b45309"
-            stroke="#0f172a"
-            strokeWidth="2.2"
-          />
-          <polygon points="50,11 52,15 56,15 53,17 54,21 50,18 46,21 47,17 44,15 48,15" fill="#facc15" />
+          <ellipse cx="55" cy="18" rx="33" ry="5.8" fill="#78350f" />
+          <path d="M 36 18 C 38 5, 49 7, 55 10 C 61 7, 72 5, 74 18 Z" fill="#b45309" />
+          <circle cx="55" cy="14" r="3" fill="#facc15" />
         </g>
       )}
       {skin.headgear === 'Viking' && (
         <g>
-          <path d="M 28 22 C 20 8, 12 10, 16 4 C 24 4, 30 12, 34 18 Z" fill="#fef3c7" stroke="#0f172a" strokeWidth="2" />
-          <path d="M 72 22 C 80 8, 88 10, 84 4 C 76 4, 70 12, 66 18 Z" fill="#fef3c7" stroke="#0f172a" strokeWidth="2" />
-          <path d="M 26 24 C 30 12, 70 12, 74 24 Z" fill="#57534e" stroke="#0f172a" strokeWidth="2.2" />
+          <path d="M 32 21 C 23 7, 15 9, 19 3 C 27 3, 34 11, 38 17 Z" fill="#fef3c7" />
+          <path d="M 78 21 C 87 7, 95 9, 91 3 C 83 3, 76 11, 72 17 Z" fill="#fef3c7" />
         </g>
       )}
 
-      {/* Team Identification Headband (Red Headband on Red Team, Blue Headband on Blue Team) */}
-      {hasTeamBand && (
-        <g>
-          {/* Flowing Tied Headband Tails on Left/Right */}
-          <path
-            d="M 80 24 L 93 18 L 90 25 L 95 29 L 81 28 Z"
-            fill={teamBandHex}
-            stroke="#0f172a"
-            strokeWidth="1.8"
-            strokeLinejoin="round"
-          />
-          {/* Forehead Team Headband Wrap */}
-          <path
-            d="M 19 29 Q 50 21 81 29 L 80 21 Q 50 13 20 21 Z"
-            fill={teamBandHex}
-            stroke="#0f172a"
-            strokeWidth="2.2"
-          />
-          {/* Crisp Team Headband Highlight Trim & Center Badge */}
-          <path
-            d="M 22 25 Q 50 17.5 78 25"
-            fill="none"
-            stroke={teamBandBorderHex}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <rect
-            x="43"
-            y="20.5"
-            width="14"
-            height="5.5"
-            rx="2"
-            fill="#ffffff"
-            stroke="#0f172a"
-            strokeWidth="1.4"
-          />
-          <circle cx="50" cy="23.2" r="1.8" fill={teamBandHex} />
-        </g>
-      )}
-
-      {/* Pro Paintball Tactical Goggles / Visor */}
-      <rect
-        x="21"
-        y="28"
-        width="58"
-        height="18"
-        rx="9"
-        fill={skin.visorHex}
-        stroke="#0f172a"
-        strokeWidth="3"
-      />
-      {/* Goggle Lens Shine & Expressive Eyes */}
-      <path d="M 28 32 L 43 32 L 38 42 L 25 42 Z" fill="#ffffff" opacity="0.58" />
-      <circle cx="37" cy="37" r="2.8" fill="#0f172a" />
-      <circle cx="63" cy="37" r="2.8" fill="#0f172a" />
-      <circle cx="38" cy="36" r="1.1" fill="#ffffff" />
-      <circle cx="64" cy="36" r="1.1" fill="#ffffff" />
-
-      {/* Cute Pink Nose, Smile & Hamster Tooth */}
-      <ellipse cx="50" cy="49" rx="4.5" ry="3.2" fill="#f43f5e" stroke="#0f172a" strokeWidth="1.6" />
-      <path
-        d="M 44 54 Q 50 59 56 54"
-        fill="none"
-        stroke="#0f172a"
-        strokeWidth="2.3"
-        strokeLinecap="round"
-      />
-      <rect
-        x="48"
-        y="55.5"
-        width="4"
-        height="4.5"
-        rx="1.2"
-        fill="#ffffff"
-        stroke="#0f172a"
-        strokeWidth="1.3"
-      />
-
-      {/* Left Hamster Paw */}
-      <circle cx="25" cy="72" r="7" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.4" />
-
-      {/* Paintball Marker Blaster Held Across Chest */}
-      <g transform="rotate(-10 62 72)">
-        {/* Hopper (Paintball Tank on top) */}
-        <ellipse
-          cx="58"
-          cy="60"
-          rx="9"
-          ry="6"
-          fill={activePaintHex}
-          stroke="#0f172a"
-          strokeWidth="2.2"
+      {/* 3D Wrap-Around Team Headband (Always visible, bright Red for Red Team, bright Blue for Blue Team) */}
+      <g>
+        <path
+          d="M 23 30 Q 55 21 87 30 L 86 21 Q 55 12 24 21 Z"
+          fill={`url(#${uid}-band)`}
         />
-        {/* Blaster Body & Barrel */}
-        <rect
-          x="48"
-          y="66"
-          width="32"
-          height="9"
-          rx="4"
-          fill={hasTeamBand ? teamBandHex : '#38bdf8'}
-          stroke="#0f172a"
-          strokeWidth="2.2"
-        />
-        <rect
-          x="76"
-          y="67.5"
-          width="12"
-          height="6"
-          rx="2.5"
-          fill={activePaintHex}
-          stroke="#0f172a"
-          strokeWidth="2"
-        />
-        {/* Grip */}
-        <rect
-          x="53"
-          y="73"
-          width="7"
-          height="10"
-          rx="2.5"
-          fill="#1e293b"
-          stroke="#0f172a"
-          strokeWidth="2"
-        />
+        <rect x="46.5" y="19.5" width="17" height="7" rx="3.5" fill="#f8fafc" />
+        <rect x="48.5" y="21" width="13" height="4" rx="2" fill={teamBandHex} />
       </g>
 
-      {/* Right Hamster Paw Holding Blaster */}
-      <circle cx="75" cy="74" r="7" fill={skin.furHex} stroke="#0f172a" strokeWidth="2.4" />
+      {/* 3D Curved Pro Paintball Visor & 3D Glossy Eyes */}
+      <rect x="25" y="29" width="60" height="18.5" rx="9.2" fill="#020617" />
+      <rect x="27" y="30.5" width="56" height="15.5" rx="7.8" fill={`url(#${uid}-visor)`} />
+      {/* 3D Eyes with Dual Specular Catchlights */}
+      <circle cx="42" cy="38.5" r="4.5" fill="#020617" opacity="0.86" />
+      <circle cx="40.5" cy="36.8" r="1.9" fill="#ffffff" />
+      <circle cx="43.5" cy="39.8" r="0.9" fill="#ffffff" opacity="0.8" />
+      <circle cx="68" cy="38.5" r="4.5" fill="#020617" opacity="0.86" />
+      <circle cx="66.5" cy="36.8" r="1.9" fill="#ffffff" />
+      <circle cx="69.5" cy="39.8" r="0.9" fill="#ffffff" opacity="0.8" />
+      {/* 3D Curved Lens Glint */}
+      <path
+        d="M 32 33.5 Q 55 31 77 33.5"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        opacity="0.82"
+      />
+
+      {/* 3D Sculpted Pink Nose, Smile & Cute Tooth */}
+      <ellipse cx="55" cy="49.5" rx="4.5" ry="3.2" fill="#f43f5e" />
+      <ellipse cx="53.6" cy="48.5" rx="1.6" ry="1" fill="#ffffff" opacity="0.8" />
+      <path
+        d="M 49 54.5 Q 55 59 61 54.5"
+        fill="none"
+        stroke="#1e293b"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <rect x="52.8" y="55.8" width="4.4" height="4.2" rx="1.2" fill="#ffffff" />
+
+      {/* 3D Left Paw */}
+      <ellipse cx="26" cy="72" rx="8.5" ry="7.2" fill={`url(#${uid}-fur)`} />
+      <ellipse cx="24" cy="70" rx="3.2" ry="1.8" fill="#ffffff" opacity="0.45" />
+
+      {/* 3D Pro Paintball Marker Held Across Chest */}
+      <g transform="rotate(-9 62 72)">
+        {/* Pressurized Tank */}
+        <rect x="46" y="75" width="15" height="6.8" rx="3.4" fill="#0f172a" />
+        {/* 3D Spherical Paint Hopper */}
+        <ellipse cx="62" cy="59.5" rx="10.5" ry="7" fill={`url(#${uid}-pod)`} />
+        <ellipse cx="59" cy="57.5" rx="4.2" ry="1.8" fill="#ffffff" opacity="0.72" />
+        {/* 3D Marker Receiver Body */}
+        <rect x="50" y="65.5" width="33" height="10.5" rx="5" fill={`url(#${uid}-gun)`} />
+        <rect x="54" y="67.2" width="21" height="2.6" rx="1.3" fill="#ffffff" opacity="0.5" />
+        {/* Carbon Barrel & Muzzle */}
+        <rect x="79" y="67.5" width="14" height="6.5" rx="3" fill="#1e293b" />
+        <circle cx="93" cy="70.8" r="3.8" fill={activePaintHex} />
+        <circle cx="91.8" cy="69.6" r="1.4" fill="#ffffff" opacity="0.85" />
+      </g>
+
+      {/* 3D Right Paw Gripping Marker */}
+      <ellipse cx="83" cy="74" rx="8.5" ry="7.2" fill={`url(#${uid}-fur)`} />
+      <ellipse cx="81" cy="72" rx="3.2" ry="1.8" fill="#ffffff" opacity="0.45" />
     </svg>
   );
 }
@@ -2016,10 +1974,22 @@ export default function HamsterPaintball({
   const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
   const [questionTimeLeft, setQuestionTimeLeft] = useState<number>(QUESTION_TIME_LIMIT_SEC);
 
-  // Mobile Touch Virtual Joystick State
+  // Mobile Touch Virtual Joystick State & Look Sensitivity Settings
   const [joystickVec, setJoystickVec] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const joystickTouchIdRef = useRef<number | null>(null);
   const joystickOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [lookSensitivity, setLookSensitivity] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1.0;
+    const saved = parseFloat(localStorage.getItem('pb_look_sensitivity') || '1.0');
+    return Number.isFinite(saved) ? Math.max(0.2, Math.min(2.5, saved)) : 1.0;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pb_look_sensitivity', String(lookSensitivity));
+    }
+  }, [lookSensitivity]);
 
   // Unique Client Session ID
   const clientIdRef = useRef<string>(`pb_${Math.random().toString(36).slice(2, 10)}`);
@@ -2102,6 +2072,8 @@ export default function HamsterPaintball({
     x: number;
     z: number;
     rotY: number;
+    camYaw: number;
+    camPitch: number;
     vx: number;
     vz: number;
     walkPhase: number;
@@ -2111,6 +2083,14 @@ export default function HamsterPaintball({
     mouseDown: boolean;
     mouseScreenX: number;
     mouseScreenY: number;
+    lastMouseX: number;
+    lastMouseY: number;
+    mouseInitialized: boolean;
+    lookTouchId: number | null;
+    lookTouchLastX: number;
+    lookTouchLastY: number;
+    lookTouchStartX: number;
+    lookTouchStartY: number;
     aimWorldX: number;
     aimWorldZ: number;
     lastShotTime: number;
@@ -2212,7 +2192,8 @@ export default function HamsterPaintball({
     ballsPerQuestion,
     hostCameraMode,
     hostFollowIndex,
-    roomPlayers
+    roomPlayers,
+    lookSensitivity
   });
 
   useEffect(() => {
@@ -2242,7 +2223,8 @@ export default function HamsterPaintball({
       ballsPerQuestion,
       hostCameraMode,
       hostFollowIndex,
-      roomPlayers
+      roomPlayers,
+      lookSensitivity
     };
   }, [
     role,
@@ -2270,7 +2252,8 @@ export default function HamsterPaintball({
     ballsPerQuestion,
     hostCameraMode,
     hostFollowIndex,
-    roomPlayers
+    roomPlayers,
+    lookSensitivity
   ]);
 
   // 10-Second Respawn Immunity Countdown Ticker
@@ -2644,6 +2627,8 @@ export default function HamsterPaintball({
       gameRef.current.x = sp.x;
       gameRef.current.z = sp.z;
       gameRef.current.rotY = sp.rotY;
+      gameRef.current.camYaw = sp.rotY;
+      gameRef.current.camPitch = 0.32;
       gameRef.current.vx = 0;
       gameRef.current.vz = 0;
       gameRef.current.localHamster.position.set(sp.x, 0, sp.z);
@@ -2856,6 +2841,8 @@ export default function HamsterPaintball({
                 gameRef.current.x = sp.x;
                 gameRef.current.z = sp.z;
                 gameRef.current.rotY = sp.rotY;
+                gameRef.current.camYaw = sp.rotY;
+                gameRef.current.camPitch = 0.32;
               }
               setPickupBannerText(
                 `👑 HOST MOVED YOU TO ${TEAM_CONFIG[data.team as TeamId]?.label.toUpperCase() || String(data.team).toUpperCase()} SPAWN!`
@@ -3251,6 +3238,8 @@ export default function HamsterPaintball({
             gameRef.current.x = sp.x;
             gameRef.current.z = sp.z;
             gameRef.current.rotY = sp.rotY;
+            gameRef.current.camYaw = sp.rotY;
+            gameRef.current.camPitch = 0.32;
           }
           setShield(100);
           const spawnSide =
@@ -3750,35 +3739,51 @@ export default function HamsterPaintball({
       reflectivity: 1.0
     });
 
-    // 1. Articulated Legs & Cleats
+    // 1. Articulated 3D Legs, Knee Pads & High-Top Sneakers
     const leftLeg = new THREE.Group();
-    leftLeg.position.set(-0.42, 0.38, 0);
+    leftLeg.position.set(-0.44, 0.4, 0);
     const rightLeg = new THREE.Group();
-    rightLeg.position.set(0.42, 0.38, 0);
+    rightLeg.position.set(0.44, 0.4, 0);
 
     const buildFoot = () => {
       const fg = new THREE.Group();
-      const thigh = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 14), furMat);
-      thigh.scale.set(0.95, 1.1, 1.05);
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.22, 12, 16), furMat);
+      thigh.castShadow = true;
       fg.add(thigh);
 
-      const shoe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.38, 0.22, 0.58),
-        new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.35, metalness: 0.3 })
+      const kneePad = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16, 14, 12),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.45 })
       );
-      shoe.position.set(0, -0.22, 0.12);
+      kneePad.scale.set(1.0, 0.85, 0.65);
+      kneePad.position.set(0, -0.05, 0.18);
+      fg.add(kneePad);
+
+      const shoe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.24, 0.62),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.32, metalness: 0.35 })
+      );
+      shoe.position.set(0, -0.23, 0.13);
       shoe.castShadow = true;
       fg.add(shoe);
 
+      const toeCap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 14, 12),
+        new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 })
+      );
+      toeCap.scale.set(0.98, 0.58, 0.85);
+      toeCap.position.set(0, -0.24, 0.36);
+      fg.add(toeCap);
+
       const sole = new THREE.Mesh(
-        new THREE.BoxGeometry(0.41, 0.06, 0.62),
+        new THREE.BoxGeometry(0.43, 0.07, 0.66),
         new THREE.MeshStandardMaterial({
           color: teamColorNum,
           emissive: teamColorNum,
-          emissiveIntensity: 0.25
+          emissiveIntensity: 0.3
         })
       );
-      sole.position.set(0, -0.32, 0.12);
+      sole.position.set(0, -0.33, 0.13);
       fg.add(sole);
       return fg;
     };
@@ -3786,42 +3791,87 @@ export default function HamsterPaintball({
     rightLeg.add(buildFoot());
     root.add(leftLeg, rightLeg);
 
-    // 2. Plump Sculpted Torso & Belly
+    // 2. Plump Sculpted 3D Torso, Belly & Fluffy Tail
     const bodyGroup = new THREE.Group();
     const torso = new THREE.Mesh(new THREE.SphereGeometry(0.92, 28, 24), furMat);
-    torso.scale.set(1.04, 1.02, 0.98);
-    torso.position.y = 0.92;
+    torso.scale.set(1.05, 1.04, 0.98);
+    torso.position.y = 0.94;
     torso.castShadow = true;
     torso.receiveShadow = true;
     bodyGroup.add(torso);
 
     const belly = new THREE.Mesh(new THREE.SphereGeometry(0.76, 24, 20), bellyMat);
-    belly.scale.set(0.88, 0.92, 0.45);
-    belly.position.set(0, 0.88, 0.66);
+    belly.scale.set(0.88, 0.92, 0.48);
+    belly.position.set(0, 0.9, 0.66);
     bodyGroup.add(belly);
 
-    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), bellyMat);
-    tail.position.set(0, 0.65, -0.92);
+    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), bellyMat);
+    tail.position.set(0, 0.64, -0.94);
+    tail.castShadow = true;
     bodyGroup.add(tail);
 
-    // 3. Tactical Paintball Chest Vest & Rear 4-Pod Harness Pack
+    // 3. Tactical 3D Paintball Chest Vest, Shoulder Pauldrons & Rear 4-Pod Harness Pack
     const vestShell = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.88, 0.95, 0.72, 24, 1, true),
+      new THREE.CylinderGeometry(0.89, 0.96, 0.74, 28, 1, true),
       vestMat
     );
-    vestShell.position.y = 0.96;
+    vestShell.position.y = 0.97;
     vestShell.castShadow = true;
     bodyGroup.add(vestShell);
 
-    const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.48, 0.22), strapMat);
-    chestPlate.position.set(0, 1.0, 0.83);
+    // 3D Shoulder Armor Pauldrons with Team Trim
+    [-1, 1].forEach(side => {
+      const pauldronGroup = new THREE.Group();
+      pauldronGroup.position.set(side * 0.86, 1.28, 0.06);
+      pauldronGroup.rotation.z = -side * 0.32;
+
+      const pauldronShell = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.58),
+        vestMat
+      );
+      pauldronShell.scale.set(1.0, 0.85, 1.15);
+      pauldronShell.castShadow = true;
+      pauldronGroup.add(pauldronShell);
+
+      const pauldronStripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.14, 0.48),
+        new THREE.MeshStandardMaterial({
+          color: teamColorNum,
+          emissive: teamColorNum,
+          emissiveIntensity: 0.35,
+          roughness: 0.25
+        })
+      );
+      pauldronStripe.position.set(0, 0.18, 0);
+      pauldronGroup.add(pauldronStripe);
+      bodyGroup.add(pauldronGroup);
+    });
+
+    // 3D Back X-Harness Straps & Chest Armor Plate
+    [-1, 1].forEach(side => {
+      const backStrap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.68, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: teamColorNum,
+          emissive: teamColorNum,
+          emissiveIntensity: 0.22,
+          roughness: 0.4
+        })
+      );
+      backStrap.position.set(0, 1.06, -0.88);
+      backStrap.rotation.z = side * 0.52;
+      bodyGroup.add(backStrap);
+    });
+
+    const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.48, 0.24), strapMat);
+    chestPlate.position.set(0, 1.0, 0.84);
     bodyGroup.add(chestPlate);
 
     const podPackGroup = new THREE.Group();
     podPackGroup.position.set(0, 0.95, -0.88);
     const packBelt = new THREE.Mesh(
-      new THREE.BoxGeometry(0.92, 0.44, 0.28),
-      new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.5 })
+      new THREE.BoxGeometry(0.94, 0.46, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.45, metalness: 0.3 })
     );
     podPackGroup.add(packBelt);
 
@@ -3832,60 +3882,64 @@ export default function HamsterPaintball({
     for (let p = 0; p < 4; p++) {
       const px = -0.3 + p * 0.2;
       const podTube = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.085, 0.085, 0.58, 12),
+        new THREE.CylinderGeometry(0.088, 0.088, 0.6, 14),
         new THREE.MeshPhysicalMaterial({
           color: podColors[p],
           emissive: podColors[p],
-          emissiveIntensity: team === 'red' || team === 'blue' ? 0.25 : 0,
+          emissiveIntensity: team === 'red' || team === 'blue' ? 0.28 : 0.1,
           transmission: 0.35,
           transparent: true,
-          opacity: 0.92,
+          opacity: 0.94,
           clearcoat: 1.0,
           roughness: 0.1
         })
       );
-      podTube.position.set(px, 0.04, -0.1);
+      podTube.position.set(px, 0.04, -0.11);
       podPackGroup.add(podTube);
 
       const podCap = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.095, 0.095, 0.08, 12),
-        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
+        new THREE.CylinderGeometry(0.098, 0.098, 0.085, 14),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 })
       );
-      podCap.position.set(px, 0.34, -0.1);
+      podCap.position.set(px, 0.35, -0.11);
       podPackGroup.add(podCap);
     }
     bodyGroup.add(podPackGroup);
 
-    // 4. Sculpted Head, Chubby Cheeks, Ears & Snout
+    // 4. Sculpted 3D Head, Chubby Cheeks, Prominent 3D Ears & Snout
     const headGroup = new THREE.Group();
-    headGroup.position.set(0, 1.72, 0.04);
+    headGroup.position.set(0, 1.74, 0.04);
 
-    const headSphere = new THREE.Mesh(new THREE.SphereGeometry(0.76, 28, 24), furMat);
-    headSphere.scale.set(1.06, 0.96, 1.0);
+    const headSphere = new THREE.Mesh(new THREE.SphereGeometry(0.77, 30, 26), furMat);
+    headSphere.scale.set(1.06, 0.97, 1.0);
     headSphere.castShadow = true;
     headGroup.add(headSphere);
 
-    const leftCheek = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 18), bellyMat);
-    leftCheek.scale.set(1.1, 0.85, 0.95);
-    leftCheek.position.set(-0.52, -0.14, 0.34);
+    const leftCheek = new THREE.Mesh(new THREE.SphereGeometry(0.44, 20, 18), bellyMat);
+    leftCheek.scale.set(1.12, 0.86, 0.96);
+    leftCheek.position.set(-0.53, -0.14, 0.35);
     const rightCheek = leftCheek.clone();
-    rightCheek.position.set(0.52, -0.14, 0.34);
+    rightCheek.position.set(0.53, -0.14, 0.35);
     headGroup.add(leftCheek, rightCheek);
 
     const buildEar = (side: number) => {
       const earG = new THREE.Group();
-      earG.position.set(side * 0.58, 0.58, -0.05);
-      earG.rotation.z = -side * 0.38;
-      earG.rotation.y = side * 0.25;
+      earG.position.set(side * 0.6, 0.6, -0.04);
+      earG.rotation.z = -side * 0.36;
+      earG.rotation.y = side * 0.24;
 
-      const outerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.12, 20), furMat);
+      const outerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.15, 22), furMat);
       outerEar.rotation.x = Math.PI / 2;
       outerEar.castShadow = true;
       earG.add(outerEar);
 
-      const innerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.13, 18), pinkMat);
+      const earRim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.055, 12, 22), furMat);
+      earRim.position.z = 0.02;
+      earG.add(earRim);
+
+      const innerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.16, 20), pinkMat);
       innerEar.rotation.x = Math.PI / 2;
-      innerEar.position.z = 0.02;
+      innerEar.position.z = 0.025;
       earG.add(innerEar);
       return earG;
     };
@@ -3893,16 +3947,16 @@ export default function HamsterPaintball({
     const rightEar = buildEar(1);
     headGroup.add(leftEar, rightEar);
 
-    const snout = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 14), bellyMat);
-    snout.scale.set(1.1, 0.8, 0.9);
-    snout.position.set(0, -0.1, 0.72);
+    const snout = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 14), bellyMat);
+    snout.scale.set(1.12, 0.82, 0.92);
+    snout.position.set(0, -0.1, 0.73);
     headGroup.add(snout);
 
     const nose = new THREE.Mesh(
-      new THREE.SphereGeometry(0.09, 14, 14),
-      new THREE.MeshPhysicalMaterial({ color: 0xf43f5e, clearcoat: 1.0, roughness: 0.15 })
+      new THREE.SphereGeometry(0.095, 14, 14),
+      new THREE.MeshPhysicalMaterial({ color: 0xf43f5e, clearcoat: 1.0, roughness: 0.12 })
     );
-    nose.position.set(0, -0.04, 0.92);
+    nose.position.set(0, -0.04, 0.93);
     headGroup.add(nose);
 
     // Cute 3D Buck Tooth & Whiskers
@@ -4151,20 +4205,20 @@ export default function HamsterPaintball({
 
     // Back Tied Headband Knot & Two Flowing Bandana Tails
     const headbandKnot = new THREE.Mesh(
-      new THREE.SphereGeometry(0.17, 14, 14),
+      new THREE.SphereGeometry(0.18, 16, 16),
       headbandMat
     );
-    headbandKnot.position.set(0, 0.43, -0.82);
+    headbandKnot.position.set(0, 0.43, -0.84);
     maskGroup.add(headbandKnot);
 
     [-1, 1].forEach(side => {
       const tailRibbon = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 0.48, 0.05),
+        new THREE.BoxGeometry(0.16, 0.52, 0.06),
         headbandMat
       );
-      tailRibbon.position.set(side * 0.18, 0.24, -0.92);
-      tailRibbon.rotation.z = side * 0.42;
-      tailRibbon.rotation.x = 0.35;
+      tailRibbon.position.set(side * 0.19, 0.22, -0.94);
+      tailRibbon.rotation.z = side * 0.44;
+      tailRibbon.rotation.x = 0.36;
       maskGroup.add(tailRibbon);
     });
 
@@ -4183,6 +4237,24 @@ export default function HamsterPaintball({
     visorLens.scale.set(0.95, 0.85, 1.18);
     visorLens.position.set(0, 0.15, 0.24);
     maskGroup.add(visorLens);
+
+    // Expressive 3D Eyebrows & Glowing Eye Catchlights on Visor
+    [-1, 1].forEach(side => {
+      const brow = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.065, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 })
+      );
+      brow.position.set(side * 0.26, 0.34, 0.8);
+      brow.rotation.z = -side * 0.14;
+      maskGroup.add(brow);
+
+      const eyeHighlight = new THREE.Mesh(
+        new THREE.SphereGeometry(0.055, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      eyeHighlight.position.set(side * 0.24, 0.17, 0.88);
+      maskGroup.add(eyeHighlight);
+    });
 
     headGroup.add(maskGroup);
     bodyGroup.add(headGroup);
@@ -4204,14 +4276,18 @@ export default function HamsterPaintball({
     hipShieldCan.rotation.z = -0.22;
     bodyGroup.add(hipShieldCan);
 
-    // 6. Articulated Arms, Held Canister & Pro Mechanical Paintball Marker Gun
+    // 6. Articulated 3D Arms, Paws, Held Canister & Pro Mechanical Paintball Marker Gun
     const leftArmGroup = new THREE.Group();
-    leftArmGroup.position.set(-0.78, 1.18, 0.35);
-    const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.38, 12, 16), furMat);
-    leftArm.rotation.x = Math.PI / 3;
-    leftArm.rotation.z = -0.25;
+    leftArmGroup.position.set(-0.8, 1.18, 0.34);
+    const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.4, 12, 16), furMat);
+    leftArm.rotation.x = Math.PI / 2.8;
+    leftArm.rotation.z = -0.28;
     leftArm.castShadow = true;
     leftArmGroup.add(leftArm);
+
+    const leftPaw = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 14), bellyMat);
+    leftPaw.position.set(0.12, -0.12, 0.26);
+    leftArmGroup.add(leftPaw);
 
     // 3D Canister in Left Paw (Visible when player Long-Presses Health/Defence Can!)
     const heldCanMesh = new THREE.Mesh(
@@ -4229,11 +4305,15 @@ export default function HamsterPaintball({
     bodyGroup.add(leftArmGroup);
 
     const rightArmGroup = new THREE.Group();
-    rightArmGroup.position.set(0.76, 1.18, 0.42);
-    const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.38, 12, 16), furMat);
-    rightArm.rotation.x = Math.PI / 2.4;
+    rightArmGroup.position.set(0.78, 1.18, 0.42);
+    const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.4, 12, 16), furMat);
+    rightArm.rotation.x = Math.PI / 2.3;
     rightArm.castShadow = true;
     rightArmGroup.add(rightArm);
+
+    const rightPaw = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 14), bellyMat);
+    rightPaw.position.set(0.02, -0.06, 0.28);
+    rightArmGroup.add(rightPaw);
     bodyGroup.add(rightArmGroup);
 
     const markerGroup = new THREE.Group();
@@ -4945,17 +5025,25 @@ export default function HamsterPaintball({
     renderer.shadowMap.enabled = !isSoftwareGl;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.88;
+    renderer.toneMappingExposure = 1.02;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+    (scene as any).environmentIntensity = 0.44;
+    pmremGenerator.dispose();
+
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x3f6212, 0.7);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.78);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x4d7c0f, 0.92);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.0);
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.25);
     sunLight.position.set(36, 65, 28);
     sunLight.castShadow = !isSoftwareGl;
     sunLight.shadow.mapSize.width = 2048;
@@ -5627,6 +5715,7 @@ export default function HamsterPaintball({
     aimLaserLine.visible = !isHostRole;
     scene.add(aimLaserLine);
 
+    const initYaw = isHostRole ? 0 : initialSpawn.rotY;
     gameRef.current = {
       scene,
       camera,
@@ -5638,7 +5727,9 @@ export default function HamsterPaintball({
       shootButtonHeld: false,
       x: startX,
       z: startZ,
-      rotY: isHostRole ? 0 : initialSpawn.rotY,
+      rotY: initYaw,
+      camYaw: initYaw,
+      camPitch: 0.32,
       vx: 0,
       vz: 0,
       walkPhase: 0,
@@ -5648,8 +5739,16 @@ export default function HamsterPaintball({
       mouseDown: false,
       mouseScreenX: window.innerWidth / 2,
       mouseScreenY: window.innerHeight / 2,
-      aimWorldX: 0,
-      aimWorldZ: 0,
+      lastMouseX: window.innerWidth / 2,
+      lastMouseY: window.innerHeight / 2,
+      mouseInitialized: false,
+      lookTouchId: null,
+      lookTouchLastX: 0,
+      lookTouchLastY: 0,
+      lookTouchStartX: 0,
+      lookTouchStartY: 0,
+      aimWorldX: startX + Math.sin(initYaw) * 10,
+      aimWorldZ: startZ + Math.cos(initYaw) * 10,
       lastShotTime: 0,
       hostCamX: 0,
       hostCamZ: 4,
@@ -5669,7 +5768,7 @@ export default function HamsterPaintball({
       }
     });
 
-    // Keyboard & Mouse Listeners
+    // Keyboard, Mouse Free-Look & Mobile Right-Side Touch-Drag Free-Look Listeners
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!gameRef.current) return;
       const k = e.key.toLowerCase();
@@ -5708,10 +5807,38 @@ export default function HamsterPaintball({
       }
     };
 
+    // Laptop Mouse Movement Changes Camera View, Character View & Aiming Reticle
     const handleMouseMove = (e: MouseEvent) => {
-      if (!gameRef.current) return;
-      gameRef.current.mouseScreenX = e.clientX;
-      gameRef.current.mouseScreenY = e.clientY;
+      const g = gameRef.current;
+      if (!g) return;
+      g.mouseScreenX = e.clientX;
+      g.mouseScreenY = e.clientY;
+
+      const dx =
+        typeof e.movementX === 'number' && document.pointerLockElement
+          ? e.movementX
+          : g.mouseInitialized
+          ? e.clientX - g.lastMouseX
+          : 0;
+      const dy =
+        typeof e.movementY === 'number' && document.pointerLockElement
+          ? e.movementY
+          : g.mouseInitialized
+          ? e.clientY - g.lastMouseY
+          : 0;
+
+      g.lastMouseX = e.clientX;
+      g.lastMouseY = e.clientY;
+      g.mouseInitialized = true;
+
+      if (
+        stateSnapRef.current.role === 'player' &&
+        stateSnapRef.current.screen === 'game'
+      ) {
+        const sens = stateSnapRef.current.lookSensitivity || 1.0;
+        g.camYaw -= dx * 0.0044 * sens;
+        g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0028 * sens, 0.12, 0.68);
+      }
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -5721,6 +5848,9 @@ export default function HamsterPaintball({
         return;
       }
       gameRef.current.mouseDown = true;
+      gameRef.current.lastMouseX = e.clientX;
+      gameRef.current.lastMouseY = e.clientY;
+      gameRef.current.mouseInitialized = true;
       if (
         stateSnapRef.current.role === 'player' &&
         stateSnapRef.current.screen === 'game'
@@ -5732,6 +5862,86 @@ export default function HamsterPaintball({
     const handleMouseUp = () => {
       if (!gameRef.current) return;
       gameRef.current.mouseDown = false;
+    };
+
+    // Mobile / Tablet Touch-Drag / Free Look on the Right Side of the Screen
+    // Swiping or dragging anywhere on the right side of the screen rotates camera, character view, and aiming reticle!
+    const handleWindowTouchStart = (e: TouchEvent) => {
+      const g = gameRef.current;
+      if (!g || stateSnapRef.current.role !== 'player' || stateSnapRef.current.screen !== 'game') {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('button, input, select, textarea, a')) {
+        return;
+      }
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === joystickTouchIdRef.current) continue;
+        // Right side of the screen (or any canvas touch outside the bottom-left joystick zone)
+        const isBottomLeftJoystickZone =
+          t.clientX < window.innerWidth * 0.35 && t.clientY > window.innerHeight * 0.6;
+        if (!isBottomLeftJoystickZone && g.lookTouchId === null) {
+          g.lookTouchId = t.identifier;
+          g.lookTouchStartX = t.clientX;
+          g.lookTouchStartY = t.clientY;
+          g.lookTouchLastX = t.clientX;
+          g.lookTouchLastY = t.clientY;
+          g.mouseScreenX = t.clientX;
+          g.mouseScreenY = t.clientY;
+          break;
+        }
+      }
+    };
+
+    const handleWindowTouchMove = (e: TouchEvent) => {
+      const g = gameRef.current;
+      if (!g || g.lookTouchId === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === g.lookTouchId) {
+          const dx = t.clientX - g.lookTouchLastX;
+          const dy = t.clientY - g.lookTouchLastY;
+          g.lookTouchLastX = t.clientX;
+          g.lookTouchLastY = t.clientY;
+          g.mouseScreenX = t.clientX;
+          g.mouseScreenY = t.clientY;
+          const sens = stateSnapRef.current.lookSensitivity || 1.0;
+          g.camYaw -= dx * 0.0068 * sens;
+          g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0045 * sens, 0.12, 0.68);
+          break;
+        }
+      }
+    };
+
+    const handleWindowTouchEnd = (e: TouchEvent) => {
+      const g = gameRef.current;
+      if (!g || g.lookTouchId === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === g.lookTouchId) {
+          const dragDist = Math.hypot(
+            t.clientX - g.lookTouchStartX,
+            t.clientY - g.lookTouchStartY
+          );
+          g.lookTouchId = null;
+          // Quick tap without dragging on the arena canvas fires a paintball
+          const target = e.target as HTMLElement | null;
+          const isCanvasTap =
+            !target ||
+            target.tagName === 'CANVAS' ||
+            target.classList.contains('cursor-crosshair');
+          if (
+            dragDist < 12 &&
+            isCanvasTap &&
+            stateSnapRef.current.role === 'player' &&
+            stateSnapRef.current.screen === 'game'
+          ) {
+            fireShot();
+          }
+          break;
+        }
+      }
     };
 
     const handleResize = () => {
@@ -5766,17 +5976,18 @@ export default function HamsterPaintball({
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchstart', handleWindowTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleWindowTouchMove, { passive: true });
+    window.addEventListener('touchend', handleWindowTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', handleWindowTouchEnd, { passive: true });
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
     window.visualViewport?.addEventListener('resize', handleResize);
 
     // =========================================================
-    // MAIN 60FPS ANIMATION LOOP (CLOSER THIRD-PERSON CAMERA — NOT HIGH TOP-DOWN!)
+    // MAIN 60FPS ANIMATION LOOP (3D FREE-LOOK CAMERA & RELATIVE MOVEMENT)
     // =========================================================
     let lastTime = performance.now();
-    const raycaster = new THREE.Raycaster();
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.2);
-    const hitPt = new THREE.Vector3();
 
     const animate = (now: number) => {
       animFrameRef.current = requestAnimationFrame(animate);
@@ -5788,7 +5999,6 @@ export default function HamsterPaintball({
       const snapState = stateSnapRef.current;
 
       // Teacher Jan 3D Character is ONLY in the Park during the Lobby!
-      // When the game starts (`matchStatus === 'playing'` or Host enters `screen === 'game'`), Teacher Jan does NOT join!
       if (g.teacherJanNpc) {
         const showTeacherJanInLobby =
           snapState.matchStatus === 'lobby' &&
@@ -5816,20 +6026,20 @@ export default function HamsterPaintball({
         }
       });
 
-      // Keyboard WASD + Mobile Virtual Touch Joystick input
-      let moveX = g.joyX;
-      let moveZ = g.joyZ;
-      if (g.keys['w'] || g.keys['arrowup']) moveZ -= 1;
-      if (g.keys['s'] || g.keys['arrowdown']) moveZ += 1;
-      if (g.keys['a'] || g.keys['arrowleft']) moveX -= 1;
-      if (g.keys['d'] || g.keys['arrowright']) moveX += 1;
+      // Keyboard WASD / Arrow Keys + Mobile Virtual Touch Joystick input
+      let rawX = g.joyX;
+      let rawZ = g.joyZ;
+      if (g.keys['w'] || g.keys['arrowup']) rawZ -= 1;
+      if (g.keys['s'] || g.keys['arrowdown']) rawZ += 1;
+      if (g.keys['a'] || g.keys['arrowleft']) rawX -= 1;
+      if (g.keys['d'] || g.keys['arrowright']) rawX += 1;
 
-      const isMoving = Math.hypot(moveX, moveZ) > 0.05;
+      const isMoving = Math.hypot(rawX, rawZ) > 0.05;
       if (isMoving) {
-        const len = Math.hypot(moveX, moveZ);
+        const len = Math.hypot(rawX, rawZ);
         if (len > 1) {
-          moveX /= len;
-          moveZ /= len;
+          rawX /= len;
+          rawZ /= len;
         }
       }
 
@@ -5856,46 +6066,78 @@ export default function HamsterPaintball({
               remotes[snapState.hostFollowIndex % remotes.length];
             const tx = matchedEntry.mesh.position.x;
             const tz = matchedEntry.mesh.position.z;
+            const tYaw = matchedEntry.mesh.rotation.y || 0;
             const camAspect = camera.aspect || 1.5;
             const portraitOffset =
               camAspect < 1.0 ? Math.min(4.2, (1.0 - camAspect) * 8) : camAspect < 1.4 ? 1.0 : 0;
-            // Closer behind-the-player third-person perspective (not high top-down!)
+            // Orbit behind the followed player's facing direction so Host sees their exact 3D view!
+            const followDist = 8.4 + portraitOffset * 0.5;
+            const followHeight = 6.2 + portraitOffset * 0.4;
+            const desiredCamX = tx - Math.sin(tYaw) * followDist;
+            const desiredCamZ = tz - Math.cos(tYaw) * followDist;
+            const lookX = tx + Math.sin(tYaw) * 10.0;
+            const lookZ = tz + Math.cos(tYaw) * 10.0;
             g.hostCamX += (tx - g.hostCamX) * 8 * dt;
             g.hostCamZ += (tz - g.hostCamZ) * 8 * dt;
-            camera.position.x += (g.hostCamX - camera.position.x) * 8 * dt;
-            camera.position.y += (7.0 + portraitOffset * 0.45 - camera.position.y) * 8 * dt;
-            camera.position.z += (g.hostCamZ + 9.2 + portraitOffset * 0.55 - camera.position.z) * 8 * dt;
-            camera.lookAt(g.hostCamX, 1.65, g.hostCamZ - 6.0);
+            camera.position.x += (desiredCamX - camera.position.x) * 8 * dt;
+            camera.position.y += (followHeight - camera.position.y) * 8 * dt;
+            camera.position.z += (desiredCamZ - camera.position.z) * 8 * dt;
+            camera.lookAt(lookX, 1.5, lookZ);
           } else {
+            // Bright central arena view when waiting for students
             camera.position.x += (0 - camera.position.x) * 5 * dt;
-            camera.position.y += (12.0 - camera.position.y) * 5 * dt;
-            camera.position.z += (14.5 - camera.position.z) * 5 * dt;
-            camera.lookAt(0, 1.5, -4.0);
+            camera.position.y += (18.0 - camera.position.y) * 5 * dt;
+            camera.position.z += (22.0 - camera.position.z) * 5 * dt;
+            camera.lookAt(0, 1.2, 0);
           }
         } else {
           // Host Overview Camera (can pan smoothly with WASD/Arrow keys)
           if (isMoving && snapState.screen === 'game') {
-            g.hostCamX = Math.max(-36, Math.min(36, g.hostCamX + moveX * 24 * dt));
-            g.hostCamZ = Math.max(-28, Math.min(28, g.hostCamZ + moveZ * 24 * dt));
+            g.hostCamX = Math.max(-36, Math.min(36, g.hostCamX + rawX * 24 * dt));
+            g.hostCamZ = Math.max(-28, Math.min(28, g.hostCamZ + rawZ * 24 * dt));
           }
           const camAspect = camera.aspect || 1.5;
           const portraitZoomOut = camAspect < 1.0 ? Math.min(10, (1.0 - camAspect) * 18) : 0;
-          const targetY = (snapState.screen === 'game' ? 38 : 26) + portraitZoomOut;
-          const targetZ = (snapState.screen === 'game' ? g.hostCamZ + 32 : 21) + portraitZoomOut * 0.8;
+          const targetY = (snapState.screen === 'game' ? 32 : 24) + portraitZoomOut;
+          const targetZ = (snapState.screen === 'game' ? g.hostCamZ + 28 : 22) + portraitZoomOut * 0.8;
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
-          camera.lookAt(g.hostCamX, 1.2, g.hostCamZ - 4);
+          camera.lookAt(g.hostCamX, 1.2, snapState.screen === 'game' ? g.hostCamZ - 2 : 0);
         }
       } else {
         // ---------------------------------------------------
-        // STUDENT PLAYER MOVEMENT, CLOSER THIRD-PERSON CAMERA & AIMING
+        // STUDENT PLAYER: CAMERA-RELATIVE MOVEMENT (UP/DOWN/LEFT/RIGHT),
+        // LAPTOP MOUSE VIEW ROTATION & MOBILE TOUCH-DRAG FREE LOOK
         // ---------------------------------------------------
         g.localHamster.visible = true;
         const speed = 15.0;
 
-        g.vx = moveX * speed;
-        g.vz = moveZ * speed;
+        // Laptop smooth edge-turn when cursor is near left/right edge of the viewport
+        if (g.mouseInitialized && g.lookTouchId === null && snapState.screen === 'game') {
+          const rect = container.getBoundingClientRect();
+          const relX = (g.mouseScreenX - rect.left) / Math.max(1, rect.width);
+          const sens = snapState.lookSensitivity || 1.0;
+          if (relX < 0.1) {
+            g.camYaw += (0.1 - relX) * 14.0 * sens * dt;
+          } else if (relX > 0.9) {
+            g.camYaw -= (relX - 0.9) * 14.0 * sens * dt;
+          }
+        }
+
+        // Move Up/Down/Left/Right relative to the camera's current facing angle (`g.camYaw`)
+        const forwardInput = -rawZ; // Up / W = +1 (forward), Down / S = -1 (backward)
+        const rightInput = rawX; // Right / D = +1 (strafe right), Left / A = -1 (strafe left)
+        const fwdX = Math.sin(g.camYaw);
+        const fwdZ = Math.cos(g.camYaw);
+        const rightX = -Math.cos(g.camYaw);
+        const rightZ = Math.sin(g.camYaw);
+
+        const moveWorldX = fwdX * forwardInput + rightX * rightInput;
+        const moveWorldZ = fwdZ * forwardInput + rightZ * rightInput;
+
+        g.vx = moveWorldX * speed;
+        g.vz = moveWorldZ * speed;
 
         g.x = Math.max(-43, Math.min(43, g.x + g.vx * dt));
         g.z = Math.max(-33, Math.min(33, g.z + g.vz * dt));
@@ -5926,7 +6168,6 @@ export default function HamsterPaintball({
         });
 
         // Collectible Health Cans & Defence Cans Around the Arena
-        // Walking over a can collects it into the player's Can Belt (up to 3 each); players LONG-PRESS to use it!
         let closestCan: { id: string; type: 'health' | 'shield' } | null = null;
         g.powerups.forEach(pu => {
           if (!pu.active) return;
@@ -5958,42 +6199,27 @@ export default function HamsterPaintball({
           prev?.id === closestCan?.id && prev?.type === closestCan?.type ? prev : closestCan
         );
 
-        // CLOSER THIRD-PERSON FOLLOW CAMERA (Lower & closer behind the character, NOT high on top!)
+        // ORBITING 3D THIRD-PERSON CAMERA BEHIND THE HAMSTER (`camYaw` & `camPitch`)
         const camAspect = camera.aspect || 1.5;
         const portraitOffset =
           camAspect < 1.0 ? Math.min(4.2, (1.0 - camAspect) * 8) : camAspect < 1.4 ? 1.0 : 0;
-        const targetCamX = g.x;
-        const targetCamY = 7.0 + portraitOffset * 0.45;
-        const targetCamZ = g.z + 9.2 + portraitOffset * 0.55;
-        camera.position.x += (targetCamX - camera.position.x) * 8 * dt;
-        camera.position.y += (targetCamY - camera.position.y) * 8 * dt;
-        camera.position.z += (targetCamZ - camera.position.z) * 8 * dt;
-        camera.lookAt(g.x, 1.65, g.z - 6.0);
+        const camDist = 8.2 + portraitOffset * 0.5;
+        const camHeight = 3.2 + g.camPitch * 9.5 + portraitOffset * 0.4;
+        const targetCamX = g.x - Math.sin(g.camYaw) * camDist;
+        const targetCamY = camHeight;
+        const targetCamZ = g.z - Math.cos(g.camYaw) * camDist;
+        camera.position.x += (targetCamX - camera.position.x) * 12 * dt;
+        camera.position.y += (targetCamY - camera.position.y) * 12 * dt;
+        camera.position.z += (targetCamZ - camera.position.z) * 12 * dt;
 
-        // Update camera matrix BEFORE raycasting mouse aim so hitPt is 100% deterministic
+        const aimDistance = Math.max(5.5, 14.5 - g.camPitch * 11.5);
+        g.aimWorldX = g.x + Math.sin(g.camYaw) * aimDistance;
+        g.aimWorldZ = g.z + Math.cos(g.camYaw) * aimDistance;
+        camera.lookAt(g.aimWorldX, 1.45, g.aimWorldZ);
         camera.updateMatrixWorld();
 
-        if (isMoving && !g.mouseDown && Math.hypot(g.joyX, g.joyZ) > 0.1) {
-          // On mobile touch joystick, face movement direction unless tapping to shoot
-          g.rotY = Math.atan2(moveX, moveZ);
-          g.aimWorldX = g.x + Math.sin(g.rotY) * 12;
-          g.aimWorldZ = g.z + Math.cos(g.rotY) * 12;
-        } else {
-          const rect = container.getBoundingClientRect();
-          const localX = g.mouseScreenX - rect.left;
-          const localY = g.mouseScreenY - rect.top;
-          const ndcX = (localX / Math.max(1, rect.width)) * 2 - 1;
-          const ndcY = -(localY / Math.max(1, rect.height)) * 2 + 1;
-          raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-          if (raycaster.ray.intersectPlane(groundPlane, hitPt)) {
-            g.aimWorldX = hitPt.x;
-            g.aimWorldZ = hitPt.z;
-            if (Math.hypot(hitPt.x - g.x, hitPt.z - g.z) > 0.3) {
-              g.rotY = Math.atan2(hitPt.x - g.x, hitPt.z - g.z);
-            }
-          }
-        }
-
+        // Rotate character view & aiming reticle with camera free-look yaw
+        g.rotY = g.camYaw;
         g.localHamster.position.set(g.x, 0, g.z);
         g.localHamster.rotation.y = g.rotY;
 
@@ -6284,6 +6510,10 @@ export default function HamsterPaintball({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchstart', handleWindowTouchStart);
+      window.removeEventListener('touchmove', handleWindowTouchMove);
+      window.removeEventListener('touchend', handleWindowTouchEnd);
+      window.removeEventListener('touchcancel', handleWindowTouchEnd);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
       window.visualViewport?.removeEventListener('resize', handleResize);
@@ -6971,19 +7201,10 @@ export default function HamsterPaintball({
       id="paintball-game-container"
       className="fixed inset-0 z-[60] w-screen h-[100dvh] xl:relative xl:inset-auto xl:z-auto xl:w-full xl:h-full flex-1 min-h-0 bg-slate-900 overflow-hidden font-sans select-none text-slate-100 touch-manipulation"
     >
-      {/* 3D WebGL Canvas Layer */}
+      {/* 3D WebGL Canvas Layer (Supports Laptop Mouse Free-Look & Mobile Right-Side Touch-Drag Free-Look) */}
       <div
         ref={canvasContainerRef}
-        onTouchStart={e => {
-          if (role !== 'player' || screen !== 'game') return;
-          const touch = e.touches[0];
-          if (touch && gameRef.current) {
-            gameRef.current.mouseScreenX = touch.clientX;
-            gameRef.current.mouseScreenY = touch.clientY;
-            fireShot();
-          }
-        }}
-        className="absolute inset-0 w-full h-full z-0 cursor-crosshair"
+        className="absolute inset-0 w-full h-full z-0 cursor-crosshair touch-none"
       />
 
       {/* -------------------------------------------------------------
@@ -7041,6 +7262,15 @@ export default function HamsterPaintball({
           )}
 
           <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="shrink-0 px-2 sm:px-2.5 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center gap-1 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black"
+            title="Game Settings & Look Sensitivity"
+          >
+            <Settings size={14} className="text-cyan-400" />
+            <span className="hidden md:inline">Settings</span>
+          </button>
+
+          <button
             onClick={() => setMusicEnabled(!musicEnabled)}
             className={`shrink-0 px-2 sm:px-2.5 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border flex items-center gap-1 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black ${
               musicEnabled && soundEnabled ? 'border-lime-400/50 text-lime-300' : 'border-white/20 text-slate-400'
@@ -7072,6 +7302,112 @@ export default function HamsterPaintball({
       </div>
 
       {/* -------------------------------------------------------------
+          GAME SETTINGS MODAL (LOOK SENSITIVITY & AUDIO CONTROLS)
+         ------------------------------------------------------------- */}
+      {isSettingsOpen && (
+        <div className="absolute inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border-2 border-cyan-400/50 rounded-3xl shadow-2xl w-full max-w-md p-5 text-white relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Sliders size={18} className="text-cyan-400" />
+                <h2 className="font-black text-lg tracking-tight">GAME SETTINGS</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Look Sensitivity Slider & Presets */}
+            <div className="bg-slate-800/90 rounded-2xl p-4 border border-white/10 mb-3.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-cyan-300">
+                  Look Sensitivity (Mouse &amp; Touch-Drag)
+                </span>
+                <span className="px-2 py-0.5 rounded-lg bg-cyan-500/20 border border-cyan-400/40 font-mono font-black text-xs text-cyan-200">
+                  {Math.round(lookSensitivity * 100)}%
+                </span>
+              </div>
+
+              <input
+                type="range"
+                min={0.2}
+                max={2.5}
+                step={0.05}
+                value={lookSensitivity}
+                onChange={e => setLookSensitivity(parseFloat(e.target.value))}
+                className="w-full accent-cyan-400 cursor-pointer h-2 bg-slate-950 rounded-lg"
+              />
+
+              <div className="grid grid-cols-4 gap-1.5 mt-3">
+                {[
+                  { label: 'Low', val: 0.6 },
+                  { label: 'Normal', val: 1.0 },
+                  { label: 'High', val: 1.5 },
+                  { label: 'Ultra', val: 2.0 }
+                ].map(preset => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setLookSensitivity(preset.val)}
+                    className={`py-1.5 rounded-xl font-black text-xs border transition cursor-pointer ${
+                      Math.abs(lookSensitivity - preset.val) < 0.06
+                        ? 'bg-cyan-400 text-slate-950 border-white shadow'
+                        : 'bg-slate-900/90 text-slate-300 border-white/10 hover:bg-slate-700'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-[11px] text-slate-400 mt-2.5 leading-snug">
+                • <b>Laptop:</b> Move with <b>W/A/S/D</b> or <b>Arrow Keys</b>; move mouse to rotate view &amp; aim.
+                <br />• <b>Mobile / Tablet:</b> Swipe or drag on the <b>right side of the screen</b> to free-look.
+              </p>
+            </div>
+
+            {/* Audio Quick Toggles */}
+            <div className="grid grid-cols-2 gap-2.5 mb-4">
+              <button
+                type="button"
+                onClick={() => setMusicEnabled(!musicEnabled)}
+                className={`py-2.5 px-3 rounded-xl font-black text-xs border flex items-center justify-center gap-2 cursor-pointer transition ${
+                  musicEnabled
+                    ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200'
+                    : 'bg-slate-800 border-white/10 text-slate-400'
+                }`}
+              >
+                <span>{musicEnabled ? '🎵 Music: ON' : '🔇 Music: OFF'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className={`py-2.5 px-3 rounded-xl font-black text-xs border flex items-center justify-center gap-2 cursor-pointer transition ${
+                  soundEnabled
+                    ? 'bg-lime-600/30 border-lime-400 text-lime-200'
+                    : 'bg-slate-800 border-white/10 text-slate-400'
+                }`}
+              >
+                <span>{soundEnabled ? '🔊 SFX: ON' : '🔈 SFX: OFF'}</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(false)}
+              className="w-full py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-sm shadow-lg transition cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------
           SCREEN 1: QUIZ EDITOR (EXACT BUBBLE POP GAME SETUP DESIGN)
          ------------------------------------------------------------- */}
       {screen === 'editor' && (
@@ -7093,35 +7429,18 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 2: STUDENT JOIN MODAL (CHOOSE YOUR HAMSTER CHARACTER & ENTER LOBBY TO WAIT FOR HOST)
+          SCREEN 2: MINIMALIST STUDENT LOBBY (3D CHARACTERS & COMPACT JOIN)
          ------------------------------------------------------------- */}
       {screen === 'join' && (
-        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/85 flex items-center justify-center p-2.5 sm:p-4 pt-12 pb-3 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[600px] max-h-[86dvh] overflow-y-auto p-3.5 sm:p-6 flex flex-col items-center border-2 border-slate-200 relative text-slate-900 my-auto">
-            <div className="absolute top-0 inset-x-0 h-2.5 bg-gradient-to-r from-lime-400 via-pink-500 to-cyan-400" />
+        <div className="absolute inset-0 z-40 w-full h-full bg-slate-900/35 backdrop-blur-[2px] flex items-center justify-center p-2.5 sm:p-4 pt-12 pb-3 overflow-y-auto">
+          <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-[520px] max-h-[86dvh] overflow-y-auto p-4 sm:p-5 flex flex-col items-center border border-slate-200 relative text-slate-900 my-auto">
+            <h1 className="font-black text-xl sm:text-2xl tracking-tight text-slate-900 mb-3">
+              HAMSTER PAINTBALL
+            </h1>
 
-            <div className="text-center mb-2.5 mt-1">
-              <div className="inline-flex items-center gap-1.5 bg-lime-100 text-lime-800 font-black text-[11px] px-3 py-1 rounded-full mb-1 border border-lime-300">
-                <Globe size={13} className="text-emerald-600" /> WWW.HAMSTERENGLISH.ONLINE • STUDENT LOBBY
-              </div>
-              <h1 className="font-black text-2xl sm:text-3xl tracking-tight text-slate-900 leading-none">
-                HAMSTER PAINTBALL
-              </h1>
-              <p className="text-xs font-bold text-slate-500 mt-1">
-                Choose from 12 Hamster Characters, then enter the Lobby to wait for your Host!
-              </p>
-            </div>
-
-            {/* CHOOSE YOUR HAMSTER CHARACTER (12 FULL-BODY ILLUSTRATED & 3D HAMSTER CHARACTERS) */}
-            <div className="w-full bg-slate-100 rounded-2xl p-2.5 sm:p-3 mb-3 border border-slate-200">
-              <div className="flex flex-wrap items-center justify-between gap-1 text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
-                <span>🐹 Choose Your Hamster Character (12 Heroes)</span>
-                <span className="px-2.5 py-0.5 rounded-full bg-indigo-600 text-white font-black text-[10px] shadow-sm">
-                  ✓ {HAMSTER_SKINS[selectedSkinIdx]?.name} • {HAMSTER_SKINS[selectedSkinIdx]?.roleTitle}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 sm:gap-2 max-h-[250px] sm:max-h-[280px] overflow-y-auto pr-0.5">
+            {/* 3D CHARACTER GRID (MINIMALIST — 3D RENDER + NAME ONLY) */}
+            <div className="w-full bg-slate-100/90 rounded-2xl p-2 mb-3 border border-slate-200/80">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-[220px] sm:max-h-[250px] overflow-y-auto pr-0.5">
                 {HAMSTER_SKINS.map((skin, idx) => {
                   const isSelected = idx === selectedSkinIdx;
                   return (
@@ -7132,27 +7451,19 @@ export default function HamsterPaintball({
                         setSelectedSkinIdx(idx);
                         sfx.playCorrect();
                       }}
-                      className={`p-1.5 sm:p-2 rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer relative ${
+                      className={`p-1.5 rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${
                         isSelected
-                          ? 'border-indigo-600 bg-indigo-50 shadow-md scale-[1.02] ring-2 ring-indigo-400/50'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                          ? 'border-indigo-600 bg-indigo-50/90 shadow-md scale-[1.02]'
+                          : 'border-transparent bg-white hover:bg-slate-50'
                       }`}
                     >
-                      {isSelected && (
-                        <span className="absolute top-1 right-1 px-1.5 py-0.2 rounded-full bg-indigo-600 text-white font-black text-[7px] uppercase">
-                          Pick
-                        </span>
-                      )}
                       <HamsterCharacterAvatar
                         skin={skin}
-                        size={52}
+                        size={54}
                         team={matchMode === 'teams' ? myTeam : 'solo'}
                       />
-                      <span className="mt-0.5 font-black text-[10px] sm:text-[11px] text-slate-900 leading-tight text-center truncate w-full">
+                      <span className="mt-0.5 font-extrabold text-[10px] text-slate-800 leading-tight text-center truncate w-full">
                         {skin.name}
-                      </span>
-                      <span className="text-[8px] sm:text-[9px] font-bold text-indigo-600 leading-tight truncate w-full text-center">
-                        {skin.roleTitle}
                       </span>
                     </button>
                   );
@@ -7160,51 +7471,16 @@ export default function HamsterPaintball({
               </div>
             </div>
 
-            {/* Student Name Input */}
-            <div className="w-full mb-2.5">
-              <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                Student Callsign (Your Name)
-              </label>
+            {/* Minimalist Name & Room Code Row */}
+            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2.5">
               <input
                 type="text"
                 maxLength={16}
                 value={playerName === 'Teacher Jan' ? '' : playerName}
                 onChange={e => setPlayerName(e.target.value)}
-                placeholder="Enter your name..."
-                className="w-full h-11 px-4 text-center text-base font-extrabold text-slate-800 bg-white border-2 border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-500 transition"
+                placeholder="Name"
+                className="sm:col-span-2 h-11 px-3.5 text-center sm:text-left text-sm font-extrabold text-slate-800 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-600 transition"
               />
-            </div>
-
-            {/* Choose Initial Squad Preference */}
-            <div className="w-full mb-2.5">
-              <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                Select Squad Team
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['red', 'blue'] as TeamId[]).map(tId => (
-                  <button
-                    key={tId}
-                    type="button"
-                    onClick={() => setMyTeam(tId)}
-                    className={`py-2 px-3 rounded-xl font-black text-xs uppercase border-2 transition cursor-pointer ${
-                      myTeam === tId
-                        ? tId === 'red'
-                          ? 'bg-rose-600 text-white border-rose-800 shadow'
-                          : 'bg-sky-600 text-white border-sky-800 shadow'
-                        : 'bg-slate-100 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    {TEAM_CONFIG[tId].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Room Code Input */}
-            <div className="w-full mb-3.5">
-              <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                6-Digit Park Room Code (from Host Screen)
-              </label>
               <input
                 type="text"
                 maxLength={6}
@@ -7212,12 +7488,32 @@ export default function HamsterPaintball({
                 onChange={e =>
                   setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6))
                 }
-                placeholder="e.g. 482910"
-                className="w-full h-11 px-3 text-center font-mono text-2xl font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-700"
+                placeholder="Code"
+                className="h-11 px-2 text-center font-mono text-lg font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-600"
               />
             </div>
 
-            {/* Enter Lobby to Wait for Host to Start the Game */}
+            {/* Minimalist Team Toggle */}
+            <div className="w-full grid grid-cols-2 gap-2 mb-3">
+              {(['red', 'blue'] as TeamId[]).map(tId => (
+                <button
+                  key={tId}
+                  type="button"
+                  onClick={() => setMyTeam(tId)}
+                  className={`py-2 px-3 rounded-xl font-black text-xs uppercase border-2 transition cursor-pointer ${
+                    myTeam === tId
+                      ? tId === 'red'
+                        ? 'bg-rose-600 text-white border-rose-700 shadow'
+                        : 'bg-sky-600 text-white border-sky-700 shadow'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  {tId === 'red' ? 'Red Team' : 'Blue Team'}
+                </button>
+              ))}
+            </div>
+
+            {/* Join Button */}
             <button
               type="button"
               onClick={async () => {
@@ -7241,6 +7537,8 @@ export default function HamsterPaintball({
                   g.x = sp.x;
                   g.z = sp.z;
                   g.rotY = sp.rotY;
+                  g.camYaw = sp.rotY;
+                  g.camPitch = 0.32;
                 }
 
                 // Immediately register this player in both the Server API & Firestore so the Host sees them in the Live Park Lobby!
@@ -7375,10 +7673,10 @@ export default function HamsterPaintball({
                 // Student enters the 3D Park Lobby (`screen === 'game'`) to wait for Host to start!
                 setScreen('game');
               }}
-              className="w-full py-3.5 bg-[#160269] hover:bg-[#220699] active:scale-[0.99] text-white font-black text-base rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-[#0c013d] cursor-pointer"
+              className="w-full py-3 bg-[#160269] hover:bg-[#220699] active:scale-[0.99] text-white font-black text-sm sm:text-base rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-[#0c013d] cursor-pointer"
             >
-              <Play size={18} fill="currentColor" />
-              <span>Enter Lobby &amp; Wait for Host</span>
+              <Play size={16} fill="currentColor" />
+              <span>Join Lobby</span>
             </button>
           </div>
         </div>
