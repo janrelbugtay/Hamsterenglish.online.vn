@@ -37,7 +37,8 @@ import {
   Info,
   Globe,
   Settings,
-  Sliders
+  Sliders,
+  HelpCircle
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { FullscreenButton } from '../components/FullscreenButton';
@@ -2747,11 +2748,15 @@ export default function HamsterPaintball({
         }
         if (data?.matchStatus === 'playing') {
           const incomingStartTs =
-            typeof data.startedAt === 'number' ? data.startedAt : 1;
-          if (
+            typeof data.startedAt === 'number' && data.startedAt > 1000
+              ? data.startedAt
+              : lastStartedAtRef.current || 1;
+          const isNewMatchStart =
             stateSnapRef.current.matchStatus !== 'playing' ||
-            incomingStartTs !== lastStartedAtRef.current
-          ) {
+            (typeof data.startedAt === 'number' &&
+              data.startedAt > 1000 &&
+              data.startedAt > lastStartedAtRef.current);
+          if (isNewMatchStart) {
             triggerStudentMatchStart(
               data.configuredDurationSec || 180,
               data.matchMode || stateSnapRef.current.matchMode,
@@ -2825,29 +2830,52 @@ export default function HamsterPaintball({
           activePlayers.push(pState);
           seenIds.add(playerId);
 
-          // If this is my own player document and the Host moved my team in the lobby, sync it & move to team Spawn
+          // If this is my own player document:
+          // 1) Check if Host just clicked START GAME (`matchStartResetAt`) so we immediately spawn in our Team Spawn Area
+          // 2) Check if Host explicitly switched our team (`hostOverrideAt`)
           if (playerId === clientIdRef.current) {
-            if (typeof data.hostOverrideAt === 'number' && data.hostOverrideAt > 0) {
-              ackHostOverrideAtRef.current = Math.max(
-                ackHostOverrideAtRef.current,
-                data.hostOverrideAt
+            if (
+              typeof data.matchStartResetAt === 'number' &&
+              data.matchStartResetAt > 1000 &&
+              data.matchStartResetAt > lastStartedAtRef.current
+            ) {
+              if (data.team === 'red' || data.team === 'blue') {
+                setMyTeam(data.team);
+                stateSnapRef.current.myTeam = data.team;
+              }
+              triggerStudentMatchStart(
+                configuredDurationSec || 180,
+                stateSnapRef.current.matchMode,
+                data.matchStartResetAt,
+                false,
+                stateSnapRef.current.ballsPerQuestion
               );
             }
-            if (data.team && data.team !== stateSnapRef.current.myTeam) {
-              setMyTeam(data.team);
-              stateSnapRef.current.myTeam = data.team;
-              if (gameRef.current) {
-                const sp = getTeamSpawnPosition(data.team, stateSnapRef.current.matchMode);
-                gameRef.current.x = sp.x;
-                gameRef.current.z = sp.z;
-                gameRef.current.rotY = sp.rotY;
-                gameRef.current.camYaw = sp.rotY;
-                gameRef.current.camPitch = 0.32;
+
+            const isNewHostTeamOverride =
+              typeof data.hostOverrideAt === 'number' &&
+              data.hostOverrideAt > ackHostOverrideAtRef.current;
+            if (isNewHostTeamOverride) {
+              ackHostOverrideAtRef.current = data.hostOverrideAt;
+              if (
+                (data.team === 'red' || data.team === 'blue') &&
+                data.team !== stateSnapRef.current.myTeam
+              ) {
+                setMyTeam(data.team);
+                stateSnapRef.current.myTeam = data.team;
+                if (gameRef.current) {
+                  const sp = getTeamSpawnPosition(data.team, stateSnapRef.current.matchMode);
+                  gameRef.current.x = sp.x;
+                  gameRef.current.z = sp.z;
+                  gameRef.current.rotY = sp.rotY;
+                  gameRef.current.camYaw = sp.rotY;
+                  gameRef.current.camPitch = 0.28;
+                }
+                setPickupBannerText(
+                  `👑 HOST MOVED YOU TO ${TEAM_CONFIG[data.team as TeamId]?.label.toUpperCase() || String(data.team).toUpperCase()} SPAWN!`
+                );
+                setTimeout(() => setPickupBannerText(null), 2400);
               }
-              setPickupBannerText(
-                `👑 HOST MOVED YOU TO ${TEAM_CONFIG[data.team as TeamId]?.label.toUpperCase() || String(data.team).toUpperCase()} SPAWN!`
-              );
-              setTimeout(() => setPickupBannerText(null), 2400);
             }
           }
 
@@ -2954,6 +2982,9 @@ export default function HamsterPaintball({
         matchStatus: hostStatus,
         configuredDurationSec,
         ballsPerQuestion,
+        ...(hostStatus === 'playing' && lastStartedAtRef.current > 1000
+          ? { startedAt: lastStartedAtRef.current }
+          : {}),
         updatedAt: Date.now()
       };
       syncPaintballRoomApi(cleanCode, roomConfigPayload).then(resData => {
@@ -3342,6 +3373,15 @@ export default function HamsterPaintball({
       entry = { data: rState, mesh, walkPhase: 0 };
       g.remotePlayers.set(rState.id, entry);
     } else {
+      // Ignore stale out-of-order network packets so remote players never jump backward
+      if (
+        entry.data.updatedAt &&
+        rState.updatedAt &&
+        rState.updatedAt < entry.data.updatedAt &&
+        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) < 15
+      ) {
+        return;
+      }
       // Rebuild 3D hamster (including Red/Blue Team Headband, gun & name badge) if team, name, or skin changed
       if (
         entry.data.team !== rState.team ||
@@ -3355,7 +3395,7 @@ export default function HamsterPaintball({
         g.scene.add(mesh);
         entry.mesh = mesh;
       } else if (
-        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 9
+        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 14
       ) {
         // Snap immediately when player teleports to Red/Blue Square Spawn at match start or respawn!
         entry.mesh.position.set(rState.x, 0, rState.z);
@@ -3546,7 +3586,13 @@ export default function HamsterPaintball({
   // =============================================================
   // 5. HIGH-DEFINITION 3D HAMSTER & POWER-UP CRATE BUILDERS
   // =============================================================
+  const furTextureCacheRef = useRef<Map<string, THREE.CanvasTexture>>(new Map());
+  const maskGrillTexRef = useRef<THREE.CanvasTexture | null>(null);
+
   function createFurTexture(baseHex: string): THREE.CanvasTexture {
+    const cached = furTextureCacheRef.current.get(baseHex);
+    if (cached) return cached;
+
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 256;
@@ -3554,7 +3600,7 @@ export default function HamsterPaintball({
     ctx.fillStyle = baseHex;
     ctx.fillRect(0, 0, 256, 256);
 
-    for (let i = 0; i < 2400; i++) {
+    for (let i = 0; i < 650; i++) {
       const x = Math.random() * 256;
       const y = Math.random() * 256;
       const len = 4 + Math.random() * 7;
@@ -3571,10 +3617,12 @@ export default function HamsterPaintball({
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(2, 2);
+    furTextureCacheRef.current.set(baseHex, tex);
     return tex;
   }
 
   function createMaskGrillTexture(): THREE.CanvasTexture {
+    if (maskGrillTexRef.current) return maskGrillTexRef.current;
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 128;
@@ -3602,6 +3650,7 @@ export default function HamsterPaintball({
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
+    maskGrillTexRef.current = tex;
     return tex;
   }
 
@@ -3680,10 +3729,10 @@ export default function HamsterPaintball({
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true });
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(3.55, 0.88, 1);
-    sprite.position.set(0, 3.15, 0);
+    sprite.scale.set(2.3, 0.58, 1);
+    sprite.position.set(0, 2.72, 0);
     return sprite;
   }
 
@@ -4616,6 +4665,7 @@ export default function HamsterPaintball({
       hopperBallsGroup,
       muzzleTip,
       muzzleFlash,
+      nameSprite,
       recoil: 0,
       skinIdx,
       callsign
@@ -5218,22 +5268,7 @@ export default function HamsterPaintball({
       eastBar.position.set(halfW, barH / 2, 0);
       spawnGroup.add(eastBar);
 
-      // Overhead Team Spawn Archway Banner at the outer back edge of the Square Spawn (No collision obstacle!)
-      const backEdgeZ = z < 0 ? -halfD : halfD;
-      const pillarMat = new THREE.MeshStandardMaterial({
-        color: teamColorHex,
-        roughness: 0.3,
-        metalness: 0.5
-      });
-      const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5.2, 14), pillarMat);
-      leftPost.position.set(-5.2, 2.6, backEdgeZ);
-      spawnGroup.add(leftPost);
-
-      const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5.2, 14), pillarMat);
-      rightPost.position.set(5.2, 2.6, backEdgeZ);
-      spawnGroup.add(rightPost);
-
-      // Overhead Banner Canvas Texture
+      // Ground-level Spawn Zone Floor Sign (Never blocks camera behind Red or Blue Spawn!)
       const bc = document.createElement('canvas');
       bc.width = 512;
       bc.height = 128;
@@ -5251,12 +5286,16 @@ export default function HamsterPaintball({
       const bannerTex = new THREE.CanvasTexture(bc);
       bannerTex.colorSpace = THREE.SRGBColorSpace;
 
-      const headerBoard = new THREE.Mesh(
-        new THREE.BoxGeometry(10.8, 1.8, 0.35),
+      const groundPlaque = new THREE.Mesh(
+        new THREE.PlaneGeometry(8.6, 1.8),
         new THREE.MeshBasicMaterial({ map: bannerTex })
       );
-      headerBoard.position.set(0, 5.2, backEdgeZ);
-      spawnGroup.add(headerBoard);
+      groundPlaque.rotation.x = -Math.PI / 2;
+      groundPlaque.position.set(0, 0.04, z < 0 ? -halfD + 1.2 : halfD - 1.2);
+      if (z < 0) {
+        groundPlaque.rotation.z = Math.PI;
+      }
+      spawnGroup.add(groundPlaque);
 
       scene.add(spawnGroup);
     };
@@ -5657,12 +5696,8 @@ export default function HamsterPaintball({
       stateSnapRef.current.matchMode
     );
     const startX = isHostRole ? 0 : initialSpawn.x;
-    const startZ = isHostRole ? -10.5 : initialSpawn.z;
-    localHamster.position.set(startX, isHostRole ? 0.32 : 0, startZ);
-    // Host uses `teacherJanNpc` in Lobby and hides when match starts
-    if (isHostRole) {
-      localHamster.visible = false;
-    }
+    const startZ = isHostRole ? 14.0 : initialSpawn.z;
+    localHamster.position.set(startX, 0, startZ);
     scene.add(localHamster);
 
     // 3D Tactical Ground Aim Reticle & Laser Sight Line from Gun Barrel Muzzle!
@@ -5715,7 +5750,7 @@ export default function HamsterPaintball({
     aimLaserLine.visible = !isHostRole;
     scene.add(aimLaserLine);
 
-    const initYaw = isHostRole ? 0 : initialSpawn.rotY;
+    const initYaw = isHostRole ? Math.PI : initialSpawn.rotY;
     gameRef.current = {
       scene,
       camera,
@@ -5729,7 +5764,7 @@ export default function HamsterPaintball({
       z: startZ,
       rotY: initYaw,
       camYaw: initYaw,
-      camPitch: 0.32,
+      camPitch: 0.26,
       vx: 0,
       vz: 0,
       walkPhase: 0,
@@ -5807,20 +5842,29 @@ export default function HamsterPaintball({
       }
     };
 
+    // Track recent touch activity so mobile browsers' synthetic mousemove events never cause sudden camera rotation
+    let lastTouchEventTime = 0;
+
     // Laptop Mouse Movement Changes Camera View, Character View & Aiming Reticle
     const handleMouseMove = (e: MouseEvent) => {
       const g = gameRef.current;
       if (!g) return;
+      // Ignore synthetic mouse events fired by mobile browsers right after touch interactions
+      if (performance.now() - lastTouchEventTime < 1000) {
+        g.lastMouseX = e.clientX;
+        g.lastMouseY = e.clientY;
+        return;
+      }
       g.mouseScreenX = e.clientX;
       g.mouseScreenY = e.clientY;
 
-      const dx =
+      const rawDx =
         typeof e.movementX === 'number' && document.pointerLockElement
           ? e.movementX
           : g.mouseInitialized
           ? e.clientX - g.lastMouseX
           : 0;
-      const dy =
+      const rawDy =
         typeof e.movementY === 'number' && document.pointerLockElement
           ? e.movementY
           : g.mouseInitialized
@@ -5831,6 +5875,11 @@ export default function HamsterPaintball({
       g.lastMouseY = e.clientY;
       g.mouseInitialized = true;
 
+      // Guard against sudden large cursor jumps when mouse re-enters window or closes a modal
+      if (Math.abs(rawDx) > 85 || Math.abs(rawDy) > 85) {
+        return;
+      }
+
       const isControllingCharacter =
         (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
         (stateSnapRef.current.role === 'host' && stateSnapRef.current.screen === 'lobby');
@@ -5838,18 +5887,18 @@ export default function HamsterPaintball({
       if (isControllingCharacter) {
         const target = e.target as HTMLElement | null;
         const isOverUiPanel =
-          stateSnapRef.current.role === 'host' &&
           target &&
-          target.closest('.host-lobby-interactive-panel');
+          target.closest('button, input, select, textarea, .host-lobby-interactive-panel');
         if (!isOverUiPanel) {
           const sens = stateSnapRef.current.lookSensitivity || 1.0;
-          g.camYaw -= dx * 0.0044 * sens;
-          g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0028 * sens, 0.12, 0.68);
+          g.camYaw -= rawDx * 0.0044 * sens;
+          g.camPitch = THREE.MathUtils.clamp(g.camPitch + rawDy * 0.0028 * sens, 0.12, 0.68);
         }
       }
     };
 
     const handleMouseDown = (e: MouseEvent) => {
+      if (performance.now() - lastTouchEventTime < 1000) return;
       if (e.button !== 0 || !gameRef.current) return;
       const target = e.target as HTMLElement;
       if (target && target.tagName !== 'CANVAS' && !target.classList.contains('cursor-crosshair')) {
@@ -5875,6 +5924,7 @@ export default function HamsterPaintball({
     // Mobile / Tablet Touch-Drag / Free Look on the Right Side of the Screen
     // Swiping or dragging anywhere on the right side of the screen rotates camera, character view, and aiming reticle!
     const handleWindowTouchStart = (e: TouchEvent) => {
+      lastTouchEventTime = performance.now();
       const g = gameRef.current;
       const canControlTouchLook =
         (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
@@ -5894,7 +5944,7 @@ export default function HamsterPaintball({
         if (t.identifier === joystickTouchIdRef.current) continue;
         // Right side of the screen (or any canvas touch outside the bottom-left joystick zone)
         const isBottomLeftJoystickZone =
-          t.clientX < window.innerWidth * 0.35 && t.clientY > window.innerHeight * 0.6;
+          t.clientX < window.innerWidth * 0.35 && t.clientY > window.innerHeight * 0.55;
         if (!isBottomLeftJoystickZone && g.lookTouchId === null) {
           g.lookTouchId = t.identifier;
           g.lookTouchStartX = t.clientX;
@@ -5909,6 +5959,7 @@ export default function HamsterPaintball({
     };
 
     const handleWindowTouchMove = (e: TouchEvent) => {
+      lastTouchEventTime = performance.now();
       const g = gameRef.current;
       if (!g || g.lookTouchId === null) return;
       for (let i = 0; i < e.changedTouches.length; i++) {
@@ -5920,9 +5971,13 @@ export default function HamsterPaintball({
           g.lookTouchLastY = t.clientY;
           g.mouseScreenX = t.clientX;
           g.mouseScreenY = t.clientY;
+          // Ignore sudden multi-touch coordinate jumps
+          if (Math.abs(dx) > 85 || Math.abs(dy) > 85) {
+            break;
+          }
           const sens = stateSnapRef.current.lookSensitivity || 1.0;
-          g.camYaw -= dx * 0.0068 * sens;
-          g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0045 * sens, 0.12, 0.68);
+          g.camYaw -= dx * 0.0065 * sens;
+          g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0042 * sens, 0.12, 0.68);
           break;
         }
       }
@@ -6080,33 +6135,55 @@ export default function HamsterPaintball({
             const matchedEntry =
               (targetState ? g.remotePlayers.get(targetState.id) : undefined) ||
               remotes[snapState.hostFollowIndex % remotes.length];
+
+            // Show name tags on other players, but hide on the directly followed player so it never blocks the camera!
+            remotes.forEach(rp => {
+              if (rp.mesh.userData?.nameSprite) {
+                rp.mesh.userData.nameSprite.visible = rp !== matchedEntry;
+              }
+            });
+
             const tx = matchedEntry.mesh.position.x;
             const tz = matchedEntry.mesh.position.z;
             const tYaw = matchedEntry.mesh.rotation.y || 0;
             const camAspect = camera.aspect || 1.5;
             const portraitOffset =
               camAspect < 1.0 ? Math.min(4.2, (1.0 - camAspect) * 8) : camAspect < 1.4 ? 1.0 : 0;
-            // Orbit behind the followed player's facing direction so Host sees their exact 3D view!
-            const followDist = 8.4 + portraitOffset * 0.5;
-            const followHeight = 6.2 + portraitOffset * 0.4;
-            const desiredCamX = tx - Math.sin(tYaw) * followDist;
-            const desiredCamZ = tz - Math.cos(tYaw) * followDist;
-            const lookX = tx + Math.sin(tYaw) * 10.0;
-            const lookZ = tz + Math.cos(tYaw) * 10.0;
+            // Clear, unobstructed third-person view behind the followed player
+            const followDist = 7.4 + portraitOffset * 0.45;
+            const followHeight = 4.6 + portraitOffset * 0.35;
+            const desiredCamX = THREE.MathUtils.clamp(
+              tx - Math.sin(tYaw) * followDist,
+              -44,
+              44
+            );
+            const desiredCamZ = THREE.MathUtils.clamp(
+              tz - Math.cos(tYaw) * followDist,
+              -34,
+              34
+            );
+            const lookX = tx + Math.sin(tYaw) * 11.0;
+            const lookZ = tz + Math.cos(tYaw) * 11.0;
             g.hostCamX += (tx - g.hostCamX) * 8 * dt;
             g.hostCamZ += (tz - g.hostCamZ) * 8 * dt;
             camera.position.x += (desiredCamX - camera.position.x) * 8 * dt;
             camera.position.y += (followHeight - camera.position.y) * 8 * dt;
             camera.position.z += (desiredCamZ - camera.position.z) * 8 * dt;
-            camera.lookAt(lookX, 1.5, lookZ);
+            camera.lookAt(lookX, 1.45, lookZ);
           } else {
             // Bright central arena view when waiting for students
             camera.position.x += (0 - camera.position.x) * 5 * dt;
-            camera.position.y += (18.0 - camera.position.y) * 5 * dt;
+            camera.position.y += (16.0 - camera.position.y) * 5 * dt;
             camera.position.z += (22.0 - camera.position.z) * 5 * dt;
             camera.lookAt(0, 1.2, 0);
           }
         } else {
+          // Ensure all remote player name tags are visible in Overview mode
+          g.remotePlayers.forEach(rp => {
+            if (rp.mesh.userData?.nameSprite) {
+              rp.mesh.userData.nameSprite.visible = true;
+            }
+          });
           // Host Overview Camera (can pan smoothly with WASD/Arrow keys)
           if (isMoving) {
             g.hostCamX = Math.max(-36, Math.min(36, g.hostCamX + rawX * 24 * dt));
@@ -6114,8 +6191,8 @@ export default function HamsterPaintball({
           }
           const camAspect = camera.aspect || 1.5;
           const portraitZoomOut = camAspect < 1.0 ? Math.min(10, (1.0 - camAspect) * 18) : 0;
-          const targetY = 32 + portraitZoomOut;
-          const targetZ = g.hostCamZ + 28 + portraitZoomOut * 0.8;
+          const targetY = 30 + portraitZoomOut;
+          const targetZ = g.hostCamZ + 26 + portraitZoomOut * 0.8;
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
@@ -6128,22 +6205,6 @@ export default function HamsterPaintball({
         // ---------------------------------------------------
         g.localHamster.visible = true;
         const speed = 15.0;
-
-        // Laptop smooth edge-turn when cursor is near left/right edge of the viewport
-        if (
-          g.mouseInitialized &&
-          g.lookTouchId === null &&
-          (snapState.screen === 'game' || snapState.role === 'host')
-        ) {
-          const rect = container.getBoundingClientRect();
-          const relX = (g.mouseScreenX - rect.left) / Math.max(1, rect.width);
-          const sens = snapState.lookSensitivity || 1.0;
-          if (relX < 0.08) {
-            g.camYaw += (0.08 - relX) * 12.0 * sens * dt;
-          } else if (relX > 0.92) {
-            g.camYaw -= (relX - 0.92) * 12.0 * sens * dt;
-          }
-        }
 
         // Move Up/Down/Left/Right relative to the camera's current facing angle (`g.camYaw`)
         const forwardInput = -rawZ; // Up / W = +1 (forward), Down / S = -1 (backward)
@@ -6245,6 +6306,10 @@ export default function HamsterPaintball({
 
         // Converge the 3D Gun Barrel (`markerGroup`) toward the Aim Target so bullets clearly exit along the barrel!
         const ud = g.localHamster.userData;
+        if (ud && ud.nameSprite) {
+          // Show name badge on Host character in Lobby, hide on Student's own local character so it never blocks crosshair
+          ud.nameSprite.visible = snapState.role === 'host';
+        }
         if (ud && ud.markerGroup) {
           const aimDist = Math.max(3.2, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
           ud.markerGroup.rotation.y = -Math.atan2(0.82, aimDist);
@@ -6546,8 +6611,10 @@ export default function HamsterPaintball({
     };
   }, []);
 
-  // Keep Local Student Hamster's 3D Name Tag, Team Headband & Aim Laser synced when playerName, team, skin, or role changes
+  // Keep Local Student Hamster's 3D Name Tag, Team Headband & Aim Laser synced when team, skin, role, or screen changes
   useEffect(() => {
+    // Do not rebuild 60-mesh 3D hamster on every keystroke while typing name in the Join modal!
+    if (screen === 'join') return;
     const g = gameRef.current;
     if (!g) return;
     const isHostRole = role === 'host';
@@ -6565,25 +6632,25 @@ export default function HamsterPaintball({
       isHostRole,
       activeTeam
     );
-    updatedHamster.position.set(g.x, isHostRole ? 0.32 : 0, g.z);
+    updatedHamster.position.set(g.x, 0, g.z);
     updatedHamster.rotation.y = g.rotY;
-    updatedHamster.visible = !isHostRole;
+    updatedHamster.visible = !(isHostRole && screen === 'game');
     g.scene.add(updatedHamster);
     g.localHamster = updatedHamster;
 
     const aimColorNum = resolveTeamPaintColor(activeTeam, undefined, selectedSkinIdx);
     if (g.aimReticle) {
-      g.aimReticle.visible = !isHostRole;
+      g.aimReticle.visible = !isHostRole || screen === 'lobby';
       const outerMesh = g.aimReticle.children[0] as THREE.Mesh;
       if (outerMesh && outerMesh.material) {
         (outerMesh.material as THREE.MeshBasicMaterial).color.setHex(aimColorNum);
       }
     }
     if (g.aimLaserLine) {
-      g.aimLaserLine.visible = !isHostRole;
+      g.aimLaserLine.visible = !isHostRole || screen === 'lobby';
       (g.aimLaserLine.material as THREE.LineBasicMaterial).color.setHex(aimColorNum);
     }
-  }, [playerName, selectedSkinIdx, myTeam, matchMode, role]);
+  }, [selectedSkinIdx, myTeam, matchMode, role, screen]);
 
   // -------------------------------------------------------------
   // 7. FIRE PAINTBALL DIRECTLY OUT OF THE 3D GUN BARREL MUZZLE & EARN AMMO VIA QUESTIONS
@@ -6865,6 +6932,7 @@ export default function HamsterPaintball({
           hitsLanded: 0,
           bestStreak: 0,
           immuneUntil: 0,
+          matchStartResetAt: startTs,
           updatedAt: startTs
         };
         syncPaintballPlayerApi(
@@ -7062,7 +7130,7 @@ export default function HamsterPaintball({
 
   // Trivia Answer Handler (Upgraded Points System: Base +15 PTS + Streak Multiplier Bonus + Fast-Answer Speed Bonus!)
   const handleTriviaAnswer = (optIdx: number) => {
-    if (matchStatus !== 'playing' || triviaFeedback !== null) return;
+    if (triviaFeedback !== null) return;
     const qList = effectiveQuestions;
     const currentQ = qList[triviaDeckIndex % qList.length];
     if (!currentQ) return;
@@ -7222,7 +7290,7 @@ export default function HamsterPaintball({
   return (
     <div
       id="paintball-game-container"
-      className="fixed inset-0 z-[60] w-screen h-[100dvh] xl:relative xl:inset-auto xl:z-auto xl:w-full xl:h-full flex-1 min-h-0 bg-slate-900 overflow-hidden font-sans select-none text-slate-100 touch-manipulation"
+      className="fixed inset-0 z-[60] w-full h-full max-w-full max-h-full xl:relative xl:inset-auto xl:z-auto xl:w-full xl:h-full flex-1 min-h-0 bg-slate-900 overflow-hidden font-sans select-none text-slate-100 touch-manipulation"
     >
       {/* 3D WebGL Canvas Layer (Supports Laptop Mouse Free-Look & Mobile Right-Side Touch-Drag Free-Look) */}
       <div
@@ -7437,7 +7505,7 @@ export default function HamsterPaintball({
               </div>
             </div>
 
-            {/* Minimalist Name & Room Code Row */}
+            {/* Minimalist Name & Room Code Row (16px text-base prevents mobile browser zoom!) */}
             <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2.5">
               <input
                 type="text"
@@ -7445,7 +7513,7 @@ export default function HamsterPaintball({
                 value={playerName === 'Teacher Jan' ? '' : playerName}
                 onChange={e => setPlayerName(e.target.value)}
                 placeholder="Name"
-                className="sm:col-span-2 h-11 px-3.5 text-center sm:text-left text-sm font-extrabold text-slate-800 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-600 transition"
+                className="sm:col-span-2 h-11 px-3.5 text-center sm:text-left text-base font-extrabold text-slate-800 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-600 transition"
               />
               <input
                 type="text"
@@ -7455,7 +7523,7 @@ export default function HamsterPaintball({
                   setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6))
                 }
                 placeholder="Code"
-                className="h-11 px-2 text-center font-mono text-lg font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-600"
+                className="h-11 px-2 text-center font-mono text-base sm:text-lg font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-indigo-600"
               />
             </div>
 
@@ -7482,9 +7550,15 @@ export default function HamsterPaintball({
             {/* Join Button */}
             <button
               type="button"
-              onClick={async () => {
+              onClick={() => {
                 const cleanCode = roomCode.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
                 if (!cleanCode) return;
+                // Blur active input & reset scroll so mobile Safari/Chrome never stays zoomed in
+                if (document.activeElement instanceof HTMLElement) {
+                  document.activeElement.blur();
+                }
+                window.scrollTo(0, 0);
+
                 const cleanName =
                   playerName.trim() && playerName.trim() !== 'Teacher Jan'
                     ? playerName.trim()
@@ -7504,8 +7578,12 @@ export default function HamsterPaintball({
                   g.z = sp.z;
                   g.rotY = sp.rotY;
                   g.camYaw = sp.rotY;
-                  g.camPitch = 0.32;
+                  g.camPitch = 0.28;
                 }
+
+                // Transition IMMEDIATELY (0ms delay) into the 3D Park Lobby while network sync runs in background!
+                setMatchStatus('lobby');
+                setScreen('game');
 
                 // Immediately register this player in both the Server API & Firestore so the Host sees them in the Live Park Lobby!
                 const initialPayload: PlayerNetworkState = {
@@ -7537,107 +7615,102 @@ export default function HamsterPaintball({
                   { merge: true }
                 ).catch(() => {});
 
-                // Fetch room state & normalized custom questions from Server API first (with Firestore fallback)
-                let loadedFromApi = false;
-                try {
-                  const res = await fetch(`/api/paintball/room/${encodeURIComponent(cleanCode)}`);
-                  if (res.ok) {
-                    const json = await res.json();
-                    const data = json?.room;
-                    if (data) {
-                      loadedFromApi = true;
-                      if (Array.isArray(data.questions) && data.questions.length > 0) {
-                        const normQs = normalizePaintballQuestions(data.questions);
-                        if (normQs.length > 0) {
-                          setActiveQuiz(prev => ({
-                            ...prev,
-                            title: data.quizTitle || prev.title,
-                            topic: data.topic || prev.topic,
-                            classLevel: data.classLevel || prev.classLevel,
-                            questions: normQs
-                          }));
-                          setTriviaDeckIndex(0);
-                        }
-                      }
-                      if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
-                        setBallsPerQuestion(data.ballsPerQuestion);
-                        stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
-                      }
-                      if (data.matchMode) {
-                        setMatchMode(data.matchMode);
-                      }
-                      if (data.matchStatus === 'playing') {
-                        triggerStudentMatchStart(
-                          data.configuredDurationSec || 180,
-                          data.matchMode || matchMode,
-                          typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
-                          Boolean(data.isTimerPaused),
-                          typeof data.ballsPerQuestion === 'number' ? data.ballsPerQuestion : undefined
-                        );
-                      } else {
-                        setMatchStatus('lobby');
-                      }
-                    }
-                    if (Array.isArray(json?.players)) {
-                      const validRemote = (json.players as PlayerNetworkState[]).filter(
-                        p => p && p.id && p.role === 'player' && !p.kicked
-                      );
-                      setRoomPlayers(validRemote);
-                      validRemote.forEach(p => {
-                        if (p.id !== clientIdRef.current) {
-                          upsertRemotePlayer(p);
-                        }
-                      });
-                    }
-                  }
-                } catch {}
-
-                if (!loadedFromApi) {
+                // Fetch room state & normalized custom questions in background (Server API first, Firestore fallback)
+                (async () => {
+                  let loadedFromApi = false;
                   try {
-                    const snap = await getDoc(getRoomDocRef(cleanCode));
-                    if (snap.exists()) {
-                      const data = snap.data();
-                      if (Array.isArray(data.questions) && data.questions.length > 0) {
-                        const normQs = normalizePaintballQuestions(data.questions);
-                        if (normQs.length > 0) {
-                          setActiveQuiz(prev => ({
-                            ...prev,
-                            title: data.quizTitle || prev.title,
-                            topic: data.topic || prev.topic,
-                            classLevel: data.classLevel || prev.classLevel,
-                            questions: normQs
-                          }));
-                          setTriviaDeckIndex(0);
+                    const res = await fetch(`/api/paintball/room/${encodeURIComponent(cleanCode)}`);
+                    if (res.ok) {
+                      const json = await res.json();
+                      const data = json?.room;
+                      if (data) {
+                        loadedFromApi = true;
+                        if (Array.isArray(data.questions) && data.questions.length > 0) {
+                          const normQs = normalizePaintballQuestions(data.questions);
+                          if (normQs.length > 0) {
+                            setActiveQuiz(prev => ({
+                              ...prev,
+                              title: data.quizTitle || prev.title,
+                              topic: data.topic || prev.topic,
+                              classLevel: data.classLevel || prev.classLevel,
+                              questions: normQs
+                            }));
+                            setTriviaDeckIndex(0);
+                          }
+                        }
+                        if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
+                          setBallsPerQuestion(data.ballsPerQuestion);
+                          stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
+                        }
+                        if (data.matchMode) {
+                          setMatchMode(data.matchMode);
+                        }
+                        if (data.matchStatus === 'playing') {
+                          triggerStudentMatchStart(
+                            data.configuredDurationSec || 180,
+                            data.matchMode || matchMode,
+                            typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
+                            Boolean(data.isTimerPaused),
+                            typeof data.ballsPerQuestion === 'number'
+                              ? data.ballsPerQuestion
+                              : undefined
+                          );
                         }
                       }
-                      if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
-                        setBallsPerQuestion(data.ballsPerQuestion);
-                        stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
-                      }
-                      if (data.matchMode) {
-                        setMatchMode(data.matchMode);
-                      }
-                      if (data.matchStatus === 'playing') {
-                        triggerStudentMatchStart(
-                          data.configuredDurationSec || 180,
-                          data.matchMode || matchMode,
-                          typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
-                          Boolean(data.isTimerPaused),
-                          typeof data.ballsPerQuestion === 'number' ? data.ballsPerQuestion : undefined
+                      if (Array.isArray(json?.players)) {
+                        const validRemote = (json.players as PlayerNetworkState[]).filter(
+                          p => p && p.id && p.role === 'player' && !p.kicked
                         );
-                      } else {
-                        setMatchStatus('lobby');
+                        setRoomPlayers(validRemote);
+                        validRemote.forEach(p => {
+                          if (p.id !== clientIdRef.current) {
+                            upsertRemotePlayer(p);
+                          }
+                        });
                       }
-                    } else {
-                      setMatchStatus('lobby');
                     }
-                  } catch {
-                    setMatchStatus('lobby');
-                  }
-                }
+                  } catch {}
 
-                // Student enters the 3D Park Lobby (`screen === 'game'`) to wait for Host to start!
-                setScreen('game');
+                  if (!loadedFromApi) {
+                    try {
+                      const snap = await getDoc(getRoomDocRef(cleanCode));
+                      if (snap.exists()) {
+                        const data = snap.data();
+                        if (Array.isArray(data.questions) && data.questions.length > 0) {
+                          const normQs = normalizePaintballQuestions(data.questions);
+                          if (normQs.length > 0) {
+                            setActiveQuiz(prev => ({
+                              ...prev,
+                              title: data.quizTitle || prev.title,
+                              topic: data.topic || prev.topic,
+                              classLevel: data.classLevel || prev.classLevel,
+                              questions: normQs
+                            }));
+                            setTriviaDeckIndex(0);
+                          }
+                        }
+                        if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
+                          setBallsPerQuestion(data.ballsPerQuestion);
+                          stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
+                        }
+                        if (data.matchMode) {
+                          setMatchMode(data.matchMode);
+                        }
+                        if (data.matchStatus === 'playing') {
+                          triggerStudentMatchStart(
+                            data.configuredDurationSec || 180,
+                            data.matchMode || matchMode,
+                            typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
+                            Boolean(data.isTimerPaused),
+                            typeof data.ballsPerQuestion === 'number'
+                              ? data.ballsPerQuestion
+                              : undefined
+                          );
+                        }
+                      }
+                    } catch {}
+                  }
+                })();
               }}
               className="w-full py-3 bg-[#160269] hover:bg-[#220699] active:scale-[0.99] text-white font-black text-sm sm:text-base rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-[#0c013d] cursor-pointer"
             >
@@ -7971,22 +8044,15 @@ export default function HamsterPaintball({
           SCREEN 4: IN-GAME 3D PARK HUD (STUDENT ROAM/PLAY HUD VS. HOST BROADCAST HUD)
          ------------------------------------------------------------- */}
       {screen === 'game' && (
-        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-1.5 sm:p-3 pt-11 sm:pt-12">
+        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between px-2.5 sm:px-4 pt-12 sm:pt-14 pb-2.5 sm:pb-4 overflow-hidden">
           {/* TOP HUD BAR: NON-OVERLAPPING RESPONSIVE 3-COLUMN LAYOUT FOR MOBILE & TABLET (PORTRAIT & LANDSCAPE) */}
-          <div className="w-full flex items-start justify-between gap-1 sm:gap-2 flex-nowrap">
+          <div className="w-full flex items-start justify-between gap-1.5 sm:gap-2 flex-nowrap">
             {role === 'player' ? (
-              /* STUDENT TOP-LEFT: SCORE, STREAK MULTIPLIER, FLOATING +PTS POPUPS + COMPACT HEALTH & SHIELD BARS */
-              <div className="relative pointer-events-auto shrink-0 bg-slate-900/90 rounded-xl p-1.5 sm:p-2 w-[132px] sm:w-48 md:w-56 border-l-3 border-l-lime-400 border border-white/15 shadow-lg">
-                {/* SCORE & STREAK ON TOP ROW */}
+              /* STUDENT TOP-LEFT: SCORE, STREAK MULTIPLIER + COMPACT HEALTH & SHIELD BARS */
+              <div className="relative pointer-events-auto shrink-0 bg-slate-900/92 rounded-xl p-1.5 sm:p-2 w-[118px] min-[390px]:w-[132px] sm:w-48 md:w-56 border-l-3 border-l-lime-400 border border-white/15 shadow-lg">
+                {/* SCORE & TEAM ON TOP ROW */}
                 <div className="flex items-center justify-between gap-1 pb-1 mb-1 border-b border-white/10">
                   <div className="flex items-center gap-1 min-w-0">
-                    <div className="hidden sm:block shrink-0">
-                      <HamsterCharacterAvatar
-                        skin={HAMSTER_SKINS[selectedSkinIdx] || HAMSTER_SKINS[0]}
-                        size={20}
-                        team={matchMode === 'teams' ? myTeam : 'solo'}
-                      />
-                    </div>
                     {matchMode === 'teams' && (
                       <span
                         className={`px-1 py-0.2 rounded font-black text-[7px] sm:text-[8px] uppercase text-white shrink-0 ${
@@ -8000,29 +8066,12 @@ export default function HamsterPaintball({
                       {playerName.toUpperCase()}
                     </span>
                   </div>
-                  <div className="shrink-0 bg-amber-400/15 border border-amber-400/40 px-1 sm:px-1.5 py-0.5 rounded-md text-right">
+                  <div className="shrink-0 bg-amber-400/15 border border-amber-400/40 px-1 sm:px-1.5 py-0.2 rounded-md text-right">
                     <span className="text-[9px] sm:text-xs font-black text-amber-300">
                       ⭐{score}
                     </span>
-                    <span className="hidden sm:inline text-[8px] sm:text-[9px] font-bold text-pink-400 ml-1">
-                      • {kos} KOs
-                    </span>
                   </div>
                 </div>
-
-                {/* ACTIVE STREAK / COMBO MULTIPLIER ROW (Hidden on ultra-short landscape viewports to avoid vertical crowding) */}
-                {(triviaStreak > 0 || koStreak > 0 || hitsLanded > 0) && (
-                  <div className="hidden min-[440px]:flex items-center justify-between gap-1 mb-1 text-[8px] sm:text-[9px] font-black">
-                    <span className="px-1 py-0.2 rounded bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 truncate">
-                      🎯 {hitsLanded} • Qs: {questionsAnswered}
-                    </span>
-                    {(triviaStreak >= 2 || koStreak >= 2) && (
-                      <span className="px-1 py-0.2 rounded bg-amber-500/30 border border-amber-400 text-amber-300 animate-pulse shrink-0">
-                        🔥 {Math.max(triviaStreak, koStreak)}x
-                      </span>
-                    )}
-                  </div>
-                )}
 
                 {/* COMPACT HEALTH & SHIELD BARS */}
                 <div className="space-y-0.5 sm:space-y-1">
@@ -8063,7 +8112,7 @@ export default function HamsterPaintball({
 
                 {/* FLOATING +PTS POPUP BADGES */}
                 {scorePopups.length > 0 && (
-                  <div className="pointer-events-none absolute -bottom-6 left-0 right-0 flex flex-wrap items-center gap-1">
+                  <div className="pointer-events-none absolute -bottom-5 left-0 right-0 flex flex-wrap items-center gap-1">
                     {scorePopups.slice(-1).map(pop => (
                       <span
                         key={pop.id}
@@ -8078,7 +8127,7 @@ export default function HamsterPaintball({
               </div>
             ) : (
               /* HOST TOP-LEFT: CURRENT PLAYER VIEW INDICATOR + LIVE FEED */
-              <div className="pointer-events-auto shrink-0 bg-slate-900/90 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 w-44 sm:w-68 md:w-76 border-l-4 border-l-lime-400 border border-white/15 shadow-2xl flex flex-col gap-1">
+              <div className="pointer-events-auto shrink-0 bg-slate-900/90 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 w-40 sm:w-64 md:w-72 border-l-4 border-l-lime-400 border border-white/15 shadow-2xl flex flex-col gap-1">
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex items-center gap-1 min-w-0">
                     <Radio size={12} className="text-lime-400 animate-pulse shrink-0" />
@@ -8124,7 +8173,7 @@ export default function HamsterPaintball({
                   </span>
 
                   {role === 'player' && matchStatus === 'lobby' ? (
-                    <span className="px-2 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-[9px] sm:text-[11px]">
+                    <span className="px-2 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-[9px] sm:text-[11px] whitespace-nowrap">
                       🟢 LOBBY ({roomCode})
                     </span>
                   ) : (
@@ -8206,9 +8255,9 @@ export default function HamsterPaintball({
                   )}
                 </div>
 
-                {/* Match Timer Progress Bar & Final 30s Frenzy Indicator */}
+                {/* Match Timer Progress Bar */}
                 {(role === 'host' || matchStatus === 'playing') && (
-                  <div className="w-full min-w-[96px] sm:min-w-[155px] flex flex-col gap-0.5">
+                  <div className="w-full min-w-[84px] sm:min-w-[145px] flex flex-col gap-0.5">
                     <div className="w-full h-1 sm:h-1.5 bg-slate-950 rounded-full overflow-hidden border border-white/10">
                       <div
                         className={`h-full transition-all duration-300 rounded-full ${
@@ -8226,11 +8275,6 @@ export default function HamsterPaintball({
                         }}
                       />
                     </div>
-                    {matchSeconds <= 30 && matchSeconds > 0 && (
-                      <div className="hidden sm:block text-[8px] font-black text-rose-300 text-center uppercase tracking-wider">
-                        🔥 FINAL {matchSeconds}s FRENZY!
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -8334,8 +8378,8 @@ export default function HamsterPaintball({
             </div>
           </div>
 
-          {/* CENTER ALERTS: MATCH START SPAWN HOLD, 10s RESPAWN IMMUNITY, KO, PICKUP, OR LONG-PRESS CAN PROGRESS BAR */}
-          <div className="self-center flex flex-col items-center gap-1 max-w-[92vw]">
+          {/* CENTER ALERTS: MATCH START SPAWN HOLD, 10s RESPAWN IMMUNITY, KO, OR PICKUP */}
+          <div className="self-center flex flex-col items-center gap-1 max-w-[90vw]">
             {role === 'player' && matchStatus === 'playing' && spawnHoldSecondsLeft > 0 && (
               <div
                 className={`bg-slate-900/95 border-2 px-3 py-1 rounded-xl text-center shadow-2xl ${
@@ -8348,7 +8392,7 @@ export default function HamsterPaintball({
                   }`}
                 >
                   <span>
-                    🚩 STAY IN {myTeam === 'blue' ? 'BLUE' : 'RED'} SPAWN FIRST ({spawnHoldSecondsLeft}s) • ANSWER QUESTIONS FOR +{ballsPerQuestion} BALLS!
+                    🚩 {myTeam === 'blue' ? 'BLUE' : 'RED'} SPAWN ({spawnHoldSecondsLeft}s) • TAP QUESTIONS FOR +{ballsPerQuestion} BALLS!
                   </span>
                 </div>
               </div>
@@ -8360,27 +8404,6 @@ export default function HamsterPaintball({
                   <span>
                     RESPAWN IMMUNITY: {immunitySecondsLeft}s • CANNOT BE HIT!
                   </span>
-                </div>
-              </div>
-            )}
-            {holdingCanType && (
-              <div className="bg-slate-900/95 border-2 border-white px-3.5 py-1.5 rounded-2xl text-center shadow-2xl min-w-[190px]">
-                <div className="text-[10px] sm:text-xs font-black uppercase text-white flex items-center justify-center gap-1 mb-1">
-                  <span>
-                    {holdingCanType === 'health'
-                      ? `🧪 USING HEALTH CAN... ${canHoldProgress}%`
-                      : `🛡️ CHARGING DEFENCE CAN... ${canHoldProgress}%`}
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-white/25">
-                  <div
-                    className={`h-full transition-all duration-75 ${
-                      holdingCanType === 'health'
-                        ? 'bg-gradient-to-r from-emerald-500 to-lime-400'
-                        : 'bg-gradient-to-r from-sky-500 to-cyan-300'
-                    }`}
-                    style={{ width: `${canHoldProgress}%` }}
-                  />
                 </div>
               </div>
             )}
@@ -8400,11 +8423,11 @@ export default function HamsterPaintball({
             )}
           </div>
 
-          {/* BOTTOM ROW: SWAPPED CONTROLS (LEFT = MOVE/SCROLL JOYSTICK, CENTER = CANS & AMMO/QUESTIONS, RIGHT = SHOOT BUTTON)
-              Responsive sizing for Mobile & Tablet in both Portrait & Landscape so elements never overlap! */}
+          {/* BOTTOM ROW: NON-OVERLAPPING MOBILE PORTRAIT & LANDSCAPE CONTROLS
+              LEFT = MOVE JOYSTICK, CENTER = QUESTIONS ICON BUTTON, RIGHT = SHOOT BUTTON */}
           {role === 'player' ? (
-            <div className="w-full flex items-end justify-between gap-1 sm:gap-2.5 pb-0.5 sm:pb-1 px-0.5 sm:px-1.5 flex-nowrap">
-              {/* LEFT SIDE: VIRTUAL TOUCH MOVEMENT / SCROLL JOYSTICK */}
+            <div className="w-full flex items-end justify-between gap-2 sm:gap-4 pb-1 sm:pb-1.5 px-1 sm:px-2 flex-nowrap">
+              {/* LEFT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK */}
               <div className="flex flex-col items-center shrink-0">
                 <span className="mb-0.5 text-[8px] sm:text-[9px] font-black uppercase text-lime-300 tracking-wider drop-shadow">
                   MOVE
@@ -8414,141 +8437,59 @@ export default function HamsterPaintball({
                   onTouchMove={handleJoystickMove}
                   onTouchEnd={handleJoystickEnd}
                   onTouchCancel={handleJoystickEnd}
-                  className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-slate-900/85 border-2 border-lime-400/60 flex items-center justify-center relative touch-none shadow-xl select-none"
+                  className="pointer-events-auto w-14 h-14 min-[390px]:w-16 min-[390px]:h-16 sm:w-20 sm:h-20 rounded-full bg-slate-900/85 border-2 border-lime-400/70 flex items-center justify-center relative touch-none shadow-xl select-none"
                 >
                   <div
-                    className="w-7 h-7 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-full bg-lime-400 border-2 border-white shadow-md transition-transform duration-75"
+                    className="w-6 h-6 min-[390px]:w-7 min-[390px]:h-7 sm:w-9 sm:h-9 rounded-full bg-lime-400 border-2 border-white shadow-md transition-transform duration-75"
                     style={{
-                      transform: `translate(${joystickVec.x * 18}px, ${joystickVec.y * 18}px)`
+                      transform: `translate(${joystickVec.x * 16}px, ${joystickVec.y * 16}px)`
                     }}
                   />
                 </div>
               </div>
 
-              {/* CENTER DOCK: LONG-PRESS HEALTH CAN + DEFENCE CAN + AMMO / ANSWER QUESTION FOR BALLS */}
-              <div className="pointer-events-auto flex flex-col md:flex-row items-center justify-center gap-1 sm:gap-1.5 min-w-0 max-w-[calc(100%-9rem)] sm:max-w-none">
-                {/* LONG-PRESS HEALTH CAN & DEFENCE CAN BAR */}
-                <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-900/92 px-1.5 sm:px-2 py-1 rounded-xl border border-white/15 shadow-xl">
-                  {/* HEALTH CAN (LONG-PRESS TO USE) */}
-                  <button
-                    type="button"
-                    onMouseDown={() => startCanLongPress('health')}
-                    onMouseUp={stopCanLongPress}
-                    onMouseLeave={stopCanLongPress}
-                    onTouchStart={e => {
-                      e.preventDefault();
-                      startCanLongPress('health');
-                    }}
-                    onTouchEnd={stopCanLongPress}
-                    onTouchCancel={stopCanLongPress}
-                    onContextMenu={e => e.preventDefault()}
-                    className={`relative px-1.5 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1 select-none touch-none cursor-pointer transition ${
-                      holdingCanType === 'health'
-                        ? 'bg-emerald-600 text-white border-white scale-105'
-                        : healthCans > 0 || nearbyArenaCan?.type === 'health'
-                        ? 'bg-emerald-950/90 hover:bg-emerald-900 text-lime-300 border-lime-400/60'
-                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
+              {/* CENTER DOCK: QUESTIONS ICON BUTTON (REPLACES HP/SHD & FREE SHOOT LOBBY) */}
+              <div className="pointer-events-auto flex items-center justify-center min-w-0 shrink">
+                <button
+                  type="button"
+                  onClick={() => setIsQuestionModalOpen(true)}
+                  className={`px-3 sm:px-5 py-2 sm:py-2.5 rounded-2xl font-black text-xs sm:text-sm shadow-2xl border-2 transition flex items-center gap-2 cursor-pointer active:scale-95 ${
+                    ammo === 0 && matchStatus === 'playing'
+                      ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border-white animate-pulse'
+                      : 'bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white border-indigo-300/80'
+                  }`}
+                  title="Open Full-Screen Questions"
+                >
+                  <div
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                      ammo === 0 && matchStatus === 'playing'
+                        ? 'bg-slate-950/15 text-slate-950'
+                        : 'bg-white/20 text-amber-300'
                     }`}
-                    title="Long-press (Hold 1.2s or Hold Key 1) to use Health Can (+45 HP)"
                   >
-                    <span className="text-xs sm:text-sm">🧪</span>
-                    <div className="text-left leading-none">
-                      <div className="text-[8px] sm:text-[10px] font-black uppercase whitespace-nowrap">
-                        <span className="hidden sm:inline">Health </span>HP{' '}
-                        <span className="text-white">
-                          {nearbyArenaCan?.type === 'health' ? 'NEAR' : `x${healthCans}`}
-                        </span>
-                      </div>
-                      <div className="hidden sm:block text-[8px] font-bold text-emerald-200/90">
-                        Hold • +45 HP
-                      </div>
+                    <HelpCircle size={18} />
+                  </div>
+                  <div className="text-left leading-tight">
+                    <div className="text-[10px] sm:text-xs font-black uppercase tracking-wide whitespace-nowrap">
+                      Questions
                     </div>
-                  </button>
-
-                  {/* DEFENCE CAN (LONG-PRESS TO USE) */}
-                  <button
-                    type="button"
-                    onMouseDown={() => startCanLongPress('shield')}
-                    onMouseUp={stopCanLongPress}
-                    onMouseLeave={stopCanLongPress}
-                    onTouchStart={e => {
-                      e.preventDefault();
-                      startCanLongPress('shield');
-                    }}
-                    onTouchEnd={stopCanLongPress}
-                    onTouchCancel={stopCanLongPress}
-                    onContextMenu={e => e.preventDefault()}
-                    className={`relative px-1.5 sm:px-2.5 py-1 rounded-lg border flex items-center gap-1 select-none touch-none cursor-pointer transition ${
-                      holdingCanType === 'shield'
-                        ? 'bg-cyan-500 text-slate-950 border-white scale-105'
-                        : shieldCans > 0 || nearbyArenaCan?.type === 'shield'
-                        ? 'bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border-cyan-400/60'
-                        : 'bg-slate-950/70 text-slate-500 border-white/10 opacity-65'
-                    }`}
-                    title="Long-press (Hold 1.2s or Hold Key 2) to use Defence Can (+50 Shield)"
-                  >
-                    <span className="text-xs sm:text-sm">🛡️</span>
-                    <div className="text-left leading-none">
-                      <div className="text-[8px] sm:text-[10px] font-black uppercase whitespace-nowrap">
-                        <span className="hidden sm:inline">Defence </span>SHD{' '}
-                        <span className="text-white">
-                          {nearbyArenaCan?.type === 'shield' ? 'NEAR' : `x${shieldCans}`}
-                        </span>
-                      </div>
-                      <div className="hidden sm:block text-[8px] font-bold text-cyan-200/90">
-                        Hold • +50 SHD
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                {/* LOBBY STATUS PILL OR ACTIVE GAME QUESTION RELOAD (+ballsPerQuestion BALLS PER QUESTION) */}
-                {matchStatus === 'playing' ? (
-                  <div className="bg-slate-900/95 rounded-xl px-2 sm:px-2.5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 border border-white/15 shadow-xl">
-                    <div className="text-left leading-none">
-                      <div className="text-[7px] sm:text-[9px] font-black text-pink-400 uppercase">
-                        BALLS
-                      </div>
-                      <div className="text-xs sm:text-base font-black font-mono text-white leading-tight">
-                        {ammo}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsQuestionModalOpen(true)}
-                      className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-black text-[9px] sm:text-xs shadow-md transition flex items-center gap-1 cursor-pointer ${
-                        ammo === 0
-                          ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border border-white animate-pulse'
-                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white'
+                    <div
+                      className={`text-[9px] sm:text-[10px] font-bold whitespace-nowrap ${
+                        ammo === 0 && matchStatus === 'playing'
+                          ? 'text-slate-900'
+                          : 'text-lime-300'
                       }`}
                     >
-                      <Zap
-                        size={12}
-                        className={
-                          ammo === 0 ? 'text-slate-950 shrink-0' : 'text-amber-300 shrink-0'
-                        }
-                      />
-                      <span className="whitespace-nowrap">
-                        {ammo === 0
-                          ? `Answer (+${ballsPerQuestion} Balls)`
-                          : `Get +${ballsPerQuestion} Balls`}
-                      </span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-slate-900/88 border border-lime-400/60 rounded-xl px-2.5 py-1 shadow-lg text-center">
-                    <div className="text-[9px] sm:text-xs font-black text-lime-300 leading-tight whitespace-nowrap">
-                      🎯 FREE SHOOT LOBBY
+                      +{ballsPerQuestion} Balls • 🟢 {ammo}
                     </div>
                   </div>
-                )}
+                </button>
               </div>
 
-              {/* RIGHT SIDE: SHOOT BUTTON (Tap or Hold for Rapid Fire in BOTH Lobby & Game!) */}
+              {/* RIGHT SIDE: SHOOT BUTTON */}
               <div className="flex flex-col items-center shrink-0">
                 <span className="mb-0.5 text-[8px] sm:text-[9px] font-black uppercase text-rose-300 tracking-wider drop-shadow">
-                  {matchStatus === 'lobby' ? 'FREE SHOOT' : 'SHOOT'}
+                  SHOOT
                 </span>
                 <button
                   type="button"
@@ -8574,9 +8515,9 @@ export default function HamsterPaintball({
                     if (gameRef.current) gameRef.current.shootButtonHeld = false;
                   }}
                   onContextMenu={e => e.preventDefault()}
-                  className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-3 border-white/90 shadow-xl flex flex-col items-center justify-center text-white font-black text-[9px] sm:text-xs cursor-pointer select-none touch-none"
+                  className="pointer-events-auto w-14 h-14 min-[390px]:w-16 min-[390px]:h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 active:scale-95 border-3 border-white/90 shadow-xl flex flex-col items-center justify-center text-white font-black text-[9px] sm:text-xs cursor-pointer select-none touch-none"
                 >
-                  <Crosshair size={20} />
+                  <Crosshair size={18} />
                   <span className="mt-0.5">SHOOT</span>
                 </button>
               </div>
@@ -8770,175 +8711,176 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          QUESTION DECK MODAL (WITH 15-SECOND QUESTION TIMER & SPEED BONUS!)
+          FULL-SCREEN QUESTION VIEW (COVERS ENTIRE SCREEN IN PORTRAIT & LANDSCAPE)
          ------------------------------------------------------------- */}
-      {isQuestionModalOpen && matchStatus === 'playing' && currentTriviaQ && (
-        <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-2.5 sm:p-4 pt-12 pb-3 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[85dvh] overflow-y-auto border-4 border-indigo-600 text-slate-900 my-auto">
-            <div className="bg-gradient-to-r from-indigo-700 to-purple-800 text-white px-4 sm:px-5 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sticky top-0 z-10">
-              <div>
-                <h3 className="font-black text-sm sm:text-lg leading-none">
-                  ANSWER TO GAIN +{ballsPerQuestion} PAINTBALLS!
+      {isQuestionModalOpen && currentTriviaQ && (
+        <div className="fixed inset-0 z-50 w-full h-full bg-slate-950 text-white flex flex-col justify-between overflow-y-auto">
+          {/* Top Full-Screen Header */}
+          <div className="bg-gradient-to-r from-indigo-700 via-violet-700 to-purple-800 text-white px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 shrink-0 border-b border-white/15">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <HelpCircle size={18} className="text-lime-300 shrink-0" />
+                <h3 className="font-black text-sm sm:text-xl leading-none truncate">
+                  ANSWER FOR +{ballsPerQuestion} PAINTBALLS
                 </h3>
-                <p className="text-[11px] sm:text-xs text-indigo-100 mt-1">
-                  Correct Answer ={' '}
-                  <strong className="text-lime-300">+{ballsPerQuestion} Paintballs</strong> +{' '}
-                  <strong className="text-amber-300">+15 Base PTS</strong> +{' '}
-                  <strong className="text-cyan-300">Streak ({triviaStreak}x)</strong>
-                </p>
               </div>
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                {/* 15s Per-Question Countdown Badge */}
-                <div
-                  className={`px-2 py-1 rounded-xl font-mono font-black text-xs sm:text-sm flex items-center gap-1 border ${
-                    questionTimeLeft <= 5
-                      ? 'bg-rose-600 text-white border-rose-300 animate-pulse'
-                      : questionTimeLeft >= 10
-                      ? 'bg-emerald-500 text-slate-950 border-lime-200'
-                      : 'bg-amber-400 text-slate-950 border-amber-200'
-                  }`}
-                >
-                  <Clock size={12} />
-                  <span>{questionTimeLeft}s</span>
-                </div>
-                {ammo > 0 && (
-                  <button
-                    onClick={() => setIsQuestionModalOpen(false)}
-                    className="text-xs px-2.5 sm:px-3 py-1.5 bg-lime-400 hover:bg-lime-300 text-slate-950 rounded-lg font-black shadow cursor-pointer"
-                  >
-                    🎯 Shoot ({ammo})
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsQuestionModalOpen(false)}
-                  className="text-xs px-2.5 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg font-bold cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
+              <p className="text-[11px] sm:text-xs text-indigo-100 mt-1 truncate">
+                Correct = <strong className="text-lime-300">+{ballsPerQuestion} Balls</strong> +{' '}
+                <strong className="text-amber-300">+15 PTS</strong> +{' '}
+                <strong className="text-cyan-300">Streak ({triviaStreak}x)</strong>
+              </p>
             </div>
 
-            {/* 15-Second Question Timer Bar */}
-            <div className="w-full h-2 bg-slate-200 overflow-hidden">
+            <div className="flex items-center gap-2 shrink-0">
+              {/* 15s Per-Question Countdown Badge */}
               <div
-                className={`h-full transition-all duration-300 ${
+                className={`px-2.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm flex items-center gap-1 border ${
                   questionTimeLeft <= 5
-                    ? 'bg-rose-500'
+                    ? 'bg-rose-600 text-white border-rose-300 animate-pulse'
                     : questionTimeLeft >= 10
-                    ? 'bg-emerald-500'
-                    : 'bg-amber-500'
+                    ? 'bg-emerald-500 text-slate-950 border-lime-200'
+                    : 'bg-amber-400 text-slate-950 border-amber-200'
                 }`}
-                style={{
-                  width: `${Math.max(0, (questionTimeLeft / QUESTION_TIME_LIMIT_SEC) * 100)}%`
-                }}
-              />
+              >
+                <Clock size={14} />
+                <span>{questionTimeLeft}s</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsQuestionModalOpen(false)}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-lime-400 hover:bg-lime-300 text-slate-950 rounded-xl font-black text-xs sm:text-sm shadow-lg cursor-pointer flex items-center gap-1"
+              >
+                <span>🎯 Arena ({ammo})</span>
+              </button>
             </div>
+          </div>
 
-            {(() => {
-              const parsedQuestion = parseOptionContent(currentTriviaQ.text || '');
-              const displayQText = parsedQuestion.text || currentTriviaQ.text;
-              const displayQImage = currentTriviaQ.image || parsedQuestion.imageUrl;
-              const correctIdx =
-                typeof currentTriviaQ.answerIndex === 'number' ? currentTriviaQ.answerIndex : 0;
-              const liveSpeedBonus = questionTimeLeft >= 10 ? 10 : questionTimeLeft >= 5 ? 5 : 0;
+          {/* 15-Second Question Timer Bar */}
+          <div className="w-full h-2 bg-slate-800 shrink-0 overflow-hidden">
+            <div
+              className={`h-full transition-all duration-300 ${
+                questionTimeLeft <= 5
+                  ? 'bg-rose-500'
+                  : questionTimeLeft >= 10
+                  ? 'bg-emerald-400'
+                  : 'bg-amber-400'
+              }`}
+              style={{
+                width: `${Math.max(0, (questionTimeLeft / QUESTION_TIME_LIMIT_SEC) * 100)}%`
+              }}
+            />
+          </div>
 
-              return (
-                <div className="p-4 sm:p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <span className="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-[10px] sm:text-[11px] uppercase px-2.5 py-0.5 rounded-full">
-                      QUESTION {(triviaDeckIndex % effectiveQuestions.length) + 1} OF{' '}
-                      {effectiveQuestions.length} • REWARD: +{ballsPerQuestion} BALLS
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {liveSpeedBonus > 0 && (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 font-black text-[10px] sm:text-[11px]">
-                          ⚡ Speed +{liveSpeedBonus} PTS
-                        </span>
-                      )}
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-xs font-black text-emerald-800">
-                        🟢 Ammo: {ammo} Balls
+          {/* Full-Screen Question Body & Answer Grid */}
+          {(() => {
+            const parsedQuestion = parseOptionContent(currentTriviaQ.text || '');
+            const displayQText = parsedQuestion.text || currentTriviaQ.text;
+            const displayQImage = currentTriviaQ.image || parsedQuestion.imageUrl;
+            const correctIdx =
+              typeof currentTriviaQ.answerIndex === 'number' ? currentTriviaQ.answerIndex : 0;
+            const liveSpeedBonus = questionTimeLeft >= 10 ? 10 : questionTimeLeft >= 5 ? 5 : 0;
+
+            return (
+              <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-8 py-4 sm:py-6 flex flex-col justify-between gap-4 overflow-y-auto">
+                {/* Question Counter & Ammo Status Strip */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 font-black text-xs sm:text-sm uppercase px-3 py-1 rounded-full">
+                    QUESTION {(triviaDeckIndex % effectiveQuestions.length) + 1} OF{' '}
+                    {effectiveQuestions.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {liveSpeedBonus > 0 && (
+                      <span className="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/50 text-amber-300 font-black text-xs sm:text-sm">
+                        ⚡ Speed +{liveSpeedBonus} PTS
                       </span>
-                    </div>
+                    )}
+                    <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-xs sm:text-sm font-black text-lime-300">
+                      🟢 Paintballs: {ammo}
+                    </span>
                   </div>
+                </div>
 
+                {/* Question Prompt & Optional Image */}
+                <div className="bg-slate-900/95 border-2 border-white/15 rounded-3xl p-4 sm:p-6 flex flex-col items-center justify-center text-center shadow-xl my-auto">
                   {displayQImage && (
-                    <div className="mb-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 max-h-44 flex items-center justify-center">
+                    <div className="mb-3 rounded-2xl overflow-hidden border border-white/15 bg-slate-950 max-h-44 sm:max-h-56 flex items-center justify-center">
                       <img
                         src={displayQImage}
                         alt={displayQText || 'Question'}
                         referrerPolicy="no-referrer"
-                        className="max-h-44 w-auto object-contain"
+                        className="max-h-44 sm:max-h-56 w-auto object-contain"
                       />
                     </div>
                   )}
-
-                  <h2 className="font-extrabold text-lg sm:text-2xl text-slate-800 mb-4">
+                  <h2 className="font-black text-xl sm:text-3xl md:text-4xl text-white leading-snug">
                     {displayQText}
                   </h2>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {currentTriviaQ.options.map((opt, idx) => {
-                      const parsed = parseOptionContent(opt);
-                      const isAnswered = selectedOptionIdx !== null;
-                      const isThisSelected = selectedOptionIdx === idx;
-                      const isThisCorrect = idx === correctIdx;
-
-                      let btnClasses =
-                        'bg-slate-100 hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-800';
-                      if (isAnswered) {
-                        if (isThisCorrect) {
-                          btnClasses = 'bg-emerald-500 border-emerald-700 text-white shadow-md';
-                        } else if (isThisSelected) {
-                          btnClasses = 'bg-rose-500 border-rose-700 text-white';
-                        } else {
-                          btnClasses = 'bg-slate-100 border-slate-200 text-slate-400 opacity-75';
-                        }
-                      }
-
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          disabled={isAnswered}
-                          onClick={() => handleTriviaAnswer(idx)}
-                          className={`p-3.5 rounded-xl border-b-4 font-extrabold text-sm text-left transition shadow cursor-pointer active:scale-95 flex items-center gap-2.5 ${btnClasses}`}
-                        >
-                          <span
-                            className={`font-bold shrink-0 ${
-                              isAnswered && (isThisCorrect || isThisSelected)
-                                ? 'text-white'
-                                : 'text-indigo-600'
-                            }`}
-                          >
-                            {OPTION_LETTERS[idx]}.
-                          </span>
-                          {parsed.imageUrl && (
-                            <img
-                              src={parsed.imageUrl}
-                              alt={parsed.text || 'Option'}
-                              referrerPolicy="no-referrer"
-                              className="w-10 h-10 rounded-lg object-cover border border-slate-300 shrink-0 bg-white"
-                            />
-                          )}
-                          <span className="flex-1">{parsed.text || opt}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {triviaFeedback && (
-                    <div
-                      className={`mt-4 p-3 text-white font-black text-center text-xs sm:text-sm rounded-xl ${
-                        selectedOptionIdx === correctIdx ? 'bg-emerald-600' : 'bg-rose-600'
-                      }`}
-                    >
-                      {triviaFeedback}
-                    </div>
-                  )}
                 </div>
-              );
-            })()}
-          </div>
+
+                {/* Large Full-Screen Responsive Options Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 my-auto">
+                  {currentTriviaQ.options.map((opt, idx) => {
+                    const parsed = parseOptionContent(opt);
+                    const isAnswered = selectedOptionIdx !== null;
+                    const isThisSelected = selectedOptionIdx === idx;
+                    const isThisCorrect = idx === correctIdx;
+
+                    let btnClasses =
+                      'bg-slate-900 hover:bg-indigo-950 border-white/20 hover:border-indigo-400 text-white';
+                    if (isAnswered) {
+                      if (isThisCorrect) {
+                        btnClasses = 'bg-emerald-600 border-lime-300 text-white shadow-xl scale-[1.01]';
+                      } else if (isThisSelected) {
+                        btnClasses = 'bg-rose-600 border-rose-300 text-white';
+                      } else {
+                        btnClasses = 'bg-slate-900/50 border-white/10 text-slate-500 opacity-70';
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        disabled={isAnswered}
+                        onClick={() => handleTriviaAnswer(idx)}
+                        className={`p-4 sm:p-5 rounded-2xl border-2 font-black text-base sm:text-xl text-left transition shadow-lg cursor-pointer active:scale-95 flex items-center gap-3.5 ${btnClasses}`}
+                      >
+                        <span
+                          className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg shrink-0 ${
+                            isAnswered && (isThisCorrect || isThisSelected)
+                              ? 'bg-white/20 text-white'
+                              : 'bg-indigo-600 text-white'
+                          }`}
+                        >
+                          {OPTION_LETTERS[idx]}
+                        </span>
+                        {parsed.imageUrl && (
+                          <img
+                            src={parsed.imageUrl}
+                            alt={parsed.text || 'Option'}
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-white/20 shrink-0 bg-white"
+                          />
+                        )}
+                        <span className="flex-1 leading-snug">{parsed.text || opt}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {triviaFeedback && (
+                  <div
+                    className={`p-3.5 text-white font-black text-center text-sm sm:text-base rounded-2xl shadow-xl ${
+                      selectedOptionIdx === correctIdx ? 'bg-emerald-600' : 'bg-rose-600'
+                    }`}
+                  >
+                    {triviaFeedback}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
