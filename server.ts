@@ -1513,6 +1513,174 @@ Return exactly a JSON array of 4 objects.`;
     }
   });
 
+  // ============================================================================
+  // REAL-TIME HAMSTER PAINTBALL MULTIPLAYER ROOM ENGINE (Server-Authoritative)
+  // Guarantees Host & Students see each other immediately across all devices/tabs
+  // even when Firebase Firestore hits daily free-tier quota limits.
+  // ============================================================================
+  const paintballRoomsMemory = new Map<
+    string,
+    {
+      room: Record<string, any>;
+      players: Map<string, Record<string, any>>;
+    }
+  >();
+
+  function getOrCreatePaintballRoom(rawCode: string) {
+    const cleanCode = String(rawCode || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^0-9A-Z]/g, "")
+      .slice(0, 6);
+    if (!cleanCode) return null;
+    let entry = paintballRoomsMemory.get(cleanCode);
+    if (!entry) {
+      entry = {
+        room: {
+          roomCode: cleanCode,
+          website: "www.hamsterenglish.online",
+          hostName: "Teacher Jan",
+          matchMode: "teams",
+          matchStatus: "lobby",
+          configuredDurationSec: 180,
+          ballsPerQuestion: 10,
+          updatedAt: Date.now()
+        },
+        players: new Map()
+      };
+      paintballRoomsMemory.set(cleanCode, entry);
+    }
+    return entry;
+  }
+
+  function serializePaintballRoom(entry: {
+    room: Record<string, any>;
+    players: Map<string, Record<string, any>>;
+  }) {
+    const now = Date.now();
+    // Prune stale disconnected players who haven't updated in > 60 seconds
+    entry.players.forEach((p, id) => {
+      if (p.kicked && now - (p.updatedAt || 0) > 5000) {
+        entry.players.delete(id);
+      } else if (now - (p.updatedAt || 0) > 65000) {
+        entry.players.delete(id);
+      }
+    });
+    return {
+      room: entry.room,
+      players: Array.from(entry.players.values())
+    };
+  }
+
+  // GET /api/paintball/room/:code -> Fetch room configuration & all joined players
+  app.get("/api/paintball/room/:code", (req, res) => {
+    const entry = getOrCreatePaintballRoom(req.params.code);
+    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+    res.json(serializePaintballRoom(entry));
+  });
+
+  // POST /api/paintball/room/:code/room -> Host updates room settings, status, timer, or bulk player spawn positions
+  app.post("/api/paintball/room/:code/room", (req, res) => {
+    const entry = getOrCreatePaintballRoom(req.params.code);
+    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+
+    const { room: roomPatch, players: playersPatch } = req.body || {};
+    if (roomPatch && typeof roomPatch === "object") {
+      entry.room = {
+        ...entry.room,
+        ...roomPatch,
+        roomCode: entry.room.roomCode,
+        updatedAt: Date.now()
+      };
+    }
+
+    if (Array.isArray(playersPatch)) {
+      const now = Date.now();
+      playersPatch.forEach((pPatch: any) => {
+        if (!pPatch || !pPatch.id) return;
+        const existing = entry.players.get(pPatch.id) || {};
+        entry.players.set(pPatch.id, {
+          ...existing,
+          ...pPatch,
+          hostOverrideAt: now,
+          updatedAt: now
+        });
+      });
+    }
+
+    res.json(serializePaintballRoom(entry));
+  });
+
+  // POST /api/paintball/room/:code/player -> Student joins/heartbeats state OR Host updates/moves/kicks a player
+  app.post("/api/paintball/room/:code/player", (req, res) => {
+    const entry = getOrCreatePaintballRoom(req.params.code);
+    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+
+    const body = req.body || {};
+    const playerData = body.player || body;
+    const playerId = String(playerData.id || "").trim();
+    if (!playerId) {
+      return res.status(400).json({ error: "Player id is required" });
+    }
+
+    const now = Date.now();
+    const existing = entry.players.get(playerId) || {};
+    const isHostAction = Boolean(body.isHostAction);
+
+    // If Host moved this player's team or kicked them recently, preserve Host's team/kicked state
+    const hostOverrideAt = isHostAction
+      ? now
+      : typeof existing.hostOverrideAt === "number"
+      ? existing.hostOverrideAt
+      : 0;
+
+    const clientAckOverrideAt =
+      typeof body.ackHostOverrideAt === "number" ? body.ackHostOverrideAt : 0;
+
+    const preserveHostTeam =
+      !isHostAction &&
+      hostOverrideAt > clientAckOverrideAt &&
+      existing.team &&
+      now - hostOverrideAt < 15000;
+
+    const mergedPlayer: Record<string, any> = {
+      ...existing,
+      ...playerData,
+      id: playerId,
+      team: preserveHostTeam ? existing.team : playerData.team || existing.team || "red",
+      kicked: isHostAction
+        ? Boolean(playerData.kicked)
+        : Boolean(existing.kicked || playerData.kicked),
+      hostOverrideAt,
+      updatedAt: now
+    };
+
+    if (preserveHostTeam && typeof existing.x === "number" && typeof existing.z === "number") {
+      mergedPlayer.x = existing.x;
+      mergedPlayer.z = existing.z;
+      if (typeof existing.rotY === "number") mergedPlayer.rotY = existing.rotY;
+    }
+
+    entry.players.set(playerId, mergedPlayer);
+
+    if (body.latestEvent && body.latestEvent.id) {
+      entry.room.latestEvent = body.latestEvent;
+    }
+
+    res.json(serializePaintballRoom(entry));
+  });
+
+  // DELETE /api/paintball/room/:code/player/:playerId -> Student leaves or Host deletes player
+  app.delete("/api/paintball/room/:code/player/:playerId", (req, res) => {
+    const entry = getOrCreatePaintballRoom(req.params.code);
+    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+    const playerId = String(req.params.playerId || "").trim();
+    if (playerId) {
+      entry.players.delete(playerId);
+    }
+    res.json(serializePaintballRoom(entry));
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
