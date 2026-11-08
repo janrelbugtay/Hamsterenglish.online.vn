@@ -5831,13 +5831,21 @@ export default function HamsterPaintball({
       g.lastMouseY = e.clientY;
       g.mouseInitialized = true;
 
-      if (
-        stateSnapRef.current.role === 'player' &&
-        stateSnapRef.current.screen === 'game'
-      ) {
-        const sens = stateSnapRef.current.lookSensitivity || 1.0;
-        g.camYaw -= dx * 0.0044 * sens;
-        g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0028 * sens, 0.12, 0.68);
+      const isControllingCharacter =
+        (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
+        (stateSnapRef.current.role === 'host' && stateSnapRef.current.screen === 'lobby');
+
+      if (isControllingCharacter) {
+        const target = e.target as HTMLElement | null;
+        const isOverUiPanel =
+          stateSnapRef.current.role === 'host' &&
+          target &&
+          target.closest('.host-lobby-interactive-panel');
+        if (!isOverUiPanel) {
+          const sens = stateSnapRef.current.lookSensitivity || 1.0;
+          g.camYaw -= dx * 0.0044 * sens;
+          g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0028 * sens, 0.12, 0.68);
+        }
       }
     };
 
@@ -5852,8 +5860,8 @@ export default function HamsterPaintball({
       gameRef.current.lastMouseY = e.clientY;
       gameRef.current.mouseInitialized = true;
       if (
-        stateSnapRef.current.role === 'player' &&
-        stateSnapRef.current.screen === 'game'
+        (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
+        (stateSnapRef.current.role === 'host' && stateSnapRef.current.screen === 'lobby')
       ) {
         fireShot();
       }
@@ -5868,11 +5876,17 @@ export default function HamsterPaintball({
     // Swiping or dragging anywhere on the right side of the screen rotates camera, character view, and aiming reticle!
     const handleWindowTouchStart = (e: TouchEvent) => {
       const g = gameRef.current;
-      if (!g || stateSnapRef.current.role !== 'player' || stateSnapRef.current.screen !== 'game') {
+      const canControlTouchLook =
+        (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
+        (stateSnapRef.current.role === 'host' && stateSnapRef.current.screen === 'lobby');
+      if (!g || !canControlTouchLook) {
         return;
       }
       const target = e.target as HTMLElement | null;
-      if (target && target.closest('button, input, select, textarea, a')) {
+      if (
+        target &&
+        target.closest('button, input, select, textarea, a, .host-lobby-interactive-panel')
+      ) {
         return;
       }
       for (let i = 0; i < e.changedTouches.length; i++) {
@@ -5934,8 +5948,8 @@ export default function HamsterPaintball({
           if (
             dragDist < 12 &&
             isCanvasTap &&
-            stateSnapRef.current.role === 'player' &&
-            stateSnapRef.current.screen === 'game'
+            ((stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
+              (stateSnapRef.current.role === 'host' && stateSnapRef.current.screen === 'lobby'))
           ) {
             fireShot();
           }
@@ -5998,11 +6012,10 @@ export default function HamsterPaintball({
       if (!g) return;
       const snapState = stateSnapRef.current;
 
-      // Teacher Jan 3D Character is ONLY in the Park during the Lobby!
+      // Teacher Jan NPC is visible to students in the Lobby; Host directly controls their own 3D Host Hamster (`localHamster`) in the Lobby!
       if (g.teacherJanNpc) {
         const showTeacherJanInLobby =
-          snapState.matchStatus === 'lobby' &&
-          !(snapState.role === 'host' && snapState.screen === 'game');
+          snapState.matchStatus === 'lobby' && snapState.role !== 'host';
         g.teacherJanNpc.visible = showTeacherJanInLobby;
         if (showTeacherJanInLobby) {
           g.teacherJanNpc.position.set(0, 0.32, -10.5);
@@ -6043,16 +6056,19 @@ export default function HamsterPaintball({
         }
       }
 
-      if (snapState.role === 'host') {
+      // Host controls their 3D character (`Teacher Jan`) freely in the Lobby, and switches to spectator/player-follow camera when the game starts!
+      if (snapState.role === 'host' && snapState.screen === 'game') {
         // ---------------------------------------------------
         // HOST TAKES THE CLOSER PLAYER VIEW WHEN CLICKING PLAY
         // Supports Focus on 1 Player ('track_one'), Auto Shuffle ('auto_track'), or Overview
         // ---------------------------------------------------
         g.localHamster.visible = false;
+        if (g.aimReticle) g.aimReticle.visible = false;
+        if (g.aimLaserLine) g.aimLaserLine.visible = false;
 
         if (
-          snapState.screen === 'game' &&
-          (snapState.hostCameraMode === 'track_one' || snapState.hostCameraMode === 'auto_track')
+          snapState.hostCameraMode === 'track_one' ||
+          snapState.hostCameraMode === 'auto_track'
         ) {
           const remotes = Array.from(g.remotePlayers.values());
           if (remotes.length > 0) {
@@ -6092,36 +6108,40 @@ export default function HamsterPaintball({
           }
         } else {
           // Host Overview Camera (can pan smoothly with WASD/Arrow keys)
-          if (isMoving && snapState.screen === 'game') {
+          if (isMoving) {
             g.hostCamX = Math.max(-36, Math.min(36, g.hostCamX + rawX * 24 * dt));
             g.hostCamZ = Math.max(-28, Math.min(28, g.hostCamZ + rawZ * 24 * dt));
           }
           const camAspect = camera.aspect || 1.5;
           const portraitZoomOut = camAspect < 1.0 ? Math.min(10, (1.0 - camAspect) * 18) : 0;
-          const targetY = (snapState.screen === 'game' ? 32 : 24) + portraitZoomOut;
-          const targetZ = (snapState.screen === 'game' ? g.hostCamZ + 28 : 22) + portraitZoomOut * 0.8;
+          const targetY = 32 + portraitZoomOut;
+          const targetZ = g.hostCamZ + 28 + portraitZoomOut * 0.8;
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
-          camera.lookAt(g.hostCamX, 1.2, snapState.screen === 'game' ? g.hostCamZ - 2 : 0);
+          camera.lookAt(g.hostCamX, 1.2, g.hostCamZ - 2);
         }
       } else {
         // ---------------------------------------------------
-        // STUDENT PLAYER: CAMERA-RELATIVE MOVEMENT (UP/DOWN/LEFT/RIGHT),
-        // LAPTOP MOUSE VIEW ROTATION & MOBILE TOUCH-DRAG FREE LOOK
+        // INTERACTIVE 3D CHARACTER MOVEMENT (STUDENT OR HOST IN LOBBY):
+        // CAMERA-RELATIVE MOVEMENT (UP/DOWN/LEFT/RIGHT), MOUSE LOOK & TOUCH FREE LOOK
         // ---------------------------------------------------
         g.localHamster.visible = true;
         const speed = 15.0;
 
         // Laptop smooth edge-turn when cursor is near left/right edge of the viewport
-        if (g.mouseInitialized && g.lookTouchId === null && snapState.screen === 'game') {
+        if (
+          g.mouseInitialized &&
+          g.lookTouchId === null &&
+          (snapState.screen === 'game' || snapState.role === 'host')
+        ) {
           const rect = container.getBoundingClientRect();
           const relX = (g.mouseScreenX - rect.left) / Math.max(1, rect.width);
           const sens = snapState.lookSensitivity || 1.0;
-          if (relX < 0.1) {
-            g.camYaw += (0.1 - relX) * 14.0 * sens * dt;
-          } else if (relX > 0.9) {
-            g.camYaw -= (relX - 0.9) * 14.0 * sens * dt;
+          if (relX < 0.08) {
+            g.camYaw += (0.08 - relX) * 12.0 * sens * dt;
+          } else if (relX > 0.92) {
+            g.camYaw -= (relX - 0.92) * 12.0 * sens * dt;
           }
         }
 
@@ -6250,7 +6270,9 @@ export default function HamsterPaintball({
 
         // Update 3D Ground Aim Reticle & Laser Sight Line from Gun Barrel Muzzle (`muzzleTip`)
         if (g.aimReticle && g.aimLaserLine && ud?.muzzleTip) {
-          const showAim = snapState.screen === 'game';
+          const showAim =
+            snapState.screen === 'game' ||
+            (snapState.role === 'host' && snapState.screen === 'lobby');
           g.aimReticle.visible = showAim;
           g.aimLaserLine.visible = showAim;
           if (showAim) {
@@ -6272,7 +6294,8 @@ export default function HamsterPaintball({
 
         // Continuous Rapid Semi-Auto Firing while holding Mouse, Shoot Button, or Spacebar
         if (
-          snapState.screen === 'game' &&
+          (snapState.screen === 'game' ||
+            (snapState.role === 'host' && snapState.screen === 'lobby')) &&
           (g.mouseDown || g.shootButtonHeld || g.keys[' '])
         ) {
           fireShot();
@@ -7226,77 +7249,20 @@ export default function HamsterPaintball({
           <span>Back</span>
         </button>
 
-        <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 flex-nowrap justify-end min-w-0">
-          {role === 'host' && screen === 'lobby' && (
-            <button
-              onClick={() => setIsLobbyMinimized(prev => !prev)}
-              className="shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-emerald-600/95 hover:bg-emerald-500 text-white font-extrabold text-[11px] sm:text-xs border border-emerald-400/40 shadow-lg transition cursor-pointer"
-            >
-              <Eye size={13} />
-              <span className="hidden sm:inline">
-                {isLobbyMinimized ? 'Show Live Lobby Card' : 'Peek 3D Park'}
-              </span>
-              <span className="sm:hidden">{isLobbyMinimized ? 'Lobby' : 'Peek'}</span>
-            </button>
-          )}
-
-          {role === 'host' && (
-            <button
-              onClick={() => setScreen('editor')}
-              className="shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-indigo-600/95 hover:bg-indigo-500 text-white font-bold text-[11px] sm:text-xs border border-indigo-400/30 shadow-lg transition cursor-pointer"
-            >
-              <Edit3 size={13} />
-              <span className="hidden md:inline">Edit Questions</span>
-              <span>({activeQuiz.questions.length})</span>
-            </button>
-          )}
-
-          {role === 'host' && (
-            <button
-              onClick={() => setShowModeModal(true)}
-              className="shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-sky-600/95 hover:bg-sky-500 text-white font-bold text-[11px] sm:text-xs border border-sky-400/30 shadow-lg transition cursor-pointer"
-            >
-              <span>🎮</span>
-              <span className="hidden sm:inline">Switch Game</span>
-            </button>
-          )}
-
+        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 flex-nowrap justify-end min-w-0">
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="shrink-0 px-2 sm:px-2.5 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center gap-1 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black"
+            className="shrink-0 px-2.5 sm:px-3 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center gap-1.5 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black"
             title="Game Settings & Look Sensitivity"
           >
             <Settings size={14} className="text-cyan-400" />
-            <span className="hidden md:inline">Settings</span>
-          </button>
-
-          <button
-            onClick={() => setMusicEnabled(!musicEnabled)}
-            className={`shrink-0 px-2 sm:px-2.5 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border flex items-center gap-1 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black ${
-              musicEnabled && soundEnabled ? 'border-lime-400/50 text-lime-300' : 'border-white/20 text-slate-400'
-            }`}
-            title={musicEnabled ? 'Mute Arena Music' : 'Play Arena Music'}
-          >
-            <span>{musicEnabled && soundEnabled ? '🎵' : '🔇'}</span>
-            <span className="hidden md:inline">Music</span>
-          </button>
-
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center justify-center transition shadow-lg cursor-pointer"
-            title={soundEnabled ? 'Mute All Audio' : 'Unmute Audio'}
-          >
-            {soundEnabled ? (
-              <Volume2 size={15} className="text-lime-400" />
-            ) : (
-              <VolumeX size={15} className="text-rose-400" />
-            )}
+            <span>Settings</span>
           </button>
 
           <FullscreenButton
             targetId="paintball-game-container"
             showLabel
-            className="shrink-0 bg-slate-900/95 hover:bg-slate-800 text-white border border-lime-400/40 shadow-lg text-[11px] sm:text-xs px-2 sm:px-3 py-1.5"
+            className="shrink-0 bg-slate-900/95 hover:bg-slate-800 text-white border border-lime-400/40 shadow-lg text-[11px] sm:text-xs px-2.5 sm:px-3 py-1.5"
           />
         </div>
       </div>
@@ -7683,283 +7649,174 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 3: HOST LIVE PARK LOBBY POPUP BANNER MODAL
-          Clean Popup Banner over the live 3D Park with BIG QR Code!
+          SCREEN 3: SIMPLE & INTERACTIVE HOST LIVE 3D PARK LOBBY HUD
+          Host character moves freely in the 3D Park while students join via BIG QR Code!
          ------------------------------------------------------------- */}
       {screen === 'lobby' && role === 'host' && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center p-2.5 sm:p-5 pt-12 pb-3 overflow-y-auto pointer-events-none">
-          {!isLobbyMinimized ? (
-            <div className="pointer-events-auto relative w-full max-w-4xl max-h-[86dvh] overflow-y-auto my-auto bg-[#1b1130]/96 p-4 sm:p-6 rounded-3xl shadow-2xl border-2 border-lime-400/50 space-y-3.5">
-              {/* Popup Minimize / Full Screen Toggle in Top-Right Corner */}
-              <div className="absolute top-3.5 right-3.5 flex items-center gap-2">
-                <FullscreenButton
-                  targetId="paintball-game-container"
-                  showLabel
-                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 border border-white/15 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => setIsLobbyMinimized(true)}
-                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-extrabold text-xs flex items-center gap-1.5 border border-white/15 transition cursor-pointer"
-                  title="Minimize Lobby Popup to view 3D Park"
-                >
-                  <Eye size={13} className="text-lime-400" />
-                  <span>Peek 3D Park</span>
-                </button>
-              </div>
-
-              {/* Top Section: Join Instructions, Huge 6-Digit Room Code & BIG Scannable QR Code */}
-              <div className="flex flex-col md:flex-row items-center justify-between gap-5 pt-2">
-                {/* Left: Step-by-Step www.hamsterenglish.online Join Instructions & 6-Digit Room Code */}
-                <div className="flex-1 flex flex-col items-center md:items-start text-center md:text-left">
-                  <div className="text-white text-xs sm:text-sm font-semibold tracking-wide flex flex-wrap items-center justify-center md:justify-start gap-2">
-                    <span className="px-2.5 py-0.5 rounded-md bg-lime-400 text-slate-950 font-black text-xs uppercase flex items-center gap-1">
-                      <Globe size={12} /> HOST LIVE PARK LOBBY
-                    </span>
-                    <span>
-                      1. Scan QR or visit{' '}
-                      <strong className="underline decoration-pink-400 text-lime-300 font-black">
-                        www.hamsterenglish.online
-                      </strong>{' '}
-                      • 2. Enter Room Code:
-                    </span>
+        <div className="absolute inset-0 z-30 flex flex-col justify-between p-2.5 sm:p-4 pt-12 pb-3 pointer-events-none overflow-y-auto">
+          {/* Top / Side Split HUD leaving the center of the 3D Park open so the Host 3D Character can walk around interactively */}
+          <div className="w-full flex flex-col lg:flex-row items-center lg:items-start justify-between gap-3 sm:gap-4 my-auto lg:my-0">
+            {/* LEFT PANEL: Simple Room Code, Quick Match Controls, Live Players & Start Game */}
+            <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-md bg-[#1b1130]/92 backdrop-blur-md p-3.5 sm:p-4 rounded-3xl shadow-2xl border-2 border-lime-400/50 space-y-3">
+              {/* Room Code + Quick Copy / New Code */}
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-wider text-lime-300">
+                    www.hamsterenglish.online • Room Code
                   </div>
+                  <div
+                    onClick={handleCopyRoomCode}
+                    className="mt-1 bg-slate-950 border-2 border-lime-400/80 px-3.5 py-1.5 rounded-2xl text-white font-black text-3xl sm:text-4xl tracking-[0.18em] leading-none cursor-pointer hover:text-lime-300 transition select-all font-mono inline-block"
+                    title="Click to Copy Room Code"
+                  >
+                    {roomCode}
+                  </div>
+                </div>
 
-                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-3.5 mt-3">
-                    <div
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCopyJoinLink}
+                    className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow transition cursor-pointer"
+                  >
+                    {copiedType === 'link' ? <Check size={13} /> : <Copy size={13} />}
+                    <span>{copiedType === 'link' ? 'Copied Link!' : 'Copy Link'}</span>
+                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
                       onClick={handleCopyRoomCode}
-                      className="bg-slate-950 border-2 border-lime-400/80 px-5 py-3 rounded-2xl text-white font-black text-5xl sm:text-6xl tracking-[0.2em] leading-none cursor-pointer hover:text-lime-300 hover:border-lime-300 transition select-all shadow-lg font-mono"
-                      title="Click to Copy Room Code"
+                      className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
                     >
-                      {roomCode}
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCopyJoinLink}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
-                      >
-                        {copiedType === 'link' ? <Check size={14} /> : <Copy size={14} />}
-                        <span>
-                          {copiedType === 'link'
-                            ? 'Copied www.hamsterenglish.online Link!'
-                            : 'Copy Student Join Link'}
-                        </span>
-                      </button>
-
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={handleCopyRoomCode}
-                          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer"
-                        >
-                          {copiedType === 'code' ? (
-                            <Check size={12} className="text-lime-400" />
-                          ) : (
-                            <Copy size={12} />
-                          )}
-                          <span>{copiedType === 'code' ? 'Copied!' : 'Copy Code'}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleGenerateNewRoomCode}
-                          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-amber-300 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
-                        >
-                          <RotateCw size={12} />
-                          <span>New Code</span>
-                        </button>
-                      </div>
-                    </div>
+                      {copiedType === 'code' ? (
+                        <Check size={11} className="text-lime-400" />
+                      ) : (
+                        <Copy size={11} />
+                      )}
+                      <span>{copiedType === 'code' ? 'Copied' : 'Code'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleGenerateNewRoomCode}
+                      className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-amber-300 font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <RotateCw size={11} />
+                      <span>New</span>
+                    </button>
                   </div>
-                </div>
-
-                {/* Right: BIG Scannable QR Code for www.hamsterenglish.online */}
-                <div
-                  onClick={() => setIsQrModalOpen(true)}
-                  className="bg-white p-4 rounded-3xl shadow-2xl border-4 border-lime-400 flex flex-col items-center cursor-pointer hover:scale-[1.03] transition shrink-0"
-                  title="Click to enlarge QR Code fullscreen"
-                >
-                  <QRCodeSVG
-                    value={liveJoinUrl}
-                    size={176}
-                    level="M"
-                    includeMargin={false}
-                    bgColor="#ffffff"
-                    fgColor="#0f172a"
-                  />
-                  <span className="mt-2 text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1">
-                    <QrCode size={14} className="text-indigo-600" /> SCAN TO JOIN LOBBY
-                  </span>
-                  <span className="text-[11px] font-extrabold text-indigo-600">
-                    www.hamsterenglish.online
-                  </span>
                 </div>
               </div>
 
-              {/* TEACHER HOST CONFIGURATION BAR (Teams/Solo, Timer, Balls per Question) */}
-              <div className="pt-3 border-t border-white/15 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* 1. Group into Teams or Solo */}
-                <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
-                      1. Group Players
-                    </span>
-                    {matchMode === 'teams' && roomPlayers.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleShuffleTeams}
-                        className="px-2 py-0.5 rounded-lg bg-amber-400/20 border border-amber-400/40 text-[10px] font-black text-amber-300 hover:bg-amber-400/30 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Shuffle size={11} /> Auto-Group
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
+              {/* Compact 1-Block Match Settings: Mode, Timer, Balls/Q */}
+              <div className="bg-slate-900/90 p-2.5 rounded-2xl border border-white/10 space-y-2">
+                {/* Mode & Balls/Q Row */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="grid grid-cols-2 gap-1 flex-1">
                     <button
                       type="button"
                       onClick={() => setMatchMode('teams')}
-                      className={`py-1.5 rounded-xl font-black text-xs transition cursor-pointer ${
+                      className={`py-1.5 px-2 rounded-xl font-black text-[11px] transition cursor-pointer ${
                         matchMode === 'teams'
                           ? 'bg-indigo-600 text-white border border-indigo-400 shadow'
                           : 'bg-slate-800 text-slate-400 hover:text-white'
                       }`}
                     >
-                      👥 Teams (Red vs Blue)
+                      👥 Teams
                     </button>
                     <button
                       type="button"
                       onClick={() => setMatchMode('solo')}
-                      className={`py-1.5 rounded-xl font-black text-xs transition cursor-pointer ${
+                      className={`py-1.5 px-2 rounded-xl font-black text-[11px] transition cursor-pointer ${
                         matchMode === 'solo'
                           ? 'bg-lime-500 text-slate-950 border border-lime-300 shadow'
                           : 'bg-slate-800 text-slate-400 hover:text-white'
                       }`}
                     >
-                      🐹 Solo (Individual)
+                      🐹 Solo
+                    </button>
+                  </div>
+
+                  {/* Balls per Question Stepper */}
+                  <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-xl border border-lime-400/40 shrink-0">
+                    <span className="text-[10px] font-black text-slate-300 uppercase mr-0.5">
+                      Balls/Q
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
+                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span className="text-xs font-mono font-black text-lime-300 px-1">
+                      +{ballsPerQuestion}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
+                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
+                    >
+                      +
                     </button>
                   </div>
                 </div>
 
-                {/* 2. Match Timer Duration */}
-                <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-pink-300">
-                      2. Match Timer
-                    </span>
-                    <span className="text-[10px] font-mono font-black text-white">
-                      {Math.floor(configuredDurationSec / 60)}m 00s
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-6 gap-1">
-                    {[
-                      { label: '1m', sec: 60 },
-                      { label: '2m', sec: 120 },
-                      { label: '3m', sec: 180 },
-                      { label: '5m', sec: 300 },
-                      { label: '8m', sec: 480 },
-                      { label: '10m', sec: 600 }
-                    ].map(t => (
-                      <button
-                        key={t.sec}
-                        type="button"
-                        onClick={() => {
-                          setConfiguredDurationSec(t.sec);
-                          setMatchSeconds(t.sec);
-                        }}
-                        className={`py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
-                          configuredDurationSec === t.sec
-                            ? 'bg-pink-600 text-white border border-pink-400 shadow'
-                            : 'bg-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. Paintballs Earned Per Question (Host Assigns Balls Per Question: Presets + Custom Stepper) */}
-                <div className="bg-slate-900/90 p-3 rounded-2xl border border-white/10 flex flex-col justify-between gap-2">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-lime-300">
-                      3. Balls Per Question
-                    </span>
-                    <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-lime-400/40">
-                      <button
-                        type="button"
-                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
-                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
-                        title="Decrease Balls per Question"
-                      >
-                        -
-                      </button>
-                      <span className="text-[11px] font-mono font-black text-lime-300 px-1">
-                        +{ballsPerQuestion}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
-                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-xs flex items-center justify-center cursor-pointer"
-                        title="Increase Balls per Question"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-6 gap-1">
-                    {[3, 5, 10, 15, 20, 25].map(count => (
-                      <button
-                        key={count}
-                        type="button"
-                        onClick={() => handleHostUpdateBallsPerQuestion(count)}
-                        className={`py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
-                          ballsPerQuestion === count
-                            ? 'bg-lime-400 text-slate-950 border border-white shadow'
-                            : 'bg-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        +{count}
-                      </button>
-                    ))}
-                  </div>
+                {/* Timer Pills */}
+                <div className="grid grid-cols-6 gap-1">
+                  {[
+                    { label: '1m', sec: 60 },
+                    { label: '2m', sec: 120 },
+                    { label: '3m', sec: 180 },
+                    { label: '5m', sec: 300 },
+                    { label: '8m', sec: 480 },
+                    { label: '10m', sec: 600 }
+                  ].map(t => (
+                    <button
+                      key={t.sec}
+                      type="button"
+                      onClick={() => {
+                        setConfiguredDurationSec(t.sec);
+                        setMatchSeconds(t.sec);
+                      }}
+                      className={`py-1 rounded-lg font-black text-[11px] transition cursor-pointer ${
+                        configuredDurationSec === t.sec
+                          ? 'bg-pink-600 text-white border border-pink-400 shadow'
+                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* HOST LOBBY ROSTER: Group, Move Player Team & Delete Player Controls */}
-              <div className="pt-1">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-300 mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-white font-black">
-                      Joined Players in 3D Park Lobby ({roomPlayers.length})
-                    </span>
+              {/* Joined Players Roster */}
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs font-black text-white mb-1.5">
+                  <span>
+                    Players ({roomPlayers.length})
                     {matchMode === 'teams' && (
-                      <span className="text-[11px] font-black text-slate-400">
-                        (Red Top Middle: {teamTotals.red.count} • Blue Bottom Middle: {teamTotals.blue.count})
+                      <span className="ml-1.5 text-[11px] font-bold text-slate-400">
+                        Red {teamTotals.red.count} • Blue {teamTotals.blue.count}
                       </span>
                     )}
-                  </div>
-
+                  </span>
                   {roomPlayers.length > 0 && matchMode === 'teams' && (
                     <button
                       type="button"
                       onClick={handleShuffleTeams}
-                      className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[11px] flex items-center gap-1 shadow cursor-pointer"
+                      className="px-2 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] flex items-center gap-1 cursor-pointer"
                     >
-                      <Shuffle size={12} /> Group / Shuffle Red &amp; Blue
+                      <Shuffle size={11} /> Shuffle
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {roomPlayers.length === 0 ? (
-                    <div className="sm:col-span-2 md:col-span-3 p-3.5 rounded-2xl bg-slate-900/70 border border-dashed border-white/20 flex items-center justify-between gap-2 text-xs text-slate-300 font-semibold">
-                      <span>
-                        Waiting for students to scan QR or enter code{' '}
-                        <strong className="text-lime-300 font-mono">{roomCode}</strong> at
-                        www.hamsterenglish.online... (Red spawns in Top Middle &amp; Blue spawns in Bottom Middle!)
-                      </span>
+                    <div className="p-2.5 rounded-xl bg-slate-900/70 border border-dashed border-white/20 text-[11px] text-slate-300 font-semibold text-center">
+                      Waiting for players to scan QR or enter{' '}
+                      <strong className="text-lime-300 font-mono">{roomCode}</strong>
                     </div>
                   ) : (
                     roomPlayers.map(p => {
@@ -7971,32 +7828,26 @@ export default function HamsterPaintball({
                       return (
                         <div
                           key={p.id}
-                          className={`p-2.5 rounded-2xl bg-slate-900/95 border-2 ${tCfg.borderClass} flex items-center justify-between gap-2 shadow-md`}
+                          className={`p-2 rounded-xl bg-slate-900/95 border ${tCfg.borderClass} flex items-center justify-between gap-2`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <HamsterCharacterAvatar
                               skin={charSkin}
-                              size={36}
+                              size={30}
                               team={matchMode === 'teams' ? p.team || 'red' : 'solo'}
                             />
                             <div className="min-w-0">
                               <div className="font-black text-xs text-white truncate">
                                 {p.name}
                               </div>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span
-                                  className={`px-1.5 py-0.5 rounded font-black text-[9px] uppercase ${tCfg.bgClass}`}
-                                >
-                                  {tCfg.label}
-                                </span>
-                                <span className="text-[9px] font-bold text-lime-400">
-                                  • {p.team === 'blue' ? 'Bottom Middle Spawn' : 'Top Middle Spawn'}
-                                </span>
-                              </div>
+                              <span
+                                className={`inline-block px-1.5 py-0.2 rounded font-black text-[9px] uppercase ${tCfg.bgClass}`}
+                              >
+                                {tCfg.label}
+                              </span>
                             </div>
                           </div>
 
-                          {/* Host Action Buttons: Move Team & Delete Player */}
                           <div className="flex items-center gap-1 shrink-0">
                             {matchMode === 'teams' && (
                               <button
@@ -8007,18 +7858,17 @@ export default function HamsterPaintball({
                                     ? 'bg-sky-500/20 hover:bg-sky-500/35 text-sky-300 border-sky-400/40'
                                     : 'bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border-rose-400/40'
                                 }`}
-                                title={`Move ${p.name} to ${TEAM_CONFIG[nextTeam].label}`}
                               >
-                                Move → {nextTeam === 'blue' ? 'Blue' : 'Red'}
+                                → {nextTeam === 'blue' ? 'Blue' : 'Red'}
                               </button>
                             )}
                             <button
                               type="button"
                               onClick={() => handleDeletePlayer(p)}
-                              className="p-1.5 rounded-lg bg-rose-600/25 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 transition cursor-pointer"
-                              title={`Remove ${p.name} from Lobby`}
+                              className="p-1 rounded-lg bg-rose-600/25 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 transition cursor-pointer"
+                              title={`Remove ${p.name}`}
                             >
-                              <Trash2 size={13} />
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         </div>
@@ -8028,51 +7878,44 @@ export default function HamsterPaintball({
                 </div>
               </div>
 
-              {/* Integrated Popup Footer: Live Status + START GAME Button */}
-              <div className="pt-3 border-t border-white/15 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white">
-                  <span className="w-2.5 h-2.5 rounded-full bg-lime-400 shrink-0" />
-                  <Users size={16} className="text-cyan-300 shrink-0" />
-                  <span>
-                    {roomPlayers.length === 0
-                      ? `Teacher Jan is in the 3D Park Lobby • Waiting for students to join Room ${roomCode}`
-                      : `${roomPlayers.length} Player${roomPlayers.length > 1 ? 's' : ''} in Park Lobby — Ready to Start!`}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleStartMultiplayerMatch}
-                  className="w-full sm:w-auto bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 active:scale-95 text-slate-950 font-black text-sm px-8 py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-emerald-800 cursor-pointer"
-                >
-                  <Play size={16} fill="currentColor" />
-                  <span>START GAME</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* Minimized Floating Banner when Host is peeking the 3D Park Lobby */
-            <div className="pointer-events-auto self-end mb-4 mx-auto bg-[#1b1130]/95 border-2 border-lime-400/70 px-5 py-3 rounded-2xl shadow-2xl flex flex-wrap items-center gap-4">
-              <span className="text-xs sm:text-sm font-black text-lime-300">
-                🟢 3D Park Lobby • Code: <span className="font-mono text-white">{roomCode}</span> • {roomPlayers.length} Player{roomPlayers.length === 1 ? '' : 's'} Roaming
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsLobbyMinimized(false)}
-                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs cursor-pointer"
-              >
-                Open Lobby Popup
-              </button>
+              {/* Prominent Start Game Button */}
               <button
                 type="button"
                 onClick={handleStartMultiplayerMatch}
-                className="px-4 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs flex items-center gap-1 cursor-pointer"
+                className="w-full bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 active:scale-95 text-slate-950 font-black text-sm py-3 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-emerald-800 cursor-pointer"
               >
-                <Play size={13} fill="currentColor" />
+                <Play size={16} fill="currentColor" />
                 <span>START GAME</span>
               </button>
             </div>
-          )}
+
+            {/* RIGHT PANEL: BIGGER, UNOBSTRUCTED SCANNABLE QR CODE (Zero overlapping icons!) */}
+            <div
+              onClick={() => setIsQrModalOpen(true)}
+              className="host-lobby-interactive-panel pointer-events-auto bg-white p-4 sm:p-5 rounded-3xl shadow-2xl border-4 border-lime-400 flex flex-col items-center cursor-pointer hover:scale-[1.02] transition shrink-0"
+              title="Click to enlarge QR Code"
+            >
+              <QRCodeSVG
+                value={liveJoinUrl}
+                size={236}
+                level="M"
+                includeMargin={false}
+                bgColor="#ffffff"
+                fgColor="#0f172a"
+              />
+              <span className="mt-2.5 text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1">
+                <QrCode size={15} className="text-indigo-600" /> SCAN TO JOIN LOBBY
+              </span>
+              <span className="text-xs font-extrabold text-indigo-600">
+                www.hamsterenglish.online
+              </span>
+            </div>
+          </div>
+
+          {/* Bottom Interactive Hint: Host Character Can Move Around the 3D Park */}
+          <div className="mx-auto mt-2 px-4 py-1.5 rounded-full bg-slate-950/85 border border-lime-400/50 text-[11px] sm:text-xs font-black text-lime-300 shadow-lg">
+            🐹 Move Host Character in 3D Park: WASD / Arrow Keys • Mouse to Look &amp; Click to Shoot
+          </div>
 
           {/* Enlarged Classroom QR Modal */}
           {isQrModalOpen && (
