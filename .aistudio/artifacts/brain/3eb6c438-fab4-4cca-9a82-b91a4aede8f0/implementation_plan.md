@@ -1,93 +1,81 @@
-# Hamster Paintball: Pro Combat Juice & Post-Match MVP Awards
+# Mosquito Slap 3D: Full-Hand Glove Scaling & Visual Overlap Clap Trigger
 
-This plan elevates **Hamster Paintball** with responsive arcade combat feedback—crisp reticle hit-markers, 3D-to-2D projected floating damage numbers, screen-edge paint-splat hit indicators, and multi-kill streak callouts—paired with a **Post-Match MVP Awards** showcase celebrating the classroom's Top Killer, Best Question Accuracy, and Longest Streak on the final results screen.
+This update scales the 3D 5-finger slap gloves to cover the player's entire real hand from wrist to fingertips (`1.25x` landmark span) and tightens the two-glove slap trigger so a mosquito slap only fires when the two rendered 3D gloves visually touch or overlap on screen.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Both feature sets below reflect your confirmed choices from our planning questions:
+> The following design and gameplay decisions have been confirmed from your answers and the live camera screenshot:
 
-- **Confirmed Decision 1 (Gameplay & Combat Feel)**: Implement **Reticle Hit Markers**, **Floating Damage Numbers** (`-25` / `-35` projected over hit opponents), **Screen-Edge Paint Splat Indicators** when taking damage, and **Kill-Streak Callouts** (*"DOUBLE SPLAT!"*, *"TRIPLE SPLAT!"*, *"UNSTOPPABLE!"*, *"PAINT GOD!"*).
-- **Confirmed Decision 2 (Host & Classroom Review)**: Implement **Post-Match MVP Badges** on the Final Results screen for both Host and Players, highlighting **Top Splat Master** (most kills), **Sharpshooter Scholar** (highest question accuracy), and **Streak Legend** (longest streak).
-
----
+- **Confirmed Decision 1 (Full-Hand 1.25x Landmark Span Sizing)**: Remove the `172px` cap on glove size and compute the rendered 3D glove height directly from the player's live 21-point MediaPipe hand bounding box and wrist-to-fingertip span (`1.25x` real hand span, scaling up to `380px` when the player's hand is close to the webcam) so the Blue and Red 3D gloves completely cover the real palm and fingers.
+- **Confirmed Decision 2 (Strict Visual Glove Overlap Trigger)**: Eliminate premature slap triggers when hands are separated by removing the wide `fastClosingClap` velocity trigger (`sepDist <= 0.28`), removing the `+0.065` normalized bounding-box expansion, and requiring the two rendered 3D gloves' actual pixel radii to physically touch or overlap (`centerDistPx <= leftGloveRadiusPx + rightGloveRadiusPx`) before triggering a slap.
 
 ## 1. Overview & Core Concept
 
-- **What It Does**:
-  1. **Reticle Hit-Marker & Floating Damage Popups**: Whenever a player's paintball hits an opponent, a crisp `✕` hit-marker flashes at the aim cursor/reticle and a floating `-25` damage popup rises above the target's 3D world position.
-  2. **Incoming Hit Paint-Splat Vignette**: When a player takes paintball damage, a brief team-colored paint splat vignette flashes along the screen edges so they immediately feel the impact without obstructing their view.
-  3. **Arcade Kill-Streak Announcer**: Scoring consecutive kills triggers high-energy callout banners and synthesized fanfare (*2x Double Splat*, *3x Triple Splat*, *4x Mega Splat*, *5x+ Unstoppable*).
-  4. **Post-Match MVP Podium Badges**: When a match concludes, the Final Results screen calculates and awards three distinct MVP honors across all participants: **Top Killer**, **Best Question Accuracy**, and **Best Streak**.
-- **Target Audience / Persona**: ESL students playing on mobile/tablets or laptops and teachers hosting live classroom matches on an interactive projector/smartboard.
-- **Key Value**: Gives every shot and KO tactile, unmistakable arcade feedback while rewarding both arena skill (kills) and academic mastery (question accuracy and streaks) at the end of every game.
-
----
+- **What It Does**: Dynamically sizes each player's 3D 5-finger cartoon glove to match and cover their real hand on the webcam feed from wrist to fingertips, and ensures slaps only trigger when the Left and Right 3D gloves visually meet on screen.
+- **Target Audience / Persona**: Classroom students and teachers playing 1-Player or 2-Player split-court Mosquito Slap 3D on an interactive display or laptop webcam.
+- **Key Value**: Prevents false-positive slaps when a player's two hands are raised apart in the air, while making the Blue (Player 1) and Red (Player 2) 3D gloves properly cover the player's real hands at any camera distance.
 
 ## 2. User Experience & Visual Design
 
 - **Key User Flows**:
-  1. **Landing a Paintball Hit**:
-     - Player fires a paintball that collides with an opponent (`r < 1.85`).
-     - A glowing neon hit-marker (`✕`) briefly flashes over the aim point (`180ms`), accompanied by a crisp hit sound and a floating `-25` (or `-35 SHIELD` / `SPLAT KO!`) badge projected from the target's 3D coordinates into 2D screen space.
-  2. **Taking Incoming Damage**:
-     - When hit by an opponent, a 450ms translucent paint-splat vignette pulses around the outer screen perimeter (`pointer-events-none`) so the player knows they are under fire.
-  3. **Scoring Multi-Kills & Streaks**:
-     - Achieving 2, 3, 4, or 5+ kills without being splatted displays an animated arcade callout badge below the top HUD with distinct color coding and synthesized audio chord stingers.
-  4. **Viewing Post-Match MVP Awards**:
-     - When the match ends (`screen === 'results'`), directly beneath the **Match Winner Banner**, a 3-card **MVP Awards Row** highlights:
-       - **💥 Top Killer**: Player with the highest kill count (`X Kills`).
-       - **🎯 Best Accuracy**: Player with the highest question accuracy (`X% • Y✓`).
-       - **🔥 Best Streak**: Player with the highest streak (`Xx Streak`).
-     - Individual player rows in the standings also display compact inline MVP ribbons next to winners' names.
-
+  1. **Raising Hands on Camera**: Each detected hand renders a 3D 5-finger cartoon glove (Blue for Player 1, Red for Player 2) anchored over the palm and fingers, scaled to `1.25x` the real hand's wrist-to-fingertip and landmark bounding-box span so the real fingers and palm are covered.
+  2. **Moving Hands Apart**: When both hands are raised in the air with visible space between the two 3D gloves, no clap ring appears and mosquitoes flying between the two separated hands are never accidentally slapped.
+  3. **Clapping Both Gloves Together**: As soon as the Left and Right 3D gloves visually touch or overlap over a flying mosquito, the golden `CLAP!` shockwave ring and `+5 PTS` / `-5 PTS & FROZEN` hit feedback trigger immediately.
 - **Visual Identity & Theme**:
-  - **Aesthetic Direction**: High-contrast arcade sports HUD (`bg-slate-900/90 backdrop-blur-sm border border-white/15`) layered cleanly over the vibrant 3D stadium park.
-  - **Color Palette & Mood**:
-    - Red Squad (`#EF4444` / `rose-500`), Blue Squad (`#2563EB` / `sky-500`), Critical KO Gold (`#FACC15` / `amber-400`), Shield Hit Cyan (`#22D3EE` / `cyan-400`), and Accuracy Emerald (`#4ADE80` / `emerald-400`).
-  - **Typography & Hierarchy**: Bold geometric sans with `tabular-nums` for all damage numbers, kill counters, and accuracy percentages so rapidly updating metrics never jitter.
-
----
+  - *Aesthetic Direction*: Vibrant 3D arcade classroom game with high-contrast Blue (`#2563eb`) and Red (`#ef4444`) team gloves over a live AR webcam canvas.
+  - *Color Palette & Mood*: Sky-blue and crisp white HUD surfaces (`60%` arena canvas, `30%` structural HUD cards, `10%` Blue/Red team and emerald/amber state accents).
+  - *Typography & Hierarchy*: Bold `Fredoka` display numerals (`tabular-nums`) for live scores and timers, paired with high-contrast question banners.
+- **Interactive Feedback & Motion**:
+  - Smooth `60 FPS` hand-tracking interpolation (`0.92` position response, `0.75` scale response) with a `1.16x` slap impact bounce when both gloves touch.
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: 3D-to-2D Screen Projection for Floating Damage Numbers**
-  - *Chosen Approach*: Project the hit opponent's 3D world coordinates (`THREE.Vector3.project(camera)`) into 2D viewport percentages and render lightweight, GPU-accelerated DOM badges (`transform: translate3d(...)`).
-  - *Why*: Maintains razor-sharp typography at any resolution on both mobile and desktop without allocating per-hit Three.js canvas textures.
-  - *Alternatives Considered*: Creating a `THREE.CanvasTexture` sprite for every hit—passed over to avoid WebGL texture memory churn during rapid paintball exchanges.
-
-- **Decision 2: Deterministic MVP Award Calculation on Final Results**
-  - *Chosen Approach*: Compute the three MVP winners (`topKiller`, `bestAccuracy`, `bestStreak`) deterministically from `roomPlayers` via `useMemo` so the Host screen and all connected Student screens display the exact same MVP winners.
-  - *Why*: Requires zero extra network round-trips when the match ends and works seamlessly in both Teams and Solo modes.
-
----
+- **Decision 1: Pixel-Accurate Glove Radius Touch Detection vs. Normalized Velocity Heuristics**
+  - *Chosen Approach*: Calculate each glove's actual rendered pixel radius (`gloveRadiusPx = 62 * finalScale`) and trigger a clap only when both hands are actively tracked and `centerDistPx <= (leftRadiusPx + rightRadiusPx) * 0.92`, or when two hands that were already nearly touching (`lastTwoHandSepDist <= 0.14`) merge into a single occluded MediaPipe skeleton on impact.
+  - *Why*: In the screenshot, the player's two hands were ~280px apart (`sepDist ~ 0.20`), which triggered the old `fastClosingClap` (`sepDist <= 0.28`) and padded bounding-box checks. Tying the trigger directly to the visual glove radius guarantees the player sees the two gloves touch when a slap fires.
+  - *Alternatives Considered*: Fixed normalized screen distance thresholds, which fail when players stand closer to or farther from the camera.
+- **Decision 2: Uncapped 1.25x Real-Hand Span Scaling**
+  - *Chosen Approach*: Measure the pixel span of all 21 hand landmarks on the canvas (`max(wristToTipPx, bboxHeightPx, palmLenPx * 1.95, palmWidthPx * 2.15)`) and set `targetGlovePx = anatomicalHandPx * 1.25` (supporting `120px` to `390px` glove heights, corresponding to `finalScale` up to `3.0`).
+  - *Why*: When a player stands close to the webcam, their real hand is `260px–340px` tall on a `1280x720` canvas. The previous `172px` cap forced the glove to stay half the size of the real hand.
 
 ## 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
+- **Architecture & Component Diagram**:
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        HamsterPaintballView                              │
-├───────────────────────────────────┬──────────────────────────────────────┤
-│     3D WebGL Projectile Loop      │       Real-Time Network Sync         │
-│  ┌─────────────────────────────┐  │  ┌────────────────────────────────┐  │
-│  │ Hit Detection (r < 1.85)    │  │  │ PlayerNetworkState             │  │
-│  │  ├─ spawnFloatingDamage()   │  │  │  ├─ kos (Kills)                │  │
-│  │  ├─ triggerHitMarkerFlash() │  │  │  ├─ questionsCorrect / Wrong   │  │
-│  │  └─ triggerKillStreakCall() │  │  │  └─ bestStreak                 │  │
-│  └─────────────────────────────┘  │  └────────────────────────────────┘  │
-├───────────────────────────────────┴──────────────────────────────────────┤
-│                    Semantic DOM HUD & Results Overlays                   │
-│  ┌──────────────────────┐ ┌─────────────────────┐ ┌───────────────────┐  │
-│  │ Floating Damage &    │ │ Screen-Edge Damage  │ │ Post-Match Results│  │
-│  │ Reticle Hit-Marker   │ │ Splat Vignette      │ │  ├─ Winner Banner │  │
-│  │ Overlay              │ │ + Kill-Streak Toast │ │  └─ 3 MVP Cards   │  │
-│  └──────────────────────┘ └─────────────────────┘ └───────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    MediaPipe 21-Landmark Hand Stream                    │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│             Hand Geometry & 1.25x Real-Hand Scale Analyzer              │
+│  • Computes canvas-projected 21-landmark bounding box & wrist-to-tip px │
+│  • Scales glove 1.25x real hand span (120px..390px, scale 0.95..3.00)   │
+└─────────────────┬─────────────────────────────────────┬─────────────────┘
+                  │                                     │
+                  ▼                                     ▼
+┌───────────────────────────────────┐ ┌───────────────────────────────────┐
+│   Visual Glove Overlap Detector   │ │  3D 5-Finger Glove Canvas Render  │
+│  • Checks L/R rendered glove      │ │  • Anchors over palm + fingers    │
+│    radii overlap on screen        │ │  • P1 Blue (#2563eb) / P2 Red     │
+│  • Bridges 1-frame occlusion only │ │    (#ef4444)                      │
+│    when prior sepDist <= 0.14     │ └───────────────────────────────────┘
+└─────────────────┬─────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│              Mosquito Target Collision & Scoring Engine                 │
+│  • Evaluates slap hit only when visual glove overlap is active          │
+│  • Awards +5 pts (Correct) or -5 pts + 3D Ice Freeze (Wrong)            │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Data Model & State Additions**:
-  - `floatingDamages`: Array of `{ id, xPct, yPct, amount, isKo, isShield, color }` with automatic 850ms cleanup.
-  - `hitMarkerActive`: Boolean + screen coordinates `{ x, y, isKo }` lasting 180ms when a shot lands.
-  - `damageVignetteColor`: Hex/RGB string triggered for 450ms inside `applyIncomingDamage`.
-  - `killStreakCallout`: `{ title, subtitle, count, color }` triggered when `koStreak` reaches `2` (*DOUBLE SPLAT!*), `3` (*TRIPLE SPLAT!*), `4` (*MEGA SPLAT!*), or `5+` (*UNSTOPPABLE!*).
-  - `mvpAwards`: Computed memo returning `{ topKiller, bestAccuracy, bestStreak }` from `roomPlayers`.
+- **Data Model & State**:
+  - `leftHand.scale` / `rightHand.scale`: Updated in `analyzeHandGeometry` and `drawSingleCartoonGlove` to reflect the `1.25x` real-hand coverage factor (`0.95` to `3.00`).
+  - `leftHand.radiusPx` / `rightHand.radiusPx`: Stored on each hand state from the rendered glove dimensions (`58 * computedScale`) so collision detection uses the exact visual glove boundary.
+- **Interactive Component & State Mapping**:
+  - `analyzeHandGeometry`: Maps the 21 MediaPipe landmarks to a `0.95..2.85` scale multiplier based on `1.25x` the real hand's normalized span.
+  - `onHandsResults`: Sets `player.isClapping = true` only when the two hands' visual glove radii touch/overlap (`sepDist <= visualTouchDist` or unpadded `bboxOverlap`), and restricts single-hand occlusion bridging to hands that were already within `lastTwoHandSepDist <= 0.14` (`< 220ms` ago) and moving toward each other.
+  - `checkHandWeaponCollision`: Verifies `gloveCenterDistPx <= leftRadiusPx + rightRadiusPx` before testing distance to any mosquito option card, preventing mid-air false slaps between separated hands.
+  - `drawSingleCartoonGlove`: Anchors the glove center at the midpoint of the full hand bounding box (`wrist` through `fingertips`) and scales `targetGlovePx = anatomicalHandPx * 1.25` up to `390px`.

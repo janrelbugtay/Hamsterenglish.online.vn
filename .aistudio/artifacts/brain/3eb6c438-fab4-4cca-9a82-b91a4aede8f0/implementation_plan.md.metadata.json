@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for adding Combat Feel upgrades (reticle hit-markers, 3D projected floating damage numbers, screen-splat hit indicators, and arcade kill-streak callouts) and Post-Match MVP Badges (Top Killer, Best Accuracy, and Longest Streak) to Hamster Paintball.",
-  "updatedAt":  "2026-11-09T16:17:06.393695088Z",
+  "summary":  "Implementation plan to scale the 3D 5-finger slap gloves to cover the entire real hand from wrist to fingertips (1.25x landmark span) and enforce strict visual glove-to-glove overlap before triggering a mosquito slap.",
+  "updatedAt":  "2026-11-09T18:35:47.636448999Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
