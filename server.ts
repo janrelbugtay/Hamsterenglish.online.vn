@@ -1544,6 +1544,7 @@ Return exactly a JSON array of 4 objects.`;
           matchStatus: "lobby",
           configuredDurationSec: 180,
           ballsPerQuestion: 10,
+          isUninitialized: true,
           updatedAt: Date.now()
         },
         players: new Map()
@@ -1590,6 +1591,7 @@ Return exactly a JSON array of 4 objects.`;
         ...entry.room,
         ...roomPatch,
         roomCode: entry.room.roomCode,
+        isUninitialized: false,
         updatedAt: Date.now()
       };
     }
@@ -1641,8 +1643,9 @@ Return exactly a JSON array of 4 objects.`;
       !isHostAction &&
       hostOverrideAt > clientAckOverrideAt &&
       existing.team &&
-      now - hostOverrideAt < 15000;
+      now - hostOverrideAt < 8000;
 
+    // Student coordinates (x, z, rotY) are always authoritative when !isHostAction so moving players never freeze at spawn!
     const mergedPlayer: Record<string, any> = {
       ...existing,
       ...playerData,
@@ -1655,13 +1658,26 @@ Return exactly a JSON array of 4 objects.`;
       updatedAt: now
     };
 
-    if (preserveHostTeam && typeof existing.x === "number" && typeof existing.z === "number") {
-      mergedPlayer.x = existing.x;
-      mergedPlayer.z = existing.z;
-      if (typeof existing.rotY === "number") mergedPlayer.rotY = existing.rotY;
-    }
-
     entry.players.set(playerId, mergedPlayer);
+
+    // If a client reports active room state (e.g. from Firestore across domains) into an uninitialized memory room, adopt it
+    if (body.roomState && typeof body.roomState === "object") {
+      const rs = body.roomState;
+      if (
+        entry.room.isUninitialized ||
+        (rs.matchStatus === "playing" &&
+          typeof rs.startedAt === "number" &&
+          rs.startedAt > (entry.room.startedAt || 0))
+      ) {
+        entry.room = {
+          ...entry.room,
+          ...rs,
+          roomCode: entry.room.roomCode,
+          isUninitialized: false,
+          updatedAt: now
+        };
+      }
+    }
 
     if (body.latestEvent && body.latestEvent.id) {
       entry.room.latestEvent = body.latestEvent;

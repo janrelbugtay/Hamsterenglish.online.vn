@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for replacing 'Play in Mystery Box' with 'Create Homework' in My Games, creating a comprehensive Homework management and player workflow, and building a Teacher/Student Homework Analytics & Proof-of-Work dashboard with duration tracking, scores, accuracy, and question breakdowns.",
-  "updatedAt":  "2026-11-01T05:46:10.249348098Z",
+  "summary":  "Implementation plan for streamlining the player HUD (removing Scores, Character, Lobby number, and Settings buttons), switching Host scoring to kills per team, displaying the winning team/player on both Host and Player end-game screens, hiding Questions until the match starts, and showing per-player question accuracy (correct, wrong, and percentage) on the Host screen.",
+  "updatedAt":  "2026-11-09T06:11:30.927734647Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

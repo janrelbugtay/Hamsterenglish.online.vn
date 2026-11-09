@@ -1567,6 +1567,8 @@ interface PlayerNetworkState {
   bestStreak?: number;
   immuneUntil?: number;
   questionsAnswered: number;
+  questionsCorrect?: number;
+  questionsWrong?: number;
   updatedAt: number;
   kicked?: boolean;
   lastShot?: {
@@ -1936,11 +1938,27 @@ export default function HamsterPaintball({
   const [hitsLanded, setHitsLanded] = useState<number>(0);
   const [bestStreak, setBestStreak] = useState<number>(0);
   const [questionsAnswered, setQuestionsAnswered] = useState<number>(0);
+  const [questionsCorrect, setQuestionsCorrect] = useState<number>(0);
+  const [questionsWrong, setQuestionsWrong] = useState<number>(0);
   const [koBannerText, setKoBannerText] = useState<string | null>(null);
   const [pickupBannerText, setPickupBannerText] = useState<string | null>(null);
   const [scorePopups, setScorePopups] = useState<
     Array<{ id: string; points: number; label: string; color: string }>
   >([]);
+
+  // Helper to compute per-player Question Accuracy (%), Correct count, and Wrong count
+  const getPlayerQuestionStats = (p: {
+    questionsCorrect?: number;
+    questionsWrong?: number;
+    questionsAnswered?: number;
+  }) => {
+    const correct =
+      typeof p.questionsCorrect === 'number' ? p.questionsCorrect : p.questionsAnswered || 0;
+    const wrong = typeof p.questionsWrong === 'number' ? p.questionsWrong : 0;
+    const total = correct + wrong;
+    const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+    return { correct, wrong, total, accuracy };
+  };
 
   // Helper to award points with floating HUD popup & streak tracking
   const awardPoints = (points: number, label: string, color: string = '#facc15') => {
@@ -2015,10 +2033,11 @@ export default function HamsterPaintball({
     }
   }, [matchStatus]);
 
-  // Keep roomCode in sessionStorage
+  // Keep roomCode in sessionStorage and reset merged players cache on room change
   useEffect(() => {
     if (typeof window === 'undefined' || !roomCode) return;
     sessionStorage.setItem('hamster_pb_room_code', roomCode);
+    mergedPlayersMapRef.current.clear();
   }, [roomCode]);
 
   const pushLiveEvent = (text: string, color: string = '#a3e635') => {
@@ -2082,6 +2101,7 @@ export default function HamsterPaintball({
     joyX: number;
     joyZ: number;
     mouseDown: boolean;
+    usingMouseAim: boolean;
     mouseScreenX: number;
     mouseScreenY: number;
     lastMouseX: number;
@@ -2182,6 +2202,8 @@ export default function HamsterPaintball({
     hitsLanded,
     bestStreak,
     questionsAnswered,
+    questionsCorrect,
+    questionsWrong,
     ammo,
     healthCans,
     shieldCans,
@@ -2213,6 +2235,8 @@ export default function HamsterPaintball({
       hitsLanded,
       bestStreak,
       questionsAnswered,
+      questionsCorrect,
+      questionsWrong,
       ammo,
       healthCans,
       shieldCans,
@@ -2242,6 +2266,8 @@ export default function HamsterPaintball({
     hitsLanded,
     bestStreak,
     questionsAnswered,
+    questionsCorrect,
+    questionsWrong,
     ammo,
     healthCans,
     shieldCans,
@@ -2464,6 +2490,22 @@ export default function HamsterPaintball({
           sfx.playKO();
           setMatchStatus('results');
           setScreen('results');
+          if (stateSnapRef.current.role === 'host') {
+            const bcChannel = broadcastChannelRef.current || gameRef.current?.broadcastChannel;
+            if (bcChannel) {
+              try {
+                bcChannel.postMessage({
+                  type: 'match_end',
+                  id: clientIdRef.current
+                });
+              } catch {}
+            }
+            if (roomCode) {
+              const endPatch = { matchStatus: 'results', endedAt: Date.now() };
+              syncPaintballRoomApi(roomCode, endPatch);
+              setDoc(getRoomDocRef(roomCode), endPatch, { merge: true }).catch(() => {});
+            }
+          }
           return 0;
         }
         const nextSec = prev - 1;
@@ -2476,7 +2518,7 @@ export default function HamsterPaintball({
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [screen, role, matchStatus, isTimerPaused]);
+  }, [screen, role, matchStatus, isTimerPaused, roomCode]);
 
   // 15-Second Per-Question Countdown Timer inside Question Modal
   useEffect(() => {
@@ -2489,6 +2531,7 @@ export default function HamsterPaintball({
         if (prev <= 1) {
           sfx.playWrong();
           setTriviaStreak(0);
+          setQuestionsWrong(w => w + 1);
           setSelectedOptionIdx(-1);
           setTriviaFeedback('⏰ TIME UP! Moving to next question...');
           setTimeout(() => {
@@ -2518,6 +2561,10 @@ export default function HamsterPaintball({
     doc(db, 'ttt_rooms', `pb_room_${normalizeCode(code)}`, 'actions', `player_${pId}`);
 
   const ackHostOverrideAtRef = useRef<number>(0);
+  const lastDamageAppliedAtRef = useRef<number>(0);
+  const mergedPlayersMapRef = useRef<
+    Map<string, { state: PlayerNetworkState; lastSeenLocalAt: number }>
+  >(new Map());
   const lastNetActionRef = useRef<{
     lastShot?: PlayerNetworkState['lastShot'];
     lastHit?: PlayerNetworkState['lastHit'];
@@ -2549,6 +2596,16 @@ export default function HamsterPaintball({
   ) => {
     const clean = normalizeCode(code);
     if (!clean) return null;
+    const snap = stateSnapRef.current;
+    const roomStatePatch =
+      snap.matchStatus === 'playing' && lastStartedAtRef.current > 1000
+        ? {
+            matchStatus: 'playing',
+            matchMode: snap.matchMode,
+            startedAt: lastStartedAtRef.current,
+            ballsPerQuestion: snap.ballsPerQuestion
+          }
+        : undefined;
     try {
       const res = await fetch(`/api/paintball/room/${encodeURIComponent(clean)}/player`, {
         method: 'POST',
@@ -2557,6 +2614,7 @@ export default function HamsterPaintball({
           player: playerPayload,
           isHostAction: Boolean(options?.isHostAction),
           ackHostOverrideAt: ackHostOverrideAtRef.current,
+          roomState: roomStatePatch,
           latestEvent: options?.latestEvent
         })
       });
@@ -2614,9 +2672,15 @@ export default function HamsterPaintball({
     setKoStreak(0);
     setHitsLanded(0);
     setBestStreak(0);
+    setQuestionsAnswered(0);
+    setQuestionsCorrect(0);
+    setQuestionsWrong(0);
+    stateSnapRef.current.questionsAnswered = 0;
+    stateSnapRef.current.questionsCorrect = 0;
+    stateSnapRef.current.questionsWrong = 0;
     setIsQuestionModalOpen(false);
 
-    // Place Red Team in Top-Middle Red Square Spawn (0, -26) and Blue Team in Bottom-Middle Blue Square Spawn (0, 26)
+    // Place Red Team in Top-Middle Red Square Spawn (0, -44) and Blue Team in Bottom-Middle Blue Square Spawn (0, 44)
     const effectiveTeam: TeamId =
       activeMode === 'solo'
         ? 'solo'
@@ -2662,7 +2726,9 @@ export default function HamsterPaintball({
       kos: 0,
       hitsLanded: 0,
       bestStreak: 0,
-      questionsAnswered: stateSnapRef.current.questionsAnswered,
+      questionsAnswered: 0,
+      questionsCorrect: 0,
+      questionsWrong: 0,
       kicked: false,
       updatedAt: Date.now()
     };
@@ -2724,19 +2790,26 @@ export default function HamsterPaintball({
             }));
           }
         }
-        if (data?.matchMode) setMatchMode(data.matchMode);
-        if (typeof data?.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
+        if (!data?.isUninitialized && data?.matchMode) {
+          setMatchMode(data.matchMode);
+        }
+        if (
+          !data?.isUninitialized &&
+          typeof data?.ballsPerQuestion === 'number' &&
+          data.ballsPerQuestion > 0
+        ) {
           setBallsPerQuestion(data.ballsPerQuestion);
           stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
         }
         if (
+          !data?.isUninitialized &&
           typeof data?.configuredDurationSec === 'number' &&
           stateSnapRef.current.matchStatus === 'lobby'
         ) {
           setConfiguredDurationSec(data.configuredDurationSec);
           setMatchSeconds(data.configuredDurationSec);
         }
-        if (typeof data?.isTimerPaused === 'boolean') {
+        if (typeof data?.isTimerPaused === 'boolean' && !data?.isUninitialized) {
           setIsTimerPaused(data.isTimerPaused);
         }
         if (typeof data?.timerSyncSeconds === 'number' && data?.timerSyncedAt) {
@@ -2750,7 +2823,7 @@ export default function HamsterPaintball({
           const incomingStartTs =
             typeof data.startedAt === 'number' && data.startedAt > 1000
               ? data.startedAt
-              : lastStartedAtRef.current || 1;
+              : lastStartedAtRef.current || Date.now();
           const isNewMatchStart =
             stateSnapRef.current.matchStatus !== 'playing' ||
             (typeof data.startedAt === 'number' &&
@@ -2770,10 +2843,19 @@ export default function HamsterPaintball({
         } else if (data?.matchStatus === 'results' && stateSnapRef.current.screen === 'game') {
           setMatchStatus('results');
           setScreen('results');
-        } else if (data?.matchStatus === 'lobby') {
-          setMatchStatus('lobby');
-          if (stateSnapRef.current.screen === 'results') {
-            setScreen('game');
+        } else if (data?.matchStatus === 'lobby' && !data?.isUninitialized) {
+          // Never let a stale 'lobby' payload downgrade an active 'playing' match unless Host started a newer lobby
+          const canReturnToLobby =
+            stateSnapRef.current.matchStatus !== 'playing' ||
+            (typeof data.updatedAt === 'number' &&
+              lastStartedAtRef.current > 0 &&
+              data.updatedAt > lastStartedAtRef.current + 5000 &&
+              !data.startedAt);
+          if (canReturnToLobby) {
+            setMatchStatus('lobby');
+            if (stateSnapRef.current.screen === 'results') {
+              setScreen('game');
+            }
           }
         }
       }
@@ -2785,11 +2867,9 @@ export default function HamsterPaintball({
       }
     };
 
-    // Unified Players Roster Processor (used by both Server API & Firestore)
+    // Unified Multi-Source Players Roster Processor (merges across Firestore, Server API & BroadcastChannel!)
     const processPlayersList = (rawList: Array<Record<string, any>>) => {
       const now = Date.now();
-      const activePlayers: PlayerNetworkState[] = [];
-      const seenIds = new Set<string>();
 
       rawList.forEach(data => {
         if (!data) return;
@@ -2799,14 +2879,26 @@ export default function HamsterPaintball({
         // Check if Host kicked/deleted this local player
         if (playerId === clientIdRef.current && data.kicked) {
           hasJoinedRoomRef.current = false;
+          mergedPlayersMapRef.current.delete(playerId);
           deletePaintballPlayerApi(cleanCode, clientIdRef.current);
           deleteDoc(getPlayerDocRef(cleanCode, clientIdRef.current)).catch(() => {});
           setScreen('join');
           return;
         }
 
+        if (data.kicked) {
+          mergedPlayersMapRef.current.delete(playerId);
+          if (gameRef.current?.remotePlayers.has(playerId)) {
+            const rem = gameRef.current.remotePlayers.get(playerId);
+            if (rem) gameRef.current.scene.remove(rem.mesh);
+            gameRef.current.remotePlayers.delete(playerId);
+          }
+          return;
+        }
+
         if (data.role === 'player' && !data.kicked) {
           const defaultZ = data.team === 'blue' ? 44 : -44;
+          const incomingUpdatedAt = typeof data.updatedAt === 'number' ? data.updatedAt : now;
           const pState: PlayerNetworkState = {
             id: playerId,
             name: data.name || 'Student',
@@ -2825,10 +2917,31 @@ export default function HamsterPaintball({
             immuneUntil: typeof data.immuneUntil === 'number' ? data.immuneUntil : 0,
             questionsAnswered:
               typeof data.questionsAnswered === 'number' ? data.questionsAnswered : 0,
-            updatedAt: data.updatedAt || now
+            questionsCorrect:
+              typeof data.questionsCorrect === 'number'
+                ? data.questionsCorrect
+                : typeof data.questionsAnswered === 'number'
+                ? data.questionsAnswered
+                : 0,
+            questionsWrong:
+              typeof data.questionsWrong === 'number' ? data.questionsWrong : 0,
+            updatedAt: incomingUpdatedAt
           };
-          activePlayers.push(pState);
-          seenIds.add(playerId);
+
+          const existingEntry = mergedPlayersMapRef.current.get(playerId);
+          const shouldUpdateState =
+            !existingEntry ||
+            incomingUpdatedAt >= (existingEntry.state.updatedAt || 0) - 400 ||
+            now - existingEntry.lastSeenLocalAt > 1200;
+
+          if (shouldUpdateState) {
+            mergedPlayersMapRef.current.set(playerId, {
+              state: pState,
+              lastSeenLocalAt: now
+            });
+          } else if (existingEntry) {
+            existingEntry.lastSeenLocalAt = now;
+          }
 
           // If this is my own player document:
           // 1) Check if Host just clicked START GAME (`matchStartResetAt`) so we immediately spawn in our Team Spawn Area
@@ -2842,6 +2955,12 @@ export default function HamsterPaintball({
               if (data.team === 'red' || data.team === 'blue') {
                 setMyTeam(data.team);
                 stateSnapRef.current.myTeam = data.team;
+              }
+              if (typeof data.hostOverrideAt === 'number') {
+                ackHostOverrideAtRef.current = Math.max(
+                  ackHostOverrideAtRef.current,
+                  data.hostOverrideAt
+                );
               }
               triggerStudentMatchStart(
                 configuredDurationSec || 180,
@@ -2880,7 +2999,8 @@ export default function HamsterPaintball({
           }
 
           if (playerId !== clientIdRef.current) {
-            upsertRemotePlayer(pState);
+            const latestState = mergedPlayersMapRef.current.get(playerId)?.state || pState;
+            upsertRemotePlayer(latestState);
 
             // Process cross-device network shots
             if (
@@ -2890,8 +3010,8 @@ export default function HamsterPaintball({
               seenNetworkEventsRef.current.add(data.lastShot.shotId);
               spawnNetworkProjectile(
                 playerId,
-                pState.name,
-                pState.team,
+                latestState.name,
+                latestState.team,
                 data.lastShot.x,
                 data.lastShot.z,
                 data.lastShot.angle,
@@ -2899,7 +3019,7 @@ export default function HamsterPaintball({
               );
             }
 
-            // Process cross-device hits targeting this local student player
+            // Process cross-device hits targeting this local student player (works in both Lobby and Match!)
             if (
               data.lastHit?.hitId &&
               data.lastHit.targetId === clientIdRef.current &&
@@ -2950,18 +3070,30 @@ export default function HamsterPaintball({
         }
       });
 
-      // Clean up disconnected or deleted 3D meshes
+      // Prune only players who haven't been seen from ANY source (Firestore, Server API, BroadcastChannel) in > 45s
+      mergedPlayersMapRef.current.forEach((val, key) => {
+        if (now - val.lastSeenLocalAt > 45000) {
+          mergedPlayersMapRef.current.delete(key);
+        }
+      });
+
+      // Clean up disconnected or deleted 3D meshes not in mergedPlayersMapRef
       if (gameRef.current) {
         gameRef.current.remotePlayers.forEach((val, key) => {
-          if (!seenIds.has(key)) {
+          if (!mergedPlayersMapRef.current.has(key)) {
             gameRef.current?.scene.remove(val.mesh);
             gameRef.current?.remotePlayers.delete(key);
           }
         });
       }
 
-      // Sort by score descending
-      activePlayers.sort((a, b) => b.score - a.score);
+      const activePlayers = Array.from(mergedPlayersMapRef.current.values()).map(v => v.state);
+      activePlayers.sort(
+        (a, b) =>
+          (b.kos || 0) - (a.kos || 0) ||
+          (b.questionsCorrect || b.questionsAnswered || 0) -
+            (a.questionsCorrect || a.questionsAnswered || 0)
+      );
       setRoomPlayers(activePlayers);
     };
 
@@ -3016,15 +3148,8 @@ export default function HamsterPaintball({
         if (!msg || msg.id === clientIdRef.current) return;
         if (msg.type === 'player_update') {
           const pState = msg.payload as PlayerNetworkState;
-          if (pState.role === 'player' && !pState.kicked) {
-            upsertRemotePlayer(pState);
-            setRoomPlayers(prev => {
-              const idx = prev.findIndex(p => p.id === pState.id);
-              if (idx === -1) return [...prev, pState];
-              const copy = [...prev];
-              copy[idx] = { ...copy[idx], ...pState };
-              return copy;
-            });
+          if (pState && pState.role === 'player' && !pState.kicked) {
+            processPlayersList([pState]);
           }
         } else if (msg.type === 'fire_shot' && gameRef.current) {
           spawnNetworkProjectile(
@@ -3140,10 +3265,27 @@ export default function HamsterPaintball({
       () => {}
     );
 
-    // Real-Time Server Polling & Heartbeat Sync (300ms interval — works 100% reliably across all devices!)
+    // Real-Time Server Polling & Heartbeat Sync (300ms interval — works 100% reliably across all devices & domains!)
+    let pollTickCount = 0;
     const syncInterval = setInterval(async () => {
+      pollTickCount++;
       const g = gameRef.current;
       const snapState = stateSnapRef.current;
+
+      // Every 4 ticks (~1.2s), also fetch Firestore players collection directly so cross-domain mobile/laptop players stay 100% synced even if WebSocket snapshots lag
+      if (pollTickCount % 4 === 0) {
+        getDocs(playersCol)
+          .then(snap => {
+            const fsList = snap.docs.map(d => ({
+              ...(d.data() as Record<string, any>),
+              id: (d.data() as any).id || d.id.replace(/^player_/, '')
+            }));
+            if (fsList.length > 0) {
+              processPlayersList(fsList);
+            }
+          })
+          .catch(() => {});
+      }
 
       if (snapState.role === 'host') {
         try {
@@ -3170,7 +3312,7 @@ export default function HamsterPaintball({
       }
 
       hasJoinedRoomRef.current = true;
-      const defaultZ = snapState.myTeam === 'blue' ? 26 : -26;
+      const defaultZ = snapState.myTeam === 'blue' ? 44 : -44;
       const payload: PlayerNetworkState = {
         id: clientIdRef.current,
         name: snapState.playerName || 'Student',
@@ -3188,6 +3330,8 @@ export default function HamsterPaintball({
         hitsLanded: snapState.hitsLanded,
         bestStreak: snapState.bestStreak,
         questionsAnswered: snapState.questionsAnswered,
+        questionsCorrect: snapState.questionsCorrect,
+        questionsWrong: snapState.questionsWrong,
         lastShot: lastNetActionRef.current.lastShot,
         lastHit: lastNetActionRef.current.lastHit,
         lastKo: lastNetActionRef.current.lastKo,
@@ -3241,10 +3385,16 @@ export default function HamsterPaintball({
 
   // Apply incoming paintball damage to local student player (Respects 10-Second Respawn Immunity!)
   const applyIncomingDamage = (damage: number, attackerName: string, attackerId: string) => {
+    const now = Date.now();
     // 10-SECOND RESPAWN IMMUNITY: Player CANNOT be hit within 10 seconds after respawning!
-    if (Date.now() < stateSnapRef.current.immuneUntil) {
+    if (now < stateSnapRef.current.immuneUntil) {
       return;
     }
+    // Deduplicate simultaneous local-projectile + network-packet hits within 95ms
+    if (now - lastDamageAppliedAtRef.current < 95) {
+      return;
+    }
+    lastDamageAppliedAtRef.current = now;
 
     sfx.playSplat();
     setShield(prevShield => {
@@ -6021,6 +6171,7 @@ export default function HamsterPaintball({
       joyX: 0,
       joyZ: 0,
       mouseDown: false,
+      usingMouseAim: false,
       mouseScreenX: window.innerWidth / 2,
       mouseScreenY: window.innerHeight / 2,
       lastMouseX: window.innerWidth / 2,
@@ -6043,6 +6194,62 @@ export default function HamsterPaintball({
       particles: [],
       remotePlayers: new Map(),
       broadcastChannel: broadcastChannelRef.current || undefined
+    };
+
+    // Reusable 3D Raycaster & Ground Plane (y = 0.06) so Laptop Mouse Pointer & 3D Aim Reticle are 100% locked together!
+    const mouseRaycaster = new THREE.Raycaster();
+    const mouseNdcVec = new THREE.Vector2();
+    const groundAimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.06);
+    const rayHitPoint = new THREE.Vector3();
+
+    const syncMouseCursorToAimReticle = (g: NonNullable<typeof gameRef.current>) => {
+      const rect = g.renderer.domElement.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const ndcX = THREE.MathUtils.clamp(
+        ((g.mouseScreenX - rect.left) / rect.width) * 2 - 1,
+        -1,
+        1
+      );
+      const ndcY = THREE.MathUtils.clamp(
+        -((g.mouseScreenY - rect.top) / rect.height) * 2 + 1,
+        -1,
+        1
+      );
+      mouseNdcVec.set(ndcX, ndcY);
+      mouseRaycaster.setFromCamera(mouseNdcVec, g.camera);
+
+      const intersected = mouseRaycaster.ray.intersectPlane(groundAimPlane, rayHitPoint);
+      let worldX: number;
+      let worldZ: number;
+      const rayDir = mouseRaycaster.ray.direction;
+
+      if (
+        intersected &&
+        Math.hypot(rayHitPoint.x - g.x, rayHitPoint.z - g.z) <= 56 &&
+        (rayHitPoint.x - g.camera.position.x) * rayDir.x +
+          (rayHitPoint.z - g.camera.position.z) * rayDir.z >
+          0
+      ) {
+        worldX = rayHitPoint.x;
+        worldZ = rayHitPoint.z;
+      } else {
+        const horizLen = Math.hypot(rayDir.x, rayDir.z) || 1;
+        worldX = g.x + (rayDir.x / horizLen) * 36;
+        worldZ = g.z + (rayDir.z / horizLen) * 36;
+      }
+
+      // Ensure a comfortable minimum distance from hamster feet so character rotation stays smooth
+      const dx = worldX - g.x;
+      const dz = worldZ - g.z;
+      const distFromPlayer = Math.hypot(dx, dz);
+      if (distFromPlayer < 1.35 && distFromPlayer > 0.001) {
+        worldX = g.x + (dx / distFromPlayer) * 1.35;
+        worldZ = g.z + (dz / distFromPlayer) * 1.35;
+      }
+
+      g.aimWorldX = THREE.MathUtils.clamp(worldX, -67.5, 67.5);
+      g.aimWorldZ = THREE.MathUtils.clamp(worldZ, -55.5, 55.5);
+      g.rotY = Math.atan2(g.aimWorldX - g.x, g.aimWorldZ - g.z);
     };
 
     // Re-populate any already-connected remote players into the freshly created scene
@@ -6094,7 +6301,7 @@ export default function HamsterPaintball({
     // Track recent touch activity so mobile browsers' synthetic mousemove events never cause sudden camera rotation
     let lastTouchEventTime = 0;
 
-    // Laptop Mouse Movement Changes Camera View, Character View & Aiming Reticle
+    // Laptop Mouse Movement Directly Aligns the 3D Aim Reticle with the Mouse Cursor & Smoothly Rotates View
     const handleMouseMove = (e: MouseEvent) => {
       const g = gameRef.current;
       if (!g) return;
@@ -6104,6 +6311,7 @@ export default function HamsterPaintball({
         g.lastMouseY = e.clientY;
         return;
       }
+      g.usingMouseAim = true;
       g.mouseScreenX = e.clientX;
       g.mouseScreenY = e.clientY;
 
@@ -6140,8 +6348,11 @@ export default function HamsterPaintball({
           target.closest('button, input, select, textarea, .host-lobby-interactive-panel');
         if (!isOverUiPanel) {
           const sens = stateSnapRef.current.lookSensitivity || 1.0;
-          g.camYaw -= rawDx * 0.0044 * sens;
-          g.camPitch = THREE.MathUtils.clamp(g.camPitch + rawDy * 0.0028 * sens, 0.12, 0.68);
+          // Gentle camera follow on cursor motion + stronger rotation when dragging or pointer-locked
+          const yawSpeed = document.pointerLockElement || e.buttons > 0 ? 0.0044 : 0.0018;
+          const pitchSpeed = document.pointerLockElement || e.buttons > 0 ? 0.0028 : 0.0011;
+          g.camYaw -= rawDx * yawSpeed * sens;
+          g.camPitch = THREE.MathUtils.clamp(g.camPitch + rawDy * pitchSpeed * sens, 0.14, 0.64);
         }
       }
     };
@@ -6153,14 +6364,19 @@ export default function HamsterPaintball({
       if (target && target.tagName !== 'CANVAS' && !target.classList.contains('cursor-crosshair')) {
         return;
       }
-      gameRef.current.mouseDown = true;
-      gameRef.current.lastMouseX = e.clientX;
-      gameRef.current.lastMouseY = e.clientY;
-      gameRef.current.mouseInitialized = true;
+      const g = gameRef.current;
+      g.usingMouseAim = true;
+      g.mouseDown = true;
+      g.mouseScreenX = e.clientX;
+      g.mouseScreenY = e.clientY;
+      g.lastMouseX = e.clientX;
+      g.lastMouseY = e.clientY;
+      g.mouseInitialized = true;
       if (
         (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
         (stateSnapRef.current.role === 'host' && stateSnapRef.current.screen === 'lobby')
       ) {
+        syncMouseCursorToAimReticle(g);
         fireShot();
       }
     };
@@ -6175,6 +6391,9 @@ export default function HamsterPaintball({
     const handleWindowTouchStart = (e: TouchEvent) => {
       lastTouchEventTime = performance.now();
       const g = gameRef.current;
+      if (g) {
+        g.usingMouseAim = false;
+      }
       const canControlTouchLook =
         (stateSnapRef.current.role === 'player' && stateSnapRef.current.screen === 'game') ||
         (stateSnapRef.current.role === 'host' && stateSnapRef.current.screen === 'lobby');
@@ -6211,6 +6430,7 @@ export default function HamsterPaintball({
       lastTouchEventTime = performance.now();
       const g = gameRef.current;
       if (!g || g.lookTouchId === null) return;
+      g.usingMouseAim = false;
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         if (t.identifier === g.lookTouchId) {
@@ -6529,6 +6749,19 @@ export default function HamsterPaintball({
           prev?.id === closestCan?.id && prev?.type === closestCan?.type ? prev : closestCan
         );
 
+        // Smooth edge-pan camera rotation on laptop when cursor is near left/right screen edges
+        if (g.usingMouseAim && !isQuestionModalOpen && !isSettingsOpen) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          if (rect.width > 0) {
+            const edgeNdcX = ((g.mouseScreenX - rect.left) / rect.width) * 2 - 1;
+            if (Math.abs(edgeNdcX) > 0.72) {
+              const sens = snapState.lookSensitivity || 1.0;
+              const edgeFactor = (Math.abs(edgeNdcX) - 0.72) / 0.28;
+              g.camYaw -= Math.sign(edgeNdcX) * edgeFactor * 1.45 * sens * dt;
+            }
+          }
+        }
+
         // ORBITING 3D THIRD-PERSON CAMERA BEHIND THE HAMSTER (`camYaw` & `camPitch`)
         const camAspect = camera.aspect || 1.5;
         const portraitOffset =
@@ -6542,14 +6775,21 @@ export default function HamsterPaintball({
         camera.position.y += (targetCamY - camera.position.y) * 12 * dt;
         camera.position.z += (targetCamZ - camera.position.z) * 12 * dt;
 
-        const aimDistance = Math.max(5.5, 14.5 - g.camPitch * 11.5);
-        g.aimWorldX = g.x + Math.sin(g.camYaw) * aimDistance;
-        g.aimWorldZ = g.z + Math.cos(g.camYaw) * aimDistance;
-        camera.lookAt(g.aimWorldX, 1.45, g.aimWorldZ);
+        const camLookDistance = Math.max(5.5, 14.5 - g.camPitch * 11.5);
+        const camLookX = g.x + Math.sin(g.camYaw) * camLookDistance;
+        const camLookZ = g.z + Math.cos(g.camYaw) * camLookDistance;
+        camera.lookAt(camLookX, 1.45, camLookZ);
         camera.updateMatrixWorld();
 
-        // Rotate character view & aiming reticle with camera free-look yaw
-        g.rotY = g.camYaw;
+        // On laptop/mouse: project mouse cursor directly onto 3D ground plane so mouse pointer and 3D aim reticle are identical!
+        if (g.usingMouseAim) {
+          syncMouseCursorToAimReticle(g);
+        } else {
+          g.aimWorldX = camLookX;
+          g.aimWorldZ = camLookZ;
+          g.rotY = g.camYaw;
+        }
+
         g.localHamster.position.set(g.x, 0, g.z);
         g.localHamster.rotation.y = g.rotY;
 
@@ -6666,13 +6906,12 @@ export default function HamsterPaintball({
           }
         }
 
-        // Check Hits on Remote Players (when shot by local player)
+        // Check Hits on Remote Players (when shot by local player — active in BOTH Lobby and Match!)
         if (!hit && p.ownerId === clientIdRef.current) {
           g.remotePlayers.forEach(entry => {
             if (hit) return;
-            // Friendly fire check in Teams mode during active match
+            // Friendly fire check in Teams mode (Red hits Blue, Blue hits Red)
             if (
-              snapState.matchStatus === 'playing' &&
               snapState.matchMode === 'teams' &&
               entry.data.team === snapState.myTeam &&
               entry.data.team !== 'solo'
@@ -6681,7 +6920,10 @@ export default function HamsterPaintball({
             }
             const rx = entry.mesh.position.x;
             const rz = entry.mesh.position.z;
-            if (Math.hypot(p.mesh.position.x - rx, p.mesh.position.z - rz) < 1.4) {
+            if (
+              p.mesh.position.y <= 2.75 &&
+              Math.hypot(p.mesh.position.x - rx, p.mesh.position.z - rz) < 1.65
+            ) {
               hit = true;
               // Check if target player has active 10-Second Respawn Immunity!
               if (
@@ -6698,50 +6940,47 @@ export default function HamsterPaintball({
               }
               sfx.playSplat();
               spawnPaintSplatEffect(scene, g.splatDecals, g.particles, rx, 1.2, rz, p.color);
-              // Only award score & apply damage during the active game ('playing')
-              if (snapState.matchStatus === 'playing') {
-                const hitPts = 20 + Math.min(15, snapState.koStreak * 5);
-                setHitsLanded(h => h + 1);
-                awardPoints(hitPts, `🎯 PAINT HIT!`, '#38bdf8');
-                const hitId = `hit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-                if (g.broadcastChannel) {
-                  try {
-                    g.broadcastChannel.postMessage({
-                      type: 'hit_player',
-                      id: clientIdRef.current,
-                      targetId: entry.data.id,
-                      attackerId: clientIdRef.current,
-                      attackerName: snapState.playerName,
-                      damage: p.damage
-                    });
-                  } catch {}
-                }
-                if (roomCode) {
-                  const lastHitObj = {
-                    hitId,
+              const hitPts = 20 + Math.min(15, snapState.koStreak * 5);
+              setHitsLanded(h => h + 1);
+              awardPoints(hitPts, `🎯 PAINT HIT!`, '#38bdf8');
+              const hitId = `hit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              if (g.broadcastChannel) {
+                try {
+                  g.broadcastChannel.postMessage({
+                    type: 'hit_player',
+                    id: clientIdRef.current,
                     targetId: entry.data.id,
                     attackerId: clientIdRef.current,
                     attackerName: snapState.playerName,
                     damage: p.damage
-                  };
-                  lastNetActionRef.current.lastHit = lastHitObj;
-                  const hitPayload = {
-                    id: clientIdRef.current,
-                    lastHit: lastHitObj
-                  };
-                  syncPaintballPlayerApi(roomCode, hitPayload);
-                  setDoc(
-                    getPlayerDocRef(roomCode, clientIdRef.current),
-                    { lastHit: lastHitObj },
-                    { merge: true }
-                  ).catch(() => {});
-                }
+                  });
+                } catch {}
+              }
+              if (roomCode) {
+                const lastHitObj = {
+                  hitId,
+                  targetId: entry.data.id,
+                  attackerId: clientIdRef.current,
+                  attackerName: snapState.playerName,
+                  damage: p.damage
+                };
+                lastNetActionRef.current.lastHit = lastHitObj;
+                const hitPayload = {
+                  id: clientIdRef.current,
+                  lastHit: lastHitObj
+                };
+                syncPaintballPlayerApi(roomCode, hitPayload);
+                setDoc(
+                  getPlayerDocRef(roomCode, clientIdRef.current),
+                  { lastHit: lastHitObj },
+                  { merge: true }
+                ).catch(() => {});
               }
             }
           });
         }
 
-        // Check Hits on Local Student Player (when shot by remote player)
+        // Check Hits on Local Student Player (when shot by remote player — active in BOTH Lobby and Match!)
         if (
           !hit &&
           p.ownerId !== clientIdRef.current &&
@@ -6749,13 +6988,13 @@ export default function HamsterPaintball({
           snapState.screen === 'game'
         ) {
           const isFriendly =
-            snapState.matchStatus === 'playing' &&
             snapState.matchMode === 'teams' &&
             p.ownerTeam === snapState.myTeam &&
             p.ownerTeam !== 'solo';
           if (
             !isFriendly &&
-            Math.hypot(p.mesh.position.x - g.x, p.mesh.position.z - g.z) < 1.35
+            p.mesh.position.y <= 2.75 &&
+            Math.hypot(p.mesh.position.x - g.x, p.mesh.position.z - g.z) < 1.6
           ) {
             hit = true;
             // Enforce 10-Second Respawn Immunity: Local player CANNOT be hit within 10s of respawning!
@@ -6763,9 +7002,7 @@ export default function HamsterPaintball({
               sfx.playDamageHit();
             } else {
               spawnPaintSplatEffect(scene, g.splatDecals, g.particles, g.x, 1.1, g.z, p.color);
-              if (snapState.matchStatus === 'playing') {
-                applyIncomingDamage(p.damage, p.ownerName || 'Opponent', p.ownerId);
-              }
+              applyIncomingDamage(p.damage, p.ownerName || 'Opponent', p.ownerId);
             }
           }
         }
@@ -6968,11 +7205,20 @@ export default function HamsterPaintball({
       ud.recoil = 1.0;
     }
 
-    // 3. Calculate Exact Trajectory from the Gun Barrel Tip (`muzzleWorldPos`) to Target Crosshair!
-    const shotAngle =
-      aimDist > 2.4
-        ? Math.atan2(g.aimWorldX - muzzleWorldPos.x, g.aimWorldZ - muzzleWorldPos.z)
-        : bodyAngle;
+    // 3. Calculate Exact Trajectory & Ballistic Vertical Velocity from Gun Barrel Tip (`muzzleWorldPos`) to Target Reticle!
+    const targetDx = g.aimWorldX - muzzleWorldPos.x;
+    const targetDz = g.aimWorldZ - muzzleWorldPos.z;
+    const targetDist = Math.hypot(targetDx, targetDz);
+    const shotAngle = targetDist > 0.8 ? Math.atan2(targetDx, targetDz) : bodyAngle;
+    const hSpeed = 42;
+    const gravity = 9.2;
+    const flightTime = Math.max(0.06, Math.min(1.35, targetDist / hSpeed));
+    const targetY = 0.22;
+    const computedVy = THREE.MathUtils.clamp(
+      (targetY - muzzleWorldPos.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
+      -4.0,
+      5.5
+    );
 
     // 4. Spawn 3D Paintball Projectile + Aerodynamic Streak directly out of the Gun Barrel Nozzle!
     const ball = createPaintballProjectileMesh(teamPaint);
@@ -6988,10 +7234,10 @@ export default function HamsterPaintball({
       ownerName: snap.playerName || 'Student',
       ownerTeam: activeTeam,
       mesh: ball,
-      vx: Math.sin(shotAngle) * 40,
-      vy: 1.65,
-      vz: Math.cos(shotAngle) * 40,
-      gravity: 9.2,
+      vx: Math.sin(shotAngle) * hSpeed,
+      vy: computedVy,
+      vz: Math.cos(shotAngle) * hSpeed,
+      gravity,
       damage: 28,
       color: teamPaint
     });
@@ -7166,6 +7412,9 @@ export default function HamsterPaintball({
         kos: 0,
         hitsLanded: 0,
         bestStreak: 0,
+        questionsAnswered: 0,
+        questionsCorrect: 0,
+        questionsWrong: 0,
         immuneUntil: 0,
         updatedAt: startTs
       };
@@ -7181,6 +7430,9 @@ export default function HamsterPaintball({
           kos: 0,
           hitsLanded: 0,
           bestStreak: 0,
+          questionsAnswered: 0,
+          questionsCorrect: 0,
+          questionsWrong: 0,
           immuneUntil: 0,
           matchStartResetAt: startTs,
           updatedAt: startTs
@@ -7359,9 +7611,10 @@ export default function HamsterPaintball({
     sfx.playKO();
     setMatchStatus('results');
     setScreen('results');
-    if (gameRef.current?.broadcastChannel) {
+    const bcChannel = broadcastChannelRef.current || gameRef.current?.broadcastChannel;
+    if (bcChannel) {
       try {
-        gameRef.current.broadcastChannel.postMessage({
+        bcChannel.postMessage({
           type: 'match_end',
           id: clientIdRef.current
         });
@@ -7378,9 +7631,9 @@ export default function HamsterPaintball({
     }
   };
 
-  // Trivia Answer Handler (Upgraded Points System: Base +15 PTS + Streak Multiplier Bonus + Fast-Answer Speed Bonus!)
+  // Trivia Answer Handler (Only allowed once match has started -> `matchStatus === 'playing'`)
   const handleTriviaAnswer = (optIdx: number) => {
-    if (triviaFeedback !== null) return;
+    if (matchStatus !== 'playing' || triviaFeedback !== null) return;
     const qList = effectiveQuestions;
     const currentQ = qList[triviaDeckIndex % qList.length];
     if (!currentQ) return;
@@ -7404,6 +7657,7 @@ export default function HamsterPaintball({
       setBestStreak(b => Math.max(b, nextStreak));
       setAmmo(a => a + earnedBalls);
       setQuestionsAnswered(q => q + 1);
+      setQuestionsCorrect(c => c + 1);
       awardPoints(
         totalEarnedPts,
         speedBonusPts > 0
@@ -7417,10 +7671,10 @@ export default function HamsterPaintball({
       if (speedBonusPts > 0) bonusBreakdown.push(`+${speedBonusPts} Speed Bonus`);
 
       setTriviaFeedback(
-        `✅ CORRECT! +${earnedBalls} Paintballs & +${totalEarnedPts} PTS (${bonusBreakdown.join(' • ')})!`
+        `✅ CORRECT! +${earnedBalls} Paintballs (${bonusBreakdown.join(' • ')})!`
       );
 
-      const evText = `🎯 ${playerName} answered in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${earnedBalls} Balls & +${totalEarnedPts} PTS • ${nextStreak}x Streak)!`;
+      const evText = `🎯 ${playerName} answered correctly in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${earnedBalls} Balls • ${nextStreak}x Streak)!`;
       pushLiveEvent(evText, '#a3e635');
       if (roomCode) {
         setDoc(
@@ -7445,6 +7699,7 @@ export default function HamsterPaintball({
     } else {
       sfx.playWrong();
       setTriviaStreak(0);
+      setQuestionsWrong(w => w + 1);
       const rightOptParsed = parseOptionContent(currentQ.options[correctIdx] || '');
       const rightLabel = rightOptParsed.text || OPTION_LETTERS[correctIdx] || ' Option';
       setTriviaFeedback(
@@ -7568,14 +7823,16 @@ export default function HamsterPaintball({
         </button>
 
         <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 flex-nowrap justify-end min-w-0">
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="shrink-0 px-2.5 sm:px-3 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center gap-1.5 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black"
-            title="Game Settings & Look Sensitivity"
-          >
-            <Settings size={14} className="text-cyan-400" />
-            <span>Settings</span>
-          </button>
+          {role !== 'player' && (
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="shrink-0 px-2.5 sm:px-3 h-8 sm:h-9 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 flex items-center gap-1.5 transition shadow-lg cursor-pointer text-[11px] sm:text-xs font-black"
+              title="Game Settings & Look Sensitivity"
+            >
+              <Settings size={14} className="text-cyan-400" />
+              <span>Settings</span>
+            </button>
+          )}
 
           <FullscreenButton
             targetId="paintball-game-container"
@@ -7865,101 +8122,120 @@ export default function HamsterPaintball({
                   { merge: true }
                 ).catch(() => {});
 
-                // Fetch room state & normalized custom questions in background (Server API first, Firestore fallback)
+                // Fetch room state & players from BOTH Server API and Firestore so cross-domain devices sync immediately!
                 (async () => {
-                  let loadedFromApi = false;
+                  const applyFetchedRoomConfig = (data: Record<string, any> | undefined | null) => {
+                    if (!data || data.isUninitialized) return;
+                    if (Array.isArray(data.questions) && data.questions.length > 0) {
+                      const normQs = normalizePaintballQuestions(data.questions);
+                      if (normQs.length > 0) {
+                        setActiveQuiz(prev => ({
+                          ...prev,
+                          title: data.quizTitle || prev.title,
+                          topic: data.topic || prev.topic,
+                          classLevel: data.classLevel || prev.classLevel,
+                          questions: normQs
+                        }));
+                        setTriviaDeckIndex(0);
+                      }
+                    }
+                    if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
+                      setBallsPerQuestion(data.ballsPerQuestion);
+                      stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
+                    }
+                    if (data.matchMode) {
+                      setMatchMode(data.matchMode);
+                    }
+                    if (data.matchStatus === 'playing') {
+                      triggerStudentMatchStart(
+                        data.configuredDurationSec || 180,
+                        data.matchMode || matchMode,
+                        typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
+                        Boolean(data.isTimerPaused),
+                        typeof data.ballsPerQuestion === 'number'
+                          ? data.ballsPerQuestion
+                          : undefined
+                      );
+                    }
+                  };
+
                   try {
                     const res = await fetch(`/api/paintball/room/${encodeURIComponent(cleanCode)}`);
                     if (res.ok) {
                       const json = await res.json();
-                      const data = json?.room;
-                      if (data) {
-                        loadedFromApi = true;
-                        if (Array.isArray(data.questions) && data.questions.length > 0) {
-                          const normQs = normalizePaintballQuestions(data.questions);
-                          if (normQs.length > 0) {
-                            setActiveQuiz(prev => ({
-                              ...prev,
-                              title: data.quizTitle || prev.title,
-                              topic: data.topic || prev.topic,
-                              classLevel: data.classLevel || prev.classLevel,
-                              questions: normQs
-                            }));
-                            setTriviaDeckIndex(0);
-                          }
-                        }
-                        if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
-                          setBallsPerQuestion(data.ballsPerQuestion);
-                          stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
-                        }
-                        if (data.matchMode) {
-                          setMatchMode(data.matchMode);
-                        }
-                        if (data.matchStatus === 'playing') {
-                          triggerStudentMatchStart(
-                            data.configuredDurationSec || 180,
-                            data.matchMode || matchMode,
-                            typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
-                            Boolean(data.isTimerPaused),
-                            typeof data.ballsPerQuestion === 'number'
-                              ? data.ballsPerQuestion
-                              : undefined
-                          );
-                        }
-                      }
+                      applyFetchedRoomConfig(json?.room);
                       if (Array.isArray(json?.players)) {
                         const validRemote = (json.players as PlayerNetworkState[]).filter(
                           p => p && p.id && p.role === 'player' && !p.kicked
                         );
-                        setRoomPlayers(validRemote);
                         validRemote.forEach(p => {
+                          mergedPlayersMapRef.current.set(p.id, {
+                            state: p,
+                            lastSeenLocalAt: Date.now()
+                          });
                           if (p.id !== clientIdRef.current) {
                             upsertRemotePlayer(p);
                           }
                         });
+                        setRoomPlayers(
+                          Array.from(mergedPlayersMapRef.current.values()).map(v => v.state)
+                        );
                       }
                     }
                   } catch {}
 
-                  if (!loadedFromApi) {
-                    try {
-                      const snap = await getDoc(getRoomDocRef(cleanCode));
-                      if (snap.exists()) {
-                        const data = snap.data();
-                        if (Array.isArray(data.questions) && data.questions.length > 0) {
-                          const normQs = normalizePaintballQuestions(data.questions);
-                          if (normQs.length > 0) {
-                            setActiveQuiz(prev => ({
-                              ...prev,
-                              title: data.quizTitle || prev.title,
-                              topic: data.topic || prev.topic,
-                              classLevel: data.classLevel || prev.classLevel,
-                              questions: normQs
-                            }));
-                            setTriviaDeckIndex(0);
-                          }
+                  try {
+                    const [roomSnap, playersSnap] = await Promise.all([
+                      getDoc(getRoomDocRef(cleanCode)),
+                      getDocs(getPlayersColRef(cleanCode))
+                    ]);
+                    if (roomSnap.exists()) {
+                      applyFetchedRoomConfig(roomSnap.data());
+                    }
+                    if (!playersSnap.empty) {
+                      playersSnap.docs.forEach(d => {
+                        const raw = d.data() as Record<string, any>;
+                        const pid = String(raw.id || d.id.replace(/^player_/, ''));
+                        if (!pid || raw.kicked || raw.role !== 'player') return;
+                        const defaultZ = raw.team === 'blue' ? 44 : -44;
+                        const pState: PlayerNetworkState = {
+                          id: pid,
+                          name: raw.name || 'Student',
+                          role: 'player',
+                          team: raw.team || 'red',
+                          skinIdx: typeof raw.skinIdx === 'number' ? raw.skinIdx : 0,
+                          x: typeof raw.x === 'number' ? raw.x : 0,
+                          z: typeof raw.z === 'number' ? raw.z : defaultZ,
+                          rotY:
+                            typeof raw.rotY === 'number'
+                              ? raw.rotY
+                              : raw.team === 'blue'
+                              ? Math.PI
+                              : 0,
+                          hp: typeof raw.hp === 'number' ? raw.hp : 100,
+                          shield: typeof raw.shield === 'number' ? raw.shield : 100,
+                          score: typeof raw.score === 'number' ? raw.score : 0,
+                          kos: typeof raw.kos === 'number' ? raw.kos : 0,
+                          hitsLanded: typeof raw.hitsLanded === 'number' ? raw.hitsLanded : 0,
+                          bestStreak: typeof raw.bestStreak === 'number' ? raw.bestStreak : 0,
+                          immuneUntil: typeof raw.immuneUntil === 'number' ? raw.immuneUntil : 0,
+                          questionsAnswered:
+                            typeof raw.questionsAnswered === 'number' ? raw.questionsAnswered : 0,
+                          updatedAt: raw.updatedAt || Date.now()
+                        };
+                        mergedPlayersMapRef.current.set(pid, {
+                          state: pState,
+                          lastSeenLocalAt: Date.now()
+                        });
+                        if (pid !== clientIdRef.current) {
+                          upsertRemotePlayer(pState);
                         }
-                        if (typeof data.ballsPerQuestion === 'number' && data.ballsPerQuestion > 0) {
-                          setBallsPerQuestion(data.ballsPerQuestion);
-                          stateSnapRef.current.ballsPerQuestion = data.ballsPerQuestion;
-                        }
-                        if (data.matchMode) {
-                          setMatchMode(data.matchMode);
-                        }
-                        if (data.matchStatus === 'playing') {
-                          triggerStudentMatchStart(
-                            data.configuredDurationSec || 180,
-                            data.matchMode || matchMode,
-                            typeof data.startedAt === 'number' ? data.startedAt : Date.now(),
-                            Boolean(data.isTimerPaused),
-                            typeof data.ballsPerQuestion === 'number'
-                              ? data.ballsPerQuestion
-                              : undefined
-                          );
-                        }
-                      }
-                    } catch {}
-                  }
+                      });
+                      setRoomPlayers(
+                        Array.from(mergedPlayersMapRef.current.values()).map(v => v.state)
+                      );
+                    }
+                  } catch {}
                 })();
               }}
               className="w-full py-3 bg-[#160269] hover:bg-[#220699] active:scale-[0.99] text-white font-black text-sm sm:text-base rounded-xl shadow-lg transition flex items-center justify-center gap-2 border-b-4 border-[#0c013d] cursor-pointer"
@@ -8242,7 +8518,8 @@ export default function HamsterPaintball({
                     Players ({roomPlayers.length})
                     {matchMode === 'teams' && (
                       <span className="ml-1.5 text-[11px] font-bold text-slate-400">
-                        Red {teamTotals.red.count} • Blue {teamTotals.blue.count}
+                        Red {teamTotals.red.count} ({teamTotals.red.kos} Kills) • Blue{' '}
+                        {teamTotals.blue.count} ({teamTotals.blue.kos} Kills)
                       </span>
                     )}
                   </span>
@@ -8257,7 +8534,7 @@ export default function HamsterPaintball({
                   )}
                 </div>
 
-                <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {roomPlayers.length === 0 ? (
                     <div className="p-2.5 rounded-xl bg-slate-900/70 border border-dashed border-white/20 text-[11px] text-slate-300 font-semibold text-center">
                       Waiting for players to scan QR or enter{' '}
@@ -8270,6 +8547,7 @@ export default function HamsterPaintball({
                       const charSkin =
                         HAMSTER_SKINS[p.skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
                       const nextTeam: TeamId = p.team === 'red' ? 'blue' : 'red';
+                      const qStats = getPlayerQuestionStats(p);
                       return (
                         <div
                           key={p.id}
@@ -8282,14 +8560,27 @@ export default function HamsterPaintball({
                               team={matchMode === 'teams' ? p.team || 'red' : 'solo'}
                             />
                             <div className="min-w-0">
-                              <div className="font-black text-xs text-white truncate">
-                                {p.name}
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-black text-xs text-white truncate">
+                                  {p.name}
+                                </span>
+                                <span
+                                  className={`inline-block px-1.5 py-0.2 rounded font-black text-[9px] uppercase shrink-0 ${tCfg.bgClass}`}
+                                >
+                                  {tCfg.label}
+                                </span>
                               </div>
-                              <span
-                                className={`inline-block px-1.5 py-0.2 rounded font-black text-[9px] uppercase ${tCfg.bgClass}`}
-                              >
-                                {tCfg.label}
-                              </span>
+                              <div className="text-[10px] font-bold text-slate-300 flex flex-wrap items-center gap-1.5 mt-0.5">
+                                <span className="text-rose-300 font-black">
+                                  💥 {p.kos || 0} Kills
+                                </span>
+                                <span>•</span>
+                                <span className="text-cyan-300 font-black">
+                                  🎯 {qStats.accuracy}%
+                                </span>
+                                <span className="text-emerald-300">✓{qStats.correct}</span>
+                                <span className="text-rose-400">✗{qStats.wrong}</span>
+                              </div>
                             </div>
                           </div>
 
@@ -8420,29 +8711,22 @@ export default function HamsterPaintball({
           {/* TOP HUD BAR: NON-OVERLAPPING RESPONSIVE 3-COLUMN LAYOUT FOR MOBILE & TABLET (PORTRAIT & LANDSCAPE) */}
           <div className="w-full flex items-start justify-between gap-1.5 sm:gap-2 flex-nowrap">
             {role === 'player' ? (
-              /* STUDENT TOP-LEFT: SCORE, STREAK MULTIPLIER + COMPACT HEALTH & SHIELD BARS */
+              /* STUDENT TOP-LEFT: TEAM & NAME + COMPACT HEALTH & SHIELD BARS (NO SCORE BADGE) */
               <div className="relative pointer-events-auto shrink-0 bg-slate-900/92 rounded-xl p-1.5 sm:p-2 w-[118px] min-[390px]:w-[132px] sm:w-48 md:w-56 border-l-3 border-l-lime-400 border border-white/15 shadow-lg">
-                {/* SCORE & TEAM ON TOP ROW */}
-                <div className="flex items-center justify-between gap-1 pb-1 mb-1 border-b border-white/10">
-                  <div className="flex items-center gap-1 min-w-0">
-                    {matchMode === 'teams' && (
-                      <span
-                        className={`px-1 py-0.2 rounded font-black text-[7px] sm:text-[8px] uppercase text-white shrink-0 ${
-                          myTeam === 'blue' ? 'bg-blue-600' : 'bg-red-600'
-                        }`}
-                      >
-                        {myTeam === 'blue' ? 'BLUE' : 'RED'}
-                      </span>
-                    )}
-                    <span className="font-black text-white text-[9px] sm:text-xs truncate">
-                      {playerName.toUpperCase()}
+                {/* TEAM & NAME ON TOP ROW */}
+                <div className="flex items-center gap-1 pb-1 mb-1 border-b border-white/10 min-w-0">
+                  {matchMode === 'teams' && (
+                    <span
+                      className={`px-1 py-0.2 rounded font-black text-[7px] sm:text-[8px] uppercase text-white shrink-0 ${
+                        myTeam === 'blue' ? 'bg-blue-600' : 'bg-red-600'
+                      }`}
+                    >
+                      {myTeam === 'blue' ? 'BLUE' : 'RED'}
                     </span>
-                  </div>
-                  <div className="shrink-0 bg-amber-400/15 border border-amber-400/40 px-1 sm:px-1.5 py-0.2 rounded-md text-right">
-                    <span className="text-[9px] sm:text-xs font-black text-amber-300">
-                      ⭐{score}
-                    </span>
-                  </div>
+                  )}
+                  <span className="font-black text-white text-[9px] sm:text-xs truncate">
+                    {playerName.toUpperCase()}
+                  </span>
                 </div>
 
                 {/* COMPACT HEALTH & SHIELD BARS */}
@@ -8481,21 +8765,6 @@ export default function HamsterPaintball({
                     </div>
                   </div>
                 </div>
-
-                {/* FLOATING +PTS POPUP BADGES */}
-                {scorePopups.length > 0 && (
-                  <div className="pointer-events-none absolute -bottom-5 left-0 right-0 flex flex-wrap items-center gap-1">
-                    {scorePopups.slice(-1).map(pop => (
-                      <span
-                        key={pop.id}
-                        className="px-1.5 py-0.5 rounded-full bg-slate-950/95 border border-amber-400 text-[8px] sm:text-[10px] font-black shadow-lg animate-bounce truncate"
-                        style={{ color: pop.color }}
-                      >
-                        +{pop.points} PTS • {pop.label}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
             ) : (
               /* HOST TOP-LEFT: CURRENT PLAYER VIEW INDICATOR + LIVE FEED */
@@ -8528,27 +8797,38 @@ export default function HamsterPaintball({
               </div>
             )}
 
-            {/* CENTER: UPGRADED MATCH COUNTDOWN TIMER + BALLS/Q INDICATOR & HOST CONTROLS */}
+            {/* CENTER: MATCH COUNTDOWN TIMER & HOST TEAM KILLS SCOREBOARD (HIDDEN FOR PLAYERS IN LOBBY; NO ROOM CODE ON PLAYER SCREEN) */}
             <div className="pointer-events-auto flex flex-col items-center mx-auto shrink-0">
-              <div
-                className={`bg-slate-900/95 px-2 sm:px-3 py-1 rounded-xl flex flex-col items-center gap-0.5 sm:gap-1 border shadow-lg transition ${
-                  matchStatus === 'playing' && matchSeconds <= 30
-                    ? 'border-rose-500 ring-2 ring-rose-500/40'
-                    : matchStatus === 'playing' && matchSeconds <= 60
-                    ? 'border-amber-400/70'
-                    : 'border-white/15'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="hidden sm:flex text-[10px] sm:text-xs font-mono font-black text-lime-300 items-center gap-1">
-                    <QrCode size={11} /> {roomCode}
-                  </span>
+              {(role === 'host' || matchStatus === 'playing') && (
+                <div
+                  className={`bg-slate-900/95 px-2 sm:px-3 py-1 rounded-xl flex flex-col items-center gap-0.5 sm:gap-1 border shadow-lg transition ${
+                    matchStatus === 'playing' && matchSeconds <= 30
+                      ? 'border-rose-500 ring-2 ring-rose-500/40'
+                      : matchStatus === 'playing' && matchSeconds <= 60
+                      ? 'border-amber-400/70'
+                      : 'border-white/15'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    {role === 'host' && (
+                      <span className="hidden sm:flex text-[10px] sm:text-xs font-mono font-black text-lime-300 items-center gap-1">
+                        <QrCode size={11} /> {roomCode}
+                      </span>
+                    )}
 
-                  {role === 'player' && matchStatus === 'lobby' ? (
-                    <span className="px-2 py-0.5 rounded-full bg-lime-400/20 border border-lime-400/50 text-lime-300 font-black text-[9px] sm:text-[11px] whitespace-nowrap">
-                      🟢 LOBBY ({roomCode})
-                    </span>
-                  ) : (
+                    {/* Host Live Team Kills Counter */}
+                    {role === 'host' && matchMode === 'teams' && (
+                      <div className="flex items-center gap-1 text-[10px] sm:text-xs font-black">
+                        <span className="px-1.5 py-0.5 rounded bg-rose-600/30 border border-rose-500/60 text-rose-200">
+                          🔴 {teamTotals.red.kos} Kills
+                        </span>
+                        <span className="text-slate-500">vs</span>
+                        <span className="px-1.5 py-0.5 rounded bg-sky-600/30 border border-sky-400/60 text-sky-200">
+                          🔵 {teamTotals.blue.kos} Kills
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-1 sm:gap-1.5">
                       <div
                         className={`flex items-center gap-1 font-mono font-black text-[11px] sm:text-sm px-1.5 sm:px-2 py-0.5 rounded-lg border ${
@@ -8624,11 +8904,9 @@ export default function HamsterPaintball({
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Match Timer Progress Bar */}
-                {(role === 'host' || matchStatus === 'playing') && (
+                  {/* Match Timer Progress Bar */}
                   <div className="w-full min-w-[84px] sm:min-w-[145px] flex flex-col gap-0.5">
                     <div className="w-full h-1 sm:h-1.5 bg-slate-950 rounded-full overflow-hidden border border-white/10">
                       <div
@@ -8648,11 +8926,11 @@ export default function HamsterPaintball({
                       />
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
-            {/* TOP-RIGHT: HOST PLAYER-VIEW CONTROLS & COMPACT STUDENT ACTIONS */}
+            {/* TOP-RIGHT: HOST PLAYER-VIEW CONTROLS (NO SCORES OR CHARACTER BUTTONS ON PLAYER SCREEN) */}
             <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1 sm:gap-1.5 shrink-0">
               {role === 'host' && (
                 <>
@@ -8719,33 +8997,22 @@ export default function HamsterPaintball({
                     <Eye size={12} />
                     <span className="hidden lg:inline">Overview</span>
                   </button>
+
+                  <button
+                    onClick={() => setIsLeaderboardOpen(true)}
+                    className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
+                  >
+                    <Trophy size={12} />
+                    <span className="hidden sm:inline">Scores</span>
+                  </button>
+
+                  <button
+                    onClick={handleEndMatch}
+                    className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
+                  >
+                    <span>End</span>
+                  </button>
                 </>
-              )}
-
-              <button
-                onClick={() => setIsLeaderboardOpen(true)}
-                className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
-              >
-                <Trophy size={12} />
-                <span className="hidden sm:inline">Scores</span>
-              </button>
-
-              {role === 'host' ? (
-                <button
-                  onClick={handleEndMatch}
-                  className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow cursor-pointer"
-                >
-                  <span>End</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setScreen('join')}
-                  className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl bg-slate-800/95 hover:bg-slate-700 text-white font-bold text-[10px] sm:text-xs border border-white/20 flex items-center gap-1 transition cursor-pointer"
-                  title="Change Character"
-                >
-                  <span>🐹</span>
-                  <span className="hidden md:inline">Character</span>
-                </button>
               )}
             </div>
           </div>
@@ -8796,7 +9063,7 @@ export default function HamsterPaintball({
           </div>
 
           {/* BOTTOM ROW: NON-OVERLAPPING MOBILE PORTRAIT & LANDSCAPE CONTROLS
-              LEFT = MOVE JOYSTICK, CENTER = QUESTIONS ICON BUTTON, RIGHT = SHOOT BUTTON */}
+              LEFT = MOVE JOYSTICK, CENTER = QUESTIONS ICON BUTTON (ONLY WHEN MATCH STARTS), RIGHT = SHOOT BUTTON */}
           {role === 'player' ? (
             <div className="w-full flex items-end justify-between gap-2 sm:gap-4 pb-1 sm:pb-1.5 px-1 sm:px-2 flex-nowrap">
               {/* LEFT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK */}
@@ -8820,43 +9087,45 @@ export default function HamsterPaintball({
                 </div>
               </div>
 
-              {/* CENTER DOCK: QUESTIONS ICON BUTTON (REPLACES HP/SHD & FREE SHOOT LOBBY) */}
-              <div className="pointer-events-auto flex items-center justify-center min-w-0 shrink">
-                <button
-                  type="button"
-                  onClick={() => setIsQuestionModalOpen(true)}
-                  className={`px-3 sm:px-5 py-2 sm:py-2.5 rounded-2xl font-black text-xs sm:text-sm shadow-2xl border-2 transition flex items-center gap-2 cursor-pointer active:scale-95 ${
-                    ammo === 0 && matchStatus === 'playing'
-                      ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border-white animate-pulse'
-                      : 'bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white border-indigo-300/80'
-                  }`}
-                  title="Open Full-Screen Questions"
-                >
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      ammo === 0 && matchStatus === 'playing'
-                        ? 'bg-slate-950/15 text-slate-950'
-                        : 'bg-white/20 text-amber-300'
+              {/* CENTER DOCK: QUESTIONS ICON BUTTON (HIDDEN UNTIL HOST STARTS THE GAME!) */}
+              {matchStatus === 'playing' ? (
+                <div className="pointer-events-auto flex items-center justify-center min-w-0 shrink">
+                  <button
+                    type="button"
+                    onClick={() => setIsQuestionModalOpen(true)}
+                    className={`px-3 sm:px-5 py-2 sm:py-2.5 rounded-2xl font-black text-xs sm:text-sm shadow-2xl border-2 transition flex items-center gap-2 cursor-pointer active:scale-95 ${
+                      ammo === 0
+                        ? 'bg-gradient-to-r from-amber-400 to-lime-400 text-slate-950 border-white animate-pulse'
+                        : 'bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white border-indigo-300/80'
                     }`}
+                    title="Open Full-Screen Questions"
                   >
-                    <HelpCircle size={18} />
-                  </div>
-                  <div className="text-left leading-tight">
-                    <div className="text-[10px] sm:text-xs font-black uppercase tracking-wide whitespace-nowrap">
-                      Questions
-                    </div>
                     <div
-                      className={`text-[9px] sm:text-[10px] font-bold whitespace-nowrap ${
-                        ammo === 0 && matchStatus === 'playing'
-                          ? 'text-slate-900'
-                          : 'text-lime-300'
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        ammo === 0
+                          ? 'bg-slate-950/15 text-slate-950'
+                          : 'bg-white/20 text-amber-300'
                       }`}
                     >
-                      +{ballsPerQuestion} Balls • 🟢 {ammo}
+                      <HelpCircle size={18} />
                     </div>
-                  </div>
-                </button>
-              </div>
+                    <div className="text-left leading-tight">
+                      <div className="text-[10px] sm:text-xs font-black uppercase tracking-wide whitespace-nowrap">
+                        Questions
+                      </div>
+                      <div
+                        className={`text-[9px] sm:text-[10px] font-bold whitespace-nowrap ${
+                          ammo === 0 ? 'text-slate-900' : 'text-lime-300'
+                        }`}
+                      >
+                        +{ballsPerQuestion} Balls • 🟢 {ammo}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              ) : (
+                <div className="min-w-0 shrink" />
+              )}
 
               {/* RIGHT SIDE: SHOOT BUTTON */}
               <div className="flex flex-col items-center shrink-0">
@@ -8944,6 +9213,7 @@ export default function HamsterPaintball({
                       hostCameraMode !== 'overview' &&
                       roomPlayers.length > 0 &&
                       hostFollowIndex % roomPlayers.length === i;
+                    const qStats = getPlayerQuestionStats(rp);
                     return (
                       <div
                         key={rp.id}
@@ -8971,8 +9241,12 @@ export default function HamsterPaintball({
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] font-bold text-lime-300">
-                            ⭐ {rp.score} PTS • {rp.kos} KOs
+                          <div className="text-[10px] font-bold text-lime-300 flex items-center gap-1.5">
+                            <span>💥 {rp.kos || 0} Kills</span>
+                            <span>•</span>
+                            <span className="text-cyan-300">🎯 {qStats.accuracy}%</span>
+                            <span className="text-emerald-300">✓{qStats.correct}</span>
+                            <span className="text-rose-400">✗{qStats.wrong}</span>
                           </div>
                         </div>
                       </div>
@@ -8986,76 +9260,119 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 5: FINAL RESULTS & TEAM/SOLO PODIUM MODAL
+          SCREEN 5: FINAL RESULTS & WINNER BANNER (SHOWN ON HOST & PLAYER SCREENS)
          ------------------------------------------------------------- */}
       {screen === 'results' && (
         <div className="absolute inset-0 z-50 bg-slate-950/90 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border-2 border-lime-400 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 my-auto text-center">
+          <div className="bg-slate-900 border-2 border-lime-400 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 my-auto text-center">
             <Award size={48} className="text-amber-400 mx-auto" />
             <div>
               <span className="px-3 py-0.5 rounded-full bg-lime-400/20 text-lime-300 font-black text-xs uppercase">
                 MATCH COMPLETE
               </span>
-              <h2 className="text-3xl font-black text-white mt-1">
-                FINAL PAINTBALL STANDINGS
+              <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">
+                FINAL PAINTBALL RESULTS
               </h2>
             </div>
+
+            {/* PROMINENT WINNER BANNER (VISIBLE ON BOTH HOST SCREEN & PLAYER SCREEN) */}
+            {matchMode === 'teams' ? (
+              <div
+                className={`p-4 rounded-2xl border-2 shadow-xl ${
+                  teamTotals.red.kos > teamTotals.blue.kos
+                    ? 'bg-gradient-to-r from-rose-600/35 to-red-500/35 border-rose-400 text-rose-200'
+                    : teamTotals.blue.kos > teamTotals.red.kos
+                    ? 'bg-gradient-to-r from-sky-600/35 to-blue-500/35 border-sky-400 text-sky-200'
+                    : 'bg-gradient-to-r from-amber-500/30 to-lime-500/30 border-amber-400 text-amber-200'
+                }`}
+              >
+                <div className="text-xs font-black uppercase tracking-wider text-amber-300">
+                  MATCH WINNER
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white mt-0.5">
+                  {teamTotals.red.kos > teamTotals.blue.kos
+                    ? '🏆 RED SQUAD WINS!'
+                    : teamTotals.blue.kos > teamTotals.red.kos
+                    ? '🏆 BLUE SQUAD WINS!'
+                    : "🤝 IT'S A TIE!"}
+                </div>
+                <div className="text-xs font-bold mt-1 text-slate-200">
+                  Red Squad: {teamTotals.red.kos} Kills • Blue Squad: {teamTotals.blue.kos} Kills
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/30 to-lime-500/30 border-2 border-amber-400 shadow-xl">
+                <div className="text-xs font-black uppercase tracking-wider text-amber-300">
+                  CHAMPION
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white mt-0.5">
+                  🏆 {roomPlayers[0]?.name || playerName || 'Champion'} WINS!
+                </div>
+                <div className="text-xs font-bold mt-1 text-lime-200">
+                  💥 {roomPlayers[0]?.kos ?? kos} Total Kills
+                </div>
+              </div>
+            )}
 
             {matchMode === 'teams' && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-2xl bg-rose-500/20 border-2 border-rose-500">
                   <div className="text-xs font-black text-rose-300 uppercase">RED SQUAD</div>
                   <div className="text-2xl font-black text-white mt-1">
-                    {teamTotals.red.score} PTS
+                    {teamTotals.red.kos} KILLS
                   </div>
                   <div className="text-[11px] font-bold text-rose-200">
-                    {teamTotals.red.kos} Total Splats
+                    {teamTotals.red.count} Players
                   </div>
                 </div>
                 <div className="p-3.5 rounded-2xl bg-sky-500/20 border-2 border-sky-400">
                   <div className="text-xs font-black text-sky-300 uppercase">BLUE SQUAD</div>
                   <div className="text-2xl font-black text-white mt-1">
-                    {teamTotals.blue.score} PTS
+                    {teamTotals.blue.kos} KILLS
                   </div>
                   <div className="text-[11px] font-bold text-sky-200">
-                    {teamTotals.blue.kos} Total Splats
+                    {teamTotals.blue.count} Players
                   </div>
                 </div>
               </div>
             )}
 
             <div className="space-y-2 max-h-60 overflow-y-auto text-left">
-              {roomPlayers.map((rp, i) => (
-                <div
-                  key={rp.id}
-                  className="flex items-center justify-between p-3 bg-slate-800 rounded-xl border border-white/10 text-xs font-bold"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-amber-400 text-slate-950 font-black flex items-center justify-center">
-                      {i + 1}
-                    </span>
-                    <span className="text-white">{rp.name}</span>
-                    {matchMode === 'teams' && (
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] uppercase ${
-                          TEAM_CONFIG[rp.team || 'red'].bgClass
-                        }`}
-                      >
-                        {TEAM_CONFIG[rp.team || 'red'].label}
+              {roomPlayers.map((rp, i) => {
+                const qStats = getPlayerQuestionStats(rp);
+                return (
+                  <div
+                    key={rp.id}
+                    className="flex items-center justify-between p-3 bg-slate-800 rounded-xl border border-white/10 text-xs font-bold"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-6 h-6 rounded-lg bg-amber-400 text-slate-950 font-black flex items-center justify-center shrink-0">
+                        {i + 1}
                       </span>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lime-300 font-black">
-                      ⭐ {rp.score} PTS • {rp.kos} Splats
+                      <span className="text-white truncate">{rp.name}</span>
+                      {matchMode === 'teams' && (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] uppercase shrink-0 ${
+                            TEAM_CONFIG[rp.team || 'red'].bgClass
+                          }`}
+                        >
+                          {TEAM_CONFIG[rp.team || 'red'].label}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-[10px] text-slate-400">
-                      🎯 {rp.hitsLanded || 0} Hits • 📚 {rp.questionsAnswered || 0} Qs • 🔥 Best{' '}
-                      {rp.bestStreak || 0}x
+                    <div className="text-right shrink-0">
+                      <div className="text-lime-300 font-black">
+                        💥 {rp.kos || 0} Kills
+                      </div>
+                      <div className="text-[10px] text-slate-300">
+                        🎯 {qStats.accuracy}% Accuracy •{' '}
+                        <span className="text-emerald-300">✓ {qStats.correct} Correct</span> •{' '}
+                        <span className="text-rose-400">✗ {qStats.wrong} Wrong</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <button
@@ -9064,9 +9381,11 @@ export default function HamsterPaintball({
                 if (role === 'host') {
                   setScreen('lobby');
                   if (roomCode) {
+                    const lobbyPatch = { matchStatus: 'lobby', updatedAt: Date.now() };
+                    syncPaintballRoomApi(roomCode, lobbyPatch);
                     setDoc(
                       getRoomDocRef(roomCode),
-                      { matchStatus: 'lobby' },
+                      lobbyPatch,
                       { merge: true }
                     ).catch(() => {});
                   }
@@ -9083,9 +9402,9 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          FULL-SCREEN QUESTION VIEW (COVERS ENTIRE SCREEN IN PORTRAIT & LANDSCAPE)
+          FULL-SCREEN QUESTION VIEW (ONLY ACTIVE ONCE GAME STARTS: `matchStatus === 'playing'`)
          ------------------------------------------------------------- */}
-      {isQuestionModalOpen && currentTriviaQ && (
+      {isQuestionModalOpen && matchStatus === 'playing' && currentTriviaQ && (
         <div className="fixed inset-0 z-50 w-full h-full bg-slate-950 text-white flex flex-col justify-between overflow-y-auto">
           {/* Top Full-Screen Header */}
           <div className="bg-gradient-to-r from-indigo-700 via-violet-700 to-purple-800 text-white px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 shrink-0 border-b border-white/15">
@@ -9097,8 +9416,7 @@ export default function HamsterPaintball({
                 </h3>
               </div>
               <p className="text-[11px] sm:text-xs text-indigo-100 mt-1 truncate">
-                Correct = <strong className="text-lime-300">+{ballsPerQuestion} Balls</strong> +{' '}
-                <strong className="text-amber-300">+15 PTS</strong> +{' '}
+                Correct = <strong className="text-lime-300">+{ballsPerQuestion} Balls</strong> •{' '}
                 <strong className="text-cyan-300">Streak ({triviaStreak}x)</strong>
               </p>
             </div>
@@ -9151,7 +9469,6 @@ export default function HamsterPaintball({
             const displayQImage = currentTriviaQ.image || parsedQuestion.imageUrl;
             const correctIdx =
               typeof currentTriviaQ.answerIndex === 'number' ? currentTriviaQ.answerIndex : 0;
-            const liveSpeedBonus = questionTimeLeft >= 10 ? 10 : questionTimeLeft >= 5 ? 5 : 0;
 
             return (
               <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-8 py-4 sm:py-6 flex flex-col justify-between gap-4 overflow-y-auto">
@@ -9162,11 +9479,6 @@ export default function HamsterPaintball({
                     {effectiveQuestions.length}
                   </span>
                   <div className="flex items-center gap-2">
-                    {liveSpeedBonus > 0 && (
-                      <span className="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/50 text-amber-300 font-black text-xs sm:text-sm">
-                        ⚡ Speed +{liveSpeedBonus} PTS
-                      </span>
-                    )}
                     <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-xs sm:text-sm font-black text-lime-300">
                       🟢 Paintballs: {ammo}
                     </span>
@@ -9257,7 +9569,7 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          LIVE SCOREBOARD MODAL (TEAM & INDIVIDUAL + POINTS SYSTEM BREAKDOWN)
+          HOST LIVE SCOREBOARD MODAL (TEAM KILLS & PER-PLAYER QUESTION ACCURACY)
          ------------------------------------------------------------- */}
       {isLeaderboardOpen && (
         <div className="absolute inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4 overflow-y-auto">
@@ -9266,7 +9578,9 @@ export default function HamsterPaintball({
               <div className="flex items-center gap-2">
                 <Trophy className="text-amber-400" size={20} />
                 <h3 className="font-black text-base text-white">
-                  {matchMode === 'teams' ? 'TEAM & PLAYER SCOREBOARD' : 'SOLO SCOREBOARD'}
+                  {matchMode === 'teams'
+                    ? 'TEAM KILLS & QUESTION ACCURACY'
+                    : 'PLAYER KILLS & QUESTION ACCURACY'}
                 </h3>
               </div>
               <button
@@ -9277,41 +9591,17 @@ export default function HamsterPaintball({
               </button>
             </div>
 
-            {/* Points System Legend */}
-            <div className="grid grid-cols-4 gap-1.5 text-center bg-slate-950/90 p-2 rounded-2xl border border-white/10">
-              <div className="p-1.5 rounded-xl bg-lime-500/10 border border-lime-400/30">
-                <div className="text-[9px] font-black text-lime-300 uppercase">Question</div>
-                <div className="text-xs font-black text-white">+15–50 PTS</div>
-                <div className="text-[8px] text-slate-400">Speed + Streak</div>
-              </div>
-              <div className="p-1.5 rounded-xl bg-cyan-500/10 border border-cyan-400/30">
-                <div className="text-[9px] font-black text-cyan-300 uppercase">Paint Hit</div>
-                <div className="text-xs font-black text-white">+20 PTS</div>
-                <div className="text-[8px] text-slate-400">+5x Combo</div>
-              </div>
-              <div className="p-1.5 rounded-xl bg-rose-500/10 border border-rose-400/30">
-                <div className="text-[9px] font-black text-rose-300 uppercase">KO Splat</div>
-                <div className="text-xs font-black text-white">+60 PTS</div>
-                <div className="text-[8px] text-slate-400">+90s Frenzy</div>
-              </div>
-              <div className="p-1.5 rounded-xl bg-amber-500/10 border border-amber-400/30">
-                <div className="text-[9px] font-black text-amber-300 uppercase">Use Can</div>
-                <div className="text-xs font-black text-white">+10 PTS</div>
-                <div className="text-[8px] text-slate-400">HP / Shield</div>
-              </div>
-            </div>
-
             {matchMode === 'teams' && (
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="p-3 rounded-2xl bg-rose-500/20 border border-rose-500/50 text-center">
                   <div className="text-[10px] font-black text-rose-300 uppercase">RED SQUAD</div>
-                  <div className="text-xl font-black text-white">{teamTotals.red.score} PTS</div>
-                  <div className="text-[10px] text-rose-200">{teamTotals.red.kos} Splats</div>
+                  <div className="text-2xl font-black text-white">{teamTotals.red.kos} KILLS</div>
+                  <div className="text-[10px] text-rose-200">{teamTotals.red.count} Players</div>
                 </div>
                 <div className="p-3 rounded-2xl bg-sky-500/20 border border-sky-400/50 text-center">
                   <div className="text-[10px] font-black text-sky-300 uppercase">BLUE SQUAD</div>
-                  <div className="text-xl font-black text-white">{teamTotals.blue.score} PTS</div>
-                  <div className="text-[10px] text-sky-200">{teamTotals.blue.kos} Splats</div>
+                  <div className="text-2xl font-black text-white">{teamTotals.blue.kos} KILLS</div>
+                  <div className="text-[10px] text-sky-200">{teamTotals.blue.count} Players</div>
                 </div>
               </div>
             )}
@@ -9322,35 +9612,39 @@ export default function HamsterPaintball({
                   No students have joined yet. Scan the QR code or enter code {roomCode}!
                 </div>
               ) : (
-                roomPlayers.map((rp, idx) => (
-                  <div
-                    key={rp.id}
-                    className="flex items-center justify-between p-2.5 bg-slate-800/90 border border-white/10 rounded-xl text-xs font-bold text-white"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-amber-300">{idx + 1}.</span>
-                      <span>{rp.name}</span>
-                      {matchMode === 'teams' && (
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[9px] uppercase ${
-                            TEAM_CONFIG[rp.team || 'red'].bgClass
-                          }`}
-                        >
-                          {TEAM_CONFIG[rp.team || 'red'].label}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lime-300 font-black">
-                        ⭐ {rp.score} PTS · {rp.kos} Splats
+                roomPlayers.map((rp, idx) => {
+                  const qStats = getPlayerQuestionStats(rp);
+                  return (
+                    <div
+                      key={rp.id}
+                      className="flex items-center justify-between p-2.5 bg-slate-800/90 border border-white/10 rounded-xl text-xs font-bold text-white"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-amber-300">{idx + 1}.</span>
+                        <span className="truncate">{rp.name}</span>
+                        {matchMode === 'teams' && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] uppercase shrink-0 ${
+                              TEAM_CONFIG[rp.team || 'red'].bgClass
+                            }`}
+                          >
+                            {TEAM_CONFIG[rp.team || 'red'].label}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[10px] text-slate-400">
-                        🎯 {rp.hitsLanded || 0} Hits · 📚 {rp.questionsAnswered || 0} Qs · 🔥{' '}
-                        {rp.bestStreak || 0}x
+                      <div className="text-right shrink-0">
+                        <div className="text-lime-300 font-black">
+                          💥 {rp.kos || 0} Kills
+                        </div>
+                        <div className="text-[10px] text-slate-300">
+                          🎯 {qStats.accuracy}% Accuracy ·{' '}
+                          <span className="text-emerald-300">✓ {qStats.correct} Correct</span> ·{' '}
+                          <span className="text-rose-400">✗ {qStats.wrong} Wrong</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

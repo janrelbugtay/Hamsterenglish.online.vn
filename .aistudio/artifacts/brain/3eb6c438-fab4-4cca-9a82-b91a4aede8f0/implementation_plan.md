@@ -1,106 +1,83 @@
-# Implementation Plan: Homework Creation, Management, and Analytics Proof
+# Hamster Paintball — Clean Player HUD, Team Kills Scoring, Winner Reveal & Host Question Accuracy Plan
 
-Replace the secondary "Play in Mystery Box" option in My Games with a full **Create Homework** flow, build out the **Homework Section** with interactive Teacher/Student modes, and provide verifiable **Completion Analytics** (duration spent, score %, accuracy, and question breakdown).
+Streamlines the player screen by removing extra top buttons and badges, shifts Host scoring to kills per team, reveals the winning team or player on both Host and Player end screens, restricts answering questions strictly to active match play, and adds real-time per-player question accuracy (`correct`, `wrong`, and `%`) across the Host interface.
 
----
-
-## User Review Required
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> - **Game Card Menu**: "Play in Mystery Box (1-30)" in `GamesLibrary.tsx` will be replaced with **"Create Homework"** (with homework assignment icon).
-> - **Dual Access**: Students can launch homework directly from the **Homework Tab** or via a **Shareable Code / Direct Link** (`#homework-[pin]`).
-> - **Proof of Completion**: Every submission records exact completion timestamps, real time duration spent (minutes and seconds), accuracy percentage, and a question-by-question audit log.
+> **Confirmed Design & Gameplay Decisions**
+> - **Streamlined Player HUD**: Removes the **Scores**, **Character**, **Lobby (`567127`) number badge**, and **Settings** buttons/badges from the Player screen so students have an uncluttered view with their HP/Shield bar, match timer (when active), movement joystick, and shoot/question controls.
+> - **Questions Hidden Until Match Starts**: The **Questions** button is completely hidden on the Player screen during the Lobby phase and only appears once the Host clicks **START GAME** (`matchStatus === 'playing'`).
+> - **Team Kills Scoring & End-of-Game Winner Banner**: Team standings on the Host screen and end-of-game screen rank teams by **total kills (KOs / Splats) per team** (`Red Squad Kills` vs. `Blue Squad Kills`), and when the match ends, both the Host screen and all Player screens display a prominent **Winner Announcement Banner** (`🏆 RED SQUAD WINS!`, `🏆 BLUE SQUAD WINS!`, `🤝 IT'S A TIE!`, or top Solo winner).
+> - **Host Per-Player Question Accuracy (`Correct / Wrong / %`)**: Tracks each student's `questionsCorrect` and `questionsWrong` in real time and displays their accuracy percentage, correct count (`✓`), and wrong count (`✗`) on **Host player cards, the Host Scores popup, and the Final Results screen**.
 
 ---
 
-## Proposed Architecture & Changes
+## 1. Overview & Core Concept
 
-### 1. My Games Menu: "Create Homework" Modal
-- **File**: `src/views/GamesLibrary.tsx`
-- In the game card 3-dots dropdown menu, replace `Play in Mystery Box (1-30)` with `Create Homework`.
-- When clicked, opens a **Create Homework Assignment Modal** pre-filled with the selected game's title, subject, and questions:
-  - **Assignment Title**: Editable title for the homework.
-  - **Target Class / Level**: Starters, Movers, Flyers, KET, PET, Grade 1-12.
-  - **Assigned Game Mode**: Select which game engine to run the homework in (Bubble Pop, Slap & Chop, Roller Coaster, Yoga Quiz, Mystery Box, Sumo, etc.).
-  - **Duration & Time Limit**: 5 min, 10 min, 15 min, 20 min, 30 min, or No Limit.
-  - **Due Date & Deadline**: Pick calendar date & time.
-  - **Mastery Target / Passing Score**: 60%, 70%, 80%, 90%, 100%.
-  - **Attempts Allowed**: 1, 3, or Unlimited.
-  - **Unique 6-Digit PIN & Share Link**: Instant share code generated for students.
-- Saves the assignment to Firestore (`homework_assignments`) with localStorage fallback.
-- Offers instant actions: "Copy Student Link", "View in Homework Dashboard", or "Done".
+This update refines the classroom gameplay flow and teacher visibility in **Hamster Paintball**:
+1. **Minimalist Student Screen**: Students no longer see distracting **Settings**, **Scores**, **Character**, or **Lobby (`567127`)** badges or score counters on their personal HUD.
+2. **Match-Only Question Answering**: Students cannot open or answer questions while waiting in the Lobby. The **Questions** button appears only after the Host starts the match.
+3. **Kills-Per-Team Scoring & Synchronized Winner Screen**: The Host's live scoreboard and end-of-match results use **Team Kills (KOs)** as the primary scoring metric (`Red Team Kills` vs `Blue Team Kills`) and broadcast the final match end state so both Host and Student screens showcase the winning team or champion.
+4. **Teacher Question Analytics**: Every student's correct and wrong question attempts (including 15-second question timeouts) are synchronized to the Host, showing live accuracy (`%`), `✓ Correct`, and `✗ Wrong` counts per student.
 
 ---
 
-### 2. Homework Hub: Teacher vs. Student Dual Modes
-- **File**: `src/views/Homework.tsx`
-- Upgrade the current placeholder into a dual-mode homework dashboard:
-  - **Top Bar Mode Switcher**:
-    - **Teacher View** (Assignments Manager, Class Overview & Analytics)
-    - **Student View** (My Assignments, Completed Tasks, and PIN Code Joiner)
+## 2. User Experience & Visual Design
 
-#### A. Teacher View
-- **KPI Summary Row**:
-  - Total Active Assignments
-  - Total Submissions Received
-  - Average Class Accuracy %
-  - Average Time Spent (e.g. `8m 45s`)
-- **Tab 1: Active & Past Assignments**:
-  - List of created homework assignments with game mode thumbnail, due date, duration limit, and submissions counter.
-  - Quick action buttons: **View Analytics**, **Copy PIN/Link**, **Preview Game**, **Close/Delete**.
-  - "+ New Assignment" button to create homework from any existing saved game.
-- **Tab 2: Analytics & Proof-of-Work Ledger**:
-  - Filterable by Assignment and Class.
-  - **Submissions Ledger Table**:
-    - Student Name & Class
-    - Submission Date & Time
-    - **Duration Spent**: Exact elapsed time (proves student actually spent 7m 12s on task rather than clicking through).
-    - **Score & Accuracy**: e.g., `92% · 23/25 Correct`.
-    - **Status**: Verified Passed ✓ / Incomplete.
-    - **Audit Action**: "View Verified Proof".
-  - **Student Proof Certificate & Audit Modal**:
-    - Digital proof badge with submission ID, start timestamp, finish timestamp, and total duration.
-    - Question-by-question breakdown showing: Question text, student's selected answer, correct answer, and correctness flag.
-    - Export / Print / Copy Proof Summary button.
-
-#### B. Student View
-- **Join by PIN Bar**: Quick input to enter a 6-digit code from teacher.
-- **Pending Assignments List**:
-  - Shows homework card with due date, time limit badge, target score, and questions count.
-  - "Start Assignment" button launching the homework gameplay session.
-- **Completed Homework History**:
-  - Shows completed tasks with score, duration spent, and "View My Proof of Completion" card.
+- **Player In-Game HUD (`role === 'player'`)**:
+  - **Top Bar**: Retains only `Back` (top-left) and `Full Screen` (top-right). Removes `Settings`, `Scores`, `Character`, the `⭐ score` badge on the player card, and the center `567127 | 🟢 LOBBY (567127)` room code pill.
+  - **Center Clock**: Displays the countdown timer cleanly during the active match (`matchStatus === 'playing'`).
+  - **Bottom Controls**: Shows `MOVE` joystick on the left, `SHOOT` button on the right, and the `QUESTIONS` button in the center **only** when `matchStatus === 'playing'`.
+- **Host Live HUD, Scores Modal & Final Results (`role === 'host'` & `screen === 'results'`)**:
+  - **Live Team Kills Scoreboard**: Displays **Red Squad Kills** vs **Blue Squad Kills** right in the Host top bar, Scores modal, and Final Results screen.
+  - **Per-Player Question Accuracy Badges**: Each student row/card on the Host view (Lobby list, bottom Player View cards, Scores modal, and Final Results) displays:
+    - **Kills**: `💥 X Kills`
+    - **Question Accuracy**: `🎯 XX% (C✓ / W✗)` (e.g., `🎯 80% (8✓ / 2✗)`).
+  - **Winner Reveal on Host & Player Screens**: When the timer reaches `0:00` or the Host clicks `End`, both Host and Player screens transition to the Final Results overlay featuring a large trophy banner announcing the winning team (`🏆 RED SQUAD WINS!`, `🏆 BLUE SQUAD WINS!`, or `🤝 DRAW MATCH!`) based on total team kills.
 
 ---
 
-### 3. Homework Player Session & Completion Recording
-- **Files**: `src/views/Homework.tsx`, `src/App.tsx`
-- When starting an assignment, launches the selected game with a **Homework Header**:
-  - Student Name badge, live assignment timer, and progress counter.
-- On game end:
-  - Records student name, duration in seconds, score, accuracy %, and question breakdown.
-  - Persists submission to Firestore (`homework_submissions`) + localStorage.
-  - Shows immediate student completion celebration with printable Proof Card.
+## 3. Key Product Decisions & Trade-Offs
+
+- **Kills-First Ranking**: Sorting teams and players by total Kills (`kos`)—with Question Accuracy (`questionsCorrect`) as the tie-breaker—aligns the scoreboard directly with paintball eliminations while still rewarding students who answer questions accurately to earn paintballs.
+- **Reliable End-of-Match Sync**: When the Host ends the match or the countdown expires, the `'results'` status is pushed via BroadcastChannel, the Express room endpoint, and Firestore so every student's screen immediately displays the Winner Results screen.
 
 ---
 
-### 4. Direct Link & URL Routing Support
-- Supports URL hash `#homework-[pin]` or `#homework` so teachers can directly send links to students.
+## 4. Technical Architecture & Data Strategy
 
----
+```
++-------------------------------------------------------------------------+
+|                  STUDENT CLIENT (role === 'player')                     |
+|                                                                         |
+|  - Top HUD: Back + Full Screen only (No Settings/Scores/Character/Code) |
+|  - Bottom Dock: Questions button rendered ONLY when matchStatus ===     |
+|    'playing'; answering updates `questionsCorrect` & `questionsWrong`   |
+|  - End of Match: Displays Winner Banner (Red Kills vs Blue Kills)       |
++-------------------------------------------------------------------------+
+                                    |
+        Real-Time Sync (Firestore + Express API + BroadcastChannel)
+        Payload: { kos, questionsCorrect, questionsWrong, questionsAnswered }
+                                    v
++-------------------------------------------------------------------------+
+|                    HOST CLIENT (role === 'host')                        |
+|                                                                         |
+|  - Top HUD & Scores Popup: Live Red Team Kills vs Blue Team Kills       |
+|  - Player Cards / Scores / Results: Shows `Kills` + Accuracy            |
+|    `XX% (Correct ✓ / Wrong ✗)` for every student                        |
+|  - End Match: Computes Winner by Team Kills & shows on Host + Players   |
++-------------------------------------------------------------------------+
+```
 
-## Verification Plan
-
-### Automated Verification
-1. **TypeScript Validation**: Run `lint_applet` (`tsc --noEmit`) to verify 0 errors.
-2. **Build Verification**: Run `compile_applet` to confirm the production build compiles cleanly.
-
-### Manual Verification
-1. Navigate to **My Games** (`#games` / My Games tab).
-2. Open the 3-dots menu on any game card -> verify "Play in Mystery Box" is replaced with **"Create Homework"**.
-3. Click **"Create Homework"** -> verify modal opens with pre-filled game title, duration picker, passing score, and 6-digit PIN.
-4. Save homework -> verify it appears in the **Homework Tab**.
-5. Switch to **Teacher View** -> verify assignment shows with 0 submissions and share options.
-6. Switch to **Student View** -> click "Start Assignment" (or enter PIN), complete questions.
-7. Return to **Teacher Analytics** -> verify new submission appears with student name, exact duration spent, accuracy %, and full question breakdown.
-8. Click "View Verified Proof" -> verify detailed audit certificate with timestamp and question breakdown.
+### Key Implementation Steps
+1. **Extend Player Telemetry (`questionsCorrect` & `questionsWrong`)**:
+   - Add `questionsCorrect: number` and `questionsWrong: number` to `PlayerNetworkState` and local student state, resetting them to `0` when a new match starts (`triggerStudentMatchStart` and `handleStartMultiplayerMatch`).
+   - Increment `questionsCorrect` on a right answer and `questionsWrong` on a wrong answer or 15-second question timer expiration, and include both fields in the 300ms heartbeat sync.
+2. **Streamline Player HUD & Gate Questions by Match Start**:
+   - Hide `Settings`, `Scores`, `Character`, the player card `⭐ score` badge, and the `🟢 LOBBY (code)` room code pill when `role === 'player'`.
+   - Render the bottom `QUESTIONS` button (and allow `Q` key shortcut) strictly when `role === 'player' && matchStatus === 'playing'`.
+3. **Host Kills-Per-Team Scoring, Accuracy Display & Winner Screen**:
+   - Update Host HUD, Host Scores popup, and Final Results screen to highlight **Team Kills (`teamTotals.red.kos` vs `teamTotals.blue.kos`)** and sort players by Kills (`kos`).
+   - Render per-player accuracy (`accuracy% • ✓ correct / ✗ wrong`) on Host player cards, Scores modal rows, and Final Results rows.
+   - Add a prominent **Winner Banner** (`RED SQUAD WINS!`, `BLUE SQUAD WINS!`, `IT'S A TIE!`, or Solo Champion) at the top of the Final Results screen on both Host and Player devices.
