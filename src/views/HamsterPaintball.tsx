@@ -1569,6 +1569,8 @@ interface PlayerNetworkState {
   questionsAnswered: number;
   questionsCorrect?: number;
   questionsWrong?: number;
+  seq?: number;
+  lastStartedAt?: number;
   updatedAt: number;
   kicked?: boolean;
   lastShot?: {
@@ -1946,6 +1948,103 @@ export default function HamsterPaintball({
     Array<{ id: string; points: number; label: string; color: string }>
   >([]);
 
+  // Arcade Combat Feel: Reticle Hit Marker, 3D-Projected Floating Damage Numbers, Incoming Damage Vignette & Kill-Streak Callouts
+  const [hitMarkerFlash, setHitMarkerFlash] = useState<{
+    id: string;
+    xPct: number;
+    yPct: number;
+    isShield: boolean;
+  } | null>(null);
+  const [floatingDamages, setFloatingDamages] = useState<
+    Array<{
+      id: string;
+      damage: number;
+      xPct: number;
+      yPct: number;
+      isShield: boolean;
+      targetName: string;
+    }>
+  >([]);
+  const [damageVignetteColor, setDamageVignetteColor] = useState<string | null>(null);
+  const [killStreakCallout, setKillStreakCallout] = useState<{
+    id: string;
+    streak: number;
+    title: string;
+    subtitle: string;
+    colorClass: string;
+  } | null>(null);
+
+  // Project 3D world coordinate to 2D screen percentage for floating damage numbers & hit markers
+  const projectWorldToScreenPct = (worldX: number, worldY: number, worldZ: number) => {
+    const cam = gameRef.current?.camera;
+    if (!cam) return { xPct: 50, yPct: 45 };
+    const vec = new THREE.Vector3(worldX, worldY, worldZ);
+    vec.project(cam);
+    const xPct = Math.max(12, Math.min(88, (vec.x * 0.5 + 0.5) * 100));
+    const yPct = Math.max(15, Math.min(82, (-vec.y * 0.5 + 0.5) * 100));
+    return { xPct, yPct };
+  };
+
+  const spawnCombatHitFeedback = (
+    worldX: number,
+    worldY: number,
+    worldZ: number,
+    damage: number,
+    isShield: boolean,
+    targetName: string
+  ) => {
+    const { xPct, yPct } = projectWorldToScreenPct(worldX, worldY, worldZ);
+    const jitterX = (Math.random() - 0.5) * 3.5;
+    const hitId = `hm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    setHitMarkerFlash({ id: hitId, xPct, yPct, isShield });
+    setTimeout(() => {
+      setHitMarkerFlash(prev => (prev?.id === hitId ? null : prev));
+    }, 210);
+
+    setFloatingDamages(prev => [
+      ...prev.slice(-5),
+      {
+        id: hitId,
+        damage,
+        xPct: xPct + jitterX,
+        yPct,
+        isShield,
+        targetName
+      }
+    ]);
+    setTimeout(() => {
+      setFloatingDamages(prev => prev.filter(d => d.id !== hitId));
+    }, 950);
+  };
+
+  const triggerKillStreakCallout = (streak: number, victimName: string) => {
+    if (streak < 2) return;
+    const calloutId = `ks-${Date.now()}`;
+    let title = '🔥 DOUBLE SPLAT!';
+    let colorClass = 'from-amber-500 via-orange-500 to-rose-500 border-amber-200';
+    if (streak === 3) {
+      title = '⚡ TRIPLE SPLAT!';
+      colorClass = 'from-cyan-400 via-blue-500 to-indigo-600 border-cyan-200';
+    } else if (streak === 4) {
+      title = '💥 MEGA SPLAT!';
+      colorClass = 'from-fuchsia-500 via-purple-600 to-pink-500 border-pink-200';
+    } else if (streak >= 5) {
+      title = '👑 UNSTOPPABLE!';
+      colorClass = 'from-lime-400 via-emerald-500 to-teal-600 border-white';
+    }
+    setKillStreakCallout({
+      id: calloutId,
+      streak,
+      title,
+      subtitle: `${streak}x KILL STREAK • SPLATTERED ${victimName.toUpperCase()}!`,
+      colorClass
+    });
+    setTimeout(() => {
+      setKillStreakCallout(prev => (prev?.id === calloutId ? null : prev));
+    }, 2600);
+  };
+
   // Helper to compute per-player Question Accuracy (%), Correct count, and Wrong count
   const getPlayerQuestionStats = (p: {
     questionsCorrect?: number;
@@ -2212,6 +2311,7 @@ export default function HamsterPaintball({
     matchMode,
     matchStatus,
     matchSeconds,
+    isTimerPaused,
     ballsPerQuestion,
     hostCameraMode,
     hostFollowIndex,
@@ -2245,6 +2345,7 @@ export default function HamsterPaintball({
       matchMode,
       matchStatus,
       matchSeconds,
+      isTimerPaused,
       ballsPerQuestion,
       hostCameraMode,
       hostFollowIndex,
@@ -2276,6 +2377,7 @@ export default function HamsterPaintball({
     matchMode,
     matchStatus,
     matchSeconds,
+    isTimerPaused,
     ballsPerQuestion,
     hostCameraMode,
     hostFollowIndex,
@@ -2480,13 +2582,19 @@ export default function HamsterPaintball({
     }
   }, [role, screen]);
 
-  // Match Countdown Timer (Only ticks down once Host clicks START GAME -> matchStatus === 'playing' and !isTimerPaused)
+  // Match Countdown Timer (Wall-clock anchored so background tab throttling never causes Host & Player timers to drift apart!)
   useEffect(() => {
-    if (screen !== 'game' || isTimerPaused) return;
-    if (role === 'player' && matchStatus !== 'playing') return;
+    if (isTimerPaused || matchStatus !== 'playing') return;
+    if (role === 'player' && screen !== 'game') return;
+    let lastWallMs = Date.now();
     const timer = setInterval(() => {
+      const nowMs = Date.now();
+      const elapsedSec = Math.floor((nowMs - lastWallMs) / 1000);
+      if (elapsedSec < 1) return;
+      lastWallMs += elapsedSec * 1000;
+
       setMatchSeconds(prev => {
-        if (prev <= 1) {
+        if (prev <= elapsedSec) {
           sfx.playKO();
           setMatchStatus('results');
           setScreen('results');
@@ -2508,7 +2616,7 @@ export default function HamsterPaintball({
           }
           return 0;
         }
-        const nextSec = prev - 1;
+        const nextSec = prev - elapsedSec;
         if (nextSec <= 10) {
           sfx.playTimerTick(true);
         } else if (nextSec === 30 || nextSec === 60) {
@@ -2516,7 +2624,7 @@ export default function HamsterPaintball({
         }
         return nextSec;
       });
-    }, 1000);
+    }, 250);
     return () => clearInterval(timer);
   }, [screen, role, matchStatus, isTimerPaused, roomCode]);
 
@@ -2560,6 +2668,19 @@ export default function HamsterPaintball({
   const getPlayerDocRef = (code: string, pId: string) =>
     doc(db, 'ttt_rooms', `pb_room_${normalizeCode(code)}`, 'actions', `player_${pId}`);
 
+  // Strip undefined properties before calling Firestore setDoc (Firestore throws if any field is undefined!)
+  const stripUndefinedFields = <T extends Record<string, any>>(obj: T): Record<string, any> => {
+    const clean: Record<string, any> = {};
+    Object.keys(obj).forEach(key => {
+      const val = obj[key];
+      if (val !== undefined) {
+        clean[key] = val;
+      }
+    });
+    return clean;
+  };
+
+  const playerSeqRef = useRef<number>(1);
   const ackHostOverrideAtRef = useRef<number>(0);
   const lastDamageAppliedAtRef = useRef<number>(0);
   const mergedPlayersMapRef = useRef<
@@ -2643,6 +2764,7 @@ export default function HamsterPaintball({
     incomingBallsPerQuestion?: number
   ) => {
     lastStartedAtRef.current = startedAtTs;
+    playerSeqRef.current = 1;
     sfx.playKO();
     sfx.startMusic();
     if (typeof incomingBallsPerQuestion === 'number' && incomingBallsPerQuestion > 0) {
@@ -2729,6 +2851,8 @@ export default function HamsterPaintball({
       questionsAnswered: 0,
       questionsCorrect: 0,
       questionsWrong: 0,
+      seq: ++playerSeqRef.current,
+      lastStartedAt: startedAtTs,
       kicked: false,
       updatedAt: Date.now()
     };
@@ -2747,10 +2871,10 @@ export default function HamsterPaintball({
       syncPaintballPlayerApi(roomCode, startPayload);
       setDoc(
         getPlayerDocRef(roomCode, clientIdRef.current),
-        {
+        stripUndefinedFields({
           ...startPayload,
           lastSeen: serverTimestamp()
-        },
+        }),
         { merge: true }
       ).catch(() => {});
     }
@@ -2817,7 +2941,22 @@ export default function HamsterPaintball({
           const nextSec = data.isTimerPaused
             ? data.timerSyncSeconds
             : Math.max(0, data.timerSyncSeconds - elapsed);
-          setMatchSeconds(nextSec);
+          setMatchSeconds(prev => (Math.abs(prev - nextSec) >= 2 ? nextSec : prev));
+        } else if (
+          data?.matchStatus === 'playing' &&
+          typeof data?.startedAt === 'number' &&
+          data.startedAt > 1000 &&
+          typeof data?.configuredDurationSec === 'number' &&
+          !data?.isTimerPaused
+        ) {
+          const elapsedSinceStart = Math.max(
+            0,
+            Math.floor((Date.now() - data.startedAt) / 1000)
+          );
+          const derivedRemaining = Math.max(0, data.configuredDurationSec - elapsedSinceStart);
+          setMatchSeconds(prev =>
+            Math.abs(prev - derivedRemaining) >= 3 ? derivedRemaining : prev
+          );
         }
         if (data?.matchStatus === 'playing') {
           const incomingStartTs =
@@ -2899,6 +3038,14 @@ export default function HamsterPaintball({
         if (data.role === 'player' && !data.kicked) {
           const defaultZ = data.team === 'blue' ? 44 : -44;
           const incomingUpdatedAt = typeof data.updatedAt === 'number' ? data.updatedAt : now;
+          const incomingSeq = typeof data.seq === 'number' ? data.seq : 0;
+          const incomingStartedAt =
+            typeof data.lastStartedAt === 'number'
+              ? data.lastStartedAt
+              : typeof data.matchStartResetAt === 'number'
+              ? data.matchStartResetAt
+              : 0;
+
           const pState: PlayerNetworkState = {
             id: playerId,
             name: data.name || 'Student',
@@ -2925,22 +3072,47 @@ export default function HamsterPaintball({
                 : 0,
             questionsWrong:
               typeof data.questionsWrong === 'number' ? data.questionsWrong : 0,
+            seq: incomingSeq,
+            lastStartedAt: incomingStartedAt,
             updatedAt: incomingUpdatedAt
           };
 
           const existingEntry = mergedPlayersMapRef.current.get(playerId);
-          const shouldUpdateState =
-            !existingEntry ||
-            incomingUpdatedAt >= (existingEntry.state.updatedAt || 0) - 400 ||
-            now - existingEntry.lastSeenLocalAt > 1200;
+          let shouldUpdateState = true;
+          if (existingEntry) {
+            const prev = existingEntry.state;
+            const prevSeq = prev.seq || 0;
+            const prevStartedAt = prev.lastStartedAt || 0;
+
+            if (incomingStartedAt > 0 && prevStartedAt > 0 && incomingStartedAt < prevStartedAt) {
+              // Packet from an older match session — ignore
+              shouldUpdateState = false;
+            } else if (
+              incomingStartedAt > prevStartedAt &&
+              incomingStartedAt > 1000
+            ) {
+              // Newer match session started — accept immediately
+              shouldUpdateState = true;
+            } else if (
+              incomingSeq > 0 &&
+              prevSeq > 0 &&
+              (incomingStartedAt === prevStartedAt || incomingStartedAt === 0 || prevStartedAt === 0)
+            ) {
+              // Monotonic sequence comparison within the same match
+              shouldUpdateState = incomingSeq >= prevSeq;
+            } else if (prevSeq > 0 && incomingSeq === 0) {
+              // Never allow an unsequenced stale snapshot (e.g. old initial join doc) to overwrite a sequenced moving player unless it's a fresh Host match reset
+              shouldUpdateState = incomingUpdatedAt > (prev.updatedAt || 0) + 1500;
+            } else {
+              shouldUpdateState = incomingUpdatedAt >= (prev.updatedAt || 0);
+            }
+          }
 
           if (shouldUpdateState) {
             mergedPlayersMapRef.current.set(playerId, {
               state: pState,
               lastSeenLocalAt: now
             });
-          } else if (existingEntry) {
-            existingEntry.lastSeenLocalAt = now;
           }
 
           // If this is my own player document:
@@ -3049,6 +3221,7 @@ export default function HamsterPaintball({
               setKos(k => k + 1);
               setKoStreak(nextKoStreak);
               setBestStreak(b => Math.max(b, nextKoStreak));
+              triggerKillStreakCallout(nextKoStreak, data.lastKo.victimName || 'Opponent');
               awardPoints(
                 totalKoPts,
                 nextKoStreak >= 2
@@ -3100,7 +3273,11 @@ export default function HamsterPaintball({
     // If Host (Teacher Jan), publish room configuration & custom quiz questions to Server API + Firestore
     if (role === 'host') {
       const hostStatus =
-        screen === 'game' ? 'playing' : screen === 'results' ? 'results' : 'lobby';
+        stateSnapRef.current.matchStatus === 'playing'
+          ? 'playing'
+          : screen === 'results' || stateSnapRef.current.matchStatus === 'results'
+          ? 'results'
+          : 'lobby';
       const roomConfigPayload = {
         roomCode: cleanCode,
         website: 'www.hamsterenglish.online',
@@ -3115,14 +3292,19 @@ export default function HamsterPaintball({
         configuredDurationSec,
         ballsPerQuestion,
         ...(hostStatus === 'playing' && lastStartedAtRef.current > 1000
-          ? { startedAt: lastStartedAtRef.current }
+          ? {
+              startedAt: lastStartedAtRef.current,
+              timerSyncSeconds: stateSnapRef.current.matchSeconds,
+              timerSyncedAt: Date.now(),
+              isTimerPaused: stateSnapRef.current.isTimerPaused
+            }
           : {}),
         updatedAt: Date.now()
       };
       syncPaintballRoomApi(cleanCode, roomConfigPayload).then(resData => {
         if (resData?.players) processPlayersList(resData.players);
       });
-      setDoc(roomDocRef, roomConfigPayload, { merge: true }).catch(() => {});
+      setDoc(roomDocRef, stripUndefinedFields(roomConfigPayload), { merge: true }).catch(() => {});
     }
 
     // Listen to room settings via Firestore (when quota available)
@@ -3175,6 +3357,7 @@ export default function HamsterPaintball({
             setKos(k => k + 1);
             setKoStreak(nextKoStreak);
             setBestStreak(b => Math.max(b, nextKoStreak));
+            triggerKillStreakCallout(nextKoStreak, msg.victimName || 'Opponent');
             awardPoints(
               totalKoPts,
               nextKoStreak >= 2
@@ -3289,11 +3472,26 @@ export default function HamsterPaintball({
 
       if (snapState.role === 'host') {
         try {
-          const res = await fetch(`/api/paintball/room/${encodeURIComponent(cleanCode)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.room) processRoomData(data.room);
-            if (Array.isArray(data?.players)) processPlayersList(data.players);
+          // While match is playing, Host broadcasts live timer heartbeat every 5 ticks (~1.5s) so Host & Players never drift!
+          if (snapState.matchStatus === 'playing' && pollTickCount % 5 === 0) {
+            const liveTimerPatch = {
+              matchStatus: 'playing',
+              timerSyncSeconds: snapState.matchSeconds,
+              timerSyncedAt: Date.now(),
+              isTimerPaused: snapState.isTimerPaused,
+              ...(lastStartedAtRef.current > 1000 ? { startedAt: lastStartedAtRef.current } : {})
+            };
+            const resData = await syncPaintballRoomApi(cleanCode, liveTimerPatch);
+            if (resData?.room) processRoomData(resData.room);
+            if (Array.isArray(resData?.players)) processPlayersList(resData.players);
+            setDoc(roomDocRef, liveTimerPatch, { merge: true }).catch(() => {});
+          } else {
+            const res = await fetch(`/api/paintball/room/${encodeURIComponent(cleanCode)}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data?.room) processRoomData(data.room);
+              if (Array.isArray(data?.players)) processPlayersList(data.players);
+            }
           }
         } catch {}
         return;
@@ -3332,9 +3530,17 @@ export default function HamsterPaintball({
         questionsAnswered: snapState.questionsAnswered,
         questionsCorrect: snapState.questionsCorrect,
         questionsWrong: snapState.questionsWrong,
-        lastShot: lastNetActionRef.current.lastShot,
-        lastHit: lastNetActionRef.current.lastHit,
-        lastKo: lastNetActionRef.current.lastKo,
+        seq: ++playerSeqRef.current,
+        lastStartedAt: lastStartedAtRef.current,
+        ...(lastNetActionRef.current.lastShot
+          ? { lastShot: lastNetActionRef.current.lastShot }
+          : {}),
+        ...(lastNetActionRef.current.lastHit
+          ? { lastHit: lastNetActionRef.current.lastHit }
+          : {}),
+        ...(lastNetActionRef.current.lastKo
+          ? { lastKo: lastNetActionRef.current.lastKo }
+          : {}),
         updatedAt: Date.now()
       };
 
@@ -3353,10 +3559,10 @@ export default function HamsterPaintball({
       const playerRef = getPlayerDocRef(cleanCode, clientIdRef.current);
       setDoc(
         playerRef,
-        {
+        stripUndefinedFields({
           ...payload,
           lastSeen: serverTimestamp()
-        },
+        }),
         { merge: true }
       ).catch(() => {});
     }, 300);
@@ -3397,6 +3603,10 @@ export default function HamsterPaintball({
     lastDamageAppliedAtRef.current = now;
 
     sfx.playSplat();
+    const isShieldAbsorb = stateSnapRef.current.shield > 0;
+    setDamageVignetteColor(isShieldAbsorb ? 'rgba(34, 211, 238, 0.42)' : 'rgba(244, 63, 94, 0.48)');
+    setTimeout(() => setDamageVignetteColor(null), 420);
+
     setShield(prevShield => {
       if (prevShield >= damage) {
         return prevShield - damage;
@@ -3463,6 +3673,7 @@ export default function HamsterPaintball({
           pushLiveEvent(evText, '#f43f5e');
 
           if (roomCode) {
+            const koSeq = ++playerSeqRef.current;
             syncPaintballPlayerApi(
               roomCode,
               {
@@ -3473,21 +3684,26 @@ export default function HamsterPaintball({
                 hp: 100,
                 shield: 100,
                 immuneUntil: newImmuneUntil,
+                seq: koSeq,
+                lastStartedAt: lastStartedAtRef.current,
                 lastKo: koObj
               },
               { latestEvent: koEvent }
             );
             setDoc(
               getPlayerDocRef(roomCode, clientIdRef.current),
-              {
+              stripUndefinedFields({
                 x: sp.x,
                 z: sp.z,
                 rotY: sp.rotY,
                 hp: 100,
                 shield: 100,
                 immuneUntil: newImmuneUntil,
-                lastKo: koObj
-              },
+                seq: koSeq,
+                lastStartedAt: lastStartedAtRef.current,
+                lastKo: koObj,
+                updatedAt: Date.now()
+              }),
               { merge: true }
             ).catch(() => {});
             setDoc(
@@ -3523,15 +3739,40 @@ export default function HamsterPaintball({
       entry = { data: rState, mesh, walkPhase: 0 };
       g.remotePlayers.set(rState.id, entry);
     } else {
-      // Ignore stale out-of-order network packets so remote players never jump backward
+      // Strictly ignore any stale or out-of-order network packet regardless of distance so moving players NEVER snap back to spawn!
+      const incomingSeq = rState.seq || 0;
+      const existingSeq = entry.data.seq || 0;
+      const incomingStartedAt = rState.lastStartedAt || 0;
+      const existingStartedAt = entry.data.lastStartedAt || 0;
+
+      if (incomingStartedAt > 0 && existingStartedAt > 0 && incomingStartedAt < existingStartedAt) {
+        return;
+      }
       if (
-        entry.data.updatedAt &&
-        rState.updatedAt &&
-        rState.updatedAt < entry.data.updatedAt &&
-        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) < 15
+        incomingSeq > 0 &&
+        existingSeq > 0 &&
+        (incomingStartedAt === existingStartedAt || incomingStartedAt === 0 || existingStartedAt === 0) &&
+        incomingSeq < existingSeq
       ) {
         return;
       }
+      if (
+        existingSeq > 0 &&
+        incomingSeq === 0 &&
+        (!rState.updatedAt || rState.updatedAt <= (entry.data.updatedAt || 0) + 1500)
+      ) {
+        return;
+      }
+      if (
+        incomingSeq === 0 &&
+        existingSeq === 0 &&
+        entry.data.updatedAt &&
+        rState.updatedAt &&
+        rState.updatedAt < entry.data.updatedAt
+      ) {
+        return;
+      }
+
       // Rebuild 3D hamster (including Red/Blue Team Headband, gun & name badge) if team, name, or skin changed
       if (
         entry.data.team !== rState.team ||
@@ -3545,7 +3786,7 @@ export default function HamsterPaintball({
         g.scene.add(mesh);
         entry.mesh = mesh;
       } else if (
-        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 14
+        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 18
       ) {
         // Snap immediately when player teleports to Red/Blue Square Spawn at match start or respawn!
         entry.mesh.position.set(rState.x, 0, rState.z);
@@ -6940,6 +7181,14 @@ export default function HamsterPaintball({
               }
               sfx.playSplat();
               spawnPaintSplatEffect(scene, g.splatDecals, g.particles, rx, 1.2, rz, p.color);
+              spawnCombatHitFeedback(
+                rx,
+                2.05,
+                rz,
+                p.damage,
+                (entry.data.shield ?? 0) > 0,
+                entry.data.name || 'Opponent'
+              );
               const hitPts = 20 + Math.min(15, snapState.koStreak * 5);
               setHitsLanded(h => h + 1);
               awardPoints(hitPts, `🎯 PAINT HIT!`, '#38bdf8');
@@ -7044,12 +7293,15 @@ export default function HamsterPaintball({
         }
       }
 
-      // Guarantee All Remote Players in `roomPlayers` are Always Visible in the 3D Arena!
+      // Guarantee All Remote Players in `mergedPlayersMapRef` and `roomPlayers` are Always Visible & Up-to-Date in the 3D Arena!
+      mergedPlayersMapRef.current.forEach(({ state: rp }) => {
+        if (rp.id !== clientIdRef.current && rp.role === 'player' && !rp.kicked) {
+          upsertRemotePlayer(rp);
+        }
+      });
       snapState.roomPlayers.forEach(rp => {
         if (rp.id !== clientIdRef.current && rp.role === 'player' && !rp.kicked) {
-          if (!g.remotePlayers.has(rp.id)) {
-            upsertRemotePlayer(rp);
-          }
+          upsertRemotePlayer(rp);
         }
       });
 
@@ -7416,8 +7668,14 @@ export default function HamsterPaintball({
         questionsCorrect: 0,
         questionsWrong: 0,
         immuneUntil: 0,
+        seq: 0,
+        lastStartedAt: startTs,
         updatedAt: startTs
       };
+      mergedPlayersMapRef.current.set(p.id, {
+        state: nextP,
+        lastSeenLocalAt: startTs
+      });
       if (roomCode) {
         const playerResetPatch = {
           team: assignedTeam,
@@ -7434,6 +7692,8 @@ export default function HamsterPaintball({
           questionsCorrect: 0,
           questionsWrong: 0,
           immuneUntil: 0,
+          seq: 0,
+          lastStartedAt: startTs,
           matchStartResetAt: startTs,
           updatedAt: startTs
         };
@@ -7733,6 +7993,52 @@ export default function HamsterPaintball({
       }
     });
     return totals;
+  }, [roomPlayers]);
+
+  // Compute Post-Match MVP Awards (Top Killer, Best Accuracy, Best Streak)
+  const mvpAwards = React.useMemo(() => {
+    if (roomPlayers.length === 0) {
+      return { topKiller: null, bestAccuracy: null, bestStreak: null };
+    }
+
+    let topKiller: PlayerNetworkState | null = null;
+    let bestAccuracy: {
+      player: PlayerNetworkState;
+      accuracy: number;
+      correct: number;
+      wrong: number;
+    } | null = null;
+    let bestStreak: PlayerNetworkState | null = null;
+
+    roomPlayers.forEach(p => {
+      const kills = p.kos || 0;
+      if (kills > 0 && (!topKiller || kills > (topKiller.kos || 0))) {
+        topKiller = p;
+      }
+
+      const qStats = getPlayerQuestionStats(p);
+      if (qStats.total > 0) {
+        if (
+          !bestAccuracy ||
+          qStats.accuracy > bestAccuracy.accuracy ||
+          (qStats.accuracy === bestAccuracy.accuracy && qStats.correct > bestAccuracy.correct)
+        ) {
+          bestAccuracy = {
+            player: p,
+            accuracy: qStats.accuracy,
+            correct: qStats.correct,
+            wrong: qStats.wrong
+          };
+        }
+      }
+
+      const streak = p.bestStreak || 0;
+      if (streak > 0 && (!bestStreak || streak > (bestStreak.bestStreak || 0))) {
+        bestStreak = p;
+      }
+    });
+
+    return { topKiller, bestAccuracy, bestStreak };
   }, [roomPlayers]);
 
   // Mobile Touch Joystick Handlers
@@ -8107,6 +8413,8 @@ export default function HamsterPaintball({
                   score,
                   kos,
                   questionsAnswered,
+                  seq: ++playerSeqRef.current,
+                  lastStartedAt: lastStartedAtRef.current,
                   kicked: false,
                   updatedAt: Date.now()
                 };
@@ -8115,10 +8423,10 @@ export default function HamsterPaintball({
 
                 setDoc(
                   getPlayerDocRef(cleanCode, clientIdRef.current),
-                  {
+                  stripUndefinedFields({
                     ...initialPayload,
                     lastSeen: serverTimestamp()
-                  },
+                  }),
                   { merge: true }
                 ).catch(() => {});
 
@@ -8221,14 +8529,25 @@ export default function HamsterPaintball({
                           immuneUntil: typeof raw.immuneUntil === 'number' ? raw.immuneUntil : 0,
                           questionsAnswered:
                             typeof raw.questionsAnswered === 'number' ? raw.questionsAnswered : 0,
+                          seq: typeof raw.seq === 'number' ? raw.seq : 0,
+                          lastStartedAt:
+                            typeof raw.lastStartedAt === 'number' ? raw.lastStartedAt : 0,
                           updatedAt: raw.updatedAt || Date.now()
                         };
-                        mergedPlayersMapRef.current.set(pid, {
-                          state: pState,
-                          lastSeenLocalAt: Date.now()
-                        });
-                        if (pid !== clientIdRef.current) {
-                          upsertRemotePlayer(pState);
+                        const existing = mergedPlayersMapRef.current.get(pid);
+                        const canAccept =
+                          !existing ||
+                          (pState.seq && existing.state.seq
+                            ? pState.seq >= existing.state.seq
+                            : (pState.updatedAt || 0) >= (existing.state.updatedAt || 0));
+                        if (canAccept) {
+                          mergedPlayersMapRef.current.set(pid, {
+                            state: pState,
+                            lastSeenLocalAt: Date.now()
+                          });
+                          if (pid !== clientIdRef.current) {
+                            upsertRemotePlayer(pState);
+                          }
                         }
                       });
                       setRoomPlayers(
@@ -8708,6 +9027,57 @@ export default function HamsterPaintball({
          ------------------------------------------------------------- */}
       {screen === 'game' && (
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between px-2.5 sm:px-4 pt-12 sm:pt-14 pb-2.5 sm:pb-4 overflow-hidden">
+          {/* SCREEN-EDGE INCOMING DAMAGE PAINT VIGNETTE */}
+          {damageVignetteColor && (
+            <div
+              className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-200"
+              style={{
+                background: `radial-gradient(circle, transparent 52%, ${damageVignetteColor} 100%)`
+              }}
+            />
+          )}
+
+          {/* RETICLE HIT-MARKER FLASH (✕) ON CONFIRMED IMPACT */}
+          {hitMarkerFlash && (
+            <div
+              className="absolute pointer-events-none z-30 -translate-x-1/2 -translate-y-1/2"
+              style={{
+                left: `${hitMarkerFlash.xPct}%`,
+                top: `${hitMarkerFlash.yPct}%`
+              }}
+            >
+              <div
+                className={`w-8 h-8 flex items-center justify-center font-black text-xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] scale-110 transition-transform ${
+                  hitMarkerFlash.isShield ? 'text-cyan-300' : 'text-amber-300'
+                }`}
+              >
+                ✕
+              </div>
+            </div>
+          )}
+
+          {/* 3D-PROJECTED FLOATING DAMAGE POPUPS (-25 SHIELD / HP) */}
+          {floatingDamages.map(fd => (
+            <div
+              key={fd.id}
+              className="absolute pointer-events-none z-30 -translate-x-1/2 -translate-y-full animate-bounce"
+              style={{
+                left: `${fd.xPct}%`,
+                top: `${fd.yPct}%`
+              }}
+            >
+              <div
+                className={`px-2 py-0.5 rounded-lg border font-black text-xs sm:text-sm shadow-xl whitespace-nowrap ${
+                  fd.isShield
+                    ? 'bg-cyan-950/90 border-cyan-300 text-cyan-200'
+                    : 'bg-rose-950/90 border-rose-300 text-rose-200'
+                }`}
+              >
+                -{fd.damage} {fd.isShield ? '🛡️' : '💥'}
+              </div>
+            </div>
+          ))}
+
           {/* TOP HUD BAR: NON-OVERLAPPING RESPONSIVE 3-COLUMN LAYOUT FOR MOBILE & TABLET (PORTRAIT & LANDSCAPE) */}
           <div className="w-full flex items-start justify-between gap-1.5 sm:gap-2 flex-nowrap">
             {role === 'player' ? (
@@ -9017,8 +9387,20 @@ export default function HamsterPaintball({
             </div>
           </div>
 
-          {/* CENTER ALERTS: MATCH START SPAWN HOLD, 10s RESPAWN IMMUNITY, KO, OR PICKUP */}
-          <div className="self-center flex flex-col items-center gap-1 max-w-[90vw]">
+          {/* CENTER ALERTS: KILL-STREAK CALLOUTS, MATCH START SPAWN HOLD, 10s RESPAWN IMMUNITY, KO, OR PICKUP */}
+          <div className="self-center flex flex-col items-center gap-1.5 max-w-[90vw]">
+            {killStreakCallout && (
+              <div
+                className={`bg-gradient-to-r ${killStreakCallout.colorClass} border-2 px-4 py-1.5 rounded-2xl text-center shadow-2xl animate-bounce`}
+              >
+                <div className="text-sm sm:text-lg font-black text-white uppercase tracking-wide drop-shadow">
+                  {killStreakCallout.title}
+                </div>
+                <div className="text-[10px] sm:text-xs font-extrabold text-white/95 uppercase">
+                  {killStreakCallout.subtitle}
+                </div>
+              </div>
+            )}
             {role === 'player' && matchStatus === 'playing' && spawnHoldSecondsLeft > 0 && (
               <div
                 className={`bg-slate-900/95 border-2 px-3 py-1 rounded-xl text-center shadow-2xl ${
@@ -9260,11 +9642,11 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 5: FINAL RESULTS & WINNER BANNER (SHOWN ON HOST & PLAYER SCREENS)
+          SCREEN 5: FINAL RESULTS, WINNER BANNER & MVP AWARDS (SHOWN ON HOST & PLAYER SCREENS)
          ------------------------------------------------------------- */}
       {screen === 'results' && (
         <div className="absolute inset-0 z-50 bg-slate-950/90 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border-2 border-lime-400 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 my-auto text-center">
+          <div className="bg-slate-900 border-2 border-lime-400 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 my-auto text-center">
             <Award size={48} className="text-amber-400 mx-auto" />
             <div>
               <span className="px-3 py-0.5 rounded-full bg-lime-400/20 text-lime-300 font-black text-xs uppercase">
@@ -9314,6 +9696,114 @@ export default function HamsterPaintball({
               </div>
             )}
 
+            {/* POST-MATCH MVP BADGES SHOWCASE (TOP KILLER, BEST ACCURACY, BEST STREAK) */}
+            {(mvpAwards.topKiller || mvpAwards.bestAccuracy || mvpAwards.bestStreak) && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-left">
+                {/* 1. TOP KILLER BADGE */}
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-rose-950/90 to-slate-900 border-2 border-rose-400/70 shadow-lg flex items-center gap-2.5">
+                  {mvpAwards.topKiller ? (
+                    <>
+                      <HamsterCharacterAvatar
+                        skin={HAMSTER_SKINS[mvpAwards.topKiller.skinIdx] || HAMSTER_SKINS[0]}
+                        size={38}
+                        team={matchMode === 'teams' ? mvpAwards.topKiller.team || 'red' : 'solo'}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-rose-300">
+                          💥 TOP KILLER
+                        </div>
+                        <div className="text-xs sm:text-sm font-black text-white truncate">
+                          {mvpAwards.topKiller.name}
+                        </div>
+                        <div className="text-[10px] font-bold text-lime-300">
+                          {mvpAwards.topKiller.kos || 0} Kills
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full text-center py-1">
+                      <div className="text-[10px] font-black uppercase text-rose-300">
+                        💥 TOP KILLER
+                      </div>
+                      <div className="text-[11px] font-bold text-slate-400 mt-0.5">No KOs yet</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. BEST ACCURACY BADGE */}
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-cyan-950/90 to-slate-900 border-2 border-cyan-400/70 shadow-lg flex items-center gap-2.5">
+                  {mvpAwards.bestAccuracy ? (
+                    <>
+                      <HamsterCharacterAvatar
+                        skin={
+                          HAMSTER_SKINS[mvpAwards.bestAccuracy.player.skinIdx] || HAMSTER_SKINS[0]
+                        }
+                        size={38}
+                        team={
+                          matchMode === 'teams'
+                            ? mvpAwards.bestAccuracy.player.team || 'red'
+                            : 'solo'
+                        }
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                          🎯 BEST ACCURACY
+                        </div>
+                        <div className="text-xs sm:text-sm font-black text-white truncate">
+                          {mvpAwards.bestAccuracy.player.name}
+                        </div>
+                        <div className="text-[10px] font-bold text-emerald-300">
+                          {mvpAwards.bestAccuracy.accuracy}% (✓{mvpAwards.bestAccuracy.correct})
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full text-center py-1">
+                      <div className="text-[10px] font-black uppercase text-cyan-300">
+                        🎯 BEST ACCURACY
+                      </div>
+                      <div className="text-[11px] font-bold text-slate-400 mt-0.5">
+                        No answers yet
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. BEST STREAK BADGE */}
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-950/90 to-slate-900 border-2 border-amber-400/70 shadow-lg flex items-center gap-2.5">
+                  {mvpAwards.bestStreak ? (
+                    <>
+                      <HamsterCharacterAvatar
+                        skin={HAMSTER_SKINS[mvpAwards.bestStreak.skinIdx] || HAMSTER_SKINS[0]}
+                        size={38}
+                        team={matchMode === 'teams' ? mvpAwards.bestStreak.team || 'red' : 'solo'}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">
+                          🔥 BEST STREAK
+                        </div>
+                        <div className="text-xs sm:text-sm font-black text-white truncate">
+                          {mvpAwards.bestStreak.name}
+                        </div>
+                        <div className="text-[10px] font-bold text-amber-200">
+                          {mvpAwards.bestStreak.bestStreak || 0}x Streak
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full text-center py-1">
+                      <div className="text-[10px] font-black uppercase text-amber-300">
+                        🔥 BEST STREAK
+                      </div>
+                      <div className="text-[11px] font-bold text-slate-400 mt-0.5">
+                        No streak yet
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {matchMode === 'teams' && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-2xl bg-rose-500/20 border-2 border-rose-500">
@@ -9340,12 +9830,15 @@ export default function HamsterPaintball({
             <div className="space-y-2 max-h-60 overflow-y-auto text-left">
               {roomPlayers.map((rp, i) => {
                 const qStats = getPlayerQuestionStats(rp);
+                const isTopKiller = mvpAwards.topKiller?.id === rp.id;
+                const isBestAcc = mvpAwards.bestAccuracy?.player.id === rp.id;
+                const isBestStreak = mvpAwards.bestStreak?.id === rp.id;
                 return (
                   <div
                     key={rp.id}
-                    className="flex items-center justify-between p-3 bg-slate-800 rounded-xl border border-white/10 text-xs font-bold"
+                    className="flex items-center justify-between p-3 bg-slate-800 rounded-xl border border-white/10 text-xs font-bold gap-2"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                       <span className="w-6 h-6 rounded-lg bg-amber-400 text-slate-950 font-black flex items-center justify-center shrink-0">
                         {i + 1}
                       </span>
@@ -9357,6 +9850,21 @@ export default function HamsterPaintball({
                           }`}
                         >
                           {TEAM_CONFIG[rp.team || 'red'].label}
+                        </span>
+                      )}
+                      {isTopKiller && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-500/25 border border-rose-400/60 text-rose-200 text-[9px] font-black uppercase">
+                          💥 Top Killer
+                        </span>
+                      )}
+                      {isBestAcc && (
+                        <span className="px-1.5 py-0.5 rounded bg-cyan-500/25 border border-cyan-400/60 text-cyan-200 text-[9px] font-black uppercase">
+                          🎯 Best Accuracy
+                        </span>
+                      )}
+                      {isBestStreak && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/25 border border-amber-400/60 text-amber-200 text-[9px] font-black uppercase">
+                          🔥 {rp.bestStreak}x Streak
                         </span>
                       )}
                     </div>

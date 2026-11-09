@@ -1645,18 +1645,36 @@ Return exactly a JSON array of 4 objects.`;
       existing.team &&
       now - hostOverrideAt < 8000;
 
+    // Never allow an out-of-order network request with an older sequence number from the same match to overwrite newer student coordinates
+    const incomingSeq = typeof playerData.seq === "number" ? playerData.seq : 0;
+    const existingSeq = typeof existing.seq === "number" ? existing.seq : 0;
+    const sameMatchSession =
+      (playerData.lastStartedAt || 0) === (existing.lastStartedAt || 0);
+    const isStaleStudentPacket =
+      !isHostAction &&
+      sameMatchSession &&
+      incomingSeq > 0 &&
+      existingSeq > 0 &&
+      incomingSeq < existingSeq;
+
     // Student coordinates (x, z, rotY) are always authoritative when !isHostAction so moving players never freeze at spawn!
-    const mergedPlayer: Record<string, any> = {
-      ...existing,
-      ...playerData,
-      id: playerId,
-      team: preserveHostTeam ? existing.team : playerData.team || existing.team || "red",
-      kicked: isHostAction
-        ? Boolean(playerData.kicked)
-        : Boolean(existing.kicked || playerData.kicked),
-      hostOverrideAt,
-      updatedAt: now
-    };
+    const mergedPlayer: Record<string, any> = isStaleStudentPacket
+      ? {
+          ...existing,
+          updatedAt: existing.updatedAt || now
+        }
+      : {
+          ...existing,
+          ...playerData,
+          id: playerId,
+          seq: isHostAction && playerData.matchStartResetAt ? 0 : Math.max(incomingSeq, existingSeq),
+          team: preserveHostTeam ? existing.team : playerData.team || existing.team || "red",
+          kicked: isHostAction
+            ? Boolean(playerData.kicked)
+            : Boolean(existing.kicked || playerData.kicked),
+          hostOverrideAt,
+          updatedAt: now
+        };
 
     entry.players.set(playerId, mergedPlayer);
 
