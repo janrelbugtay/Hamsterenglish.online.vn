@@ -2653,9 +2653,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           });
         });
       } else {
-        // 1 Player MOSQUITO MODE: 4 distinct quadrant zones safely below the Question Banner!
-        const safeTopY = Math.max(242, Math.min(height * 0.52, height * 0.45));
-        const safeBotY = Math.max(safeTopY + 128, Math.min(height - 122, height * 0.73));
+        // 1 Player MOSQUITO MODE: 4 distinct quadrant zones in the upper/middle arena above the bottom question bar!
+        const safeTopY = Math.max(135, Math.min(height * 0.34, height * 0.30));
+        const safeBotY = Math.max(safeTopY + 115, Math.min(height - 155, height * 0.62));
         const quadrantAnchors = [
           { x: width * 0.26, y: safeTopY }, // A (Top Left)
           { x: width * 0.74, y: safeTopY }, // B (Top Right)
@@ -2771,8 +2771,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           });
         });
       } else {
-        const safeTopY = Math.max(242, Math.min(height * 0.52, height * 0.45));
-        const safeBotY = Math.max(safeTopY + 128, Math.min(height - 122, height * 0.73));
+        const safeTopY = Math.max(135, Math.min(height * 0.34, height * 0.30));
+        const safeBotY = Math.max(safeTopY + 115, Math.min(height - 155, height * 0.62));
         const p1Quadrants = [
           { x: width * 0.15, y: safeTopY }, // A
           { x: width * 0.36, y: safeTopY }, // B
@@ -3697,45 +3697,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           ctx.fillStyle = barrierGrad;
           ctx.fillRect(cx - 16, 0, 32, ch);
 
-          // Core bright dashed boundary line
-          ctx.strokeStyle = '#0284c7';
-          ctx.lineWidth = 3.5;
-          ctx.setLineDash([16, 10]);
+          // Core clean dashed boundary line
+          ctx.strokeStyle = 'rgba(2, 132, 199, 0.75)';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([14, 10]);
           ctx.beginPath();
           ctx.moveTo(cx, 0);
           ctx.lineTo(cx, ch);
           ctx.stroke();
           ctx.setLineDash([]);
-
-          // Light 3D Court Zone Badges at bottom of the divider
-          const bW = 148;
-          const bH = 30;
-          const badgeY = ch - 68;
-          // Player 1 Zone Pill (Left - Vibrant Blue)
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.strokeStyle = '#2563eb';
-          ctx.lineWidth = 3;
-          roundRect(ctx, cx - bW - 14, badgeY, bW, bH, 12);
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = '#1d4ed8';
-          ctx.font = '900 12px Fredoka, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('🔵 P1 BLUE COURT', cx - bW / 2 - 14, badgeY + bH / 2);
-
-          // Player 2 Zone Pill (Right - Vibrant Red)
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 3;
-          roundRect(ctx, cx + 14, badgeY, bW, bH, 12);
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = '#b91c1c';
-          ctx.font = '900 12px Fredoka, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('🔴 P2 RED COURT', cx + bW / 2 + 14, badgeY + bH / 2);
 
           // Draw Frozen Court Side Overlay & Waiting Banner if a player's side is frozen
           [0, 1].forEach(sideIdx => {
@@ -3812,9 +3782,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         //    - In Chop Mode: Fruits launch FROM BELOW the bottom of the screen and rise UPWARD in an arc!
         const mvStyle = movementStyleRef.current;
         const moveMult = mvStyle === 'hover' ? 0.45 : mvStyle === 'calm' ? 0.78 : mvStyle === 'zigzag' ? 1.32 : 1.05;
-        // Keep mosquitoes & answer capsules safely below the Top HUD + Question Banner and above the Bottom Pill!
-        const padTop = Math.max(204, Math.min(248, ch * 0.27));
-        const padBottom = 82;
+        // Keep mosquitoes & answer capsules safely below the Minimalist Top Scoreboard and above the Bottom Question Bar!
+        const padTop = Math.max(96, Math.min(124, ch * 0.15));
+        const padBottom = Math.max(118, Math.min(148, ch * 0.20));
         const is2P = eng.numPlayers === 2;
         const curSpd = speedRef.current || 1.0;
 
@@ -6825,366 +6795,134 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       {screen === 'game' && (
         <div className="absolute inset-0 z-10 w-full h-full overflow-hidden select-none">
           
-          {/* ORGANIZED 3D BROADCAST TOP HUD:
-              - LEFT: Settings, End Game, Fullscreen & Round Info
-              - MIDDLE: Immersive Player Points + Center Match Timer Broadcast Scoreboard
-              - RIGHT: Quick Slap/Swat Trigger Mode & Audio Toggle */}
-          <div className="absolute top-0 left-0 right-0 z-40 w-full px-3 sm:px-5 pt-2.5 pb-1.5 pointer-events-none">
-            <div className="max-w-[1640px] mx-auto flex flex-col gap-2.5 pointer-events-auto">
+          {/* MINIMALIST TOP HEADER:
+              - LEFT: Settings, End, Fullscreen
+              - MIDDLE: Only Player Name, Score & Center Timer
+              - RIGHT: Slap Mode & Sound Toggle */}
+          <div className="absolute top-0 left-0 right-0 z-40 w-full px-3 sm:px-5 pt-2.5 pointer-events-none">
+            <div className="max-w-[1640px] mx-auto grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-center gap-2 w-full pointer-events-auto">
               
-              {/* Row 1: 3-ZONE ORGANIZED HEADER (Left Controls | Center Points & Timer Hub | Right Quick Mode) */}
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-center gap-2.5 w-full">
-                
-                {/* LEFT DOCK: Settings, End Game, Fullscreen & Question Counter */}
-                <div className="flex items-center justify-between lg:justify-start gap-2 flex-nowrap">
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowSettingsModal(true)}
-                      className="px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 hover:from-amber-200 hover:to-amber-400 border-t-2 border-white border-b-[5px] border-b-amber-700 text-xs sm:text-sm font-black text-slate-900 transition shadow-lg cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0 whitespace-nowrap"
-                    >
-                      <span className="text-sm sm:text-base">⚙️</span>
-                      <span>Settings</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => finishGame()}
-                      title="End Game & View Results"
-                      className="px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-gradient-to-b from-rose-500 via-red-500 to-red-600 hover:from-rose-400 hover:to-red-500 border-t-2 border-rose-200 border-b-[5px] border-b-red-900 text-xs sm:text-sm font-black text-white transition shadow-lg cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0 whitespace-nowrap"
-                    >
-                      <Flag size={16} fill="currentColor" className="shrink-0" />
-                      <span>End</span>
-                    </button>
-
-                    <FullscreenButton targetId="slap-and-chop-container" className="bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-slate-800 !py-2 sm:!py-2.5 !px-3 shadow-lg shrink-0" />
-                  </div>
-
-                  <div className="px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-white/95 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-xs sm:text-sm font-black text-sky-950 shadow-lg flex items-center gap-1.5 shrink-0 tabular-nums whitespace-nowrap">
-                    <span>🦟 Q{currentQIndex + 1}/{activeQuiz.questions.length}</span>
-                  </div>
-                </div>
-
-                {/* CENTER BROADCAST HUB: IMMERSIVE PLAYER POINTS + MIDDLE MATCH TIMER */}
-                <div className="flex items-center justify-center">
-                  <div className="relative flex items-center bg-slate-950/85 backdrop-blur-xl p-1.5 sm:p-2 rounded-[2rem] border-2 border-sky-300/80 border-b-[6px] border-b-sky-700 shadow-[0_16px_40px_rgba(15,23,42,0.45)] gap-1.5 sm:gap-2.5">
-                    
-                    {/* PLAYER 1 SCORE WING (Left of Center Timer) */}
-                    <div className={`relative flex items-center justify-between gap-2.5 sm:gap-3.5 min-w-[185px] sm:min-w-[255px] md:min-w-[285px] h-[68px] sm:h-[78px] px-3 sm:px-4 rounded-3xl border-2 border-b-[5px] transition-all duration-300 ${
-                      hudFrozen[0]
-                        ? 'bg-gradient-to-b from-sky-200 to-sky-300 border-sky-400 border-b-sky-700 ring-2 ring-sky-300'
-                        : hudScorePops[0]
-                        ? 'bg-gradient-to-b from-blue-500 via-blue-600 to-indigo-700 border-amber-300 border-b-blue-950 scale-[1.03] shadow-[0_0_25px_rgba(59,130,246,0.75)]'
-                        : 'bg-gradient-to-b from-white via-blue-50 to-sky-100 border-blue-400 border-b-blue-700'
-                    }`}>
-                      {hudFrozen[0] && (
-                        <span className="absolute -top-2.5 left-3 text-[10px] px-2.5 py-0.5 rounded-full bg-sky-600 text-white font-black border border-white shadow animate-pulse z-20">
-                          ❄️ FROZEN
-                        </span>
-                      )}
-                      {numPlayers === 2 && hudScores[0] > hudScores[1] && !hudFrozen[0] && (
-                        <span className="absolute -top-2.5 left-3 text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black border border-white shadow z-20">
-                          👑 LEAD
-                        </span>
-                      )}
-
-                      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl border-t border-white/80 border-b-4 shadow shrink-0 ${
-                          hudFrozen[0]
-                            ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
-                            : 'bg-gradient-to-br from-blue-500 to-blue-700 border-b-blue-950 text-white'
-                        }`}>
-                          {hudFrozen[0] ? '❄️' : '🔵'}
-                        </div>
-
-                        <div className="flex flex-col min-w-0 gap-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-xs sm:text-sm font-black uppercase tracking-wider truncate max-w-[78px] sm:max-w-[110px] ${
-                              hudScorePops[0] ? 'text-white' : 'text-blue-950'
-                            }`}>
-                              {p1Name || "Player 1"}
-                            </span>
-                            <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded-full font-black shadow-2xs shrink-0 tabular-nums border ${
-                              hudStreaks[0] >= 3
-                                ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white border-amber-200 animate-pulse'
-                                : 'bg-amber-100 text-amber-800 border-amber-300'
-                            }`}>
-                              🔥x{hudStreaks[0]}
-                            </span>
-                          </div>
-                          {cameraActive && (
-                            <div className="flex items-center gap-1 text-[9px] sm:text-[10px] font-black tracking-wide">
-                              <span className={`px-1 py-0.2 rounded border ${
-                                hudHandsDetected[0][0]
-                                  ? 'bg-emerald-500 text-white border-emerald-600'
-                                  : 'bg-slate-200/80 text-slate-500 border-slate-300'
-                              }`}>
-                                L
-                              </span>
-                              <span className={`px-1 py-0.2 rounded border ${
-                                hudHandsDetected[0][1]
-                                  ? 'bg-emerald-500 text-white border-emerald-600'
-                                  : 'bg-slate-200/80 text-slate-500 border-slate-300'
-                              }`}>
-                                R
-                              </span>
-                              <span className={`truncate ${
-                                hudScorePops[0]
-                                  ? 'text-amber-200'
-                                  : hudClapArmed[0]
-                                  ? 'text-emerald-700'
-                                  : 'text-slate-500'
-                              }`}>
-                                {hudClapArmed[0] ? '• READY' : (hudHandsDetected[0][0] && hudHandsDetected[0][1] ? '• OPEN' : '• 2 HANDS')}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* JUMBO IMMERSIVE SCORE MEDALLION (Pinned Toward Center) */}
-                      <div className={`flex flex-col items-center justify-center px-3 sm:px-3.5 py-1 rounded-2xl border-b-4 shrink-0 transition-transform duration-200 ${
-                        hudScorePops[0]
-                          ? 'bg-amber-400 border-amber-700 text-slate-950 scale-110 shadow-lg'
-                          : hudScores[0] < 0
-                          ? 'bg-rose-100 border-rose-300 text-rose-700'
-                          : 'bg-blue-600 border-blue-900 text-white shadow-inner'
-                      }`}>
-                        <span className="font-black text-2xl sm:text-4xl tracking-tight font-mono leading-none tabular-nums">
-                          {hudScores[0]}
-                        </span>
-                        <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest mt-0.5 ${
-                          hudScorePops[0] ? 'text-slate-900' : hudScores[0] < 0 ? 'text-rose-600' : 'text-sky-200'
-                        }`}>
-                          PTS
-                        </span>
-                      </div>
-
-                      {/* Immersive 3D Score Popup Banner */}
-                      {hudScorePops[0] && (
-                        <div className={`absolute -bottom-7 right-2 px-3.5 py-1 rounded-2xl border-2 border-white shadow-[0_10px_25px_rgba(0,0,0,0.35)] font-black text-sm sm:text-lg text-white animate-bounce z-50 whitespace-nowrap ${
-                          hudScorePops[0].includes('-')
-                            ? 'bg-gradient-to-r from-rose-500 to-red-600'
-                            : 'bg-gradient-to-r from-emerald-400 via-green-500 to-teal-600'
-                        }`}>
-                          {hudScorePops[0]}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* CENTER MATCH TIMER MEDALLION (Right in the Middle of the Scoreboard!) */}
-                    <div className={`relative flex flex-col items-center justify-center min-w-[92px] sm:min-w-[116px] h-[68px] sm:h-[78px] px-3 sm:px-4 rounded-3xl border-2 border-b-[5px] shadow-xl shrink-0 tabular-nums transition-all ${
-                      hudTimeLeft <= 15
-                        ? 'bg-gradient-to-b from-rose-500 via-red-600 to-red-700 border-rose-200 border-b-red-950 text-white animate-pulse'
-                        : 'bg-gradient-to-b from-amber-300 via-amber-400 to-orange-400 border-white border-b-amber-700 text-slate-950'
-                    }`}>
-                      <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest leading-none mb-0.5 ${
-                        hudTimeLeft <= 15 ? 'text-rose-100' : 'text-amber-950'
-                      }`}>
-                        ⏱️ TIMER
-                      </span>
-                      <span className="font-black text-xl sm:text-3xl font-mono leading-none tracking-tight tabular-nums">
-                        {formatPlayTime(hudTimeLeft)}
-                      </span>
-                      <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider mt-0.5 px-2 py-0.2 rounded-full ${
-                        hudTimeLeft <= 15 ? 'bg-black/25 text-white' : 'bg-white/75 text-slate-900'
-                      }`}>
-                        {numPlayers === 2 ? '⚡ 1V1 VS' : '🎯 SOLO'}
-                      </span>
-                    </div>
-
-                    {/* PLAYER 2 SCORE WING (Right of Center Timer in 2P, or Combo/Target Badge in 1P) */}
-                    {numPlayers === 2 ? (
-                      <div className={`relative flex items-center justify-between gap-2.5 sm:gap-3.5 min-w-[185px] sm:min-w-[255px] md:min-w-[285px] h-[68px] sm:h-[78px] px-3 sm:px-4 rounded-3xl border-2 border-b-[5px] transition-all duration-300 ${
-                        hudFrozen[1]
-                          ? 'bg-gradient-to-b from-sky-200 to-sky-300 border-sky-400 border-b-sky-700 ring-2 ring-sky-300'
-                          : hudScorePops[1]
-                          ? 'bg-gradient-to-b from-rose-500 via-red-600 to-rose-700 border-amber-300 border-b-red-950 scale-[1.03] shadow-[0_0_25px_rgba(244,63,94,0.75)]'
-                          : 'bg-gradient-to-b from-white via-red-50 to-rose-100 border-red-400 border-b-red-700'
-                      }`}>
-                        {hudFrozen[1] && (
-                          <span className="absolute -top-2.5 right-3 text-[10px] px-2.5 py-0.5 rounded-full bg-sky-600 text-white font-black border border-white shadow animate-pulse z-20">
-                            ❄️ FROZEN
-                          </span>
-                        )}
-                        {hudScores[1] > hudScores[0] && !hudFrozen[1] && (
-                          <span className="absolute -top-2.5 right-3 text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black border border-white shadow z-20">
-                            👑 LEAD
-                          </span>
-                        )}
-
-                        {/* JUMBO IMMERSIVE SCORE MEDALLION (Pinned Toward Center) */}
-                        <div className={`flex flex-col items-center justify-center px-3 sm:px-3.5 py-1 rounded-2xl border-b-4 shrink-0 transition-transform duration-200 ${
-                          hudScorePops[1]
-                            ? 'bg-amber-400 border-amber-700 text-slate-950 scale-110 shadow-lg'
-                            : hudScores[1] < 0
-                            ? 'bg-rose-100 border-rose-300 text-rose-700'
-                            : 'bg-red-600 border-red-900 text-white shadow-inner'
-                        }`}>
-                          <span className="font-black text-2xl sm:text-4xl tracking-tight font-mono leading-none tabular-nums">
-                            {hudScores[1]}
-                          </span>
-                          <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest mt-0.5 ${
-                            hudScorePops[1] ? 'text-slate-900' : hudScores[1] < 0 ? 'text-rose-600' : 'text-rose-200'
-                          }`}>
-                            PTS
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-                          <div className="flex flex-col items-end text-right min-w-0 gap-0.5">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded-full font-black shadow-2xs shrink-0 tabular-nums border ${
-                                hudStreaks[1] >= 3
-                                  ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white border-amber-200 animate-pulse'
-                                  : 'bg-amber-100 text-amber-800 border-amber-300'
-                              }`}>
-                                🔥x{hudStreaks[1]}
-                              </span>
-                              <span className={`text-xs sm:text-sm font-black uppercase tracking-wider truncate max-w-[78px] sm:max-w-[110px] ${
-                                hudScorePops[1] ? 'text-white' : 'text-red-950'
-                              }`}>
-                                {p2Name || "Player 2"}
-                              </span>
-                            </div>
-                            {cameraActive && (
-                              <div className="flex items-center justify-end gap-1 text-[9px] sm:text-[10px] font-black tracking-wide">
-                                <span className={`truncate ${
-                                  hudScorePops[1]
-                                    ? 'text-amber-200'
-                                    : hudClapArmed[1]
-                                    ? 'text-emerald-700'
-                                    : 'text-slate-500'
-                                }`}>
-                                  {hudClapArmed[1] ? 'READY •' : (hudHandsDetected[1][0] && hudHandsDetected[1][1] ? 'OPEN •' : '2 HANDS •')}
-                                </span>
-                                <span className={`px-1 py-0.2 rounded border ${
-                                  hudHandsDetected[1][0]
-                                    ? 'bg-emerald-500 text-white border-emerald-600'
-                                    : 'bg-slate-200/80 text-slate-500 border-slate-300'
-                                }`}>
-                                  L
-                                </span>
-                                <span className={`px-1 py-0.2 rounded border ${
-                                  hudHandsDetected[1][1]
-                                    ? 'bg-emerald-500 text-white border-emerald-600'
-                                    : 'bg-slate-200/80 text-slate-500 border-slate-300'
-                                }`}>
-                                  R
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl border-t border-white/80 border-b-4 shadow shrink-0 ${
-                            hudFrozen[1]
-                              ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
-                              : 'bg-gradient-to-br from-red-500 to-red-700 border-b-red-950 text-white'
-                          }`}>
-                            {hudFrozen[1] ? '❄️' : '🔴'}
-                          </div>
-                        </div>
-
-                        {/* Immersive 3D Score Popup Banner */}
-                        {hudScorePops[1] && (
-                          <div className={`absolute -bottom-7 left-2 px-3.5 py-1 rounded-2xl border-2 border-white shadow-[0_10px_25px_rgba(0,0,0,0.35)] font-black text-sm sm:text-lg text-white animate-bounce z-50 whitespace-nowrap ${
-                            hudScorePops[1].includes('-')
-                              ? 'bg-gradient-to-r from-rose-500 to-red-600'
-                              : 'bg-gradient-to-r from-emerald-400 via-green-500 to-teal-600'
-                          }`}>
-                            {hudScorePops[1]}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="hidden sm:flex items-center gap-2.5 h-[68px] sm:h-[78px] px-4 rounded-3xl bg-gradient-to-b from-emerald-50 to-teal-100 border-2 border-emerald-400 border-b-[5px] border-b-emerald-700 text-emerald-950">
-                        <span className="text-2xl">🎯</span>
-                        <div className="flex flex-col text-left">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Scoring Rule</span>
-                          <span className="text-xs sm:text-sm font-black whitespace-nowrap">+5 Correct • -5 Wrong</span>
-                        </div>
-                      </div>
-                    )}
-
-                  </div>
-                </div>
-
-                {/* RIGHT DOCK: Quick Slap Mode Toggle & Audio Status */}
-                <div className="hidden lg:flex items-center justify-end gap-2">
+              {/* LEFT CONTROLS */}
+              <div className="flex items-center justify-between lg:justify-start gap-1.5 sm:gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setSlapMode(slapMode === 'clap' ? 'swat' : 'clap')}
-                    title="Switch between Two-Hand Clap and One-Hand Swat"
-                    className="px-3.5 py-2.5 rounded-2xl bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-xs sm:text-sm font-black text-slate-800 shadow-lg cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 whitespace-nowrap"
+                    onClick={() => setShowSettingsModal(true)}
+                    className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white/90 hover:bg-white backdrop-blur-md border border-slate-200/90 text-xs font-bold text-slate-800 transition shadow-sm cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0"
                   >
-                    <span>{slapMode === 'clap' ? '👏 2-Hand Clap' : '🖐️ 1-Hand Swat'}</span>
+                    <span>⚙️</span>
+                    <span>Settings</span>
                   </button>
+
                   <button
                     type="button"
-                    onClick={() => setSoundFx(!soundFx)}
-                    title="Toggle Sound FX"
-                    className="px-3 py-2.5 rounded-2xl bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-xs sm:text-sm font-black text-slate-800 shadow-lg cursor-pointer flex items-center gap-1 active:translate-y-0.5"
+                    onClick={() => finishGame()}
+                    title="End Game & View Results"
+                    className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-rose-500/95 hover:bg-rose-500 text-xs font-bold text-white transition shadow-sm cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0"
                   >
-                    <span>{soundFx ? '🔊' : '🔇'}</span>
+                    <Flag size={14} fill="currentColor" className="shrink-0" />
+                    <span>End</span>
                   </button>
-                </div>
 
+                  <FullscreenButton targetId="slap-and-chop-container" className="bg-white/90 hover:bg-white backdrop-blur-md border border-slate-200/90 text-slate-700 !py-1.5 sm:!py-2 !px-2.5 !rounded-xl shadow-sm shrink-0" />
+                </div>
               </div>
 
-              {/* Row 2: JUMBO, HIGH-CONTRAST 3D QUESTION BANNER */}
-              <div className="relative overflow-hidden rounded-3xl bg-white/95 backdrop-blur-xl px-5 py-2.5 sm:px-7 sm:py-3.5 text-center shadow-[0_14px_34px_rgba(14,165,233,0.25)] border-2 border-sky-300 border-b-[6px] border-b-sky-600 max-w-5xl mx-auto w-full flex items-center justify-between gap-4">
-                {/* Progress Timer Bar (Shows 3-second countdown bar when transitioning, or match timer during play) */}
-                <div className="absolute bottom-0 left-0 right-0 h-2 bg-sky-100">
-                  <div
-                    className={`h-full transition-all duration-100 ${
-                      nextQCountdown !== null
-                        ? 'bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500'
-                        : 'bg-gradient-to-r from-emerald-400 via-sky-400 to-amber-400'
-                    }`}
-                    style={{ width: `${nextQCountdown !== null ? nextQProgressPct : timerPct}%` }}
-                  />
-                </div>
+              {/* CENTER MINIMALIST SCOREBOARD & TIMER (Only Player Name + Score + Middle Timer) */}
+              <div className="flex items-center justify-center">
+                <div className="flex items-center bg-slate-900/80 backdrop-blur-md p-1 rounded-2xl border border-white/20 shadow-lg gap-1.5 sm:gap-2">
+                  
+                  {/* PLAYER 1: Only Name & Score */}
+                  <div className={`relative flex items-center justify-between gap-3 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl transition-all duration-200 min-w-[135px] sm:min-w-[175px] ${
+                    hudScorePops[0]
+                      ? 'bg-blue-600 text-white scale-105 shadow-[0_0_20px_rgba(37,99,235,0.7)]'
+                      : 'bg-white/95 text-slate-900'
+                  }`}>
+                    <span className={`text-xs sm:text-sm font-extrabold uppercase tracking-wide truncate max-w-[85px] sm:max-w-[115px] ${
+                      hudScorePops[0] ? 'text-white' : 'text-blue-700'
+                    }`}>
+                      {p1Name || "Player 1"}
+                    </span>
+                    <span className={`font-black text-xl sm:text-2xl font-mono leading-none tabular-nums ${
+                      hudScorePops[0]
+                        ? 'text-amber-300 scale-110'
+                        : hudScores[0] < 0
+                        ? 'text-rose-600'
+                        : 'text-slate-900'
+                    }`}>
+                      {hudScores[0]}
+                    </span>
 
-                <div className={`hidden sm:flex w-12 h-12 rounded-2xl border-2 items-center justify-center text-xl sm:text-2xl font-black shrink-0 shadow-inner tabular-nums ${
-                  nextQCountdown !== null
-                    ? 'bg-amber-100 border-amber-300 text-amber-800 animate-pulse'
-                    : 'bg-sky-100 border-sky-300 text-sky-700'
-                }`}>
-                  {nextQCountdown !== null ? `${nextQCountdown}s` : `Q${currentQIndex + 1}`}
-                </div>
+                    {hudScorePops[0] && (
+                      <div className={`absolute -bottom-6 right-1 px-2.5 py-0.5 rounded-full text-[11px] font-black text-white shadow animate-bounce z-50 whitespace-nowrap ${
+                        hudScorePops[0].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
+                      }`}>
+                        {hudScorePops[0]}
+                      </div>
+                    )}
+                  </div>
 
-                {(() => {
-                  const qParsed = parseOptionContent(currentQ?.text || '');
-                  const qImg = currentQ?.image || qParsed.imageUrl;
-                  const qTextDisplay = nextQCountdown !== null
-                    ? `⏱️ Question ${upcomingQNumber} Appears in ${nextQCountdown}s...`
-                    : (qParsed.text || currentQ?.text || "Loading question...");
-                  return (
-                    <div className="flex-1 flex items-center justify-center gap-4 min-w-0">
-                      {qImg && nextQCountdown === null && (
-                        <img
-                          src={qImg}
-                          alt="Question"
-                          className="h-12 sm:h-16 w-auto max-w-[130px] rounded-2xl object-contain bg-sky-50 border-2 border-sky-300 p-1 shrink-0 shadow-sm"
-                        />
+                  {/* MIDDLE TIMER */}
+                  <div className={`flex items-center justify-center px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-mono font-black text-base sm:text-xl tabular-nums transition-all ${
+                    hudTimeLeft <= 15
+                      ? 'bg-rose-600 text-white animate-pulse'
+                      : 'bg-amber-400 text-slate-950'
+                  }`}>
+                    {formatPlayTime(hudTimeLeft)}
+                  </div>
+
+                  {/* PLAYER 2: Only Score & Name (in 2P Mode) */}
+                  {numPlayers === 2 && (
+                    <div className={`relative flex items-center justify-between gap-3 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl transition-all duration-200 min-w-[135px] sm:min-w-[175px] ${
+                      hudScorePops[1]
+                        ? 'bg-red-600 text-white scale-105 shadow-[0_0_20px_rgba(220,38,38,0.7)]'
+                        : 'bg-white/95 text-slate-900'
+                    }`}>
+                      <span className={`font-black text-xl sm:text-2xl font-mono leading-none tabular-nums ${
+                        hudScorePops[1]
+                          ? 'text-amber-300 scale-110'
+                          : hudScores[1] < 0
+                          ? 'text-rose-600'
+                          : 'text-slate-900'
+                      }`}>
+                        {hudScores[1]}
+                      </span>
+                      <span className={`text-xs sm:text-sm font-extrabold uppercase tracking-wide truncate max-w-[85px] sm:max-w-[115px] text-right ${
+                        hudScorePops[1] ? 'text-white' : 'text-red-600'
+                      }`}>
+                        {p2Name || "Player 2"}
+                      </span>
+
+                      {hudScorePops[1] && (
+                        <div className={`absolute -bottom-6 left-1 px-2.5 py-0.5 rounded-full text-[11px] font-black text-white shadow animate-bounce z-50 whitespace-nowrap ${
+                          hudScorePops[1].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
+                        }`}>
+                          {hudScorePops[1]}
+                        </div>
                       )}
-                      <p
-                        className="font-black text-slate-900 tracking-tight leading-snug break-words drop-shadow-xs"
-                        style={{ fontSize: `${Math.round(28 * textSize)}px` }}
-                      >
-                        {qTextDisplay}
-                      </p>
                     </div>
-                  );
-                })()}
+                  )}
 
+                </div>
+              </div>
+
+              {/* RIGHT CONTROLS */}
+              <div className="hidden lg:flex items-center justify-end gap-1.5">
                 <button
                   type="button"
-                  onClick={() => currentQ?.text && speakText(currentQ.text)}
-                  title="Read Question Aloud"
-                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-sky-100 hover:bg-sky-200 border-2 border-sky-300 flex items-center justify-center text-xl sm:text-2xl shrink-0 cursor-pointer transition shadow-xs"
+                  onClick={() => setSlapMode(slapMode === 'clap' ? 'swat' : 'clap')}
+                  title="Switch between Two-Hand Clap and One-Hand Swat"
+                  className="px-3 py-1.5 sm:py-2 rounded-xl bg-white/90 hover:bg-white backdrop-blur-md border border-slate-200/90 text-xs font-bold text-slate-800 shadow-sm cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 whitespace-nowrap"
                 >
-                  🔊
+                  <span>{slapMode === 'clap' ? '👏 2-Hand Clap' : '🖐️ 1-Hand Swat'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSoundFx(!soundFx)}
+                  title="Toggle Sound FX"
+                  className="px-2.5 py-1.5 sm:py-2 rounded-xl bg-white/90 hover:bg-white backdrop-blur-md border border-slate-200/90 text-xs font-bold text-slate-800 shadow-sm cursor-pointer flex items-center active:translate-y-0.5"
+                >
+                  <span>{soundFx ? '🔊' : '🔇'}</span>
                 </button>
               </div>
 
@@ -7194,51 +6932,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           {/* 3-SECOND CIRCULAR COUNTDOWN TIMER OVERLAY BEFORE ANOTHER QUESTION APPEARS */}
           {nextQCountdown !== null && (
             <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center px-4">
-              <div className="px-8 py-6 sm:px-12 sm:py-8 rounded-[2.6rem] bg-white/95 backdrop-blur-xl border-4 border-sky-300 border-b-[10px] border-b-sky-600 shadow-[0_24px_60px_rgba(14,165,233,0.42)] flex flex-col items-center gap-3 text-center max-w-md w-full animate-in zoom-in-95 duration-150">
-                <div className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-900 border-2 border-amber-300 px-4 py-1 rounded-full text-xs sm:text-sm font-black uppercase tracking-widest shadow-2xs">
-                  <Timer size={16} className="text-amber-700" />
-                  <span>3-Second Question Timer</span>
+              <div className="px-7 py-5 sm:px-9 sm:py-6 rounded-3xl bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl flex flex-col items-center gap-2.5 text-center max-w-sm w-full animate-in zoom-in-95 duration-150">
+                <div className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                  Next Question In
                 </div>
-
-                {/* Circular SVG Countdown Ring */}
-                <div className="relative w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center my-1">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r="50"
-                      fill="none"
-                      stroke="#e0f2fe"
-                      strokeWidth="12"
-                    />
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r="50"
-                      fill="none"
-                      stroke="#0284c7"
-                      strokeWidth="12"
-                      strokeLinecap="round"
-                      strokeDasharray={314.16}
-                      strokeDashoffset={314.16 * (1 - nextQProgressPct / 100)}
-                      className="transition-all duration-100"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-6xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-blue-600 via-sky-600 to-indigo-700 font-mono leading-none">
-                      {nextQCountdown}
-                    </span>
-                    <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 mt-1">
-                      Seconds
-                    </span>
-                  </div>
+                <div className="text-5xl sm:text-6xl font-black text-sky-600 font-mono leading-none tabular-nums">
+                  {nextQCountdown}
                 </div>
-
-                <div className="text-base sm:text-lg font-black text-slate-900">
-                  Question #{upcomingQNumber} Appears in {nextQCountdown}s...
-                </div>
-                <div className="text-xs font-extrabold text-slate-500">
-                  🧤 Raise Both Hands &amp; Get Ready to Clap!
+                <div className="text-sm font-bold text-slate-700">
+                  Question #{upcomingQNumber}
                 </div>
               </div>
             </div>
@@ -7252,12 +6954,61 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               onPointerDown={handlePointerDown}
               className="w-full h-full block touch-none cursor-crosshair"
             />
+          </div>
 
-            {/* Bottom Light 3D Instruction Pill */}
-            <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-white/95 backdrop-blur-md border-2 border-sky-300 border-b-4 border-b-sky-500 text-xs sm:text-sm font-black text-slate-800 whitespace-nowrap shadow-lg">
-              {slapMode === 'swat'
-                ? '🦟🖐️ Swing your palm quickly over a mosquito to swat it! (+5 Correct / -5 & Freeze if Wrong)'
-                : '🦟👏 Aim the green dot between your hands & CLAP together to slap! (+5 Correct / -5 & Freeze if Wrong)'}
+          {/* MINIMALIST BOTTOM QUESTION BAR (Moved Down to the Bottom) */}
+          <div className="absolute bottom-3 left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none">
+            <div className="max-w-3xl mx-auto w-full pointer-events-auto">
+              <div className="relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md px-4 py-2.5 sm:px-5 sm:py-3 shadow-[0_8px_30px_rgba(15,23,42,0.18)] border border-slate-200/90 flex items-center justify-between gap-3">
+                {/* Subtle Minimalist Progress Line along bottom edge */}
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100">
+                  <div
+                    className="h-full bg-sky-500 transition-all duration-150"
+                    style={{ width: `${nextQCountdown !== null ? nextQProgressPct : timerPct}%` }}
+                  />
+                </div>
+
+                {/* Minimalist Question Counter Pill */}
+                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold tabular-nums shrink-0">
+                  {currentQIndex + 1}/{activeQuiz.questions.length}
+                </span>
+
+                {/* Minimalist Question Text */}
+                {(() => {
+                  const qParsed = parseOptionContent(currentQ?.text || '');
+                  const qImg = currentQ?.image || qParsed.imageUrl;
+                  const qTextDisplay = nextQCountdown !== null
+                    ? `Next question in ${nextQCountdown}s...`
+                    : (qParsed.text || currentQ?.text || "Loading question...");
+                  return (
+                    <div className="flex-1 flex items-center justify-center gap-3 min-w-0 text-center">
+                      {qImg && nextQCountdown === null && (
+                        <img
+                          src={qImg}
+                          alt="Question"
+                          className="h-10 sm:h-12 w-auto max-w-[96px] rounded-lg object-contain bg-slate-50 border border-slate-200 p-0.5 shrink-0"
+                        />
+                      )}
+                      <p
+                        className="font-bold text-slate-900 tracking-tight leading-snug break-words"
+                        style={{ fontSize: `${Math.round(21 * textSize)}px` }}
+                      >
+                        {qTextDisplay}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Minimalist Audio Read-Aloud Button */}
+                <button
+                  type="button"
+                  onClick={() => currentQ?.text && speakText(currentQ.text)}
+                  title="Read Question Aloud"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-sm shrink-0 cursor-pointer transition"
+                >
+                  🔊
+                </button>
+              </div>
             </div>
           </div>
         </div>
