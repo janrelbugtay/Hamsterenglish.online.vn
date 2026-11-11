@@ -115,46 +115,62 @@ export function AuthSliderModal({
       setLocalError('Please enter both room code and your name.');
       return;
     }
-    
+
     setIsJoining(true);
     setLocalError('');
-    const code = roomCode.trim().toUpperCase();
+    const code = roomCode.trim().toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6);
+    if (!code) {
+      setIsJoining(false);
+      setLocalError('Please enter a valid room code.');
+      return;
+    }
 
     try {
-      const pbTttRef = doc(db, 'ttt_rooms', `pb_room_${code}`);
-      const pbTttSnap = await getDoc(pbTttRef);
-      if (pbTttSnap.exists() && onJoinRoom) {
-        onJoinRoom(code, nickname.trim(), 'hamster-paintball');
-        onClose();
-        return;
-      }
+      // 1. Fast Server Room Engine check for Hamster Paintball
+      try {
+        const apiRes = await fetch(`/api/paintball/room/${encodeURIComponent(code)}`);
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          if (apiData?.room && !apiData.room.isUninitialized && onJoinRoom) {
+            onJoinRoom(code, nickname.trim(), 'hamster-paintball');
+            onClose();
+            return;
+          }
+        }
+      } catch {}
 
-      const pbRef = doc(db, 'paintball_rooms', code);
-      const pbSnap = await getDoc(pbRef);
-      if (pbSnap.exists() && onJoinRoom) {
-        onJoinRoom(code, nickname.trim(), 'hamster-paintball');
-        onClose();
-        return;
-      }
+      // 2. Permitted Cloud Room Bridge check for Hamster Paintball (`ttt_rooms/pb_room_${code}`)
+      try {
+        const pbTttRef = doc(db, 'ttt_rooms', `pb_room_${code}`);
+        const pbTttSnap = await getDoc(pbTttRef);
+        if (pbTttSnap.exists() && onJoinRoom) {
+          onJoinRoom(code, nickname.trim(), 'hamster-paintball');
+          onClose();
+          return;
+        }
+      } catch {}
 
-      const tttRef = doc(db, 'ttt_rooms', code);
-      const snap = await getDoc(tttRef);
-      if (snap.exists() && onJoinRoom) {
-        onJoinRoom(code, nickname.trim(), 'tic-tac-toe');
-        onClose();
-        return;
-      }
+      // 3. Permitted Cloud Room check for Tic-Tac-Toe (`ttt_rooms/${code}`)
+      try {
+        const tttRef = doc(db, 'ttt_rooms', code);
+        const snap = await getDoc(tttRef);
+        if (snap.exists() && onJoinRoom) {
+          onJoinRoom(code, nickname.trim(), 'tic-tac-toe');
+          onClose();
+          return;
+        }
+      } catch {}
 
-      // If 6-digit numeric code, allow direct entry into Hamster Paintball Park room
-      if (/^\d{6}$/.test(code) && onJoinRoom) {
+      // 4. Allow direct entry into Hamster Paintball for standard 4-6 character room codes
+      if (/^[0-9A-Z]{4,6}$/.test(code) && onJoinRoom) {
         onJoinRoom(code, nickname.trim(), 'hamster-paintball');
         onClose();
         return;
       }
 
       setLocalError('Room not found. Please verify your room code.');
-    } catch (err) {
-      if (/^\d{6}$/.test(code) && onJoinRoom) {
+    } catch {
+      if (/^[0-9A-Z]{4,6}$/.test(code) && onJoinRoom) {
         onJoinRoom(code, nickname.trim(), 'hamster-paintball');
         onClose();
         return;

@@ -1,81 +1,134 @@
-# Mosquito Slap 3D: Full-Hand Glove Scaling & Visual Overlap Clap Trigger
+# Hamster Paintball 3D — Multi-Device Multiplayer Fix, Compact Arena & Arcade Redesign
 
-This update scales the 3D 5-finger slap gloves to cover the player's entire real hand from wrist to fingertips (`1.25x` landmark span) and tightens the two-glove slap trigger so a mosquito slap only fires when the two rendered 3D gloves visually touch or overlap on screen.
+Eliminate multi-device connection errors, cross-domain room isolation, clock-skew timer bugs, and dropped paintball shots while transforming Hamster Paintball into a fast-paced compact 3D speedball arena wrapped in ESL Game Studio's bright, playful arcade UI.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following design and gameplay decisions have been confirmed from your answers and the live camera screenshot:
+> **Confirmed Direction from Your Answers**
+> 1. **Dual-Domain Multi-Device Join Routing**: QR codes and join links will support **both the active host URL and `hamsterenglish.online`** via a one-click domain toggle on the Host Lobby and QR Modal, backed by a unified cross-origin API + shared cloud room bridge so students on phones, tablets, and Chromebooks connect reliably regardless of which domain they scan or type.
+> 2. **Compact 3D Arena & Larger Characters**: The stadium shrinks from an oversized 136m × 112m field to a **compact 76m × 64m speedball park** with team spawns 48m apart, **1.32× larger 3D hamsters** with floating overhead name/HP/shield plates, and **14 low-profile colorful bunkers** arranged in three clear sightline lanes.
+> 3. **Bright Playful Arcade UI**: All dark/heavy overlays across the Host Command Deck, Student Join Lobby, In-Game HUD, Live Quiz Drawer, and Results Podium will be redesigned into **bright sky-and-white playful arcade cards** with tactile 3D bottom-bezel buttons matching ESL Game Studio.
 
-- **Confirmed Decision 1 (Full-Hand 1.25x Landmark Span Sizing)**: Remove the `172px` cap on glove size and compute the rendered 3D glove height directly from the player's live 21-point MediaPipe hand bounding box and wrist-to-fingertip span (`1.25x` real hand span, scaling up to `380px` when the player's hand is close to the webcam) so the Blue and Red 3D gloves completely cover the real palm and fingers.
-- **Confirmed Decision 2 (Strict Visual Glove Overlap Trigger)**: Eliminate premature slap triggers when hands are separated by removing the wide `fastClosingClap` velocity trigger (`sepDist <= 0.28`), removing the `+0.065` normalized bounding-box expansion, and requiring the two rendered 3D gloves' actual pixel radii to physically touch or overlap (`centerDistPx <= leftGloveRadiusPx + rightGloveRadiusPx`) before triggering a slap.
+---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Dynamically sizes each player's 3D 5-finger cartoon glove to match and cover their real hand on the webcam feed from wrist to fingertips, and ensures slaps only trigger when the Left and Right 3D gloves visually meet on screen.
-- **Target Audience / Persona**: Classroom students and teachers playing 1-Player or 2-Player split-court Mosquito Slap 3D on an interactive display or laptop webcam.
-- **Key Value**: Prevents false-positive slaps when a player's two hands are raised apart in the air, while making the Blue (Player 1) and Red (Player 2) 3D gloves properly cover the player's real hands at any camera distance.
+Hamster Paintball 3D lets teachers host live classroom trivia-and-paintball battles (Team Red vs. Blue or Free-For-All) while students join from phones, tablets, or laptops using a 6-digit room code or QR scan, answer vocabulary/grammar questions to earn paintballs, and battle in real time.
+
+Today, multi-device classroom sessions break due to seven compounding issues:
+- **Room Join Permission Error**: Joining via the global room code modal queries an unpermitted database collection, triggering an immediate connection error before entering the lobby.
+- **Cross-Domain Room Split**: Hardcoded join links send students to `hamsterenglish.online` even when the host opens the game from a preview/shared URL, isolating in-memory rooms across separate origins.
+- **Match-Start Race Condition**: In-flight lobby heartbeats from student phones overwrite the host's match-start reset packet, leaving students stuck in the lobby or frozen at old coordinates.
+- **Device Clock Skew**: Comparing raw device timestamps across laptops, iPads, and Android phones causes match timers to jump or prematurely end when a device's clock is off by even 15 seconds.
+- **Dropped Rapid Shots & Hits**: Storing only a single `lastShot` / `lastHit` field overwrites rapid fire (185ms fire rate vs. 300ms sync cycle) and drops ~40% of combat events.
+- **Listener Reconnection Stalls & Refresh Clones**: Changing UI screens or lobby sliders tears down live room listeners, while refreshing a mobile browser spawns a duplicate frozen hamster.
+
+This update resolves every multi-device failure end-to-end and pairs it with a tighter, action-packed 3D arena and a joyful classroom-ready arcade interface.
+
+---
 
 ## 2. User Experience & Visual Design
 
-- **Key User Flows**:
-  1. **Raising Hands on Camera**: Each detected hand renders a 3D 5-finger cartoon glove (Blue for Player 1, Red for Player 2) anchored over the palm and fingers, scaled to `1.25x` the real hand's wrist-to-fingertip and landmark bounding-box span so the real fingers and palm are covered.
-  2. **Moving Hands Apart**: When both hands are raised in the air with visible space between the two 3D gloves, no clap ring appears and mosquitoes flying between the two separated hands are never accidentally slapped.
-  3. **Clapping Both Gloves Together**: As soon as the Left and Right 3D gloves visually touch or overlap over a flying mosquito, the golden `CLAP!` shockwave ring and `+5 PTS` / `-5 PTS & FROZEN` hit feedback trigger immediately.
-- **Visual Identity & Theme**:
-  - *Aesthetic Direction*: Vibrant 3D arcade classroom game with high-contrast Blue (`#2563eb`) and Red (`#ef4444`) team gloves over a live AR webcam canvas.
-  - *Color Palette & Mood*: Sky-blue and crisp white HUD surfaces (`60%` arena canvas, `30%` structural HUD cards, `10%` Blue/Red team and emerald/amber state accents).
-  - *Typography & Hierarchy*: Bold `Fredoka` display numerals (`tabular-nums`) for live scores and timers, paired with high-contrast question banners.
-- **Interactive Feedback & Motion**:
-  - Smooth `60 FPS` hand-tracking interpolation (`0.92` position response, `0.75` scale response) with a `1.16x` slap impact bounce when both gloves touch.
+### Aesthetic Direction & Color System (ESL Game Studio Arcade)
+- **Atmosphere**: Bright daylight sky-and-turf arcade presentation (`#E0F2FE` → `#F8FAFC` soft sky backdrop in menus; crisp `#FFFFFF` elevated cards with `#DBEAFE` / `#E2E8F0` borders and tactile bottom-bezel shadows).
+- **Primary Accents**:
+  - **Arcade Sky / Royal Blue** (`#0284C7` / `#2563EB` with `#1D4ED8` 3D bottom bezel) for primary navigation, Blue Team identity, and active controls.
+  - **Coral / Crimson Arcade Red** (`#EF4444` / `#E11D48` with `#BE123C` 3D bottom bezel) for Red Team identity and elimination callouts.
+  - **Emerald Action Green** (`#10B981` / `#059669` bezel) for primary **START BATTLE** / **ENTER ARENA** CTAs and correct trivia feedback.
+  - **Sunshine Amber** (`#F59E0B` / `#D97706` bezel) for ammo counters, MVP crowns, and countdown warnings.
+- **Typography**:
+  - **Display & Headings**: `Poppins` (ExtraBold / Black, tight tracking) for arena titles, room codes, team banners, and victory callouts.
+  - **Body & Question Prompts**: `Inter` (SemiBold / Bold, generous line height) for fast classroom readability on projectors and small phone screens.
+  - **Numeric Readouts**: `tabular-nums` enforced on countdown timers, team scores, ammo counts, HP/shield bars, and leaderboard stats so numbers never jitter.
+- **Strict Cleanliness & WebGL Performance Rules**:
+  - Zero `backdrop-filter` blur layers over the active 3D WebGL canvas to maintain smooth 60fps frame pacing on student tablets and phones.
+  - Zero left-border accent clichés or decorative pulsing status dots.
+
+### Screen-by-Screen Experience
+1. **Host Setup & Classroom Lobby (Projector-Ready)**
+   - **Giant Scannable Room Header**: High-contrast 6-digit Room Code card, instant **QR Code Popover**, Copy Link button, and a clean **Join Domain Segmented Switch** (`Current Host URL` | `hamsterenglish.online`) so teachers can match whatever URL students are using while both routes bridge to the same live room.
+   - **Compact Match Configuration**: Tactile segmented controls for **Battle Mode** (`Red vs Blue` | `Free-For-All`), **Match Timer** (`2m`, `3m`, `5m`, `8m`, `10m`), and **Paintballs per Correct Answer** (`5`, `10`, `15`, `20`), plus quiz badge preview.
+   - **Live Roster Showcase**: Two vibrant team columns (or unified FFA grid) showing each connected student's chosen hamster avatar, ready badge, and host kick/team-balance controls, anchored by a bold emerald **START BATTLE** button.
+2. **Student Join & Character Customizer (Mobile-First)**
+   - **Hero 3D/Illustrated Character Stage**: Enlarged hamster class selector (**Classic**, **Ninja**, **Pirate**, **Astro**, **Wizard**, **Cyber**) with clear role tags, crisp team selector cards (or auto-balance), nickname input, and a single prominent **JOIN LOBBY** button.
+   - **Waiting Room**: Live roster count, chosen hamster preview, and smooth automatic transition into the 3D arena the instant the host starts the match—with a manual **Sync Now** fallback button never needed under normal play.
+3. **Compact 3D Speedball Arena & Character Layout**
+   - **Compact 76m × 64m Stadium (`x: ±38m, z: ±32m`)**: Team spawn pads move to `z = -24m` (Red) and `z = +24m` (Blue)—cutting travel distance nearly in half so hamsters engage within 2–3 seconds of spawning.
+   - **Three-Lane Sightline Cover (14 Low-Profile Bunkers)**: Replaces the 35+ tall vision-blocking walls with 14 vibrant inflatable-style speedball bunkers (`1.8m–3.0m` tall: Dorito wedges, X-hub center, cylinders, and low dasher beams) arranged into Left Wing, Center X-Hub, and Right Wing lanes. Players can spot opponents across lanes while still ducking behind cover to answer trivia.
+   - **1.32× Hero Hamster Proportions & Overhead Plates**: All hamsters render 32% larger with expressive ears, goggles, and paintball markers, topped by a crisp billboarded **Name + Team + Live HP & Shield Bar** sprite and smooth shortest-angle rotation + velocity dead-reckoning (eliminating 360° spin glitches and choppy steps).
+   - **Balanced Pickups**: 10 brightly lit Health (`+HP`) and Shield (`+DEF`) cans placed at readable lanecontested landmarks around the compact field, framed by cheerful park trees and hills outside the arena walls.
+4. **Unobstructed In-Game HUD & Live Trivia Drawer**
+   - **Top Arcade Scorebar**: Compact centered pill-free arcade scoreboard showing **Red Score**, **Clock-Synced Countdown Timer**, **Blue Score** (or Top 3 in FFA), and a clean **End Flag** button for the host.
+   - **Bottom Player Bar & Mobile Touch Controls**: Crisp HP + Shield bars, bold Paintball Ammo badge, prominent **EARN AMMO (QUIZ)** button that pulses gently only when ammo hits `0`, and ergonomic non-overlapping mobile joystick + aim/fire + jump controls.
+   - **Fast Trivia Overlay**: Bright white arcade question card with 2×2 color-coded answer buttons (`A`, `B`, `C`, `D`), instant `+Balls` ammo celebration burst, and auto-return to combat.
+5. **Celebratory Podium Results**
+   - Bright 1st / 2nd / 3rd hamster podium showcase, Winning Team banner, full classroom scoreboard (Score, Hits, KOs, Quiz Accuracy), and one-tap **PLAY AGAIN (SAME ROOM)** or **BACK TO LOBBY** actions.
+
+---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Pixel-Accurate Glove Radius Touch Detection vs. Normalized Velocity Heuristics**
-  - *Chosen Approach*: Calculate each glove's actual rendered pixel radius (`gloveRadiusPx = 62 * finalScale`) and trigger a clap only when both hands are actively tracked and `centerDistPx <= (leftRadiusPx + rightRadiusPx) * 0.92`, or when two hands that were already nearly touching (`lastTwoHandSepDist <= 0.14`) merge into a single occluded MediaPipe skeleton on impact.
-  - *Why*: In the screenshot, the player's two hands were ~280px apart (`sepDist ~ 0.20`), which triggered the old `fastClosingClap` (`sepDist <= 0.28`) and padded bounding-box checks. Tying the trigger directly to the visual glove radius guarantees the player sees the two gloves touch when a slap fires.
-  - *Alternatives Considered*: Fixed normalized screen distance thresholds, which fail when players stand closer to or farther from the camera.
-- **Decision 2: Uncapped 1.25x Real-Hand Span Scaling**
-  - *Chosen Approach*: Measure the pixel span of all 21 hand landmarks on the canvas (`max(wristToTipPx, bboxHeightPx, palmLenPx * 1.95, palmWidthPx * 2.15)`) and set `targetGlovePx = anatomicalHandPx * 1.25` (supporting `120px` to `390px` glove heights, corresponding to `finalScale` up to `3.0`).
-  - *Why*: When a player stands close to the webcam, their real hand is `260px–340px` tall on a `1280x720` canvas. The previous `172px` cap forced the glove to stay half the size of the real hand.
+- **Dual-Transport Sync (Cross-Origin Host API + Shared Cloud Room Document)**
+  - *Decision*: Every room writes a lightweight shared state + `hostApiOrigin` into the cloud room document while streaming high-frequency movement and combat events through the host's room API (with CORS enabled for cross-domain browsers) and cloud action snapshots in parallel.
+  - *Why*: Students scanning a `hamsterenglish.online` QR code while the teacher hosts on a preview URL (or vice versa) immediately discover the room, sync clock offsets, and exchange shots without hitting isolated memory silos.
+- **Server-Relative Clock Offset & Match Epoch Versioning**
+  - *Decision*: Every room response includes `serverNow` and a monotonic `matchEpoch` (`startedAt`). Clients compute a local `serverTimeOffset` and reject any packet from an older `matchEpoch`.
+  - *Why*: Completely cures premature match endings on phones with drifted clocks and prevents late lobby packets from undoing the host's match-start teleport.
+- **Ring-Buffer Combat Event Log Instead of Single-Slot Fields**
+  - *Decision*: Replace single `lastShot` / `lastHit` fields with a bounded 40-event combat ring buffer (`id`, `type`, `attackerId`, `targetId`, `origin`, `dir`, `damage`, `ts`) deduplicated per client.
+  - *Why*: Guarantees 100% delivery of rapid paintball volleys, hit markers, shield breaks, and KOs across multiple devices even on 200–300ms mobile connections.
+- **Session-Persisted Player Identity**
+  - *Decision*: Store the student's generated `clientId` in `sessionStorage` keyed by room code and send an explicit leave beacon on tab close.
+  - *Why*: Refreshing Safari/Chrome on a phone seamlessly reclaims the student's existing hamster and score instead of spawning a duplicate frozen clone, while still allowing multiple tabs in intentional testing if opened separately.
+
+---
 
 ## 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
-- **Architecture & Component Diagram**:
+### Multi-Device Synchronization Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    MediaPipe 21-Landmark Hand Stream                    │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│             Hand Geometry & 1.25x Real-Hand Scale Analyzer              │
-│  • Computes canvas-projected 21-landmark bounding box & wrist-to-tip px │
-│  • Scales glove 1.25x real hand span (120px..390px, scale 0.95..3.00)   │
-└─────────────────┬─────────────────────────────────────┬─────────────────┘
-                  │                                     │
-                  ▼                                     ▼
-┌───────────────────────────────────┐ ┌───────────────────────────────────┐
-│   Visual Glove Overlap Detector   │ │  3D 5-Finger Glove Canvas Render  │
-│  • Checks L/R rendered glove      │ │  • Anchors over palm + fingers    │
-│    radii overlap on screen        │ │  • P1 Blue (#2563eb) / P2 Red     │
-│  • Bridges 1-frame occlusion only │ │    (#ef4444)                      │
-│    when prior sepDist <= 0.14     │ └───────────────────────────────────┘
-└─────────────────┬─────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│              Mosquito Target Collision & Scoring Engine                 │
-│  • Evaluates slap hit only when visual glove overlap is active          │
-│  • Awards +5 pts (Correct) or -5 pts + 3D Ice Freeze (Wrong)            │
-└─────────────────────────────────────────────────────────────────────────┘
+│                   HOST DEVICE (Teacher Projector / PC)                  │
+│  • Authoritative Match Lifecycle (Lobby -> Live Epoch -> Ended)         │
+│  • Dual-Domain QR & Link Switch (Active Origin <-> hamsterenglish.online)│
+└───────────────────┬─────────────────────────────────┬───────────────────┘
+                    │ 150-200ms Sync + Combat Ring    │ Shared Room & Quiz
+                    ▼                                 ▼
+┌───────────────────────────────────────┐ ┌───────────────────────────────┐
+│   EXPRESS ROOM ENGINE (/api/paintball)│ │  CLOUD FIRESTORE ROOM BRIDGE  │
+│  • CORS enabled across domains        │ │  • Permitted room collection  │
+│  • Monotonic matchEpoch guard         │ │  • Stores hostApiOrigin, quiz │
+│  • serverNow clock-offset calibration │ │    config, roster & actions   │
+│  • 40-event ring buffer (shots/hits)  │ │  • Cross-origin fallback sync │
+└───────────────────▲───────────────────┘ └───────────────▲───────────────┘
+                    │                                     │
+                    └─────────────────┬───────────────────┘
+                                      │ Deduplicated Merge + Dead Reckoning
+                    ┌─────────────────┴───────────────────┐
+                    ▼                                     ▼
+     ┌─────────────────────────────┐       ┌─────────────────────────────┐
+     │  STUDENT DEVICE A (Phone)   │       │  STUDENT DEVICE B (Tablet)  │
+     │  • sessionStorage clientId  │       │  • sessionStorage clientId  │
+     │  • Clock-skew compensated   │       │  • Shortest-angle 3D lerp   │
+     └─────────────────────────────┘       └─────────────────────────────┘
 ```
 
-- **Data Model & State**:
-  - `leftHand.scale` / `rightHand.scale`: Updated in `analyzeHandGeometry` and `drawSingleCartoonGlove` to reflect the `1.25x` real-hand coverage factor (`0.95` to `3.00`).
-  - `leftHand.radiusPx` / `rightHand.radiusPx`: Stored on each hand state from the rendered glove dimensions (`58 * computedScale`) so collision detection uses the exact visual glove boundary.
-- **Interactive Component & State Mapping**:
-  - `analyzeHandGeometry`: Maps the 21 MediaPipe landmarks to a `0.95..2.85` scale multiplier based on `1.25x` the real hand's normalized span.
-  - `onHandsResults`: Sets `player.isClapping = true` only when the two hands' visual glove radii touch/overlap (`sepDist <= visualTouchDist` or unpadded `bboxOverlap`), and restricts single-hand occlusion bridging to hands that were already within `lastTwoHandSepDist <= 0.14` (`< 220ms` ago) and moving toward each other.
-  - `checkHandWeaponCollision`: Verifies `gloveCenterDistPx <= leftRadiusPx + rightRadiusPx` before testing distance to any mosquito option card, preventing mid-air false slaps between separated hands.
-  - `drawSingleCartoonGlove`: Anchors the glove center at the midpoint of the full hand bounding box (`wrist` through `fingertips`) and scales `targetGlovePx = anatomicalHandPx * 1.25` up to `390px`.
+### Core Room & Combat Data Model
+- **Room State (`PaintballRoomState`)**:
+  - `code`: 6-character uppercase/numeric room code
+  - `status`: `'lobby' | 'playing' | 'ended'`
+  - `matchEpoch`: authoritative timestamp/version set on `START BATTLE` (blocks stale pre-match packets)
+  - `serverNow`: authoritative server clock attached on every read/write for client offset calculation
+  - `hostApiOrigin`: active origin URL of the host's backend instance for direct cross-domain API sync
+  - `matchMode`: `'teams' | 'ffa'`, `durationSec`: number, `remainingSec`: number, `ballsPerQuestion`: number
+  - `players`: map of `PlayerNetState` (`id`, `name`, `team`, `avatar`, `x`, `y`, `z`, `vx`, `vz`, `yaw`, `hp`, `shield`, `score`, `hits`, `kos`, `seq`, `matchEpoch`, `immuneRemainingMs`)
+  - `events`: bounded array (max 40, TTL 6s) of `CombatNetEvent` (`eventId`, `kind: 'shot' | 'hit' | 'ko' | 'pickup'`, `actorId`, `targetId?`, `pos`, `dir?`, `dmg?`, `ko?`, `ts`)
+
+### Interactive Component & State Mapping
+- **Global Room Code Join Modal**: Queries `/api/paintball/room/:code` and permitted cloud room documents (`pb_room_${code}`) without touching unpermitted collections; routes cleanly into the Student Lobby with room code pre-bound.
+- **Stable Room Networking Hook**: Keyed strictly on `[roomCode, role]` so UI screen transitions (`join` → `game` → `results`) and host slider adjustments never tear down active room subscriptions.
+- **3D Arena Builder & Interpolator**:
+  - Compact bounds constants (`ARENA_HALF_W = 38`, `ARENA_HALF_D = 32`, `SPAWN_Z = 24`) shared identically across spawn logic, movement collision, paintball ray/sphere bounds, pickup placement, and minimap/HUD indicators.
+  - Remote character updater applies `shortestAngleDelta(currentYaw, targetYaw)` + velocity extrapolation `(x + vx * dt, z + vz * dt)` clamped against bunker AABBs, updating overhead canvas/sprite health bars only when HP or shield values change.

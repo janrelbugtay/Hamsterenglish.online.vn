@@ -8,6 +8,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 
+const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg";
 const hamsterPaintballCardImg = "/images/hamster-paintball-card.jpg";
 
 export function Home({
@@ -213,15 +214,15 @@ function FeaturedGamesSection({
     },
     {
       id: "slap-and-chop",
-      title: "Slap & Chop",
+      title: "Mosquito Slap",
       description:
-        "3D Motion AR game! Slap buzzing mosquitoes with purple gloves or chop fruits with a fencing sword!",
+        "3D Motion AR game! Track both hands on camera and clap your 3D gloves together to slap buzzing mosquitoes!",
       difficulty: "Easy",
       players: "1-2 Players",
       time: "5-10m",
       subject: "ESL & Science",
       grade: "All",
-      imageUrl: "/images/slap-and-chop-card.jpg",
+      imageUrl: mosquitoSlapCardImg,
       isAI: false,
       color: "from-purple-500 to-indigo-600",
       icon: "🦟",

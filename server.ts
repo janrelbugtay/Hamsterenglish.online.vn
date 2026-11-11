@@ -1515,14 +1515,26 @@ Return exactly a JSON array of 4 objects.`;
 
   // ============================================================================
   // REAL-TIME HAMSTER PAINTBALL MULTIPLAYER ROOM ENGINE (Server-Authoritative)
-  // Guarantees Host & Students see each other immediately across all devices/tabs
-  // even when Firebase Firestore hits daily free-tier quota limits.
+  // Guarantees Host & Students see each other immediately across all devices,
+  // tabs, and domains (both active Cloud Run URL & www.hamsterenglish.online).
   // ============================================================================
+  app.use("/api/paintball", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    if (req.method === "OPTIONS") {
+      return res.status(204).end();
+    }
+    next();
+  });
+
   const paintballRoomsMemory = new Map<
     string,
     {
       room: Record<string, any>;
       players: Map<string, Record<string, any>>;
+      events: Array<Record<string, any>>;
     }
   >();
 
@@ -1544,36 +1556,80 @@ Return exactly a JSON array of 4 objects.`;
           matchStatus: "lobby",
           configuredDurationSec: 180,
           ballsPerQuestion: 10,
+          matchEpoch: 0,
           isUninitialized: true,
           updatedAt: Date.now()
         },
-        players: new Map()
+        players: new Map(),
+        events: []
       };
       paintballRoomsMemory.set(cleanCode, entry);
     }
     return entry;
   }
 
+  function appendPaintballRoomEvents(
+    entry: {
+      room: Record<string, any>;
+      players: Map<string, Record<string, any>>;
+      events: Array<Record<string, any>>;
+    },
+    incomingEvents: Array<Record<string, any>>
+  ) {
+    const now = Date.now();
+    // Prune events older than 8 seconds
+    entry.events = entry.events.filter(ev => now - (ev.serverTs || now) < 8000);
+    for (const ev of incomingEvents) {
+      if (!ev || !ev.eventId) continue;
+      if (!entry.events.some(existingEv => existingEv.eventId === ev.eventId)) {
+        entry.events.push({
+          ...ev,
+          serverTs: now
+        });
+      }
+    }
+    if (entry.events.length > 40) {
+      entry.events = entry.events.slice(-40);
+    }
+  }
+
   function serializePaintballRoom(entry: {
     room: Record<string, any>;
     players: Map<string, Record<string, any>>;
+    events: Array<Record<string, any>>;
   }) {
     const now = Date.now();
-    // Prune stale disconnected players who haven't updated in > 60 seconds
+    entry.events = entry.events.filter(ev => now - (ev.serverTs || now) < 8000);
+    // Prune stale disconnected players who haven't updated in > 45 seconds
     entry.players.forEach((p, id) => {
       if (p.kicked && now - (p.updatedAt || 0) > 5000) {
         entry.players.delete(id);
-      } else if (now - (p.updatedAt || 0) > 65000) {
+      } else if (now - (p.updatedAt || 0) > 45000) {
         entry.players.delete(id);
       }
     });
+    const serializedPlayers = Array.from(entry.players.values()).map(p => {
+      const immuneRemMs =
+        typeof p.serverImmuneUntil === "number"
+          ? Math.max(0, p.serverImmuneUntil - now)
+          : 0;
+      return {
+        ...p,
+        immuneRemainingMs: immuneRemMs
+      };
+    });
     return {
-      room: entry.room,
-      players: Array.from(entry.players.values())
+      serverNow: now,
+      room: {
+        ...entry.room,
+        serverNow: now
+      },
+      players: serializedPlayers,
+      events: entry.events
     };
   }
 
-  // GET /api/paintball/room/:code -> Fetch room configuration & all joined players
+  // GET /api/paintball/room/:code -> Fetch room configuration, all joined players & combat ring buffer
   app.get("/api/paintball/room/:code", (req, res) => {
     const entry = getOrCreatePaintballRoom(req.params.code);
     if (!entry) return res.status(400).json({ error: "Invalid room code" });
@@ -1585,29 +1641,55 @@ Return exactly a JSON array of 4 objects.`;
     const entry = getOrCreatePaintballRoom(req.params.code);
     if (!entry) return res.status(400).json({ error: "Invalid room code" });
 
-    const { room: roomPatch, players: playersPatch } = req.body || {};
+    const now = Date.now();
+    const { room: roomPatch, players: playersPatch, combatEvents } = req.body || {};
     if (roomPatch && typeof roomPatch === "object") {
+      const nextEpoch =
+        typeof roomPatch.matchEpoch === "number" && roomPatch.matchEpoch > 0
+          ? roomPatch.matchEpoch
+          : typeof roomPatch.startedAt === "number" && roomPatch.startedAt > 0
+          ? roomPatch.startedAt
+          : entry.room.matchEpoch || 0;
+
+      // Anchor timerSyncedAt and startedAt to authoritative server clock so skewed client clocks never break timers!
+      const normalizedPatch = { ...roomPatch };
+      if (typeof normalizedPatch.timerSyncSeconds === "number") {
+        normalizedPatch.timerSyncedAt = now;
+      }
+      if (roomPatch.matchStatus === "playing" && nextEpoch > (entry.room.matchEpoch || 0)) {
+        normalizedPatch.startedAt = now;
+        normalizedPatch.matchEpoch = nextEpoch;
+      }
+
       entry.room = {
         ...entry.room,
-        ...roomPatch,
+        ...normalizedPatch,
+        matchEpoch: Math.max(entry.room.matchEpoch || 0, nextEpoch),
         roomCode: entry.room.roomCode,
         isUninitialized: false,
-        updatedAt: Date.now()
+        updatedAt: now
       };
     }
 
     if (Array.isArray(playersPatch)) {
-      const now = Date.now();
       playersPatch.forEach((pPatch: any) => {
         if (!pPatch || !pPatch.id) return;
         const existing = entry.players.get(pPatch.id) || {};
+        const resetEpoch =
+          pPatch.matchStartResetAt || pPatch.lastStartedAt || entry.room.matchEpoch || 0;
         entry.players.set(pPatch.id, {
           ...existing,
           ...pPatch,
+          lastStartedAt: Math.max(existing.lastStartedAt || 0, resetEpoch),
+          serverImmuneUntil: 0,
           hostOverrideAt: now,
           updatedAt: now
         });
       });
+    }
+
+    if (Array.isArray(combatEvents) && combatEvents.length > 0) {
+      appendPaintballRoomEvents(entry, combatEvents);
     }
 
     res.json(serializePaintballRoom(entry));
@@ -1629,7 +1711,7 @@ Return exactly a JSON array of 4 objects.`;
     const existing = entry.players.get(playerId) || {};
     const isHostAction = Boolean(body.isHostAction);
 
-    // If Host moved this player's team or kicked them recently, preserve Host's team/kicked state
+    // Preserve Host's team override or kick state until acknowledged
     const hostOverrideAt = isHostAction
       ? now
       : typeof existing.hostOverrideAt === "number"
@@ -1643,53 +1725,127 @@ Return exactly a JSON array of 4 objects.`;
       !isHostAction &&
       hostOverrideAt > clientAckOverrideAt &&
       existing.team &&
-      now - hostOverrideAt < 8000;
+      now - hostOverrideAt < 10000;
 
-    // Never allow an out-of-order network request with an older sequence number from the same match to overwrite newer student coordinates
     const incomingSeq = typeof playerData.seq === "number" ? playerData.seq : 0;
     const existingSeq = typeof existing.seq === "number" ? existing.seq : 0;
-    const sameMatchSession =
-      (playerData.lastStartedAt || 0) === (existing.lastStartedAt || 0);
-    const isStaleStudentPacket =
+    const incomingEpoch =
+      typeof playerData.lastStartedAt === "number" ? playerData.lastStartedAt : 0;
+    const activeEpoch = Math.max(
+      existing.lastStartedAt || 0,
+      existing.matchStartResetAt || 0,
+      entry.room.matchStatus === "playing" ? entry.room.matchEpoch || 0 : 0
+    );
+
+    // CRITICAL FIX: Block pre-match lobby heartbeats (`incomingEpoch < activeEpoch`) AND out-of-order packets
+    // from overwriting the Host's match-start spawn coordinates or newer student movement!
+    const isOlderMatchEpoch =
+      !isHostAction && activeEpoch > 1000 && incomingEpoch < activeEpoch;
+    const sameMatchSession = incomingEpoch === (existing.lastStartedAt || 0);
+    const isStaleSeqPacket =
       !isHostAction &&
       sameMatchSession &&
-      incomingSeq > 0 &&
-      existingSeq > 0 &&
-      incomingSeq < existingSeq;
+      ((incomingSeq > 0 && existingSeq > 0 && incomingSeq < existingSeq) ||
+        (existingSeq > 0 && incomingSeq === 0));
 
-    // Student coordinates (x, z, rotY) are always authoritative when !isHostAction so moving players never freeze at spawn!
+    const isStaleStudentPacket = isOlderMatchEpoch || isStaleSeqPacket;
+
+    // Server-authoritative relative immunity window (eliminates cross-device clock skew!)
+    let nextServerImmuneUntil =
+      typeof existing.serverImmuneUntil === "number" ? existing.serverImmuneUntil : 0;
+    if (isHostAction && playerData.matchStartResetAt) {
+      nextServerImmuneUntil = 0;
+    } else if (typeof playerData.immuneRemainingMs === "number") {
+      nextServerImmuneUntil =
+        playerData.immuneRemainingMs > 0 ? now + Math.min(12000, playerData.immuneRemainingMs) : 0;
+    } else if (typeof playerData.immuneUntil === "number" && playerData.immuneUntil > now) {
+      nextServerImmuneUntil = Math.min(now + 12000, playerData.immuneUntil);
+    }
+
     const mergedPlayer: Record<string, any> = isStaleStudentPacket
       ? {
           ...existing,
-          updatedAt: existing.updatedAt || now
+          // Keep connection alive while preserving authoritative match-start reset & latest coordinates
+          updatedAt: now
         }
       : {
           ...existing,
           ...playerData,
           id: playerId,
-          seq: isHostAction && playerData.matchStartResetAt ? 0 : Math.max(incomingSeq, existingSeq),
-          team: preserveHostTeam ? existing.team : playerData.team || existing.team || "red",
+          seq:
+            isHostAction && playerData.matchStartResetAt
+              ? 0
+              : Math.max(incomingSeq, existingSeq),
+          lastStartedAt:
+            isHostAction && playerData.matchStartResetAt
+              ? playerData.matchStartResetAt
+              : Math.max(incomingEpoch, existing.lastStartedAt || 0),
+          team: preserveHostTeam
+            ? existing.team
+            : playerData.team || existing.team || "red",
           kicked: isHostAction
             ? Boolean(playerData.kicked)
             : Boolean(existing.kicked || playerData.kicked),
+          serverImmuneUntil: nextServerImmuneUntil,
           hostOverrideAt,
           updatedAt: now
         };
 
     entry.players.set(playerId, mergedPlayer);
 
-    // If a client reports active room state (e.g. from Firestore across domains) into an uninitialized memory room, adopt it
+    // Record any combat events (shots, hits, KOs) into the room's 40-event ring buffer so rapid fire is NEVER dropped!
+    const collectedEvents: Array<Record<string, any>> = [];
+    if (Array.isArray(body.combatEvents)) {
+      collectedEvents.push(...body.combatEvents);
+    }
+    if (playerData.lastShot?.shotId) {
+      collectedEvents.push({
+        eventId: playerData.lastShot.shotId,
+        kind: "shot",
+        actorId: playerId,
+        actorName: mergedPlayer.name || "Student",
+        actorTeam: mergedPlayer.team || "red",
+        x: playerData.lastShot.x,
+        z: playerData.lastShot.z,
+        angle: playerData.lastShot.angle,
+        paintColor: playerData.lastShot.paintColor
+      });
+    }
+    if (playerData.lastHit?.hitId) {
+      collectedEvents.push({
+        eventId: playerData.lastHit.hitId,
+        kind: "hit",
+        actorId: playerData.lastHit.attackerId || playerId,
+        actorName: playerData.lastHit.attackerName || mergedPlayer.name || "Student",
+        targetId: playerData.lastHit.targetId,
+        damage: playerData.lastHit.damage
+      });
+    }
+    if (playerData.lastKo?.koId) {
+      collectedEvents.push({
+        eventId: playerData.lastKo.koId,
+        kind: "ko",
+        actorId: playerData.lastKo.attackerId,
+        victimId: playerId,
+        victimName: playerData.lastKo.victimName || mergedPlayer.name || "Opponent"
+      });
+    }
+    if (collectedEvents.length > 0) {
+      appendPaintballRoomEvents(entry, collectedEvents);
+    }
+
+    // Adopt room state if reported from Firestore into an uninitialized memory room
     if (body.roomState && typeof body.roomState === "object") {
       const rs = body.roomState;
+      const rsEpoch = rs.matchEpoch || rs.startedAt || 0;
       if (
         entry.room.isUninitialized ||
-        (rs.matchStatus === "playing" &&
-          typeof rs.startedAt === "number" &&
-          rs.startedAt > (entry.room.startedAt || 0))
+        (rs.matchStatus === "playing" && rsEpoch > (entry.room.matchEpoch || 0))
       ) {
         entry.room = {
           ...entry.room,
           ...rs,
+          matchEpoch: Math.max(entry.room.matchEpoch || 0, rsEpoch),
           roomCode: entry.room.roomCode,
           isUninitialized: false,
           updatedAt: now
@@ -1713,6 +1869,16 @@ Return exactly a JSON array of 4 objects.`;
       entry.players.delete(playerId);
     }
     res.json(serializePaintballRoom(entry));
+  });
+  // Support sendBeacon POST leave on mobile tab close
+  app.post("/api/paintball/room/:code/player/:playerId/leave", (req, res) => {
+    const entry = getOrCreatePaintballRoom(req.params.code);
+    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+    const playerId = String(req.params.playerId || "").trim();
+    if (playerId) {
+      entry.players.delete(playerId);
+    }
+    res.json({ ok: true });
   });
 
   // Vite middleware for development

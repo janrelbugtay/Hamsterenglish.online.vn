@@ -4,6 +4,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ViewState } from '../types';
 
+const mosquitoSlapCardImg = '/images/mosquito-slap-card.jpg';
 const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
 
 export type PlayableGameMode =
@@ -104,14 +105,14 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
   },
   {
     id: 'slap-and-chop',
-    title: 'Slap & Chop',
-    shortAction: 'Play in Slap & Chop',
-    tagline: 'Mosquito Slap & Fencing AR',
-    description: 'Slap buzzing mosquitoes with purple gloves or slice flying fruits with an extra-long fencing sword on camera!',
+    title: 'Mosquito Slap',
+    shortAction: 'Play in Mosquito Slap',
+    tagline: '3D Two-Glove Mosquito Slap AR',
+    description: 'Track both hands on camera and clap your 3D gloves together over buzzing mosquitoes to slap the right answer!',
     players: '1–2 Players · Camera / Mouse',
     category: 'camera',
     emoji: '🦟',
-    image: '/images/slap-and-chop-card.jpg',
+    image: mosquitoSlapCardImg,
     gradient: 'from-purple-600 via-indigo-600 to-sky-500',
     cardBg: 'bg-purple-50/70 dark:bg-purple-950/25 hover:bg-purple-100/80 dark:hover:bg-purple-900/35',
     cardBorder: 'border-purple-200 dark:border-purple-800/70',

@@ -29,6 +29,8 @@ import {
   syncWithServerPlatformCache,
 } from "../utils/platformCache";
 
+const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg";
+
 export type CambridgeType = 'Starters' | 'Movers' | 'Flyers' | 'KET' | 'PET' | 'IELTS';
 export type GradeType = 
   | 'Grade 1' | 'Grade 2' | 'Grade 3' | 'Grade 4' 
@@ -387,7 +389,7 @@ export function PublicDashboard({
     { id: "bubble-pop", title: "Bubble Pop", color: "text-blue-600", icon: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000" },
     { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", color: "text-amber-600", icon: "/images/roller-coaster-quiz-card.jpg" },
     { id: "hamster-paintball", title: "Hamster Paintball", color: "text-orange-600", icon: "/images/hamster-paintball-card.jpg" },
-    { id: "slap-and-chop", title: "Slap & Chop", color: "text-purple-600", icon: "/images/slap-and-chop-card.jpg" },
+    { id: "slap-and-chop", title: "Mosquito Slap", color: "text-purple-600", icon: mosquitoSlapCardImg },
     { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "/images/shark-attack-card.jpg" },
     { id: "flashcards-match", title: "Flashcards Match", color: "text-indigo-600", icon: "https://drive.google.com/thumbnail?id=1UtaZtVX0onrqj3VorxedOxy1iVXdFAHk&sz=w1000" },
     { id: "bubble-sentence-pro", title: "Bubble Island", color: "text-sky-600", icon: "https://drive.google.com/thumbnail?id=136UAXGhVDr4ZhJd3bRABHDKp40RJIQSJ&sz=w1000" },

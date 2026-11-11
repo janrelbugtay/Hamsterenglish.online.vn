@@ -10,6 +10,7 @@ import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
 import { logUserActivity } from '../utils/activityTracker';
 import { getSavedGames, getSavedFolders, mergeAllFolders, createUnifiedFolder } from '../lib/gameStore';
 
+const mosquitoSlapCardImg = '/images/mosquito-slap-card.jpg';
 const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
 
 export const GamesLibrary = ({ 
@@ -112,7 +113,7 @@ export const GamesLibrary = ({
     { id: "bubble-pop", title: "Bubble Pop", icon: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000", color: "bg-blue-100 text-blue-600" },
     { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "/images/roller-coaster-quiz-card.jpg", color: "bg-amber-100 text-amber-600" },
     { id: "hamster-paintball", title: "Hamster Paintball", icon: hamsterPaintballCardImg, color: "bg-lime-100 text-lime-700" },
-    { id: "slap-and-chop", title: "Slap & Chop", icon: "/images/slap-and-chop-card.jpg", color: "bg-purple-100 text-purple-600" },
+    { id: "slap-and-chop", title: "Mosquito Slap", icon: mosquitoSlapCardImg, color: "bg-purple-100 text-purple-600" },
     { id: "shark-attack", title: "Shark Attack", icon: "/images/shark-attack-card.jpg", color: "bg-cyan-100 text-cyan-600" },
     { id: "flashcards-match", title: "Flashcards Match", icon: "https://drive.google.com/thumbnail?id=1UtaZtVX0onrqj3VorxedOxy1iVXdFAHk&sz=w1000", color: "bg-indigo-100 text-indigo-600" },
     { id: "bubble-sentence-pro", title: "Bubble Island", icon: "https://drive.google.com/thumbnail?id=136UAXGhVDr4ZhJd3bRABHDKp40RJIQSJ&sz=w1000", color: "bg-sky-100 text-sky-600" },
