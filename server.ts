@@ -1580,10 +1580,23 @@ Return exactly a JSON array of 4 objects.`;
     // Prune events older than 8 seconds
     entry.events = entry.events.filter(ev => now - (ev.serverTs || now) < 8000);
     for (const ev of incomingEvents) {
-      if (!ev || !ev.eventId) continue;
-      if (!entry.events.some(existingEv => existingEv.eventId === ev.eventId)) {
+      if (!ev) continue;
+      const evId = ev.id || ev.eventId;
+      if (!evId) continue;
+      const evType = ev.type || ev.kind || "shot";
+      if (!entry.events.some(existingEv => (existingEv.id || existingEv.eventId) === evId)) {
         entry.events.push({
           ...ev,
+          id: evId,
+          eventId: evId,
+          type: evType,
+          kind: evType,
+          ownerId: ev.ownerId || ev.actorId || ev.victimId || "",
+          ownerName: ev.ownerName || ev.actorName || "Student",
+          ownerTeam: ev.ownerTeam || ev.actorTeam || "red",
+          attackerId: ev.attackerId || ev.actorId || "",
+          attackerName: ev.attackerName || ev.actorName || "Student",
+          ts: ev.ts || now,
           serverTs: now
         });
       }
@@ -1642,7 +1655,7 @@ Return exactly a JSON array of 4 objects.`;
     if (!entry) return res.status(400).json({ error: "Invalid room code" });
 
     const now = Date.now();
-    const { room: roomPatch, players: playersPatch, combatEvents } = req.body || {};
+    const { room: roomPatch, players: playersPatch, combatEvents, events } = req.body || {};
     if (roomPatch && typeof roomPatch === "object") {
       const nextEpoch =
         typeof roomPatch.matchEpoch === "number" && roomPatch.matchEpoch > 0
@@ -1688,8 +1701,13 @@ Return exactly a JSON array of 4 objects.`;
       });
     }
 
-    if (Array.isArray(combatEvents) && combatEvents.length > 0) {
-      appendPaintballRoomEvents(entry, combatEvents);
+    const incomingRoomEvents = Array.isArray(events)
+      ? events
+      : Array.isArray(combatEvents)
+      ? combatEvents
+      : [];
+    if (incomingRoomEvents.length > 0) {
+      appendPaintballRoomEvents(entry, incomingRoomEvents);
     }
 
     res.json(serializePaintballRoom(entry));
@@ -1795,16 +1813,21 @@ Return exactly a JSON array of 4 objects.`;
 
     // Record any combat events (shots, hits, KOs) into the room's 40-event ring buffer so rapid fire is NEVER dropped!
     const collectedEvents: Array<Record<string, any>> = [];
+    if (Array.isArray(body.events)) {
+      collectedEvents.push(...body.events);
+    }
     if (Array.isArray(body.combatEvents)) {
       collectedEvents.push(...body.combatEvents);
     }
     if (playerData.lastShot?.shotId) {
       collectedEvents.push({
+        id: playerData.lastShot.shotId,
         eventId: playerData.lastShot.shotId,
+        type: "shot",
         kind: "shot",
-        actorId: playerId,
-        actorName: mergedPlayer.name || "Student",
-        actorTeam: mergedPlayer.team || "red",
+        ownerId: playerId,
+        ownerName: mergedPlayer.name || "Student",
+        ownerTeam: mergedPlayer.team || "red",
         x: playerData.lastShot.x,
         z: playerData.lastShot.z,
         angle: playerData.lastShot.angle,
@@ -1813,19 +1836,26 @@ Return exactly a JSON array of 4 objects.`;
     }
     if (playerData.lastHit?.hitId) {
       collectedEvents.push({
+        id: playerData.lastHit.hitId,
         eventId: playerData.lastHit.hitId,
+        type: "hit",
         kind: "hit",
-        actorId: playerData.lastHit.attackerId || playerId,
-        actorName: playerData.lastHit.attackerName || mergedPlayer.name || "Student",
+        ownerId: playerData.lastHit.attackerId || playerId,
+        ownerName: playerData.lastHit.attackerName || mergedPlayer.name || "Student",
+        attackerId: playerData.lastHit.attackerId || playerId,
+        attackerName: playerData.lastHit.attackerName || mergedPlayer.name || "Student",
         targetId: playerData.lastHit.targetId,
         damage: playerData.lastHit.damage
       });
     }
     if (playerData.lastKo?.koId) {
       collectedEvents.push({
+        id: playerData.lastKo.koId,
         eventId: playerData.lastKo.koId,
+        type: "ko",
         kind: "ko",
-        actorId: playerData.lastKo.attackerId,
+        ownerId: playerId,
+        attackerId: playerData.lastKo.attackerId,
         victimId: playerId,
         victimName: playerData.lastKo.victimName || mergedPlayer.name || "Opponent"
       });
