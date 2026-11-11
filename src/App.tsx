@@ -82,11 +82,48 @@ export default function App() {
     }
   };
 
+  // Synchronously detect direct Hamster Paintball join links (?game=hamster-paintball&room=XXXXXX)
+  const getUrlPaintballParams = (): { roomCode?: string } | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      let gameParam = searchParams.get('game');
+      let roomParam = searchParams.get('room') || searchParams.get('paintballRoom');
+
+      if (!gameParam && !roomParam && window.location.hash) {
+        const rawHash = window.location.hash;
+        if (rawHash.includes('hamster-paintball') || rawHash.includes('paintballRoom=')) {
+          const qPart = rawHash.includes('?') ? rawHash.split('?')[1] : rawHash.replace(/^#\/?/, '');
+          const hashParams = new URLSearchParams(qPart);
+          gameParam = hashParams.get('game') || (rawHash.includes('hamster-paintball') ? 'hamster-paintball' : null);
+          roomParam = hashParams.get('room') || hashParams.get('paintballRoom');
+        }
+      }
+
+      if (gameParam === 'hamster-paintball' || searchParams.get('paintballRoom')) {
+        const cleanRoom = (roomParam || '').trim().replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
+        return { roomCode: cleanRoom || undefined };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const initialHwPin = getUrlHwPin();
+  const initialPaintball = !initialHwPin ? getUrlPaintballParams() : null;
   const [isLockedHomeworkLink, setIsLockedHomeworkLink] = useState<boolean>(Boolean(initialHwPin));
 
-  const [currentView, setCurrentView] = useState<ViewState>(initialHwPin ? "homework" : "home");
-  const [selectedGame, setSelectedGame] = useState<any>(initialHwPin ? { pinCode: initialHwPin } : null);
+  const [currentView, setCurrentView] = useState<ViewState>(
+    initialHwPin ? "homework" : initialPaintball ? "hamster-paintball" : "home"
+  );
+  const [selectedGame, setSelectedGame] = useState<any>(
+    initialHwPin
+      ? { pinCode: initialHwPin }
+      : initialPaintball
+      ? { roomCode: initialPaintball.roomCode }
+      : null
+  );
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState(false);
@@ -130,17 +167,32 @@ export default function App() {
     setIsGoogleAuthModalOpen(true);
   };
 
-  // Route new sign-ins directly to "home" while preserving homework and active PIN
+  // Route new sign-ins directly to "home" while preserving homework, Hamster Paintball join links, and slide deep-links
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const justLoggedIn = !prevUserRef.current || prevUserRef.current.isAnonymous;
       if (justLoggedIn) {
         const activePin = getUrlHwPin(true);
         const hasHwInUrl = Boolean(activePin) || isLockedHomeworkLink;
+        const activePb = getUrlPaintballParams();
+        const hasSlideInUrl =
+          typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).has('slideId');
+
         if (hasHwInUrl && activePin) {
           setSelectedGame((prev: any) => (prev?.pinCode ? prev : { pinCode: activePin }));
+        } else if (activePb) {
+          setSelectedGame((prev: any) =>
+            prev?.roomCode ? prev : { roomCode: activePb.roomCode }
+          );
         }
-        setCurrentView((prev) => (prev === 'homework' || hasHwInUrl ? 'homework' : 'home'));
+
+        setCurrentView((prev) => {
+          if (prev === 'homework' || hasHwInUrl) return 'homework';
+          if (prev === 'hamster-paintball' || activePb) return 'hamster-paintball';
+          if (prev === 'my-slides' || hasSlideInUrl) return 'my-slides';
+          return 'home';
+        });
       }
     }
     prevUserRef.current = user;
@@ -193,15 +245,13 @@ export default function App() {
         setCurrentView('homework');
         return;
       }
-      const params = new URLSearchParams(window.location.search);
-      const gameParam = params.get('game');
-      const roomParam = params.get('room') || params.get('paintballRoom');
-      if (gameParam === 'hamster-paintball' || params.get('paintballRoom')) {
-        const cleanRoom = (roomParam || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 6);
-        setSelectedGame((prev: any) => ({ ...(prev || {}), roomCode: cleanRoom || undefined }));
+      const pbParams = getUrlPaintballParams();
+      if (pbParams) {
+        setSelectedGame((prev: any) => ({ ...(prev || {}), roomCode: pbParams.roomCode }));
         setCurrentView('hamster-paintball');
         return;
       }
+      const params = new URLSearchParams(window.location.search);
       const code = params.get('joinCode');
       if (code) {
         setInitialRoomCode(code);

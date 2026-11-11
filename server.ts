@@ -1748,22 +1748,36 @@ Return exactly a JSON array of 4 objects.`;
     const incomingSeq = typeof playerData.seq === "number" ? playerData.seq : 0;
     const existingSeq = typeof existing.seq === "number" ? existing.seq : 0;
     const incomingEpoch =
-      typeof playerData.lastStartedAt === "number" ? playerData.lastStartedAt : 0;
-    const activeEpoch = Math.max(
+      typeof playerData.matchEpoch === "number" && playerData.matchEpoch > 0
+        ? playerData.matchEpoch
+        : typeof playerData.lastStartedAt === "number"
+        ? playerData.lastStartedAt
+        : 0;
+    const existingPlayerEpoch = Math.max(
+      existing.matchEpoch || 0,
       existing.lastStartedAt || 0,
-      existing.matchStartResetAt || 0,
+      existing.matchStartResetAt || 0
+    );
+    const activeEpoch = Math.max(
+      existingPlayerEpoch,
       entry.room.matchStatus === "playing" ? entry.room.matchEpoch || 0 : 0
     );
 
-    // CRITICAL FIX: Block pre-match lobby heartbeats (`incomingEpoch < activeEpoch`) AND out-of-order packets
-    // from overwriting the Host's match-start spawn coordinates or newer student movement!
+    // Block pre-match lobby heartbeats (`incomingEpoch < activeEpoch`) and brief out-of-order HTTP packets (<1.5s)
+    // without ever freezing a player when a new match epoch begins or a client reconnects!
     const isOlderMatchEpoch =
       !isHostAction && activeEpoch > 1000 && incomingEpoch < activeEpoch;
-    const sameMatchSession = incomingEpoch === (existing.lastStartedAt || 0);
+    const isNewerMatchEpoch = incomingEpoch > existingPlayerEpoch && incomingEpoch > 1000;
+    const sameMatchSession = !isNewerMatchEpoch && incomingEpoch === existingPlayerEpoch;
+    const recentExistingMs = now - (existing.updatedAt || 0);
     const isStaleSeqPacket =
       !isHostAction &&
       sameMatchSession &&
-      ((incomingSeq > 0 && existingSeq > 0 && incomingSeq < existingSeq) ||
+      recentExistingMs < 1500 &&
+      ((incomingSeq > 0 &&
+        existingSeq > 0 &&
+        incomingSeq < existingSeq &&
+        existingSeq - incomingSeq < 5000) ||
         (existingSeq > 0 && incomingSeq === 0));
 
     const isStaleStudentPacket = isOlderMatchEpoch || isStaleSeqPacket;
@@ -1780,6 +1794,18 @@ Return exactly a JSON array of 4 objects.`;
       nextServerImmuneUntil = Math.min(now + 12000, playerData.immuneUntil);
     }
 
+    const resolvedSeq =
+      isHostAction && playerData.matchStartResetAt
+        ? 0
+        : isNewerMatchEpoch || recentExistingMs >= 1500
+        ? incomingSeq
+        : Math.max(incomingSeq, existingSeq);
+
+    const resolvedEpoch =
+      isHostAction && playerData.matchStartResetAt
+        ? playerData.matchStartResetAt
+        : Math.max(incomingEpoch, existingPlayerEpoch);
+
     const mergedPlayer: Record<string, any> = isStaleStudentPacket
       ? {
           ...existing,
@@ -1790,14 +1816,9 @@ Return exactly a JSON array of 4 objects.`;
           ...existing,
           ...playerData,
           id: playerId,
-          seq:
-            isHostAction && playerData.matchStartResetAt
-              ? 0
-              : Math.max(incomingSeq, existingSeq),
-          lastStartedAt:
-            isHostAction && playerData.matchStartResetAt
-              ? playerData.matchStartResetAt
-              : Math.max(incomingEpoch, existing.lastStartedAt || 0),
+          seq: resolvedSeq,
+          matchEpoch: resolvedEpoch,
+          lastStartedAt: resolvedEpoch,
           team: preserveHostTeam
             ? existing.team
             : playerData.team || existing.team || "red",

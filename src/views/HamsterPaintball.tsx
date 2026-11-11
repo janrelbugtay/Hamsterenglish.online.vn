@@ -1708,12 +1708,23 @@ export default function HamsterPaintball({
 }) {
   const { user } = useAuth();
 
-  // Detect if user arrived via QR code / student room code link
+  // Detect if user arrived via QR code / student room code link (supports both query string and hash)
   const getInitialRoomSetup = (): { code: string; isJoiningStudent: boolean } => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const urlRoom = params.get('room') || params.get('paintballRoom') || params.get('joinCode');
-      const roleParam = params.get('role');
+      let urlRoom = params.get('room') || params.get('paintballRoom') || params.get('joinCode');
+      let roleParam = params.get('role');
+      if (!urlRoom && window.location.hash) {
+        const qPart = window.location.hash.includes('?')
+          ? window.location.hash.split('?')[1]
+          : window.location.hash.replace(/^#\/?/, '');
+        const hashParams = new URLSearchParams(qPart);
+        urlRoom =
+          hashParams.get('room') ||
+          hashParams.get('paintballRoom') ||
+          hashParams.get('joinCode');
+        if (!roleParam) roleParam = hashParams.get('role');
+      }
       if (urlRoom && /^[0-9A-Za-z]{4,8}$/.test(urlRoom.trim())) {
         return {
           code: urlRoom.trim().toUpperCase().slice(0, 6),
@@ -2057,11 +2068,13 @@ export default function HamsterPaintball({
     subtitle: string;
     colorClass: string;
   } | null>(null);
+  const [isEnemyTargeted, setIsEnemyTargeted] = useState<boolean>(false);
+  const isEnemyTargetedRef = useRef<boolean>(false);
 
   // Project 3D world coordinate to 2D screen percentage for floating damage numbers & hit markers
   const projectWorldToScreenPct = (worldX: number, worldY: number, worldZ: number) => {
     const cam = gameRef.current?.camera;
-    if (!cam) return { xPct: 50, yPct: 45 };
+    if (!cam) return { xPct: 50, yPct: 57 };
     const vec = new THREE.Vector3(worldX, worldY, worldZ);
     vec.project(cam);
     const xPct = Math.max(12, Math.min(88, (vec.x * 0.5 + 0.5) * 100));
@@ -2215,8 +2228,13 @@ export default function HamsterPaintball({
     typeof window !== 'undefined' && window.location.origin
       ? window.location.origin
       : 'https://www.hamsterenglish.online';
+  const isCurrentOriginHamsterEnglish = /(^|:\/\/)(www\.)?hamsterenglish\.online$/i.test(
+    currentOrigin.replace(/\/+$/, '')
+  );
   const activeJoinBaseOrigin =
-    joinDomainMode === 'hamsterenglish' ? 'https://www.hamsterenglish.online' : currentOrigin;
+    joinDomainMode === 'hamsterenglish' && !isCurrentOriginHamsterEnglish
+      ? 'https://www.hamsterenglish.online'
+      : currentOrigin;
   const liveJoinUrl = `${activeJoinBaseOrigin}/?game=hamster-paintball&room=${roomCode}`;
   const liveDisplayHost = activeJoinBaseOrigin.replace(/^https?:\/\//, '');
 
@@ -2825,9 +2843,16 @@ export default function HamsterPaintball({
     return clean;
   };
 
-  const playerSeqRef = useRef<number>(1);
+  // Strictly monotonic timestamp-seeded sequence counter: NEVER resets to 0/1 on match start or page refresh!
+  const playerSeqRef = useRef<number>(Date.now());
+  const nextPlayerSeq = () => {
+    playerSeqRef.current = Math.max(playerSeqRef.current + 1, Date.now());
+    return playerSeqRef.current;
+  };
   const ackHostOverrideAtRef = useRef<number>(0);
   const lastDamageAppliedAtRef = useRef<number>(0);
+  const lastFirestoreSentSigRef = useRef<string>('');
+  const lastFirestoreSentAtRef = useRef<number>(0);
   const mergedPlayersMapRef = useRef<
     Map<string, { state: PlayerNetworkState; lastSeenLocalAt: number }>
   >(new Map());
@@ -2837,17 +2862,30 @@ export default function HamsterPaintball({
     lastKo?: PlayerNetworkState['lastKo'];
   }>({});
 
-  // Resolve candidate API base origins: local `/api/paintball` first for lowest latency, then cross-domain `hostApiOrigin` if different
+  // Fast timeout-guarded fetch so an unreachable cross-origin host never stalls the sync loop
+  const fetchWithTimeout = async (
+    url: string,
+    init?: RequestInit,
+    timeoutMs: number = 1350
+  ): Promise<Response> => {
+    const controller = new AbortController();
+    const timerId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timerId);
+    }
+  };
+
+  // Resolve candidate API base origins: authoritative `hostApiOrigin` FIRST when cross-domain so all devices share one server memory, then local `/api/paintball`
   const getCandidateApiBases = (): string[] => {
-    const bases: string[] = [''];
+    const bases: string[] = [];
     const discovered = hostApiOriginRef.current.trim().replace(/\/+$/, '');
-    if (
-      discovered &&
-      /^https?:\/\//i.test(discovered) &&
-      discovered !== currentOrigin.replace(/\/+$/, '')
-    ) {
+    const normalizedLocal = currentOrigin.replace(/\/+$/, '');
+    if (discovered && /^https?:\/\//i.test(discovered) && discovered !== normalizedLocal) {
       bases.push(discovered);
     }
+    bases.push('');
     return bases;
   };
 
@@ -2871,11 +2909,14 @@ export default function HamsterPaintball({
     let primaryResult: any = null;
     for (const base of getCandidateApiBases()) {
       try {
-        const res = await fetch(`${base}/api/paintball/room/${encodeURIComponent(clean)}/room`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room: roomPatch, players: playersPatch })
-        });
+        const res = await fetchWithTimeout(
+          `${base}/api/paintball/room/${encodeURIComponent(clean)}/room`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room: roomPatch, players: playersPatch })
+          }
+        );
         if (res.ok) {
           const json = await res.json();
           ingestApiSnapshotMeta(json);
@@ -2908,19 +2949,22 @@ export default function HamsterPaintball({
     let primaryResult: any = null;
     for (const base of getCandidateApiBases()) {
       try {
-        const res = await fetch(`${base}/api/paintball/room/${encodeURIComponent(clean)}/player`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            player: playerPayload,
-            isHostAction: Boolean(options?.isHostAction),
-            ackHostOverrideAt: ackHostOverrideAtRef.current,
-            roomState: roomStatePatch,
-            latestEvent: options?.latestEvent,
-            events: queuedEvents,
-            combatEvents: queuedEvents
-          })
-        });
+        const res = await fetchWithTimeout(
+          `${base}/api/paintball/room/${encodeURIComponent(clean)}/player`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              player: playerPayload,
+              isHostAction: Boolean(options?.isHostAction),
+              ackHostOverrideAt: ackHostOverrideAtRef.current,
+              roomState: roomStatePatch,
+              latestEvent: options?.latestEvent,
+              events: queuedEvents,
+              combatEvents: queuedEvents
+            })
+          }
+        );
         if (res.ok) {
           const json = await res.json();
           ingestApiSnapshotMeta(json);
@@ -2938,7 +2982,9 @@ export default function HamsterPaintball({
     let bestData: any = null;
     for (const base of getCandidateApiBases()) {
       try {
-        const res = await fetch(`${base}/api/paintball/room/${encodeURIComponent(clean)}`);
+        const res = await fetchWithTimeout(
+          `${base}/api/paintball/room/${encodeURIComponent(clean)}`
+        );
         if (res.ok) {
           const json = await res.json();
           ingestApiSnapshotMeta(json);
@@ -2957,7 +3003,7 @@ export default function HamsterPaintball({
     if (!clean || !playerId) return;
     for (const base of getCandidateApiBases()) {
       try {
-        await fetch(
+        await fetchWithTimeout(
           `${base}/api/paintball/room/${encodeURIComponent(clean)}/player/${encodeURIComponent(
             playerId
           )}`,
@@ -3009,7 +3055,6 @@ export default function HamsterPaintball({
     incomingBallsPerQuestion?: number
   ) => {
     lastStartedAtRef.current = startedAtTs;
-    playerSeqRef.current = 1;
     sfx.playKO();
     sfx.startMusic();
     if (typeof incomingBallsPerQuestion === 'number' && incomingBallsPerQuestion > 0) {
@@ -3027,10 +3072,19 @@ export default function HamsterPaintball({
       stateSnapRef.current.playerName = cleanName;
     }
 
+    const nowServer = getServerNow();
+    const baseDuration = durationSec || 180;
+    const elapsedSinceStart =
+      !isPaused && startedAtTs > 1000
+        ? Math.max(0, Math.floor((nowServer - startedAtTs) / 1000))
+        : 0;
+    const syncedInitialSeconds =
+      elapsedSinceStart < baseDuration ? Math.max(1, baseDuration - elapsedSinceStart) : baseDuration;
+
     hasJoinedRoomRef.current = true;
     setMatchStatus('playing');
     setIsTimerPaused(isPaused);
-    setMatchSeconds(durationSec || 180);
+    setMatchSeconds(syncedInitialSeconds);
     setHp(100);
     setShield(100);
     setAmmo(0);
@@ -3063,17 +3117,21 @@ export default function HamsterPaintball({
       gameRef.current.z = sp.z;
       gameRef.current.rotY = sp.rotY;
       gameRef.current.camYaw = sp.rotY;
-      gameRef.current.camPitch = 0.24;
+      gameRef.current.camPitch = 0.22;
       gameRef.current.vx = 0;
       gameRef.current.vz = 0;
       gameRef.current.localHamster.position.set(sp.x, 0, sp.z);
       gameRef.current.localHamster.rotation.y = sp.rotY;
     }
 
-    const holdUntil = getServerNow() + MATCH_START_SPAWN_HOLD_MS;
+    const remainingHoldMs =
+      startedAtTs > 1000
+        ? Math.max(0, startedAtTs + MATCH_START_SPAWN_HOLD_MS - nowServer)
+        : MATCH_START_SPAWN_HOLD_MS;
+    const holdUntil = remainingHoldMs > 0 ? nowServer + remainingHoldMs : 0;
     stateSnapRef.current.spawnHoldUntil = holdUntil;
     setSpawnHoldUntil(holdUntil);
-    setSpawnHoldSecondsLeft(Math.ceil(MATCH_START_SPAWN_HOLD_MS / 1000));
+    setSpawnHoldSecondsLeft(Math.ceil(remainingHoldMs / 1000));
 
     setScreen('game');
 
@@ -3099,11 +3157,11 @@ export default function HamsterPaintball({
       questionsAnswered: 0,
       questionsCorrect: 0,
       questionsWrong: 0,
-      seq: ++playerSeqRef.current,
+      seq: nextPlayerSeq(),
       matchEpoch: startedAtTs,
       lastStartedAt: startedAtTs,
       kicked: false,
-      updatedAt: getServerNow()
+      updatedAt: nowServer
     };
 
     if (broadcastChannelRef.current) {
@@ -3256,7 +3314,7 @@ export default function HamsterPaintball({
           const nextSec = data.isTimerPaused
             ? data.timerSyncSeconds
             : Math.max(0, data.timerSyncSeconds - elapsed);
-          setMatchSeconds(prev => (Math.abs(prev - nextSec) >= 2 ? nextSec : prev));
+          setMatchSeconds(prev => (Math.abs(prev - nextSec) >= 1 ? nextSec : prev));
         } else if (
           data?.matchStatus === 'playing' &&
           stateSnapRef.current.matchStatus === 'playing' &&
@@ -3271,7 +3329,7 @@ export default function HamsterPaintball({
           );
           const derivedRemaining = Math.max(0, data.configuredDurationSec - elapsedSinceStart);
           setMatchSeconds(prev =>
-            Math.abs(prev - derivedRemaining) >= 3 ? derivedRemaining : prev
+            Math.abs(prev - derivedRemaining) >= 1 ? derivedRemaining : prev
           );
         }
         if (data?.matchStatus === 'playing') {
@@ -3485,19 +3543,23 @@ export default function HamsterPaintball({
             const prev = existingEntry.state;
             const prevSeq = prev.seq || 0;
             const prevStartedAt = prev.matchEpoch || prev.lastStartedAt || 0;
+            const sincePrevSeenMs = localNow - existingEntry.lastSeenLocalAt;
 
             if (incomingStartedAt > 0 && prevStartedAt > 0 && incomingStartedAt < prevStartedAt) {
               shouldUpdateState = false;
             } else if (incomingStartedAt > prevStartedAt && incomingStartedAt > 1000) {
               shouldUpdateState = true;
+            } else if (sincePrevSeenMs >= 1500) {
+              // Never freeze remote player updates if their sequence restarted or drifted across sources!
+              shouldUpdateState = true;
             } else if (
               incomingSeq > 0 &&
               prevSeq > 0 &&
-              (incomingStartedAt === prevStartedAt || incomingStartedAt === 0 || prevStartedAt === 0)
+              incomingStartedAt === prevStartedAt
             ) {
               shouldUpdateState = incomingSeq >= prevSeq;
             } else if (prevSeq > 0 && incomingSeq === 0) {
-              shouldUpdateState = incomingUpdatedAt > (prev.updatedAt || 0) + 1500;
+              shouldUpdateState = incomingUpdatedAt > (prev.updatedAt || 0) + 1200;
             } else {
               shouldUpdateState = incomingUpdatedAt >= (prev.updatedAt || 0);
             }
@@ -3807,7 +3869,7 @@ export default function HamsterPaintball({
       () => {}
     );
 
-    // High-Responsiveness 200ms Cross-Device Sync Loop with In-Flight Guard (Zero Network Queue Lag!)
+    // High-Responsiveness 140ms (~7Hz) Cross-Device Sync Loop with Timeout Guard (Zero Network Queue Lag!)
     let pollTickCount = 0;
     let isSyncInFlight = false;
     const syncInterval = setInterval(async () => {
@@ -3815,8 +3877,8 @@ export default function HamsterPaintball({
       const g = gameRef.current;
       const snapState = stateSnapRef.current;
 
-      // Every 10 ticks (~2.0s), refresh Firestore players & room doc as resilient multi-domain bridge
-      if (pollTickCount % 10 === 0) {
+      // Every 12 ticks (~1.7s), refresh Firestore players & room doc as resilient multi-domain bridge
+      if (pollTickCount % 12 === 0) {
         getDocs(playersCol)
           .then(snap => {
             const fsList = snap.docs.map(d => ({
@@ -3828,7 +3890,7 @@ export default function HamsterPaintball({
             }
           })
           .catch(() => {});
-        if (snapState.role === 'player' && pollTickCount % 15 === 0) {
+        if (snapState.role === 'player' && pollTickCount % 16 === 0) {
           getDoc(roomDocRef)
             .then(rSnap => {
               if (rSnap.exists()) processRoomData(rSnap.data());
@@ -3866,11 +3928,12 @@ export default function HamsterPaintball({
           return;
         }
 
-        // Student on Join customizer screen: poll room settings every 3 ticks (~600ms)
+        // Student on Join customizer screen: poll room settings & roster every 4 ticks (~560ms)
         if (snapState.screen === 'join') {
-          if (pollTickCount % 3 === 0) {
+          if (pollTickCount % 4 === 0) {
             const data = await fetchPaintballRoomApi(cleanCode);
             if (data?.room) processRoomData(data.room);
+            if (Array.isArray(data?.players)) processPlayersList(data.players);
           }
           return;
         }
@@ -3879,17 +3942,23 @@ export default function HamsterPaintball({
         const nowServer = getServerNow();
         const defaultZ = snapState.myTeam === 'blue' ? TEAM_SPAWN_Z : -TEAM_SPAWN_Z;
         const immuneRem = Math.max(0, snapState.immuneUntil - nowServer);
+        const curX = g ? Number(g.x.toFixed(2)) : 0;
+        const curZ = g ? Number(g.z.toFixed(2)) : defaultZ;
+        const curVx = g ? Number(g.vx.toFixed(2)) : 0;
+        const curVz = g ? Number(g.vz.toFixed(2)) : 0;
+        const curRotY = g ? Number(g.rotY.toFixed(2)) : snapState.myTeam === 'blue' ? Math.PI : 0;
+
         const payload: PlayerNetworkState = {
           id: clientIdRef.current,
           name: snapState.playerName || 'Student',
           role: 'player',
           team: snapState.matchMode === 'solo' ? 'solo' : snapState.myTeam,
           skinIdx: snapState.selectedSkinIdx,
-          x: g ? Number(g.x.toFixed(2)) : 0,
-          z: g ? Number(g.z.toFixed(2)) : defaultZ,
-          vx: g ? Number(g.vx.toFixed(2)) : 0,
-          vz: g ? Number(g.vz.toFixed(2)) : 0,
-          rotY: g ? Number(g.rotY.toFixed(2)) : snapState.myTeam === 'blue' ? Math.PI : 0,
+          x: curX,
+          z: curZ,
+          vx: curVx,
+          vz: curVz,
+          rotY: curRotY,
           hp: snapState.hp,
           shield: snapState.shield,
           immuneUntil: snapState.immuneUntil,
@@ -3901,7 +3970,7 @@ export default function HamsterPaintball({
           questionsAnswered: snapState.questionsAnswered,
           questionsCorrect: snapState.questionsCorrect,
           questionsWrong: snapState.questionsWrong,
-          seq: ++playerSeqRef.current,
+          seq: nextPlayerSeq(),
           matchEpoch: lastStartedAtRef.current,
           lastStartedAt: lastStartedAtRef.current,
           recentEvents: recentCombatEventsRef.current,
@@ -3929,8 +3998,16 @@ export default function HamsterPaintball({
           if (Array.isArray(apiRes.players)) processPlayersList(apiRes.players);
         }
 
-        // Write Firestore player doc every 5 ticks (~1.0s) as multi-domain fallback without main-thread lag
-        if (pollTickCount % 5 === 0) {
+        // Real-time Firestore multi-domain sync (~280ms when moving/rotating/acting, or 1.4s idle heartbeat)
+        const stateSig = `${curX}|${curZ}|${curRotY}|${snapState.hp}|${snapState.shield}|${snapState.score}|${snapState.kos}|${snapState.myTeam}`;
+        const localMs = Date.now();
+        const hasStateChanged = stateSig !== lastFirestoreSentSigRef.current;
+        if (
+          (hasStateChanged && localMs - lastFirestoreSentAtRef.current >= 260) ||
+          localMs - lastFirestoreSentAtRef.current >= 1400
+        ) {
+          lastFirestoreSentSigRef.current = stateSig;
+          lastFirestoreSentAtRef.current = localMs;
           const playerRef = getPlayerDocRef(cleanCode, clientIdRef.current);
           setDoc(
             playerRef,
@@ -3944,7 +4021,7 @@ export default function HamsterPaintball({
       } finally {
         isSyncInFlight = false;
       }
-    }, 200);
+    }, 140);
 
     return () => {
       unsubRoom();
@@ -4056,7 +4133,7 @@ export default function HamsterPaintball({
           pushLiveEvent(evText, '#f43f5e');
 
           if (roomCode) {
-            const koSeq = ++playerSeqRef.current;
+            const koSeq = nextPlayerSeq();
             syncPaintballPlayerApi(
               roomCode,
               {
@@ -4114,7 +4191,7 @@ export default function HamsterPaintball({
     });
   };
 
-  // Upsert Remote Student Player 3D Hamster
+  // Upsert Remote Student Player 3D Hamster (Zero-Freeze Monotonic & Epoch-Aware Reconciliation)
   const upsertRemotePlayer = (rState: PlayerNetworkState) => {
     const g = gameRef.current;
     if (!g) return;
@@ -4132,37 +4209,43 @@ export default function HamsterPaintball({
       entry = { data: rState, mesh, walkPhase: 0, lastLocalRecvAt: Date.now() };
       g.remotePlayers.set(rState.id, entry);
     } else {
+      const localNow = Date.now();
       const incomingSeq = rState.seq || 0;
       const existingSeq = entry.data.seq || 0;
       const incomingStartedAt = rState.matchEpoch || rState.lastStartedAt || 0;
       const existingStartedAt = entry.data.matchEpoch || entry.data.lastStartedAt || 0;
+      const sinceLastRecvMs = localNow - (entry.lastLocalRecvAt || 0);
+      const isNewMatchEpoch = incomingStartedAt > existingStartedAt && incomingStartedAt > 1000;
 
       if (incomingStartedAt > 0 && existingStartedAt > 0 && incomingStartedAt < existingStartedAt) {
         return;
       }
-      if (
-        incomingSeq > 0 &&
-        existingSeq > 0 &&
-        (incomingStartedAt === existingStartedAt || incomingStartedAt === 0 || existingStartedAt === 0) &&
-        incomingSeq < existingSeq
-      ) {
-        return;
-      }
-      if (
-        existingSeq > 0 &&
-        incomingSeq === 0 &&
-        (!rState.updatedAt || rState.updatedAt <= (entry.data.updatedAt || 0) + 1500)
-      ) {
-        return;
-      }
-      if (
-        incomingSeq === 0 &&
-        existingSeq === 0 &&
-        entry.data.updatedAt &&
-        rState.updatedAt &&
-        rState.updatedAt < entry.data.updatedAt
-      ) {
-        return;
+
+      if (!isNewMatchEpoch && sinceLastRecvMs < 1500) {
+        if (
+          incomingSeq > 0 &&
+          existingSeq > 0 &&
+          incomingStartedAt === existingStartedAt &&
+          incomingSeq < existingSeq
+        ) {
+          return;
+        }
+        if (
+          existingSeq > 0 &&
+          incomingSeq === 0 &&
+          (!rState.updatedAt || rState.updatedAt <= (entry.data.updatedAt || 0) + 1200)
+        ) {
+          return;
+        }
+        if (
+          incomingSeq === 0 &&
+          existingSeq === 0 &&
+          entry.data.updatedAt &&
+          rState.updatedAt &&
+          rState.updatedAt < entry.data.updatedAt
+        ) {
+          return;
+        }
       }
 
       if (
@@ -4177,18 +4260,22 @@ export default function HamsterPaintball({
         g.scene.add(mesh);
         entry.mesh = mesh;
       } else if (
-        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 13
+        isNewMatchEpoch ||
+        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 9.5
       ) {
         // Snap immediately when player teleports to Red/Blue Spawn at match start or respawn!
         entry.mesh.position.set(rState.x, 0, rState.z);
         entry.mesh.rotation.y = rState.rotY;
       }
-      const posChanged =
+
+      const transformChanged =
         entry.data.x !== rState.x ||
         entry.data.z !== rState.z ||
-        incomingSeq > existingSeq;
-      if (posChanged) {
-        entry.lastLocalRecvAt = Date.now();
+        entry.data.rotY !== rState.rotY ||
+        incomingSeq > existingSeq ||
+        isNewMatchEpoch;
+      if (transformChanged) {
+        entry.lastLocalRecvAt = localNow;
       }
       entry.data = rState;
     }
@@ -7279,9 +7366,14 @@ export default function HamsterPaintball({
     window.visualViewport?.addEventListener('resize', handleResize);
 
     // =========================================================
-    // MAIN 60FPS ANIMATION LOOP (3D FREE-LOOK CAMERA & RELATIVE MOVEMENT)
+    // MAIN 60FPS ANIMATION LOOP (3D FREE-LOOK CAMERA & LOWERED TARGET-HEIGHT AIM)
     // =========================================================
     let lastTime = performance.now();
+    // Pre-allocated math objects for zero-GC 60fps raycasting through the lowered HUD reticle (top-[57%] -> ndcY = -0.14)
+    const _aimRaycaster = new THREE.Raycaster();
+    const _aimReticleNdc = new THREE.Vector2(0, -0.14);
+    const _aimTargetPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.35);
+    const _aimPlaneHit = new THREE.Vector3();
 
     const animate = (now: number) => {
       animFrameRef.current = requestAnimationFrame(animate);
@@ -7509,30 +7601,111 @@ export default function HamsterPaintball({
           }
         }
 
-        // ORBITING 3D THIRD-PERSON CAMERA WITH LOCKED CENTER-SCREEN CROSSHAIR AIM
+        // ORBITING 3D THIRD-PERSON CAMERA WITH LOWERED OPPONENT-TARGETING RETICLE (top-[57%])
         const camAspect = camera.aspect || 1.5;
         const portraitOffset =
-          camAspect < 1.0 ? Math.min(3.8, (1.0 - camAspect) * 7.2) : camAspect < 1.4 ? 0.9 : 0;
-        const camDist = 8.8 + portraitOffset * 0.45;
-        const camHeight = 3.85 + g.camPitch * 5.2 + portraitOffset * 0.35;
+          camAspect < 1.0 ? Math.min(3.6, (1.0 - camAspect) * 6.8) : camAspect < 1.4 ? 0.85 : 0;
+        const camDist = 8.5 + portraitOffset * 0.42;
+        const camHeight = 3.35 + g.camPitch * 4.2 + portraitOffset * 0.3;
         const targetCamX = g.x - Math.sin(g.camYaw) * camDist;
         const targetCamY = camHeight;
         const targetCamZ = g.z - Math.cos(g.camYaw) * camDist;
-        camera.position.x += (targetCamX - camera.position.x) * 14 * dt;
-        camera.position.y += (targetCamY - camera.position.y) * 14 * dt;
-        camera.position.z += (targetCamZ - camera.position.z) * 14 * dt;
+        camera.position.x += (targetCamX - camera.position.x) * 15 * dt;
+        camera.position.y += (targetCamY - camera.position.y) * 15 * dt;
+        camera.position.z += (targetCamZ - camera.position.z) * 15 * dt;
 
-        // Aim is ALWAYS in the center of the screen (at target chest height, NEVER on the floor!)
-        const camLookDistance = 24;
+        const camLookDistance = 22;
         const camLookX = g.x + Math.sin(g.camYaw) * camLookDistance;
         const camLookZ = g.z + Math.cos(g.camYaw) * camLookDistance;
-        const camLookY = THREE.MathUtils.clamp(2.15 - g.camPitch * 3.2, 1.15, 2.65);
+        const camLookY = THREE.MathUtils.clamp(2.25 - g.camPitch * 2.8, 1.35, 2.75);
         camera.lookAt(camLookX, camLookY, camLookZ);
         camera.updateMatrixWorld();
 
-        g.aimWorldX = camLookX;
-        g.aimWorldY = camLookY;
-        g.aimWorldZ = camLookZ;
+        // Exact 3D Raycast through the Lowered Reticle (`top-[57%]`, NDC `(0, -0.14)`) to Target Opponent Players!
+        _aimRaycaster.setFromCamera(_aimReticleNdc, camera);
+        const rayOrigin = _aimRaycaster.ray.origin;
+        const rayDir = _aimRaycaster.ray.direction;
+
+        // 1. Find nearest blocking arena bunker along the reticle ray (so we don't target-lock through solid cover)
+        let nearestObsRayT = Infinity;
+        for (let oi = 0; oi < g.obstacles.length; oi++) {
+          const obs = g.obstacles[oi];
+          const ocX = obs.x - rayOrigin.x;
+          const ocZ = obs.z - rayOrigin.z;
+          const horizLenSq = rayDir.x * rayDir.x + rayDir.z * rayDir.z;
+          if (horizLenSq < 0.0001) continue;
+          const projT = (ocX * rayDir.x + ocZ * rayDir.z) / horizLenSq;
+          if (projT <= 2.5 || projT >= 46) continue;
+          const rayYAtT = rayOrigin.y + rayDir.y * projT;
+          if (rayYAtT > obs.h + 0.15 || rayYAtT < -0.2) continue;
+          const perpX = rayOrigin.x + rayDir.x * projT - obs.x;
+          const perpZ = rayOrigin.z + rayDir.z * projT - obs.z;
+          if (perpX * perpX + perpZ * perpZ <= (obs.r + 0.15) * (obs.r + 0.15)) {
+            if (projT < nearestObsRayT) nearestObsRayT = projT;
+          }
+        }
+
+        // 2. Check if the lowered reticle ray intersects an enemy player's 3D hamster hitbox
+        let lockedEnemyT = Infinity;
+        let lockedAimX = 0;
+        let lockedAimY = 1.38;
+        let lockedAimZ = 0;
+        g.remotePlayers.forEach(entry => {
+          if (
+            snapState.matchMode === 'teams' &&
+            entry.data.team === snapState.myTeam &&
+            entry.data.team !== 'solo'
+          ) {
+            return;
+          }
+          const rx = entry.mesh.position.x;
+          const rz = entry.mesh.position.z;
+          const toEnemyX = rx - rayOrigin.x;
+          const toEnemyZ = rz - rayOrigin.z;
+          const horizLenSq = rayDir.x * rayDir.x + rayDir.z * rayDir.z;
+          if (horizLenSq < 0.0001) return;
+          const projT = (toEnemyX * rayDir.x + toEnemyZ * rayDir.z) / horizLenSq;
+          if (projT <= 2.2 || projT >= nearestObsRayT || projT >= 48) return;
+          const rayYAtT = rayOrigin.y + rayDir.y * projT;
+          if (rayYAtT < -0.35 || rayYAtT > 3.35) return;
+          const perpX = rayOrigin.x + rayDir.x * projT - rx;
+          const perpZ = rayOrigin.z + rayDir.z * projT - rz;
+          if (perpX * perpX + perpZ * perpZ <= 1.85 * 1.85 && projT < lockedEnemyT) {
+            lockedEnemyT = projT;
+            lockedAimX = rx;
+            lockedAimY = THREE.MathUtils.clamp(rayYAtT, 1.05, 1.85);
+            lockedAimZ = rz;
+          }
+        });
+
+        const hasTargetLock = lockedEnemyT < Infinity;
+        if (hasTargetLock !== isEnemyTargetedRef.current) {
+          isEnemyTargetedRef.current = hasTargetLock;
+          setIsEnemyTargeted(hasTargetLock);
+        }
+
+        if (hasTargetLock) {
+          g.aimWorldX = lockedAimX;
+          g.aimWorldY = lockedAimY;
+          g.aimWorldZ = lockedAimZ;
+        } else if (nearestObsRayT < 45) {
+          g.aimWorldX = rayOrigin.x + rayDir.x * nearestObsRayT;
+          g.aimWorldY = THREE.MathUtils.clamp(rayOrigin.y + rayDir.y * nearestObsRayT, 0.85, 2.4);
+          g.aimWorldZ = rayOrigin.z + rayDir.z * nearestObsRayT;
+        } else if (_aimRaycaster.ray.intersectPlane(_aimTargetPlane, _aimPlaneHit)) {
+          const distFromPlayer = Math.hypot(_aimPlaneHit.x - g.x, _aimPlaneHit.z - g.z);
+          const clampedDist = THREE.MathUtils.clamp(distFromPlayer, 6.5, 36);
+          const dirAngle = Math.atan2(_aimPlaneHit.x - g.x, _aimPlaneHit.z - g.z);
+          g.aimWorldX = g.x + Math.sin(dirAngle) * clampedDist;
+          g.aimWorldY = 1.35;
+          g.aimWorldZ = g.z + Math.cos(dirAngle) * clampedDist;
+        } else {
+          const fallbackDist = 20;
+          g.aimWorldX = g.x + Math.sin(g.camYaw) * fallbackDist;
+          g.aimWorldY = 1.38;
+          g.aimWorldZ = g.z + Math.cos(g.camYaw) * fallbackDist;
+        }
+
         g.rotY = g.camYaw;
 
         g.localHamster.position.set(g.x, 0, g.z);
@@ -7543,7 +7716,7 @@ export default function HamsterPaintball({
           ud.nameSprite.visible = false;
         }
         if (ud && ud.markerGroup) {
-          const aimDist = Math.max(6.0, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
+          const aimDist = Math.max(5.0, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
           ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, aimDist);
         }
 
@@ -7965,11 +8138,11 @@ export default function HamsterPaintball({
         : 'red';
     const teamPaint = resolveTeamPaintColor(activeTeam, undefined, snap.selectedSkinIdx);
 
-    // 1. Face the Hamster toward the Center-Screen Crosshair Aim Point & Align Gun Barrel
+    // 1. Align Hamster Body Forward (`g.camYaw`) & Point Gun Barrel Directly at Lowered Reticle 3D Target!
     const dx = g.aimWorldX - g.x;
     const dz = g.aimWorldZ - g.z;
     const aimDist = Math.hypot(dx, dz);
-    const bodyAngle = aimDist > 0.25 ? Math.atan2(dx, dz) : g.rotY;
+    const bodyAngle = g.camYaw;
     g.rotY = bodyAngle;
     g.localHamster.position.set(g.x, 0, g.z);
     g.localHamster.rotation.y = bodyAngle;
@@ -7985,7 +8158,7 @@ export default function HamsterPaintball({
       if (ud.markerGroup) {
         ud.markerGroup.position.z = 0.55;
         ud.markerGroup.rotation.x = 0;
-        ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, Math.max(6.0, aimDist));
+        ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, Math.max(5.0, aimDist));
       }
       g.localHamster.updateMatrixWorld(true);
       if (ud.muzzleTip) {
@@ -7995,18 +8168,18 @@ export default function HamsterPaintball({
       ud.recoil = 1.0;
     }
 
-    // 3. Calculate Direct Center-Screen Trajectory from Gun Barrel Tip (`muzzleWorldPos`) to Center-Screen Target!
+    // 3. Calculate Crisp Flat Trajectory from Gun Barrel Tip (`muzzleWorldPos`) Straight Through Lowered Reticle Target!
     const targetDx = g.aimWorldX - muzzleWorldPos.x;
     const targetDz = g.aimWorldZ - muzzleWorldPos.z;
     const targetDist = Math.hypot(targetDx, targetDz);
-    const shotAngle = targetDist > 0.8 ? Math.atan2(targetDx, targetDz) : bodyAngle;
-    const hSpeed = 54;
-    const gravity = 2.4;
-    const flightTime = Math.max(0.05, Math.min(0.95, targetDist / hSpeed));
-    const targetY = typeof g.aimWorldY === 'number' ? g.aimWorldY : 1.65;
+    const shotAngle = targetDist > 0.6 ? Math.atan2(targetDx, targetDz) : bodyAngle;
+    const hSpeed = 58;
+    const gravity = 1.85;
+    const flightTime = Math.max(0.04, Math.min(0.85, targetDist / hSpeed));
+    const targetY = typeof g.aimWorldY === 'number' ? g.aimWorldY : 1.38;
     const computedVy = THREE.MathUtils.clamp(
       (targetY - muzzleWorldPos.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
-      -3.2,
+      -4.2,
       3.8
     );
 
@@ -8777,7 +8950,7 @@ export default function HamsterPaintball({
       {/* 3D WebGL Canvas Layer (Isolated container, zero backdrop-filter overlays above it) */}
       <div
         ref={canvasContainerRef}
-        className="absolute inset-0 w-full h-full z-0 cursor-crosshair touch-none"
+        className="absolute inset-0 w-full h-full z-0 cursor-default touch-none"
       />
 
       {/* -------------------------------------------------------------
@@ -8955,24 +9128,29 @@ export default function HamsterPaintball({
           SCREEN 2: STUDENT JOIN & HERO CHARACTER CUSTOMIZER (MOBILE-FIRST ARCADE)
          ------------------------------------------------------------- */}
       {screen === 'join' && (
-        <div className="absolute inset-0 z-40 w-full h-full bg-slate-900/35 flex items-center justify-center p-2.5 sm:p-4 pt-13 pb-3 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[540px] max-h-[88dvh] overflow-y-auto p-4 sm:p-6 flex flex-col border-2 border-sky-200 relative text-slate-900 my-auto">
-            {/* Title + Selected Hero Hamster Stage */}
-            <div className="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-slate-100">
+        <div className="absolute inset-0 z-40 w-full h-full bg-slate-900/40 flex items-center justify-center p-2 sm:p-4 pt-12 pb-2.5 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[640px] max-h-[90dvh] overflow-y-auto p-3.5 sm:p-5 flex flex-col border-2 border-sky-200 relative text-slate-900 my-auto">
+            {/* Hero Spotlight Header + Live Room Status */}
+            <div className="flex items-center justify-between gap-3 pb-2.5 mb-2.5 border-b border-slate-100">
               <div className="min-w-0">
-                <div className="text-[11px] font-extrabold text-sky-600 uppercase tracking-wider">
-                  Choose Your Champion
+                <div className="flex items-center gap-2 text-[11px] font-extrabold text-sky-600 uppercase tracking-wider">
+                  <span>Choose Your Champion</span>
+                  {roomCode && (
+                    <span className="text-slate-400 font-mono tabular-nums normal-case">
+                      · Room {roomCode} ({roomPlayers.length} Online)
+                    </span>
+                  )}
                 </div>
-                <h1 className="font-['Poppins',sans-serif] font-extrabold text-xl sm:text-2xl tracking-tight text-slate-900 leading-tight">
+                <h1 className="font-['Poppins',sans-serif] font-extrabold text-xl sm:text-2xl tracking-tight text-slate-900 leading-tight mt-0.5">
                   {selectedHeroSkin.name}
                 </h1>
-                <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                  <span className="px-2 py-0.5 rounded-lg bg-sky-100 text-sky-800 font-extrabold text-[10px]">
-                    {selectedHeroSkin.roleTitle}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-extrabold text-[10px]">
-                    Gear: {selectedHeroSkin.headgear}
-                  </span>
+                <div className="text-xs font-bold text-slate-500 mt-0.5">
+                  {selectedHeroSkin.roleTitle} · Gear: {selectedHeroSkin.headgear}
+                  {matchStatus === 'playing' && (
+                    <span className="ml-2 text-emerald-600 font-extrabold">
+                      · Match Live
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -8980,32 +9158,44 @@ export default function HamsterPaintball({
                 className={`shrink-0 flex items-center justify-center p-2 rounded-2xl border-2 shadow-sm ${
                   matchMode === 'teams'
                     ? myTeam === 'blue'
-                      ? 'bg-gradient-to-b from-sky-50 to-sky-100/80 border-sky-300'
-                      : 'bg-gradient-to-b from-rose-50 to-rose-100/80 border-rose-300'
-                    : 'bg-gradient-to-b from-emerald-50 to-emerald-100/80 border-emerald-300'
+                      ? 'bg-gradient-to-b from-sky-50 to-sky-100/90 border-sky-300'
+                      : 'bg-gradient-to-b from-rose-50 to-rose-100/90 border-rose-300'
+                    : 'bg-gradient-to-b from-emerald-50 to-emerald-100/90 border-emerald-300'
                 }`}
               >
                 <HamsterCharacterAvatar
                   skin={selectedHeroSkin}
-                  size={74}
+                  size={68}
                   team={matchMode === 'teams' ? myTeam : 'solo'}
                 />
               </div>
             </div>
 
-            {/* 12-Character Tactile Selector Grid */}
-            <div className="w-full bg-sky-50/80 rounded-2xl p-2.5 mb-3.5 border border-sky-100">
-              <div className="flex items-center justify-between px-1 mb-2">
+            {/* All-Visible 12-Character Tactile Grid (4x3 Desktop, 3x4 Mobile — No Clipped Row) */}
+            <div className="w-full bg-sky-50/75 rounded-2xl p-2 sm:p-2.5 mb-2.5 border border-sky-100">
+              <div className="flex items-center justify-between px-1 mb-1.5">
                 <span className="text-[11px] font-extrabold text-slate-700">
-                  12 Paintball Heroes
+                  12 Paintball Champions
                 </span>
                 <span className="text-[10px] font-bold text-sky-700">
-                  Tap a character to equip
+                  Tap any hero to equip
                 </span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[230px] sm:max-h-[255px] overflow-y-auto pr-0.5">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 sm:gap-2">
                 {HAMSTER_SKINS.map((skin, idx) => {
                   const isSelected = idx === selectedSkinIdx;
+                  const activeBorderClass =
+                    matchMode === 'teams'
+                      ? myTeam === 'blue'
+                        ? 'border-sky-600 bg-gradient-to-b from-white to-sky-50 ring-2 ring-sky-400/50 shadow-md -translate-y-0.5'
+                        : 'border-rose-500 bg-gradient-to-b from-white to-rose-50 ring-2 ring-rose-400/50 shadow-md -translate-y-0.5'
+                      : 'border-emerald-500 bg-gradient-to-b from-white to-emerald-50 ring-2 ring-emerald-400/50 shadow-md -translate-y-0.5';
+                  const checkBgClass =
+                    matchMode === 'teams'
+                      ? myTeam === 'blue'
+                        ? 'bg-sky-600'
+                        : 'bg-rose-500'
+                      : 'bg-emerald-500';
                   return (
                     <button
                       key={skin.id}
@@ -9014,26 +9204,28 @@ export default function HamsterPaintball({
                         setSelectedSkinIdx(idx);
                         sfx.playCorrect();
                       }}
-                      className={`p-2 rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer relative ${
+                      className={`py-1.5 px-1.5 rounded-xl border-2 flex flex-col items-center justify-center transition cursor-pointer relative ${
                         isSelected
-                          ? 'border-sky-600 bg-gradient-to-b from-white to-sky-50 ring-2 ring-sky-400/50 shadow-md -translate-y-0.5'
-                          : 'border-sky-100 bg-white hover:bg-sky-50/50 hover:border-sky-300'
+                          ? activeBorderClass
+                          : 'border-sky-100 bg-white hover:bg-sky-50/60 hover:border-sky-300'
                       }`}
                     >
                       {isSelected && (
-                        <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-sky-600 text-white flex items-center justify-center text-[9px] font-extrabold shadow-xs">
+                        <span
+                          className={`absolute top-1 right-1 w-4 h-4 rounded-full ${checkBgClass} text-white flex items-center justify-center text-[9px] font-extrabold shadow-xs`}
+                        >
                           ✓
                         </span>
                       )}
                       <HamsterCharacterAvatar
                         skin={skin}
-                        size={60}
+                        size={48}
                         team={matchMode === 'teams' ? myTeam : 'solo'}
                       />
-                      <span className="mt-1 font-extrabold text-[11px] text-slate-900 leading-tight text-center truncate w-full">
+                      <span className="mt-0.5 font-extrabold text-[10px] sm:text-[11px] text-slate-900 leading-tight text-center truncate w-full">
                         {skin.name}
                       </span>
-                      <span className="text-[9px] font-bold text-slate-500 leading-none mt-0.5 truncate w-full text-center">
+                      <span className="text-[9px] font-semibold text-slate-500 leading-none mt-0.5 truncate w-full text-center">
                         {skin.headgear}
                       </span>
                     </button>
@@ -9042,15 +9234,48 @@ export default function HamsterPaintball({
               </div>
             </div>
 
+            {/* Team Squad Selector Cards */}
+            {matchMode === 'teams' && (
+              <div className="w-full grid grid-cols-2 gap-2 mb-2.5">
+                {(['red', 'blue'] as TeamId[]).map(tId => {
+                  const active = myTeam === tId;
+                  const count = tId === 'red' ? teamTotals.red.count : teamTotals.blue.count;
+                  return (
+                    <button
+                      key={tId}
+                      type="button"
+                      onClick={() => setMyTeam(tId)}
+                      className={`py-2 px-3 rounded-xl font-extrabold text-xs sm:text-sm border-2 transition cursor-pointer flex items-center justify-between gap-2 whitespace-nowrap ${
+                        active
+                          ? tId === 'red'
+                            ? 'bg-rose-500 text-white border-rose-600 border-b-4 border-b-rose-700 shadow-sm'
+                            : 'bg-sky-600 text-white border-sky-700 border-b-4 border-b-sky-800 shadow-sm'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{tId === 'red' ? 'Red Squad' : 'Blue Squad'}</span>
+                      <span
+                        className={`text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded-md ${
+                          active ? 'bg-black/15 text-white' : 'bg-slate-200/80 text-slate-600'
+                        }`}
+                      >
+                        {count}P
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Nickname & 6-Char Room Code Inputs (16px text-base prevents iOS Safari auto-zoom) */}
-            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
+            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2.5">
               <input
                 type="text"
                 maxLength={16}
                 value={playerName === 'Teacher Jan' ? '' : playerName}
                 onChange={e => setPlayerName(e.target.value)}
                 placeholder="Your Nickname"
-                className="sm:col-span-2 h-11 px-3.5 text-center sm:text-left text-base font-bold text-slate-900 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition"
+                className="sm:col-span-2 h-10 sm:h-11 px-3.5 text-center sm:text-left text-base font-bold text-slate-900 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition"
               />
               <input
                 type="text"
@@ -9060,34 +9285,9 @@ export default function HamsterPaintball({
                   setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6))
                 }
                 placeholder="ROOM"
-                className="h-11 px-2 text-center font-mono tabular-nums text-base sm:text-lg font-extrabold tracking-widest text-slate-900 bg-sky-50 border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600 focus:bg-white"
+                className="h-10 sm:h-11 px-2 text-center font-mono tabular-nums text-base sm:text-lg font-extrabold tracking-widest text-slate-900 bg-sky-50 border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600 focus:bg-white"
               />
             </div>
-
-            {/* Team Selector Cards */}
-            {matchMode === 'teams' && (
-              <div className="w-full grid grid-cols-2 gap-2.5 mb-3.5">
-                {(['red', 'blue'] as TeamId[]).map(tId => {
-                  const active = myTeam === tId;
-                  return (
-                    <button
-                      key={tId}
-                      type="button"
-                      onClick={() => setMyTeam(tId)}
-                      className={`py-2.5 px-3 rounded-xl font-extrabold text-xs sm:text-sm border-2 transition cursor-pointer whitespace-nowrap ${
-                        active
-                          ? tId === 'red'
-                            ? 'bg-rose-500 text-white border-rose-600 border-b-4 border-b-rose-700 shadow-sm'
-                            : 'bg-sky-600 text-white border-sky-700 border-b-4 border-b-sky-800 shadow-sm'
-                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {tId === 'red' ? 'Red Squad' : 'Blue Squad'}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
 
             {/* Join Arena Button */}
             <button
@@ -9118,11 +9318,23 @@ export default function HamsterPaintball({
                   g.z = sp.z;
                   g.rotY = sp.rotY;
                   g.camYaw = sp.rotY;
-                  g.camPitch = 0.28;
+                  g.camPitch = 0.22;
                 }
 
-                setMatchStatus('lobby');
-                setScreen('game');
+                const isAlreadyPlaying = stateSnapRef.current.matchStatus === 'playing';
+                if (isAlreadyPlaying) {
+                  setScreen('game');
+                  triggerStudentMatchStart(
+                    configuredDurationSec || 180,
+                    matchMode,
+                    lastStartedAtRef.current || getServerNow(),
+                    isTimerPaused,
+                    ballsPerQuestion
+                  );
+                } else {
+                  setMatchStatus('lobby');
+                  setScreen('game');
+                }
 
                 const initialPayload: PlayerNetworkState = {
                   id: clientIdRef.current,
@@ -9137,10 +9349,10 @@ export default function HamsterPaintball({
                   rotY: sp.rotY,
                   hp: 100,
                   shield: 100,
-                  score,
-                  kos,
-                  questionsAnswered,
-                  seq: ++playerSeqRef.current,
+                  score: isAlreadyPlaying ? 0 : score,
+                  kos: isAlreadyPlaying ? 0 : kos,
+                  questionsAnswered: isAlreadyPlaying ? 0 : questionsAnswered,
+                  seq: nextPlayerSeq(),
                   lastStartedAt: lastStartedAtRef.current,
                   matchEpoch: lastStartedAtRef.current,
                   kicked: false,
@@ -9159,10 +9371,10 @@ export default function HamsterPaintball({
 
                 handleForceResyncRoom(cleanCode);
               }}
-              className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-sm sm:text-base rounded-2xl shadow-lg transition flex items-center justify-center gap-2 border-2 border-emerald-600 border-b-4 border-b-emerald-700 cursor-pointer whitespace-nowrap"
+              className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-sm sm:text-base rounded-2xl shadow-lg transition flex items-center justify-center gap-2 border-2 border-emerald-600 border-b-4 border-b-emerald-700 cursor-pointer whitespace-nowrap"
             >
               <Play size={17} fill="currentColor" />
-              <span>JOIN LOBBY</span>
+              <span>{matchStatus === 'playing' ? 'JOIN LIVE BATTLE' : 'JOIN ARENA LOBBY'}</span>
             </button>
           </div>
         </div>
@@ -9173,347 +9385,435 @@ export default function HamsterPaintball({
          ------------------------------------------------------------- */}
       {screen === 'lobby' && role === 'host' && (
         <div className="absolute inset-0 z-25 flex flex-col justify-between px-3 sm:px-5 pt-14 sm:pt-16 pb-3 pointer-events-none overflow-y-auto">
-          <div className="w-full flex flex-col lg:flex-row items-center lg:items-start justify-between gap-3 sm:gap-5">
-            {/* LEFT PANEL: Bright White ESL Game Studio Command Deck */}
-            <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-[460px] bg-white p-4 sm:p-5 rounded-3xl shadow-2xl border-2 border-sky-200 space-y-3 text-slate-900">
-              {/* 1. Giant Scannable Room Code + Dual-Domain Join Switch */}
-              <div className="bg-sky-50 p-3.5 rounded-2xl border border-sky-200 space-y-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-bold text-sky-700">
-                      Room Code · {liveDisplayHost}
-                    </div>
-                    <div
-                      onClick={handleCopyRoomCode}
-                      className="mt-1 bg-white border-2 border-sky-300 px-3.5 py-1.5 rounded-xl text-slate-900 font-mono tabular-nums font-extrabold text-2xl sm:text-3xl tracking-[0.16em] leading-none cursor-pointer hover:border-sky-500 transition select-all inline-block shadow-xs"
-                      title="Click to Copy Room Code"
-                    >
-                      {roomCode}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleCopyJoinLink}
-                      className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border-b-3 border-sky-800 shadow-xs transition cursor-pointer whitespace-nowrap"
-                    >
-                      {copiedType === 'link' ? <Check size={13} /> : <Copy size={13} />}
-                      <span>{copiedType === 'link' ? 'Copied Link' : 'Copy Link'}</span>
-                    </button>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={handleCopyRoomCode}
-                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-sky-100 text-slate-700 font-bold text-[11px] border border-sky-200 flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
-                      >
-                        {copiedType === 'code' ? (
-                          <Check size={11} className="text-emerald-600" />
-                        ) : (
-                          <Copy size={11} />
-                        )}
-                        <span>{copiedType === 'code' ? 'Copied' : 'Code'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleGenerateNewRoomCode}
-                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-50 text-amber-700 font-bold text-[11px] border border-amber-200 flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
-                      >
-                        <RotateCw size={11} />
-                        <span>New</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Dual-Domain QR / Link Routing Segmented Switch */}
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-sky-200/70">
-                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1 shrink-0">
-                    <Globe size={12} className="text-sky-600" />
-                    <span>Join Link:</span>
-                  </span>
-                  <div className="flex items-center gap-1 p-0.5 bg-sky-100/90 rounded-xl border border-sky-200">
-                    <button
-                      type="button"
-                      onClick={() => setJoinDomainMode('current')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
-                        joinDomainMode === 'current'
-                          ? 'bg-white text-sky-700 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Current URL
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setJoinDomainMode('hamsterenglish')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
-                        joinDomainMode === 'hamsterenglish'
-                          ? 'bg-white text-sky-700 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      hamsterenglish.online
-                    </button>
-                  </div>
-                </div>
+          {isLobbyMinimized ? (
+            /* Compact Collapsed Floating Host Bar so Teacher can inspect the 3D Arena freely */
+            <div className="host-lobby-interactive-panel pointer-events-auto self-start bg-white px-4 py-2.5 rounded-2xl shadow-xl border-2 border-sky-200 border-b-4 border-b-sky-300 flex flex-wrap items-center gap-3 text-slate-900">
+              <div className="flex items-center gap-2">
+                <QrCode size={16} className="text-sky-600" />
+                <span className="font-extrabold text-xs sm:text-sm tabular-nums">
+                  Room <span className="font-mono text-sky-700">{roomCode}</span> · {roomPlayers.length}{' '}
+                  {roomPlayers.length === 1 ? 'Player' : 'Players'}
+                </span>
               </div>
-
-              {/* 2. Match Configuration: Battle Mode, Paintballs/Question & Timer */}
-              <div className="space-y-2.5">
-                {/* Battle Mode + Edit Quiz Row */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setMatchMode('teams')}
-                      className={`py-1.5 px-2.5 rounded-lg font-extrabold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
-                        matchMode === 'teams'
-                          ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <Users size={13} className="text-rose-500" />
-                      <span>Red vs Blue</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMatchMode('solo')}
-                      className={`py-1.5 px-2.5 rounded-lg font-extrabold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
-                        matchMode === 'solo'
-                          ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <Trophy size={13} className="text-amber-500" />
-                      <span>Free-For-All</span>
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setScreen('editor')}
-                    className="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-extrabold text-xs flex items-center gap-1 transition cursor-pointer shrink-0 whitespace-nowrap"
-                    title="Edit Quiz Questions"
-                  >
-                    <Edit3 size={13} />
-                    <span>{effectiveQuestions.length} Qs</span>
-                  </button>
-                </div>
-
-                {/* Paintballs Per Correct Answer */}
-                <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-xs font-extrabold text-slate-800">
-                      Paintballs per Correct Answer
-                    </span>
-                    <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-lg border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
-                        className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs flex items-center justify-center cursor-pointer"
-                      >
-                        -
-                      </button>
-                      <span className="text-xs font-mono tabular-nums font-extrabold text-emerald-700 px-2">
-                        +{ballsPerQuestion}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
-                        className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs flex items-center justify-center cursor-pointer"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {[5, 10, 15, 20, 25].map(bCount => (
-                      <button
-                        key={bCount}
-                        type="button"
-                        onClick={() => handleHostUpdateBallsPerQuestion(bCount)}
-                        className={`py-1 rounded-lg font-extrabold text-xs transition cursor-pointer tabular-nums whitespace-nowrap ${
-                          ballsPerQuestion === bCount
-                            ? 'bg-emerald-500 text-white border-b-2 border-emerald-700 shadow-xs'
-                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                        }`}
-                      >
-                        +{bCount}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Match Timer */}
-                <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800">
-                      <Clock size={13} className="text-sky-600 shrink-0" />
-                      <span>Match Timer</span>
-                    </span>
-                    <span className="font-mono tabular-nums font-extrabold text-xs text-sky-700">
-                      {Math.floor(configuredDurationSec / 60)}:
-                      {(configuredDurationSec % 60).toString().padStart(2, '0')}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-6 gap-1.5">
-                    {[2, 3, 5, 8, 10, 15].map(mins => {
-                      const sec = mins * 60;
-                      return (
-                        <button
-                          key={mins}
-                          type="button"
-                          onClick={() => {
-                            setConfiguredDurationSec(sec);
-                            setMatchSeconds(sec);
-                          }}
-                          className={`py-1 rounded-lg font-extrabold text-xs transition cursor-pointer tabular-nums whitespace-nowrap ${
-                            configuredDurationSec === sec
-                              ? 'bg-sky-600 text-white border-b-2 border-sky-800 shadow-xs'
-                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                          }`}
-                        >
-                          {mins}m
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Live Connected Classroom Roster */}
-              <div>
-                <div className="flex items-center justify-between gap-2 text-xs font-extrabold text-slate-800 mb-1.5">
-                  <div className="flex items-center gap-1.5 tabular-nums">
-                    <span>Players ({roomPlayers.length})</span>
-                    {matchMode === 'teams' && (
-                      <span className="text-[11px] font-semibold text-slate-500">
-                        · Red {teamTotals.red.count} · Blue {teamTotals.blue.count}
-                      </span>
-                    )}
-                  </div>
-                  {roomPlayers.length > 0 && matchMode === 'teams' && (
-                    <button
-                      type="button"
-                      onClick={handleShuffleTeams}
-                      className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-800 font-extrabold text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                    >
-                      <Shuffle size={11} /> Balance Teams
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {roomPlayers.length === 0 ? (
-                    <div className="p-3 rounded-2xl bg-sky-50/70 border border-dashed border-sky-300 text-xs text-slate-600 font-semibold text-center">
-                      Scan QR or enter room code{' '}
-                      <strong className="text-sky-700 font-mono tabular-nums">{roomCode}</strong> on any phone, tablet, or laptop
-                    </div>
-                  ) : (
-                    roomPlayers.map(p => {
-                      const tCfg =
-                        matchMode === 'teams' ? TEAM_CONFIG[p.team || 'red'] : TEAM_CONFIG.solo;
-                      const charSkin =
-                        HAMSTER_SKINS[p.skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
-                      const nextTeam: TeamId = p.team === 'red' ? 'blue' : 'red';
-                      return (
-                        <div
-                          key={p.id}
-                          className={`p-2 rounded-xl bg-slate-50 border ${tCfg.borderClass} flex items-center justify-between gap-2`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <HamsterCharacterAvatar
-                              skin={charSkin}
-                              size={30}
-                              team={matchMode === 'teams' ? p.team || 'red' : 'solo'}
-                            />
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-extrabold text-xs text-slate-900 truncate">
-                                  {p.name}
-                                </span>
-                                <span className="text-[10px] font-bold text-slate-500 shrink-0">
-                                  · {matchMode === 'teams' ? (p.team === 'blue' ? 'Blue' : 'Red') : 'Solo'}
-                                </span>
-                              </div>
-                              <div className="text-[10px] font-semibold text-slate-500 tabular-nums">
-                                {charSkin.name} · Ready in Spawn
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            {matchMode === 'teams' && (
-                              <button
-                                type="button"
-                                onClick={() => handleMovePlayerTeam(p, nextTeam)}
-                                className={`px-2 py-1 rounded-lg font-extrabold text-[10px] border transition cursor-pointer whitespace-nowrap ${
-                                  nextTeam === 'blue'
-                                    ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200'
-                                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                }`}
-                              >
-                                Move to {nextTeam === 'blue' ? 'Blue' : 'Red'}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeletePlayer(p)}
-                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 transition cursor-pointer"
-                              title={`Remove ${p.name}`}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* 4. Bold Emerald Arcade START BATTLE CTA */}
+              <button
+                type="button"
+                onClick={() => setIsQrModalOpen(true)}
+                className="px-2.5 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-extrabold text-xs cursor-pointer whitespace-nowrap"
+              >
+                Show QR
+              </button>
               <button
                 type="button"
                 onClick={handleStartMultiplayerMatch}
-                className="w-full bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-sm sm:text-base py-3.5 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 border-2 border-emerald-600 border-b-4 border-b-emerald-700 cursor-pointer whitespace-nowrap"
+                className="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white border-b-2 border-emerald-700 font-extrabold text-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
               >
-                <Play size={17} fill="currentColor" />
-                <span>START BATTLE</span>
+                <Play size={12} fill="currentColor" />
+                <span>Start Battle</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsLobbyMinimized(false)}
+                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs cursor-pointer whitespace-nowrap"
+              >
+                Expand Host Deck
               </button>
             </div>
+          ) : (
+            /* SIDE-BY-SIDE HOST COMMAND DECK + ADJACENT QR JOIN STATION */
+            <div className="w-full flex flex-col lg:flex-row items-center lg:items-start justify-start gap-3.5 sm:gap-4">
+              {/* LEFT PANEL: Bright White ESL Game Studio Command Deck */}
+              <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-[455px] bg-white p-4 sm:p-4.5 rounded-3xl shadow-2xl border-2 border-sky-200 space-y-2.5 text-slate-900">
+                {/* Deck Header + Minimize Button */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Radio size={15} className="text-emerald-500" />
+                    <span className="font-['Poppins',sans-serif] font-extrabold text-sm sm:text-base text-slate-900 tracking-tight">
+                      Host Arena Setup
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsLobbyMinimized(true)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[11px] transition cursor-pointer whitespace-nowrap"
+                    title="Minimize setup deck to roam 3D park"
+                  >
+                    Minimize
+                  </button>
+                </div>
 
-            {/* RIGHT PANEL: Crisp Scannable Classroom QR Card */}
-            <div
-              onClick={() => setIsQrModalOpen(true)}
-              className="host-lobby-interactive-panel pointer-events-auto bg-white p-4 sm:p-5 rounded-3xl shadow-2xl border-2 border-sky-200 border-b-4 border-b-sky-300 flex flex-col items-center cursor-pointer hover:-translate-y-0.5 transition shrink-0"
-              title="Click to enlarge QR Code"
-            >
-              <QRCodeSVG
-                value={liveJoinUrl}
-                size={216}
-                level="M"
-                includeMargin={false}
-                bgColor="#ffffff"
-                fgColor="#0f172a"
-              />
-              <span className="mt-2.5 text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                <QrCode size={15} className="text-sky-600" /> Scan to Join Arena
-              </span>
-              <span className="text-[11px] font-bold text-sky-600 mt-0.5 max-w-[220px] truncate">
-                {liveDisplayHost}
-              </span>
+                {/* 1. Giant Scannable Room Code + Smart Join URL Controls */}
+                <div className="bg-sky-50 p-3 rounded-2xl border border-sky-200 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold text-sky-700">
+                        Room Code · {liveDisplayHost}
+                      </div>
+                      <div
+                        onClick={handleCopyRoomCode}
+                        className="mt-1 bg-white border-2 border-sky-300 px-3.5 py-1.5 rounded-xl text-slate-900 font-mono tabular-nums font-extrabold text-2xl sm:text-3xl tracking-[0.16em] leading-none cursor-pointer hover:border-sky-500 transition select-all inline-block shadow-xs"
+                        title="Click to Copy Room Code"
+                      >
+                        {roomCode}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleCopyJoinLink}
+                        className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border-b-3 border-sky-800 shadow-xs transition cursor-pointer whitespace-nowrap"
+                      >
+                        {copiedType === 'link' ? <Check size={13} /> : <Copy size={13} />}
+                        <span>{copiedType === 'link' ? 'Copied Link' : 'Copy Link'}</span>
+                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={handleCopyRoomCode}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-sky-100 text-slate-700 font-bold text-[11px] border border-sky-200 flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
+                        >
+                          {copiedType === 'code' ? (
+                            <Check size={11} className="text-emerald-600" />
+                          ) : (
+                            <Copy size={11} />
+                          )}
+                          <span>{copiedType === 'code' ? 'Copied' : 'Code'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleGenerateNewRoomCode}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-50 text-amber-700 font-bold text-[11px] border border-amber-200 flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
+                        >
+                          <RotateCw size={11} />
+                          <span>New</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dual-Domain QR / Link Routing Segmented Switch (Only shown when current host differs from hamsterenglish.online) */}
+                  {!isCurrentOriginHamsterEnglish && (
+                    <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-sky-200/70">
+                      <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1 shrink-0">
+                        <Globe size={12} className="text-sky-600" />
+                        <span>Join Domain:</span>
+                      </span>
+                      <div className="flex items-center gap-1 p-0.5 bg-sky-100/90 rounded-xl border border-sky-200">
+                        <button
+                          type="button"
+                          onClick={() => setJoinDomainMode('current')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
+                            joinDomainMode === 'current'
+                              ? 'bg-white text-sky-700 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Current URL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setJoinDomainMode('hamsterenglish')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
+                            joinDomainMode === 'hamsterenglish'
+                              ? 'bg-white text-sky-700 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          hamsterenglish.online
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Match Configuration: Battle Mode, Paintballs/Question & Timer */}
+                <div className="space-y-2">
+                  {/* Battle Mode + Edit Quiz Row */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setMatchMode('teams')}
+                        className={`py-1.5 px-2.5 rounded-lg font-extrabold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
+                          matchMode === 'teams'
+                            ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Users size={13} className="text-rose-500" />
+                        <span>Red vs Blue</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMatchMode('solo')}
+                        className={`py-1.5 px-2.5 rounded-lg font-extrabold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
+                          matchMode === 'solo'
+                            ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Trophy size={13} className="text-amber-500" />
+                        <span>Free-For-All</span>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setScreen('editor')}
+                      className="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-extrabold text-xs flex items-center gap-1 transition cursor-pointer shrink-0 whitespace-nowrap"
+                      title="Edit Quiz Questions"
+                    >
+                      <Edit3 size={13} />
+                      <span>{effectiveQuestions.length} Qs</span>
+                    </button>
+                  </div>
+
+                  {/* Paintballs Per Correct Answer */}
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span className="text-xs font-extrabold text-slate-800">
+                        Paintballs per Correct Answer
+                      </span>
+                      <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-lg border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
+                          className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs flex items-center justify-center cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <span className="text-xs font-mono tabular-nums font-extrabold text-emerald-700 px-2">
+                          +{ballsPerQuestion}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
+                          className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs flex items-center justify-center cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[5, 10, 15, 20, 25].map(bCount => (
+                        <button
+                          key={bCount}
+                          type="button"
+                          onClick={() => handleHostUpdateBallsPerQuestion(bCount)}
+                          className={`py-1 rounded-lg font-extrabold text-xs transition cursor-pointer tabular-nums whitespace-nowrap ${
+                            ballsPerQuestion === bCount
+                              ? 'bg-emerald-500 text-white border-b-2 border-emerald-700 shadow-xs'
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          +{bCount}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Match Timer */}
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800">
+                        <Clock size={13} className="text-sky-600 shrink-0" />
+                        <span>Match Timer</span>
+                      </span>
+                      <span className="font-mono tabular-nums font-extrabold text-xs text-sky-700">
+                        {Math.floor(configuredDurationSec / 60)}:
+                        {(configuredDurationSec % 60).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-6 gap-1.5">
+                      {[2, 3, 5, 8, 10, 15].map(mins => {
+                        const sec = mins * 60;
+                        return (
+                          <button
+                            key={mins}
+                            type="button"
+                            onClick={() => {
+                              setConfiguredDurationSec(sec);
+                              setMatchSeconds(sec);
+                            }}
+                            className={`py-1 rounded-lg font-extrabold text-xs transition cursor-pointer tabular-nums whitespace-nowrap ${
+                              configuredDurationSec === sec
+                                ? 'bg-sky-600 text-white border-b-2 border-sky-800 shadow-xs'
+                                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                          >
+                            {mins}m
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Live Connected Classroom Roster */}
+                <div>
+                  <div className="flex items-center justify-between gap-2 text-xs font-extrabold text-slate-800 mb-1.5">
+                    <div className="flex items-center gap-1.5 tabular-nums">
+                      <span>Players ({roomPlayers.length})</span>
+                      {matchMode === 'teams' && (
+                        <span className="text-[11px] font-semibold text-slate-500">
+                          · Red {teamTotals.red.count} · Blue {teamTotals.blue.count}
+                        </span>
+                      )}
+                    </div>
+                    {roomPlayers.length > 0 && matchMode === 'teams' && (
+                      <button
+                        type="button"
+                        onClick={handleShuffleTeams}
+                        className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-800 font-extrabold text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                      >
+                        <Shuffle size={11} /> Balance Teams
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {roomPlayers.length === 0 ? (
+                      <div className="p-2.5 rounded-2xl bg-sky-50/70 border border-dashed border-sky-300 text-xs text-slate-600 font-semibold text-center">
+                        Scan the QR card next to this panel or enter{' '}
+                        <strong className="text-sky-700 font-mono tabular-nums">{roomCode}</strong>
+                      </div>
+                    ) : (
+                      roomPlayers.map(p => {
+                        const tCfg =
+                          matchMode === 'teams' ? TEAM_CONFIG[p.team || 'red'] : TEAM_CONFIG.solo;
+                        const charSkin =
+                          HAMSTER_SKINS[p.skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
+                        const nextTeam: TeamId = p.team === 'red' ? 'blue' : 'red';
+                        return (
+                          <div
+                            key={p.id}
+                            className={`p-2 rounded-xl bg-slate-50 border ${tCfg.borderClass} flex items-center justify-between gap-2`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <HamsterCharacterAvatar
+                                skin={charSkin}
+                                size={30}
+                                team={matchMode === 'teams' ? p.team || 'red' : 'solo'}
+                              />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-extrabold text-xs text-slate-900 truncate">
+                                    {p.name}
+                                  </span>
+                                  <span className="text-[10px] font-bold text-slate-500 shrink-0">
+                                    ·{' '}
+                                    {matchMode === 'teams'
+                                      ? p.team === 'blue'
+                                        ? 'Blue'
+                                        : 'Red'
+                                      : 'Solo'}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] font-semibold text-slate-500 tabular-nums">
+                                  {charSkin.name} · Ready in Spawn
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {matchMode === 'teams' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMovePlayerTeam(p, nextTeam)}
+                                  className={`px-2 py-1 rounded-lg font-extrabold text-[10px] border transition cursor-pointer whitespace-nowrap ${
+                                    nextTeam === 'blue'
+                                      ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200'
+                                      : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                  }`}
+                                >
+                                  Move to {nextTeam === 'blue' ? 'Blue' : 'Red'}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePlayer(p)}
+                                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 transition cursor-pointer"
+                                title={`Remove ${p.name}`}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Bold Emerald Arcade START BATTLE CTA */}
+                <button
+                  type="button"
+                  onClick={handleStartMultiplayerMatch}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-sm sm:text-base py-3 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 border-2 border-emerald-600 border-b-4 border-b-emerald-700 cursor-pointer whitespace-nowrap"
+                >
+                  <Play size={17} fill="currentColor" />
+                  <span>START BATTLE</span>
+                </button>
+              </div>
+
+              {/* ADJACENT RIGHT CARD: Crisp Scannable Classroom QR Station Directly Next to Host Panel */}
+              <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-[455px] lg:w-[258px] bg-white p-4 rounded-3xl shadow-2xl border-2 border-sky-200 border-b-4 border-b-sky-300 flex flex-col items-center text-center shrink-0">
+                <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-sky-600 uppercase tracking-wider">
+                  <QrCode size={14} className="text-sky-600" />
+                  <span>Scan to Join Game</span>
+                </div>
+                <div className="font-mono tabular-nums font-extrabold text-lg text-slate-900 mt-0.5">
+                  Code: <span className="text-sky-700">{roomCode}</span>
+                </div>
+
+                <div
+                  onClick={() => setIsQrModalOpen(true)}
+                  className="mt-2.5 p-3 bg-white rounded-2xl border-2 border-sky-100 hover:border-sky-300 shadow-xs cursor-pointer transition hover:scale-[1.02]"
+                  title="Click to enlarge QR Code for classroom projector"
+                >
+                  <QRCodeSVG
+                    value={liveJoinUrl}
+                    size={196}
+                    level="M"
+                    includeMargin={false}
+                    bgColor="#ffffff"
+                    fgColor="#0f172a"
+                  />
+                </div>
+
+                <span className="text-[11px] font-bold text-slate-600 mt-2 max-w-[220px] truncate">
+                  {liveDisplayHost}
+                </span>
+
+                <div className="w-full grid grid-cols-2 gap-1.5 mt-2.5">
+                  <button
+                    type="button"
+                    onClick={handleCopyJoinLink}
+                    className="py-2 px-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-[11px] border-b-2 border-sky-800 flex items-center justify-center gap-1 transition cursor-pointer whitespace-nowrap"
+                  >
+                    {copiedType === 'link' ? <Check size={12} /> : <Copy size={12} />}
+                    <span>{copiedType === 'link' ? 'Copied' : 'Copy Link'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsQrModalOpen(true)}
+                    className="py-2 px-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 font-extrabold text-[11px] border border-sky-200 flex items-center justify-center gap-1 transition cursor-pointer whitespace-nowrap"
+                  >
+                    <QrCode size={12} />
+                    <span>Enlarge</span>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Subtle Bottom Park Roam Helper */}
           <div className="mx-auto mt-2 px-4 py-1.5 rounded-xl bg-white/95 border border-sky-200 text-[11px] sm:text-xs font-bold text-slate-700 shadow-md">
-            Roam the 3D Park while waiting: WASD / Arrows to move · Mouse to look
+            Roam the 3D Park while waiting: WASD / Arrows to move · Drag or Mouse to look
           </div>
 
-          {/* Enlarged Classroom QR Modal with Dual-Domain Switch */}
+          {/* Enlarged Classroom QR Modal */}
           {isQrModalOpen && (
             <div className="pointer-events-auto absolute inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
               <div className="bg-white text-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border-2 border-sky-200 flex flex-col items-center text-center relative">
@@ -9529,31 +9829,33 @@ export default function HamsterPaintball({
                   Room Code: <span className="font-mono text-sky-700">{roomCode}</span>
                 </h3>
 
-                {/* Domain Switcher inside QR Modal */}
-                <div className="flex items-center gap-1 p-1 bg-sky-50 rounded-xl border border-sky-200 mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setJoinDomainMode('current')}
-                    className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
-                      joinDomainMode === 'current'
-                        ? 'bg-sky-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Current URL
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setJoinDomainMode('hamsterenglish')}
-                    className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
-                      joinDomainMode === 'hamsterenglish'
-                        ? 'bg-sky-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    hamsterenglish.online
-                  </button>
-                </div>
+                {/* Domain Switcher inside QR Modal (Only when not already on hamsterenglish.online) */}
+                {!isCurrentOriginHamsterEnglish && (
+                  <div className="flex items-center gap-1 p-1 bg-sky-50 rounded-xl border border-sky-200 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setJoinDomainMode('current')}
+                      className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                        joinDomainMode === 'current'
+                          ? 'bg-sky-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Current URL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJoinDomainMode('hamsterenglish')}
+                      className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                        joinDomainMode === 'hamsterenglish'
+                          ? 'bg-sky-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      hamsterenglish.online
+                    </button>
+                  </div>
+                )}
 
                 <div className="my-4 p-4 bg-white rounded-2xl border-2 border-sky-100 shadow-xs">
                   <QRCodeSVG
@@ -9954,15 +10256,17 @@ export default function HamsterPaintball({
             </div>
           </div>
 
-          {/* PERMANENT CENTER-SCREEN CROSSHAIR AIM RETICLE (ALWAYS IN CENTER OF SCREEN, NEVER ON FLOOR!) */}
+          {/* LOWERED OPPONENT-LEVEL AIM RETICLE (57% FROM TOP === NDC Y -0.14 FOR DIRECT OPPONENT TARGETING) */}
           {role === 'player' && !isQuestionModalOpen && !isSettingsOpen && (
-            <div className="absolute left-1/2 top-[44%] -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 flex flex-col items-center">
-              <div className="relative w-12 h-12 flex items-center justify-center">
+            <div className="absolute left-1/2 top-[57%] -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 flex flex-col items-center">
+              <div className="relative w-11 h-11 flex items-center justify-center">
                 {/* Outer Tactical Ring */}
                 <div
-                  className={`w-9 h-9 rounded-full border-2 shadow-[0_0_8px_rgba(0,0,0,0.45)] transition-transform duration-75 ${
+                  className={`w-8 h-8 rounded-full border-2 shadow-[0_0_8px_rgba(0,0,0,0.5)] transition-transform duration-75 ${
                     immunitySecondsLeft > 0
                       ? 'border-amber-300 ring-2 ring-sky-300/60 scale-110'
+                      : isEnemyTargeted
+                      ? 'border-amber-300 ring-2 ring-emerald-400/70 scale-115'
                       : matchMode === 'teams'
                       ? myTeam === 'blue'
                         ? 'border-sky-400'
@@ -9970,16 +10274,34 @@ export default function HamsterPaintball({
                       : 'border-emerald-400'
                   }`}
                 />
-                {/* 4 Center Crosshair Ticks */}
-                <div className="absolute top-0.5 left-1/2 -translate-x-1/2 w-0.5 h-2.5 bg-white shadow-xs rounded-full" />
-                <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-0.5 h-2.5 bg-white shadow-xs rounded-full" />
-                <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-2.5 h-0.5 bg-white shadow-xs rounded-full" />
-                <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-2.5 h-0.5 bg-white shadow-xs rounded-full" />
+                {/* 4 Crosshair Ticks */}
+                <div
+                  className={`absolute top-0.5 left-1/2 -translate-x-1/2 w-0.5 h-2 shadow-xs rounded-full ${
+                    isEnemyTargeted ? 'bg-amber-300' : 'bg-white'
+                  }`}
+                />
+                <div
+                  className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-0.5 h-2 shadow-xs rounded-full ${
+                    isEnemyTargeted ? 'bg-amber-300' : 'bg-white'
+                  }`}
+                />
+                <div
+                  className={`absolute left-0.5 top-1/2 -translate-y-1/2 w-2 h-0.5 shadow-xs rounded-full ${
+                    isEnemyTargeted ? 'bg-amber-300' : 'bg-white'
+                  }`}
+                />
+                <div
+                  className={`absolute right-0.5 top-1/2 -translate-y-1/2 w-2 h-0.5 shadow-xs rounded-full ${
+                    isEnemyTargeted ? 'bg-amber-300' : 'bg-white'
+                  }`}
+                />
                 {/* Center Precision Aim Dot */}
                 <div
                   className={`w-2 h-2 rounded-full border border-white shadow-sm ${
                     immunitySecondsLeft > 0
                       ? 'bg-amber-300'
+                      : isEnemyTargeted
+                      ? 'bg-emerald-400 scale-110'
                       : matchMode === 'teams'
                       ? myTeam === 'blue'
                         ? 'bg-sky-400'
@@ -9989,14 +10311,14 @@ export default function HamsterPaintball({
                 />
               </div>
 
-              {/* Subtle Status Pill Under Center Crosshair */}
+              {/* Compact Non-Obstructing Status Indicator Under Reticle */}
               {immunitySecondsLeft > 0 ? (
-                <div className="mt-1 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-mono tabular-nums font-extrabold text-[10px] border border-white shadow-md whitespace-nowrap">
+                <div className="mt-0.5 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-mono tabular-nums font-extrabold text-[10px] border border-white shadow-md whitespace-nowrap">
                   🛡️ IMMUNE {immunitySecondsLeft}s
                 </div>
-              ) : matchStatus === 'playing' && ammo === 0 ? (
-                <div className="mt-1 px-2 py-0.5 rounded-md bg-slate-900/85 text-amber-300 font-extrabold text-[10px] border border-amber-400/80 shadow-md whitespace-nowrap">
-                  CLICK &quot;QUESTIONS&quot; FOR AMMO
+              ) : isEnemyTargeted ? (
+                <div className="mt-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-extrabold text-[9px] tracking-wider border border-white shadow-sm whitespace-nowrap">
+                  TARGET
                 </div>
               ) : null}
             </div>
