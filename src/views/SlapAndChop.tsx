@@ -92,6 +92,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [selectedTheme, setSelectedTheme] = useState<string>("theme-sky");
   const [gloveStyle, setGloveStyle] = useState<'slap' | 'boxing' | 'swatter' | 'cyber'>('slap');
   const [gloveSize, setGloveSize] = useState<number>(1.0); // 0.78 = Compact, 1.0 = Normal, 1.22 = Large
+  const [slapMode, setSlapMode] = useState<'clap' | 'swat'>('clap');
+  const [slapSensitivity, setSlapSensitivity] = useState<'easy' | 'balanced' | 'precise'>('balanced');
 
   // In-Game Live HUD States
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
@@ -101,6 +103,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [hudScorePops, setHudScorePops] = useState<[string | null, string | null]>([null, null]);
   const [hudFrozen, setHudFrozen] = useState<[boolean, boolean]>([false, false]);
   const [hudHandsDetected, setHudHandsDetected] = useState<[[boolean, boolean], [boolean, boolean]]>([[false, false], [false, false]]);
+  const [hudClapArmed, setHudClapArmed] = useState<[boolean, boolean]>([false, false]);
   const [timerPct, setTimerPct] = useState<number>(100);
   const [hudTimeLeft, setHudTimeLeft] = useState<number>(120);
   const [nextQCountdown, setNextQCountdown] = useState<number | null>(null);
@@ -188,9 +191,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const playingTimeRef = useRef<number>(playingTime);
   const gloveStyleRef = useRef<'slap' | 'boxing' | 'swatter' | 'cyber'>(gloveStyle);
   const gloveSizeRef = useRef<number>(gloveSize);
+  const slapModeRef = useRef<'clap' | 'swat'>(slapMode);
+  const slapSensitivityRef = useRef<'easy' | 'balanced' | 'precise'>(slapSensitivity);
   const nextQTimerRef = useRef<number | null>(null);
   const lastHudSecRef = useRef<number>(playingTime);
   const lastHudHandsRef = useRef<string>('0000');
+  const lastHudArmedRef = useRef<string>('00');
+  const cameraLastSendMsRef = useRef<number>(0);
   const onHandsResultsRef = useRef<((results: any) => void) | null>(null);
   const onFaceResultsRef = useRef<((results: any) => void) | null>(null);
 
@@ -212,6 +219,27 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   useEffect(() => {
     gloveSizeRef.current = gloveSize;
   }, [gloveSize]);
+
+  useEffect(() => {
+    slapModeRef.current = slapMode;
+  }, [slapMode]);
+
+  useEffect(() => {
+    slapSensitivityRef.current = slapSensitivity;
+  }, [slapSensitivity]);
+
+  useEffect(() => {
+    if (handsRef.current) {
+      try {
+        handsRef.current.setOptions({
+          maxNumHands: numPlayers === 2 ? 4 : 2,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.56,
+          minTrackingConfidence: 0.50
+        });
+      } catch (e) {}
+    }
+  }, [numPlayers]);
 
   useEffect(() => {
     textSizeRef.current = textSize;
@@ -488,7 +516,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
   };
 
-  const playSoundEffect = (type: 'slap' | 'slash' | 'correct' | 'wrong' | 'whoosh' | 'freeze' | 'victory' | 'countdown' | 'launch') => {
+  const playSoundEffect = (type: 'slap' | 'airclap' | 'slash' | 'correct' | 'wrong' | 'whoosh' | 'freeze' | 'victory' | 'countdown' | 'launch') => {
     if (!soundFxRef.current) return;
     initAudio();
     const ctx = audioCtxRef.current;
@@ -498,7 +526,40 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
     const now = ctx.currentTime;
 
-    if (type === 'slap') {
+    if (type === 'airclap') {
+      // Crisp, light dry palm clap pop so players get instant tactile feedback when testing their clap
+      const bufferSize = Math.floor(ctx.sampleRate * 0.045);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.009));
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(1850, now);
+      bp.Q.setValueAtTime(1.4, now);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.36, now);
+      g.gain.exponentialRampToValueAtTime(0.005, now + 0.045);
+      noise.connect(bp);
+      bp.connect(g);
+      g.connect(ctx.destination);
+      noise.start(now);
+
+      const pop = ctx.createOscillator();
+      const popG = ctx.createGain();
+      pop.type = 'triangle';
+      pop.frequency.setValueAtTime(260, now);
+      pop.frequency.exponentialRampToValueAtTime(95, now + 0.055);
+      popG.gain.setValueAtTime(0.28, now);
+      popG.gain.exponentialRampToValueAtTime(0.005, now + 0.055);
+      pop.connect(popG);
+      popG.connect(ctx.destination);
+      pop.start(now);
+      pop.stop(now + 0.06);
+    } else if (type === 'slap') {
       // Layer 1: Crisp double-palm clap snap + high-frequency whip transient
       const bufferSize = Math.floor(ctx.sampleRate * 0.085);
       const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -768,6 +829,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       isP2,
       score: 0,
       streak: 1,
+      bestStreak: 1,
       hits: 0,
       correctHits: 0,
       wrongHits: 0,
@@ -830,18 +892,27 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       trail: [] as { x: number; y: number; tipX: number; tipY: number; life: number }[],
       hasDetectedHands: false,
       lastHandTime: 0,
+      lastHandsFrameMs: 0,
       lastPointerTime: 0,
       lastDualHandTime: 0,
       dualHandsArmed: false,
       clapArmed: false,
+      sepFrames: 0,
       peakArmedSep: 0,
+      peakArmedSepPx: 0,
       lastArmedTime: 0,
       lastClosingVel: 0,
+      lastClosingSpeedPx: 0,
       lastTwoHandSepDist: 1,
       lastTwoHandSepDistPx: 9999,
       lastTrueTwoHandsTime: 0,
       lastSeparatedHandsTime: 0,
       lastSlapSelectTime: 0,
+      lastClapImpulseMs: 0,
+      needsReopenSinceMs: 0,
+      clapImpulseId: 0,
+      consumedClapId: 0,
+      pendingClap: null as { id: number; x: number; y: number; prevX: number; prevY: number; time: number; isSwat?: boolean } | null,
       clapTimer: 0,
       isClapping: false,
       clapMidX: baseX,
@@ -853,7 +924,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         prevY: 0.58,
         vx: 0,
         vy: 0,
+        vxPx: 0,
+        vyPx: 0,
         speed: 0,
+        speedPx: 0,
         angle: -0.18,
         knifeAngle: -0.45,
         scale: 1.0,
@@ -861,6 +935,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         slapAnim: 0,
         detected: false,
         lastSeenTime: 0,
+        lastSwatMs: 0,
         landmarks: null as any[] | null,
         trail: [] as { x: number; y: number; life: number }[]
       },
@@ -871,7 +946,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         prevY: 0.58,
         vx: 0,
         vy: 0,
+        vxPx: 0,
+        vyPx: 0,
         speed: 0,
+        speedPx: 0,
         angle: 0.18,
         knifeAngle: -2.69,
         scale: 1.0,
@@ -879,6 +957,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         slapAnim: 0,
         detected: false,
         lastSeenTime: 0,
+        lastSwatMs: 0,
         landmarks: null as any[] | null,
         trail: [] as { x: number; y: number; life: number }[]
       }
@@ -942,7 +1021,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     return { scale, openness, palmLength, bboxW, bboxH };
   };
 
-  // MediaPipe Hands Results Handler (1:1 object-cover projection, dynamic hand size & movement tracking, immediate two-glove touch/overlap trigger)
+  // MediaPipe Hands Results Handler:
+  // - 1:1 object-cover projection
+  // - Multi-cue ghost-skeleton deduplication (eliminates single-hand twin-skeleton false claps)
+  // - Velocity-aware One-Euro style smoothing + shortest-arc angle filtering
+  // - True physical Clap Impulse State Machine with mandatory arming & re-open hysteresis
   const onHandsResults = (results: any) => {
     const eng = engineRef.current;
     if (!eng) return;
@@ -961,26 +1044,113 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     const now = performance.now();
     const is2P = eng.numPlayers === 2;
-    const BASE_HAND_GRACE_MS = 240;
+    const BASE_HAND_GRACE_MS = 200;
+
+    const smoothAngle = (cur: number, target: number, alpha: number) => {
+      if (!Number.isFinite(cur)) return target;
+      if (!Number.isFinite(target)) return cur;
+      const diff = Math.atan2(Math.sin(target - cur), Math.cos(target - cur));
+      return cur + diff * alpha;
+    };
+
+    const getSensParams = (combinedGloveRadiusPx: number) => {
+      const sens = slapSensitivityRef.current || 'balanced';
+      if (sens === 'easy') {
+        return {
+          armDistPx: Math.max(108, combinedGloveRadiusPx * 1.28),
+          touchDistPx: Math.max(76, combinedGloveRadiusPx * 1.08),
+          minCloseDeltaPx: 26,
+          minInwardSpeedPx: 80,
+          swatSpeedPx: 230
+        };
+      }
+      if (sens === 'precise') {
+        return {
+          armDistPx: Math.max(138, combinedGloveRadiusPx * 1.56),
+          touchDistPx: Math.max(64, combinedGloveRadiusPx * 0.88),
+          minCloseDeltaPx: 48,
+          minInwardSpeedPx: 165,
+          swatSpeedPx: 410
+        };
+      }
+      return {
+        armDistPx: Math.max(122, combinedGloveRadiusPx * 1.40),
+        touchDistPx: Math.max(70, combinedGloveRadiusPx * 0.98),
+        minCloseDeltaPx: 36,
+        minInwardSpeedPx: 118,
+        swatSpeedPx: 310
+      };
+    };
+
+    const triggerClapImpulse = (player: any, midNormX: number, midNormY: number, prevMidNormX: number, prevMidNormY: number, isSwat: boolean = false) => {
+      const nextId = (player.clapImpulseId || 0) + 1;
+      player.clapImpulseId = nextId;
+      player.lastClapImpulseMs = now;
+      player.pendingClap = {
+        id: nextId,
+        x: midNormX,
+        y: midNormY,
+        prevX: prevMidNormX,
+        prevY: prevMidNormY,
+        time: now,
+        isSwat
+      };
+      player.isClapping = true;
+      player.clapTimer = 0.22;
+      player.clapArmed = false;
+      player.sepFrames = 0;
+      player.peakArmedSep = 0;
+      player.peakArmedSepPx = 0;
+      player.needsReopenSinceMs = now;
+      player.slapAnim = 1.0;
+      player.swordLunge = 1.0;
+      player.clapMidX = midNormX;
+      player.clapMidY = midNormY;
+      if (player.leftHand) player.leftHand.slapAnim = 1.0;
+      if (player.rightHand) player.rightHand.slapAnim = 1.0;
+
+      // Spawn immediate visual shockwave ring at the clap point so every clap feels 100% responsive
+      eng.shockwaves.push({
+        x: midNormX * cw,
+        y: midNormY * ch,
+        radius: 18,
+        maxRadius: isSwat ? 78 : 96,
+        color: player.isP2 ? '#fb7185' : '#38bdf8',
+        life: 1.0
+      });
+    };
 
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
       eng.players.forEach(p => {
-        const graceMs = (now - (p.lastTrueTwoHandsTime || 0) < 620) ? 420 : BASE_HAND_GRACE_MS;
+        if (!p) return;
+        const graceMs = (now - (p.lastTrueTwoHandsTime || 0) < 420) ? 280 : BASE_HAND_GRACE_MS;
         if (now - (p.leftHand.lastSeenTime || 0) > graceMs) {
           p.leftHand.detected = false;
           p.leftHand.landmarks = null;
+          p.leftHand.vx = 0;
+          p.leftHand.vy = 0;
+          p.leftHand.speed = 0;
+          p.leftHand.speedPx = 0;
         }
         if (now - (p.rightHand.lastSeenTime || 0) > graceMs) {
           p.rightHand.detected = false;
           p.rightHand.landmarks = null;
+          p.rightHand.vx = 0;
+          p.rightHand.vy = 0;
+          p.rightHand.speed = 0;
+          p.rightHand.speedPx = 0;
         }
         if ((!p.leftHand.detected || !p.rightHand.detected) && (!p.clapTimer || p.clapTimer <= 0)) {
           p.isClapping = false;
         }
-        if (now - (p.lastHandTime || 0) > 420) {
+        if (now - (p.lastHandTime || 0) > 340) {
           p.hasDetectedHands = false;
           p.dualHandsArmed = false;
           p.clapArmed = false;
+          p.sepFrames = 0;
+          p.peakArmedSep = 0;
+          p.peakArmedSepPx = 0;
+          p.needsReopenSinceMs = 0;
           if (!p.clapTimer || p.clapTimer <= 0) {
             p.isClapping = false;
           }
@@ -993,6 +1163,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     results.multiHandLandmarks.forEach((landmarks: any[], handIndex: number) => {
       if (!landmarks || landmarks.length < 21) return;
+      const handedness = results.multiHandedness?.[handIndex]?.label || '';
+      const confidence = results.multiHandedness?.[handIndex]?.score ?? 0.8;
+      if (confidence < 0.45) return;
+
       const wrist = landmarks[0];
       const indexMcp = landmarks[5];
       const middleMcp = landmarks[9];
@@ -1008,7 +1182,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         z: lm.z || 0
       }));
 
-      // Compute normalized bounding box of all 21 landmarks on the canvas
       let minLmX = 1, maxLmX = 0, minLmY = 1, maxLmY = 0;
       mirroredLandmarks.forEach((lm: any) => {
         if (lm.x < minLmX) minLmX = lm.x;
@@ -1017,30 +1190,33 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         if (lm.y > maxLmY) maxLmY = lm.y;
       });
 
+      // Reject tiny background artifacts (< 2.8% of frame) or full-frame glitches (> 68% of frame)
+      const bboxSpan = Math.hypot(maxLmX - minLmX, maxLmY - minLmY);
+      if (bboxSpan < 0.028 || bboxSpan > 0.72) return;
+
       const bboxCenterX = (minLmX + maxLmX) * 0.5;
       const bboxCenterY = (minLmY + maxLmY) * 0.5;
 
-      // Center tracked position directly over the full hand (blending anatomical palm/knuckles with 21-landmark bounding box center)
       const anatomicalMirroredX = 1.0 - (
-        wrist.x * 0.18 +
-        middleMcp.x * 0.26 +
-        indexMcp.x * 0.14 +
-        ringMcp.x * 0.12 +
+        wrist.x * 0.16 +
+        middleMcp.x * 0.28 +
+        indexMcp.x * 0.15 +
+        ringMcp.x * 0.13 +
         pinkyMcp.x * 0.08 +
-        middleTip.x * 0.14 +
+        middleTip.x * 0.12 +
         ringTip.x * 0.08
       );
       const anatomicalNormY =
-        wrist.y * 0.18 +
-        middleMcp.y * 0.26 +
-        indexMcp.y * 0.14 +
-        ringMcp.y * 0.12 +
+        wrist.y * 0.16 +
+        middleMcp.y * 0.28 +
+        indexMcp.y * 0.15 +
+        ringMcp.y * 0.13 +
         pinkyMcp.y * 0.08 +
-        middleTip.y * 0.14 +
+        middleTip.y * 0.12 +
         ringTip.y * 0.08;
 
-      const rawX = toCanvasNormX(anatomicalMirroredX) * 0.62 + bboxCenterX * 0.38;
-      const rawY = toCanvasNormY(anatomicalNormY) * 0.62 + bboxCenterY * 0.38;
+      const rawX = toCanvasNormX(anatomicalMirroredX) * 0.68 + bboxCenterX * 0.32;
+      const rawY = toCanvasNormY(anatomicalNormY) * 0.68 + bboxCenterY * 0.32;
       const rawWristX = toCanvasNormX(1.0 - wrist.x);
       const rawWristY = toCanvasNormY(wrist.y);
 
@@ -1053,8 +1229,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
       const { scale, openness } = analyzeHandGeometry(landmarks);
 
-      const handedness = results.multiHandedness?.[handIndex]?.label || '';
-      const confidence = results.multiHandedness?.[handIndex]?.score ?? 0.8;
       allDetectedHands.push({
         rawX,
         rawY,
@@ -1085,24 +1259,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         const pIdx = h.rawX < 0.5 ? 0 : 1;
         rawPlayerHands[pIdx].push(h);
       });
-      // If a player's two clapping hands straddle the center divider x = 0.5 in 2P mode, keep both hands with that player
-      // even if the other player also has hands on screen!
+      // Only reunite straddling hands across the 0.5 divider if that player had 2 separated hands armed and the other side wasn't already holding them
       if (rawPlayerHands[0].length >= 1 && rawPlayerHands[1].length >= 1) {
         for (let i = rawPlayerHands[0].length - 1; i >= 0; i--) {
           const h0 = rawPlayerHands[0][i];
-          if (h0.rawX < 0.36) continue;
+          if (h0.rawX < 0.40) continue;
           for (let j = rawPlayerHands[1].length - 1; j >= 0; j--) {
             const h1 = rawPlayerHands[1][j];
-            if (h1.rawX > 0.64) continue;
+            if (h1.rawX > 0.60) continue;
             const pairSpan = Math.hypot(h1.rawX - h0.rawX, h1.rawY - h0.rawY);
             const verticalDiff = Math.abs(h1.rawY - h0.rawY);
             const midX = (h0.rawX + h1.rawX) * 0.5;
-            if (pairSpan < 0.25 && verticalDiff < 0.22) {
+            if (pairSpan < 0.20 && verticalDiff < 0.18) {
               const targetPlayer = midX < 0.5 ? 0 : 1;
-              if (targetPlayer === 0 && rawPlayerHands[0].length < 2) {
+              if (targetPlayer === 0 && rawPlayerHands[0].length < 2 && rawPlayerHands[1].length > 1) {
                 rawPlayerHands[0].push(rawPlayerHands[1].splice(j, 1)[0]);
                 break;
-              } else if (targetPlayer === 1 && rawPlayerHands[1].length < 2) {
+              } else if (targetPlayer === 1 && rawPlayerHands[1].length < 2 && rawPlayerHands[0].length > 1) {
                 rawPlayerHands[1].push(rawPlayerHands[0].splice(i, 1)[0]);
                 break;
               }
@@ -1113,8 +1286,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       [0, 1].forEach(pIdx => {
         rawPlayerHands[pIdx] = rawPlayerHands[pIdx].map(h => {
           const clampedX = pIdx === 0
-            ? Math.min(0.492, Math.max(0.025, h.rawX))
-            : Math.max(0.508, Math.min(0.975, h.rawX));
+            ? Math.min(0.490, Math.max(0.025, h.rawX))
+            : Math.max(0.510, Math.min(0.975, h.rawX));
           const clampedY = Math.max(0.03, Math.min(0.97, h.rawY));
           const shiftX = clampedX - h.rawX;
           const shiftY = clampedY - h.rawY;
@@ -1148,53 +1321,92 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const player = eng.players[pIdx];
       if (!player) return;
 
+      const dtHandsSec = player.lastHandsFrameMs > 0
+        ? Math.max(0.008, Math.min(0.12, (now - player.lastHandsFrameMs) / 1000))
+        : (1 / 30);
+      player.lastHandsFrameMs = now;
+
       const rawHands = rawPlayerHands[pIdx] || [];
       const lh = player.leftHand;
       const rh = player.rightHand;
+      const wasRecentlySeparated = (now - (player.lastSeparatedHandsTime || 0) < 620) && (player.peakArmedSepPx || 0) >= 95;
 
-      // 1. Only deduplicate exact ghost skeletons on the SAME physical hand (center < 0.018, wrist < 0.018, same handedness)
-      // so two real hands touching/overlapping during a clap are NEVER dropped!
+      // 1. MULTI-CUE GHOST-TWIN DEDUPLICATION:
+      // MediaPipe often emits two overlapping skeletons (one labeled 'Left', one 'Right') on a SINGLE physical hand!
+      // Deduplicate ghost twins regardless of handedness label while preserving two real hands converging from separation.
       const dedupedHands: any[] = [];
       rawHands
-        .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+        .sort((a, b) => ((b.confidence || 0) * 0.68 + Math.min(1.2, b.scale || 1) * 0.32) - ((a.confidence || 0) * 0.68 + Math.min(1.2, a.scale || 1) * 0.32))
         .forEach(candidate => {
-          const isDuplicateOnSameHand = dedupedHands.some(existing => {
+          const isGhostTwin = dedupedHands.some(existing => {
             const centerDist = Math.hypot(candidate.clampedX - existing.clampedX, candidate.clampedY - existing.clampedY);
             const wristDist = Math.hypot(candidate.rawWristX - existing.rawWristX, candidate.rawWristY - existing.rawWristY);
-            const sameHandedness = !candidate.handedness || !existing.handedness || candidate.handedness === existing.handedness;
-            return sameHandedness && centerDist < 0.018 && wristDist < 0.018;
+            const angleCos = Math.cos((candidate.pointingAngle || 0) - (existing.pointingAngle || 0));
+
+            let lmMeanDist = centerDist;
+            if (candidate.landmarks?.length >= 21 && existing.landmarks?.length >= 21) {
+              let sum = 0;
+              const probeIds = [0, 4, 5, 8, 9, 12, 13, 16, 17, 20];
+              for (let k = 0; k < probeIds.length; k++) {
+                const id = probeIds[k];
+                sum += Math.hypot(
+                  candidate.landmarks[id].x - existing.landmarks[id].x,
+                  candidate.landmarks[id].y - existing.landmarks[id].y
+                );
+              }
+              lmMeanDist = sum / probeIds.length;
+            }
+
+            // Exact skeleton duplicate on the same hand
+            if (lmMeanDist < 0.032 && wristDist < 0.038) return true;
+            // Same wrist & same forearm angle = physically same hand
+            if (centerDist < 0.048 && wristDist < 0.048 && angleCos > 0.84) return true;
+            // If the player was NOT tracking two separated hands, aggressively reject single-hand opposite-label ghosts
+            if (!wasRecentlySeparated && ((centerDist < 0.082 && wristDist < 0.086) || lmMeanDist < 0.060)) {
+              return true;
+            }
+            return false;
           });
-          if (!isDuplicateOnSameHand) {
+          if (!isGhostTwin) {
             dedupedHands.push(candidate);
           }
         });
 
-      // Keep at most the 2 largest (foreground player) hands
       const handsForPlayer = dedupedHands
         .sort((a, b) => (b.scale || 1) - (a.scale || 1))
         .slice(0, 2);
 
-      // Extended grace period when both hands were recently active so one glove is NEVER lost during a fast clap!
-      const HAND_GRACE_MS = (now - (player.lastTrueTwoHandsTime || 0) < 700) ? 480 : 220;
+      const HAND_GRACE_MS = (now - (player.lastTrueTwoHandsTime || 0) < 420) ? 260 : 180;
 
       if (handsForPlayer.length === 0) {
         if (now - (lh.lastSeenTime || 0) > HAND_GRACE_MS) {
           lh.detected = false;
           lh.landmarks = null;
+          lh.vx = 0;
+          lh.vy = 0;
+          lh.speed = 0;
+          lh.speedPx = 0;
         }
         if (now - (rh.lastSeenTime || 0) > HAND_GRACE_MS) {
           rh.detected = false;
           rh.landmarks = null;
+          rh.vx = 0;
+          rh.vy = 0;
+          rh.speed = 0;
+          rh.speedPx = 0;
         }
         if ((!lh.detected || !rh.detected) && (!player.clapTimer || player.clapTimer <= 0)) {
           player.isClapping = false;
           player.clapTimer = 0;
         }
-        if (now - (player.lastHandTime || 0) > 380) {
+        if (now - (player.lastHandTime || 0) > 340) {
           player.hasDetectedHands = false;
           player.dualHandsArmed = false;
           player.clapArmed = false;
+          player.sepFrames = 0;
           player.peakArmedSep = 0;
+          player.peakArmedSepPx = 0;
+          player.needsReopenSinceMs = 0;
           if (!player.clapTimer || player.clapTimer <= 0) {
             player.isClapping = false;
           }
@@ -1205,38 +1417,116 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       player.hasDetectedHands = true;
       player.lastHandTime = now;
 
-      // Sort left-to-right on screen so left-side hand is leftHand and right-side is rightHand
-      handsForPlayer.sort((a, b) => a.clampedX - b.clampedX);
+      // Adaptive velocity-aware hand state updater (rock-steady when hovering, instant 1:1 when swinging)
+      const applySmoothedHand = (handSlot: any, data: any) => {
+        const freshlyTracked = handSlot.detected && (now - (handSlot.lastSeenTime || 0) <= 150);
+        const rawStep = freshlyTracked ? Math.hypot(data.clampedX - handSlot.x, data.clampedY - handSlot.y) : 999;
 
+        if (!freshlyTracked || rawStep > 0.30) {
+          // Fresh hand entry or jump recovery: snap cleanly with zero fake velocity spike
+          handSlot.prevX = data.clampedX;
+          handSlot.prevY = data.clampedY;
+          handSlot.x = data.clampedX;
+          handSlot.y = data.clampedY;
+          handSlot.vx = 0;
+          handSlot.vy = 0;
+          handSlot.vxPx = 0;
+          handSlot.vyPx = 0;
+          handSlot.speed = 0;
+          handSlot.speedPx = 0;
+          handSlot.angle = data.gloveAngle;
+          handSlot.knifeAngle = data.pointingAngle;
+          handSlot.scale = data.scale;
+        } else {
+          // Adaptive One-Euro style filter: 0.42 when nearly still to kill webcam jitter, up to 0.90 during fast swings
+          const posAlpha = Math.max(0.42, Math.min(0.92, 0.38 + rawStep * 14.0));
+          const nextX = handSlot.x + (data.clampedX - handSlot.x) * posAlpha;
+          const nextY = handSlot.y + (data.clampedY - handSlot.y) * posAlpha;
+          handSlot.prevX = handSlot.x;
+          handSlot.prevY = handSlot.y;
+          handSlot.x = nextX;
+          handSlot.y = nextY;
+
+          const instVx = nextX - handSlot.prevX;
+          const instVy = nextY - handSlot.prevY;
+          handSlot.vx = instVx * 0.62 + (handSlot.vx || 0) * 0.38;
+          handSlot.vy = instVy * 0.62 + (handSlot.vy || 0) * 0.38;
+          handSlot.speed = Math.hypot(handSlot.vx, handSlot.vy);
+
+          const instVxPx = ((nextX - handSlot.prevX) * cw) / dtHandsSec;
+          const instVyPx = ((nextY - handSlot.prevY) * ch) / dtHandsSec;
+          handSlot.vxPx = instVxPx * 0.60 + (handSlot.vxPx || 0) * 0.40;
+          handSlot.vyPx = instVyPx * 0.60 + (handSlot.vyPx || 0) * 0.40;
+          handSlot.speedPx = Math.hypot(handSlot.vxPx, handSlot.vyPx);
+
+          handSlot.angle = smoothAngle(handSlot.angle, data.gloveAngle, 0.55);
+          handSlot.knifeAngle = smoothAngle(handSlot.knifeAngle, data.pointingAngle, 0.62);
+          handSlot.scale = handSlot.scale + (data.scale - handSlot.scale) * 0.45;
+        }
+
+        const shiftLmX = handSlot.x - data.clampedX;
+        const shiftLmY = handSlot.y - data.clampedY;
+        handSlot.openness = data.openness;
+        handSlot.landmarks = data.landmarks
+          ? data.landmarks.map((lm: any) => ({ x: lm.x + shiftLmX, y: lm.y + shiftLmY, z: lm.z }))
+          : null;
+        handSlot.detected = true;
+        handSlot.lastSeenTime = now;
+        handSlot.trail.push({ x: handSlot.x, y: handSlot.y, life: 1.0 });
+        if (handSlot.trail.length > 7) handSlot.trail.shift();
+      };
+
+      handsForPlayer.sort((a, b) => a.clampedX - b.clampedX);
       let fastestHand = handsForPlayer[0];
       const userSizeMult = gloveSizeRef.current || 1.0;
+      const isSwatMode = slapModeRef.current === 'swat';
 
       if (handsForPlayer.length >= 2) {
         let leftData = handsForPlayer[0];
         let rightData = handsForPlayer[handsForPlayer.length - 1];
 
-        // Prevent vertical clap hand-swap jitter when both hands are at nearly the same X coordinate
-        if (lh.detected && rh.detected && Math.abs(rightData.clampedX - leftData.clampedX) < 0.095) {
-          const dDirect = Math.hypot(leftData.clampedX - lh.x, leftData.clampedY - lh.y) + Math.hypot(rightData.clampedX - rh.x, rightData.clampedY - rh.y);
-          const dSwapped = Math.hypot(rightData.clampedX - lh.x, rightData.clampedY - lh.y) + Math.hypot(leftData.clampedX - rh.x, leftData.clampedY - rh.y);
-          if (dSwapped < dDirect) {
+        // Temporal bipartite matching so Left & Right gloves never flip slots during vertical or angled claps
+        if (
+          lh.detected &&
+          rh.detected &&
+          (now - (lh.lastSeenTime || 0) < 320) &&
+          (now - (rh.lastSeenTime || 0) < 320)
+        ) {
+          const lhPredX = lh.x + (lh.vx || 0) * 0.35;
+          const lhPredY = lh.y + (lh.vy || 0) * 0.35;
+          const rhPredX = rh.x + (rh.vx || 0) * 0.35;
+          const rhPredY = rh.y + (rh.vy || 0) * 0.35;
+          const costDirect =
+            Math.hypot(leftData.clampedX - lhPredX, leftData.clampedY - lhPredY) +
+            Math.hypot(rightData.clampedX - rhPredX, rightData.clampedY - rhPredY);
+          const costSwapped =
+            Math.hypot(rightData.clampedX - lhPredX, rightData.clampedY - lhPredY) +
+            Math.hypot(leftData.clampedX - rhPredX, leftData.clampedY - rhPredY) +
+            0.024;
+          if (costSwapped < costDirect) {
             const tmp = leftData;
             leftData = rightData;
             rightData = tmp;
           }
         }
 
-        const sepDist = Math.hypot(rightData.clampedX - leftData.clampedX, rightData.clampedY - leftData.clampedY);
-        const sepDistPx = Math.hypot((rightData.clampedX - leftData.clampedX) * cw, (rightData.clampedY - leftData.clampedY) * ch);
+        const prevMidNormX = (lh.x + rh.x) * 0.5;
+        const prevMidNormY = (lh.y + rh.y) * 0.5;
 
-        // Compute minimum pixel distance between ANY landmarks of Left Hand and Right Hand
+        applySmoothedHand(lh, leftData);
+        applySmoothedHand(rh, rightData);
+
+        const sepDist = Math.hypot(rh.x - lh.x, rh.y - lh.y);
+        const sepDistPx = Math.hypot((rh.x - lh.x) * cw, (rh.y - lh.y) * ch);
+
         let minLandmarkDistPx = sepDistPx;
-        if (leftData.landmarks && rightData.landmarks) {
-          for (let i = 0; i < leftData.landmarks.length; i++) {
-            const lmL = leftData.landmarks[i];
+        if (lh.landmarks && rh.landmarks) {
+          const palmProbe = [0, 1, 4, 5, 8, 9, 12, 13, 16, 17, 20];
+          for (let i = 0; i < palmProbe.length; i++) {
+            const lmL = lh.landmarks[palmProbe[i]];
             if (!lmL) continue;
-            for (let j = 0; j < rightData.landmarks.length; j++) {
-              const lmR = rightData.landmarks[j];
+            for (let j = 0; j < palmProbe.length; j++) {
+              const lmR = rh.landmarks[palmProbe[j]];
               if (!lmR) continue;
               const dLmPx = Math.hypot((lmR.x - lmL.x) * cw, (lmR.y - lmL.y) * ch);
               if (dLmPx < minLandmarkDistPx) minLandmarkDistPx = dLmPx;
@@ -1244,139 +1534,134 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         }
 
-        // Check if the two hands' landmark bounding boxes touch or come within high-sensitivity touch proximity
-        const bboxOverlap = Boolean(
-          leftData.bbox &&
-          rightData.bbox &&
-          leftData.bbox.maxX + 0.022 >= rightData.bbox.minX &&
-          rightData.bbox.maxX + 0.022 >= leftData.bbox.minX &&
-          leftData.bbox.maxY + 0.022 >= rightData.bbox.minY &&
-          rightData.bbox.maxY + 0.022 >= leftData.bbox.minY
-        );
+        // Compute TRUE radial inward closing speed (px/sec) along the inter-hand axis:
+        // Positive ONLY when Left & Right hands move TOWARD each other; ~0 when both hands move sideways together!
+        const axisDxPx = (rh.x - lh.x) * cw;
+        const axisDyPx = (rh.y - lh.y) * ch;
+        const axisLenPx = Math.max(1, Math.hypot(axisDxPx, axisDyPx));
+        const unitX = axisDxPx / axisLenPx;
+        const unitY = axisDyPx / axisLenPx;
+        const relVelX = (lh.vxPx || 0) - (rh.vxPx || 0);
+        const relVelY = (lh.vyPx || 0) - (rh.vyPx || 0);
+        const radialInwardSpeedPx = Math.max(0, relVelX * unitX + relVelY * unitY);
+        const prevSepPx = player.lastTwoHandSepDistPx < 9000 ? player.lastTwoHandSepDistPx : sepDistPx;
+        const frameDropSpeedPx = Math.max(0, (prevSepPx - sepDistPx) / dtHandsSec);
+        const closingSpeedPx = Math.max(radialInwardSpeedPx, frameDropSpeedPx * 0.85);
 
-        // Update Left Hand (instant 1:1 tracking with zero smoothing lag)
-        lh.prevX = lh.detected ? lh.x : leftData.clampedX;
-        lh.prevY = lh.detected ? lh.y : leftData.clampedY;
-        lh.x = leftData.clampedX;
-        lh.y = leftData.clampedY;
-        lh.vx = (lh.x - lh.prevX) * 0.65 + (lh.vx || 0) * 0.35;
-        lh.vy = (lh.y - lh.prevY) * 0.65 + (lh.vy || 0) * 0.35;
-        lh.speed = Math.hypot(lh.vx, lh.vy);
-        lh.angle = leftData.gloveAngle;
-        lh.knifeAngle = leftData.pointingAngle;
-        lh.scale = lh.detected ? (lh.scale + (leftData.scale - lh.scale) * 0.85) : leftData.scale;
-        lh.openness = leftData.openness;
-        lh.landmarks = leftData.landmarks;
-        lh.detected = true;
-        lh.lastSeenTime = now;
-        lh.trail.push({ x: lh.x, y: lh.y, life: 1.0 });
-        if (lh.trail.length > 6) lh.trail.shift();
-
-        // Update Right Hand (instant 1:1 tracking with zero smoothing lag)
-        rh.prevX = rh.detected ? rh.x : rightData.clampedX;
-        rh.prevY = rh.detected ? rh.y : rightData.clampedY;
-        rh.x = rightData.clampedX;
-        rh.y = rightData.clampedY;
-        rh.vx = (rh.x - rh.prevX) * 0.65 + (rh.vx || 0) * 0.35;
-        rh.vy = (rh.y - rh.prevY) * 0.65 + (rh.vy || 0) * 0.35;
-        rh.speed = Math.hypot(rh.vx, rh.vy);
-        rh.angle = rightData.gloveAngle;
-        rh.knifeAngle = rightData.pointingAngle;
-        rh.scale = rh.detected ? (rh.scale + (rightData.scale - rh.scale) * 0.85) : rightData.scale;
-        rh.openness = rightData.openness;
-        rh.landmarks = rightData.landmarks;
-        rh.detected = true;
-        rh.lastSeenTime = now;
-        rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
-        if (rh.trail.length > 6) rh.trail.shift();
-
-        const prevSep = Math.hypot(rh.prevX - lh.prevX, rh.prevY - lh.prevY);
-        const closingVel = Math.max(0, prevSep - sepDist);
-
-        // Visual radius of each rendered 3D glove on the canvas, scaled by user glove size setting
-        const leftGloveRadiusPx = 52 * Math.max(0.72, Math.min(1.65, lh.scale)) * userSizeMult;
-        const rightGloveRadiusPx = 52 * Math.max(0.72, Math.min(1.65, rh.scale)) * userSizeMult;
-        const visualGloveTouchDistPx = (leftGloveRadiusPx + rightGloveRadiusPx) * 1.38;
+        const leftGloveRadiusPx = 46 * Math.max(0.75, Math.min(1.48, lh.scale)) * userSizeMult;
+        const rightGloveRadiusPx = 46 * Math.max(0.75, Math.min(1.48, rh.scale)) * userSizeMult;
+        const combinedGloveRadiusPx = leftGloveRadiusPx + rightGloveRadiusPx;
+        const { armDistPx, touchDistPx, minCloseDeltaPx, minInwardSpeedPx, swatSpeedPx } = getSensParams(combinedGloveRadiusPx);
 
         player.dualHandsArmed = true;
-        player.clapArmed = true;
         player.lastTrueTwoHandsTime = now;
         player.lastTwoHandSepDist = sepDist;
         player.lastTwoHandSepDistPx = sepDistPx;
-        player.lastClosingVel = closingVel;
+        player.lastClosingVel = Math.max(0, sepDist);
+        player.lastClosingSpeedPx = closingSpeedPx;
 
-        // =========================================================================
-        // HIGH-SENSITIVITY 100% ACCURATE 2-GLOVE TOUCH & CLAP TRIGGER:
-        // Triggers immediately whenever the two 3D gloves touch, overlap, or clap together!
-        // =========================================================================
-        const handsPhysicallyTouching = Boolean(
-          sepDistPx <= visualGloveTouchDistPx ||
-          minLandmarkDistPx <= Math.max(48, (leftGloveRadiusPx + rightGloveRadiusPx) * 0.68) ||
-          bboxOverlap ||
-          (closingVel >= 0.015 && sepDistPx <= (leftGloveRadiusPx + rightGloveRadiusPx) * 1.72)
-        );
-
-        if (handsPhysicallyTouching) {
-          player.isClapping = true;
-          player.clapTimer = 0.32;
-          player.slapAnim = 1.0;
-          lh.slapAnim = 1.0;
-          rh.slapAnim = 1.0;
-          player.clapMidX = (lh.x + rh.x) * 0.5;
-          player.clapMidY = (lh.y + rh.y) * 0.5;
-
-          // Only nudge apart if the two hands completely overlap on the exact same spot so neither glove hides the other
-          if (Math.abs(rh.x - lh.x) < 0.016 && Math.abs(rh.y - lh.y) < 0.028) {
-            lh.x = player.clapMidX - 0.016;
-            rh.x = player.clapMidX + 0.016;
+        // STEP 1: ARMING & RE-OPEN HYSTERESIS
+        if (sepDistPx >= armDistPx) {
+          player.sepFrames = Math.min(10, (player.sepFrames || 0) + 1);
+          player.lastSeparatedHandsTime = now;
+          player.needsReopenSinceMs = 0;
+          if (player.sepFrames >= 2) {
+            player.clapArmed = true;
+            player.lastArmedTime = now;
+            player.peakArmedSep = Math.max(player.peakArmedSep || 0, sepDist);
+            player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, sepDistPx);
           }
-        } else if (sepDistPx > visualGloveTouchDistPx * 1.15 && (!player.clapTimer || player.clapTimer <= 0)) {
-          // Clear clap state once both hands are clearly separated
-          player.isClapping = false;
-          player.clapTimer = 0;
+          if (!player.clapTimer || player.clapTimer <= 0) {
+            player.isClapping = false;
+          }
+        } else if (player.clapArmed) {
+          player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, sepDistPx);
+        }
+
+        // STEP 2: PHYSICAL CLAP IMPULSE DETECTION (Fires ONCE per real clap, then requires re-opening hands!)
+        const closeDeltaPx = (player.peakArmedSepPx || 0) - sepDistPx;
+        const cooldownReady = (now - (player.lastClapImpulseMs || 0)) >= 340;
+        const isGloveContact =
+          sepDistPx <= touchDistPx ||
+          (minLandmarkDistPx <= 24 && sepDistPx <= touchDistPx * 1.16);
+        const isDynamicCatch =
+          closingSpeedPx >= minInwardSpeedPx * 2.1 &&
+          sepDistPx <= touchDistPx * 1.18 &&
+          closeDeltaPx >= minCloseDeltaPx * 1.15;
+
+        if (
+          !isSwatMode &&
+          player.clapArmed &&
+          cooldownReady &&
+          closeDeltaPx >= minCloseDeltaPx &&
+          ((isGloveContact && closingSpeedPx >= minInwardSpeedPx) ||
+            (sepDistPx <= touchDistPx * 0.78 && closeDeltaPx >= minCloseDeltaPx * 1.25) ||
+            isDynamicCatch)
+        ) {
+          const midX = (lh.x + rh.x) * 0.5;
+          const midY = (lh.y + rh.y) * 0.5;
+          triggerClapImpulse(player, midX, midY, prevMidNormX, prevMidNormY, false);
+
+          // Keep both gloves subtly visible side-by-side on impact
+          if (Math.abs(rh.x - lh.x) < 0.016 && Math.abs(rh.y - lh.y) < 0.028) {
+            lh.x = midX - 0.015;
+            rh.x = midX + 0.015;
+          }
+        } else if (isSwatMode && cooldownReady) {
+          // One-Hand Swat Mode with 2 hands visible: trigger on brisk swat motion from either hand
+          if (lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 380) {
+            lh.lastSwatMs = now;
+            triggerClapImpulse(player, lh.x, lh.y, lh.prevX, lh.prevY, true);
+          } else if (rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 380) {
+            rh.lastSwatMs = now;
+            triggerClapImpulse(player, rh.x, rh.y, rh.prevX, rh.prevY, true);
+          }
         }
 
         const meanScale = (lh.scale + rh.scale) * 0.5;
-        player.handScale = player.handScale + (meanScale - player.handScale) * 0.80;
+        player.handScale = player.handScale + (meanScale - player.handScale) * 0.55;
         fastestHand = rh.speed >= lh.speed
           ? { ...rightData, speed: rh.speed, vx: rh.vx, vy: rh.vy, x: rh.x, y: rh.y, scale: meanScale }
           : { ...leftData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y, scale: meanScale };
       } else {
         // ONLY 1 HAND RETURNED BY MEDIAPIPE IN THIS FRAME:
-        // When clapping, one hand often occludes the other hand so MediaPipe returns 1 skeleton instead of 2!
-        // Detect this merged clap state so the second glove is NEVER lost during a clap!
+        // Distinguish between:
+        //  (A) True high-speed clap occlusion merge (2 ARMED converging hands smacked into 1 silhouette within 180ms)
+        //  (B) Normal 1-hand presence (or 1 hand lowered out of frame) -> NEVER trigger a false clap!
         const hData = handsForPlayer[0];
         const prevMidX = (lh.x + rh.x) * 0.5;
         const prevMidY = (lh.y + rh.y) * 0.5;
         const distToPrevMidPx = Math.hypot((hData.clampedX - prevMidX) * cw, (hData.clampedY - prevMidY) * ch);
         const distToLeft = Math.hypot(hData.clampedX - lh.x, hData.clampedY - lh.y);
         const distToRight = Math.hypot(hData.clampedX - rh.x, hData.clampedY - rh.y);
-        const distToLeftPx = Math.hypot((hData.clampedX - lh.x) * cw, (hData.clampedY - lh.y) * ch);
-        const distToRightPx = Math.hypot((hData.clampedX - rh.x) * cw, (hData.clampedY - rh.y) * ch);
 
         const combinedRadiusPx = (
-          52 * Math.max(0.72, lh.scale || 0.95) +
-          52 * Math.max(0.72, rh.scale || 0.95)
+          46 * Math.max(0.75, lh.scale || 0.95) +
+          46 * Math.max(0.75, rh.scale || 0.95)
         ) * userSizeMult;
+        const { touchDistPx, minInwardSpeedPx, swatSpeedPx } = getSensParams(combinedRadiusPx);
 
-        const twoHandsRecent = (now - (player.lastTrueTwoHandsTime || 0) < 580);
-        const justClappedFromTwoHands = Boolean(
-          twoHandsRecent &&
-          (
-            player.isClapping ||
-            (player.clapTimer && player.clapTimer > 0) ||
-            (
-              (player.lastTwoHandSepDistPx || 9999) <= combinedRadiusPx * 2.35 &&
-              (
-                distToPrevMidPx <= combinedRadiusPx * 1.48 ||
-                (distToLeftPx <= combinedRadiusPx * 1.55 && distToRightPx <= combinedRadiusPx * 1.55)
-              )
-            )
-          )
+        const isSwatModeSingle = slapModeRef.current === 'swat';
+        const trueClapOcclusionMerge = Boolean(
+          !isSwatModeSingle &&
+          player.clapArmed &&
+          (now - (player.lastClapImpulseMs || 0) >= 340) &&
+          (now - (player.lastTrueTwoHandsTime || 0) <= 185) &&
+          (player.lastClosingSpeedPx || 0) >= Math.max(195, minInwardSpeedPx * 1.45) &&
+          (player.lastTwoHandSepDistPx || 9999) <= touchDistPx * 1.85 &&
+          distToPrevMidPx <= Math.max(76, combinedRadiusPx * 0.92)
         );
 
-        if (justClappedFromTwoHands) {
-          const contactHalfGap = Math.max(0.017, Math.min(0.026, (combinedRadiusPx * 0.30) / cw));
+        const sustainRecentMergedClap = Boolean(
+          !isSwatModeSingle &&
+          player.isClapping &&
+          (player.clapTimer && player.clapTimer > 0) &&
+          (now - (player.lastClapImpulseMs || 0) <= 220) &&
+          distToPrevMidPx <= Math.max(84, combinedRadiusPx * 1.05)
+        );
+
+        if (trueClapOcclusionMerge || sustainRecentMergedClap) {
+          const contactHalfGap = Math.max(0.015, Math.min(0.024, (combinedRadiusPx * 0.28) / cw));
           lh.prevX = lh.x;
           lh.prevY = lh.y;
           rh.prevX = rh.x;
@@ -1403,93 +1688,71 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           rh.detected = true;
           lh.lastSeenTime = now;
           rh.lastSeenTime = now;
-          lh.slapAnim = 1.0;
-          rh.slapAnim = 1.0;
 
-          player.isClapping = true;
-          player.clapTimer = Math.max(player.clapTimer || 0, 0.30);
-          player.slapAnim = 1.0;
-          player.swordLunge = 1.0;
-          player.clapMidX = hData.clampedX;
-          player.clapMidY = hData.clampedY;
-          fastestHand = { ...hData, speed: Math.max(0.06, lh.speed, rh.speed), vx: lh.vx, vy: lh.vy, x: hData.clampedX, y: hData.clampedY };
+          if (trueClapOcclusionMerge) {
+            triggerClapImpulse(player, hData.clampedX, hData.clampedY, prevMidX, prevMidY, false);
+          } else {
+            player.clapMidX = hData.clampedX;
+            player.clapMidY = hData.clampedY;
+          }
+          fastestHand = { ...hData, speed: Math.max(0.05, lh.speed, rh.speed), vx: lh.vx, vy: lh.vy, x: hData.clampedX, y: hData.clampedY };
         } else {
-          // Single hand active (or two hands were far apart when one left frame)
+          // Single hand active — NEVER trigger a two-hand clap!
           if (!player.clapTimer || player.clapTimer <= 0) {
             player.isClapping = false;
           }
-          if (now - (player.lastTrueTwoHandsTime || 0) > 480) {
+          if (now - (player.lastTrueTwoHandsTime || 0) > 320) {
             player.dualHandsArmed = false;
             player.clapArmed = false;
+            player.sepFrames = 0;
             player.peakArmedSep = 0;
+            player.peakArmedSepPx = 0;
+            player.needsReopenSinceMs = 0;
           }
 
-          // Determine whether this detected hand is the player's Left or Right hand on the mirrored screen
           const anchorCenter = player.headDetected ? player.headX : (is2P ? (pIdx === 0 ? 0.25 : 0.75) : 0.50);
           let isLeftHand = hData.handedness ? (hData.handedness === 'Right') : (hData.clampedX < anchorCenter);
-          if (lh.detected && !rh.detected && distToLeft < 0.28) {
+          if (lh.detected && !rh.detected && distToLeft < 0.26) {
             isLeftHand = true;
-          } else if (rh.detected && !lh.detected && distToRight < 0.28) {
+          } else if (rh.detected && !lh.detected && distToRight < 0.26) {
             isLeftHand = false;
           } else if (lh.detected && rh.detected) {
             isLeftHand = distToLeft <= distToRight;
           }
 
           if (isLeftHand) {
-            lh.prevX = lh.detected ? lh.x : hData.clampedX;
-            lh.prevY = lh.detected ? lh.y : hData.clampedY;
-            lh.x = hData.clampedX;
-            lh.y = hData.clampedY;
-            lh.vx = (lh.x - lh.prevX) * 0.65 + (lh.vx || 0) * 0.35;
-            lh.vy = (lh.y - lh.prevY) * 0.65 + (lh.vy || 0) * 0.35;
-            lh.speed = Math.hypot(lh.vx, lh.vy);
-            lh.angle = hData.gloveAngle;
-            lh.knifeAngle = hData.pointingAngle;
-            lh.scale = lh.detected ? (lh.scale + (hData.scale - lh.scale) * 0.85) : hData.scale;
-            lh.openness = hData.openness;
-            lh.landmarks = hData.landmarks;
-            lh.detected = true;
-            lh.lastSeenTime = now;
-            lh.trail.push({ x: lh.x, y: lh.y, life: 1.0 });
-            if (lh.trail.length > 6) lh.trail.shift();
-
+            applySmoothedHand(lh, hData);
+            if (isSwatModeSingle && lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 380 && now - (player.lastClapImpulseMs || 0) >= 340) {
+              lh.lastSwatMs = now;
+              triggerClapImpulse(player, lh.x, lh.y, lh.prevX, lh.prevY, true);
+            }
             if (now - (rh.lastSeenTime || 0) > HAND_GRACE_MS) {
               rh.detected = false;
               rh.landmarks = null;
               rh.vx = 0;
               rh.vy = 0;
               rh.speed = 0;
+              rh.speedPx = 0;
             }
             fastestHand = { ...hData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y, scale: lh.scale };
           } else {
-            rh.prevX = rh.detected ? rh.x : hData.clampedX;
-            rh.prevY = rh.detected ? rh.y : hData.clampedY;
-            rh.x = hData.clampedX;
-            rh.y = hData.clampedY;
-            rh.vx = (rh.x - rh.prevX) * 0.65 + (rh.vx || 0) * 0.35;
-            rh.vy = (rh.y - rh.prevY) * 0.65 + (rh.vy || 0) * 0.35;
-            rh.speed = Math.hypot(rh.vx, rh.vy);
-            rh.angle = hData.gloveAngle;
-            rh.knifeAngle = hData.pointingAngle;
-            rh.scale = rh.detected ? (rh.scale + (hData.scale - rh.scale) * 0.85) : hData.scale;
-            rh.openness = hData.openness;
-            rh.landmarks = hData.landmarks;
-            rh.detected = true;
-            rh.lastSeenTime = now;
-            rh.trail.push({ x: rh.x, y: rh.y, life: 1.0 });
-            if (rh.trail.length > 6) rh.trail.shift();
-
+            applySmoothedHand(rh, hData);
+            if (isSwatModeSingle && rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 380 && now - (player.lastClapImpulseMs || 0) >= 340) {
+              rh.lastSwatMs = now;
+              triggerClapImpulse(player, rh.x, rh.y, rh.prevX, rh.prevY, true);
+            }
             if (now - (lh.lastSeenTime || 0) > HAND_GRACE_MS) {
               lh.detected = false;
               lh.landmarks = null;
               lh.vx = 0;
               lh.vy = 0;
               lh.speed = 0;
+              lh.speedPx = 0;
             }
             fastestHand = { ...hData, speed: rh.speed, vx: rh.vx, vy: rh.vy, x: rh.x, y: rh.y, scale: rh.scale };
           }
 
-          player.handScale = player.handScale + (fastestHand.scale - player.handScale) * 0.80;
+          player.handScale = player.handScale + (fastestHand.scale - player.handScale) * 0.55;
         }
       }
 
@@ -1936,8 +2199,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     } catch (e) {}
   };
 
-  // Setup camera & initialize MediaPipe Hands & Head Tracking (Always acquire live camera stream first!)
-  const setupCamera = async () => {
+  // Setup camera & initialize MediaPipe Hands with full 21-point accuracy & stall-recovery watchdog
+  const setupCamera = async (overridePlayersCount?: number) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError("Camera API not supported; playing in 3D AR Virtual Mode!");
       return;
@@ -1945,8 +2208,27 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     try {
       const win = window as any;
       cameraLoopActiveRef.current = false;
+      const targetPlayers = overridePlayersCount ?? engineRef.current.numPlayers ?? numPlayers;
 
-      // 1. Always acquire or reuse the live webcam stream FIRST so camera never goes missing!
+      // Dynamically ensure MediaPipe Hands script is loaded if CDN took extra time
+      if (!win.Hands && typeof document !== 'undefined') {
+        await new Promise<void>((resolve) => {
+          const existingScript = document.querySelector('script[src*="@mediapipe/hands"]');
+          if (existingScript && (win as any).Hands) {
+            resolve();
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js';
+          script.crossOrigin = 'anonymous';
+          script.onload = () => resolve();
+          script.onerror = () => resolve();
+          document.head.appendChild(script);
+          setTimeout(resolve, 2200);
+        });
+      }
+
+      // 1. Acquire or reuse the live webcam stream
       let stream = videoRef.current?.srcObject as MediaStream | null;
       const hasLiveTrack = stream && stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
 
@@ -1977,7 +2259,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         setCameraError(null);
       }
 
-      // 2. Initialize or reuse MediaPipe Hands with ultra-fast real-time modelComplexity: 0 (zero motion lag!)
+      // 2. Initialize or update MediaPipe Hands with modelComplexity: 1 (accurate 21-point model with minimal ghosting)
       const ensureHandsInitialized = () => {
         if (!handsRef.current && win.Hands) {
           try {
@@ -1985,10 +2267,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
             });
             hands.setOptions({
-              maxNumHands: 4,
-              modelComplexity: 0,
-              minDetectionConfidence: 0.38,
-              minTrackingConfidence: 0.35
+              maxNumHands: targetPlayers === 2 ? 4 : 2,
+              modelComplexity: 1,
+              minDetectionConfidence: 0.56,
+              minTrackingConfidence: 0.50
             });
             hands.onResults((res: any) => {
               if (onHandsResultsRef.current) {
@@ -1999,20 +2281,34 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           } catch (handsErr) {
             console.warn("MediaPipe Hands init warning:", handsErr);
           }
+        } else if (handsRef.current) {
+          try {
+            handsRef.current.setOptions({
+              maxNumHands: (engineRef.current.numPlayers || targetPlayers) === 2 ? 4 : 2,
+              modelComplexity: 1,
+              minDetectionConfidence: 0.56,
+              minTrackingConfidence: 0.50
+            });
+          } catch (e) {}
         }
       };
 
       ensureHandsInitialized();
 
-      // 3. Start Zero-Lag 60fps Hand Tracking Loop (processes each new video frame immediately with no main-thread stalls)
+      // 3. Resilient 60fps Hand Tracking Loop with 900ms Watchdog so WASM can never stall hand detection
       cameraLoopActiveRef.current = true;
       cameraProcessingRef.current = false;
+      cameraLastSendMsRef.current = 0;
       let lastVideoTime = -1;
 
       const sendCameraFrames = async () => {
         if (!cameraLoopActiveRef.current || !videoRef.current) return;
         if (videoRef.current.paused && videoRef.current.srcObject) {
           videoRef.current.play().catch(() => {});
+        }
+        const nowMs = performance.now();
+        if (cameraProcessingRef.current && cameraLastSendMsRef.current > 0 && nowMs - cameraLastSendMsRef.current > 900) {
+          cameraProcessingRef.current = false;
         }
         const curVideoTime = videoRef.current.currentTime;
         if (
@@ -2021,6 +2317,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           curVideoTime !== lastVideoTime
         ) {
           cameraProcessingRef.current = true;
+          cameraLastSendMsRef.current = nowMs;
           lastVideoTime = curVideoTime;
           try {
             ensureHandsInitialized();
@@ -2152,13 +2449,17 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     setHudScores([0, 0]);
     setHudStreaks([1, 1]);
     setHudFrozen([false, false]);
+    setHudHandsDetected([[false, false], [false, false]]);
+    setHudClapArmed([false, false]);
+    lastHudHandsRef.current = '';
+    lastHudArmedRef.current = '';
     setTimerPct(100);
     setHudTimeLeft(initialPlaySeconds);
     lastHudSecRef.current = initialPlaySeconds;
     setScreen('loading');
 
     try {
-      await setupCamera();
+      await setupCamera(playersCount);
     } catch (e) {}
 
     setTimeout(() => {
@@ -2322,12 +2623,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           });
         });
       } else {
-        // 1 Player MOSQUITO MODE: 4 distinct quadrant zones with active flying velocities around the arena!
+        // 1 Player MOSQUITO MODE: 4 distinct quadrant zones safely below the Question Banner!
+        const safeTopY = Math.max(242, Math.min(height * 0.52, height * 0.45));
+        const safeBotY = Math.max(safeTopY + 128, Math.min(height - 122, height * 0.73));
         const quadrantAnchors = [
-          { x: width * 0.26, y: height * 0.38 }, // A (Top Left)
-          { x: width * 0.74, y: height * 0.38 }, // B (Top Right)
-          { x: width * 0.26, y: height * 0.68 }, // C (Bottom Left)
-          { x: width * 0.74, y: height * 0.68 }, // D (Bottom Right)
+          { x: width * 0.26, y: safeTopY }, // A (Top Left)
+          { x: width * 0.74, y: safeTopY }, // B (Top Right)
+          { x: width * 0.26, y: safeBotY }, // C (Bottom Left)
+          { x: width * 0.74, y: safeBotY }, // D (Bottom Right)
         ];
 
         opts.forEach((optText, i) => {
@@ -2438,18 +2741,20 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           });
         });
       } else {
+        const safeTopY = Math.max(242, Math.min(height * 0.52, height * 0.45));
+        const safeBotY = Math.max(safeTopY + 128, Math.min(height - 122, height * 0.73));
         const p1Quadrants = [
-          { x: width * 0.15, y: height * 0.38 }, // A
-          { x: width * 0.36, y: height * 0.38 }, // B
-          { x: width * 0.15, y: height * 0.68 }, // C
-          { x: width * 0.36, y: height * 0.68 }, // D
+          { x: width * 0.15, y: safeTopY }, // A
+          { x: width * 0.36, y: safeTopY }, // B
+          { x: width * 0.15, y: safeBotY }, // C
+          { x: width * 0.36, y: safeBotY }, // D
         ];
 
         const p2Quadrants = [
-          { x: width * 0.64, y: height * 0.38 }, // A
-          { x: width * 0.85, y: height * 0.38 }, // B
-          { x: width * 0.64, y: height * 0.68 }, // C
-          { x: width * 0.85, y: height * 0.68 }, // D
+          { x: width * 0.64, y: safeTopY }, // A
+          { x: width * 0.85, y: safeTopY }, // B
+          { x: width * 0.64, y: safeBotY }, // C
+          { x: width * 0.85, y: safeBotY }, // D
         ];
 
         opts.forEach((optText, i) => {
@@ -2558,12 +2863,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       p.correctHits = (p.correctHits || 0) + 1;
       const addedPoints = 5;
       p.score += addedPoints;
-      p.streak = Math.min(10, p.streak + 1);
+      p.streak = Math.min(15, p.streak + 1);
+      p.bestStreak = Math.max(p.bestStreak || 1, p.streak);
       eng.players.forEach(pl => {
         if (pl) {
           pl.frozenTimer = 0;
           pl.sideFrozen = false;
         }
+      });
+
+      eng.shockwaves.push({
+        x: target.x,
+        y: target.y,
+        radius: 26,
+        maxRadius: 138,
+        color: '#10b981',
+        secondaryColor: '#facc15',
+        life: 1.0
       });
 
       playSoundEffect(eng.roundMode === 'chop' ? 'slash' : 'slap');
@@ -2574,7 +2890,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       setHudFrozen([false, false]);
       setHudScorePops(prev => {
         const next = [...prev] as [string | null, string | null];
-        next[playerIdx] = `+5 PTS! 🎉`;
+        next[playerIdx] = p.streak >= 3 ? `+5 PTS! 🔥x${p.streak}` : `+5 PTS! 🎉`;
         return next;
       });
       setTimeout(() => {
@@ -2584,7 +2900,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       // Juicy Particle Bursts
       spawnBurstParticles(target.x, target.y, target.color.main, 42);
       spawnBurstParticles(target.x, target.y, '#ffffff', 18);
-      spawnBurstParticles(target.x, target.y, '#facc15', 12);
+      spawnBurstParticles(target.x, target.y, '#facc15', 14);
       if (eng.roundMode === 'chop') {
         spawnSlicedFruitHalves(target);
       } else {
@@ -2598,10 +2914,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       }
 
       const teamPrefix = eng.numPlayers === 2 ? `${playerIdx === 0 ? p1Name : p2Name}: ` : '';
+      const comboSuffix = p.streak >= 3 ? ` 🔥x${p.streak}` : '';
       spawnFloatingText(
         target.x,
         target.y - 24,
-        `${teamPrefix}${eng.roundMode === 'chop' ? '🖐️✨ SLICED!' : '👏 SLAPPED!'} +5 PTS`,
+        `${teamPrefix}${eng.roundMode === 'chop' ? '🖐️✨ SLICED!' : '👏 SLAPPED!'} +5 PTS${comboSuffix}`,
         '#10b981'
       );
 
@@ -2616,6 +2933,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       p.wrongHits = (p.wrongHits || 0) + 1;
       p.score -= 5;
       eng.screenShake = 9;
+
+      eng.shockwaves.push({
+        x: target.x,
+        y: target.y,
+        radius: 22,
+        maxRadius: 108,
+        color: '#38bdf8',
+        secondaryColor: '#e0f2fe',
+        life: 1.0
+      });
 
       playSoundEffect(eng.roundMode === 'chop' ? 'slash' : 'slap');
       setTimeout(() => playSoundEffect('freeze'), 55);
@@ -2757,21 +3084,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     setTimeout(() => playSoundEffect('victory'), 120);
   };
 
-  // Helper: Shortest distance from a segment [v, w] to the full Mosquito/Fruit + 3D Option Card bounding box!
+  // Helper: Shortest distance from a segment [v, w] to the visual Mosquito/Fruit + 3D Option Card bounding box!
   const distToTargetOrOptionCard = (
     t: any,
     v: { x: number; y: number },
     w: { x: number; y: number }
   ) => {
-    const halfCardW = Math.max(92, (t.cardW || 195) * 0.60);
+    const halfCardW = Math.max(78, (t.cardW || 190) * 0.51);
     const minX = t.x - halfCardW;
     const maxX = t.x + halfCardW;
-    const minY = t.y - 64;
-    const maxY = t.y + 98;
+    const minY = t.y - 44;
+    const maxY = t.y + 86;
 
     // Sample points along segment [v, w] against the combined target + option card box
     let minDist = 99999;
-    const steps = 8;
+    const steps = 6;
     for (let i = 0; i <= steps; i++) {
       const frac = i / steps;
       const px = v.x + (w.x - v.x) * frac;
@@ -2785,8 +3112,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   };
 
   // Unified Hand-Tracked Collision Check:
-  // - In Mosquito Slap Mode: ONLY triggers when the player's TWO GLOVES / HANDS MEET (clap together) over a mosquito!
-  //   Moving a single hand or keeping two hands separated will NEVER accidentally trigger a mosquito selection!
+  // - In Mosquito Slap Mode: Consumes ONE-SHOT Clap / Swat / Pointer impulses (`p.pendingClap`) at the pinpoint
+  //   clap midpoint! Holding hands still, moving 1 hand in Clap mode, or translating separated hands NEVER misfires!
   // - In Chop Mode: Triggers when a tracked hand slices across a rising fruit!
   const checkHandWeaponCollision = (
     pIdx: number,
@@ -2805,14 +3132,19 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const eng = engineRef.current;
     if (!eng || eng.resolved || showSettingsModalRef.current) return;
     const p = eng.players[pIdx];
-    if (!p || p.sideFrozen) return;
+    if (!p || p.sideFrozen) {
+      if (p) p.pendingClap = null;
+      return;
+    }
 
     const now = performance.now();
-    const pointerActive = !p.hasDetectedHands && (now - (p.lastPointerTime || 0) < 2500);
+    const handsStale = !p.hasDetectedHands || (now - (p.lastHandsFrameMs || 0) > 650);
+    const pointerActive = handsStale && (now - (p.lastPointerTime || 0) < 2500);
 
-    const showLeft = p.hasDetectedHands ? Boolean(p.leftHand?.detected) : pointerActive;
-    const showRight = p.hasDetectedHands ? Boolean(p.rightHand?.detected) : pointerActive;
-    if (!showLeft && !showRight) return;
+    const showLeft = !handsStale ? Boolean(p.leftHand?.detected) : pointerActive;
+    const showRight = !handsStale ? Boolean(p.rightHand?.detected) : pointerActive;
+    const hasPendingImpulse = Boolean(p.pendingClap && p.pendingClap.id !== p.consumedClapId);
+    if (!showLeft && !showRight && !hasPendingImpulse) return;
 
     const lx = (p.leftHand?.x ?? (normX - 0.06)) * cw;
     const ly = (p.leftHand?.y ?? normY) * ch;
@@ -2828,6 +3160,134 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const rightScale = Math.max(0.65, p.rightHand?.scale || handScale || 1.0);
     const avgScale = (leftScale + rightScale) * 0.5;
     const userSizeMult = gloveSizeRef.current || 1.0;
+
+    // =========================================================================
+    // MOSQUITO SLAP MODE: PINPOINT ONE-SHOT CLAP / SWAT IMPULSE CONSUMER
+    // =========================================================================
+    if (eng.roundMode === 'mosquito') {
+      const currentSlapMode = slapModeRef.current;
+      const sens = slapSensitivityRef.current;
+
+      // 1. Live Target Lock Highlight (`t.isTargeted`) strictly at the active aim point
+      let hoveredTarget: any = null;
+      let hoveredDist = 99999;
+      const lockRadius = (sens === 'easy' ? 62 : sens === 'precise' ? 40 : 52) * userSizeMult;
+
+      if ((currentSlapMode === 'clap' && showLeft && showRight) || pointerActive) {
+        const aimX = (lx + rx) * 0.5;
+        const aimY = (ly + ry) * 0.5;
+        for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
+          const t = eng.targets[tIdx];
+          if (!t.alive || t.frozen) continue;
+          if (eng.numPlayers === 2) {
+            if (pIdx === 0 && t.team === 'p2') continue;
+            if (pIdx === 1 && t.team === 'p1') continue;
+          }
+          const dHover = distToTargetOrOptionCard(
+            t,
+            { x: aimX, y: aimY - 18 },
+            { x: aimX, y: aimY + 18 }
+          );
+          if (dHover <= lockRadius && dHover < hoveredDist) {
+            hoveredDist = dHover;
+            hoveredTarget = t;
+          }
+        }
+      } else if (currentSlapMode === 'swat' && (showLeft || showRight)) {
+        for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
+          const t = eng.targets[tIdx];
+          if (!t.alive || t.frozen) continue;
+          if (eng.numPlayers === 2) {
+            if (pIdx === 0 && t.team === 'p2') continue;
+            if (pIdx === 1 && t.team === 'p1') continue;
+          }
+          const dL = showLeft ? distToTargetOrOptionCard(t, { x: lx, y: ly - 16 }, { x: lx, y: ly + 16 }) : 99999;
+          const dR = showRight ? distToTargetOrOptionCard(t, { x: rx, y: ry - 16 }, { x: rx, y: ry + 16 }) : 99999;
+          const dHover = Math.min(dL, dR);
+          if (dHover <= lockRadius && dHover < hoveredDist) {
+            hoveredDist = dHover;
+            hoveredTarget = t;
+          }
+        }
+      }
+
+      eng.targets.forEach(t => {
+        if (eng.numPlayers === 1 || (pIdx === 0 && t.team === 'p1') || (pIdx === 1 && t.team === 'p2')) {
+          t.isTargeted = (t === hoveredTarget);
+        }
+      });
+
+      // 2. Expire stale unconsumed impulse (> 165ms old)
+      if (p.pendingClap && (now - p.pendingClap.time > 165)) {
+        p.pendingClap = null;
+      }
+
+      // 3. Consume ONLY a genuine one-shot Clap / Swat / Click impulse!
+      const pending = p.pendingClap;
+      if (!pending || pending.id === p.consumedClapId) return;
+
+      // Mark consumed immediately so this clap can NEVER double-fire or drag onto another mosquito
+      p.consumedClapId = pending.id;
+      p.pendingClap = null;
+
+      if (now - (p.lastSlapSelectTime || 0) < 230) return;
+
+      const impX = pending.x * cw;
+      const impY = pending.y * ch;
+      const impPrevX = (pending.prevX ?? pending.x) * cw;
+      const impPrevY = (pending.prevY ?? pending.y) * ch;
+
+      const baseHitPad = sens === 'easy' ? 62 : sens === 'precise' ? 38 : 50;
+      const slapHitRadius = baseHitPad * Math.max(0.88, Math.min(1.42, avgScale)) * userSizeMult;
+
+      let bestTarget: any = null;
+      let bestDist = 99999;
+
+      for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
+        const t = eng.targets[tIdx];
+        if (!t.alive || t.frozen || t.cooldown > 0) continue;
+        if (eng.numPlayers === 2) {
+          if (pIdx === 0 && t.team === 'p2') continue;
+          if (pIdx === 1 && t.team === 'p1') continue;
+        }
+
+        const dCore = distToTargetOrOptionCard(
+          t,
+          { x: impX, y: impY - 22 },
+          { x: impX, y: impY + 22 }
+        );
+        const dSweep = distToTargetOrOptionCard(
+          t,
+          { x: impPrevX, y: impPrevY },
+          { x: impX, y: impY }
+        );
+        const dClap = Math.min(dCore, dSweep);
+
+        if (dClap <= slapHitRadius && dClap < bestDist) {
+          bestDist = dClap;
+          bestTarget = t;
+        }
+      }
+
+      if (bestTarget) {
+        p.lastSlapSelectTime = now;
+        p.isClapping = true;
+        p.clapTimer = 0.22;
+        p.clapArmed = false;
+        p.peakArmedSep = 0;
+        p.clapMidX = pending.x;
+        p.clapMidY = pending.y;
+        p.slapAnim = 1.0;
+        p.swordLunge = 1.0;
+        if (p.leftHand) p.leftHand.slapAnim = 1.0;
+        if (p.rightHand) p.rightHand.slapAnim = 1.0;
+        handleTargetHit(pIdx, bestTarget, 0);
+      } else {
+        // Tactile dry-clap audio pop when clapping in empty air (zero false penalty!)
+        playSoundEffect('airclap');
+      }
+      return;
+    }
 
     const lLandmarks = p.leftHand?.landmarks;
     const rLandmarks = p.rightHand?.landmarks;
@@ -2853,125 +3313,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           if (lm) rightPts.push({ x: lm.x * cw, y: lm.y * ch });
         });
       }
-    }
-
-    // =========================================================================
-    // MOSQUITO SLAP MODE: 100% ACCURATE, HIGH-SENSITIVITY TWO-GLOVE TOUCH TRIGGER!
-    // =========================================================================
-    if (eng.roundMode === 'mosquito') {
-      const clapX = (lx + rx) * 0.5;
-      const clapY = (ly + ry) * 0.5;
-      const prevClapX = (prevLx + prevRx) * 0.5;
-      const prevClapY = (prevLy + prevRy) * 0.5;
-
-      // Highlight the mosquito between the player's two gloves so they get instant target lock feedback
-      if (showLeft && showRight) {
-        let hoveredTarget: any = null;
-        let hoveredDist = 99999;
-        for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
-          const t = eng.targets[tIdx];
-          if (!t.alive || t.frozen) continue;
-          if (eng.numPlayers === 2) {
-            if (pIdx === 0 && t.team === 'p2') continue;
-            if (pIdx === 1 && t.team === 'p1') continue;
-          }
-          const dHover = Math.min(
-            distToTargetOrOptionCard(t, { x: lx, y: ly }, { x: rx, y: ry }),
-            distToTargetOrOptionCard(t, { x: clapX, y: clapY - 56 }, { x: clapX, y: clapY + 46 })
-          );
-          const lockRadius = (t.radius || 58) + 84 * Math.max(0.95, Math.min(2.2, avgScale)) * userSizeMult;
-          if (dHover <= lockRadius && dHover < hoveredDist) {
-            hoveredDist = dHover;
-            hoveredTarget = t;
-          }
-        }
-        eng.targets.forEach(t => {
-          if (eng.numPlayers === 1 || (pIdx === 0 && t.team === 'p1') || (pIdx === 1 && t.team === 'p2')) {
-            t.isTargeted = (t === hoveredTarget);
-          }
-        });
-      }
-
-      // Fast 220ms debounce so every distinct clap registers reliably
-      if (now - (p.lastSlapSelectTime || 0) < 220) return;
-
-      const gloveCenterDistPx = Math.hypot(rx - lx, ry - ly);
-      const leftGloveRadiusPx = 52 * Math.max(0.72, Math.min(1.65, leftScale)) * userSizeMult;
-      const rightGloveRadiusPx = 52 * Math.max(0.72, Math.min(1.65, rightScale)) * userSizeMult;
-      const gloveTouchThresholdPx = (leftGloveRadiusPx + rightGloveRadiusPx) * 1.38;
-
-      const isTwoGlovesMeeting = p.hasDetectedHands
-        ? Boolean(
-            showLeft &&
-            showRight &&
-            (p.isClapping || (p.clapTimer && p.clapTimer > 0) || gloveCenterDistPx <= gloveTouchThresholdPx)
-          )
-        : Boolean(pointerActive && (p.isClapping || (p.clapTimer && p.clapTimer > 0)));
-
-      // Require both gloves touching/clapping together — never trigger from 1 hand alone!
-      if (!isTwoGlovesMeeting) return;
-
-      let bestTarget: any = null;
-      let bestDist = 99999;
-
-      for (let tIdx = 0; tIdx < eng.targets.length; tIdx++) {
-        const t = eng.targets[tIdx];
-        if (!t.alive || t.frozen || t.cooldown > 0) continue;
-        if (eng.numPlayers === 2) {
-          if (pIdx === 0 && t.team === 'p2') continue;
-          if (pIdx === 1 && t.team === 'p1') continue;
-        }
-
-        const slapHitRadius = (t.radius || 58) + 76 * Math.max(0.95, Math.min(2.2, avgScale)) * userSizeMult;
-        const dMid = distToTargetOrOptionCard(
-          t,
-          { x: clapX, y: clapY - 56 },
-          { x: clapX, y: clapY + 46 }
-        );
-        const dBridge = distToTargetOrOptionCard(
-          t,
-          { x: lx, y: ly },
-          { x: rx, y: ry }
-        );
-        const dSweep = distToTargetOrOptionCard(
-          t,
-          { x: prevClapX, y: prevClapY },
-          { x: clapX, y: clapY }
-        );
-        const dLeftGlove = distToTargetOrOptionCard(
-          t,
-          { x: lx, y: ly - 56 },
-          { x: lx, y: ly + 46 }
-        );
-        const dRightGlove = distToTargetOrOptionCard(
-          t,
-          { x: rx, y: ry - 56 },
-          { x: rx, y: ry + 46 }
-        );
-
-        const dClap = Math.min(dMid, dBridge, dSweep, dLeftGlove, dRightGlove);
-
-        if (dClap <= slapHitRadius && dClap < bestDist) {
-          bestDist = dClap;
-          bestTarget = t;
-        }
-      }
-
-      if (bestTarget) {
-        p.lastSlapSelectTime = now;
-        p.isClapping = true;
-        p.clapTimer = 0.28;
-        p.clapArmed = false;
-        p.peakArmedSep = 0;
-        p.clapMidX = clapX / cw;
-        p.clapMidY = clapY / ch;
-        p.slapAnim = 1.0;
-        p.swordLunge = 1.0;
-        if (p.leftHand) p.leftHand.slapAnim = 1.0;
-        if (p.rightHand) p.rightHand.slapAnim = 1.0;
-        handleTargetHit(pIdx, bestTarget, 0);
-      }
-      return;
     }
 
     // =========================================================================
@@ -3063,11 +3404,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ? Math.max(0.04, Math.min(0.96, rawX))
       : (playerIdx === 0 ? Math.min(0.465, Math.max(0.04, rawX)) : Math.max(0.535, Math.min(0.96, rawX)));
 
+    const now = performance.now();
     const p = eng.players[playerIdx];
-    if (p && !p.hasDetectedHands) {
-      p.lastPointerTime = performance.now();
+    const handsStale = !p?.hasDetectedHands || (now - (p?.lastHandsFrameMs || 0) > 650);
+    if (p && handsStale) {
+      p.hasDetectedHands = false;
+      p.lastPointerTime = now;
       const isPressed = (e.buttons & 1) === 1 || (p.clapTimer && p.clapTimer > 0);
       const spread = isPressed ? 0.008 : 0.056;
+      p.clapArmed = !isPressed;
       p.leftHand.prevX = p.leftHand.x;
       p.leftHand.prevY = p.leftHand.y;
       p.rightHand.prevX = p.rightHand.x;
@@ -3110,9 +3455,27 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       ? (playerIdx === 0 ? Math.min(0.465, Math.max(0.04, rawX)) : Math.max(0.535, Math.min(0.96, rawX)))
       : Math.max(0.04, Math.min(0.96, rawX));
 
-    // Bring Left and Right Gloves/Knives together to clap/chop at the click point!
-    p.lastPointerTime = performance.now();
-    p.clapTimer = 0.28;
+    const now = performance.now();
+    const handsStale = !p.hasDetectedHands || (now - (p.lastHandsFrameMs || 0) > 650);
+    if (handsStale) {
+      p.hasDetectedHands = false;
+    }
+
+    // Emit a crisp one-shot Clap Impulse at the click/tap point!
+    const nextId = (p.clapImpulseId || 0) + 1;
+    p.clapImpulseId = nextId;
+    p.pendingClap = {
+      id: nextId,
+      x: clampedX,
+      y: rawY,
+      prevX: p.clapMidX || clampedX,
+      prevY: p.clapMidY || rawY,
+      time: now,
+      isSwat: false
+    };
+
+    p.lastPointerTime = now;
+    p.clapTimer = 0.22;
     p.isClapping = true;
     p.slapAnim = 1.0;
     p.swordLunge = 1.0;
@@ -3121,14 +3484,28 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     p.clapMidX = clampedX;
     p.clapMidY = rawY;
 
-    p.leftHand.prevX = p.leftHand.x;
-    p.leftHand.prevY = p.leftHand.y;
-    p.rightHand.prevX = p.rightHand.x;
-    p.rightHand.prevY = p.rightHand.y;
-    p.leftHand.x = clampedX - 0.008;
-    p.leftHand.y = rawY;
-    p.rightHand.x = clampedX + 0.008;
-    p.rightHand.y = rawY;
+    if (handsStale) {
+      p.leftHand.prevX = p.leftHand.x;
+      p.leftHand.prevY = p.leftHand.y;
+      p.rightHand.prevX = p.rightHand.x;
+      p.rightHand.prevY = p.rightHand.y;
+      p.leftHand.x = clampedX - 0.008;
+      p.leftHand.y = rawY;
+      p.rightHand.x = clampedX + 0.008;
+      p.rightHand.y = rawY;
+    }
+
+    const cw = containerRef.current?.clientWidth || 960;
+    const ch = containerRef.current?.clientHeight || 540;
+    eng.shockwaves.push({
+      x: clampedX * cw,
+      y: rawY * ch,
+      radius: 18,
+      maxRadius: 88,
+      color: playerIdx === 1 ? '#fb7185' : '#38bdf8',
+      secondaryColor: '#facc15',
+      life: 0.85
+    });
 
     updatePlayerArm(playerIdx, clampedX, rawY);
   };
@@ -3389,8 +3766,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         //    - In Chop Mode: Fruits launch FROM BELOW the bottom of the screen and rise UPWARD in an arc!
         const mvStyle = movementStyleRef.current;
         const moveMult = mvStyle === 'hover' ? 0.45 : mvStyle === 'calm' ? 0.78 : mvStyle === 'zigzag' ? 1.32 : 1.05;
-        const padTop = 152;
-        const padBottom = 88;
+        // Keep mosquitoes & answer capsules safely below the Top HUD + Question Banner and above the Bottom Pill!
+        const padTop = Math.max(204, Math.min(248, ch * 0.27));
+        const padBottom = 82;
         const is2P = eng.numPlayers === 2;
         const curSpd = speedRef.current || 1.0;
 
@@ -3493,8 +3871,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               if (t.x > cw - halfW - 16) { t.x = cw - halfW - 16; t.vx = -Math.abs(t.vx); }
             }
 
-            if (t.y < padTop + 24) { t.y = padTop + 24; t.vy = Math.abs(t.vy); }
-            if (t.y > ch - padBottom - 18) { t.y = ch - padBottom - 18; t.vy = -Math.abs(t.vy); }
+            const topLimit = padTop + 26;
+            const botLimit = ch - padBottom - Math.max(28, (t.cardH || 50) * 0.65);
+            if (t.y < topLimit) { t.y = topLimit; t.vy = Math.abs(t.vy); }
+            if (t.y > botLimit) { t.y = botLimit; t.vy = -Math.abs(t.vy); }
           }
         });
 
@@ -3551,7 +3931,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         });
 
-        // Sync Live Left/Right Hand Sensor Indicators to HUD without extra re-renders
+        // Sync Live Left/Right Hand Sensor + Clap Armed Indicators to HUD without extra re-renders
         const p0L = Boolean(eng.players[0]?.leftHand?.detected);
         const p0R = Boolean(eng.players[0]?.rightHand?.detected);
         const p1L = Boolean(eng.players[1]?.leftHand?.detected);
@@ -3560,6 +3940,18 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         if (handsSig !== lastHudHandsRef.current) {
           lastHudHandsRef.current = handsSig;
           setHudHandsDetected([[p0L, p0R], [p1L, p1R]]);
+        }
+
+        const p0Arm = slapModeRef.current === 'swat'
+          ? (p0L || p0R)
+          : Boolean(eng.players[0]?.clapArmed && p0L && p0R);
+        const p1Arm = slapModeRef.current === 'swat'
+          ? (p1L || p1R)
+          : Boolean(eng.players[1]?.clapArmed && p1L && p1R);
+        const armedSig = `${p0Arm ? 1 : 0}${p1Arm ? 1 : 0}`;
+        if (armedSig !== lastHudArmedRef.current) {
+          lastHudArmedRef.current = armedSig;
+          setHudClapArmed([p0Arm, p1Arm]);
         }
 
         // 5. Draw Tracked 3D Slap Gloves (in Mosquito Mode) & 3D Chopping Knives (in Chop Mode)
@@ -3737,8 +4129,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             }
           }
 
-          // Continuous per-frame collision check
-          if (!showSettingsModalRef.current && (showLeft || showRight)) {
+          // Continuous per-frame collision & impulse check
+          const handsStaleNow = !p.hasDetectedHands || (now - (p.lastHandsFrameMs || 0) > 650);
+          const hasPending = Boolean(p.pendingClap && p.pendingClap.id !== p.consumedClapId);
+          if (!showSettingsModalRef.current && (showLeft || showRight || hasPending || !handsStaleNow)) {
             const activeX = showLeft && showRight ? (lx + rx) * 0.5 : (showLeft ? lx : rx);
             const activeY = showLeft && showRight ? (ly + ry) * 0.5 : (showLeft ? ly : ry);
             checkHandWeaponCollision(
@@ -3757,6 +4151,35 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             );
           }
         });
+
+        // 5b. Render 3D Expanding Slap & Clap Shockwave Rings
+        for (let i = eng.shockwaves.length - 1; i >= 0; i--) {
+          const sw = eng.shockwaves[i];
+          sw.life -= dt * 3.4;
+          if (sw.life <= 0) {
+            eng.shockwaves.splice(i, 1);
+            continue;
+          }
+          const progress = 1 - Math.max(0, sw.life);
+          const curR = (sw.radius || 22) + ((sw.maxRadius || 110) - (sw.radius || 22)) * (1 - Math.pow(1 - progress, 2.2));
+          ctx.save();
+          ctx.translate(sw.x, sw.y);
+          ctx.globalAlpha = Math.max(0, sw.life * 0.92);
+          ctx.strokeStyle = sw.color || '#facc15';
+          ctx.lineWidth = Math.max(2, 7.5 * sw.life);
+          ctx.beginPath();
+          ctx.arc(0, 0, curR, 0, Math.PI * 2);
+          ctx.stroke();
+
+          if (sw.secondaryColor) {
+            ctx.strokeStyle = sw.secondaryColor;
+            ctx.lineWidth = Math.max(1.5, 4 * sw.life);
+            ctx.beginPath();
+            ctx.arc(0, 0, curR * 0.72, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
 
         // 6. 3D Crescent Slicing Slash Arcs, Sliced Halves & Particles
         for (let i = eng.swordSparks.length - 1; i >= 0; i--) {
@@ -4008,6 +4431,88 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
       });
       ctx.globalAlpha = 1;
+
+      // 1b. Live Pinpoint Clap Aim Reticle & Re-Open Hands Cue (Mosquito Slap Mode)
+      const curMode = slapModeRef.current;
+      if (curMode === 'clap' && showLeft && showRight) {
+        const mx = (lx + rx) * 0.5;
+        const my = (ly + ry) * 0.5;
+        const handDist = Math.hypot(rx - lx, ry - ly);
+        const isArmed = Boolean(p.clapArmed || !p.hasDetectedHands);
+        const needsReopen = Boolean(
+          p.hasDetectedHands &&
+          !p.clapArmed &&
+          !isTouching &&
+          p.needsReopenSinceMs > 0 &&
+          (now - p.needsReopenSinceMs > 460)
+        );
+
+        ctx.save();
+        // Subtle magnetic guide line when hands are within clapping range
+        if (handDist > 36 && handDist < 420) {
+          ctx.strokeStyle = isArmed ? 'rgba(16, 185, 129, 0.45)' : 'rgba(251, 191, 36, 0.38)';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([7, 7]);
+          ctx.beginPath();
+          ctx.moveTo(lx, ly);
+          ctx.lineTo(rx, ry);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Pinpoint Center Clap Aim Reticle
+        ctx.translate(mx, my);
+        const pulse = 1 + Math.sin(now * 0.012) * 0.08;
+        ctx.strokeStyle = isTouching ? '#facc15' : (isArmed ? '#10b981' : '#94a3b8');
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, 17 * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Crisp white-bordered center dot
+        ctx.fillStyle = isTouching ? '#facc15' : (isArmed ? '#10b981' : '#cbd5e1');
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Friendly "OPEN HANDS" hint if player holds hands together after clapping
+        if (needsReopen) {
+          const pillW = 128;
+          const pillH = 26;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+          roundRect(ctx, -pillW / 2, -52, pillW, pillH, 13);
+          ctx.fill();
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = '#fde047';
+          ctx.font = '800 11px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('↔ OPEN HANDS', 0, -39);
+        }
+        ctx.restore();
+      } else if (curMode === 'swat' && p.hasDetectedHands) {
+        [
+          { show: showLeft, hx: lx, hy: ly },
+          { show: showRight, hx: rx, hy: ry }
+        ].forEach(({ show, hx, hy }) => {
+          if (!show) return;
+          ctx.save();
+          ctx.translate(hx, hy);
+          ctx.strokeStyle = 'rgba(16, 185, 129, 0.55)';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([6, 5]);
+          ctx.beginPath();
+          ctx.arc(0, 0, 38, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        });
+      }
     }
 
     // 2. Draw Subtle 3D AR Hand Sensor Halo (in Chop Mode only, so Slap Mode gloves stay clean like reference image)
@@ -5092,24 +5597,25 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const cardY = 34;
 
     ctx.save();
-    // 3D Bottom Extrusion Lip in Vibrant Option Color (No green dashed lines around mosquitoes!)
-    ctx.fillStyle = t.frozen ? '#0284c7' : (t.color.dark || '#0284c7');
+    const isLocked = Boolean(t.isTargeted && !t.frozen);
+    // 3D Bottom Extrusion Lip in Vibrant Option Color
+    ctx.fillStyle = t.frozen ? '#0284c7' : (isLocked ? '#d97706' : (t.color.dark || '#0284c7'));
     roundRect(ctx, -cardW / 2, cardY + 6, cardW, cardH, 16);
     ctx.fill();
 
-    // Main Capsule Body: Crisp Bright White & Sky-Blue 3D Card (zero shadowBlur overhead)
+    // Main Capsule Body: Crisp Bright White & Sky-Blue 3D Card (elevated warm gold highlight when locked!)
     const pillGrad = ctx.createLinearGradient(0, cardY, 0, cardY + cardH);
-    pillGrad.addColorStop(0, t.frozen ? '#e0f2fe' : '#ffffff');
-    pillGrad.addColorStop(1, t.frozen ? '#bae6fd' : '#f0f9ff');
+    pillGrad.addColorStop(0, t.frozen ? '#e0f2fe' : (isLocked ? '#fefce8' : '#ffffff'));
+    pillGrad.addColorStop(1, t.frozen ? '#bae6fd' : (isLocked ? '#fef08a' : '#f0f9ff'));
     ctx.fillStyle = pillGrad;
-    ctx.strokeStyle = t.frozen ? '#0284c7' : t.color.main;
-    ctx.lineWidth = 3.8;
+    ctx.strokeStyle = t.frozen ? '#0284c7' : (isLocked ? '#f59e0b' : t.color.main);
+    ctx.lineWidth = isLocked ? 4.8 : 3.8;
     roundRect(ctx, -cardW / 2, cardY, cardW, cardH, 16);
     ctx.fill();
     ctx.stroke();
 
     // Glossy Top Bevel Highlight along Option Card
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
     roundRect(ctx, -cardW / 2 + 8, cardY + 3, cardW - 16, 9, 5);
     ctx.fill();
     ctx.restore();
@@ -5159,16 +5665,30 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const jabX = -jabCycle * 12 * biteIntensity;
     const jabY = jabCycle * 6 * biteIntensity;
 
-    // If targeted between the player's hands, show a subtle "CLAP TO SLAP" target ring
-    if (t.isTargeted && !t.frozen) {
+    // If targeted at the clap/swat aim point, show a crisp target lock ring + action cue
+    if (isLocked) {
       ctx.save();
+      const ringR = 44 + Math.sin(time * 0.02) * 3.5;
       ctx.strokeStyle = '#facc15';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([7, 5]);
+      ctx.lineWidth = 3.5;
+      ctx.setLineDash([8, 5]);
       ctx.beginPath();
-      ctx.arc(0, -4, 44 + Math.sin(time * 0.02) * 4, 0, Math.PI * 2);
+      ctx.arc(0, -4, ringR, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      const cueLabel = slapModeRef.current === 'swat' ? 'SWAT!' : 'CLAP!';
+      ctx.fillStyle = '#f59e0b';
+      roundRect(ctx, -32, -ringR - 22, 64, 20, 10);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 11px Fredoka, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cueLabel, 0, -ringR - 12);
       ctx.restore();
     }
 
@@ -5928,6 +6448,80 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   </div>
                 </div>
 
+                {/* Hand Slap Trigger Mode & Sensitivity Calibration */}
+                <div className="mb-5 p-4 rounded-3xl bg-amber-50/90 border-2 border-amber-200 border-b-4 border-b-amber-300">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-widest text-amber-900">
+                        👏 Hand Trigger Mode &amp; Sensitivity
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-amber-200 shadow-2xs">
+                      <span className="text-[10px] font-black uppercase text-slate-500 px-2">Sensitivity:</span>
+                      {([
+                        { id: 'easy' as const, label: 'Easy' },
+                        { id: 'balanced' as const, label: 'Balanced' },
+                        { id: 'precise' as const, label: 'Precise' }
+                      ]).map(sn => (
+                        <button
+                          key={sn.id}
+                          type="button"
+                          onClick={() => setSlapSensitivity(sn.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer whitespace-nowrap ${
+                            slapSensitivity === sn.id
+                              ? 'bg-amber-500 text-white shadow-xs'
+                              : 'text-slate-600 hover:bg-amber-50'
+                          }`}
+                        >
+                          {sn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSlapMode('clap')}
+                      className={`p-3 rounded-2xl text-left transition-all cursor-pointer flex items-center gap-3 border-2 border-b-[5px] ${
+                        slapMode === 'clap'
+                          ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5'
+                          : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-800'
+                      }`}
+                    >
+                      <span className="w-11 h-11 rounded-xl bg-white/90 border border-amber-200 flex items-center justify-center text-2xl shrink-0 shadow-2xs">
+                        👏
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-black leading-tight">Two-Hand Clap (Recommended)</div>
+                        <div className={`text-[11px] font-bold mt-0.5 ${slapMode === 'clap' ? 'text-amber-950/80' : 'text-slate-500'}`}>
+                          Clap both hands together — zero 1-hand misfires
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSlapMode('swat')}
+                      className={`p-3 rounded-2xl text-left transition-all cursor-pointer flex items-center gap-3 border-2 border-b-[5px] ${
+                        slapMode === 'swat'
+                          ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5'
+                          : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-800'
+                      }`}
+                    >
+                      <span className="w-11 h-11 rounded-xl bg-white/90 border border-amber-200 flex items-center justify-center text-2xl shrink-0 shadow-2xs">
+                        🖐️
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-black leading-tight">One-Hand Quick Swat</div>
+                        <div className={`text-[11px] font-bold mt-0.5 ${slapMode === 'swat' ? 'text-amber-950/80' : 'text-slate-500'}`}>
+                          Fast single-palm swing to swat mosquitoes
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Match Timer & Speed Selector in Setup */}
                 <div className="mb-5 p-4 rounded-3xl bg-emerald-50/90 border-2 border-emerald-200 border-b-4 border-b-emerald-300">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
@@ -5937,7 +6531,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         Match Timer Duration
                       </span>
                     </div>
-                    <span className="px-3 py-0.5 rounded-full bg-emerald-600 text-white text-xs font-black font-mono shadow-2xs">
+                    <span className="px-3 py-0.5 rounded-full bg-emerald-600 text-white text-xs font-black font-mono tabular-nums shadow-2xs">
                       ⏱️ {formatPlayTime(playingTime)}
                     </span>
                   </div>
@@ -5961,7 +6555,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                             setHudTimeLeft(tm.sec);
                             lastHudSecRef.current = tm.sec;
                           }}
-                          className={`py-2 px-2 rounded-xl font-black text-xs sm:text-sm border-2 border-b-4 transition cursor-pointer ${
+                          className={`py-2 px-2 rounded-xl font-black text-xs sm:text-sm border-2 border-b-4 transition cursor-pointer whitespace-nowrap ${
                             isSel
                               ? 'bg-emerald-500 border-emerald-300 border-b-emerald-800 text-white shadow-sm -translate-y-0.5'
                               : 'bg-white hover:bg-emerald-100/70 border-emerald-200 border-b-emerald-300 text-emerald-950'
@@ -5978,6 +6572,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-6 bg-sky-50 p-3.5 rounded-2xl border-2 border-sky-200">
                   <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-slate-700">
                     <span className="px-2.5 py-1 rounded-xl bg-white border border-sky-200">
+                      {slapMode === 'clap' ? '👏 Clap Mode' : '🖐️ Swat Mode'} ({slapSensitivity})
+                    </span>
+                    <span className="px-2.5 py-1 rounded-xl bg-white border border-sky-200">
                       🎵 Music: {musicEnabled ? 'ON' : 'OFF'}
                     </span>
                     <span className="px-2.5 py-1 rounded-xl bg-white border border-sky-200">
@@ -5986,14 +6583,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                     <span className="px-2.5 py-1 rounded-xl bg-white border border-sky-200">
                       ⚡ Speed: {speed === 0.6 ? 'Slow' : speed === 1 ? 'Normal' : speed === 1.4 ? 'Fast' : 'Turbo'}
                     </span>
-                    <span className="px-2.5 py-1 rounded-xl bg-white border border-sky-200">
-                      🎯 Scoring: +5 / -5 (❄️ Freeze)
-                    </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowSettingsModal(true)}
-                    className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-black text-xs border-b-2 border-amber-600 shadow cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-black text-xs border-b-2 border-amber-600 shadow cursor-pointer whitespace-nowrap"
                   >
                     ⚙️ More Settings
                   </button>
@@ -6146,16 +6740,45 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                       {hudFrozen[0] ? '❄️' : '🦟'}
                     </div>
 
-                    {/* Player Name & Streak */}
-                    <div className="flex flex-col min-w-0">
+                    {/* Player Name, Streak & Live L/R Hand Sensor Status */}
+                    <div className="flex flex-col min-w-0 gap-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs sm:text-base font-black uppercase tracking-wider text-blue-950 truncate max-w-[100px] sm:max-w-[130px]">
                           {p1Name || "Player 1"}
                         </span>
-                        <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs shrink-0">
+                        <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs shrink-0 tabular-nums">
                           🔥 x{hudStreaks[0]}
                         </span>
                       </div>
+                      {cameraActive && (
+                        <div className="flex items-center gap-1 text-[10px] font-black tracking-wide">
+                          <span className={`px-1.5 py-0.5 rounded-md border ${
+                            hudHandsDetected[0][0]
+                              ? 'bg-emerald-500 text-white border-emerald-600'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                          }`}>
+                            L
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded-md border ${
+                            hudHandsDetected[0][1]
+                              ? 'bg-emerald-500 text-white border-emerald-600'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                          }`}>
+                            R
+                          </span>
+                          <span className={`truncate ml-0.5 ${
+                            hudClapArmed[0]
+                              ? 'text-emerald-700'
+                              : (hudHandsDetected[0][0] && hudHandsDetected[0][1] ? 'text-amber-700' : 'text-slate-400')
+                          }`}>
+                            {hudClapArmed[0]
+                              ? (slapMode === 'swat' ? '• SWAT READY' : '• CLAP READY')
+                              : (hudHandsDetected[0][0] && hudHandsDetected[0][1]
+                                  ? '• OPEN HANDS'
+                                  : (slapMode === 'swat' ? '• SHOW HAND' : '• SHOW 2 HANDS'))}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -6250,15 +6873,44 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                     </div>
 
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex flex-col items-end text-right min-w-0">
+                      <div className="flex flex-col items-end text-right min-w-0 gap-1">
                         <div className="flex items-center justify-end gap-1.5">
-                          <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs shrink-0">
+                          <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs shrink-0 tabular-nums">
                             🔥 x{hudStreaks[1]}
                           </span>
                           <span className="text-xs sm:text-base font-black uppercase tracking-wider text-red-950 truncate max-w-[100px] sm:max-w-[130px]">
                             {p2Name || "Player 2"}
                           </span>
                         </div>
+                        {cameraActive && (
+                          <div className="flex items-center justify-end gap-1 text-[10px] font-black tracking-wide">
+                            <span className={`truncate mr-0.5 ${
+                              hudClapArmed[1]
+                                ? 'text-emerald-700'
+                                : (hudHandsDetected[1][0] && hudHandsDetected[1][1] ? 'text-amber-700' : 'text-slate-400')
+                            }`}>
+                              {hudClapArmed[1]
+                                ? (slapMode === 'swat' ? 'SWAT READY •' : 'CLAP READY •')
+                                : (hudHandsDetected[1][0] && hudHandsDetected[1][1]
+                                    ? 'OPEN HANDS •'
+                                    : (slapMode === 'swat' ? 'SHOW HAND •' : 'SHOW 2 HANDS •'))}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded-md border ${
+                              hudHandsDetected[1][0]
+                                ? 'bg-emerald-500 text-white border-emerald-600'
+                                : 'bg-slate-100 text-slate-400 border-slate-200'
+                            }`}>
+                              L
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded-md border ${
+                              hudHandsDetected[1][1]
+                                ? 'bg-emerald-500 text-white border-emerald-600'
+                                : 'bg-slate-100 text-slate-400 border-slate-200'
+                            }`}>
+                              R
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl border-t border-white/80 border-b-4 shadow-md shrink-0 ${
@@ -6284,9 +6936,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               </div>
 
               {/* Row 2: JUMBO, HIGH-CONTRAST 3D QUESTION BANNER */}
-              <div className="relative overflow-hidden rounded-3xl bg-white/95 backdrop-blur-xl px-6 py-4 sm:px-8 sm:py-5 text-center shadow-[0_16px_40px_rgba(14,165,233,0.28)] border-2 border-sky-300 border-b-[8px] border-b-sky-600 max-w-5xl mx-auto w-full flex items-center justify-between gap-4">
+              <div className="relative overflow-hidden rounded-3xl bg-white/95 backdrop-blur-xl px-5 py-2.5 sm:px-7 sm:py-3.5 text-center shadow-[0_14px_34px_rgba(14,165,233,0.25)] border-2 border-sky-300 border-b-[6px] border-b-sky-600 max-w-5xl mx-auto w-full flex items-center justify-between gap-4">
                 {/* Progress Timer Bar (Shows 3-second countdown bar when transitioning, or match timer during play) */}
-                <div className="absolute bottom-0 left-0 right-0 h-2.5 bg-sky-100">
+                <div className="absolute bottom-0 left-0 right-0 h-2 bg-sky-100">
                   <div
                     className={`h-full transition-all duration-100 ${
                       nextQCountdown !== null
@@ -6297,7 +6949,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   />
                 </div>
 
-                <div className={`hidden sm:flex w-14 h-14 rounded-2xl border-2 items-center justify-center text-2xl sm:text-3xl font-black shrink-0 shadow-inner ${
+                <div className={`hidden sm:flex w-12 h-12 rounded-2xl border-2 items-center justify-center text-xl sm:text-2xl font-black shrink-0 shadow-inner tabular-nums ${
                   nextQCountdown !== null
                     ? 'bg-amber-100 border-amber-300 text-amber-800 animate-pulse'
                     : 'bg-sky-100 border-sky-300 text-sky-700'
@@ -6317,12 +6969,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         <img
                           src={qImg}
                           alt="Question"
-                          className="h-14 sm:h-20 w-auto max-w-[140px] rounded-2xl object-contain bg-sky-50 border-2 border-sky-300 p-1 shrink-0 shadow-sm"
+                          className="h-12 sm:h-16 w-auto max-w-[130px] rounded-2xl object-contain bg-sky-50 border-2 border-sky-300 p-1 shrink-0 shadow-sm"
                         />
                       )}
                       <p
                         className="font-black text-slate-900 tracking-tight leading-snug break-words drop-shadow-xs"
-                        style={{ fontSize: `${Math.round(30 * textSize)}px` }}
+                        style={{ fontSize: `${Math.round(28 * textSize)}px` }}
                       >
                         {qTextDisplay}
                       </p>
@@ -6334,7 +6986,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   type="button"
                   onClick={() => currentQ?.text && speakText(currentQ.text)}
                   title="Read Question Aloud"
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-sky-100 hover:bg-sky-200 border-2 border-sky-300 flex items-center justify-center text-2xl shrink-0 cursor-pointer transition shadow-xs"
+                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-sky-100 hover:bg-sky-200 border-2 border-sky-300 flex items-center justify-center text-xl sm:text-2xl shrink-0 cursor-pointer transition shadow-xs"
                 >
                   🔊
                 </button>
@@ -6406,14 +7058,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             />
 
             {/* Bottom Light 3D Instruction Pill */}
-            <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-30 px-6 py-2.5 rounded-full bg-white/95 backdrop-blur-md border-2 border-sky-300 border-b-4 border-b-sky-500 text-xs sm:text-base font-black text-slate-800 whitespace-nowrap shadow-lg">
-              🦟🧤 Bring both gloves together (CLAP!) over a mosquito to slap it! (+5 Correct / -5 &amp; Freeze if Wrong)
+            <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-white/95 backdrop-blur-md border-2 border-sky-300 border-b-4 border-b-sky-500 text-xs sm:text-sm font-black text-slate-800 whitespace-nowrap shadow-lg">
+              {slapMode === 'swat'
+                ? '🦟🖐️ Swing your palm quickly over a mosquito to swat it! (+5 Correct / -5 & Freeze if Wrong)'
+                : '🦟👏 Aim the green dot between your hands & CLAP together to slap! (+5 Correct / -5 & Freeze if Wrong)'}
             </div>
           </div>
         </div>
       )}
 
-      {/* 3D LIGHT SETTINGS MODAL (Contains Camera, Glove Options, Music, Voice, Text Size, Speed & Movements) */}
+      {/* 3D LIGHT SETTINGS MODAL (Contains Camera, Trigger Calibration, Glove Options, Music, Voice, Text Size, Speed & Movements) */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 bg-sky-950/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white max-w-xl w-full rounded-[2.2rem] p-6 sm:p-8 border-2 border-sky-200 border-b-[10px] border-b-sky-400 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 text-slate-900 max-h-[92vh] overflow-y-auto">
@@ -6424,7 +7078,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                 </span>
                 <div>
                   <h3 className="text-2xl font-black text-slate-900">Game Settings</h3>
-                  <p className="text-xs font-bold text-slate-500">Camera, 3D Glove Options, Timer, Music, Voice &amp; Speed</p>
+                  <p className="text-xs font-bold text-slate-500">Camera, Clap Trigger Calibration, 3D Gloves, Timer &amp; Speed</p>
                 </div>
               </div>
               <button
@@ -6436,27 +7090,86 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             </div>
 
             {/* 0. Camera Tracking Toggle Inside Settings */}
-            <div className="p-4 rounded-2xl bg-amber-50/90 border-2 border-amber-200">
-              <div className="flex items-center justify-between">
+            <div className="p-4 rounded-2xl bg-amber-50/90 border-2 border-amber-200 space-y-2">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-black text-slate-900">📷 AR Camera Feed &amp; Hand Tracking</div>
                   <div className="text-[11px] font-bold text-slate-500">
-                    {cameraActive ? 'Live Webcam Tracking Active (🔵 P1 Blue / 🔴 P2 Red Gloves)' : 'Virtual Meadow Arena (Mouse / Touch)'}
+                    {cameraActive ? 'Live 21-Point Hand Tracking Active (🔵 P1 Blue / 🔴 P2 Red)' : 'Virtual Meadow Arena (Mouse / Touch)'}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     if (cameraActive) stopCamera();
-                    else setupCamera();
+                    else setupCamera(numPlayers);
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-black border-b-4 transition cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black border-b-4 transition cursor-pointer whitespace-nowrap ${
                     cameraActive
                       ? 'bg-emerald-500 border-emerald-800 text-white'
                       : 'bg-sky-500 border-sky-800 text-white'
                   }`}
                 >
-                  {cameraActive ? '📷 Camera: ON' : '🌤️ Virtual Arena'}
+                  {cameraActive ? '📷 Camera: ON' : '🌤️ Turn Camera ON'}
+                </button>
+              </div>
+              {cameraError && (
+                <div className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                  ⚠️ {cameraError} — Click/touch fallback is active!
+                </div>
+              )}
+            </div>
+
+            {/* 0.25 Hand Slap Trigger Mode & Sensitivity Calibration */}
+            <div className="p-4 rounded-2xl bg-emerald-50/90 border-2 border-emerald-200 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-black text-slate-900">👏 Slap Trigger Mode &amp; Sensitivity</div>
+                  <div className="text-[11px] font-bold text-slate-500">Choose how hand gestures trigger a mosquito slap</div>
+                </div>
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-emerald-200">
+                  {([
+                    { id: 'easy' as const, label: 'Easy' },
+                    { id: 'balanced' as const, label: 'Balanced' },
+                    { id: 'precise' as const, label: 'Precise' }
+                  ]).map(sn => (
+                    <button
+                      key={sn.id}
+                      type="button"
+                      onClick={() => setSlapSensitivity(sn.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                        slapSensitivity === sn.id ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-emerald-50'
+                      }`}
+                    >
+                      {sn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSlapMode('clap')}
+                  className={`py-2.5 px-3 rounded-xl font-black text-xs border-b-4 transition cursor-pointer flex items-center justify-center gap-2 ${
+                    slapMode === 'clap'
+                      ? 'bg-emerald-600 border-emerald-900 text-white shadow'
+                      : 'bg-white border-emerald-200 text-slate-700 hover:bg-emerald-100/50'
+                  }`}
+                >
+                  <span>👏</span>
+                  <span>Two-Hand Clap</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSlapMode('swat')}
+                  className={`py-2.5 px-3 rounded-xl font-black text-xs border-b-4 transition cursor-pointer flex items-center justify-center gap-2 ${
+                    slapMode === 'swat'
+                      ? 'bg-emerald-600 border-emerald-900 text-white shadow'
+                      : 'bg-white border-emerald-200 text-slate-700 hover:bg-emerald-100/50'
+                  }`}
+                >
+                  <span>🖐️</span>
+                  <span>One-Hand Swat</span>
                 </button>
               </div>
             </div>
@@ -6776,12 +7489,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
       {/* Screen 5: Immersive 3D Championship Winner Announcement Modal */}
       {screen === 'results' && (() => {
-        const p1 = engineRef.current.players[0] || { score: 0, correctHits: 0, wrongHits: 0, hits: 0 };
-        const p2 = engineRef.current.players[1] || { score: 0, correctHits: 0, wrongHits: 0, hits: 0 };
+        const p1 = engineRef.current.players[0] || { score: 0, correctHits: 0, wrongHits: 0, hits: 0, bestStreak: 1 };
+        const p2 = engineRef.current.players[1] || { score: 0, correctHits: 0, wrongHits: 0, hits: 0, bestStreak: 1 };
         const p1TotalAttempts = (p1.correctHits || 0) + (p1.wrongHits || 0);
         const p2TotalAttempts = (p2.correctHits || 0) + (p2.wrongHits || 0);
-        const p1Acc = p1TotalAttempts > 0 ? Math.round(((p1.correctHits || 0) / p1TotalAttempts) * 100) : 100;
-        const p2Acc = p2TotalAttempts > 0 ? Math.round(((p2.correctHits || 0) / p2TotalAttempts) * 100) : 100;
+        const p1Acc = p1TotalAttempts > 0 ? Math.round(((p1.correctHits || 0) / p1TotalAttempts) * 100) : 0;
+        const p2Acc = p2TotalAttempts > 0 ? Math.round(((p2.correctHits || 0) / p2TotalAttempts) * 100) : 0;
 
         const isP1Winner = numPlayers === 1 || p1.score > p2.score;
         const isP2Winner = numPlayers === 2 && p2.score > p1.score;
@@ -6828,23 +7541,34 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                       {isTie ? '🥇 Co-Champion' : '👑 Winner'}
                     </span>
                   )}
-                  <div className="text-sm font-black uppercase tracking-wider text-blue-700 mt-1">
-                    🔵 {p1Name || "Player 1"}
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-sm font-black uppercase tracking-wider text-blue-700">
+                      🔵 {p1Name || "Player 1"}
+                    </span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 font-black tabular-nums">
+                      🔥 Best x{p1.bestStreak || 1}
+                    </span>
                   </div>
-                  <div className="text-5xl font-black text-slate-900 font-mono my-2">
+                  <div className="text-5xl font-black text-slate-900 font-mono tabular-nums my-2">
                     {p1.score} <span className="text-base font-black text-blue-600">PTS</span>
                   </div>
-                  <div className="w-full grid grid-cols-3 gap-2 pt-3 border-t border-blue-100 text-xs font-extrabold">
+                  <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden mb-3 border border-slate-200">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-500"
+                      style={{ width: `${p1TotalAttempts > 0 ? p1Acc : 0}%` }}
+                    />
+                  </div>
+                  <div className="w-full grid grid-cols-3 gap-2 pt-2 border-t border-blue-100 text-xs font-extrabold tabular-nums">
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-1.5 text-emerald-700">
-                      <div className="text-sm font-black">+{ (p1.correctHits || 0) * 5 }</div>
+                      <div className="text-sm font-black">+{(p1.correctHits || 0) * 5}</div>
                       <div className="text-[10px]">✓ {p1.correctHits || 0} Correct</div>
                     </div>
                     <div className="bg-rose-50 border border-rose-200 rounded-xl py-1.5 text-rose-700">
-                      <div className="text-sm font-black">-{ (p1.wrongHits || 0) * 5 }</div>
+                      <div className="text-sm font-black">-{(p1.wrongHits || 0) * 5}</div>
                       <div className="text-[10px]">❄️ {p1.wrongHits || 0} Wrong</div>
                     </div>
                     <div className="bg-sky-50 border border-sky-200 rounded-xl py-1.5 text-sky-800">
-                      <div className="text-sm font-black">{p1Acc}%</div>
+                      <div className="text-sm font-black">{p1TotalAttempts > 0 ? `${p1Acc}%` : '—'}</div>
                       <div className="text-[10px]">🎯 Accuracy</div>
                     </div>
                   </div>
@@ -6862,13 +7586,24 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         {isTie ? '🥇 Co-Champion' : '👑 Winner'}
                       </span>
                     )}
-                    <div className="text-sm font-black uppercase tracking-wider text-red-700 mt-1">
-                      🔴 {p2Name || "Player 2"}
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-sm font-black uppercase tracking-wider text-red-700">
+                        🔴 {p2Name || "Player 2"}
+                      </span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 font-black tabular-nums">
+                        🔥 Best x{p2.bestStreak || 1}
+                      </span>
                     </div>
-                    <div className="text-5xl font-black text-slate-900 font-mono my-2">
+                    <div className="text-5xl font-black text-slate-900 font-mono tabular-nums my-2">
                       {p2.score} <span className="text-base font-black text-red-600">PTS</span>
                     </div>
-                    <div className="w-full grid grid-cols-3 gap-2 pt-3 border-t border-red-100 text-xs font-extrabold">
+                    <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden mb-3 border border-slate-200">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-500"
+                        style={{ width: `${p2TotalAttempts > 0 ? p2Acc : 0}%` }}
+                      />
+                    </div>
+                    <div className="w-full grid grid-cols-3 gap-2 pt-2 border-t border-red-100 text-xs font-extrabold tabular-nums">
                       <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-1.5 text-emerald-700">
                         <div className="text-sm font-black">+{(p2.correctHits || 0) * 5}</div>
                         <div className="text-[10px]">✓ {p2.correctHits || 0} Correct</div>
@@ -6878,7 +7613,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         <div className="text-[10px]">❄️ {p2.wrongHits || 0} Wrong</div>
                       </div>
                       <div className="bg-sky-50 border border-sky-200 rounded-xl py-1.5 text-sky-800">
-                        <div className="text-sm font-black">{p2Acc}%</div>
+                        <div className="text-sm font-black">{p2TotalAttempts > 0 ? `${p2Acc}%` : '—'}</div>
                         <div className="text-[10px]">🎯 Accuracy</div>
                       </div>
                     </div>

@@ -1555,6 +1555,65 @@ class PaintballAudioEngine {
     });
   }
 
+  // Athletic Spring Jump SFX
+  playJump() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(195, now);
+    osc.frequency.exponentialRampToValueAtTime(490, now + 0.13);
+    g.gain.setValueAtTime(0.14, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+
+  // Tactical Gear Crouch / Crawl Foley SFX
+  playStanceChange(toStance: 'stand' | 'crouch' | 'crawl') {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'triangle';
+    const startF = toStance === 'stand' ? 220 : toStance === 'crouch' ? 310 : 260;
+    const endF = toStance === 'stand' ? 360 : toStance === 'crouch' ? 185 : 135;
+    osc.frequency.setValueAtTime(startF, now);
+    osc.frequency.exponentialRampToValueAtTime(endF, now + 0.09);
+    g.gain.setValueAtTime(0.11, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.11);
+  }
+
+  // Crisp PUBG 2x Optic ADS Scope Click
+  playScopeToggle(scopedIn: boolean) {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(scopedIn ? 680 : 920, now);
+    osc.frequency.exponentialRampToValueAtTime(scopedIn ? 1080 : 620, now + 0.065);
+    g.gain.setValueAtTime(0.09, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
   // Upbeat Paintball Battle Soundtrack (YouTube Kghe1Ek96tE + Synth Fallback)
   setFrenzyTempo(frenzy: boolean) {
     if (this.isFrenzyTempo === frenzy) return;
@@ -1764,10 +1823,12 @@ interface PlayerNetworkState {
   team: TeamId;
   skinIdx: number;
   x: number;
+  y?: number;
   z: number;
   vx?: number;
   vz?: number;
   rotY: number;
+  stance?: 'stand' | 'crouch' | 'crawl';
   hp: number;
   shield: number;
   score: number;
@@ -2358,6 +2419,101 @@ export default function HamsterPaintball({
   const [aimReticlePct, setAimReticlePct] = useState<{ x: number; y: number }>({ x: 50, y: 46 });
   const aimReticlePctRef = useRef<{ x: number; y: number }>({ x: 50, y: 46 });
 
+  // PUBG Stance ('stand' | 'crouch' | 'crawl'), ADS 2x Scope, Dynamic Crosshair Bloom & Auto Laptop/Touch HUD Detection
+  const [playerStance, setPlayerStance] = useState<'stand' | 'crouch' | 'crawl'>('stand');
+  const playerStanceRef = useRef<'stand' | 'crouch' | 'crawl'>('stand');
+  const [isAdsScoped, setIsAdsScoped] = useState<boolean>(false);
+  const isAdsScopedRef = useRef<boolean>(false);
+  const [isAimLocked, setIsAimLocked] = useState<boolean>(false);
+  const [crosshairSpreadPx, setCrosshairSpreadPx] = useState<number>(8);
+  const crosshairSpreadRef = useRef<number>(8);
+
+  const [controlLayoutMode, setControlLayoutMode] = useState<'auto' | 'laptop' | 'touch'>(() => {
+    if (typeof window === 'undefined') return 'auto';
+    const saved = localStorage.getItem('pb_control_layout_mode');
+    if (saved === 'laptop' || saved === 'touch' || saved === 'auto') return saved;
+    return 'auto';
+  });
+
+  const [detectedTouchDevice, setDetectedTouchDevice] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      window.matchMedia?.('(pointer: coarse)').matches &&
+        !window.matchMedia?.('(hover: hover) and (pointer: fine)').matches
+    );
+  });
+
+  const isTouchHudVisible =
+    controlLayoutMode === 'touch' || (controlLayoutMode === 'auto' && detectedTouchDevice);
+
+  useEffect(() => {
+    playerStanceRef.current = playerStance;
+  }, [playerStance]);
+
+  useEffect(() => {
+    isAdsScopedRef.current = isAdsScoped;
+  }, [isAdsScoped]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pb_control_layout_mode', controlLayoutMode);
+    }
+  }, [controlLayoutMode]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onPointerLockChange = () => {
+      const locked = Boolean(document.pointerLockElement);
+      if (!locked && gameRef.current && !gameRef.current.virtualMouseLock) {
+        setIsAimLocked(false);
+      } else if (locked) {
+        setIsAimLocked(true);
+      }
+    };
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+    return () => document.removeEventListener('pointerlockchange', onPointerLockChange);
+  }, []);
+
+  const triggerPlayerJump = () => {
+    const g = gameRef.current;
+    if (!g) return;
+    // PUBG behavior: if crawling/prone, pressing Jump stands up cleanly; if standing or crouching on ground, stands & jumps!
+    if (playerStanceRef.current === 'crawl') {
+      playerStanceRef.current = 'stand';
+      setPlayerStance('stand');
+      sfx.playStanceChange('stand');
+      return;
+    }
+    if (playerStanceRef.current === 'crouch') {
+      playerStanceRef.current = 'stand';
+      setPlayerStance('stand');
+    }
+    if (g.y <= 0.08) {
+      g.jumpVy = 9.6;
+      g.y = Math.max(0.02, g.y);
+      g.recoilBloom = Math.min(22, g.recoilBloom + 6);
+      sfx.playJump();
+    }
+  };
+
+  const togglePlayerStance = (target: 'crouch' | 'crawl') => {
+    const g = gameRef.current;
+    if (g && g.y > 0.25) return; // Cannot enter crouch/prone mid-air
+    const nextStance: 'stand' | 'crouch' | 'crawl' =
+      playerStanceRef.current === target ? 'stand' : target;
+    playerStanceRef.current = nextStance;
+    setPlayerStance(nextStance);
+    sfx.playStanceChange(nextStance);
+  };
+
+  const toggleAdsScope = (forceState?: boolean) => {
+    const next = typeof forceState === 'boolean' ? forceState : !isAdsScopedRef.current;
+    if (next === isAdsScopedRef.current) return;
+    isAdsScopedRef.current = next;
+    setIsAdsScoped(next);
+    sfx.playScopeToggle(next);
+  };
+
   const lookSensitivity = cameraSensitivity;
 
   useEffect(() => {
@@ -2540,6 +2696,8 @@ export default function HamsterPaintball({
     renderer: THREE.WebGLRenderer;
     localHamster: THREE.Group;
     x: number;
+    y: number;
+    jumpVy: number;
     z: number;
     rotY: number;
     camYaw: number;
@@ -2548,6 +2706,12 @@ export default function HamsterPaintball({
     camHeightCurrent: number;
     camShoulderCurrent: number;
     camKick: number;
+    crouchLerp: number;
+    crawlLerp: number;
+    adsLerp: number;
+    recoilBloom: number;
+    shoulderSide: 1 | -1;
+    virtualMouseLock: boolean;
     vx: number;
     vz: number;
     walkPhase: number;
@@ -2674,6 +2838,14 @@ export default function HamsterPaintball({
   const resetAllActiveInputs = () => {
     joystickTouchIdRef.current = null;
     setJoystickVec({ x: 0, y: 0 });
+    isAdsScopedRef.current = false;
+    setIsAdsScoped(false);
+    setIsAimLocked(false);
+    if (typeof document !== 'undefined' && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
     const g = gameRef.current;
     if (g) {
       g.keys = {};
@@ -2683,6 +2855,7 @@ export default function HamsterPaintball({
       g.vz = 0;
       g.mouseDown = false;
       g.isCameraDragging = false;
+      g.virtualMouseLock = false;
       g.dragMovedPx = 0;
       g.shootButtonHeld = false;
       g.lookTouchId = null;
@@ -2732,6 +2905,9 @@ export default function HamsterPaintball({
     aimSensitivity,
     cameraViewPreset,
     aimControlMode,
+    playerStance,
+    isAdsScoped,
+    isTouchHudVisible,
     isAnyModalOpen
   });
 
@@ -2771,6 +2947,9 @@ export default function HamsterPaintball({
       aimSensitivity,
       cameraViewPreset,
       aimControlMode,
+      playerStance,
+      isAdsScoped,
+      isTouchHudVisible,
       isAnyModalOpen
     };
   }, [
@@ -2808,6 +2987,9 @@ export default function HamsterPaintball({
     aimSensitivity,
     cameraViewPreset,
     aimControlMode,
+    playerStance,
+    isAdsScoped,
+    isTouchHudVisible,
     isAnyModalOpen
   ]);
 
@@ -4215,6 +4397,7 @@ export default function HamsterPaintball({
         const defaultZ = snapState.myTeam === 'blue' ? TEAM_SPAWN_Z : -TEAM_SPAWN_Z;
         const immuneRem = Math.max(0, snapState.immuneUntil - nowServer);
         const curX = g ? Number(g.x.toFixed(2)) : 0;
+        const curY = g ? Number(g.y.toFixed(2)) : 0;
         const curZ = g ? Number(g.z.toFixed(2)) : defaultZ;
         const curVx = g ? Number(g.vx.toFixed(2)) : 0;
         const curVz = g ? Number(g.vz.toFixed(2)) : 0;
@@ -4227,10 +4410,12 @@ export default function HamsterPaintball({
           team: snapState.matchMode === 'solo' ? 'solo' : snapState.myTeam,
           skinIdx: snapState.selectedSkinIdx,
           x: curX,
+          y: curY,
           z: curZ,
           vx: curVx,
           vz: curVz,
           rotY: curRotY,
+          stance: snapState.playerStance,
           hp: snapState.hp,
           shield: snapState.shield,
           immuneUntil: snapState.immuneUntil,
@@ -4271,7 +4456,7 @@ export default function HamsterPaintball({
         }
 
         // Real-time Firestore multi-domain sync (~280ms when moving/rotating/acting, or 1.4s idle heartbeat)
-        const stateSig = `${curX}|${curZ}|${curRotY}|${snapState.hp}|${snapState.shield}|${snapState.score}|${snapState.kos}|${snapState.myTeam}`;
+        const stateSig = `${curX}|${curY}|${curZ}|${curRotY}|${snapState.playerStance}|${snapState.hp}|${snapState.shield}|${snapState.score}|${snapState.kos}|${snapState.myTeam}`;
         const localMs = Date.now();
         const hasStateChanged = stateSig !== lastFirestoreSentSigRef.current;
         if (
@@ -4376,15 +4561,21 @@ export default function HamsterPaintball({
           );
           if (gameRef.current) {
             gameRef.current.x = sp.x;
+            gameRef.current.y = 0;
+            gameRef.current.jumpVy = 0;
             gameRef.current.z = sp.z;
             gameRef.current.vx = 0;
             gameRef.current.vz = 0;
             gameRef.current.rotY = sp.rotY;
             gameRef.current.camYaw = sp.rotY;
-            gameRef.current.camPitch = 0.24;
+            gameRef.current.camPitch = 0.14;
             gameRef.current.localHamster.position.set(sp.x, 0, sp.z);
             gameRef.current.localHamster.rotation.y = sp.rotY;
           }
+          playerStanceRef.current = 'stand';
+          setPlayerStance('stand');
+          isAdsScopedRef.current = false;
+          setIsAdsScoped(false);
           setShield(100);
           const spawnSide =
             stateSnapRef.current.matchMode === 'teams'
@@ -6276,33 +6467,58 @@ export default function HamsterPaintball({
     walkPhase: number,
     dt: number,
     holdingCanType: 'health' | 'shield' | null = null,
-    playStepAudio: boolean = false
+    playStepAudio: boolean = false,
+    stance: 'stand' | 'crouch' | 'crawl' = 'stand',
+    jumpY: number = 0,
+    aimPitch: number = 0
   ): number => {
     const ud = hamsterGroup.userData;
     if (!ud) return walkPhase;
     let nextPhase = walkPhase;
 
-    if (isMoving) {
-      nextPhase += dt * 15.8;
-      if (playStepAudio) {
+    // Smoothly blend 3D tactical stance transitions (Stand <-> Crouch <-> Prone Crawl)
+    const targetCrouch = stance === 'crouch' ? 1 : 0;
+    const targetCrawl = stance === 'crawl' ? 1 : 0;
+    ud.crouchBlend = THREE.MathUtils.damp(ud.crouchBlend ?? 0, targetCrouch, 14, dt);
+    ud.crawlBlend = THREE.MathUtils.damp(ud.crawlBlend ?? 0, targetCrawl, 14, dt);
+    const cr = ud.crouchBlend as number;
+    const pr = ud.crawlBlend as number;
+    const isAirborne = jumpY > 0.08;
+
+    const phaseRate =
+      stance === 'crawl' ? 10.2 : stance === 'crouch' ? 12.4 : 15.8;
+
+    if (isMoving && !isAirborne) {
+      nextPhase += dt * phaseRate;
+      if (playStepAudio && stance !== 'crawl') {
         sfx.playFootstep();
       }
+      const legSwing = Math.sin(nextPhase) * (0.78 * (1 - pr * 0.55) * (1 - cr * 0.25));
       if (ud.leftLeg) {
-        ud.leftLeg.rotation.x = Math.sin(nextPhase) * 0.78;
-        ud.leftLeg.position.y = 0.38 + Math.max(0, Math.sin(nextPhase)) * 0.13;
+        ud.leftLeg.rotation.x = legSwing - cr * 0.55 + pr * 1.18;
+        ud.leftLeg.position.y =
+          0.38 - cr * 0.14 - pr * 0.18 + Math.max(0, Math.sin(nextPhase)) * (0.13 * (1 - pr * 0.6));
+        ud.leftLeg.position.z = -pr * 0.55;
       }
       if (ud.rightLeg) {
-        ud.rightLeg.rotation.x = -Math.sin(nextPhase) * 0.78;
-        ud.rightLeg.position.y = 0.38 + Math.max(0, -Math.sin(nextPhase)) * 0.13;
+        ud.rightLeg.rotation.x = -legSwing - cr * 0.55 + pr * 1.18;
+        ud.rightLeg.position.y =
+          0.38 - cr * 0.14 - pr * 0.18 + Math.max(0, -Math.sin(nextPhase)) * (0.13 * (1 - pr * 0.6));
+        ud.rightLeg.position.z = -pr * 0.55;
       }
       if (ud.bodyGroup) {
-        ud.bodyGroup.position.y = Math.abs(Math.sin(nextPhase * 2)) * 0.14;
-        ud.bodyGroup.rotation.z = Math.sin(nextPhase) * 0.075;
-        ud.bodyGroup.rotation.x = 0.08; // Athletic forward sprint lean
+        const bobY = Math.abs(Math.sin(nextPhase * 2)) * (0.14 * (1 - cr * 0.45 - pr * 0.72));
+        ud.bodyGroup.position.y = bobY - cr * 0.38 - pr * 0.54;
+        ud.bodyGroup.position.z = -pr * 0.22;
+        ud.bodyGroup.rotation.z = Math.sin(nextPhase) * (0.075 * (1 - pr * 0.4));
+        ud.bodyGroup.rotation.x = 0.08 + cr * 0.24 + pr * 0.96; // Forward crouch / belly-crawl pitch!
       }
       if (ud.headGroup) {
         ud.headGroup.rotation.z = -Math.sin(nextPhase) * 0.04;
-        ud.headGroup.position.y = 1.72 + Math.abs(Math.cos(nextPhase * 2)) * 0.04;
+        ud.headGroup.position.y =
+          1.72 - cr * 0.38 - pr * 0.96 + Math.abs(Math.cos(nextPhase * 2)) * 0.03;
+        ud.headGroup.position.z = cr * 0.16 + pr * 0.68;
+        ud.headGroup.rotation.x = THREE.MathUtils.clamp(aimPitch * 0.65, -0.45, 0.45) - pr * 0.18;
       }
       if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + Math.sin(nextPhase * 2) * 0.16;
       if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - Math.sin(nextPhase * 2) * 0.16;
@@ -6312,46 +6528,75 @@ export default function HamsterPaintball({
       }
     } else {
       nextPhase += dt * 2.8;
+      const airTuck = isAirborne ? Math.min(1, jumpY * 1.1) : 0;
       if (ud.leftLeg) {
-        ud.leftLeg.rotation.x *= 0.84;
-        ud.leftLeg.position.y = 0.38;
+        ud.leftLeg.rotation.x = THREE.MathUtils.lerp(
+          ud.leftLeg.rotation.x,
+          -airTuck * 0.72 - cr * 0.58 + pr * 1.22,
+          Math.min(1, dt * 14)
+        );
+        ud.leftLeg.position.y = 0.38 + airTuck * 0.18 - cr * 0.14 - pr * 0.18;
+        ud.leftLeg.position.z = airTuck * 0.12 - pr * 0.55;
       }
       if (ud.rightLeg) {
-        ud.rightLeg.rotation.x *= 0.84;
-        ud.rightLeg.position.y = 0.38;
+        ud.rightLeg.rotation.x = THREE.MathUtils.lerp(
+          ud.rightLeg.rotation.x,
+          -airTuck * 0.52 - cr * 0.58 + pr * 1.22,
+          Math.min(1, dt * 14)
+        );
+        ud.rightLeg.position.y = 0.38 + airTuck * 0.16 - cr * 0.14 - pr * 0.18;
+        ud.rightLeg.position.z = airTuck * 0.08 - pr * 0.55;
       }
       if (ud.bodyGroup) {
-        ud.bodyGroup.position.y = Math.sin(nextPhase) * 0.035;
+        ud.bodyGroup.position.y = Math.sin(nextPhase) * 0.03 - cr * 0.38 - pr * 0.54;
+        ud.bodyGroup.position.z = -pr * 0.22;
         ud.bodyGroup.rotation.z *= 0.84;
-        ud.bodyGroup.rotation.x *= 0.84;
+        ud.bodyGroup.rotation.x = THREE.MathUtils.lerp(
+          ud.bodyGroup.rotation.x,
+          -airTuck * 0.08 + cr * 0.22 + pr * 0.98,
+          Math.min(1, dt * 14)
+        );
       }
       if (ud.headGroup) {
         ud.headGroup.rotation.z = Math.sin(nextPhase * 0.5) * 0.02;
-        ud.headGroup.position.y = 1.72 + Math.sin(nextPhase) * 0.015;
+        ud.headGroup.position.y = 1.72 - cr * 0.38 - pr * 0.96 + Math.sin(nextPhase) * 0.015;
+        ud.headGroup.position.z = cr * 0.16 + pr * 0.68;
+        ud.headGroup.rotation.x = THREE.MathUtils.clamp(aimPitch * 0.65, -0.45, 0.45) - pr * 0.18;
       }
-      if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + Math.sin(nextPhase) * 0.04;
-      if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - Math.sin(nextPhase) * 0.04;
+      if (ud.leftEar) ud.leftEar.rotation.z = 0.38 + airTuck * 0.18 + Math.sin(nextPhase) * 0.04;
+      if (ud.rightEar) ud.rightEar.rotation.z = -0.38 - airTuck * 0.18 - Math.sin(nextPhase) * 0.04;
     }
 
-    // Mechanical Gun Shot Recoil, Reciprocating Bolt, Chambered Bullet & Muzzle Blast Animation
-    const runSwayY = isMoving ? Math.sin(nextPhase) * 0.035 : Math.sin(nextPhase) * 0.01;
+    // Adjust Overhead Nameplate & Immunity Bubble height dynamically with Crouch / Crawl stance!
+    if (ud.nameSprite) {
+      ud.nameSprite.position.y = 3.15 - cr * 0.52 - pr * 1.08;
+    }
+    if (ud.immunityShieldGroup) {
+      ud.immunityShieldGroup.position.y = 1.25 - cr * 0.28 - pr * 0.48;
+    }
+
+    // Mechanical Gun Shot Recoil, Vertical Aim Pitch, Stance Gun Lowering & Muzzle Blast Animation
+    const runSwayY = isMoving ? Math.sin(nextPhase) * 0.032 : Math.sin(nextPhase) * 0.008;
+    const baseGunY = 1.24 - cr * 0.34 - pr * 0.68 + runSwayY;
+    const baseGunZ = 0.55 + cr * 0.08 + pr * 0.34;
+    const clampedGunPitch = THREE.MathUtils.clamp(aimPitch, -0.58, 0.58);
+
     if (typeof ud.recoil === 'number' && ud.recoil > 0.01) {
       ud.recoil = Math.max(0, ud.recoil - dt * 6.8);
       if (ud.markerGroup) {
-        ud.markerGroup.position.z = 0.55 - ud.recoil * 0.28;
-        ud.markerGroup.position.y = 1.24 + runSwayY + ud.recoil * 0.05;
-        ud.markerGroup.rotation.x = -ud.recoil * 0.22;
+        ud.markerGroup.position.z = baseGunZ - ud.recoil * 0.26;
+        ud.markerGroup.position.y = baseGunY + ud.recoil * 0.045;
+        ud.markerGroup.rotation.x = clampedGunPitch - ud.recoil * 0.2;
       }
       if (ud.rightArmGroup) {
-        ud.rightArmGroup.position.z = 0.42 - ud.recoil * 0.2;
-        ud.rightArmGroup.rotation.x = -ud.recoil * 0.18;
+        ud.rightArmGroup.position.y = 1.18 - cr * 0.32 - pr * 0.62;
+        ud.rightArmGroup.position.z = 0.42 + pr * 0.26 - ud.recoil * 0.18;
+        ud.rightArmGroup.rotation.x = clampedGunPitch * 0.7 - ud.recoil * 0.16;
       }
       if (ud.boltMesh) {
-        // Mechanical bolt slams backward & cycles forward
         ud.boltMesh.position.z = -0.22 - Math.sin(ud.recoil * Math.PI) * 0.32;
       }
       if (ud.chamberBallMesh) {
-        // Show paintball travelling down the barrel from hopper to muzzle!
         ud.chamberBallMesh.visible = ud.recoil > 0.25;
         ud.chamberBallMesh.position.z = 0.25 + (1 - ud.recoil) * 1.45;
       }
@@ -6367,13 +6612,14 @@ export default function HamsterPaintball({
       }
     } else {
       if (ud.markerGroup) {
-        ud.markerGroup.position.z = 0.55;
-        ud.markerGroup.position.y = 1.24 + runSwayY;
-        ud.markerGroup.rotation.x = 0;
+        ud.markerGroup.position.z = baseGunZ;
+        ud.markerGroup.position.y = baseGunY;
+        ud.markerGroup.rotation.x = clampedGunPitch;
       }
       if (ud.rightArmGroup) {
-        ud.rightArmGroup.position.z = 0.42;
-        ud.rightArmGroup.rotation.x = 0;
+        ud.rightArmGroup.position.y = 1.18 - cr * 0.32 - pr * 0.62;
+        ud.rightArmGroup.position.z = 0.42 + pr * 0.26;
+        ud.rightArmGroup.rotation.x = clampedGunPitch * 0.7;
       }
       if (ud.boltMesh) {
         ud.boltMesh.position.z = -0.22;
@@ -6386,8 +6632,9 @@ export default function HamsterPaintball({
       }
     }
 
-    // Long-Press Can Drinking / Charging 3D Pose & Aura Ring
+    // Left Arm Crawl Motion or Long-Press Can Drinking / Charging 3D Pose
     if (ud.leftArmGroup && ud.heldCanMesh && ud.canAuraRing) {
+      ud.leftArmGroup.position.y = 1.18 - cr * 0.32 - pr * 0.64;
       if (holdingCanType) {
         const canColor = holdingCanType === 'health' ? 0x22c55e : 0x06b6d4;
         ud.heldCanMesh.visible = true;
@@ -6401,7 +6648,10 @@ export default function HamsterPaintball({
         ud.canAuraRing.scale.setScalar(pulseScale);
       } else {
         ud.heldCanMesh.visible = false;
-        ud.leftArmGroup.rotation.x = 0;
+        ud.leftArmGroup.rotation.x =
+          pr > 0.2
+            ? -0.95 + (isMoving ? Math.cos(nextPhase) * 0.42 : 0)
+            : 0;
         ud.leftArmGroup.rotation.y = 0;
         ud.canAuraRing.visible = false;
       }
@@ -7392,14 +7642,22 @@ export default function HamsterPaintball({
       aimLaserLine,
       shootButtonHeld: false,
       x: startX,
+      y: 0,
+      jumpVy: 0,
       z: startZ,
       rotY: initYaw,
       camYaw: initYaw,
-      camPitch: 0.2,
+      camPitch: 0.12,
       camDistCurrent: 8.0,
       camHeightCurrent: 3.35,
       camShoulderCurrent: 1.22,
       camKick: 0,
+      crouchLerp: 0,
+      crawlLerp: 0,
+      adsLerp: 0,
+      recoilBloom: 0,
+      shoulderSide: 1,
+      virtualMouseLock: false,
       vx: 0,
       vz: 0,
       walkPhase: 0,
@@ -7434,62 +7692,6 @@ export default function HamsterPaintball({
       shockwaves: [],
       remotePlayers: new Map(),
       broadcastChannel: broadcastChannelRef.current || undefined
-    };
-
-    // Reusable 3D Raycaster & Ground Plane (y = 0.06) so Laptop Mouse Pointer & 3D Aim Reticle are 100% locked together!
-    const mouseRaycaster = new THREE.Raycaster();
-    const mouseNdcVec = new THREE.Vector2();
-    const groundAimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.06);
-    const rayHitPoint = new THREE.Vector3();
-
-    const syncMouseCursorToAimReticle = (g: NonNullable<typeof gameRef.current>) => {
-      const rect = g.renderer.domElement.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-      const ndcX = THREE.MathUtils.clamp(
-        ((g.mouseScreenX - rect.left) / rect.width) * 2 - 1,
-        -1,
-        1
-      );
-      const ndcY = THREE.MathUtils.clamp(
-        -((g.mouseScreenY - rect.top) / rect.height) * 2 + 1,
-        -1,
-        1
-      );
-      mouseNdcVec.set(ndcX, ndcY);
-      mouseRaycaster.setFromCamera(mouseNdcVec, g.camera);
-
-      const intersected = mouseRaycaster.ray.intersectPlane(groundAimPlane, rayHitPoint);
-      let worldX: number;
-      let worldZ: number;
-      const rayDir = mouseRaycaster.ray.direction;
-
-      if (
-        intersected &&
-        Math.hypot(rayHitPoint.x - g.x, rayHitPoint.z - g.z) <= 56 &&
-        (rayHitPoint.x - g.camera.position.x) * rayDir.x +
-          (rayHitPoint.z - g.camera.position.z) * rayDir.z >
-          0
-      ) {
-        worldX = rayHitPoint.x;
-        worldZ = rayHitPoint.z;
-      } else {
-        const horizLen = Math.hypot(rayDir.x, rayDir.z) || 1;
-        worldX = g.x + (rayDir.x / horizLen) * 36;
-        worldZ = g.z + (rayDir.z / horizLen) * 36;
-      }
-
-      // Ensure a comfortable minimum distance from hamster feet so character rotation stays smooth
-      const dx = worldX - g.x;
-      const dz = worldZ - g.z;
-      const distFromPlayer = Math.hypot(dx, dz);
-      if (distFromPlayer < 1.35 && distFromPlayer > 0.001) {
-        worldX = g.x + (dx / distFromPlayer) * 1.35;
-        worldZ = g.z + (dz / distFromPlayer) * 1.35;
-      }
-
-      g.aimWorldX = THREE.MathUtils.clamp(worldX, -(ARENA_HALF_W - 0.5), ARENA_HALF_W - 0.5);
-      g.aimWorldZ = THREE.MathUtils.clamp(worldZ, -(ARENA_HALF_D - 0.5), ARENA_HALF_D - 0.5);
-      g.rotY = Math.atan2(g.aimWorldX - g.x, g.aimWorldZ - g.z);
     };
 
     // Re-populate any already-connected remote players into the freshly created scene
@@ -7537,8 +7739,18 @@ export default function HamsterPaintball({
           return 'e';
         case 'KeyZ':
           return 'z';
+        case 'KeyX':
+          return 'x';
         case 'KeyC':
           return 'c';
+        case 'ControlLeft':
+        case 'ControlRight':
+          return 'ctrl';
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          return 'shift';
+        case 'Escape':
+          return 'escape';
         case 'Digit1':
           return '1';
         case 'Digit2':
@@ -7548,11 +7760,34 @@ export default function HamsterPaintball({
       }
     };
 
-    // Keyboard, Drag-Look / Separate Aim & Mobile Right-Side Touch-Drag Listeners (Zero Unintended Auto-Spin!)
+    const getBaseFov = () => {
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || window.innerHeight;
+      const aspect = w / Math.max(1, h);
+      if (aspect < 1.0) {
+        return THREE.MathUtils.clamp(50 / Math.pow(aspect, 0.42), 54, 72);
+      }
+      if (w < 1200) return 52;
+      return 48;
+    };
+
+    // PUBG Keyboard Bindings: WASD Move, Space Jump, C/Ctrl Crouch ("Crunch"), Z/X Crawl ("Prone"), Shift/RMB Scope, E Swap Shoulder, V Camera
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!gameRef.current || isTypingInInput(e.target)) return;
+      const g = gameRef.current;
       const snap = stateSnapRef.current;
       const k = mapCodeToKey(e.code, e.key);
+
+      if (k === 'escape') {
+        g.virtualMouseLock = false;
+        setIsAimLocked(false);
+        if (document.pointerLockElement) {
+          try {
+            document.exitPointerLock();
+          } catch {}
+        }
+        return;
+      }
 
       if (k === 'v' && !e.repeat && snap.role === 'player' && snap.screen === 'game' && !snap.isAnyModalOpen) {
         cycleCameraViewPreset();
@@ -7575,13 +7810,43 @@ export default function HamsterPaintball({
         return;
       }
 
-      gameRef.current.keys[k] = true;
+      // Laptop PUBG Stance, Jump, Scope & Shoulder-Swap Keys for Student Players
+      if (snap.role === 'player' && snap.screen === 'game') {
+        if (k === ' ') {
+          e.preventDefault();
+          if (!e.repeat) {
+            triggerPlayerJump();
+          }
+          return;
+        }
+        if ((k === 'c' || k === 'ctrl') && !e.repeat) {
+          e.preventDefault();
+          togglePlayerStance('crouch');
+          return;
+        }
+        if ((k === 'z' || k === 'x') && !e.repeat) {
+          e.preventDefault();
+          togglePlayerStance('crawl');
+          return;
+        }
+        if (k === 'shift' && !e.repeat) {
+          toggleAdsScope();
+          return;
+        }
+        if (k === 'e' && !e.repeat) {
+          g.shoulderSide = g.shoulderSide === 1 ? -1 : 1;
+          sfx.playCameraSwitch();
+          return;
+        }
+      }
 
-      // Keyboard Long-Press Shortcuts for Health Can ('1' or 'h') & Defence Can ('2', 'f', or 'e')
+      g.keys[k] = true;
+
+      // Keyboard Long-Press Shortcuts for Health Can ('1' or 'h') & Defence Can ('2' or 'f')
       if (!e.repeat && snap.role === 'player' && snap.screen === 'game') {
         if (k === '1' || k === 'h') {
           startCanLongPress('health');
-        } else if (k === '2' || k === 'f' || k === 'e') {
+        } else if (k === '2' || k === 'f') {
           startCanLongPress('shield');
         }
       }
@@ -7593,7 +7858,7 @@ export default function HamsterPaintball({
       gameRef.current.keys[k] = false;
       const rawLower = e.key.toLowerCase();
       gameRef.current.keys[rawLower] = false;
-      if (k === '1' || k === 'h' || k === '2' || k === 'f' || k === 'e') {
+      if (k === '1' || k === 'h' || k === '2' || k === 'f') {
         stopCanLongPress();
       }
     };
@@ -7606,7 +7871,7 @@ export default function HamsterPaintball({
     // Track recent touch activity so mobile browsers' synthetic mousemove events never cause sudden camera rotation
     let lastTouchEventTime = 0;
 
-    // Deliberate Camera Rotation (Drag / Right-Click / Pointer-Lock) + Separate Free-Cursor Aim Tracking
+    // PUBG 360° Free Mouse-Look Aiming (Pointer Lock + Seamless Virtual Lock Fallback) + Separate Free-Cursor Mode
     const handleMouseMove = (e: MouseEvent) => {
       const g = gameRef.current;
       if (!g) return;
@@ -7617,14 +7882,15 @@ export default function HamsterPaintball({
       }
 
       const snap = stateSnapRef.current;
+      const isNativePointerLocked = document.pointerLockElement === renderer.domElement;
       const rawDx =
-        typeof e.movementX === 'number' && document.pointerLockElement
+        isNativePointerLocked && typeof e.movementX === 'number'
           ? e.movementX
           : g.mouseInitialized
           ? e.clientX - g.lastMouseX
           : 0;
       const rawDy =
-        typeof e.movementY === 'number' && document.pointerLockElement
+        isNativePointerLocked && typeof e.movementY === 'number'
           ? e.movementY
           : g.mouseInitialized
           ? e.clientY - g.lastMouseY
@@ -7649,9 +7915,9 @@ export default function HamsterPaintball({
         const rect = renderer.domElement.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
           const aimSens = snap.aimSensitivity || 1.0;
-          const rawXPct = THREE.MathUtils.clamp(((e.clientX - rect.left) / rect.width) * 100, 10, 90);
-          const rawYPct = THREE.MathUtils.clamp(((e.clientY - rect.top) / rect.height) * 100, 14, 82);
-          const blend = Math.min(1, 0.45 * aimSens + 0.35);
+          const rawXPct = THREE.MathUtils.clamp(((e.clientX - rect.left) / rect.width) * 100, 8, 92);
+          const rawYPct = THREE.MathUtils.clamp(((e.clientY - rect.top) / rect.height) * 100, 12, 86);
+          const blend = Math.min(1, 0.48 * aimSens + 0.35);
           const nextX = aimReticlePctRef.current.x + (rawXPct - aimReticlePctRef.current.x) * blend;
           const nextY = aimReticlePctRef.current.y + (rawYPct - aimReticlePctRef.current.y) * blend;
           aimReticlePctRef.current = { x: nextX, y: nextY };
@@ -7660,28 +7926,45 @@ export default function HamsterPaintball({
       }
 
       // Guard against sudden large cursor jumps when mouse re-enters window or closes a modal
-      if (Math.abs(rawDx) > 55 || Math.abs(rawDy) > 55) {
+      if (!isNativePointerLocked && (Math.abs(rawDx) > 55 || Math.abs(rawDy) > 55)) {
         return;
       }
 
-      // NEVER rotate the camera on passive hover (`e.buttons === 0` without pointer lock)!
-      // Only rotate camera when actively dragging on the canvas, holding right-click, or pointer-locked!
+      const clampedDx = THREE.MathUtils.clamp(rawDx, -65, 65);
+      const clampedDy = THREE.MathUtils.clamp(rawDy, -65, 65);
+
+      const isPubgMouseAimActive =
+        isNativePointerLocked ||
+        (snap.role === 'player' &&
+          snap.screen === 'game' &&
+          snap.aimControlMode === 'shoulder' &&
+          !snap.isTouchHudVisible &&
+          g.virtualMouseLock);
+
       const isActivelyRotatingCamera =
-        Boolean(document.pointerLockElement) ||
+        isPubgMouseAimActive ||
         g.isCameraDragging ||
-        (e.buttons & 2) === 2 ||
+        (snap.role === 'host' && (e.buttons & 2) === 2) ||
         (snap.aimControlMode === 'shoulder' && (e.buttons & 1) === 1 && g.dragMovedPx > 2);
 
       if (g.mouseDown || g.isCameraDragging) {
-        g.dragMovedPx += Math.hypot(rawDx, rawDy);
+        g.dragMovedPx += Math.hypot(clampedDx, clampedDy);
       }
 
       if (isActivelyRotatingCamera) {
         const camSens = snap.cameraSensitivity || 1.0;
-        const yawSpeed = 0.0044;
-        const pitchSpeed = 0.0028;
-        g.camYaw -= rawDx * yawSpeed * camSens;
-        g.camPitch = THREE.MathUtils.clamp(g.camPitch + rawDy * pitchSpeed * camSens, -0.06, 0.48);
+        const aimSens = snap.aimSensitivity || 1.0;
+        const adsMult = snap.isAdsScoped ? 0.62 : 1.0;
+        const combinedSens = camSens * (0.65 + aimSens * 0.35) * adsMult;
+        const yawSpeed = isNativePointerLocked ? 0.0029 : 0.0045;
+        const pitchSpeed = isNativePointerLocked ? 0.0023 : 0.0034;
+        g.camYaw -= clampedDx * yawSpeed * combinedSens;
+        // Full 3D PUBG vertical pitch: look high up (-0.44 rad) or down at prone targets (+0.52 rad)!
+        g.camPitch = THREE.MathUtils.clamp(
+          g.camPitch + clampedDy * pitchSpeed * combinedSens,
+          -0.44,
+          0.52
+        );
       }
     };
 
@@ -7702,8 +7985,27 @@ export default function HamsterPaintball({
       g.mouseInitialized = true;
       g.dragMovedPx = 0;
 
-      // Right-click or Middle-click always initiates dedicated Camera Orbit Drag
-      if (e.button === 2 || e.button === 1) {
+      // Right-Click on Student Player in Game toggles PUBG 2x ADS Scope! (In Separate mode or Host Lobby, orbits camera)
+      if (e.button === 2) {
+        if (snap.role === 'player' && snap.screen === 'game' && snap.aimControlMode === 'shoulder') {
+          toggleAdsScope();
+          if (!snap.isTouchHudVisible) {
+            g.virtualMouseLock = true;
+            setIsAimLocked(true);
+            if (!document.pointerLockElement && renderer.domElement.requestPointerLock) {
+              try {
+                const lockRes = renderer.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
+                if (lockRes && typeof lockRes.catch === 'function') lockRes.catch(() => {});
+              } catch {}
+            }
+          }
+          return;
+        }
+        g.isCameraDragging = true;
+        return;
+      }
+
+      if (e.button === 1) {
         g.isCameraDragging = true;
         return;
       }
@@ -7711,11 +8013,28 @@ export default function HamsterPaintball({
       if (e.button !== 0) return;
       g.mouseDown = true;
 
+      // Engage PUBG Mouse Aim Lock on Laptop when clicking the 3D Arena Canvas!
+      if (
+        snap.role === 'player' &&
+        snap.screen === 'game' &&
+        snap.aimControlMode === 'shoulder' &&
+        !snap.isTouchHudVisible
+      ) {
+        g.virtualMouseLock = true;
+        setIsAimLocked(true);
+        if (!document.pointerLockElement && renderer.domElement.requestPointerLock) {
+          try {
+            const lockRes = renderer.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
+            if (lockRes && typeof lockRes.catch === 'function') lockRes.catch(() => {});
+          } catch {}
+        }
+      }
+
       if (snap.role === 'player' && snap.screen === 'game' && snap.aimControlMode === 'separate') {
         const rect = renderer.domElement.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          const rx = THREE.MathUtils.clamp(((e.clientX - rect.left) / rect.width) * 100, 10, 90);
-          const ry = THREE.MathUtils.clamp(((e.clientY - rect.top) / rect.height) * 100, 14, 82);
+          const rx = THREE.MathUtils.clamp(((e.clientX - rect.left) / rect.width) * 100, 8, 92);
+          const ry = THREE.MathUtils.clamp(((e.clientY - rect.top) / rect.height) * 100, 12, 86);
           aimReticlePctRef.current = { x: rx, y: ry };
           setAimReticlePct({ x: rx, y: ry });
         }
@@ -7743,13 +8062,15 @@ export default function HamsterPaintball({
       }
     };
 
-    // Mobile / Tablet Touch-Drag on Right Side of Screen (with Separate Aim tap support & strict touch cleanup)
+    // Mobile / Tablet Touch-Drag on Arena (PUBG Free-Look Swipe + Separate Aim Tap Support)
     const handleWindowTouchStart = (e: TouchEvent) => {
       lastTouchEventTime = performance.now();
+      setDetectedTouchDevice(true);
       const g = gameRef.current;
       const snap = stateSnapRef.current;
       if (g) {
         g.usingMouseAim = false;
+        g.virtualMouseLock = false;
       }
       const canControlTouchLook =
         !snap.isAnyModalOpen &&
@@ -7761,7 +8082,7 @@ export default function HamsterPaintball({
       const target = e.target as HTMLElement | null;
       if (
         target &&
-        target.closest('button, input, select, textarea, a, .host-lobby-interactive-panel')
+        target.closest('button, input, select, textarea, a, .host-lobby-interactive-panel, .pb-touch-joystick')
       ) {
         return;
       }
@@ -7769,7 +8090,7 @@ export default function HamsterPaintball({
         const t = e.changedTouches[i];
         if (t.identifier === joystickTouchIdRef.current) continue;
         const isBottomLeftJoystickZone =
-          t.clientX < window.innerWidth * 0.36 && t.clientY > window.innerHeight * 0.54;
+          t.clientX < window.innerWidth * 0.34 && t.clientY > window.innerHeight * 0.52;
         if (!isBottomLeftJoystickZone && g.lookTouchId === null) {
           g.lookTouchId = t.identifier;
           g.lookTouchStartX = t.clientX;
@@ -7783,13 +8104,13 @@ export default function HamsterPaintball({
           if (
             snap.role === 'player' &&
             snap.aimControlMode === 'separate' &&
-            t.clientX < window.innerWidth * 0.78 &&
-            t.clientY < window.innerHeight * 0.78
+            t.clientX < window.innerWidth * 0.76 &&
+            t.clientY < window.innerHeight * 0.74
           ) {
             const rect = renderer.domElement.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) {
-              const rx = THREE.MathUtils.clamp(((t.clientX - rect.left) / rect.width) * 100, 12, 88);
-              const ry = THREE.MathUtils.clamp(((t.clientY - rect.top) / rect.height) * 100, 16, 78);
+              const rx = THREE.MathUtils.clamp(((t.clientX - rect.left) / rect.width) * 100, 10, 90);
+              const ry = THREE.MathUtils.clamp(((t.clientY - rect.top) / rect.height) * 100, 14, 78);
               aimReticlePctRef.current = { x: rx, y: ry };
               setAimReticlePct({ x: rx, y: ry });
             }
@@ -7818,8 +8139,15 @@ export default function HamsterPaintball({
             break;
           }
           const camSens = snap.cameraSensitivity || 1.0;
-          g.camYaw -= dx * 0.0058 * camSens;
-          g.camPitch = THREE.MathUtils.clamp(g.camPitch + dy * 0.0036 * camSens, -0.06, 0.48);
+          const aimSens = snap.aimSensitivity || 1.0;
+          const adsMult = snap.isAdsScoped ? 0.62 : 1.0;
+          const touchSens = camSens * (0.65 + aimSens * 0.35) * adsMult;
+          g.camYaw -= dx * 0.0058 * touchSens;
+          g.camPitch = THREE.MathUtils.clamp(
+            g.camPitch + dy * 0.0042 * touchSens,
+            -0.44,
+            0.52
+          );
           break;
         }
       }
@@ -7827,7 +8155,6 @@ export default function HamsterPaintball({
 
     const handleWindowTouchEnd = (e: TouchEvent) => {
       const g = gameRef.current;
-      // Verify active touches so neither lookTouchId nor joystickTouchId can EVER get stuck!
       let joyStillActive = false;
       let lookStillActive = false;
       for (let i = 0; i < e.touches.length; i++) {
@@ -7857,13 +8184,8 @@ export default function HamsterPaintball({
       const h = container.clientHeight || window.innerHeight;
       const aspect = w / Math.max(1, h);
       gameRef.current.camera.aspect = aspect;
-      if (aspect < 1.0) {
-        gameRef.current.camera.fov = THREE.MathUtils.clamp(50 / Math.pow(aspect, 0.42), 54, 72);
-      } else if (w < 1200) {
-        gameRef.current.camera.fov = 52;
-      } else {
-        gameRef.current.camera.fov = 48;
-      }
+      const baseFov = getBaseFov();
+      gameRef.current.camera.fov = THREE.MathUtils.lerp(baseFov, 32, gameRef.current.adsLerp || 0);
       gameRef.current.camera.updateProjectionMatrix();
       gameRef.current.renderer.setSize(w, h);
     };
@@ -7894,14 +8216,17 @@ export default function HamsterPaintball({
     window.visualViewport?.addEventListener('resize', handleResize);
 
     // =========================================================
-    // MAIN 60FPS ANIMATION LOOP (OVER-SHOULDER CAMERA PRESETS + SEPARATE AIM RAYCASTING)
+    // MAIN 60FPS ANIMATION LOOP (PUBG TPS AIM + ADS 2X SCOPE + JUMP / CROUCH / CRAWL)
     // =========================================================
     let lastTime = performance.now();
     // Pre-allocated math objects for zero-GC 60fps raycasting
     const _aimRaycaster = new THREE.Raycaster();
-    const _aimReticleNdc = new THREE.Vector2(0, 0.08); // Default Shoulder Sightline: top-[46%] => ndcY = +0.08
-    const _aimTargetPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.38);
+    const _aimReticleNdc = new THREE.Vector2(0, 0.08);
+    const _groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.1);
     const _aimPlaneHit = new THREE.Vector3();
+
+    const getStanceHitHeight = (st?: 'stand' | 'crouch' | 'crawl') =>
+      st === 'crawl' ? 1.42 : st === 'crouch' ? 2.35 : 3.45;
 
     const animate = (now: number) => {
       animFrameRef.current = requestAnimationFrame(animate);
@@ -7947,15 +8272,20 @@ export default function HamsterPaintball({
         rawZ = Math.abs(g.joyZ) > 0.08 ? g.joyZ : 0;
         if (g.keys['w'] || g.keys['arrowup']) rawZ -= 1;
         if (g.keys['s'] || g.keys['arrowdown']) rawZ += 1;
-        if (g.keys['a'] || g.keys['arrowleft']) rawX -= 1;
-        if (g.keys['d'] || g.keys['arrowright']) rawX += 1;
+        if (g.keys['a']) rawX -= 1;
+        if (g.keys['d']) rawX += 1;
 
-        // Optional Z / C keyboard camera orbit keys for smooth manual camera rotation without mouse drag
-        if (g.keys['z']) {
-          g.camYaw += 2.1 * (snapState.cameraSensitivity || 1.0) * dt;
-        }
-        if (g.keys['c']) {
-          g.camYaw -= 2.1 * (snapState.cameraSensitivity || 1.0) * dt;
+        // ArrowLeft / ArrowRight allow smooth keyboard camera look when playing without a mouse
+        if (snapState.role === 'player' && snapState.screen === 'game') {
+          if (g.keys['arrowleft']) {
+            g.camYaw += 2.2 * (snapState.cameraSensitivity || 1.0) * dt;
+          }
+          if (g.keys['arrowright']) {
+            g.camYaw -= 2.2 * (snapState.cameraSensitivity || 1.0) * dt;
+          }
+        } else {
+          if (g.keys['arrowleft']) rawX -= 1;
+          if (g.keys['arrowright']) rawX += 1;
         }
       }
 
@@ -8001,13 +8331,14 @@ export default function HamsterPaintball({
             });
 
             const tx = matchedEntry.mesh.position.x;
+            const ty = matchedEntry.mesh.position.y || 0;
             const tz = matchedEntry.mesh.position.z;
             const tYaw = matchedEntry.mesh.rotation.y || 0;
             const camAspect = camera.aspect || 1.5;
             const portraitOffset =
               camAspect < 1.0 ? Math.min(4.2, (1.0 - camAspect) * 8) : camAspect < 1.4 ? 1.0 : 0;
             const followDist = 8.4 + portraitOffset * 0.45;
-            const followHeight = 5.2 + portraitOffset * 0.35;
+            const followHeight = 5.2 + ty * 0.6 + portraitOffset * 0.35;
             const desiredCamX = THREE.MathUtils.clamp(
               tx - Math.sin(tYaw) * followDist,
               -ARENA_HALF_W,
@@ -8025,7 +8356,7 @@ export default function HamsterPaintball({
             camera.position.x += (desiredCamX - camera.position.x) * 8 * dt;
             camera.position.y += (followHeight - camera.position.y) * 8 * dt;
             camera.position.z += (desiredCamZ - camera.position.z) * 8 * dt;
-            camera.lookAt(lookX, 1.8, lookZ);
+            camera.lookAt(lookX, 1.8 + ty * 0.5, lookZ);
           } else {
             camera.position.x += (0 - camera.position.x) * 5 * dt;
             camera.position.y += (22.0 - camera.position.y) * 5 * dt;
@@ -8054,10 +8385,30 @@ export default function HamsterPaintball({
         }
       } else {
         // ---------------------------------------------------
-        // INTERACTIVE 3D CHARACTER MOVEMENT (STUDENT OR HOST IN LOBBY)
+        // INTERACTIVE 3D CHARACTER MOVEMENT, JUMP, CROUCH & CRAWL
         // ---------------------------------------------------
         g.localHamster.visible = true;
-        const speed = 15.6;
+        const activeStance = snapState.role === 'player' ? snapState.playerStance : 'stand';
+
+        // 3D Vertical Jump Physics & Turf Landing Shockwave
+        const prevY = g.y;
+        if (g.y > 0 || g.jumpVy !== 0) {
+          g.jumpVy -= 25.0 * dt;
+          g.y += g.jumpVy * dt;
+          if (g.y <= 0) {
+            g.y = 0;
+            if (prevY > 0.22 && g.jumpVy < -3.0) {
+              sfx.playFootstep();
+              spawnShockwaveRing(g.x, 0.06, g.z, 0xffffff, 0.35, 1.45, 0.24, false);
+            }
+            g.jumpVy = 0;
+          }
+        }
+
+        // Stance & ADS Movement Speeds (Stand: 15.6, Crouch: 10.8, Prone Crawl: 6.2)
+        const baseSpeed =
+          activeStance === 'crawl' ? 6.2 : activeStance === 'crouch' ? 10.8 : 15.6;
+        const speed = snapState.isAdsScoped ? baseSpeed * 0.78 : baseSpeed;
 
         const forwardInput = -rawZ;
         const rightInput = rawX;
@@ -8086,8 +8437,9 @@ export default function HamsterPaintball({
           g.z = Math.max(minSpawnZ, Math.min(maxSpawnZ, g.z));
         }
 
-        // Accessible Smooth Obstacle Collisions for 1.32x Hero Hamster
+        // Accessible Smooth Obstacle Collisions (Allows jumping onto or over low rims when airborne above obs.h!)
         g.obstacles.forEach(obs => {
+          if (g.y > obs.h + 0.1) return;
           const dx = g.x - obs.x;
           const dz = g.z - obs.z;
           const d = Math.hypot(dx, dz);
@@ -8132,8 +8484,7 @@ export default function HamsterPaintball({
         );
 
         // ---------------------------------------------------
-        // PRO OVER-THE-SHOULDER 3D CAMERA PRESETS (CLOSE / BALANCED / FAR / TACTICAL)
-        // Shifts camera to the right shoulder so the player's hamster NEVER blocks the central sightline!
+        // PUBG TPS OVER-SHOULDER CAMERA + 2X ADS SCOPE ZOOM + STANCE EYE HEIGHT
         // ---------------------------------------------------
         const camAspect = camera.aspect || 1.5;
         const portraitOffset =
@@ -8141,34 +8492,54 @@ export default function HamsterPaintball({
 
         const presetCfg =
           snapState.cameraViewPreset === 'close'
-            ? { dist: 5.9, height: 2.75, shoulder: 1.32, lookDist: 24, lookRight: 1.08 }
+            ? { dist: 5.8, height: 2.65, shoulder: 1.34, lookDist: 26, lookRight: 1.1 }
             : snapState.cameraViewPreset === 'far'
-            ? { dist: 11.2, height: 4.85, shoulder: 1.0, lookDist: 25, lookRight: 0.78 }
+            ? { dist: 11.0, height: 4.75, shoulder: 1.02, lookDist: 26, lookRight: 0.8 }
             : snapState.cameraViewPreset === 'tactical'
-            ? { dist: 14.2, height: 7.6, shoulder: 0.52, lookDist: 21, lookRight: 0.4 }
-            : { dist: 8.1, height: 3.4, shoulder: 1.22, lookDist: 24, lookRight: 0.96 };
+            ? { dist: 14.0, height: 7.5, shoulder: 0.54, lookDist: 24, lookRight: 0.42 }
+            : { dist: 7.9, height: 3.25, shoulder: 1.24, lookDist: 26, lookRight: 0.98 };
+
+        g.crouchLerp = THREE.MathUtils.damp(g.crouchLerp, activeStance === 'crouch' ? 1 : 0, 12, dt);
+        g.crawlLerp = THREE.MathUtils.damp(g.crawlLerp, activeStance === 'crawl' ? 1 : 0, 12, dt);
+        const prevAdsLerp = g.adsLerp;
+        g.adsLerp = THREE.MathUtils.damp(g.adsLerp, snapState.isAdsScoped ? 1 : 0, 14, dt);
+        if (Math.abs(g.adsLerp - prevAdsLerp) > 0.001) {
+          const baseFov = getBaseFov();
+          camera.fov = THREE.MathUtils.lerp(baseFov, 31, g.adsLerp);
+          camera.updateProjectionMatrix();
+        }
+
+        const stanceCamDrop = g.crouchLerp * 0.78 + g.crawlLerp * 1.32;
+        const adsDistScale = 1 - g.adsLerp * 0.42;
+        const adsShoulderScale = 1 - g.adsLerp * 0.25;
 
         g.camKick = THREE.MathUtils.damp(g.camKick, 0, 18, dt);
         g.camDistCurrent = THREE.MathUtils.damp(
           g.camDistCurrent,
-          presetCfg.dist + portraitOffset * 0.42 + g.camKick * 0.35,
-          10,
+          (presetCfg.dist + portraitOffset * 0.42) * adsDistScale + g.camKick * 0.28,
+          12,
           dt
         );
         g.camHeightCurrent = THREE.MathUtils.damp(
           g.camHeightCurrent,
-          presetCfg.height + g.camPitch * 4.0 + portraitOffset * 0.28,
-          10,
+          Math.max(
+            0.95,
+            presetCfg.height -
+              stanceCamDrop +
+              g.y * 0.78 +
+              Math.sin(g.camPitch) * 3.6 +
+              portraitOffset * 0.25 -
+              g.adsLerp * 0.35
+          ),
+          12,
           dt
         );
-        g.camShoulderCurrent = THREE.MathUtils.damp(
-          g.camShoulderCurrent,
-          camAspect < 0.85 ? presetCfg.shoulder * 0.78 : presetCfg.shoulder,
-          10,
-          dt
-        );
+        const rawShoulder =
+          (camAspect < 0.85 ? presetCfg.shoulder * 0.78 : presetCfg.shoulder) *
+          adsShoulderScale *
+          g.shoulderSide;
+        g.camShoulderCurrent = THREE.MathUtils.damp(g.camShoulderCurrent, rawShoulder, 12, dt);
 
-        // Right-hand basis vector relative to `g.camYaw` (`fwd = (sin, cos)`, `right = (-cos, sin)`)
         const camFwdX = Math.sin(g.camYaw);
         const camFwdZ = Math.cos(g.camYaw);
         const camRightX = -Math.cos(g.camYaw);
@@ -8189,20 +8560,47 @@ export default function HamsterPaintball({
           ARENA_HALF_D + 3.5
         );
 
-        camera.position.x = THREE.MathUtils.damp(camera.position.x, clampedCamX, 16, dt);
-        camera.position.y = THREE.MathUtils.damp(camera.position.y, g.camHeightCurrent, 16, dt);
-        camera.position.z = THREE.MathUtils.damp(camera.position.z, clampedCamZ, 16, dt);
+        camera.position.x = THREE.MathUtils.damp(camera.position.x, clampedCamX, 18, dt);
+        camera.position.y = THREE.MathUtils.damp(camera.position.y, g.camHeightCurrent, 18, dt);
+        camera.position.z = THREE.MathUtils.damp(camera.position.z, clampedCamZ, 18, dt);
 
         const lookRightAmt =
-          camAspect < 0.85 ? presetCfg.lookRight * 0.78 : presetCfg.lookRight;
+          (camAspect < 0.85 ? presetCfg.lookRight * 0.78 : presetCfg.lookRight) *
+          adsShoulderScale *
+          g.shoulderSide;
         const camLookX = g.x + camFwdX * presetCfg.lookDist + camRightX * lookRightAmt;
         const camLookZ = g.z + camFwdZ * presetCfg.lookDist + camRightZ * lookRightAmt;
-        const baseLookY = snapState.cameraViewPreset === 'tactical' ? 1.15 : 1.75;
-        const camLookY = THREE.MathUtils.clamp(baseLookY - g.camPitch * 2.6, 0.75, 2.65);
+        const baseEyeY =
+          (snapState.cameraViewPreset === 'tactical' ? 1.35 : 1.95) -
+          stanceCamDrop * 0.82 +
+          g.y * 0.78;
+        // True PUBG 3D vertical pitch look target: look smoothly up into the sky or down onto the ground!
+        const camLookY = THREE.MathUtils.clamp(
+          baseEyeY - Math.tan(g.camPitch) * (presetCfg.lookDist * 0.58),
+          -5.5,
+          12.5
+        );
         camera.lookAt(camLookX, camLookY, camLookZ);
         camera.updateMatrixWorld();
 
-        // Compute Reticle NDC: Over-Shoulder Horizon (`x: 50%, y: 46%` => `(0, +0.08)`) OR Separate Free-Aim Reticle!
+        // Update Dynamic PUBG Crosshair Bloom Spread (expands on move/jump/shot, tightens on crouch/crawl/ADS)
+        g.recoilBloom = THREE.MathUtils.damp(g.recoilBloom, 0, 12, dt);
+        const stanceBaseSpread =
+          activeStance === 'crawl' ? 4 : activeStance === 'crouch' ? 6 : 9;
+        const moveSpread = isMoving ? (activeStance === 'crawl' ? 3 : 6) : 0;
+        const airSpread = g.y > 0.08 ? 11 : 0;
+        const targetSpread = snapState.isAdsScoped
+          ? Math.max(2, (stanceBaseSpread + g.recoilBloom) * 0.35)
+          : stanceBaseSpread + moveSpread + airSpread + g.recoilBloom;
+        const nextSpreadRounded = Math.round(
+          THREE.MathUtils.damp(crosshairSpreadRef.current, targetSpread, 15, dt)
+        );
+        if (Math.abs(nextSpreadRounded - crosshairSpreadRef.current) >= 1) {
+          crosshairSpreadRef.current = nextSpreadRounded;
+          setCrosshairSpreadPx(nextSpreadRounded);
+        }
+
+        // Compute Reticle NDC: PUBG Center-Screen Sight (`x: 50%, y: 46%` => `(0, +0.08)`) OR Separate Free-Aim!
         if (snapState.role === 'player' && snapState.aimControlMode === 'separate') {
           const rPct = aimReticlePctRef.current;
           _aimReticleNdc.set((rPct.x / 100) * 2 - 1, 1 - (rPct.y / 100) * 2);
@@ -8214,7 +8612,7 @@ export default function HamsterPaintball({
         const rayOrigin = _aimRaycaster.ray.origin;
         const rayDir = _aimRaycaster.ray.direction;
 
-        // 1. Find nearest blocking arena bunker along the reticle ray (so we don't target-lock through solid cover)
+        // 1. Find nearest blocking arena bunker along the 3D reticle ray
         let nearestObsRayT = Infinity;
         for (let oi = 0; oi < g.obstacles.length; oi++) {
           const obs = g.obstacles[oi];
@@ -8223,9 +8621,9 @@ export default function HamsterPaintball({
           const horizLenSq = rayDir.x * rayDir.x + rayDir.z * rayDir.z;
           if (horizLenSq < 0.0001) continue;
           const projT = (ocX * rayDir.x + ocZ * rayDir.z) / horizLenSq;
-          if (projT <= 2.2 || projT >= 50) continue;
+          if (projT <= 2.0 || projT >= 56) continue;
           const rayYAtT = rayOrigin.y + rayDir.y * projT;
-          if (rayYAtT > obs.h + 0.15 || rayYAtT < -0.2) continue;
+          if (rayYAtT > obs.h + 0.12 || rayYAtT < -0.2) continue;
           const perpX = rayOrigin.x + rayDir.x * projT - obs.x;
           const perpZ = rayOrigin.z + rayDir.z * projT - obs.z;
           if (perpX * perpX + perpZ * perpZ <= (obs.r + 0.15) * (obs.r + 0.15)) {
@@ -8233,11 +8631,11 @@ export default function HamsterPaintball({
           }
         }
 
-        // 2. Check if the reticle ray intersects an enemy player's 3D hamster hitbox (scaled by Aim Sensitivity assist!)
+        // 2. Check if the 3D reticle ray intersects an enemy player's stance-adjusted 3D hitbox!
         const aimAssistRadius = THREE.MathUtils.clamp(
-          1.72 + ((snapState.aimSensitivity || 1.0) - 1.0) * 0.25,
-          1.45,
-          2.2
+          1.45 + ((snapState.aimSensitivity || 1.0) - 1.0) * 0.22,
+          1.25,
+          1.95
         );
         let lockedEnemyT = Infinity;
         let lockedAimX = 0;
@@ -8252,21 +8650,23 @@ export default function HamsterPaintball({
             return;
           }
           const rx = entry.mesh.position.x;
+          const ry = entry.mesh.position.y || 0;
           const rz = entry.mesh.position.z;
+          const enemyH = getStanceHitHeight(entry.data.stance);
           const toEnemyX = rx - rayOrigin.x;
           const toEnemyZ = rz - rayOrigin.z;
           const horizLenSq = rayDir.x * rayDir.x + rayDir.z * rayDir.z;
           if (horizLenSq < 0.0001) return;
           const projT = (toEnemyX * rayDir.x + toEnemyZ * rayDir.z) / horizLenSq;
-          if (projT <= 2.0 || projT >= nearestObsRayT || projT >= 52) return;
+          if (projT <= 1.8 || projT >= nearestObsRayT || projT >= 56) return;
           const rayYAtT = rayOrigin.y + rayDir.y * projT;
-          if (rayYAtT < -0.45 || rayYAtT > 3.55) return;
+          if (rayYAtT < ry - 0.25 || rayYAtT > ry + enemyH + 0.2) return;
           const perpX = rayOrigin.x + rayDir.x * projT - rx;
           const perpZ = rayOrigin.z + rayDir.z * projT - rz;
           if (perpX * perpX + perpZ * perpZ <= aimAssistRadius * aimAssistRadius && projT < lockedEnemyT) {
             lockedEnemyT = projT;
             lockedAimX = rx;
-            lockedAimY = THREE.MathUtils.clamp(rayYAtT, 1.08, 1.85);
+            lockedAimY = THREE.MathUtils.clamp(rayYAtT, ry + 0.42, ry + enemyH - 0.25);
             lockedAimZ = rz;
           }
         });
@@ -8280,46 +8680,49 @@ export default function HamsterPaintball({
           }
         }
 
+        // 3. True 3D Target Point Resolution (Enemy 3D Hitbox -> Bunker Surface -> Ground Turf -> 3D Sky/Horizon Ray!)
         if (hasTargetLock) {
           g.aimWorldX = lockedAimX;
           g.aimWorldY = lockedAimY;
           g.aimWorldZ = lockedAimZ;
-        } else if (nearestObsRayT < 49) {
+        } else if (nearestObsRayT < 54) {
           g.aimWorldX = rayOrigin.x + rayDir.x * nearestObsRayT;
-          g.aimWorldY = THREE.MathUtils.clamp(rayOrigin.y + rayDir.y * nearestObsRayT, 0.85, 2.45);
+          g.aimWorldY = Math.max(0.12, rayOrigin.y + rayDir.y * nearestObsRayT);
           g.aimWorldZ = rayOrigin.z + rayDir.z * nearestObsRayT;
-        } else if (_aimRaycaster.ray.intersectPlane(_aimTargetPlane, _aimPlaneHit)) {
-          const distFromPlayer = Math.hypot(_aimPlaneHit.x - g.x, _aimPlaneHit.z - g.z);
-          const clampedDist = THREE.MathUtils.clamp(distFromPlayer, 5.5, 40);
-          const dirAngle = Math.atan2(_aimPlaneHit.x - g.x, _aimPlaneHit.z - g.z);
-          g.aimWorldX = g.x + Math.sin(dirAngle) * clampedDist;
-          g.aimWorldY = 1.38;
-          g.aimWorldZ = g.z + Math.cos(dirAngle) * clampedDist;
+        } else if (
+          rayDir.y < -0.025 &&
+          _aimRaycaster.ray.intersectPlane(_groundPlane, _aimPlaneHit) &&
+          Math.hypot(_aimPlaneHit.x - rayOrigin.x, _aimPlaneHit.z - rayOrigin.z) < 48
+        ) {
+          g.aimWorldX = _aimPlaneHit.x;
+          g.aimWorldY = 0.14;
+          g.aimWorldZ = _aimPlaneHit.z;
         } else {
-          const fallbackDist = 22;
-          g.aimWorldX = g.x + Math.sin(g.camYaw) * fallbackDist;
-          g.aimWorldY = 1.38;
-          g.aimWorldZ = g.z + Math.cos(g.camYaw) * fallbackDist;
+          const rayTargetDist = 34;
+          g.aimWorldX = rayOrigin.x + rayDir.x * rayTargetDist;
+          g.aimWorldY = THREE.MathUtils.clamp(rayOrigin.y + rayDir.y * rayTargetDist, 0.14, 12.0);
+          g.aimWorldZ = rayOrigin.z + rayDir.z * rayTargetDist;
         }
 
-        // In Separate Camera & Aim mode, smoothly turn the Hamster hero toward the independent 3D Aim Point!
-        const desiredBodyYaw =
-          snapState.role === 'player' && snapState.aimControlMode === 'separate'
-            ? Math.atan2(g.aimWorldX - g.x, g.aimWorldZ - g.z)
-            : Math.atan2(g.aimWorldX - g.x, g.aimWorldZ - g.z);
+        // Smoothly align Hamster hero toward 3D Aim Point & pitch gun/head vertically!
+        const desiredBodyYaw = Math.atan2(g.aimWorldX - g.x, g.aimWorldZ - g.z);
         const yawDelta = shortestAngleDelta(g.rotY, desiredBodyYaw);
-        g.rotY += yawDelta * Math.min(1, dt * 18);
+        g.rotY += yawDelta * Math.min(1, dt * 20);
 
-        g.localHamster.position.set(g.x, 0, g.z);
+        g.localHamster.position.set(g.x, g.y, g.z);
         g.localHamster.rotation.y = g.rotY;
+
+        const aimHorizDist = Math.max(3.5, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
+        const shoulderY =
+          g.y + (activeStance === 'crawl' ? 0.58 : activeStance === 'crouch' ? 0.92 : 1.32);
+        const computedAimPitch = -Math.atan2((g.aimWorldY ?? 1.38) - shoulderY, aimHorizDist);
 
         const ud = g.localHamster.userData;
         if (ud && ud.nameSprite) {
           ud.nameSprite.visible = false;
         }
         if (ud && ud.markerGroup) {
-          const aimDist = Math.max(4.5, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
-          ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, aimDist);
+          ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, aimHorizDist);
         }
 
         g.walkPhase = animateHamsterRig(
@@ -8328,7 +8731,10 @@ export default function HamsterPaintball({
           g.walkPhase,
           dt,
           snapState.holdingCanType,
-          true
+          true,
+          activeStance,
+          g.y,
+          computedAimPitch
         );
 
         // Update 3D 10-Second Respawn Immunity Forcefield Shield on Local Hamster
@@ -8351,7 +8757,7 @@ export default function HamsterPaintball({
           !snapState.isAnyModalOpen &&
           (snapState.screen === 'game' ||
             (snapState.role === 'host' && snapState.screen === 'lobby')) &&
-          (g.shootButtonHeld || g.keys[' '] || (g.mouseDown && g.dragMovedPx < 6))
+          (g.shootButtonHeld || g.mouseDown)
         ) {
           fireShot();
         }
@@ -8406,7 +8812,7 @@ export default function HamsterPaintball({
           }
         }
 
-        // Check Hits on Remote Players (1.32x Hero Hamster Hitbox)
+        // Check Hits on Remote Players (Stance- & Jump-Aware 3D Hitbox!)
         if (!hit && p.ownerId === clientIdRef.current) {
           g.remotePlayers.forEach(entry => {
             if (hit) return;
@@ -8418,10 +8824,13 @@ export default function HamsterPaintball({
               return;
             }
             const rx = entry.mesh.position.x;
+            const ry = entry.mesh.position.y || 0;
             const rz = entry.mesh.position.z;
+            const hitMaxH = getStanceHitHeight(entry.data.stance);
             if (
-              p.mesh.position.y <= 3.55 &&
-              Math.hypot(p.mesh.position.x - rx, p.mesh.position.z - rz) < 2.05
+              p.mesh.position.y >= ry - 0.2 &&
+              p.mesh.position.y <= ry + hitMaxH &&
+              Math.hypot(p.mesh.position.x - rx, p.mesh.position.z - rz) < 1.98
             ) {
               hit = true;
               if (
@@ -8440,10 +8849,18 @@ export default function HamsterPaintball({
                 return;
               }
               sfx.playSplat();
-              spawnPaintSplatEffect(scene, g.splatDecals, g.particles, rx, 1.4, rz, p.color);
+              spawnPaintSplatEffect(
+                scene,
+                g.splatDecals,
+                g.particles,
+                rx,
+                ry + hitMaxH * 0.45,
+                rz,
+                p.color
+              );
               spawnCombatHitFeedback(
                 rx,
-                2.55,
+                ry + hitMaxH * 0.78,
                 rz,
                 p.damage,
                 (entry.data.shield ?? 0) > 0,
@@ -8503,7 +8920,7 @@ export default function HamsterPaintball({
           });
         }
 
-        // Check Hits on Local Student Player (1.32x Hero Hamster Hitbox)
+        // Check Hits on Local Student Player (Stance- & Jump-Aware 3D Hitbox!)
         if (
           !hit &&
           p.ownerId !== clientIdRef.current &&
@@ -8514,23 +8931,33 @@ export default function HamsterPaintball({
             snapState.matchMode === 'teams' &&
             p.ownerTeam === snapState.myTeam &&
             p.ownerTeam !== 'solo';
+          const localHitMaxH = getStanceHitHeight(snapState.playerStance);
           if (
             !isFriendly &&
-            p.mesh.position.y <= 3.55 &&
-            Math.hypot(p.mesh.position.x - g.x, p.mesh.position.z - g.z) < 1.95
+            p.mesh.position.y >= g.y - 0.2 &&
+            p.mesh.position.y <= g.y + localHitMaxH &&
+            Math.hypot(p.mesh.position.x - g.x, p.mesh.position.z - g.z) < 1.9
           ) {
             hit = true;
             if (serverNowMs < snapState.immuneUntil) {
               sfx.playDamageHit();
             } else {
-              spawnPaintSplatEffect(scene, g.splatDecals, g.particles, g.x, 1.35, g.z, p.color);
+              spawnPaintSplatEffect(
+                scene,
+                g.splatDecals,
+                g.particles,
+                g.x,
+                g.y + localHitMaxH * 0.45,
+                g.z,
+                p.color
+              );
               applyIncomingDamage(p.damage, p.ownerName || 'Opponent', p.ownerId);
             }
           }
         }
 
         // Ground Turf Impact
-        if (!hit && p.mesh.position.y <= 0.15) {
+        if (!hit && p.mesh.position.y <= 0.12) {
           hit = true;
           sfx.playSplat();
           spawnPaintSplatEffect(
@@ -8593,7 +9020,7 @@ export default function HamsterPaintball({
         }
       });
 
-      // Smooth Dead-Reckoned Interpolation, Shortest-Angle Yaw & Live Overhead HP/Shield Bars for Remote Hamsters
+      // Smooth Dead-Reckoned Interpolation, Jump Elevation, Stance Animation & Live Overhead Bars for Remote Hamsters
       const localRecvClock = Date.now();
       g.remotePlayers.forEach(entry => {
         const ageSec = entry.lastLocalRecvAt
@@ -8611,11 +9038,14 @@ export default function HamsterPaintball({
           -(ARENA_HALF_D - 0.8),
           ARENA_HALF_D - 0.8
         );
+        const targetRemoteY = Math.max(0, typeof entry.data.y === 'number' ? entry.data.y : 0);
         const dx = predX - entry.mesh.position.x;
+        const dy = targetRemoteY - entry.mesh.position.y;
         const dz = predZ - entry.mesh.position.z;
         const dist = Math.hypot(dx, dz);
         const blend = Math.min(1, dt * 13);
         entry.mesh.position.x += dx * blend;
+        entry.mesh.position.y += dy * Math.min(1, dt * 15);
         entry.mesh.position.z += dz * blend;
 
         const deltaYaw = shortestAngleDelta(entry.mesh.rotation.y, entry.data.rotY || 0);
@@ -8651,7 +9081,17 @@ export default function HamsterPaintball({
           }
         }
         const isRemoteMoving = dist > 0.06 || Math.hypot(rvx, rvz) > 0.6;
-        entry.walkPhase = animateHamsterRig(entry.mesh, isRemoteMoving, entry.walkPhase, dt);
+        entry.walkPhase = animateHamsterRig(
+          entry.mesh,
+          isRemoteMoving,
+          entry.walkPhase,
+          dt,
+          null,
+          false,
+          entry.data.stance || 'stand',
+          entry.mesh.position.y,
+          0
+        );
       });
 
       renderer.render(scene, camera);
@@ -8703,7 +9143,7 @@ export default function HamsterPaintball({
       activeTeam,
       false
     );
-    updatedHamster.position.set(g.x, 0, g.z);
+    updatedHamster.position.set(g.x, g.y, g.z);
     updatedHamster.rotation.y = g.rotY;
     updatedHamster.visible = !(isHostRole && screen === 'game');
     g.scene.add(updatedHamster);
@@ -8718,7 +9158,7 @@ export default function HamsterPaintball({
   }, [selectedSkinIdx, myTeam, matchMode, role, screen]);
 
   // -------------------------------------------------------------
-  // 7. FIRE PAINTBALL DIRECTLY OUT OF THE 3D GUN BARREL MUZZLE TOWARD CENTER-SCREEN CROSSHAIR
+  // 7. FIRE PAINTBALL DIRECTLY OUT OF THE 3D GUN BARREL MUZZLE TOWARD PUBG 3D CROSSHAIR TARGET
   // -------------------------------------------------------------
   const fireShot = () => {
     const g = gameRef.current;
@@ -8729,8 +9169,6 @@ export default function HamsterPaintball({
 
     const isPlayingMatch = snap.matchStatus === 'playing';
 
-    // During the Lobby ('lobby'), players can shoot freely!
-    // During the active Game ('playing'), questions NEVER auto-open; players click the "Questions" button to earn paintballs!
     if (isPlayingMatch) {
       if (snap.ammo <= 0) {
         g.shootButtonHeld = false;
@@ -8747,7 +9185,14 @@ export default function HamsterPaintball({
     }
 
     g.lastShotTime = now;
-    g.camKick = 0.55;
+    g.camKick = snap.isAdsScoped ? 0.32 : 0.55;
+    g.recoilBloom = Math.min(20, g.recoilBloom + (snap.isAdsScoped ? 2.8 : 5.8));
+    // Subtle authentic PUBG vertical recoil kick
+    g.camPitch = THREE.MathUtils.clamp(
+      g.camPitch - (snap.isAdsScoped ? 0.006 : 0.011),
+      -0.44,
+      0.52
+    );
     sfx.playMarkerShot();
 
     // Enforce: Red Team ALWAYS fires Red Paint (0xef4444) and Blue Team ALWAYS fires Blue Paint (0x2563eb)!
@@ -8759,49 +9204,61 @@ export default function HamsterPaintball({
         : 'red';
     const teamPaint = resolveTeamPaintColor(activeTeam, undefined, snap.selectedSkinIdx);
 
-    // 1. Align Hamster Body Directly Toward Target Aim Point & Point Gun Barrel Through Reticle!
+    // 1. Align Hamster Body Directly Toward 3D Target Aim Point & Pitch Gun Barrel to Target Elevation!
     const dx = g.aimWorldX - g.x;
     const dz = g.aimWorldZ - g.z;
     const aimDist = Math.hypot(dx, dz);
     const bodyAngle = aimDist > 0.4 ? Math.atan2(dx, dz) : g.camYaw;
     g.rotY = bodyAngle;
-    g.localHamster.position.set(g.x, 0, g.z);
+    g.localHamster.position.set(g.x, g.y, g.z);
     g.localHamster.rotation.y = bodyAngle;
+
+    const stanceGunBaseY =
+      snap.playerStance === 'crawl' ? 0.58 : snap.playerStance === 'crouch' ? 0.92 : 1.38;
+    const targetY = typeof g.aimWorldY === 'number' ? g.aimWorldY : stanceGunBaseY + g.y;
+    const gunPitch = -Math.atan2(targetY - (g.y + stanceGunBaseY), Math.max(3.5, aimDist));
 
     // 2. Compute Exact 3D World Position of the Gun Barrel Tip (`muzzleTip`) BEFORE applying kickback!
     const muzzleWorldPos = new THREE.Vector3(
       g.x + Math.sin(bodyAngle) * 1.65,
-      1.42,
+      g.y + stanceGunBaseY,
       g.z + Math.cos(bodyAngle) * 1.65
     );
     const ud = g.localHamster.userData;
     if (ud) {
       if (ud.markerGroup) {
-        ud.markerGroup.position.z = 0.55;
-        ud.markerGroup.rotation.x = 0;
-        ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, Math.max(5.0, aimDist));
+        ud.markerGroup.rotation.x = THREE.MathUtils.clamp(gunPitch, -0.58, 0.58);
+        ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, Math.max(4.5, aimDist));
       }
       g.localHamster.updateMatrixWorld(true);
       if (ud.muzzleTip) {
         ud.muzzleTip.getWorldPosition(muzzleWorldPos);
       }
-      // Trigger mechanical bolt cycle, chambered ball feed & 3D muzzle flash!
       ud.recoil = 1.0;
     }
 
-    // 3. Calculate Crisp Flat Trajectory from Gun Barrel Tip (`muzzleWorldPos`) Straight Through Lowered Reticle Target!
+    // 3. Calculate Crisp 3D Ballistic Trajectory + Stance/ADS Precision Spread!
     const targetDx = g.aimWorldX - muzzleWorldPos.x;
     const targetDz = g.aimWorldZ - muzzleWorldPos.z;
     const targetDist = Math.hypot(targetDx, targetDz);
-    const shotAngle = targetDist > 0.6 ? Math.atan2(targetDx, targetDz) : bodyAngle;
-    const hSpeed = 58;
+    const baseAngle = targetDist > 0.6 ? Math.atan2(targetDx, targetDz) : bodyAngle;
+    const spreadRad = snap.isAdsScoped
+      ? 0.002
+      : snap.playerStance === 'crawl'
+      ? 0.004
+      : snap.playerStance === 'crouch'
+      ? 0.008
+      : g.y > 0.1
+      ? 0.024
+      : 0.013;
+    const shotAngle = baseAngle + (Math.random() - 0.5) * spreadRad;
+    const hSpeed = snap.isAdsScoped ? 64 : 58;
     const gravity = 1.85;
-    const flightTime = Math.max(0.04, Math.min(0.85, targetDist / hSpeed));
-    const targetY = typeof g.aimWorldY === 'number' ? g.aimWorldY : 1.38;
+    const flightTime = Math.max(0.035, Math.min(0.9, targetDist / hSpeed));
     const computedVy = THREE.MathUtils.clamp(
       (targetY - muzzleWorldPos.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
-      -4.2,
-      3.8
+      -22.0,
+      22.0
     );
 
     // 4. Spawn 3D Paintball Projectile + Aerodynamic Streak directly out of the Gun Barrel Nozzle!
@@ -9582,7 +10039,18 @@ export default function HamsterPaintball({
       {/* 3D WebGL Canvas Layer (Isolated container, zero backdrop-filter overlays above it) */}
       <div
         ref={canvasContainerRef}
-        className="absolute inset-0 w-full h-full z-0 cursor-default touch-none"
+        className={`absolute inset-0 w-full h-full z-0 touch-none ${
+          role === 'player' &&
+          screen === 'game' &&
+          !isAnyModalOpen &&
+          !isTouchHudVisible &&
+          aimControlMode === 'shoulder' &&
+          isAimLocked
+            ? 'cursor-none'
+            : role === 'player' && screen === 'game' && !isAnyModalOpen
+            ? 'cursor-crosshair'
+            : 'cursor-default'
+        }`}
       />
 
       {/* -------------------------------------------------------------
@@ -9638,13 +10106,13 @@ export default function HamsterPaintball({
                     ? 'bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-600 border-b-emerald-700'
                     : 'bg-white hover:bg-sky-50 text-slate-800 border-sky-200 border-b-sky-300'
                 }`}
-                title="Toggle Over-Shoulder Aim vs Separate Camera & Free Aim"
+                title="Toggle PUBG TPS Free-Look Aim vs Separate Free-Cursor Aim"
               >
                 <Crosshair
                   size={14}
                   className={aimControlMode === 'separate' ? 'text-white' : 'text-emerald-600'}
                 />
-                <span>{aimControlMode === 'separate' ? 'Aim: Separate' : 'Aim: Shoulder'}</span>
+                <span>{aimControlMode === 'separate' ? 'Aim: Free Cursor' : 'Aim: PUBG TPS'}</span>
               </button>
             </>
           )}
@@ -9737,51 +10205,89 @@ export default function HamsterPaintball({
               </div>
             </div>
 
-            {/* 2. Aim Control Mode: Over-Shoulder Synced vs Separate Camera & Free Aim */}
-            <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                  <Crosshair size={14} className="text-emerald-600" />
-                  <span>Camera &amp; Aim Mode</span>
-                </span>
+            {/* 2. Aim Control Mode & Device HUD Layout (Laptop vs Touch Buttons) */}
+            <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                    <Crosshair size={14} className="text-emerald-600" />
+                    <span>Aiming System</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAimControlMode('shoulder');
+                      sfx.playCameraSwitch();
+                    }}
+                    className={`p-2.5 rounded-xl border-2 text-left transition cursor-pointer ${
+                      aimControlMode === 'shoulder'
+                        ? 'bg-white border-sky-500 shadow-xs'
+                        : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-extrabold text-xs text-slate-900">PUBG TPS Aim</div>
+                    <div className="text-[10px] font-semibold text-slate-500 mt-0.5 leading-snug">
+                      360° free-look aim, dynamic recoil crosshair &amp; RMB 2x Scope zoom.
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAimControlMode('separate');
+                      sfx.playCameraSwitch();
+                    }}
+                    className={`p-2.5 rounded-xl border-2 text-left transition cursor-pointer ${
+                      aimControlMode === 'separate'
+                        ? 'bg-white border-emerald-500 shadow-xs'
+                        : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-extrabold text-xs text-slate-900">Separate Cam &amp; Aim</div>
+                    <div className="text-[10px] font-semibold text-slate-500 mt-0.5 leading-snug">
+                      Move cursor or tap anywhere on screen to aim; Right-drag orbits camera.
+                    </div>
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAimControlMode('shoulder');
-                    sfx.playCameraSwitch();
-                  }}
-                  className={`p-2.5 rounded-xl border-2 text-left transition cursor-pointer ${
-                    aimControlMode === 'shoulder'
-                      ? 'bg-white border-sky-500 shadow-xs'
-                      : 'bg-white/70 border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="font-extrabold text-xs text-slate-900">Over-Shoulder Aim</div>
-                  <div className="text-[10px] font-semibold text-slate-500 mt-0.5 leading-snug">
-                    Clear sightline beside hero. Drag or Z/C rotates camera &amp; aim together.
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAimControlMode('separate');
-                    sfx.playCameraSwitch();
-                  }}
-                  className={`p-2.5 rounded-xl border-2 text-left transition cursor-pointer ${
-                    aimControlMode === 'separate'
-                      ? 'bg-white border-emerald-500 shadow-xs'
-                      : 'bg-white/70 border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="font-extrabold text-xs text-slate-900">Separate Cam &amp; Aim</div>
-                  <div className="text-[10px] font-semibold text-slate-500 mt-0.5 leading-snug">
-                    Move cursor or tap freely to aim anywhere; Right-drag or Z/C rotates camera.
-                  </div>
-                </button>
+              <div className="pt-2.5 border-t border-slate-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-extrabold text-slate-800">
+                    On-Screen Control HUD
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    {isTouchHudVisible ? 'Showing Touch Controls' : 'Laptop Mode (Keys + Mouse)'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { id: 'auto', label: 'Auto Detect' },
+                      { id: 'laptop', label: 'Laptop Keys' },
+                      { id: 'touch', label: 'Touch Pad' }
+                    ] as const
+                  ).map(opt => {
+                    const active = controlLayoutMode === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setControlLayoutMode(opt.id)}
+                        className={`py-1.5 px-2 rounded-xl font-extrabold text-[11px] border transition cursor-pointer whitespace-nowrap ${
+                          active
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -9872,8 +10378,9 @@ export default function HamsterPaintball({
               </div>
 
               <p className="text-[11px] text-slate-600 leading-snug pt-1">
-                <b>Controls:</b> Move with <b>W/A/S/D</b> or <b>Arrows</b> (left joystick on touch).
-                Drag screen or press <b>Z / C</b> to look around; press <b>Space</b> or <b>FIRE</b> to shoot.
+                <b>Laptop Controls:</b> <b>WASD</b> Move · <b>Mouse</b> Aim · <b>Left-Click</b> Fire ·{' '}
+                <b>Right-Click / Shift</b> 2x Scope · <b>Space</b> Jump · <b>C / Ctrl</b> Crouch ·{' '}
+                <b>Z / X</b> Crawl · <b>E</b> Swap Shoulder · <b>Esc</b> Unlock Mouse.
               </p>
             </div>
 
@@ -11081,64 +11588,90 @@ export default function HamsterPaintball({
             </div>
           </div>
 
-          {/* UNOBSTRUCTED OVER-SHOULDER OR SEPARATE FREE-AIM RETICLE (1:1 RAYCAST ALIGNED) */}
+          {/* PUBG DYNAMIC EXPANDING 4-TICK CROSSHAIR & 2X TACTICAL ADS SCOPE OPTIC */}
           {role === 'player' && !isQuestionModalOpen && !isSettingsOpen && (
             <div
-              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 flex flex-col items-center transition-[transform] duration-75"
+              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 flex flex-col items-center"
               style={{
                 left: `${aimControlMode === 'separate' ? aimReticlePct.x : 50}%`,
                 top: `${aimControlMode === 'separate' ? aimReticlePct.y : 46}%`
               }}
             >
-              <div className="relative w-12 h-12 flex items-center justify-center">
-                {/* Tactical Corner Brackets */}
-                <span
-                  className={`absolute top-1 left-1 w-2.5 h-2.5 border-t-2 border-l-2 rounded-tl-xs ${
-                    isEnemyTargeted ? 'border-emerald-300' : 'border-white/90'
-                  }`}
-                />
-                <span
-                  className={`absolute top-1 right-1 w-2.5 h-2.5 border-t-2 border-r-2 rounded-tr-xs ${
-                    isEnemyTargeted ? 'border-emerald-300' : 'border-white/90'
-                  }`}
-                />
-                <span
-                  className={`absolute bottom-1 left-1 w-2.5 h-2.5 border-b-2 border-l-2 rounded-bl-xs ${
-                    isEnemyTargeted ? 'border-emerald-300' : 'border-white/90'
-                  }`}
-                />
-                <span
-                  className={`absolute bottom-1 right-1 w-2.5 h-2.5 border-b-2 border-r-2 rounded-br-xs ${
-                    isEnemyTargeted ? 'border-emerald-300' : 'border-white/90'
-                  }`}
-                />
+              {isAdsScoped ? (
+                /* PUBG 2X HOLOGRAPHIC / RED-DOT SCOPE OPTIC */
+                <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full border-4 border-slate-900/90 shadow-[0_0_0_2px_rgba(255,255,255,0.35),0_12px_32px_rgba(0,0,0,0.45)] flex items-center justify-center">
+                  {/* Fine Mil-Dot Stadia Crosslines */}
+                  <div className="absolute inset-x-3 h-px bg-slate-900/45" />
+                  <div className="absolute inset-y-3 w-px bg-slate-900/45" />
+                  <div
+                    className={`w-12 h-12 rounded-full border-[1.5px] transition-transform duration-75 ${
+                      isEnemyTargeted
+                        ? 'border-emerald-400 scale-95'
+                        : 'border-rose-500/90'
+                    }`}
+                  />
+                  {/* Illuminated Red/Emerald Center Optic Chevron Dot */}
+                  <div
+                    className={`absolute w-2 h-2 rounded-full border border-slate-950/70 shadow-xs ${
+                      isEnemyTargeted ? 'bg-emerald-400 scale-125' : 'bg-rose-500'
+                    }`}
+                  />
+                  <span className="absolute bottom-2.5 px-1.5 py-0.5 rounded bg-slate-900/85 text-amber-300 font-mono tabular-nums font-extrabold text-[9px] tracking-wider">
+                    2X OPTIC
+                  </span>
+                </div>
+              ) : (
+                /* PUBG DYNAMIC 4-TICK EXPANDING CROSSHAIR (SPREAD RESPONDS TO MOVE / JUMP / STANCE / RECOIL) */
+                <div className="relative w-20 h-20 flex items-center justify-center">
+                  {/* Top Hairline Tick */}
+                  <span
+                    className={`absolute w-[3px] h-3 rounded-full border border-slate-950/80 shadow-xs ${
+                      isEnemyTargeted ? 'bg-emerald-400' : 'bg-white'
+                    }`}
+                    style={{
+                      transform: `translateY(-${crosshairSpreadPx + 6}px)`
+                    }}
+                  />
+                  {/* Bottom Hairline Tick */}
+                  <span
+                    className={`absolute w-[3px] h-3 rounded-full border border-slate-950/80 shadow-xs ${
+                      isEnemyTargeted ? 'bg-emerald-400' : 'bg-white'
+                    }`}
+                    style={{
+                      transform: `translateY(${crosshairSpreadPx + 6}px)`
+                    }}
+                  />
+                  {/* Left Hairline Tick */}
+                  <span
+                    className={`absolute h-[3px] w-3 rounded-full border border-slate-950/80 shadow-xs ${
+                      isEnemyTargeted ? 'bg-emerald-400' : 'bg-white'
+                    }`}
+                    style={{
+                      transform: `translateX(-${crosshairSpreadPx + 6}px)`
+                    }}
+                  />
+                  {/* Right Hairline Tick */}
+                  <span
+                    className={`absolute h-[3px] w-3 rounded-full border border-slate-950/80 shadow-xs ${
+                      isEnemyTargeted ? 'bg-emerald-400' : 'bg-white'
+                    }`}
+                    style={{
+                      transform: `translateX(${crosshairSpreadPx + 6}px)`
+                    }}
+                  />
 
-                {/* Outer Precision Ring */}
-                <div
-                  className={`w-7 h-7 rounded-full border-2 shadow-[0_0_10px_rgba(0,0,0,0.55)] transition-transform duration-75 ${
-                    immunitySecondsLeft > 0
-                      ? 'border-amber-300 ring-2 ring-sky-300/60 scale-110'
-                      : isEnemyTargeted
-                      ? 'border-emerald-300 ring-2 ring-amber-300/80 scale-90'
-                      : matchMode === 'teams'
-                      ? myTeam === 'blue'
-                        ? 'border-sky-300'
-                        : 'border-rose-300'
-                      : 'border-emerald-300'
-                  }`}
-                />
-
-                {/* Center Precision Sight Dot */}
-                <div
-                  className={`absolute w-2 h-2 rounded-full border border-slate-900/60 shadow-sm ${
-                    immunitySecondsLeft > 0
-                      ? 'bg-amber-300'
-                      : isEnemyTargeted
-                      ? 'bg-emerald-400 scale-125'
-                      : 'bg-white'
-                  }`}
-                />
-              </div>
+                  {/* Center Precision Dot */}
+                  <span
+                    className={`w-2 h-2 rounded-full border border-slate-950/85 shadow-xs ${
+                      immunitySecondsLeft > 0
+                        ? 'bg-amber-300'
+                        : isEnemyTargeted
+                        ? 'bg-emerald-400 scale-125'
+                        : 'bg-white'
+                    }`}
+                  />
+                </div>
+              )}
 
               {/* Compact Non-Obstructing Status Readout Under Reticle */}
               {immunitySecondsLeft > 0 ? (
@@ -11147,11 +11680,11 @@ export default function HamsterPaintball({
                 </div>
               ) : isEnemyTargeted ? (
                 <div className="mt-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-extrabold text-[9px] tracking-wider border border-white shadow-sm whitespace-nowrap">
-                  LOCKED
+                  TARGET
                 </div>
-              ) : aimControlMode === 'separate' ? (
-                <div className="mt-0.5 px-1.5 py-0.5 rounded-md bg-slate-900/75 text-white font-extrabold text-[8px] tracking-wider whitespace-nowrap">
-                  FREE AIM
+              ) : !isTouchHudVisible && !isAimLocked && aimControlMode === 'shoulder' ? (
+                <div className="mt-1 px-2 py-0.5 rounded-md bg-slate-900/80 text-white font-bold text-[10px] border border-white/25 shadow-sm whitespace-nowrap">
+                  Click Arena to Aim &amp; Fire
                 </div>
               ) : null}
             </div>
@@ -11237,47 +11770,239 @@ export default function HamsterPaintball({
             )}
           </div>
 
-          {/* BOTTOM ROW: ERGONOMIC STUDENT TOUCH CONTROLS OR COLLAPSIBLE HOST CAMERA DOCK */}
+          {/* BOTTOM ROW: CLEAN LAPTOP KEYBIND DOCK OR INSET PUBG MOBILE TOUCH CONTROLS */}
           {role === 'player' ? (
-            <div className="w-full flex items-end justify-between gap-2 sm:gap-4 pb-1 sm:pb-1.5 px-1 sm:px-2 flex-nowrap">
-              {/* LEFT SIDE: VIRTUAL TOUCH MOVEMENT JOYSTICK */}
-              <div className="flex flex-col items-center shrink-0">
-                <span className="mb-1 text-[9px] font-extrabold text-white drop-shadow">
-                  MOVE
-                </span>
-                <div
-                  onTouchStart={handleJoystickStart}
-                  onTouchMove={handleJoystickMove}
-                  onTouchEnd={handleJoystickEnd}
-                  onTouchCancel={handleJoystickEnd}
-                  className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/85 border-2 border-sky-300 flex items-center justify-center relative touch-none shadow-lg select-none"
-                >
+            isTouchHudVisible ? (
+              /* MOBILE / TABLET TOUCH MODE: PULLED AWAY FROM SCREEN EDGES + CRAWL/CROUCH/JUMP UNDER SHOOT */
+              <div className="w-full flex items-end justify-between gap-3 sm:gap-6 pb-5 sm:pb-7 px-6 sm:px-10 flex-nowrap">
+                {/* LEFT THUMB ZONE (INSET AWAY FROM BEZEL): REDESIGNED 360° TACTICAL THUMBSTICK */}
+                <div className="flex flex-col items-center shrink-0">
                   <div
-                    className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-sky-500 border-2 border-white shadow-md transition-transform duration-75"
-                    style={{
-                      transform: `translate(${joystickVec.x * 18}px, ${joystickVec.y * 18}px)`
-                    }}
-                  />
+                    onTouchStart={handleJoystickStart}
+                    onTouchMove={handleJoystickMove}
+                    onTouchEnd={handleJoystickEnd}
+                    onTouchCancel={handleJoystickEnd}
+                    className="pb-touch-joystick pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900/55 border-2 border-white/75 flex items-center justify-center relative touch-none shadow-2xl select-none"
+                  >
+                    {/* Outer Directional Chevrons */}
+                    <span className="absolute top-1.5 text-[9px] font-black text-white/70 leading-none">
+                      ▲
+                    </span>
+                    <span className="absolute bottom-1.5 text-[9px] font-black text-white/70 leading-none">
+                      ▼
+                    </span>
+                    <span className="absolute left-2 text-[9px] font-black text-white/70 leading-none">
+                      ◀
+                    </span>
+                    <span className="absolute right-2 text-[9px] font-black text-white/70 leading-none">
+                      ▶
+                    </span>
+                    {/* Inner Guide Ring */}
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border border-white/25 flex items-center justify-center">
+                      {/* Tactile Grip Thumb Puck */}
+                      <div
+                        className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-b from-sky-400 to-sky-600 border-2 border-white shadow-lg flex items-center justify-center transition-transform duration-75"
+                        style={{
+                          transform: `translate(${joystickVec.x * 26}px, ${joystickVec.y * 26}px)`
+                        }}
+                      >
+                        <div className="w-4 h-4 rounded-full border border-white/60 bg-white/25" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CENTER DOCK: PROMINENT EARN AMMO (QUIZ) BUTTON */}
+                {matchStatus === 'playing' ? (
+                  <div className="pointer-events-auto flex items-center justify-center min-w-0 shrink pb-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsQuestionModalOpen(true)}
+                      className={`px-3.5 sm:px-5 py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl border-2 border-b-4 transition flex items-center gap-2 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
+                        ammo === 0
+                          ? 'bg-amber-400 hover:bg-amber-300 text-slate-900 border-amber-500 border-b-amber-600'
+                          : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-700 border-b-sky-800'
+                      }`}
+                      title="Answer Questions to Earn Paintballs"
+                    >
+                      <HelpCircle size={18} className="shrink-0" />
+                      <div className="text-left leading-tight">
+                        <div className="text-xs sm:text-sm font-['Poppins',sans-serif] font-extrabold">
+                          {ammo === 0 ? 'Earn Ammo!' : 'Questions'}
+                        </div>
+                        <div
+                          className={`text-[10px] sm:text-xs font-bold tabular-nums ${
+                            ammo === 0 ? 'text-slate-800' : 'text-sky-100'
+                          }`}
+                        >
+                          +{ballsPerQuestion} · Ammo {ammo}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="min-w-0 shrink" />
+                )}
+
+                {/* RIGHT THUMB ZONE (INSET AWAY FROM BEZEL): 2X SCOPE + SHOOT TRIGGER + CRAWL/CROUCH/JUMP UNDERNEATH */}
+                <div className="pointer-events-auto flex flex-col items-end gap-2.5 shrink-0">
+                  {/* Upper Combat Row: 2x ADS Scope + Redesigned Primary Shoot Trigger */}
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onTouchStart={e => {
+                        e.preventDefault();
+                        toggleAdsScope();
+                      }}
+                      onClick={() => toggleAdsScope()}
+                      className={`w-12 h-12 sm:w-13 sm:h-13 rounded-2xl border-2 border-b-4 shadow-xl flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
+                        isAdsScoped
+                          ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
+                          : 'bg-slate-900/80 text-white border-white/75 border-b-slate-950'
+                      }`}
+                      title="Toggle 2x Scope Zoom"
+                    >
+                      <Crosshair size={16} />
+                      <span className="mt-0.5 leading-none">2X</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onMouseDown={() => {
+                        if (gameRef.current) gameRef.current.shootButtonHeld = true;
+                        fireShot();
+                      }}
+                      onMouseUp={() => {
+                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                      }}
+                      onMouseLeave={() => {
+                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                      }}
+                      onTouchStart={e => {
+                        e.preventDefault();
+                        if (gameRef.current) gameRef.current.shootButtonHeld = true;
+                        fireShot();
+                      }}
+                      onTouchEnd={() => {
+                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                      }}
+                      onTouchCancel={() => {
+                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                      }}
+                      onContextMenu={e => e.preventDefault()}
+                      className={`w-[74px] h-[74px] sm:w-[84px] sm:h-[84px] rounded-full active:scale-95 border-3 border-white border-b-5 shadow-2xl flex flex-col items-center justify-center font-extrabold cursor-pointer select-none touch-none transition ${
+                        matchStatus === 'playing' && ammo === 0
+                          ? 'bg-slate-700 text-amber-300 border-b-slate-900'
+                          : 'bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white border-b-rose-800'
+                      }`}
+                    >
+                      <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full border border-white/45 bg-white/10 flex flex-col items-center justify-center">
+                        <Crosshair size={20} />
+                        <span className="text-[9px] sm:text-[10px] font-black tracking-wide leading-none mt-0.5 tabular-nums">
+                          {matchStatus === 'playing' ? ammo : 'FIRE'}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Stance & Agility Row Directly Under Shoot: Crawl, Crouch, Jump */}
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onTouchStart={e => {
+                        e.preventDefault();
+                        togglePlayerStance('crawl');
+                      }}
+                      onClick={() => togglePlayerStance('crawl')}
+                      className={`min-w-[54px] h-11 sm:h-12 px-2.5 rounded-2xl border-2 border-b-4 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
+                        playerStance === 'crawl'
+                          ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
+                          : 'bg-slate-900/80 text-white border-white/70 border-b-slate-950'
+                      }`}
+                      title="Crawl / Prone"
+                    >
+                      <svg width="16" height="12" viewBox="0 0 20 12" fill="none" className="shrink-0">
+                        <circle cx="16.5" cy="4.5" r="2.3" fill="currentColor" />
+                        <path
+                          d="M2 9.5H13.5L15 6.8H8.5L5.5 9.5"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span className="mt-0.5 leading-none">Crawl</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onTouchStart={e => {
+                        e.preventDefault();
+                        togglePlayerStance('crouch');
+                      }}
+                      onClick={() => togglePlayerStance('crouch')}
+                      className={`min-w-[56px] h-11 sm:h-12 px-2.5 rounded-2xl border-2 border-b-4 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
+                        playerStance === 'crouch'
+                          ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
+                          : 'bg-slate-900/80 text-white border-white/70 border-b-slate-950'
+                      }`}
+                      title="Crouch / Duck Behind Cover"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
+                        <circle cx="10" cy="3.2" r="2.1" fill="currentColor" />
+                        <path
+                          d="M5.5 13.5L8.5 10.5L6.5 7.5L10.5 6.5L12.5 9.5"
+                          stroke="currentColor"
+                          strokeWidth="2.1"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span className="mt-0.5 leading-none">Crouch</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onTouchStart={e => {
+                        e.preventDefault();
+                        triggerPlayerJump();
+                      }}
+                      onClick={() => triggerPlayerJump()}
+                      className="min-w-[54px] h-11 sm:h-12 px-2.5 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white border-2 border-white border-b-4 border-b-sky-700 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap"
+                      title="Jump"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
+                        <path
+                          d="M8 13V3.5M8 3.5L4 7.5M8 3.5L12 7.5"
+                          stroke="currentColor"
+                          strokeWidth="2.3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span className="mt-0.5 leading-none">Jump</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              {/* CENTER DOCK: PROMINENT EARN AMMO (QUIZ) BUTTON + AMMO READOUT */}
-              {matchStatus === 'playing' ? (
-                <div className="pointer-events-auto flex items-center justify-center min-w-0 shrink">
+            ) : (
+              /* LAPTOP / DESKTOP MODE: NO TOUCH MOVE OR FIRE ICONS — CLEAN STANCE + KEYBIND DOCK */
+              <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-2.5 pb-3 sm:pb-4 px-4">
+                {matchStatus === 'playing' && (
                   <button
                     type="button"
                     onClick={() => setIsQuestionModalOpen(true)}
-                    className={`px-3.5 sm:px-5 py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl border-2 border-b-4 transition flex items-center gap-2.5 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
+                    className={`pointer-events-auto px-4 sm:px-5 py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl border-2 border-b-4 transition flex items-center gap-2.5 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
                       ammo === 0
                         ? 'bg-amber-400 hover:bg-amber-300 text-slate-900 border-amber-500 border-b-amber-600'
                         : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-700 border-b-sky-800'
                     }`}
-                    title="Answer Questions to Earn Paintballs"
+                    title="Press Q or Click to Answer Questions & Earn Paintballs"
                   >
                     <HelpCircle size={18} className="shrink-0" />
                     <div className="text-left leading-tight">
                       <div className="text-xs sm:text-sm font-['Poppins',sans-serif] font-extrabold">
-                        {ammo === 0 ? 'Earn Ammo!' : 'Questions'}
+                        {ammo === 0 ? 'Earn Ammo! [Q]' : 'Questions [Q]'}
                       </div>
                       <div
                         className={`text-[10px] sm:text-xs font-bold tabular-nums ${
@@ -11288,47 +12013,35 @@ export default function HamsterPaintball({
                       </div>
                     </div>
                   </button>
-                </div>
-              ) : (
-                <div className="min-w-0 shrink" />
-              )}
+                )}
 
-              {/* RIGHT SIDE: TACTILE 3D ARCADE SHOOT BUTTON */}
-              <div className="flex flex-col items-center shrink-0">
-                <span className="mb-1 text-[9px] font-extrabold text-white drop-shadow tabular-nums">
-                  {matchStatus === 'playing' ? `AMMO ${ammo}` : 'SHOOT'}
-                </span>
-                <button
-                  type="button"
-                  onMouseDown={() => {
-                    if (gameRef.current) gameRef.current.shootButtonHeld = true;
-                    fireShot();
-                  }}
-                  onMouseUp={() => {
-                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                  }}
-                  onMouseLeave={() => {
-                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                  }}
-                  onTouchStart={e => {
-                    e.preventDefault();
-                    if (gameRef.current) gameRef.current.shootButtonHeld = true;
-                    fireShot();
-                  }}
-                  onTouchEnd={() => {
-                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                  }}
-                  onTouchCancel={() => {
-                    if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                  }}
-                  onContextMenu={e => e.preventDefault()}
-                  className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-rose-500 hover:bg-rose-400 active:translate-y-0.5 border-3 border-white border-b-5 border-b-rose-700 shadow-xl flex flex-col items-center justify-center text-white font-extrabold text-[10px] sm:text-xs cursor-pointer select-none touch-none"
-                >
-                  <Crosshair size={20} />
-                  <span className="mt-0.5">FIRE</span>
-                </button>
+                <div className="pointer-events-none bg-slate-900/85 text-white border border-white/25 rounded-2xl px-3.5 py-2 shadow-xl flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold">
+                  <span className="font-mono tabular-nums font-extrabold text-amber-300 whitespace-nowrap">
+                    {matchStatus === 'playing' ? `AMMO ${ammo}` : 'WARM-UP'}
+                  </span>
+                  <span className="text-white/30">|</span>
+                  <span
+                    className={`font-extrabold uppercase tracking-wide whitespace-nowrap ${
+                      playerStance !== 'stand' ? 'text-amber-300' : 'text-sky-300'
+                    }`}
+                  >
+                    {playerStance === 'crawl'
+                      ? 'PRONE CRAWL'
+                      : playerStance === 'crouch'
+                      ? 'CROUCHED'
+                      : 'STANDING'}
+                    {isAdsScoped ? ' · 2X SCOPE' : ''}
+                  </span>
+                  <span className="hidden md:inline text-white/30">|</span>
+                  <span className="hidden md:inline text-slate-200 whitespace-nowrap">
+                    <b className="text-white">WASD</b> Move · <b className="text-white">Mouse</b> Aim ·{' '}
+                    <b className="text-white">Click</b> Shoot · <b className="text-white">RMB</b> Scope ·{' '}
+                    <b className="text-white">Space</b> Jump · <b className="text-white">C</b> Crouch ·{' '}
+                    <b className="text-white">Z</b> Crawl
+                  </span>
+                </div>
               </div>
-            </div>
+            )
           ) : (
             /* HOST COLLAPSIBLE BOTTOM CAMERA DOCK (ZERO VIEWPORT OCCLUSION) */
             <div className="pointer-events-auto w-full max-w-4xl mx-auto flex flex-col items-center">
