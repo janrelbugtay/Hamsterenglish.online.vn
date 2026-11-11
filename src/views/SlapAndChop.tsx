@@ -1055,30 +1055,31 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     const getSensParams = (combinedGloveRadiusPx: number) => {
       const sens = slapSensitivityRef.current || 'balanced';
+      const courtMult = is2P ? 0.74 : 0.90;
       if (sens === 'easy') {
         return {
-          armDistPx: Math.max(108, combinedGloveRadiusPx * 1.28),
-          touchDistPx: Math.max(76, combinedGloveRadiusPx * 1.08),
-          minCloseDeltaPx: 26,
-          minInwardSpeedPx: 80,
-          swatSpeedPx: 230
+          armDistPx: Math.max(68, combinedGloveRadiusPx * 1.08 * courtMult),
+          touchDistPx: Math.max(76, combinedGloveRadiusPx * 1.12),
+          minCloseDeltaPx: Math.max(18, 24 * courtMult),
+          minInwardSpeedPx: 68,
+          swatSpeedPx: 220
         };
       }
       if (sens === 'precise') {
         return {
-          armDistPx: Math.max(138, combinedGloveRadiusPx * 1.56),
-          touchDistPx: Math.max(64, combinedGloveRadiusPx * 0.88),
-          minCloseDeltaPx: 48,
-          minInwardSpeedPx: 165,
-          swatSpeedPx: 410
+          armDistPx: Math.max(96, combinedGloveRadiusPx * 1.35 * courtMult),
+          touchDistPx: Math.max(62, combinedGloveRadiusPx * 0.90),
+          minCloseDeltaPx: Math.max(30, 42 * courtMult),
+          minInwardSpeedPx: 145,
+          swatSpeedPx: 390
         };
       }
       return {
-        armDistPx: Math.max(122, combinedGloveRadiusPx * 1.40),
-        touchDistPx: Math.max(70, combinedGloveRadiusPx * 0.98),
-        minCloseDeltaPx: 36,
-        minInwardSpeedPx: 118,
-        swatSpeedPx: 310
+        armDistPx: Math.max(80, combinedGloveRadiusPx * 1.18 * courtMult),
+        touchDistPx: Math.max(70, combinedGloveRadiusPx * 1.02),
+        minCloseDeltaPx: Math.max(22, 30 * courtMult),
+        minInwardSpeedPx: 95,
+        swatSpeedPx: 295
       };
     };
 
@@ -1123,7 +1124,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
       eng.players.forEach(p => {
         if (!p) return;
-        const graceMs = (now - (p.lastTrueTwoHandsTime || 0) < 420) ? 280 : BASE_HAND_GRACE_MS;
+        const graceMs = (now - (p.lastTrueTwoHandsTime || 0) < 1400 || (p.clapTimer && p.clapTimer > 0)) ? 850 : 380;
         if (now - (p.leftHand.lastSeenTime || 0) > graceMs) {
           p.leftHand.detected = false;
           p.leftHand.landmarks = null;
@@ -1143,7 +1144,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         if ((!p.leftHand.detected || !p.rightHand.detected) && (!p.clapTimer || p.clapTimer <= 0)) {
           p.isClapping = false;
         }
-        if (now - (p.lastHandTime || 0) > 340) {
+        if (now - (p.lastHandTime || 0) > 650) {
           p.hasDetectedHands = false;
           p.dualHandsArmed = false;
           p.clapArmed = false;
@@ -1256,26 +1257,38 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       });
     } else {
       allDetectedHands.forEach(h => {
-        const pIdx = h.rawX < 0.5 ? 0 : 1;
+        let pIdx = h.rawX < 0.5 ? 0 : 1;
+        // If a hand is near the center court divider (0.36..0.64), check if it belongs to a player whose tracked hand was right there
+        if (h.rawX >= 0.36 && h.rawX <= 0.64) {
+          const p0 = eng.players[0];
+          const p1 = eng.players[1];
+          const p0Active = p0 && (now - (p0.lastHandTime || 0) < 600);
+          const p1Active = p1 && (now - (p1.lastHandTime || 0) < 600);
+          if (p1Active && !p0Active && h.rawX >= 0.36) {
+            pIdx = 1;
+          } else if (p0Active && !p1Active && h.rawX <= 0.64) {
+            pIdx = 0;
+          }
+        }
         rawPlayerHands[pIdx].push(h);
       });
-      // Only reunite straddling hands across the 0.5 divider if that player had 2 separated hands armed and the other side wasn't already holding them
+      // Reunite a player's two hands if one hand straddled slightly across the 0.5 center divider during a clap!
       if (rawPlayerHands[0].length >= 1 && rawPlayerHands[1].length >= 1) {
         for (let i = rawPlayerHands[0].length - 1; i >= 0; i--) {
           const h0 = rawPlayerHands[0][i];
-          if (h0.rawX < 0.40) continue;
+          if (h0.rawX < 0.35) continue;
           for (let j = rawPlayerHands[1].length - 1; j >= 0; j--) {
             const h1 = rawPlayerHands[1][j];
-            if (h1.rawX > 0.60) continue;
+            if (h1.rawX > 0.65) continue;
             const pairSpan = Math.hypot(h1.rawX - h0.rawX, h1.rawY - h0.rawY);
             const verticalDiff = Math.abs(h1.rawY - h0.rawY);
             const midX = (h0.rawX + h1.rawX) * 0.5;
-            if (pairSpan < 0.20 && verticalDiff < 0.18) {
+            if (pairSpan < 0.28 && verticalDiff < 0.22) {
               const targetPlayer = midX < 0.5 ? 0 : 1;
-              if (targetPlayer === 0 && rawPlayerHands[0].length < 2 && rawPlayerHands[1].length > 1) {
+              if (targetPlayer === 0 && rawPlayerHands[0].length < 2) {
                 rawPlayerHands[0].push(rawPlayerHands[1].splice(j, 1)[0]);
                 break;
-              } else if (targetPlayer === 1 && rawPlayerHands[1].length < 2 && rawPlayerHands[0].length > 1) {
+              } else if (targetPlayer === 1 && rawPlayerHands[1].length < 2) {
                 rawPlayerHands[1].push(rawPlayerHands[0].splice(i, 1)[0]);
                 break;
               }
@@ -1329,11 +1342,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const rawHands = rawPlayerHands[pIdx] || [];
       const lh = player.leftHand;
       const rh = player.rightHand;
-      const wasRecentlySeparated = (now - (player.lastSeparatedHandsTime || 0) < 620) && (player.peakArmedSepPx || 0) >= 95;
+      const hadTwoHandsRecently =
+        (now - (player.lastTrueTwoHandsTime || 0) < 1600) ||
+        (lh.detected && rh.detected);
 
       // 1. MULTI-CUE GHOST-TWIN DEDUPLICATION:
-      // MediaPipe often emits two overlapping skeletons (one labeled 'Left', one 'Right') on a SINGLE physical hand!
-      // Deduplicate ghost twins regardless of handedness label while preserving two real hands converging from separation.
+      // Only remove a second skeleton if it is literally an identical duplicate overlay on the exact same physical hand,
+      // so two real hands coming close together to slap NEVER delete each other!
       const dedupedHands: any[] = [];
       rawHands
         .sort((a, b) => ((b.confidence || 0) * 0.68 + Math.min(1.2, b.scale || 1) * 0.32) - ((a.confidence || 0) * 0.68 + Math.min(1.2, a.scale || 1) * 0.32))
@@ -1341,7 +1356,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const isGhostTwin = dedupedHands.some(existing => {
             const centerDist = Math.hypot(candidate.clampedX - existing.clampedX, candidate.clampedY - existing.clampedY);
             const wristDist = Math.hypot(candidate.rawWristX - existing.rawWristX, candidate.rawWristY - existing.rawWristY);
-            const angleCos = Math.cos((candidate.pointingAngle || 0) - (existing.pointingAngle || 0));
+            const sameHandedness = candidate.handedness && existing.handedness && candidate.handedness === existing.handedness;
 
             let lmMeanDist = centerDist;
             if (candidate.landmarks?.length >= 21 && existing.landmarks?.length >= 21) {
@@ -1357,12 +1372,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               lmMeanDist = sum / probeIds.length;
             }
 
-            // Exact skeleton duplicate on the same hand
-            if (lmMeanDist < 0.032 && wristDist < 0.038) return true;
-            // Same wrist & same forearm angle = physically same hand
-            if (centerDist < 0.048 && wristDist < 0.048 && angleCos > 0.84) return true;
-            // If the player was NOT tracking two separated hands, aggressively reject single-hand opposite-label ghosts
-            if (!wasRecentlySeparated && ((centerDist < 0.082 && wristDist < 0.086) || lmMeanDist < 0.060)) {
+            // Literal duplicate skeleton on the exact same palm
+            if (lmMeanDist < 0.019 && wristDist < 0.022 && centerDist < 0.022) return true;
+            // Same handedness label on virtually identical wrist/palm
+            if (sameHandedness && lmMeanDist < 0.028 && wristDist < 0.030) return true;
+            // Only when the player has NOT had 2 hands active recently, filter tight single-hand ghost twin
+            if (!hadTwoHandsRecently && lmMeanDist < 0.032 && wristDist < 0.034 && centerDist < 0.032) {
               return true;
             }
             return false;
@@ -1376,7 +1391,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         .sort((a, b) => (b.scale || 1) - (a.scale || 1))
         .slice(0, 2);
 
-      const HAND_GRACE_MS = (now - (player.lastTrueTwoHandsTime || 0) < 420) ? 260 : 180;
+      const HAND_GRACE_MS = (hadTwoHandsRecently || (player.clapTimer && player.clapTimer > 0)) ? 950 : 480;
 
       if (handsForPlayer.length === 0) {
         if (now - (lh.lastSeenTime || 0) > HAND_GRACE_MS) {
@@ -1399,7 +1414,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           player.isClapping = false;
           player.clapTimer = 0;
         }
-        if (now - (player.lastHandTime || 0) > 340) {
+        if (now - (player.lastHandTime || 0) > 650) {
           player.hasDetectedHands = false;
           player.dualHandsArmed = false;
           player.clapArmed = false;
@@ -1561,16 +1576,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         player.lastClosingSpeedPx = closingSpeedPx;
 
         // STEP 1: ARMING & RE-OPEN HYSTERESIS
-        if (sepDistPx >= armDistPx) {
+        const canReArm = sepDistPx >= armDistPx || (sepDistPx >= touchDistPx * 1.15 && (now - (player.lastClapImpulseMs || 0) > 320));
+        if (canReArm) {
           player.sepFrames = Math.min(10, (player.sepFrames || 0) + 1);
           player.lastSeparatedHandsTime = now;
           player.needsReopenSinceMs = 0;
-          if (player.sepFrames >= 2) {
-            player.clapArmed = true;
-            player.lastArmedTime = now;
-            player.peakArmedSep = Math.max(player.peakArmedSep || 0, sepDist);
-            player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, sepDistPx);
-          }
+          player.clapArmed = true;
+          player.lastArmedTime = now;
+          player.peakArmedSep = Math.max(player.peakArmedSep || 0, sepDist);
+          player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, sepDistPx);
           if (!player.clapTimer || player.clapTimer <= 0) {
             player.isClapping = false;
           }
@@ -1580,39 +1594,39 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
         // STEP 2: PHYSICAL CLAP IMPULSE DETECTION (Fires ONCE per real clap, then requires re-opening hands!)
         const closeDeltaPx = (player.peakArmedSepPx || 0) - sepDistPx;
-        const cooldownReady = (now - (player.lastClapImpulseMs || 0)) >= 340;
+        const cooldownReady = (now - (player.lastClapImpulseMs || 0)) >= 280;
         const isGloveContact =
           sepDistPx <= touchDistPx ||
-          (minLandmarkDistPx <= 24 && sepDistPx <= touchDistPx * 1.16);
+          (minLandmarkDistPx <= 28 && sepDistPx <= touchDistPx * 1.22);
         const isDynamicCatch =
-          closingSpeedPx >= minInwardSpeedPx * 2.1 &&
-          sepDistPx <= touchDistPx * 1.18 &&
-          closeDeltaPx >= minCloseDeltaPx * 1.15;
+          closingSpeedPx >= minInwardSpeedPx * 1.85 &&
+          sepDistPx <= touchDistPx * 1.24 &&
+          closeDeltaPx >= minCloseDeltaPx;
 
         if (
           !isSwatMode &&
           player.clapArmed &&
           cooldownReady &&
-          closeDeltaPx >= minCloseDeltaPx &&
-          ((isGloveContact && closingSpeedPx >= minInwardSpeedPx) ||
-            (sepDistPx <= touchDistPx * 0.78 && closeDeltaPx >= minCloseDeltaPx * 1.25) ||
+          closeDeltaPx >= minCloseDeltaPx * 0.85 &&
+          ((isGloveContact && closingSpeedPx >= minInwardSpeedPx * 0.80) ||
+            (sepDistPx <= touchDistPx * 0.84 && closeDeltaPx >= minCloseDeltaPx) ||
             isDynamicCatch)
         ) {
           const midX = (lh.x + rh.x) * 0.5;
           const midY = (lh.y + rh.y) * 0.5;
           triggerClapImpulse(player, midX, midY, prevMidNormX, prevMidNormY, false);
 
-          // Keep both gloves subtly visible side-by-side on impact
-          if (Math.abs(rh.x - lh.x) < 0.016 && Math.abs(rh.y - lh.y) < 0.028) {
-            lh.x = midX - 0.015;
-            rh.x = midX + 0.015;
+          // Keep both gloves visibly side-by-side on impact so neither glove ever disappears
+          if (Math.abs(rh.x - lh.x) < 0.022 && Math.abs(rh.y - lh.y) < 0.032) {
+            lh.x = midX - 0.016;
+            rh.x = midX + 0.016;
           }
         } else if (isSwatMode && cooldownReady) {
           // One-Hand Swat Mode with 2 hands visible: trigger on brisk swat motion from either hand
-          if (lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 380) {
+          if (lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 340) {
             lh.lastSwatMs = now;
             triggerClapImpulse(player, lh.x, lh.y, lh.prevX, lh.prevY, true);
-          } else if (rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 380) {
+          } else if (rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 340) {
             rh.lastSwatMs = now;
             triggerClapImpulse(player, rh.x, rh.y, rh.prevX, rh.prevY, true);
           }
@@ -1625,43 +1639,48 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           : { ...leftData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y, scale: meanScale };
       } else {
         // ONLY 1 HAND RETURNED BY MEDIAPIPE IN THIS FRAME:
-        // Distinguish between:
-        //  (A) True high-speed clap occlusion merge (2 ARMED converging hands smacked into 1 silhouette within 180ms)
-        //  (B) Normal 1-hand presence (or 1 hand lowered out of frame) -> NEVER trigger a false clap!
+        // When slapping, one hand frequently occludes the other hand on camera!
+        // We MUST keep both gloves visible when slapping or when 2 hands were recently tracked,
+        // and fire the clap impulse whenever the visible hand meets the other hand's position!
         const hData = handsForPlayer[0];
         const prevMidX = (lh.x + rh.x) * 0.5;
         const prevMidY = (lh.y + rh.y) * 0.5;
         const distToPrevMidPx = Math.hypot((hData.clampedX - prevMidX) * cw, (hData.clampedY - prevMidY) * ch);
         const distToLeft = Math.hypot(hData.clampedX - lh.x, hData.clampedY - lh.y);
         const distToRight = Math.hypot(hData.clampedX - rh.x, hData.clampedY - rh.y);
+        const distToLeftPx = Math.hypot((hData.clampedX - lh.x) * cw, (hData.clampedY - lh.y) * ch);
+        const distToRightPx = Math.hypot((hData.clampedX - rh.x) * cw, (hData.clampedY - rh.y) * ch);
+        const maxDistToEitherHandPx = Math.max(distToLeftPx, distToRightPx);
 
         const combinedRadiusPx = (
           46 * Math.max(0.75, lh.scale || 0.95) +
           46 * Math.max(0.75, rh.scale || 0.95)
         ) * userSizeMult;
-        const { touchDistPx, minInwardSpeedPx, swatSpeedPx } = getSensParams(combinedRadiusPx);
+        const { touchDistPx, swatSpeedPx } = getSensParams(combinedRadiusPx);
 
         const isSwatModeSingle = slapModeRef.current === 'swat';
+        const recentTwoHands = (now - (player.lastTrueTwoHandsTime || 0) <= 950);
+
+        // If 2 hands were tracked recently and the single visible hand is near the midpoint or the other hand,
+        // MediaPipe merged the two palms into 1 silhouette during a clap/slap!
         const trueClapOcclusionMerge = Boolean(
           !isSwatModeSingle &&
-          player.clapArmed &&
-          (now - (player.lastClapImpulseMs || 0) >= 340) &&
-          (now - (player.lastTrueTwoHandsTime || 0) <= 185) &&
-          (player.lastClosingSpeedPx || 0) >= Math.max(195, minInwardSpeedPx * 1.45) &&
-          (player.lastTwoHandSepDistPx || 9999) <= touchDistPx * 1.85 &&
-          distToPrevMidPx <= Math.max(76, combinedRadiusPx * 0.92)
+          recentTwoHands &&
+          (player.clapArmed || (player.lastTwoHandSepDistPx || 0) >= touchDistPx * 0.95) &&
+          (now - (player.lastClapImpulseMs || 0) >= 280) &&
+          (maxDistToEitherHandPx <= touchDistPx * 1.55 ||
+            distToPrevMidPx <= Math.max(92, combinedRadiusPx * 1.12))
         );
 
         const sustainRecentMergedClap = Boolean(
           !isSwatModeSingle &&
-          player.isClapping &&
-          (player.clapTimer && player.clapTimer > 0) &&
-          (now - (player.lastClapImpulseMs || 0) <= 220) &&
-          distToPrevMidPx <= Math.max(84, combinedRadiusPx * 1.05)
+          (player.isClapping || (player.clapTimer && player.clapTimer > 0) || (now - (player.lastClapImpulseMs || 0) <= 360)) &&
+          distToPrevMidPx <= Math.max(115, combinedRadiusPx * 1.35)
         );
 
         if (trueClapOcclusionMerge || sustainRecentMergedClap) {
-          const contactHalfGap = Math.max(0.015, Math.min(0.024, (combinedRadiusPx * 0.28) / cw));
+          // Keep BOTH gloves visible side-by-side at the slap impact point so one glove NEVER goes missing!
+          const contactHalfGap = Math.max(0.016, Math.min(0.026, (combinedRadiusPx * 0.30) / cw));
           lh.prevX = lh.x;
           lh.prevY = lh.y;
           rh.prevX = rh.x;
@@ -1697,11 +1716,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
           fastestHand = { ...hData, speed: Math.max(0.05, lh.speed, rh.speed), vx: lh.vx, vy: lh.vy, x: hData.clampedX, y: hData.clampedY };
         } else {
-          // Single hand active — NEVER trigger a two-hand clap!
+          // Single hand detected and separated from the other hand:
+          // Update the matching hand AND keep the other hand alive during HAND_GRACE_MS (up to 950ms) so it never blinks out!
           if (!player.clapTimer || player.clapTimer <= 0) {
             player.isClapping = false;
           }
-          if (now - (player.lastTrueTwoHandsTime || 0) > 320) {
+          if (now - (player.lastTrueTwoHandsTime || 0) > 950) {
             player.dualHandsArmed = false;
             player.clapArmed = false;
             player.sepFrames = 0;
@@ -1712,9 +1732,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
           const anchorCenter = player.headDetected ? player.headX : (is2P ? (pIdx === 0 ? 0.25 : 0.75) : 0.50);
           let isLeftHand = hData.handedness ? (hData.handedness === 'Right') : (hData.clampedX < anchorCenter);
-          if (lh.detected && !rh.detected && distToLeft < 0.26) {
+          if (lh.detected && !rh.detected && distToLeft < 0.28) {
             isLeftHand = true;
-          } else if (rh.detected && !lh.detected && distToRight < 0.26) {
+          } else if (rh.detected && !lh.detected && distToRight < 0.28) {
             isLeftHand = false;
           } else if (lh.detected && rh.detected) {
             isLeftHand = distToLeft <= distToRight;
@@ -1722,11 +1742,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
           if (isLeftHand) {
             applySmoothedHand(lh, hData);
-            if (isSwatModeSingle && lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 380 && now - (player.lastClapImpulseMs || 0) >= 340) {
+            if (isSwatModeSingle && lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 340 && now - (player.lastClapImpulseMs || 0) >= 280) {
               lh.lastSwatMs = now;
               triggerClapImpulse(player, lh.x, lh.y, lh.prevX, lh.prevY, true);
             }
-            if (now - (rh.lastSeenTime || 0) > HAND_GRACE_MS) {
+            if (now - (rh.lastSeenTime || 0) <= HAND_GRACE_MS) {
+              // Keep right glove visible & gently coasting so it never suddenly vanishes during a swing!
+              rh.detected = true;
+              rh.vx *= 0.75;
+              rh.vy *= 0.75;
+            } else {
               rh.detected = false;
               rh.landmarks = null;
               rh.vx = 0;
@@ -1737,11 +1762,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             fastestHand = { ...hData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y, scale: lh.scale };
           } else {
             applySmoothedHand(rh, hData);
-            if (isSwatModeSingle && rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 380 && now - (player.lastClapImpulseMs || 0) >= 340) {
+            if (isSwatModeSingle && rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 340 && now - (player.lastClapImpulseMs || 0) >= 280) {
               rh.lastSwatMs = now;
               triggerClapImpulse(player, rh.x, rh.y, rh.prevX, rh.prevY, true);
             }
-            if (now - (lh.lastSeenTime || 0) > HAND_GRACE_MS) {
+            if (now - (lh.lastSeenTime || 0) <= HAND_GRACE_MS) {
+              // Keep left glove visible & gently coasting so it never suddenly vanishes during a swing!
+              lh.detected = true;
+              lh.vx *= 0.75;
+              lh.vy *= 0.75;
+            } else {
               lh.detected = false;
               lh.landmarks = null;
               lh.vx = 0;
@@ -2913,14 +2943,30 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         });
       }
 
+      const cw = containerRef.current?.clientWidth || 960;
       const teamPrefix = eng.numPlayers === 2 ? `${playerIdx === 0 ? p1Name : p2Name}: ` : '';
-      const comboSuffix = p.streak >= 3 ? ` 🔥x${p.streak}` : '';
+      const comboSuffix = p.streak >= 3 ? ` 🔥x${p.streak} STREAK!` : '';
       spawnFloatingText(
         target.x,
         target.y - 24,
-        `${teamPrefix}${eng.roundMode === 'chop' ? '🖐️✨ SLICED!' : '👏 SLAPPED!'} +5 PTS${comboSuffix}`,
+        `${teamPrefix}${eng.roundMode === 'chop' ? '🖐️✨ SLICED!' : '👏 SMASHED!'} +5 PTS${comboSuffix}`,
         '#10b981'
       );
+
+      // Launch a glowing 3D Score Orb from the slapped mosquito straight into the Center Scoreboard!
+      (eng as any).scoreOrbs = (eng as any).scoreOrbs || [];
+      (eng as any).scoreOrbs.push({
+        startX: target.x,
+        startY: target.y,
+        x: target.x,
+        y: target.y,
+        targetX: eng.numPlayers === 2 ? (playerIdx === 0 ? cw * 0.42 : cw * 0.58) : cw * 0.46,
+        targetY: 50,
+        progress: 0,
+        color: playerIdx === 1 ? '#f43f5e' : '#3b82f6',
+        points: '+5',
+        streak: p.streak
+      });
 
       // Start the 3-second countdown timer before the next question appears
       startNextQuestionCountdown();
@@ -3998,8 +4044,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
 
           const pointerActive = !p.hasDetectedHands && (now - (p.lastPointerTime || 0) < 2500);
-          const showLeft = p.hasDetectedHands ? Boolean(p.leftHand?.detected) : pointerActive;
-          const showRight = p.hasDetectedHands ? Boolean(p.rightHand?.detected) : pointerActive;
+          const isTouching = Boolean(p.isClapping || (p.clapTimer && p.clapTimer > 0) || (p.slapAnim && p.slapAnim > 0.08));
+          const hadBothRecently = p.hasDetectedHands && (now - (p.lastTrueTwoHandsTime || 0) < 950);
+
+          // Never let one glove disappear during a slap or when both hands were active within the grace window!
+          const showLeft = p.hasDetectedHands
+            ? Boolean(p.leftHand?.detected || isTouching || hadBothRecently)
+            : pointerActive;
+          const showRight = p.hasDetectedHands
+            ? Boolean(p.rightHand?.detected || isTouching || hadBothRecently)
+            : pointerActive;
 
           // Smooth ready positions for Left & Right Gloves when a hand is resting outside the camera frame
           const minCourtX = eng.numPlayers === 2 ? (idx === 0 ? 0.07 : 0.55) : 0.10;
@@ -4017,12 +4071,20 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             p.rightHand.y += (readyY - p.rightHand.y) * 0.16;
           }
 
-          const lx = (p.leftHand?.x ?? readyLx) * cw;
-          const ly = (p.leftHand?.y ?? readyY) * ch;
-          const rx = (p.rightHand?.x ?? readyRx) * cw;
-          const ry = (p.rightHand?.y ?? readyY) * ch;
+          let lx = (p.leftHand?.x ?? readyLx) * cw;
+          let ly = (p.leftHand?.y ?? readyY) * ch;
+          let rx = (p.rightHand?.x ?? readyRx) * cw;
+          let ry = (p.rightHand?.y ?? readyY) * ch;
 
-          const isTouching = Boolean(p.isClapping || (p.clapTimer && p.clapTimer > 0));
+          // If slapping right now and one hand was occluded, bring both gloves smoothly together at the slap point!
+          if (isTouching && p.clapMidX && p.clapMidY && (!p.leftHand?.detected || !p.rightHand?.detected)) {
+            const slapCx = p.clapMidX * cw;
+            const slapCy = p.clapMidY * ch;
+            lx = slapCx - 18;
+            ly = slapCy;
+            rx = slapCx + 18;
+            ry = slapCy;
+          }
 
           // Draw AR Hand Tracking Reticles (in Chop Mode) & Motion Trails
           drawARHandTrackingOverlay(
@@ -4253,6 +4315,59 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
+        }
+
+        // 6b. Flying 3D Score Orbs rocketing from slapped mosquitoes to the Center Scoreboard!
+        const orbs = (eng as any).scoreOrbs as any[] | undefined;
+        if (orbs && orbs.length > 0) {
+          for (let i = orbs.length - 1; i >= 0; i--) {
+            const orb = orbs[i];
+            orb.progress += dt * 2.25;
+            if (orb.progress >= 1) {
+              spawnBurstParticles(orb.targetX, orb.targetY, '#facc15', 16);
+              spawnBurstParticles(orb.targetX, orb.targetY, orb.color || '#10b981', 10);
+              orbs.splice(i, 1);
+              continue;
+            }
+            const t = orb.progress;
+            const ease = 1 - Math.pow(1 - t, 2.4);
+            const ctrlX = (orb.startX + orb.targetX) * 0.5;
+            const ctrlY = Math.min(orb.startY, orb.targetY) - 90;
+            const inv = 1 - ease;
+            orb.x = inv * inv * orb.startX + 2 * inv * ease * ctrlX + ease * ease * orb.targetX;
+            orb.y = inv * inv * orb.startY + 2 * inv * ease * ctrlY + ease * ease * orb.targetY;
+
+            const scale = 1.0 + Math.sin(t * Math.PI) * 0.35;
+            ctx.save();
+            ctx.translate(orb.x, orb.y);
+            ctx.scale(scale, scale);
+
+            // Outer golden halo
+            const halo = ctx.createRadialGradient(0, 0, 4, 0, 0, 32);
+            halo.addColorStop(0, '#fef08a');
+            halo.addColorStop(0.55, orb.color || '#10b981');
+            halo.addColorStop(1, 'rgba(250, 204, 21, 0)');
+            ctx.fillStyle = halo;
+            ctx.beginPath();
+            ctx.arc(0, 0, 32, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 3D Medallion Pill
+            ctx.fillStyle = '#facc15';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, 20, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#0f172a';
+            ctx.font = '900 16px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(orb.points || '+5', 0, 1);
+            ctx.restore();
+          }
         }
 
         // 7. Floating 3D Feedback Texts
@@ -6710,229 +6825,310 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       {screen === 'game' && (
         <div className="absolute inset-0 z-10 w-full h-full overflow-hidden select-none">
           
-          {/* BRIGHT LIGHT 3D FLOATING TOP HUD (Permanent Fixed-Position Scoreboards at Left & Right + Jumbo Center Timer & Settings) */}
-          <div className="absolute top-0 left-0 right-0 z-40 w-full px-3 sm:px-6 pt-3 pb-2 pointer-events-none">
-            <div className="max-w-[1600px] mx-auto flex flex-col gap-3 pointer-events-auto">
+          {/* ORGANIZED 3D BROADCAST TOP HUD:
+              - LEFT: Settings, End Game, Fullscreen & Round Info
+              - MIDDLE: Immersive Player Points + Center Match Timer Broadcast Scoreboard
+              - RIGHT: Quick Slap/Swat Trigger Mode & Audio Toggle */}
+          <div className="absolute top-0 left-0 right-0 z-40 w-full px-3 sm:px-5 pt-2.5 pb-1.5 pointer-events-none">
+            <div className="max-w-[1640px] mx-auto flex flex-col gap-2.5 pointer-events-auto">
               
-              {/* Row 1: PERMANENT-POSITION 3-COLUMN HUD (P1 Pinned Left | Big Timer & Settings Center | P2 Pinned Right — Never Wraps or Shifts!) */}
-              <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-4 w-full">
+              {/* Row 1: 3-ZONE ORGANIZED HEADER (Left Controls | Center Points & Timer Hub | Right Quick Mode) */}
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-center gap-2.5 w-full">
                 
-                {/* PLAYER 1 PERMANENT JUMBO 3D SCOREBOARD CARD (Pinned Top-Left, Blue Theme) */}
-                <div className={`relative flex items-center justify-between gap-3 w-[235px] sm:w-[310px] md:w-[340px] h-[86px] sm:h-[98px] px-4 sm:px-5 rounded-3xl backdrop-blur-md border-2 border-b-[7px] shadow-2xl shrink-0 ${
-                  hudFrozen[0]
-                    ? 'bg-gradient-to-b from-sky-100 to-sky-200 border-sky-400 border-b-sky-600 ring-4 ring-sky-300/60'
-                    : 'bg-gradient-to-b from-white via-blue-50/90 to-sky-50/95 border-blue-400 border-b-blue-700'
-                }`}>
-                  {/* Floating Frozen Pill so it NEVER changes scoreboard width */}
-                  {hudFrozen[0] && (
-                    <span className="absolute -top-3 left-5 text-[11px] sm:text-xs px-3 py-0.5 rounded-full bg-sky-500 text-white font-black border-2 border-white shadow-md animate-pulse z-20">
-                      ❄️ FROZEN
-                    </span>
-                  )}
+                {/* LEFT DOCK: Settings, End Game, Fullscreen & Question Counter */}
+                <div className="flex items-center justify-between lg:justify-start gap-2 flex-nowrap">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSettingsModal(true)}
+                      className="px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 hover:from-amber-200 hover:to-amber-400 border-t-2 border-white border-b-[5px] border-b-amber-700 text-xs sm:text-sm font-black text-slate-900 transition shadow-lg cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0 whitespace-nowrap"
+                    >
+                      <span className="text-sm sm:text-base">⚙️</span>
+                      <span>Settings</span>
+                    </button>
 
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* 3D Team Avatar Badge (Blue) */}
-                    <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl border-t border-white/80 border-b-4 shadow-md shrink-0 ${
+                    <button
+                      type="button"
+                      onClick={() => finishGame()}
+                      title="End Game & View Results"
+                      className="px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-gradient-to-b from-rose-500 via-red-500 to-red-600 hover:from-rose-400 hover:to-red-500 border-t-2 border-rose-200 border-b-[5px] border-b-red-900 text-xs sm:text-sm font-black text-white transition shadow-lg cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0 whitespace-nowrap"
+                    >
+                      <Flag size={16} fill="currentColor" className="shrink-0" />
+                      <span>End</span>
+                    </button>
+
+                    <FullscreenButton targetId="slap-and-chop-container" className="bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-slate-800 !py-2 sm:!py-2.5 !px-3 shadow-lg shrink-0" />
+                  </div>
+
+                  <div className="px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-white/95 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-xs sm:text-sm font-black text-sky-950 shadow-lg flex items-center gap-1.5 shrink-0 tabular-nums whitespace-nowrap">
+                    <span>🦟 Q{currentQIndex + 1}/{activeQuiz.questions.length}</span>
+                  </div>
+                </div>
+
+                {/* CENTER BROADCAST HUB: IMMERSIVE PLAYER POINTS + MIDDLE MATCH TIMER */}
+                <div className="flex items-center justify-center">
+                  <div className="relative flex items-center bg-slate-950/85 backdrop-blur-xl p-1.5 sm:p-2 rounded-[2rem] border-2 border-sky-300/80 border-b-[6px] border-b-sky-700 shadow-[0_16px_40px_rgba(15,23,42,0.45)] gap-1.5 sm:gap-2.5">
+                    
+                    {/* PLAYER 1 SCORE WING (Left of Center Timer) */}
+                    <div className={`relative flex items-center justify-between gap-2.5 sm:gap-3.5 min-w-[185px] sm:min-w-[255px] md:min-w-[285px] h-[68px] sm:h-[78px] px-3 sm:px-4 rounded-3xl border-2 border-b-[5px] transition-all duration-300 ${
                       hudFrozen[0]
-                        ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
-                        : 'bg-gradient-to-br from-blue-500 to-blue-700 border-b-blue-950 text-white'
+                        ? 'bg-gradient-to-b from-sky-200 to-sky-300 border-sky-400 border-b-sky-700 ring-2 ring-sky-300'
+                        : hudScorePops[0]
+                        ? 'bg-gradient-to-b from-blue-500 via-blue-600 to-indigo-700 border-amber-300 border-b-blue-950 scale-[1.03] shadow-[0_0_25px_rgba(59,130,246,0.75)]'
+                        : 'bg-gradient-to-b from-white via-blue-50 to-sky-100 border-blue-400 border-b-blue-700'
                     }`}>
-                      {hudFrozen[0] ? '❄️' : '🦟'}
-                    </div>
-
-                    {/* Player Name, Streak & Live L/R Hand Sensor Status */}
-                    <div className="flex flex-col min-w-0 gap-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs sm:text-base font-black uppercase tracking-wider text-blue-950 truncate max-w-[100px] sm:max-w-[130px]">
-                          {p1Name || "Player 1"}
+                      {hudFrozen[0] && (
+                        <span className="absolute -top-2.5 left-3 text-[10px] px-2.5 py-0.5 rounded-full bg-sky-600 text-white font-black border border-white shadow animate-pulse z-20">
+                          ❄️ FROZEN
                         </span>
-                        <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs shrink-0 tabular-nums">
-                          🔥 x{hudStreaks[0]}
+                      )}
+                      {numPlayers === 2 && hudScores[0] > hudScores[1] && !hudFrozen[0] && (
+                        <span className="absolute -top-2.5 left-3 text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black border border-white shadow z-20">
+                          👑 LEAD
+                        </span>
+                      )}
+
+                      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl border-t border-white/80 border-b-4 shadow shrink-0 ${
+                          hudFrozen[0]
+                            ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
+                            : 'bg-gradient-to-br from-blue-500 to-blue-700 border-b-blue-950 text-white'
+                        }`}>
+                          {hudFrozen[0] ? '❄️' : '🔵'}
+                        </div>
+
+                        <div className="flex flex-col min-w-0 gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs sm:text-sm font-black uppercase tracking-wider truncate max-w-[78px] sm:max-w-[110px] ${
+                              hudScorePops[0] ? 'text-white' : 'text-blue-950'
+                            }`}>
+                              {p1Name || "Player 1"}
+                            </span>
+                            <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded-full font-black shadow-2xs shrink-0 tabular-nums border ${
+                              hudStreaks[0] >= 3
+                                ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white border-amber-200 animate-pulse'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                            }`}>
+                              🔥x{hudStreaks[0]}
+                            </span>
+                          </div>
+                          {cameraActive && (
+                            <div className="flex items-center gap-1 text-[9px] sm:text-[10px] font-black tracking-wide">
+                              <span className={`px-1 py-0.2 rounded border ${
+                                hudHandsDetected[0][0]
+                                  ? 'bg-emerald-500 text-white border-emerald-600'
+                                  : 'bg-slate-200/80 text-slate-500 border-slate-300'
+                              }`}>
+                                L
+                              </span>
+                              <span className={`px-1 py-0.2 rounded border ${
+                                hudHandsDetected[0][1]
+                                  ? 'bg-emerald-500 text-white border-emerald-600'
+                                  : 'bg-slate-200/80 text-slate-500 border-slate-300'
+                              }`}>
+                                R
+                              </span>
+                              <span className={`truncate ${
+                                hudScorePops[0]
+                                  ? 'text-amber-200'
+                                  : hudClapArmed[0]
+                                  ? 'text-emerald-700'
+                                  : 'text-slate-500'
+                              }`}>
+                                {hudClapArmed[0] ? '• READY' : (hudHandsDetected[0][0] && hudHandsDetected[0][1] ? '• OPEN' : '• 2 HANDS')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* JUMBO IMMERSIVE SCORE MEDALLION (Pinned Toward Center) */}
+                      <div className={`flex flex-col items-center justify-center px-3 sm:px-3.5 py-1 rounded-2xl border-b-4 shrink-0 transition-transform duration-200 ${
+                        hudScorePops[0]
+                          ? 'bg-amber-400 border-amber-700 text-slate-950 scale-110 shadow-lg'
+                          : hudScores[0] < 0
+                          ? 'bg-rose-100 border-rose-300 text-rose-700'
+                          : 'bg-blue-600 border-blue-900 text-white shadow-inner'
+                      }`}>
+                        <span className="font-black text-2xl sm:text-4xl tracking-tight font-mono leading-none tabular-nums">
+                          {hudScores[0]}
+                        </span>
+                        <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest mt-0.5 ${
+                          hudScorePops[0] ? 'text-slate-900' : hudScores[0] < 0 ? 'text-rose-600' : 'text-sky-200'
+                        }`}>
+                          PTS
                         </span>
                       </div>
-                      {cameraActive && (
-                        <div className="flex items-center gap-1 text-[10px] font-black tracking-wide">
-                          <span className={`px-1.5 py-0.5 rounded-md border ${
-                            hudHandsDetected[0][0]
-                              ? 'bg-emerald-500 text-white border-emerald-600'
-                              : 'bg-slate-100 text-slate-400 border-slate-200'
-                          }`}>
-                            L
-                          </span>
-                          <span className={`px-1.5 py-0.5 rounded-md border ${
-                            hudHandsDetected[0][1]
-                              ? 'bg-emerald-500 text-white border-emerald-600'
-                              : 'bg-slate-100 text-slate-400 border-slate-200'
-                          }`}>
-                            R
-                          </span>
-                          <span className={`truncate ml-0.5 ${
-                            hudClapArmed[0]
-                              ? 'text-emerald-700'
-                              : (hudHandsDetected[0][0] && hudHandsDetected[0][1] ? 'text-amber-700' : 'text-slate-400')
-                          }`}>
-                            {hudClapArmed[0]
-                              ? (slapMode === 'swat' ? '• SWAT READY' : '• CLAP READY')
-                              : (hudHandsDetected[0][0] && hudHandsDetected[0][1]
-                                  ? '• OPEN HANDS'
-                                  : (slapMode === 'swat' ? '• SHOW HAND' : '• SHOW 2 HANDS'))}
-                          </span>
+
+                      {/* Immersive 3D Score Popup Banner */}
+                      {hudScorePops[0] && (
+                        <div className={`absolute -bottom-7 right-2 px-3.5 py-1 rounded-2xl border-2 border-white shadow-[0_10px_25px_rgba(0,0,0,0.35)] font-black text-sm sm:text-lg text-white animate-bounce z-50 whitespace-nowrap ${
+                          hudScorePops[0].includes('-')
+                            ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                            : 'bg-gradient-to-r from-emerald-400 via-green-500 to-teal-600'
+                        }`}>
+                          {hudScorePops[0]}
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* Permanent Jumbo Score Number */}
-                  <div className="flex flex-col items-end justify-center shrink-0 pl-2">
-                    <span className={`font-black text-3xl sm:text-5xl tracking-tight font-mono leading-none tabular-nums ${
-                      hudScores[0] < 0 ? 'text-rose-600' : 'text-slate-900'
+                    {/* CENTER MATCH TIMER MEDALLION (Right in the Middle of the Scoreboard!) */}
+                    <div className={`relative flex flex-col items-center justify-center min-w-[92px] sm:min-w-[116px] h-[68px] sm:h-[78px] px-3 sm:px-4 rounded-3xl border-2 border-b-[5px] shadow-xl shrink-0 tabular-nums transition-all ${
+                      hudTimeLeft <= 15
+                        ? 'bg-gradient-to-b from-rose-500 via-red-600 to-red-700 border-rose-200 border-b-red-950 text-white animate-pulse'
+                        : 'bg-gradient-to-b from-amber-300 via-amber-400 to-orange-400 border-white border-b-amber-700 text-slate-950'
                     }`}>
-                      {hudScores[0]}
-                    </span>
-                    <span className="text-[10px] sm:text-xs font-black uppercase text-blue-700 tracking-widest mt-0.5">
-                      POINTS
-                    </span>
-                  </div>
-
-                  {/* Animated +5 / -5 Floating Score Popup */}
-                  {hudScorePops[0] && (
-                    <span className={`absolute -bottom-6 right-4 text-lg sm:text-2xl font-black text-white px-4 py-1 rounded-2xl border-2 border-white shadow-xl animate-bounce z-50 ${
-                      hudScorePops[0].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
-                    }`}>
-                      {hudScorePops[0]}
-                    </span>
-                  )}
-                </div>
-
-                {/* CENTER CONTROLS (Round Badge + Live Timer + Settings + Flag End Game Button + Fullscreen) */}
-                <div className="flex items-center justify-center gap-2 sm:gap-2.5 flex-nowrap">
-                  <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-white/95 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-xs sm:text-base font-black text-sky-950 shadow-lg flex items-center gap-1.5 shrink-0">
-                    <span className="text-sm sm:text-lg">🦟 Slap</span>
-                    <span className="text-sky-400">•</span>
-                    <span>Q{currentQIndex + 1}/{activeQuiz.questions.length}</span>
-                  </div>
-
-                  {/* Live Playing Time Countdown Badge */}
-                  <div className={`px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl border-2 border-b-[5px] text-sm sm:text-xl font-black font-mono shadow-lg flex items-center gap-1.5 transition-colors shrink-0 tabular-nums ${
-                    hudTimeLeft <= 15
-                      ? 'bg-rose-500 border-rose-300 border-b-rose-800 text-white animate-pulse'
-                      : 'bg-white/95 border-emerald-300 border-b-emerald-600 text-emerald-950'
-                  }`}>
-                    <span className="text-base sm:text-xl">⏱️</span>
-                    <span>{formatPlayTime(hudTimeLeft)}</span>
-                  </div>
-
-                  {/* Settings Button */}
-                  <button
-                    type="button"
-                    onClick={() => setShowSettingsModal(true)}
-                    className="px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 hover:from-amber-200 hover:to-amber-400 border-t-2 border-white border-b-[5px] border-b-amber-700 text-xs sm:text-base font-black text-slate-900 transition shadow-xl cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0"
-                  >
-                    <span className="text-base sm:text-lg">⚙️</span>
-                    <span className="hidden md:inline">Settings</span>
-                  </button>
-
-                  {/* Flag Icon Button to End Game Immediately */}
-                  <button
-                    type="button"
-                    onClick={() => finishGame()}
-                    title="End Game & View Results"
-                    className="px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-gradient-to-b from-rose-500 via-red-500 to-red-600 hover:from-rose-400 hover:to-red-500 border-t-2 border-rose-200 border-b-[5px] border-b-red-900 text-xs sm:text-base font-black text-white transition shadow-xl cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 shrink-0"
-                  >
-                    <Flag size={18} fill="currentColor" className="shrink-0" />
-                    <span className="hidden xl:inline">End</span>
-                  </button>
-
-                  <FullscreenButton targetId="slap-and-chop-container" className="bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-slate-800 !py-2.5 sm:!py-3 !px-3.5 shadow-lg shrink-0" />
-                </div>
-
-                {/* PLAYER 2 PERMANENT JUMBO 3D SCOREBOARD CARD (Pinned Top-Right, Red Theme) */}
-                {numPlayers === 2 ? (
-                  <div className={`relative flex items-center justify-between gap-3 w-[235px] sm:w-[310px] md:w-[340px] h-[86px] sm:h-[98px] px-4 sm:px-5 rounded-3xl backdrop-blur-md border-2 border-b-[7px] shadow-2xl shrink-0 ${
-                    hudFrozen[1]
-                      ? 'bg-gradient-to-b from-sky-100 to-sky-200 border-sky-400 border-b-sky-600 ring-4 ring-sky-300/60'
-                      : 'bg-gradient-to-b from-white via-red-50/90 to-rose-50/95 border-red-400 border-b-red-700'
-                  }`}>
-                    {/* Floating Frozen Pill so it NEVER changes scoreboard width */}
-                    {hudFrozen[1] && (
-                      <span className="absolute -top-3 right-5 text-[11px] sm:text-xs px-3 py-0.5 rounded-full bg-sky-500 text-white font-black border-2 border-white shadow-md animate-pulse z-20">
-                        ❄️ FROZEN
-                      </span>
-                    )}
-
-                    {/* Permanent Jumbo Score Number */}
-                    <div className="flex flex-col items-start justify-center shrink-0 pr-2">
-                      <span className={`font-black text-3xl sm:text-5xl tracking-tight font-mono leading-none tabular-nums ${
-                        hudScores[1] < 0 ? 'text-rose-600' : 'text-slate-900'
+                      <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest leading-none mb-0.5 ${
+                        hudTimeLeft <= 15 ? 'text-rose-100' : 'text-amber-950'
                       }`}>
-                        {hudScores[1]}
+                        ⏱️ TIMER
                       </span>
-                      <span className="text-[10px] sm:text-xs font-black uppercase text-red-700 tracking-widest mt-0.5">
-                        POINTS
+                      <span className="font-black text-xl sm:text-3xl font-mono leading-none tracking-tight tabular-nums">
+                        {formatPlayTime(hudTimeLeft)}
+                      </span>
+                      <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider mt-0.5 px-2 py-0.2 rounded-full ${
+                        hudTimeLeft <= 15 ? 'bg-black/25 text-white' : 'bg-white/75 text-slate-900'
+                      }`}>
+                        {numPlayers === 2 ? '⚡ 1V1 VS' : '🎯 SOLO'}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex flex-col items-end text-right min-w-0 gap-1">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-black shadow-xs shrink-0 tabular-nums">
-                            🔥 x{hudStreaks[1]}
+                    {/* PLAYER 2 SCORE WING (Right of Center Timer in 2P, or Combo/Target Badge in 1P) */}
+                    {numPlayers === 2 ? (
+                      <div className={`relative flex items-center justify-between gap-2.5 sm:gap-3.5 min-w-[185px] sm:min-w-[255px] md:min-w-[285px] h-[68px] sm:h-[78px] px-3 sm:px-4 rounded-3xl border-2 border-b-[5px] transition-all duration-300 ${
+                        hudFrozen[1]
+                          ? 'bg-gradient-to-b from-sky-200 to-sky-300 border-sky-400 border-b-sky-700 ring-2 ring-sky-300'
+                          : hudScorePops[1]
+                          ? 'bg-gradient-to-b from-rose-500 via-red-600 to-rose-700 border-amber-300 border-b-red-950 scale-[1.03] shadow-[0_0_25px_rgba(244,63,94,0.75)]'
+                          : 'bg-gradient-to-b from-white via-red-50 to-rose-100 border-red-400 border-b-red-700'
+                      }`}>
+                        {hudFrozen[1] && (
+                          <span className="absolute -top-2.5 right-3 text-[10px] px-2.5 py-0.5 rounded-full bg-sky-600 text-white font-black border border-white shadow animate-pulse z-20">
+                            ❄️ FROZEN
                           </span>
-                          <span className="text-xs sm:text-base font-black uppercase tracking-wider text-red-950 truncate max-w-[100px] sm:max-w-[130px]">
-                            {p2Name || "Player 2"}
+                        )}
+                        {hudScores[1] > hudScores[0] && !hudFrozen[1] && (
+                          <span className="absolute -top-2.5 right-3 text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black border border-white shadow z-20">
+                            👑 LEAD
+                          </span>
+                        )}
+
+                        {/* JUMBO IMMERSIVE SCORE MEDALLION (Pinned Toward Center) */}
+                        <div className={`flex flex-col items-center justify-center px-3 sm:px-3.5 py-1 rounded-2xl border-b-4 shrink-0 transition-transform duration-200 ${
+                          hudScorePops[1]
+                            ? 'bg-amber-400 border-amber-700 text-slate-950 scale-110 shadow-lg'
+                            : hudScores[1] < 0
+                            ? 'bg-rose-100 border-rose-300 text-rose-700'
+                            : 'bg-red-600 border-red-900 text-white shadow-inner'
+                        }`}>
+                          <span className="font-black text-2xl sm:text-4xl tracking-tight font-mono leading-none tabular-nums">
+                            {hudScores[1]}
+                          </span>
+                          <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest mt-0.5 ${
+                            hudScorePops[1] ? 'text-slate-900' : hudScores[1] < 0 ? 'text-rose-600' : 'text-rose-200'
+                          }`}>
+                            PTS
                           </span>
                         </div>
-                        {cameraActive && (
-                          <div className="flex items-center justify-end gap-1 text-[10px] font-black tracking-wide">
-                            <span className={`truncate mr-0.5 ${
-                              hudClapArmed[1]
-                                ? 'text-emerald-700'
-                                : (hudHandsDetected[1][0] && hudHandsDetected[1][1] ? 'text-amber-700' : 'text-slate-400')
-                            }`}>
-                              {hudClapArmed[1]
-                                ? (slapMode === 'swat' ? 'SWAT READY •' : 'CLAP READY •')
-                                : (hudHandsDetected[1][0] && hudHandsDetected[1][1]
-                                    ? 'OPEN HANDS •'
-                                    : (slapMode === 'swat' ? 'SHOW HAND •' : 'SHOW 2 HANDS •'))}
-                            </span>
-                            <span className={`px-1.5 py-0.5 rounded-md border ${
-                              hudHandsDetected[1][0]
-                                ? 'bg-emerald-500 text-white border-emerald-600'
-                                : 'bg-slate-100 text-slate-400 border-slate-200'
-                            }`}>
-                              L
-                            </span>
-                            <span className={`px-1.5 py-0.5 rounded-md border ${
-                              hudHandsDetected[1][1]
-                                ? 'bg-emerald-500 text-white border-emerald-600'
-                                : 'bg-slate-100 text-slate-400 border-slate-200'
-                            }`}>
-                              R
-                            </span>
+
+                        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                          <div className="flex flex-col items-end text-right min-w-0 gap-0.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded-full font-black shadow-2xs shrink-0 tabular-nums border ${
+                                hudStreaks[1] >= 3
+                                  ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white border-amber-200 animate-pulse'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}>
+                                🔥x{hudStreaks[1]}
+                              </span>
+                              <span className={`text-xs sm:text-sm font-black uppercase tracking-wider truncate max-w-[78px] sm:max-w-[110px] ${
+                                hudScorePops[1] ? 'text-white' : 'text-red-950'
+                              }`}>
+                                {p2Name || "Player 2"}
+                              </span>
+                            </div>
+                            {cameraActive && (
+                              <div className="flex items-center justify-end gap-1 text-[9px] sm:text-[10px] font-black tracking-wide">
+                                <span className={`truncate ${
+                                  hudScorePops[1]
+                                    ? 'text-amber-200'
+                                    : hudClapArmed[1]
+                                    ? 'text-emerald-700'
+                                    : 'text-slate-500'
+                                }`}>
+                                  {hudClapArmed[1] ? 'READY •' : (hudHandsDetected[1][0] && hudHandsDetected[1][1] ? 'OPEN •' : '2 HANDS •')}
+                                </span>
+                                <span className={`px-1 py-0.2 rounded border ${
+                                  hudHandsDetected[1][0]
+                                    ? 'bg-emerald-500 text-white border-emerald-600'
+                                    : 'bg-slate-200/80 text-slate-500 border-slate-300'
+                                }`}>
+                                  L
+                                </span>
+                                <span className={`px-1 py-0.2 rounded border ${
+                                  hudHandsDetected[1][1]
+                                    ? 'bg-emerald-500 text-white border-emerald-600'
+                                    : 'bg-slate-200/80 text-slate-500 border-slate-300'
+                                }`}>
+                                  R
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl border-t border-white/80 border-b-4 shadow shrink-0 ${
+                            hudFrozen[1]
+                              ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
+                              : 'bg-gradient-to-br from-red-500 to-red-700 border-b-red-950 text-white'
+                          }`}>
+                            {hudFrozen[1] ? '❄️' : '🔴'}
+                          </div>
+                        </div>
+
+                        {/* Immersive 3D Score Popup Banner */}
+                        {hudScorePops[1] && (
+                          <div className={`absolute -bottom-7 left-2 px-3.5 py-1 rounded-2xl border-2 border-white shadow-[0_10px_25px_rgba(0,0,0,0.35)] font-black text-sm sm:text-lg text-white animate-bounce z-50 whitespace-nowrap ${
+                            hudScorePops[1].includes('-')
+                              ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                              : 'bg-gradient-to-r from-emerald-400 via-green-500 to-teal-600'
+                          }`}>
+                            {hudScorePops[1]}
                           </div>
                         )}
                       </div>
-
-                      <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl border-t border-white/80 border-b-4 shadow-md shrink-0 ${
-                        hudFrozen[1]
-                          ? 'bg-gradient-to-br from-sky-400 to-blue-600 border-b-blue-900 text-white'
-                          : 'bg-gradient-to-br from-red-500 to-red-700 border-b-red-950 text-white'
-                      }`}>
-                        {hudFrozen[1] ? '❄️' : '🦟'}
+                    ) : (
+                      <div className="hidden sm:flex items-center gap-2.5 h-[68px] sm:h-[78px] px-4 rounded-3xl bg-gradient-to-b from-emerald-50 to-teal-100 border-2 border-emerald-400 border-b-[5px] border-b-emerald-700 text-emerald-950">
+                        <span className="text-2xl">🎯</span>
+                        <div className="flex flex-col text-left">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Scoring Rule</span>
+                          <span className="text-xs sm:text-sm font-black whitespace-nowrap">+5 Correct • -5 Wrong</span>
+                        </div>
                       </div>
-                    </div>
-
-                    {hudScorePops[1] && (
-                      <span className={`absolute -bottom-6 left-4 text-lg sm:text-2xl font-black text-white px-4 py-1 rounded-2xl border-2 border-white shadow-xl animate-bounce z-50 ${
-                        hudScorePops[1].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
-                      }`}>
-                        {hudScorePops[1]}
-                      </span>
                     )}
+
                   </div>
-                ) : (
-                  <div className="w-[235px] sm:w-[310px] md:w-[340px] shrink-0 hidden lg:block" />
-                )}
+                </div>
+
+                {/* RIGHT DOCK: Quick Slap Mode Toggle & Audio Status */}
+                <div className="hidden lg:flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSlapMode(slapMode === 'clap' ? 'swat' : 'clap')}
+                    title="Switch between Two-Hand Clap and One-Hand Swat"
+                    className="px-3.5 py-2.5 rounded-2xl bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-xs sm:text-sm font-black text-slate-800 shadow-lg cursor-pointer flex items-center gap-1.5 active:translate-y-0.5 whitespace-nowrap"
+                  >
+                    <span>{slapMode === 'clap' ? '👏 2-Hand Clap' : '🖐️ 1-Hand Swat'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSoundFx(!soundFx)}
+                    title="Toggle Sound FX"
+                    className="px-3 py-2.5 rounded-2xl bg-white/95 hover:bg-sky-50 border-2 border-sky-300 border-b-[5px] border-b-sky-600 text-xs sm:text-sm font-black text-slate-800 shadow-lg cursor-pointer flex items-center gap-1 active:translate-y-0.5"
+                  >
+                    <span>{soundFx ? '🔊' : '🔇'}</span>
+                  </button>
+                </div>
+
               </div>
 
               {/* Row 2: JUMBO, HIGH-CONTRAST 3D QUESTION BANNER */}
