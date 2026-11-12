@@ -48,11 +48,14 @@ const formatLastLogin = (lastLoginAt: any) => {
 };
 
 // --- UI COMPONENTS ---
-const Card = ({ children, className = '', title, action }: any) => (
-  <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden ${className}`}>
+const Card = ({ children, className = '', title, subtitle, action }: any) => (
+  <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-[0_2px_12px_rgba(15,23,42,0.05)] border border-slate-200/90 dark:border-slate-700/80 overflow-hidden ${className}`}>
     {(title || action) && (
-      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/60 flex justify-between items-center flex-wrap gap-2">
-        {title && <h3 className="font-semibold text-slate-800 dark:text-slate-200">{title}</h3>}
+      <div className="px-6 py-4 border-b border-slate-200/80 dark:border-slate-700/70 flex justify-between items-center flex-wrap gap-3 bg-slate-50/50 dark:bg-slate-800/60">
+        <div>
+          {title && <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">{title}</h3>}
+          {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>}
+        </div>
         {action && <div>{action}</div>}
       </div>
     )}
@@ -60,42 +63,62 @@ const Card = ({ children, className = '', title, action }: any) => (
   </div>
 );
 
-const StatCard = ({ title, value, subtitle, trend, icon: Icon, colorClass, highlight, isLive, children }: any) => (
-  <Card className="hover:shadow-md transition-shadow relative overflow-hidden group h-full flex flex-col">
-    <div className={`absolute top-0 right-0 w-32 h-32 transform translate-x-12 -translate-y-12 rounded-full opacity-10 transition-transform group-hover:scale-110 ${colorClass}`}></div>
-    <div className="flex justify-between items-start mb-4">
-      <div>
-        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1 flex items-center gap-2">
-          {title}
-          {isLive && <span className="flex h-2 w-2 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-          </span>}
-        </p>
-        <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200 flex items-baseline gap-2">
-          {value}
-          {highlight && <span className="text-sm font-medium text-slate-400">{highlight}</span>}
-        </h2>
+const StatCard = ({ title, value, subtitle, trend, icon: Icon, tone = 'blue', highlight, onClick, children }: any) => {
+  const toneStyles: Record<string, { iconBox: string; accentBar: string }> = {
+    blue: {
+      iconBox: 'bg-blue-50 text-blue-600 border border-blue-200/70 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30',
+      accentBar: 'bg-blue-500',
+    },
+    emerald: {
+      iconBox: 'bg-emerald-50 text-emerald-600 border border-emerald-200/70 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30',
+      accentBar: 'bg-emerald-500',
+    },
+    purple: {
+      iconBox: 'bg-purple-50 text-purple-600 border border-purple-200/70 dark:bg-purple-500/15 dark:text-purple-400 dark:border-purple-500/30',
+      accentBar: 'bg-purple-500',
+    },
+    rose: {
+      iconBox: 'bg-rose-50 text-rose-600 border border-rose-200/70 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30',
+      accentBar: 'bg-rose-500',
+    },
+  };
+  const activeTone = toneStyles[tone] || toneStyles.blue;
+
+  return (
+    <div
+      onClick={onClick}
+      className={`bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-[0_2px_12px_rgba(15,23,42,0.05)] border border-slate-200/90 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md transition-all relative overflow-hidden group h-full flex flex-col ${onClick ? 'cursor-pointer' : ''}`}
+    >
+      <div className="flex justify-between items-start gap-3 mb-3">
+        <div>
+          <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1.5">
+            {title}
+          </p>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight flex items-baseline gap-2">
+            {value}
+            {highlight && <span className="text-xs font-semibold text-slate-400">{highlight}</span>}
+          </h2>
+        </div>
+        <div className={`p-3 rounded-xl shrink-0 ${activeTone.iconBox}`}>
+          <Icon size={22} />
+        </div>
       </div>
-      <div className={`p-3 rounded-xl ${colorClass.replace('bg-', 'bg-opacity-10 text-')}`}>
-        <Icon size={24} className={colorClass.replace('bg-', 'text-')} />
+      <div className="mt-auto">
+        {subtitle && (
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            {trend && (
+              <span className={`font-bold tabular-nums ${trend > 0 ? 'text-emerald-600' : 'text-rose-600'} flex items-center`}>
+                {trend > 0 ? '+' : ''}{trend}%
+              </span>
+            )}
+            {subtitle}
+          </p>
+        )}
+        {children}
       </div>
     </div>
-    <div className="mt-auto">
-      {subtitle && (
-        <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
-          {trend && (
-            <span className={`font-medium ${trend > 0 ? 'text-emerald-500' : 'text-red-500'} flex items-center`}>
-              {trend > 0 ? '+' : ''}{trend}%
-            </span>
-          )}
-          {subtitle}
-        </p>
-      )}
-      {children}
-    </div>
-  </Card>
-);
+  );
+};
 
 const Avatar = ({ src, alt, size = 'md' }: any) => {
   const sizes: any = { sm: 'w-8 h-8', md: 'w-10 h-10', lg: 'w-16 h-16', xl: 'w-24 h-24' };
@@ -103,29 +126,35 @@ const Avatar = ({ src, alt, size = 'md' }: any) => {
     <img 
       src={src} 
       alt={alt} 
-      className={`${sizes[size]} rounded-full border-2 border-white dark:border-slate-700 shadow-sm object-cover bg-slate-100 dark:bg-slate-700`}
+      referrerPolicy="no-referrer"
+      className={`${sizes[size]} rounded-full border-2 border-white dark:border-slate-700 shadow-sm object-cover bg-slate-100 dark:bg-slate-700 shrink-0`}
       onError={(e: any) => { e.target.src = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(alt || 'User'); }}
     />
   );
 };
 
-// --- APP GAMES CONFIG ---
+// --- APP GAMES CONFIG (Aligned with Home Studio Categories & 3D Artwork) ---
 const APP_GAMES = [
-  { id: "mystery-box", title: "Mystery Box", icon: "🎁" },
-  { id: "neon-chain", title: "Neon Chain", icon: "🔗" },
-  { id: "bubble-pop", title: "Bubble Pop", icon: "🫧" },
-  { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "🎢" },
-  { id: "hamster-paintball", title: "Hamster Paintball", icon: "🐹🎯" },
-  { id: "slap-and-chop", title: "Slap & Chop", icon: "🥊" },
-  { id: "shark-attack", title: "Shark Attack", icon: "🦈" },
-  { id: "flashcards-match", title: "Flashcards Match", icon: "🃏" },
-  { id: "bubble-sentence-pro", title: "Bubble Island", icon: "🏝️" },
-  { id: "yoga-quiz", title: "Yoga Quiz", icon: "🧘" },
-  { id: "family-feud", title: "Family Feud", icon: "👨‍👩‍👧‍👦" },
-  { id: "sumo", title: "Sumo Tags", icon: "🤼" },
-  { id: "hamster-pop-quiz", title: "Video Quiz", icon: "🎬" },
-  { id: "tic-tac-toe", title: "Tic Tac Toe Battle", icon: "❌" },
-  { id: "phonemic-master", title: "Phonemic Master", icon: "🗣️" }
+  // Classroom Tools
+  { id: "squid-game-picker", title: "Name Picker", category: "Classroom Tools", imageUrl: "/images/name-picker-card.png", icon: "🎯" },
+  { id: "flashcards-match", title: "Flashcard", category: "Classroom Tools", imageUrl: "/images/flashcards-card.jpg", icon: "🃏" },
+  { id: "hamster-pop-quiz", title: "Video Quiz", category: "Classroom Tools", imageUrl: "/images/hamster-pop-quiz-card.jpg", icon: "🎬" },
+  { id: "phonemic-master", title: "Phonemic Master", category: "Classroom Tools", imageUrl: "/images/phonemic-master-card.jpg", icon: "🗣️" },
+  // AR Camera Games
+  { id: "slap-and-chop", title: "Mosquito Slap", category: "AR Camera Games", imageUrl: "/images/mosquito-slap-card.jpg", icon: "🦟" },
+  { id: "bubble-pop", title: "Bubble Pop", category: "AR Camera Games", imageUrl: "/images/bubble-pop-card.jpg", icon: "🫧" },
+  { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", category: "AR Camera Games", imageUrl: "/images/roller-coaster-quiz-card.jpg", icon: "🎢" },
+  { id: "yoga-quiz", title: "Yoga Quiz", category: "AR Camera Games", imageUrl: "/images/yoga-quiz-card.jpg", icon: "🧘" },
+  // Board Trivia & Team Games
+  { id: "mystery-box", title: "Mystery Box", category: "Board Trivia & Team Games", imageUrl: "/images/mystery-box-card.jpg", icon: "🎁" },
+  { id: "neon-chain", title: "Neon Chain", category: "Board Trivia & Team Games", imageUrl: "/images/neon-chain-card.jpg", icon: "⚡" },
+  { id: "bubble-sentence-pro", title: "Bubble Island", category: "Board Trivia & Team Games", imageUrl: "/images/bubble-island-card.jpg", icon: "🏝️" },
+  { id: "shark-attack", title: "Shark Attack", category: "Board Trivia & Team Games", imageUrl: "/images/shark-attack-card.jpg", icon: "🦈" },
+  { id: "family-feud", title: "Family Feud", category: "Board Trivia & Team Games", imageUrl: "/images/family-feud-card.jpg", icon: "👨‍👩‍👧‍👦" },
+  { id: "sumo", title: "Sumo Tags", category: "Board Trivia & Team Games", imageUrl: "/images/sumo-tags-card.jpg", icon: "🤼" },
+  // Multiplayer Games
+  { id: "hamster-paintball", title: "Hamster Paintball", category: "Multiplayer Games", imageUrl: "/images/hamster-paintball-card.jpg", icon: "🎯" },
+  { id: "tic-tac-toe", title: "Tic Tac Toe Battle", category: "Multiplayer Games", imageUrl: "/images/tic-tac-toe-card.jpg", icon: "❌" },
 ];
 
 // --- DASHBOARD OVERVIEW ---
@@ -149,36 +178,62 @@ const DashboardOverview = ({
   const guestUsersList = users.filter((u: any) => !isRegisteredUser(u));
   const guestUsers = guestUsersList.length;
 
+  const [appCategoryFilter, setAppCategoryFilter] = React.useState<string>('all');
+  const [appSearchQuery, setAppSearchQuery] = React.useState<string>('');
+
   const threatStats = useMemo(() => categorizeThreats(users), [users]);
   const highThreatExample = threatStats.critical[0]?.user;
+
+  const appCategories = [
+    'Classroom Tools',
+    'AR Camera Games',
+    'Board Trivia & Team Games',
+    'Multiplayer Games',
+  ];
+
+  const filteredAppGames = useMemo(() => {
+    return APP_GAMES.filter((g) => {
+      if (appCategoryFilter !== 'all' && g.category !== appCategoryFilter) return false;
+      if (appSearchQuery.trim()) {
+        const q = appSearchQuery.toLowerCase().trim();
+        return g.title.toLowerCase().includes(q) || g.category.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [appCategoryFilter, appSearchQuery]);
+
+  const publishedCount = useMemo(
+    () => APP_GAMES.filter((g) => publishedGames[g.id] !== false).length,
+    [publishedGames]
+  );
 
   return (
     <div className="space-y-6">
       {/* Security Threat Alert Banner */}
       {threatStats.critical.length > 0 && (
-        <div className="bg-gradient-to-r from-rose-500/10 via-red-500/15 to-orange-500/10 border-2 border-rose-500/30 dark:border-rose-500/40 rounded-2xl p-5 shadow-sm">
+        <div className="bg-rose-50/90 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-800/80 rounded-2xl p-5 shadow-sm">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <div className="p-3 bg-rose-500 text-white rounded-xl shadow-md shrink-0 animate-pulse">
-                <ShieldAlert size={26} />
+              <div className="p-3 bg-rose-600 text-white rounded-xl shadow-sm shrink-0">
+                <ShieldAlert size={24} />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-rose-700 dark:text-rose-400">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base sm:text-lg font-bold text-rose-900 dark:text-rose-200">
                     Security Warning: {threatStats.critical.length} Potential Email Threat{threatStats.critical.length > 1 ? 's' : ''} Detected
                   </h3>
-                  <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider bg-rose-600 text-white rounded-full">
-                    Action Required
+                  <span className="text-xs font-bold text-rose-700 dark:text-rose-300">
+                    · Action Required
                   </span>
                 </div>
                 <p className="text-sm text-slate-700 dark:text-slate-300 mt-1">
-                  Automatic analysis flagged suspicious accounts (e.g. institutional domain spoofing, fake school emails like <span className="font-mono font-semibold text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/30 px-1.5 py-0.5 rounded">{highThreatExample?.email || 'spoofed@gmail.com'}</span>).
+                  Automatic analysis flagged suspicious accounts (e.g. institutional domain spoofing, fake school emails like <span className="font-mono font-semibold text-rose-700 dark:text-rose-300 bg-rose-100/80 dark:bg-rose-900/40 px-1.5 py-0.5 rounded">{highThreatExample?.email || 'spoofed@gmail.com'}</span>).
                 </p>
               </div>
             </div>
             <button
               onClick={() => onFilterThreats('threats')}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 whitespace-nowrap self-stretch md:self-auto justify-center"
+              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 whitespace-nowrap shrink-0 self-stretch md:self-auto justify-center cursor-pointer"
             >
               <span>Examine & Delete Threats</span>
               <ChevronRight size={18} />
@@ -187,97 +242,188 @@ const DashboardOverview = ({
         </div>
       )}
 
-      {/* Top Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Top KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatCard 
-          title="Users" value={pageVisits.toLocaleString()} 
-          subtitle="Total platform users"
-          icon={Users} colorClass="bg-blue-500" 
-        />
+          title="Total Visits & Users"
+          value={pageVisits.toLocaleString()} 
+          subtitle={`${guestUsers} guest session${guestUsers === 1 ? '' : 's'} recorded`}
+          icon={Users}
+          tone="blue"
+          onClick={() => setShowGuestModal(true)}
+        >
+          <div className="mt-4 pt-3.5 border-t border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs">
+            <span className="font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+              {users.length} total accounts
+            </span>
+            <span className="font-bold text-blue-600 dark:text-blue-400 hover:underline">
+              Inspect Guests →
+            </span>
+          </div>
+        </StatCard>
+
         <StatCard 
-          title="Registered" value={registeredUsers.toLocaleString()} 
-          subtitle="Non-guest accounts"
-          icon={UserCheck} colorClass="bg-emerald-500" 
+          title="Registered Teachers"
+          value={registeredUsers.toLocaleString()} 
+          subtitle="Verified non-guest accounts"
+          icon={UserCheck}
+          tone="emerald"
+          onClick={onViewAll}
         >
           {registeredUsersList.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/50">
-              <div className="flex flex-wrap gap-2">
-                {registeredUsersList.slice(0, 3).map((u: any, i: number) => (
-                  <span key={i} className="px-2 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs rounded-md border border-emerald-100 dark:border-emerald-500/20 truncate max-w-full">
-                    {u.displayName || u.email || 'Unknown'}
-                  </span>
-                ))}
-                {registeredUsersList.length > 3 && (
-                  <span className="text-xs text-slate-400 font-medium self-center">
-                    +{registeredUsersList.length - 3} more
-                  </span>
-                )}
-              </div>
+            <div className="mt-4 pt-3.5 border-t border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between gap-2 text-xs">
+              <span className="text-slate-600 dark:text-slate-300 font-medium truncate">
+                {registeredUsersList.slice(0, 2).map((u: any) => u.displayName || u.email).join(' · ')}
+              </span>
+              {registeredUsersList.length > 2 && (
+                <span className="text-emerald-700 dark:text-emerald-400 font-bold whitespace-nowrap shrink-0 tabular-nums">
+                  +{registeredUsersList.length - 2} more
+                </span>
+              )}
             </div>
           )}
         </StatCard>
+
         <StatCard 
-          title="My Games Created" value={games.length.toString()} 
-          subtitle="Total custom games created"
-          icon={Gamepad2} colorClass="bg-purple-500" 
+          title="My Games Created"
+          value={games.length.toLocaleString()} 
+          subtitle="Custom teacher-built games"
+          icon={Gamepad2}
+          tone="purple"
+          onClick={() => onNavigateToRoute && onNavigateToRoute('user-activity')}
         >
-          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-            <span className="text-xs font-medium text-purple-700 dark:text-purple-400">
-              {activities.length} Recorded activities
+          <div className="mt-4 pt-3.5 border-t border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs">
+            <span className="font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+              {activities.length} recorded events
             </span>
-            {onNavigateToRoute && (
-              <button 
-                onClick={() => onNavigateToRoute('user-activity')}
-                className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline"
-              >
-                Inspect Games →
-              </button>
-            )}
+            <span className="font-bold text-purple-600 dark:text-purple-400 hover:underline whitespace-nowrap shrink-0">
+              Inspect Games →
+            </span>
           </div>
         </StatCard>
+
         <StatCard 
-          title="Email Threats" value={threatStats.critical.length.toString()} 
-          subtitle={threatStats.critical.length === 0 ? "All scanned emails safe" : "High risk emails flagged"}
-          icon={ShieldAlert} colorClass={threatStats.critical.length > 0 ? "bg-rose-500" : "bg-emerald-500"} 
+          title="Email Threats"
+          value={threatStats.critical.length.toString()} 
+          subtitle={threatStats.critical.length === 0 ? "All scanned emails safe" : "High-risk emails flagged"}
+          icon={ShieldAlert}
+          tone={threatStats.critical.length > 0 ? "rose" : "emerald"}
+          onClick={() => onFilterThreats('threats')}
         >
-          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              {threatStats.medium.length} Suspicious
+          <div className="mt-4 pt-3.5 border-t border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs">
+            <span className="font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+              {threatStats.medium.length} suspicious pattern{threatStats.medium.length === 1 ? '' : 's'}
             </span>
-            <button 
-              onClick={() => onFilterThreats('threats')}
-              className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline"
-            >
+            <span className="font-bold text-rose-600 dark:text-rose-400 hover:underline whitespace-nowrap shrink-0">
               Review Threats →
-            </button>
+            </span>
           </div>
         </StatCard>
       </div>
       
-      {/* App Toggles */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
-        <h4 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-6">Manage Apps</h4>
+      {/* Manage Studio Apps (With 3D Thumbnails, Category Filter Tabs & Search) */}
+      <Card
+        title="Manage Studio Apps"
+        subtitle={`${publishedCount} of ${APP_GAMES.length} games currently visible on the Home Studio`}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={appSearchQuery}
+                onChange={(e) => setAppSearchQuery(e.target.value)}
+                placeholder="Filter apps..."
+                className="pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-40 sm:w-48"
+              />
+            </div>
+          </div>
+        }
+      >
+        {/* Category Filter Bar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-4 mb-4 border-b border-slate-200/70 dark:border-slate-700/60 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setAppCategoryFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              appCategoryFilter === 'all'
+                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:text-slate-900 dark:bg-slate-700/60 dark:text-slate-300'
+            }`}
+          >
+            All Apps ({APP_GAMES.length})
+          </button>
+          {appCategories.map((cat) => {
+            const count = APP_GAMES.filter((g) => g.category === cat).length;
+            const active = appCategoryFilter === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setAppCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  active
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 dark:bg-slate-700/60 dark:text-slate-300'
+                }`}
+              >
+                {cat} ({count})
+              </button>
+            );
+          })}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {APP_GAMES.map(game => {
+          {filteredAppGames.map((game) => {
             const isGamePublished = publishedGames[game.id] !== false;
             return (
-              <div key={game.id} className="flex items-center justify-between p-4 border border-slate-100 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl">{game.icon}</div>
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">{game.title}</span>
+              <div
+                key={game.id}
+                className={`flex items-center justify-between gap-3 p-3.5 rounded-xl border transition-all ${
+                  isGamePublished
+                    ? 'bg-white dark:bg-slate-900/70 border-slate-200/90 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-2xs'
+                    : 'bg-slate-100/70 dark:bg-slate-900/30 border-slate-200/60 dark:border-slate-800 opacity-75'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={game.imageUrl}
+                    alt={game.title}
+                    referrerPolicy="no-referrer"
+                    className="w-14 h-11 rounded-lg object-cover shadow-xs shrink-0 bg-slate-200 dark:bg-slate-700"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">
+                      {game.title}
+                    </p>
+                    <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                      {isGamePublished ? 'Published' : 'Hidden'} · {game.category.replace(' & Team Games', '')}
+                    </p>
+                  </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => onToggleGamePublish(game.id)}
-                  className={`w-12 h-6 ${isGamePublished ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'} rounded-full relative transition-colors duration-200 focus:outline-none`}
-                  title={isGamePublished ? "Unpublish App" : "Publish App"}
+                  role="switch"
+                  aria-checked={isGamePublished}
+                  className={`w-11 h-6 shrink-0 ${
+                    isGamePublished
+                      ? 'bg-emerald-500 hover:bg-emerald-600'
+                      : 'bg-slate-300 dark:bg-slate-600 hover:bg-slate-400'
+                  } rounded-full relative transition-colors duration-200 focus:outline-none cursor-pointer`}
+                  title={isGamePublished ? 'Unpublish App' : 'Publish App'}
                 >
-                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 shadow-sm transition-all duration-200 ${isGamePublished ? 'left-7' : 'left-1'}`}></div>
+                  <div
+                    className={`w-4 h-4 bg-white rounded-full absolute top-1 shadow-xs transition-all duration-200 ${
+                      isGamePublished ? 'left-6' : 'left-1'
+                    }`}
+                  />
                 </button>
               </div>
             );
           })}
         </div>
-      </div>
+      </Card>
 
       {/* Mini Live Users Table */}
       <Card 
@@ -1634,12 +1780,47 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
     setCurrentRoute('users');
   };
 
+  const publishAllGames = async (publishState: boolean) => {
+    try {
+      const updated: Record<string, boolean> = { ...publishedGames };
+      APP_GAMES.forEach((g) => {
+        updated[g.id] = publishState;
+      });
+      updated['hamsterpaintball'] = publishState;
+      updated['paintball'] = publishState;
+      updated['sumo-tags'] = publishState;
+      updated['sumotags'] = publishState;
+      updated['bubble-island'] = publishState;
+      updated['bubblesentencepro'] = publishState;
+      updated['rollercoasterquiz'] = publishState;
+      updated['slapandchop'] = publishState;
+
+      setPublishedGames(updated);
+      try {
+        localStorage.setItem('publishedGames', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: updated }));
+      } catch (e) {}
+
+      await setDoc(
+        doc(db, 'settings', 'general'),
+        { publishedGames: updated },
+        { merge: true }
+      );
+      setSyncMessage(publishState ? 'All 16 Studio apps published!' : 'All Studio apps hidden from non-admins.');
+      setTimeout(() => setSyncMessage(null), 4000);
+    } catch (error) {
+      console.error('Error updating bulk game status:', error);
+    }
+  };
+
+  const sidebarThreatCount = useMemo(() => categorizeThreats(users).critical.length, [users]);
+
   // Navigation config with dedicated User Activity & Games tab
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Activity },
-    { id: 'users', label: 'User & Threat Management', icon: Users },
-    { id: 'user-activity', label: 'User Activity & Games', icon: Gamepad2 },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'dashboard', label: 'Dashboard Overview', icon: Activity, count: null },
+    { id: 'users', label: 'User & Threat Management', icon: Users, count: sidebarThreatCount > 0 ? sidebarThreatCount : users.length, isAlert: sidebarThreatCount > 0 },
+    { id: 'user-activity', label: 'User Activity & Games', icon: Gamepad2, count: games.length },
+    { id: 'settings', label: 'Platform Settings', icon: Settings, count: null },
   ];
 
   const handleNavClick = (id: string) => {
@@ -1648,8 +1829,15 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
     if (window.innerWidth < 1024) setSidebarOpen(false);
   };
 
+  const routeTitles: Record<string, string> = {
+    'dashboard': 'Dashboard Overview',
+    'users': 'User & Threat Management',
+    'user-activity': 'User Activity & Games',
+    'settings': 'Platform Settings',
+  };
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-900/50 font-sans overflow-hidden text-slate-800 dark:text-slate-200 -mx-4 -my-4 md:-mx-8 md:-my-8" style={{ margin: '-2rem' }}>
+    <div className="flex h-[calc(100vh-4rem)] bg-slate-100/90 dark:bg-slate-950 font-sans overflow-hidden text-slate-800 dark:text-slate-200 -mx-4 -my-4 md:-mx-8 md:-my-8" style={{ margin: '-2rem' }}>
       
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
@@ -1661,88 +1849,123 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-30 w-72 bg-indigo-900 text-indigo-50 
+        fixed lg:static inset-y-0 left-0 z-30 w-72 bg-slate-900 text-slate-100 border-r border-slate-800
         transform transition-transform duration-300 ease-in-out flex flex-col shadow-2xl lg:shadow-none
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="p-6 flex items-center justify-between border-b border-indigo-800/50">
-          <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onViewChange('home')}>
-            <span className="text-xl font-bold tracking-tight text-white">Admin Dashboard</span>
+        <div className="h-20 px-6 flex items-center justify-between border-b border-slate-800">
+          <div className="flex items-center gap-3 cursor-pointer hover:opacity-85 transition-opacity" onClick={() => onViewChange('home')}>
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+              <Shield size={19} />
+            </div>
+            <div>
+              <span className="text-base font-black tracking-tight text-white block leading-none">Admin Console</span>
+              <span className="text-[11px] font-medium text-slate-400 block mt-1">Hamster ESL Studio</span>
+            </div>
           </div>
-          <button className="lg:hidden text-indigo-300 hover:text-white" onClick={() => setSidebarOpen(false)}>
-            <X size={24} />
+          <button className="lg:hidden text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
+            <X size={22} />
           </button>
         </div>
 
         <div className="p-4 flex-1 overflow-y-auto">
-          <p className="text-xs font-semibold text-indigo-400/70 uppercase tracking-wider mb-4 px-4">Menu</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3">Navigation</p>
           <nav className="space-y-1.5">
-            {navItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`
-                  w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
-                  ${currentRoute === item.id 
-                    ? 'bg-indigo-600/50 text-white font-medium shadow-sm backdrop-blur-md border border-indigo-500/30' 
-                    : 'text-indigo-200 hover:bg-indigo-800/50 hover:text-white'}
-                `}
-              >
-                <item.icon size={20} className={currentRoute === item.id ? 'text-white' : 'text-indigo-400'} />
-                {item.label}
-              </button>
-            ))}
+            {navItems.map(item => {
+              const isActive = currentRoute === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  className={`
+                    w-full flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl text-left text-sm transition-all duration-150 cursor-pointer
+                    ${isActive 
+                      ? 'bg-indigo-600 text-white font-bold shadow-sm' 
+                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-white font-medium'}
+                  `}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <item.icon size={19} className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+                  {item.count !== null && (
+                    <span className={`text-xs font-bold tabular-nums px-2 py-0.5 rounded-md shrink-0 ${
+                      item.isAlert
+                        ? 'bg-rose-500 text-white'
+                        : isActive
+                        ? 'bg-indigo-700 text-indigo-100'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {item.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </nav>
         </div>
 
-        <div className="p-4 border-t border-indigo-800/50">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-indigo-200 hover:bg-red-500/20 hover:text-red-300 transition-all" onClick={() => onViewChange('home')}>
-            <LogOut size={20} />
-            Back to Home
+        <div className="p-4 border-t border-slate-800">
+          <button
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-sm font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-all cursor-pointer"
+            onClick={() => onViewChange('home')}
+          >
+            <LogOut size={19} className="text-slate-400" />
+            <span>Back to Home Studio</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-900/50">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100/90 dark:bg-slate-950">
         
         {/* Top Header */}
-        <header className="h-20 bg-white dark:bg-slate-800/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between px-6 z-10 sticky top-0">
+        <header className="h-20 bg-white dark:bg-slate-900 border-b border-slate-200/90 dark:border-slate-800 flex items-center justify-between px-6 z-10 sticky top-0">
           <div className="flex items-center gap-4">
             <button 
-              className="lg:hidden p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
+              className="lg:hidden p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               onClick={() => setSidebarOpen(true)}
             >
               <Menu size={24} />
             </button>
-            <h1 className="text-xl font-bold text-slate-800 dark:text-slate-200 hidden sm:block capitalize">
-              {currentRoute.replace('-', ' ')}
-            </h1>
+            <div>
+              <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                {routeTitles[currentRoute] || 'Dashboard'}
+              </h1>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 hidden sm:block">
+                Real-time user governance, security threat telemetry, and studio app publishing
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4">
+            {/* Quick Threats Shortcut */}
+            {sidebarThreatCount > 0 && (
+              <button
+                onClick={() => handleFilterThreatsFromOverview('threats')}
+                className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/70 hover:bg-rose-100 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <ShieldAlert size={15} className="text-rose-600 dark:text-rose-400" />
+                <span className="tabular-nums">{sidebarThreatCount} Threat{sidebarThreatCount === 1 ? '' : 's'}</span>
+              </button>
+            )}
+
             {/* Sync Button */}
             <button
               onClick={handleSyncUsers}
               disabled={isSyncing}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-sm disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-xs disabled:opacity-50 cursor-pointer whitespace-nowrap shrink-0"
               title="Sync user accounts"
             >
               <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
               <span className="hidden sm:inline">{isSyncing ? "Syncing..." : "Sync Users"}</span>
             </button>
 
-            {/* Notifications */}
-            <button className="relative p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
-              <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
-
             {/* Admin Profile */}
             <div className="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-slate-700">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{currentUser?.displayName || "Admin"}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Super Admin</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">{currentUser?.displayName || "Admin"}</p>
+                <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">Super Admin</p>
               </div>
               <Avatar src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.displayName || "Admin")}`} alt="Admin" />
             </div>
@@ -1751,7 +1974,7 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
         {/* Sync Status Banner */}
         {syncMessage && (
-          <div className="bg-emerald-500 text-white px-6 py-2.5 text-sm font-semibold flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top duration-200">
+          <div className="bg-emerald-600 text-white px-6 py-2.5 text-sm font-semibold flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top duration-200">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={18} />
               <span>{syncMessage}</span>
@@ -1812,14 +2035,88 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
                 />
               )}
               {currentRoute === 'settings' && (
-                  <div className="max-w-2xl bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-8">
-                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-6">Platform Settings</h2>
-                     <div className="space-y-6">
-                        <div className="py-4 border-t border-slate-100 dark:border-slate-700">
-                           <p className="text-slate-500 dark:text-slate-400">Security and platform settings managed by Super Admin.</p>
+                <div className="max-w-3xl space-y-6">
+                  <Card
+                    title="Studio App Visibility"
+                    subtitle="Control whether all 16 Studio games are visible to teachers and students on the Home Studio"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                          Bulk App Publishing
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Quickly publish all 16 games or hide them while performing maintenance.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => publishAllGames(true)}
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        >
+                          Publish All 16 Apps
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => publishAllGames(false)}
+                          className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          Hide All Apps
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card
+                    title="Platform Cache & Synchronization"
+                    subtitle="Refresh local admin cache and synchronize user & game records from Firestore"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                          Force Full Cloud Resync
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Clears cached user/game snapshots in browser storage and pulls fresh records from Firestore.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSyncUsers}
+                        disabled={isSyncing}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                        <span>{isSyncing ? 'Syncing...' : 'Resync Now'}</span>
+                      </button>
+                    </div>
+                  </Card>
+
+                  <Card
+                    title="Super Admin Protection"
+                    subtitle="Root account access and automated threat scanner status"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400">
+                          <Lock size={20} />
                         </div>
-                     </div>
-                  </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                            Protected Root Account: <span className="font-mono text-indigo-600 dark:text-indigo-400">{SUPER_ADMIN_EMAIL}</span>
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Deletion locks and email spoofing heuristics are active across all {users.length} accounts.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap shrink-0">
+                        Protected
+                      </span>
+                    </div>
+                  </Card>
+                </div>
               )}
             </>
           )}

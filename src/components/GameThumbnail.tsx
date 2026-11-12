@@ -408,22 +408,38 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     mode,
   } = content;
 
+  const localCardMap: Record<string, string> = {
+    'squid-game-picker': '/images/name-picker-card.png',
+    'flashcards-match': '/images/flashcards-card.jpg',
+    'hamster-pop-quiz': '/images/hamster-pop-quiz-card.jpg',
+    'phonemic-master': '/images/phonemic-master-card.jpg',
+    'slap-and-chop': '/images/mosquito-slap-card.jpg',
+    'bubble-pop': '/images/bubble-pop-card.jpg',
+    'roller-coaster-quiz': '/images/roller-coaster-quiz-card.jpg',
+    'yoga-quiz': '/images/yoga-quiz-card.jpg',
+    'mystery-box': '/images/mystery-box-card.jpg',
+    'neon-chain': '/images/neon-chain-card.jpg',
+    'bubble-sentence-pro': '/images/bubble-island-card.jpg',
+    'bubble-island': '/images/bubble-island-card.jpg',
+    'shark-attack': '/images/shark-attack-card.jpg',
+    'family-feud': '/images/family-feud-card.jpg',
+    'sumo': '/images/sumo-tags-card.jpg',
+    'sumo-tags': '/images/sumo-tags-card.jpg',
+    'hamster-paintball': hamsterPaintballCardImg,
+    'tic-tac-toe': '/images/tic-tac-toe-card.jpg',
+  };
+
+  const resolvedCardImg =
+    (typeof info?.icon === 'string' && info.icon.startsWith('/images/') ? info.icon : null) ||
+    localCardMap[normalizedType] ||
+    null;
+
   // Compact 64x64 mode for small icons in My Games folder list
   if (compact) {
-    if (normalizedType === 'hamster-paintball') {
+    if (resolvedCardImg) {
       return (
         <img
-          src={hamsterPaintballCardImg}
-          referrerPolicy="no-referrer"
-          alt={info?.title || cleanTitle}
-          className="absolute inset-0 w-full h-full object-cover scale-110 pointer-events-none select-none"
-        />
-      );
-    }
-    if (info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
-      return (
-        <img
-          src={info.icon}
+          src={resolvedCardImg}
           referrerPolicy="no-referrer"
           alt={info?.title || cleanTitle}
           className="absolute inset-0 w-full h-full object-cover scale-110 pointer-events-none select-none"
@@ -440,21 +456,11 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     );
   }
 
-  // Template card mode (no custom game object passed) for Roller Coaster Quiz, Slap & Chop, Shark Attack, Name Picker, Mystery Box, and Hamster Paintball
-  if (!game && normalizedType === 'hamster-paintball') {
+  // Template card mode (no custom game object passed)
+  if (!game && resolvedCardImg) {
     return (
       <img
-        src={hamsterPaintballCardImg}
-        referrerPolicy="no-referrer"
-        alt={info?.title || cleanTitle}
-        className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500"
-      />
-    );
-  }
-  if (!game && info?.icon && (normalizedType === 'roller-coaster-quiz' || normalizedType === 'slap-and-chop' || normalizedType === 'shark-attack' || normalizedType === 'squid-game-picker' || normalizedType === 'mystery-box')) {
-    return (
-      <img
-        src={info.icon}
+        src={resolvedCardImg}
         referrerPolicy="no-referrer"
         alt={info?.title || cleanTitle}
         className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500"
