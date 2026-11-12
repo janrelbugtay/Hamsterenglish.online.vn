@@ -385,22 +385,22 @@ export function PublicDashboard({
   };
 
   const allGameTemplates = [
-    { id: "mystery-box", title: "Mystery Box", color: "text-orange-600", icon: "/images/mystery-box-card.jpg" },
-    { id: "bubble-pop", title: "Bubble Pop", color: "text-blue-600", icon: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000" },
-    { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", color: "text-amber-600", icon: "/images/roller-coaster-quiz-card.jpg" },
-    { id: "hamster-paintball", title: "Hamster Paintball", color: "text-orange-600", icon: "/images/hamster-paintball-card.jpg" },
+    { id: "mystery-box", title: "Mystery Box", color: "text-orange-600", icon: "/images/mystery-box-card.jpg?v=3" },
+    { id: "bubble-pop", title: "Bubble Pop", color: "text-blue-600", icon: "/images/bubble-pop-card.jpg?v=3" },
+    { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", color: "text-amber-600", icon: "/images/roller-coaster-quiz-card.jpg?v=3" },
+    { id: "hamster-paintball", title: "Hamster Paintball", color: "text-orange-600", icon: "/images/hamster-paintball-card.jpg?v=3" },
     { id: "slap-and-chop", title: "Mosquito Slap", color: "text-purple-600", icon: mosquitoSlapCardImg },
-    { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "/images/shark-attack-card.jpg" },
-    { id: "flashcards-match", title: "Flashcards Match", color: "text-indigo-600", icon: "https://drive.google.com/thumbnail?id=1UtaZtVX0onrqj3VorxedOxy1iVXdFAHk&sz=w1000" },
-    { id: "bubble-sentence-pro", title: "Bubble Island", color: "text-sky-600", icon: "https://drive.google.com/thumbnail?id=136UAXGhVDr4ZhJd3bRABHDKp40RJIQSJ&sz=w1000" },
-    { id: "yoga-quiz", title: "Yoga Quiz", color: "text-emerald-600", icon: "https://drive.google.com/thumbnail?id=16viKskpD4hXygTg-0UaGSjfrWibNoqeQ&sz=w1000" },
-    { id: "family-feud", title: "Family Feud", color: "text-yellow-600", icon: "https://drive.google.com/thumbnail?id=1DDWdERo9zS6SEbpXA7J8FSh__1CNqxZN&sz=w1000" },
-    { id: "sumo", title: "Sumo", color: "text-red-600", icon: "https://drive.google.com/thumbnail?id=19zB6Kpor6pry7TV3XvX3eIZdxpd3ys40&sz=w1000" },
-    { id: "hamster-pop-quiz", title: "Video Quiz", color: "text-pink-600", icon: "/images/hamster-pop-quiz-card.jpg" },
-    { id: "squid-game-picker", title: "Name Picker", color: "text-rose-600", icon: "/images/name-picker-card.jpg" },
-    { id: "neon-chain", title: "Neon Chain", color: "text-cyan-600", icon: "/images/neon-chain-card.jpg" },
-    { id: "tic-tac-toe", title: "Tic Tac Toe Battle", color: "text-gray-800", icon: "/images/tic-tac-toe-card.jpg" },
-    { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "/images/phonemic-master-card.jpg" }
+    { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "/images/shark-attack-card.jpg?v=3" },
+    { id: "flashcards-match", title: "Flashcard", color: "text-indigo-600", icon: "/images/flashcards-card-v3.jpg?v=3" },
+    { id: "bubble-sentence-pro", title: "Bubble Island", color: "text-sky-600", icon: "/images/bubble-island-card.jpg?v=3" },
+    { id: "yoga-quiz", title: "Yoga Quiz", color: "text-emerald-600", icon: "/images/yoga-quiz-card.jpg?v=3" },
+    { id: "family-feud", title: "Family Feud", color: "text-yellow-600", icon: "/images/family-feud-card.jpg?v=3" },
+    { id: "sumo", title: "Sumo Tags", color: "text-red-600", icon: "/images/sumo-tags-card.jpg?v=3" },
+    { id: "hamster-pop-quiz", title: "Video Quiz", color: "text-pink-600", icon: "/images/video-quiz-card-v3.jpg?v=3" },
+    { id: "squid-game-picker", title: "Name Picker", color: "text-rose-600", icon: "/images/name-picker-card-v3.png?v=3" },
+    { id: "neon-chain", title: "Neon Chain", color: "text-cyan-600", icon: "/images/neon-chain-card.jpg?v=3" },
+    { id: "tic-tac-toe", title: "Tic Tac Toe Battle", color: "text-gray-800", icon: "/images/tic-tac-toe-card.jpg?v=3" },
+    { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "/images/phonemic-master-card-v3.jpg?v=3" }
   ];
 
   const normalizeGameType = (type: string | undefined): string => {

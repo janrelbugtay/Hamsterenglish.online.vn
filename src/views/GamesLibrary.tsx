@@ -21,6 +21,9 @@ import {
   ChevronRight,
   ArrowLeft,
   LayoutGrid,
+  Wrench,
+  Camera,
+  Users,
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, deleteDoc, writeBatch, addDoc, updateDoc } from 'firebase/firestore';
@@ -121,7 +124,7 @@ export const GamesLibrary = ({
       return publishedGames;
     }
     try {
-      const cached = localStorage.getItem('publishedGames');
+      const cached = localStorage.getItem('publishedGamesV2');
       if (cached) return JSON.parse(cached);
     } catch (e) {}
     return publishedGames || {};
@@ -182,25 +185,25 @@ export const GamesLibrary = ({
     category: GameCategoryId;
   }[] = [
     // Classroom Tools
-    { id: "squid-game-picker", title: "Name Picker", icon: "/images/name-picker-card.png", color: "bg-rose-100 text-rose-600", category: "classroom-tools" },
-    { id: "flashcards-match", title: "Flashcard", icon: "/images/flashcards-card.jpg", color: "bg-indigo-100 text-indigo-600", category: "classroom-tools" },
-    { id: "hamster-pop-quiz", title: "Video Quiz", icon: "/images/hamster-pop-quiz-card.jpg", color: "bg-yellow-100 text-yellow-600", category: "classroom-tools" },
-    { id: "phonemic-master", title: "Phonemic Master", icon: "/images/phonemic-master-card.jpg", color: "bg-emerald-100 text-emerald-600", category: "classroom-tools" },
+    { id: "squid-game-picker", title: "Name Picker", icon: "/images/name-picker-card-v3.png?v=3", color: "bg-rose-100 text-rose-600", category: "classroom-tools" },
+    { id: "flashcards-match", title: "Flashcard", icon: "/images/flashcards-card-v3.jpg?v=3", color: "bg-indigo-100 text-indigo-600", category: "classroom-tools" },
+    { id: "hamster-pop-quiz", title: "Video Quiz", icon: "/images/video-quiz-card-v3.jpg?v=3", color: "bg-yellow-100 text-yellow-600", category: "classroom-tools" },
+    { id: "phonemic-master", title: "Phonemic Master", icon: "/images/phonemic-master-card-v3.jpg?v=3", color: "bg-emerald-100 text-emerald-600", category: "classroom-tools" },
     // AR Camera Games
     { id: "slap-and-chop", title: "Mosquito Slap", icon: mosquitoSlapCardImg, color: "bg-purple-100 text-purple-600", category: "ar-camera" },
-    { id: "bubble-pop", title: "Bubble Pop", icon: "/images/bubble-pop-card.jpg", color: "bg-blue-100 text-blue-600", category: "ar-camera" },
-    { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "/images/roller-coaster-quiz-card.jpg", color: "bg-amber-100 text-amber-600", category: "ar-camera" },
-    { id: "yoga-quiz", title: "Yoga Quiz", icon: "/images/yoga-quiz-card.jpg", color: "bg-emerald-100 text-emerald-600", category: "ar-camera" },
+    { id: "bubble-pop", title: "Bubble Pop", icon: "/images/bubble-pop-card.jpg?v=3", color: "bg-blue-100 text-blue-600", category: "ar-camera" },
+    { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", icon: "/images/roller-coaster-quiz-card.jpg?v=3", color: "bg-amber-100 text-amber-600", category: "ar-camera" },
+    { id: "yoga-quiz", title: "Yoga Quiz", icon: "/images/yoga-quiz-card.jpg?v=3", color: "bg-emerald-100 text-emerald-600", category: "ar-camera" },
     // Board Trivia & Team Games
-    { id: "mystery-box", title: "Mystery Box", icon: "/images/mystery-box-card.jpg", color: "bg-orange-100 text-orange-600", category: "board-trivia" },
-    { id: "neon-chain", title: "Neon Chain", icon: "/images/neon-chain-card.jpg", color: "bg-cyan-100 text-cyan-600", category: "board-trivia" },
-    { id: "bubble-sentence-pro", title: "Bubble Island", icon: "/images/bubble-island-card.jpg", color: "bg-sky-100 text-sky-600", category: "board-trivia" },
-    { id: "shark-attack", title: "Shark Attack", icon: "/images/shark-attack-card.jpg", color: "bg-cyan-100 text-cyan-600", category: "board-trivia" },
-    { id: "family-feud", title: "Family Feud", icon: "/images/family-feud-card.jpg", color: "bg-yellow-100 text-yellow-600", category: "board-trivia" },
-    { id: "sumo", title: "Sumo Tags", icon: "/images/sumo-tags-card.jpg", color: "bg-red-100 text-red-600", category: "board-trivia" },
+    { id: "mystery-box", title: "Mystery Box", icon: "/images/mystery-box-card.jpg?v=3", color: "bg-orange-100 text-orange-600", category: "board-trivia" },
+    { id: "neon-chain", title: "Neon Chain", icon: "/images/neon-chain-card.jpg?v=3", color: "bg-cyan-100 text-cyan-600", category: "board-trivia" },
+    { id: "bubble-sentence-pro", title: "Bubble Island", icon: "/images/bubble-island-card.jpg?v=3", color: "bg-sky-100 text-sky-600", category: "board-trivia" },
+    { id: "shark-attack", title: "Shark Attack", icon: "/images/shark-attack-card.jpg?v=3", color: "bg-cyan-100 text-cyan-600", category: "board-trivia" },
+    { id: "family-feud", title: "Family Feud", icon: "/images/family-feud-card.jpg?v=3", color: "bg-yellow-100 text-yellow-600", category: "board-trivia" },
+    { id: "sumo", title: "Sumo Tags", icon: "/images/sumo-tags-card.jpg?v=3", color: "bg-red-100 text-red-600", category: "board-trivia" },
     // Multiplayer Games
     { id: "hamster-paintball", title: "Hamster Paintball", icon: hamsterPaintballCardImg, color: "bg-lime-100 text-lime-700", category: "multiplayer-games" },
-    { id: "tic-tac-toe", title: "Tic Tac Toe Battle", icon: "/images/tic-tac-toe-card.jpg", color: "bg-gray-100 text-gray-800", category: "multiplayer-games" },
+    { id: "tic-tac-toe", title: "Tic Tac Toe Battle", icon: "/images/tic-tac-toe-card.jpg?v=3", color: "bg-gray-100 text-gray-800", category: "multiplayer-games" },
   ];
 
   const gameTemplates = allGameTemplates.filter(g => g.id === 'hamster-paintball' || isAdmin || effectivePublishedGames[g.id] !== false);
@@ -1404,61 +1407,113 @@ export const GamesLibrary = ({
 
       {/* New Game Template Modal */}
       {showNewGameModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-2xl shadow-2xl relative border border-slate-200 dark:border-slate-800 flex flex-col max-h-[85vh]">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                  Select Game Template
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-4 sm:p-6"
+          onClick={() => setShowNewGameModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-5xl shadow-2xl relative border border-slate-200/80 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 sm:px-8 py-4 flex flex-col gap-3.5 shrink-0 border-b border-slate-100 dark:border-slate-800/80">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                  Select Game
                 </h2>
-                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-0.5">
-                  Choose a Studio game type to start building your custom lesson.
-                </p>
+                <button
+                  onClick={() => setShowNewGameModal(false)}
+                  className="w-10 h-10 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowNewGameModal(false)}
-                className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              {/* Classification Filter Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+                <div className="inline-flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/70 dark:border-slate-700">
+                  {[
+                    { id: 'all', title: 'All Games', icon: LayoutGrid, accentText: '', count: gameTemplates.length },
+                    { id: 'classroom-tools', title: 'Classroom Tools', icon: Wrench, accentText: 'text-emerald-600 dark:text-emerald-400', count: gameTemplates.filter(t => t.category === 'classroom-tools').length },
+                    { id: 'ar-camera', title: 'AR Camera Games', icon: Camera, accentText: 'text-sky-600 dark:text-sky-400', count: gameTemplates.filter(t => t.category === 'ar-camera').length },
+                    { id: 'board-trivia', title: 'Board Trivia & Team Games', icon: Gamepad2, accentText: 'text-amber-600 dark:text-amber-400', count: gameTemplates.filter(t => t.category === 'board-trivia').length },
+                    { id: 'multiplayer-games', title: 'Multiplayer Games', icon: Users, accentText: 'text-purple-600 dark:text-purple-400', count: gameTemplates.filter(t => t.category === 'multiplayer-games').length },
+                  ].map((tab) => {
+                    if (tab.id !== 'all' && tab.count === 0) return null;
+                    const Icon = tab.icon;
+                    const isActive = templateCategoryFilter === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setTemplateCategoryFilter(tab.id as any)}
+                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                          isActive
+                            ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        <Icon size={15} className={isActive ? 'text-current' : tab.accentText} />
+                        <span>{tab.title}</span>
+                        <span className="text-xs opacity-75 tabular-nums">({tab.count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
-            {/* Category Filter Tabs */}
-            <div className="flex items-center gap-1.5 pb-4 overflow-x-auto">
+            <div className="p-6 sm:p-8 overflow-y-auto custom-scrollbar flex flex-col gap-10">
               {[
-                { id: 'all', label: `All (${gameTemplates.length})` },
-                { id: 'classroom-tools', label: 'Classroom Tools' },
-                { id: 'ar-camera', label: 'AR Camera Games' },
-                { id: 'board-trivia', label: 'Board Trivia & Team' },
-                { id: 'multiplayer-games', label: 'Multiplayer' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setTemplateCategoryFilter(tab.id as any)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    templateCategoryFilter === tab.id
-                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+                { id: 'classroom-tools' as GameCategoryId, title: 'Classroom Tools', icon: Wrench, accentText: 'text-emerald-600 dark:text-emerald-400' },
+                { id: 'ar-camera' as GameCategoryId, title: 'AR Camera Games', icon: Camera, accentText: 'text-sky-600 dark:text-sky-400' },
+                { id: 'board-trivia' as GameCategoryId, title: 'Board Trivia & Team Games', icon: Gamepad2, accentText: 'text-amber-600 dark:text-amber-400' },
+                { id: 'multiplayer-games' as GameCategoryId, title: 'Multiplayer Games', icon: Users, accentText: 'text-purple-600 dark:text-purple-400' },
+              ]
+                .map((section) => ({
+                  ...section,
+                  items: gameTemplates.filter((t) => t.category === section.id),
+                }))
+                .filter(
+                  (section) =>
+                    section.items.length > 0 &&
+                    (templateCategoryFilter === 'all' || templateCategoryFilter === section.id)
+                )
+                .map((section) => {
+                  const SectionIcon = section.icon;
+                  return (
+                    <div key={section.id} className="flex flex-col gap-4">
+                      <div className="flex items-center gap-2.5">
+                        <SectionIcon size={22} className={section.accentText} />
+                        <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+                          {section.title}
+                        </h3>
+                      </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto pr-1 custom-scrollbar">
-              {filteredModalTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  onClick={() => {
-                    setShowNewGameModal(false);
-                    onViewChange(template.id as ViewState);
-                  }}
-                  className="flex flex-col items-center p-0 rounded-2xl bg-transparent hover:-translate-y-1 transition-all duration-200 text-center group overflow-hidden aspect-[4/3] relative cursor-pointer"
-                >
-                  <GameThumbnail gameType={template.id} info={template} />
-                </button>
-              ))}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {section.items.map((template) => (
+                          <div
+                            key={template.id}
+                            onClick={() => {
+                              setShowNewGameModal(false);
+                              onViewChange(template.id as ViewState);
+                            }}
+                            className="w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden shadow-[0_22px_44px_-12px_rgba(15,23,42,0.36),0_10px_20px_-8px_rgba(15,23,42,0.22)] group hover:-translate-y-2 hover:scale-[1.02] hover:shadow-[0_32px_60px_-12px_rgba(15,23,42,0.45)] active:translate-y-0.5 transition-all duration-300 cursor-pointer select-none"
+                          >
+                            <GameThumbnail gameType={template.id} info={template} />
+                            <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),inset_0_-8px_16px_rgba(15,23,42,0.25)]" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+                              <div className="w-16 h-16 bg-white/95 backdrop-blur-md rounded-full shadow-[0_12px_28px_rgba(15,23,42,0.35)] flex items-center justify-center text-slate-950 transform scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-200">
+                                <svg className="w-8 h-8 ml-1 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>

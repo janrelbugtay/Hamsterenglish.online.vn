@@ -409,29 +409,29 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
   } = content;
 
   const localCardMap: Record<string, string> = {
-    'squid-game-picker': '/images/name-picker-card.png',
-    'flashcards-match': '/images/flashcards-card.jpg',
-    'hamster-pop-quiz': '/images/hamster-pop-quiz-card.jpg',
-    'phonemic-master': '/images/phonemic-master-card.jpg',
-    'slap-and-chop': '/images/mosquito-slap-card.jpg',
-    'bubble-pop': '/images/bubble-pop-card.jpg',
-    'roller-coaster-quiz': '/images/roller-coaster-quiz-card.jpg',
-    'yoga-quiz': '/images/yoga-quiz-card.jpg',
-    'mystery-box': '/images/mystery-box-card.jpg',
-    'neon-chain': '/images/neon-chain-card.jpg',
-    'bubble-sentence-pro': '/images/bubble-island-card.jpg',
-    'bubble-island': '/images/bubble-island-card.jpg',
-    'shark-attack': '/images/shark-attack-card.jpg',
-    'family-feud': '/images/family-feud-card.jpg',
-    'sumo': '/images/sumo-tags-card.jpg',
-    'sumo-tags': '/images/sumo-tags-card.jpg',
-    'hamster-paintball': hamsterPaintballCardImg,
-    'tic-tac-toe': '/images/tic-tac-toe-card.jpg',
+    'squid-game-picker': '/images/name-picker-card-v3.png?v=3',
+    'flashcards-match': '/images/flashcards-card-v3.jpg?v=3',
+    'hamster-pop-quiz': '/images/video-quiz-card-v3.jpg?v=3',
+    'phonemic-master': '/images/phonemic-master-card-v3.jpg?v=3',
+    'slap-and-chop': '/images/mosquito-slap-card.jpg?v=3',
+    'bubble-pop': '/images/bubble-pop-card.jpg?v=3',
+    'roller-coaster-quiz': '/images/roller-coaster-quiz-card.jpg?v=3',
+    'yoga-quiz': '/images/yoga-quiz-card.jpg?v=3',
+    'mystery-box': '/images/mystery-box-card.jpg?v=3',
+    'neon-chain': '/images/neon-chain-card.jpg?v=3',
+    'bubble-sentence-pro': '/images/bubble-island-card.jpg?v=3',
+    'bubble-island': '/images/bubble-island-card.jpg?v=3',
+    'shark-attack': '/images/shark-attack-card.jpg?v=3',
+    'family-feud': '/images/family-feud-card.jpg?v=3',
+    'sumo': '/images/sumo-tags-card.jpg?v=3',
+    'sumo-tags': '/images/sumo-tags-card.jpg?v=3',
+    'hamster-paintball': '/images/hamster-paintball-card.jpg?v=3',
+    'tic-tac-toe': '/images/tic-tac-toe-card.jpg?v=3',
   };
 
   const resolvedCardImg =
-    (typeof info?.icon === 'string' && info.icon.startsWith('/images/') ? info.icon : null) ||
     localCardMap[normalizedType] ||
+    (typeof info?.icon === 'string' && info.icon.startsWith('/images/') ? info.icon : null) ||
     null;
 
   // Compact 64x64 mode for small icons in My Games folder list
@@ -1161,7 +1161,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
   // 11. SQUID GAME PICKER (squid-game-picker)
   if (normalizedType === 'squid-game-picker') {
-    const src = info?.imageUrl || info?.icon || '/images/name-picker-card.png';
+    const src = '/images/name-picker-card-v3.png?v=3';
     return (
       <img
         src={src}

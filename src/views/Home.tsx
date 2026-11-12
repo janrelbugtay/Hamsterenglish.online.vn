@@ -7,8 +7,8 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 
-const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg";
-const hamsterPaintballCardImg = "/images/hamster-paintball-card.jpg";
+const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg?v=3";
+const hamsterPaintballCardImg = "/images/hamster-paintball-card.jpg?v=3";
 
 const GAME_CATEGORY_SECTIONS: {
   id: GameCategoryId;
@@ -44,8 +44,6 @@ const GAME_CATEGORY_SECTIONS: {
 
 export function Home({
   onViewChange,
-  openAuthModal,
-  openGoogleAuthModal,
 }: {
   onViewChange?: (view: ViewState, data?: any) => void;
   openAuthModal?: () => void;
@@ -127,7 +125,7 @@ function FeaturedGamesSection({
   const [selectedCategory, setSelectedCategory] = useState<"all" | GameCategoryId>("all");
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
     try {
-      const cached = localStorage.getItem('publishedGames');
+      const cached = localStorage.getItem('publishedGamesV2');
       if (cached) return JSON.parse(cached);
     } catch (e) {}
     return {};
@@ -138,10 +136,10 @@ function FeaturedGamesSection({
       doc(db, "settings", "general"), 
       (doc) => {
         if (doc.exists()) {
-          const pub = doc.data().publishedGames || {};
+          const pub = doc.data().publishedGamesV2 || {};
           setPublishedGames(pub);
           try {
-            localStorage.setItem('publishedGames', JSON.stringify(pub));
+            localStorage.setItem('publishedGamesV2', JSON.stringify(pub));
           } catch (e) {}
         }
       },
@@ -163,7 +161,7 @@ function FeaturedGamesSection({
       time: "5m",
       subject: "Classroom Management",
       grade: "All",
-      imageUrl: "/images/name-picker-card.png",
+      imageUrl: "/images/name-picker-card-v3.png?v=3",
       isAI: false,
       color: "from-rose-600 to-rose-400",
       icon: "🎯",
@@ -179,7 +177,7 @@ function FeaturedGamesSection({
       time: "5-10m",
       subject: "Vocabulary",
       grade: "All",
-      imageUrl: "/images/flashcards-card.jpg",
+      imageUrl: "/images/flashcards-card-v3.jpg?v=3",
       isAI: false,
       color: "from-indigo-400 to-purple-500",
       icon: "🎴",
@@ -194,7 +192,7 @@ function FeaturedGamesSection({
       time: "10-15 mins",
       subject: "Video Comprehension",
       grade: "All",
-      imageUrl: "/images/hamster-pop-quiz-card.jpg",
+      imageUrl: "/images/video-quiz-card-v3.jpg?v=3",
       isAI: true,
       color: "from-sky-400 to-yellow-400",
       icon: "🎬",
@@ -209,7 +207,7 @@ function FeaturedGamesSection({
       time: "10m",
       subject: "ESL",
       grade: "All",
-      imageUrl: "/images/phonemic-master-card.jpg",
+      imageUrl: "/images/phonemic-master-card-v3.jpg?v=3",
       isAI: false,
       color: "from-emerald-700 to-emerald-900",
       icon: "🗣️",
@@ -243,7 +241,7 @@ function FeaturedGamesSection({
       time: "5m",
       subject: "Grammar",
       grade: "A1-B1",
-      imageUrl: "/images/bubble-pop-card.jpg",
+      imageUrl: "/images/bubble-pop-card.jpg?v=3",
       isAI: false,
       color: "from-blue-400 to-cyan-400",
       icon: "🫧",
@@ -259,7 +257,7 @@ function FeaturedGamesSection({
       time: "5-10m",
       subject: "All Subjects",
       grade: "All",
-      imageUrl: "/images/roller-coaster-quiz-card.jpg",
+      imageUrl: "/images/roller-coaster-quiz-card.jpg?v=3",
       isNew: true,
       isAI: false,
       color: "from-red-500 to-amber-500",
@@ -276,14 +274,14 @@ function FeaturedGamesSection({
       time: "10m",
       subject: "Grammar",
       grade: "All",
-      imageUrl: "/images/yoga-quiz-card.jpg",
+      imageUrl: "/images/yoga-quiz-card.jpg?v=3",
       isAI: false,
       color: "from-teal-400 to-emerald-500",
       icon: "🧘‍♀️",
       category: "ar-camera",
     },
 
-    // 3. Board Trivia & Team Games (7)
+    // 3. Board Trivia & Team Games (6)
     {
       id: "mystery-box",
       title: "Mystery Box",
@@ -294,7 +292,7 @@ function FeaturedGamesSection({
       time: "15m",
       subject: "Trivia",
       grade: "A2-B1",
-      imageUrl: "/images/mystery-box-card.jpg",
+      imageUrl: "/images/mystery-box-card.jpg?v=3",
       isAI: false,
       color: "from-orange-400 to-yellow-500",
       icon: "🎁",
@@ -309,7 +307,7 @@ function FeaturedGamesSection({
       time: "10-15m",
       subject: "Vocabulary",
       grade: "B1-B2",
-      imageUrl: "/images/neon-chain-card.jpg",
+      imageUrl: "/images/neon-chain-card.jpg?v=3",
       isAI: false,
       color: "from-cyan-400 to-blue-600",
       icon: "⚡",
@@ -325,7 +323,7 @@ function FeaturedGamesSection({
       time: "10m",
       subject: "Grammar",
       grade: "A1-B1",
-      imageUrl: "/images/bubble-island-card.jpg",
+      imageUrl: "/images/bubble-island-card.jpg?v=3",
       isAI: false,
       color: "from-blue-500 to-sky-300",
       icon: "🎈",
@@ -341,7 +339,7 @@ function FeaturedGamesSection({
       time: "10m",
       subject: "Trivia & ESL",
       grade: "All",
-      imageUrl: "/images/shark-attack-card.jpg",
+      imageUrl: "/images/shark-attack-card.jpg?v=3",
       isAI: false,
       color: "from-cyan-500 to-blue-900",
       icon: "🦈",
@@ -356,7 +354,7 @@ function FeaturedGamesSection({
       time: "15m",
       subject: "Vocabulary",
       grade: "All",
-      imageUrl: "/images/family-feud-card.jpg",
+      imageUrl: "/images/family-feud-card.jpg?v=3",
       isAI: false,
       color: "from-yellow-400 to-orange-500",
       icon: "👨‍👩‍👧‍👦",
@@ -371,7 +369,7 @@ function FeaturedGamesSection({
       time: "10m",
       subject: "Grammar",
       grade: "All",
-      imageUrl: "/images/sumo-tags-card.jpg",
+      imageUrl: "/images/sumo-tags-card.jpg?v=3",
       isAI: false,
       color: "from-indigo-600 to-red-600",
       icon: "🤼",
@@ -405,7 +403,7 @@ function FeaturedGamesSection({
       time: "5m",
       subject: "Logic",
       grade: "All",
-      imageUrl: "/images/tic-tac-toe-card.jpg",
+      imageUrl: "/images/tic-tac-toe-card.jpg?v=3",
       isAI: false,
       color: "from-gray-700 to-gray-900",
       icon: "❌",
@@ -432,46 +430,44 @@ function FeaturedGamesSection({
   return (
     <section className="py-2 flex flex-col gap-8">
       {/* Interactive Top Category Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-        <div className="inline-flex items-center gap-1.5 p-1.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setSelectedCategory("all")}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
-              selectedCategory === "all"
-                ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
-                : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
-            )}
-          >
-            <LayoutGrid size={16} />
-            <span>All Games</span>
-            <span className="text-xs opacity-75 tabular-nums">({games.length})</span>
-          </button>
+      <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm w-fit max-w-full">
+        <button
+          type="button"
+          onClick={() => setSelectedCategory("all")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
+            selectedCategory === "all"
+              ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+              : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
+          )}
+        >
+          <LayoutGrid size={16} />
+          <span>All Games</span>
+          <span className="text-xs opacity-75 tabular-nums">({games.length})</span>
+        </button>
 
-          {GAME_CATEGORY_SECTIONS.map((cat) => {
-            const Icon = cat.icon;
-            const count = countByCategory(cat.id);
-            const isActive = selectedCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setSelectedCategory(cat.id)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
-                  isActive
-                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
-                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
-                )}
-              >
-                <Icon size={16} className={isActive ? "text-current" : cat.accentText} />
-                <span>{cat.title}</span>
-                <span className="text-xs opacity-75 tabular-nums">({count})</span>
-              </button>
-            );
-          })}
-        </div>
+        {GAME_CATEGORY_SECTIONS.map((cat) => {
+          const Icon = cat.icon;
+          const count = countByCategory(cat.id);
+          const isActive = selectedCategory === cat.id;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setSelectedCategory(cat.id)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
+                isActive
+                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
+              )}
+            >
+              <Icon size={16} className={isActive ? "text-current" : cat.accentText} />
+              <span>{cat.title}</span>
+              <span className="text-xs opacity-75 tabular-nums">({count})</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Category Sections with Bold Minimalist Headers & 100% Clean 3D Model Cards */}

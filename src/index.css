@@ -114,6 +114,14 @@ h1, h2, h3, h4, h5, h6 {
   background: #334155;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 @keyframes confettiFall {
   0% {
     transform: translateY(0) rotate(0deg);

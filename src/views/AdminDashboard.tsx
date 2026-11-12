@@ -136,25 +136,25 @@ const Avatar = ({ src, alt, size = 'md' }: any) => {
 // --- APP GAMES CONFIG (Aligned with Home Studio Categories & 3D Artwork) ---
 const APP_GAMES = [
   // Classroom Tools
-  { id: "squid-game-picker", title: "Name Picker", category: "Classroom Tools", imageUrl: "/images/name-picker-card.png", icon: "🎯" },
-  { id: "flashcards-match", title: "Flashcard", category: "Classroom Tools", imageUrl: "/images/flashcards-card.jpg", icon: "🃏" },
-  { id: "hamster-pop-quiz", title: "Video Quiz", category: "Classroom Tools", imageUrl: "/images/hamster-pop-quiz-card.jpg", icon: "🎬" },
-  { id: "phonemic-master", title: "Phonemic Master", category: "Classroom Tools", imageUrl: "/images/phonemic-master-card.jpg", icon: "🗣️" },
+  { id: "squid-game-picker", title: "Name Picker", category: "Classroom Tools", imageUrl: "/images/name-picker-card-v3.png?v=3", icon: "🎯" },
+  { id: "flashcards-match", title: "Flashcard", category: "Classroom Tools", imageUrl: "/images/flashcards-card-v3.jpg?v=3", icon: "🃏" },
+  { id: "hamster-pop-quiz", title: "Video Quiz", category: "Classroom Tools", imageUrl: "/images/video-quiz-card-v3.jpg?v=3", icon: "🎬" },
+  { id: "phonemic-master", title: "Phonemic Master", category: "Classroom Tools", imageUrl: "/images/phonemic-master-card-v3.jpg?v=3", icon: "🗣️" },
   // AR Camera Games
-  { id: "slap-and-chop", title: "Mosquito Slap", category: "AR Camera Games", imageUrl: "/images/mosquito-slap-card.jpg", icon: "🦟" },
-  { id: "bubble-pop", title: "Bubble Pop", category: "AR Camera Games", imageUrl: "/images/bubble-pop-card.jpg", icon: "🫧" },
-  { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", category: "AR Camera Games", imageUrl: "/images/roller-coaster-quiz-card.jpg", icon: "🎢" },
-  { id: "yoga-quiz", title: "Yoga Quiz", category: "AR Camera Games", imageUrl: "/images/yoga-quiz-card.jpg", icon: "🧘" },
+  { id: "slap-and-chop", title: "Mosquito Slap", category: "AR Camera Games", imageUrl: "/images/mosquito-slap-card.jpg?v=3", icon: "🦟" },
+  { id: "bubble-pop", title: "Bubble Pop", category: "AR Camera Games", imageUrl: "/images/bubble-pop-card.jpg?v=3", icon: "🫧" },
+  { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", category: "AR Camera Games", imageUrl: "/images/roller-coaster-quiz-card.jpg?v=3", icon: "🎢" },
+  { id: "yoga-quiz", title: "Yoga Quiz", category: "AR Camera Games", imageUrl: "/images/yoga-quiz-card.jpg?v=3", icon: "🧘" },
   // Board Trivia & Team Games
-  { id: "mystery-box", title: "Mystery Box", category: "Board Trivia & Team Games", imageUrl: "/images/mystery-box-card.jpg", icon: "🎁" },
-  { id: "neon-chain", title: "Neon Chain", category: "Board Trivia & Team Games", imageUrl: "/images/neon-chain-card.jpg", icon: "⚡" },
-  { id: "bubble-sentence-pro", title: "Bubble Island", category: "Board Trivia & Team Games", imageUrl: "/images/bubble-island-card.jpg", icon: "🏝️" },
-  { id: "shark-attack", title: "Shark Attack", category: "Board Trivia & Team Games", imageUrl: "/images/shark-attack-card.jpg", icon: "🦈" },
-  { id: "family-feud", title: "Family Feud", category: "Board Trivia & Team Games", imageUrl: "/images/family-feud-card.jpg", icon: "👨‍👩‍👧‍👦" },
-  { id: "sumo", title: "Sumo Tags", category: "Board Trivia & Team Games", imageUrl: "/images/sumo-tags-card.jpg", icon: "🤼" },
+  { id: "mystery-box", title: "Mystery Box", category: "Board Trivia & Team Games", imageUrl: "/images/mystery-box-card.jpg?v=3", icon: "🎁" },
+  { id: "neon-chain", title: "Neon Chain", category: "Board Trivia & Team Games", imageUrl: "/images/neon-chain-card.jpg?v=3", icon: "⚡" },
+  { id: "bubble-sentence-pro", title: "Bubble Island", category: "Board Trivia & Team Games", imageUrl: "/images/bubble-island-card.jpg?v=3", icon: "🏝️" },
+  { id: "shark-attack", title: "Shark Attack", category: "Board Trivia & Team Games", imageUrl: "/images/shark-attack-card.jpg?v=3", icon: "🦈" },
+  { id: "family-feud", title: "Family Feud", category: "Board Trivia & Team Games", imageUrl: "/images/family-feud-card.jpg?v=3", icon: "👨‍👩‍👧‍👦" },
+  { id: "sumo", title: "Sumo Tags", category: "Board Trivia & Team Games", imageUrl: "/images/sumo-tags-card.jpg?v=3", icon: "🤼" },
   // Multiplayer Games
-  { id: "hamster-paintball", title: "Hamster Paintball", category: "Multiplayer Games", imageUrl: "/images/hamster-paintball-card.jpg", icon: "🎯" },
-  { id: "tic-tac-toe", title: "Tic Tac Toe Battle", category: "Multiplayer Games", imageUrl: "/images/tic-tac-toe-card.jpg", icon: "❌" },
+  { id: "hamster-paintball", title: "Hamster Paintball", category: "Multiplayer Games", imageUrl: "/images/hamster-paintball-card.jpg?v=3", icon: "🎯" },
+  { id: "tic-tac-toe", title: "Tic Tac Toe Battle", category: "Multiplayer Games", imageUrl: "/images/tic-tac-toe-card.jpg?v=3", icon: "❌" },
 ];
 
 // --- DASHBOARD OVERVIEW ---
@@ -1523,7 +1523,7 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem('publishedGames');
+      const saved = localStorage.getItem('publishedGamesV2');
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -1721,10 +1721,10 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       doc(db, 'settings', 'general'), 
       (doc) => {
         if (doc.exists()) {
-          const pub = doc.data().publishedGames || {};
+          const pub = doc.data().publishedGamesV2 || {};
           setPublishedGames(pub);
           try {
-            localStorage.setItem('publishedGames', JSON.stringify(pub));
+            localStorage.setItem('publishedGamesV2', JSON.stringify(pub));
             window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: pub }));
           } catch (e) {}
           const visits = doc.data().pageVisits || 0;
@@ -1763,12 +1763,12 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       }
       setPublishedGames(updated);
       try {
-        localStorage.setItem('publishedGames', JSON.stringify(updated));
+        localStorage.setItem('publishedGamesV2', JSON.stringify(updated));
         window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: updated }));
       } catch (e) {}
 
       await setDoc(doc(db, 'settings', 'general'), { 
-        publishedGames: updated
+        publishedGamesV2: updated
       }, { merge: true });
     } catch (error) {
       console.error('Error toggling game status', error);
@@ -1797,13 +1797,13 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
       setPublishedGames(updated);
       try {
-        localStorage.setItem('publishedGames', JSON.stringify(updated));
+        localStorage.setItem('publishedGamesV2', JSON.stringify(updated));
         window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: updated }));
       } catch (e) {}
 
       await setDoc(
         doc(db, 'settings', 'general'),
-        { publishedGames: updated },
+        { publishedGamesV2: updated },
         { merge: true }
       );
       setSyncMessage(publishState ? 'All 16 Studio apps published!' : 'All Studio apps hidden from non-admins.');

@@ -132,7 +132,7 @@ export default function App() {
   const [joinData, setJoinData] = useState<{code: string, nickname: string, gameType: string} | null>(null);
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
     try {
-      const cached = localStorage.getItem('publishedGames');
+      const cached = localStorage.getItem('publishedGamesV2');
       if (cached) return JSON.parse(cached);
     } catch (e) {}
     return {};
@@ -142,16 +142,16 @@ export default function App() {
   
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
 
-  // Listen to publishedGames from settings/general
+  // Listen to publishedGamesV2 from settings/general
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'settings', 'general'),
       (snap) => {
         if (snap.exists()) {
-          const pub = snap.data().publishedGames || {};
+          const pub = snap.data().publishedGamesV2 || {};
           setPublishedGames(pub);
           try {
-            localStorage.setItem('publishedGames', JSON.stringify(pub));
+            localStorage.setItem('publishedGamesV2', JSON.stringify(pub));
           } catch (e) {}
         }
       },
@@ -376,71 +376,58 @@ export default function App() {
 
       return (
         <div className="flex flex-col items-center justify-center h-full min-h-[60vh] p-4 font-sans">
-          <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-200/90 dark:border-slate-800 text-left max-w-[460px] w-full">
-            <div className="flex items-center gap-3.5 mb-5">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center shrink-0 border border-indigo-200/80 dark:border-indigo-500/30 shadow-2xs">
+          <div className="bg-white dark:bg-slate-900 p-6 sm:p-7 rounded-3xl shadow-xl border-2 border-slate-200 dark:border-slate-800 text-left max-w-[420px] w-full">
+            <div className="flex flex-col items-center text-center mb-5">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center shrink-0 border-2 border-indigo-200 dark:border-indigo-800 shadow-sm mb-3 overflow-hidden">
                 <img 
                   src="https://drive.google.com/thumbnail?id=1IrQAzr2JXZjfhDxPhP-MZkFlbF8GfW9n&sz=w1000" 
-                  alt="Hamster English Logo" 
-                  className="w-11 h-11 rounded-xl object-cover" 
-                  referrerPolicy="no-referrer" 
+                  alt="Hamster English Studio" 
+                  className="w-14 h-14 rounded-xl object-cover" 
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/images/bubble-pop-card.jpg?v=3';
+                  }}
                 />
               </div>
-              <div>
-                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                  hamsterenglish.online · {feature.title}
-                </p>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                  Sign In to Save Your Work
-                </h2>
-              </div>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                {feature.title}
+              </h2>
             </div>
 
-            {/* Greeting from Teacher Jan */}
-            <div className="mb-5 p-4 rounded-2xl bg-gradient-to-br from-indigo-50/90 via-purple-50/60 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/25 dark:to-slate-800/60 border border-indigo-200/80 dark:border-indigo-800/60">
-              <div className="flex items-start gap-3">
-                <img
-                  src="https://drive.google.com/thumbnail?id=1IrQAzr2JXZjfhDxPhP-MZkFlbF8GfW9n&sz=w200"
-                  alt="Teacher Jan"
-                  referrerPolicy="no-referrer"
-                  className="w-10 h-10 rounded-xl object-cover border-2 border-white dark:border-slate-700 shadow-xs shrink-0 mt-0.5"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs font-extrabold text-slate-900 dark:text-white">
-                      Note from Teacher Jan
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600" aria-hidden="true">·</span>
-                    <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-                      Save Work Only
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed font-medium">
-                    Hi! Signing in with Google is <strong className="font-bold text-slate-900 dark:text-white">strictly for saving your work</strong> — so your custom games, folders, slides, homework, and class rewards stay safely backed up in your account.
-                  </p>
-                </div>
-              </div>
+            {/* Concise Greeting from Teacher Jan */}
+            <div className="mb-5 p-3.5 rounded-2xl bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/80 flex items-center gap-3">
+              <img
+                src="https://drive.google.com/thumbnail?id=1IrQAzr2JXZjfhDxPhP-MZkFlbF8GfW9n&sz=w200"
+                alt="Teacher Jan"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = '/images/bubble-pop-card.jpg?v=3';
+                }}
+                className="w-10 h-10 rounded-xl object-cover border-2 border-white dark:border-slate-700 shadow-xs shrink-0"
+              />
+              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-snug font-semibold">
+                Hi, I'm <strong className="font-extrabold text-slate-900 dark:text-white">Teacher Jan</strong>! Sign in with Google to save your work and custom games.
+              </p>
             </div>
 
             {authError && (
-              <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-left">
-                <p className="text-xs text-rose-600 dark:text-rose-300 font-medium whitespace-pre-line leading-relaxed">
+              <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 rounded-xl text-center">
+                <p className="text-xs text-rose-700 dark:text-rose-300 font-bold whitespace-pre-line">
                   {authError}
                 </p>
               </div>
             )}
 
             <div className="space-y-3">
-              {/* CHOICE 1: CONTINUE TO HAMSTERENGLISH.ONLINE */}
               <button
                 onClick={() => signInWithGoogle()}
                 disabled={isAuthenticating}
-                className="w-full flex items-center justify-center gap-3 h-12 px-4 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
+                className="w-full flex items-center justify-center gap-3 h-12 px-5 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-2xl font-extrabold text-sm sm:text-base transition-all shadow-md hover:shadow-lg cursor-pointer disabled:opacity-60 group"
               >
                 {isAuthenticating ? (
                   <Loader2 className="animate-spin text-indigo-400 dark:text-indigo-600" size={20} />
                 ) : (
-                  <div className="w-6 h-6 rounded-md bg-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-xs">
                     <svg className="w-4 h-4 shrink-0 group-hover:scale-105 transition-transform" viewBox="0 0 24 24">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                       <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -449,20 +436,15 @@ export default function App() {
                     </svg>
                   </div>
                 )}
-                <span className="text-sm font-bold whitespace-nowrap">
-                  {isAuthenticating ? "Connecting to hamsterenglish.online..." : "Continue to hamsterenglish.online"}
-                </span>
+                <span>{isAuthenticating ? "Signing in..." : "Sign in with Google"}</span>
               </button>
 
-              {/* CHOICE 2: ENTER 6-DIGIT ROOM CODE */}
-              <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex flex-col gap-2">
-                <button
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="w-full text-center py-2.5 px-4 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <span>Have a 6-Digit Room Code? Enter Code to Join →</span>
-                </button>
-              </div>
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="w-full text-center h-11 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+              >
+                <span>Enter 6-Digit Room Code →</span>
+              </button>
             </div>
           </div>
         </div>
