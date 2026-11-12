@@ -8,6 +8,7 @@ import {
   Type,
   Layers,
   ChevronDown,
+  Search,
 } from 'lucide-react';
 import {
   AnswerContentMode,
@@ -66,7 +67,6 @@ export function SetupCurriculumHeader({
   folderId,
   setFolderId,
   folders,
-  onCreateFolder,
   contentMode,
   setContentMode,
   setAutoPhotosEnabled,
@@ -106,7 +106,6 @@ export function SetupCurriculumHeader({
     };
   }, [user?.uid, folders]);
 
-  // Merge passed folders + Firestore/cached user folders + custom setup folders + saved folders
   const allFolders = React.useMemo(() => {
     return mergeAllFolders(folders, syncedFolders);
   }, [folders, syncedFolders]);
@@ -209,15 +208,24 @@ export function SetupCurriculumHeader({
         </div>
       </div>
 
-      {/* Row 2: Redesigned Option Content Mode (Text Only / Photos / Both) */}
+      {/* Row 2: Option Display Mode (Text Only / Pictures Only / Words + Pictures) */}
       <div className="bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-            <Layers size={15} />
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+            <Layers size={16} />
           </div>
-          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-            Option Content Mode
-          </span>
+          <div>
+            <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 block">
+              Answer Display Mode
+            </span>
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              {contentMode === 'words'
+                ? 'Text Only: Shows only words inside the game'
+                : contentMode === 'photos_gifs'
+                ? 'Pictures Only: Hides text labels in-game and shows large pictures/GIFs only'
+                : 'Words + Pictures: Shows both the word and picture together in-game'}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 w-full sm:w-auto bg-slate-200/75 dark:bg-slate-800 p-1 rounded-xl gap-1">
@@ -228,7 +236,7 @@ export function SetupCurriculumHeader({
               handleSetAutoPhotos(false);
               if (typeof onApplyModeToAll === 'function') onApplyModeToAll('words');
             }}
-            className={`px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               contentMode === 'words'
                 ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -245,14 +253,14 @@ export function SetupCurriculumHeader({
               handleSetAutoPhotos(true);
               if (typeof onApplyModeToAll === 'function') onApplyModeToAll('photos_gifs');
             }}
-            className={`px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               contentMode === 'photos_gifs'
                 ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <ImageIcon size={14} />
-            <span>Photos</span>
+            <span>Pictures Only</span>
           </button>
 
           <button
@@ -262,14 +270,14 @@ export function SetupCurriculumHeader({
               handleSetAutoPhotos(true);
               if (typeof onApplyModeToAll === 'function') onApplyModeToAll('both');
             }}
-            className={`px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               contentMode === 'both'
                 ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Sparkles size={14} />
-            <span>Both</span>
+            <span>Words + Pictures</span>
           </button>
         </div>
       </div>
@@ -293,10 +301,12 @@ export interface SmartOptionInputProps {
 }
 
 /**
- * Smart Option Input that:
- * 1. Lets the user type any word
- * 2. Automatically recommends & attaches a Cartoon PNG photo when in Photos or Both mode
- * 3. Allows the user to Replace or Remove the photo
+ * Smart Option Input that adapts cleanly to the 3 Answer Display Modes:
+ * - 'words' (Text Only): Clean text input with optional media icon, hides images in-game.
+ * - 'photos_gifs' (Pictures Only): Large visual Picture Card in the editor + quick word lookup bar,
+ *   saves pure image URL so in-game targets/bubbles show ONLY the picture (hiding text labels).
+ * - 'both' (Words + Pictures): Single unified horizontal card combining thumbnail + word input + action button
+ *   without duplicate "Replace" rows underneath.
  */
 export function SmartOptionInput({
   value,
@@ -309,7 +319,6 @@ export function SmartOptionInput({
   radioName,
   contentMode = 'words',
 }: SmartOptionInputProps) {
-  // Auto-recommend is automatic whenever contentMode is 'photos_gifs' or 'both'
   const isAutoPhotos = contentMode !== 'words';
 
   const emitChange = useCallback(
@@ -330,7 +339,7 @@ export function SmartOptionInput({
   );
   const [dismissedAutoUrl, setDismissedAutoUrl] = useState<string | null>(null);
 
-  // Keep local text state so spaces while typing are never trimmed by parseOptionContent
+  // Keep local text state so typing a word in 'photos_gifs' or 'both' mode is smooth
   const [localWord, setLocalWord] = useState<string>(parsed.text || '');
 
   useEffect(() => {
@@ -355,13 +364,11 @@ export function SmartOptionInput({
       return;
     }
 
-    // 1. Check instant dictionary first (0ms latency)
     const instant = getInstantCartoonPng(clean);
     if (instant) {
       setRecommendedUrl(instant);
     }
 
-    // 2. Debounced fetch from ARASAAC / Wikimedia Cartoon PNGs
     let cancelled = false;
     const timer = setTimeout(async () => {
       const url = await fetchRecommendedCartoonPng(clean);
@@ -376,12 +383,13 @@ export function SmartOptionInput({
     };
   }, [effectiveWord, isAutoPhotos]);
 
-  // Determine the active image to display
   const activeImageUrl =
-    parsed.imageUrl ||
-    (isAutoPhotos && recommendedUrl && recommendedUrl !== dismissedAutoUrl
-      ? recommendedUrl
-      : null);
+    contentMode === 'words'
+      ? null
+      : parsed.imageUrl ||
+        (isAutoPhotos && recommendedUrl && recommendedUrl !== dismissedAutoUrl
+          ? recommendedUrl
+          : null);
 
   // Auto-sync into option value when contentMode is 'both' or 'photos_gifs'
   useEffect(() => {
@@ -400,7 +408,16 @@ export function SmartOptionInput({
         emitChange(nextVal);
       }
     }
-  }, [recommendedUrl, contentMode, isAutoPhotos, dismissedAutoUrl, parsed.imageUrl, effectiveWord, value, emitChange]);
+  }, [
+    recommendedUrl,
+    contentMode,
+    isAutoPhotos,
+    dismissedAutoUrl,
+    parsed.imageUrl,
+    effectiveWord,
+    value,
+    emitChange,
+  ]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newText = e.target.value;
@@ -408,12 +425,14 @@ export function SmartOptionInput({
     setDismissedAutoUrl(null);
 
     const instantPng = isAutoPhotos ? getInstantCartoonPng(newText) : null;
-    const imgToKeep = parsed.imageUrl || instantPng;
+    const imgToKeep = instantPng || parsed.imageUrl;
 
     if (contentMode === 'words' || !imgToKeep) {
       emitChange(newText);
     } else if (!newText.trim()) {
       emitChange('');
+    } else if (contentMode === 'photos_gifs') {
+      emitChange(imgToKeep);
     } else {
       emitChange(`${newText}|||${imgToKeep}`);
     }
@@ -426,77 +445,171 @@ export function SmartOptionInput({
     emitChange(effectiveWord || '');
   };
 
+  // MODE 2: PICTURES ONLY ('photos_gifs') -> Large visual picture card in editor, hides text in-game
+  if (contentMode === 'photos_gifs') {
+    return (
+      <div className="flex-1 flex items-start gap-2 min-w-0">
+        {typeof onSelectCorrect === 'function' && (
+          <input
+            type="radio"
+            name={radioName}
+            checked={isCorrect}
+            onChange={onSelectCorrect}
+            className="w-4 h-4 mt-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
+          />
+        )}
+        <div
+          className={`flex-1 flex flex-col rounded-2xl border-2 transition-all overflow-hidden bg-white dark:bg-slate-800/95 ${
+            isCorrect
+              ? 'border-emerald-500 shadow-sm shadow-emerald-500/10'
+              : 'border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          {/* Large Picture Stage */}
+          <div
+            onClick={() => onOpenMediaPicker(effectiveWord || '')}
+            className="relative group h-28 bg-slate-50 dark:bg-slate-900/70 flex flex-col items-center justify-center p-2 cursor-pointer border-b border-slate-200 dark:border-slate-700/80"
+            title="Click to choose Photo, Clipart, or GIPHY GIF"
+          >
+            {activeImageUrl ? (
+              <>
+                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-purple-600/90 text-white text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                  Picture Only
+                </span>
+                <img
+                  src={activeImageUrl}
+                  alt={effectiveWord || 'Answer Picture'}
+                  className="max-h-24 w-auto object-contain rounded-lg transition-transform group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-slate-950/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <span className="px-3 py-1.5 rounded-xl bg-white text-slate-900 text-xs font-black shadow flex items-center gap-1">
+                    <RefreshCw size={12} /> Change Picture / GIF
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveImage();
+                  }}
+                  className="absolute top-2 right-2 p-1 rounded-full bg-white/90 hover:bg-rose-500 text-slate-600 hover:text-white shadow-xs transition-colors cursor-pointer"
+                  title="Clear picture"
+                >
+                  <X size={13} />
+                </button>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-1.5 text-slate-400 group-hover:text-purple-600 transition-colors">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <ImageIcon size={20} />
+                </div>
+                <span className="text-xs font-bold">Click to Pick Photo or GIPHY GIF</span>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Word Lookup Bar (Auto-fetches picture; text stays hidden in game) */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-slate-800">
+            <Search size={13} className="text-slate-400 shrink-0" />
+            <input
+              type="text"
+              value={localWord}
+              onChange={handleTextChange}
+              placeholder="Type word to auto-find picture..."
+              className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => onOpenMediaPicker(effectiveWord || '')}
+              className="px-2 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-600 text-purple-600 dark:text-purple-300 hover:text-white text-[11px] font-bold transition-colors shrink-0 cursor-pointer"
+            >
+              Browse
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MODE 1 ('words' - Text Only) & MODE 3 ('both' - Unified Word + Picture Card)
   return (
-    <div className="flex-1 flex items-start gap-2 min-w-0">
+    <div className="flex-1 flex items-center gap-2 min-w-0">
       {typeof onSelectCorrect === 'function' && (
         <input
           type="radio"
           name={radioName}
           checked={isCorrect}
           onChange={onSelectCorrect}
-          className="w-4 h-4 mt-3 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
+          className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
         />
       )}
-      <div className="flex-1 flex flex-col gap-1.5 min-w-0">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={localWord}
-            onChange={handleTextChange}
-            placeholder={cleanOptionPlaceholder(placeholder)}
-            className={`flex-1 min-w-0 bg-slate-50 dark:bg-slate-900 border ${
-              isCorrect
-                ? 'border-emerald-500/70 bg-emerald-50/70 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 font-bold'
-                : 'border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-            } rounded-xl px-3 py-2 outline-none focus:border-blue-500 text-sm font-medium transition-colors`}
-          />
 
+      <div
+        className={`flex-1 flex items-center gap-2 min-w-0 rounded-xl border px-2.5 py-1.5 transition-all ${
+          isCorrect
+            ? 'border-emerald-500/80 bg-emerald-50/60 dark:bg-emerald-500/10'
+            : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900'
+        }`}
+      >
+        {/* Inline Thumbnail when in 'both' mode and an image is attached */}
+        {activeImageUrl && (
+          <div
+            onClick={() => onOpenMediaPicker(effectiveWord || '')}
+            className="relative group w-10 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer shadow-2xs"
+            title="Click to replace picture or GIF"
+          >
+            <img
+              src={activeImageUrl}
+              alt={effectiveWord || 'Option'}
+              className="w-full h-full object-contain p-0.5"
+            />
+            <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+              <RefreshCw size={12} />
+            </div>
+          </div>
+        )}
+
+        <input
+          type="text"
+          value={localWord}
+          onChange={handleTextChange}
+          placeholder={cleanOptionPlaceholder(placeholder)}
+          className={`flex-1 min-w-0 bg-transparent outline-none text-sm ${
+            isCorrect
+              ? 'text-emerald-900 dark:text-emerald-200 font-bold'
+              : 'text-slate-800 dark:text-slate-200 font-medium'
+          }`}
+        />
+
+        {activeImageUrl ? (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => onOpenMediaPicker(effectiveWord || '')}
+              className="px-2 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-600 text-purple-700 dark:text-purple-300 hover:text-white text-[11px] font-bold transition-colors cursor-pointer"
+              title="Change Photo or GIPHY GIF"
+            >
+              Change
+            </button>
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              title="Remove picture"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
             onClick={() => onOpenMediaPicker(effectiveWord || '')}
-            className="bg-purple-500/15 hover:bg-purple-500 text-purple-600 dark:text-purple-300 hover:text-white px-2.5 py-2 rounded-xl transition-colors shrink-0 cursor-pointer flex items-center gap-1 text-xs font-bold border border-purple-500/25"
-            title={activeImageUrl ? 'Replace Photo or GIF' : 'Select Photo or GIF'}
+            className="bg-purple-500/12 hover:bg-purple-600 text-purple-600 dark:text-purple-300 hover:text-white px-2.5 py-1.5 rounded-lg transition-colors shrink-0 cursor-pointer flex items-center gap-1 text-xs font-bold border border-purple-500/20"
+            title="Add Photo, Clipart, or GIPHY GIF"
           >
-            <ImageIcon size={15} />
-            <span className="hidden xl:inline">{activeImageUrl ? 'Replace' : 'Media'}</span>
+            <ImageIcon size={14} />
+            <span className="hidden xl:inline">Media</span>
           </button>
-        </div>
-
-        {/* Attached / Automatic Picture Preview */}
-        {activeImageUrl && (
-          <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-1.5 px-2.5 shadow-xs">
-            <div
-              onClick={() => onOpenMediaPicker(effectiveWord || '')}
-              className="relative group w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
-              title="Click to Replace Picture"
-            >
-              <img
-                src={activeImageUrl}
-                alt={effectiveWord || 'Option picture'}
-                className="w-full h-full object-contain p-0.5"
-              />
-            </div>
-
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => onOpenMediaPicker(effectiveWord || '')}
-                className="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500 text-blue-600 dark:text-blue-300 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                title="Replace with another Cartoon PNG, Photo, or GIF"
-              >
-                <RefreshCw size={11} /> Replace
-              </button>
-
-              <button
-                type="button"
-                onClick={handleRemoveImage}
-                className="p-1 rounded-lg text-rose-500 hover:bg-rose-500/15 cursor-pointer"
-                title="Remove picture"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          </div>
         )}
       </div>
     </div>
@@ -516,6 +629,9 @@ export async function convertQuestionsContentMode<
 ): Promise<T[]> {
   const result = await Promise.all(
     questions.map(async (q) => {
+      const parsedQ = parseOptionContent(q.text);
+      const cleanQuestionText = parsedQ.text || q.text;
+
       const newOptions = await Promise.all(
         q.options.map(async (rawOpt, idx) => {
           const parsed = parseOptionContent(rawOpt);
@@ -544,6 +660,7 @@ export async function convertQuestionsContentMode<
 
       return {
         ...q,
+        text: cleanQuestionText,
         options: newOptions,
       };
     })
@@ -572,8 +689,9 @@ export interface SmartQuestionInputProps {
 }
 
 /**
- * Smart Question Input that allows typing questions smoothly AND attaching media (Cartoon PNG, Photo, GIF):
- * - Never calls onChangeImage during text typing so parent state is never overwritten.
+ * Smart Question Input:
+ * - Guarantees raw URLs or `|||https://...` delimiters NEVER appear inside the question text input or preview badge.
+ * - Automatically heals legacy `text|||url` strings when `onChangeImage` is provided.
  */
 export function SmartQuestionInput({
   id,
@@ -591,25 +709,35 @@ export function SmartQuestionInput({
   const parsed = parseOptionContent(value);
   const explicitImageUrl = imageUrl || parsed.imageUrl || null;
 
-  // Determine the displayed text inside the input without trimming spaces while typing
+  // Always strip `|||...` and raw URLs so the question text input only ever shows human-readable words
   const displayedText =
-    typeof onChangeImage === 'function'
-      ? value
-      : parsed.mode === 'image'
+    parsed.mode === 'image'
       ? ''
-      : value.includes('|||')
-      ? value.split('|||')[0]
-      : value;
+      : value && value.includes('|||')
+      ? parsed.text
+      : value || '';
+
+  // Auto-heal any legacy question where `value` accidentally had `|||https://...` baked in alongside `onChangeImage`
+  useEffect(() => {
+    if (typeof onChangeImage === 'function' && value && (value.includes('|||') || parsed.mode === 'image')) {
+      const cleanText = parsed.text || '';
+      if (parsed.imageUrl && !imageUrl) {
+        onChangeImage(parsed.imageUrl);
+      }
+      if (cleanText !== value) {
+        if (typeof onChange === 'function') onChange(cleanText);
+        if (typeof onChangeValue === 'function') onChangeValue(cleanText);
+      }
+    }
+  }, [value, imageUrl, onChangeImage, onChange, onChangeValue, parsed.text, parsed.imageUrl, parsed.mode]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newText = e.target.value;
+    const newText = e.target.value.replace(/\|\|\|/g, ' ');
 
     if (typeof onChangeImage === 'function') {
-      // Parent manages `image` in a separate field — only emit the text change!
       if (typeof onChange === 'function') onChange(newText);
       if (typeof onChangeValue === 'function') onChangeValue(newText);
     } else {
-      // Parent encodes image inside `text` via `text|||imageUrl`
       const formatted = explicitImageUrl
         ? newText
           ? `${newText}|||${explicitImageUrl}`
@@ -621,18 +749,12 @@ export function SmartQuestionInput({
   };
 
   const handleRemoveMedia = () => {
+    const cleanTxt = parsed.text || '';
     if (typeof onChangeImage === 'function') {
       onChangeImage(null);
-      if (value.includes('|||') || value === explicitImageUrl) {
-        const cleanTxt = parsed.text || '';
-        if (typeof onChange === 'function') onChange(cleanTxt);
-        if (typeof onChangeValue === 'function') onChangeValue(cleanTxt);
-      }
-    } else {
-      const cleanTxt = parsed.text || '';
-      if (typeof onChange === 'function') onChange(cleanTxt);
-      if (typeof onChangeValue === 'function') onChangeValue(cleanTxt);
     }
+    if (typeof onChange === 'function') onChange(cleanTxt);
+    if (typeof onChangeValue === 'function') onChangeValue(cleanTxt);
   };
 
   return (
@@ -655,26 +777,26 @@ export function SmartQuestionInput({
         <button
           type="button"
           onClick={() => onOpenMediaPicker(normalizeKeyword(displayedText) || '')}
-          className="bg-purple-500/15 hover:bg-purple-500 text-purple-600 dark:text-purple-300 hover:text-white px-3.5 py-3 rounded-xl transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 text-xs sm:text-sm font-bold border border-purple-500/30 shadow-xs"
+          className="bg-purple-500/15 hover:bg-purple-600 text-purple-600 dark:text-purple-300 hover:text-white px-3.5 py-3 rounded-xl transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 text-xs sm:text-sm font-bold border border-purple-500/30 shadow-xs"
           title={
             explicitImageUrl
-              ? 'Replace Question Photo or GIF'
-              : 'Add Cartoon PNG, Photo, or GIF to this Question'
+              ? 'Change Question Photo or GIPHY GIF'
+              : 'Add Photo, Clipart, or GIPHY GIF to this Question'
           }
         >
           <ImageIcon size={18} />
-          <span>{explicitImageUrl ? 'Replace Media' : 'Add Media'}</span>
+          <span>{explicitImageUrl ? 'Change Media' : 'Add Media'}</span>
         </button>
       </div>
 
-      {/* Attached Question Media Bar */}
+      {/* Compact, Clean Question Media Preview Card (Never shows raw URLs) */}
       {explicitImageUrl && (
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-purple-500/5 dark:bg-slate-800/95 border border-purple-500/30 dark:border-purple-500/30 rounded-xl p-2 px-3 shadow-xs">
+        <div className="flex items-center justify-between gap-3 bg-purple-50/70 dark:bg-slate-800/95 border border-purple-200 dark:border-purple-500/30 rounded-xl p-2 px-3 shadow-2xs w-fit max-w-full">
           <div className="flex items-center gap-3 min-w-0">
             <div
               onClick={() => onOpenMediaPicker(normalizeKeyword(displayedText) || '')}
-              className="relative group w-14 h-14 rounded-xl bg-white dark:bg-slate-900 border border-purple-300 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer shadow-xs"
-              title="Click to Replace Question Media"
+              className="relative group w-14 h-14 rounded-xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer shadow-2xs"
+              title="Click to Change Question Media"
             >
               <img
                 src={explicitImageUrl}
@@ -683,14 +805,14 @@ export function SmartQuestionInput({
               />
             </div>
 
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col min-w-0 pr-2">
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-300">
-                Question Media Attached
+                Question Visual Attached
               </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate max-w-xs sm:max-w-md">
                 {displayedText.trim()
-                  ? `Showing: "${displayedText.trim()}" + Media`
-                  : 'Showing: Media Only'}
+                  ? `Prompt: "${displayedText.trim()}"`
+                  : 'Visual-only question prompt'}
               </span>
             </div>
           </div>
@@ -699,14 +821,14 @@ export function SmartQuestionInput({
             <button
               type="button"
               onClick={() => onOpenMediaPicker(normalizeKeyword(displayedText) || '')}
-              className="px-2.5 py-1.5 rounded-lg bg-blue-500/15 hover:bg-blue-500 text-blue-600 dark:text-blue-300 hover:text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 hover:bg-purple-600 text-purple-700 dark:text-purple-200 hover:text-white border border-purple-200 dark:border-slate-600 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
             >
-              <RefreshCw size={12} /> Replace
+              <RefreshCw size={12} /> Change
             </button>
             <button
               type="button"
               onClick={handleRemoveMedia}
-              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/15 cursor-pointer"
+              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/15 cursor-pointer transition-colors"
               title="Remove media from question"
             >
               <X size={15} />
@@ -717,5 +839,3 @@ export function SmartQuestionInput({
     </div>
   );
 }
-
-

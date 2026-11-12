@@ -378,14 +378,22 @@ export function RollerCoasterQuiz({
               colorScheme: 'blue'
             }
           ]}
+          arCameraConfig={{
+            label: 'AR CAMERA & MOTION STEERING',
+            badgeText: cameraMode === 'group' ? '👥 1-3 PLAYERS' : '👤 SOLO PILOT',
+            helperText: 'Lean Left or Right in front of the camera to steer the 3D coaster!',
+            enabled: cameraLeanEnabled,
+            onToggleEnabled: setCameraLeanEnabled,
+          }}
+          timerTitle="Timer (Minutes)"
           timerValue={timerMinutes * 60}
-          timerLabelDisplay={`${timerMinutes}:00`}
+          timerLabelDisplay={`${timerMinutes} ${timerMinutes === 1 ? 'Minute' : 'Minutes'}`}
           timerOptions={[
-            { label: '1M', sec: 60 },
-            { label: '2M', sec: 120 },
-            { label: '3M', sec: 180 },
-            { label: '5M', sec: 300 },
-            { label: '10M', sec: 600 }
+            { label: '1 Minute', sec: 60 },
+            { label: '2 Minutes', sec: 120 },
+            { label: '3 Minutes', sec: 180 },
+            { label: '5 Minutes', sec: 300 },
+            { label: '10 Minutes', sec: 600 }
           ]}
           onTimerChange={(sec) => setTimerMinutes(Math.max(1, Math.round(sec / 60)))}
           startLabel={playRideMode === 'pose-chase' ? 'START 3D POSE CHASE' : 'START COASTER RIDE'}
@@ -5744,8 +5752,35 @@ function CoasterQuizEditor({
     }
   };
 
+  const sanitizeQuestionsForSave = () => {
+    return questions
+      .filter((q) => (q.text && q.text.trim()) || q.image)
+      .map((q) => {
+        const parsedQ = parseOptionContent(q.text || '');
+        const cleanQText = parsedQ.text || '';
+        const cleanQImg = q.image || parsedQ.imageUrl || undefined;
+        const formattedOptions = q.options.map((rawOpt) => {
+          const parsedOpt = parseOptionContent(rawOpt);
+          const optImg = parsedOpt.imageUrl || (contentMode !== 'words' ? getInstantCartoonPng(parsedOpt.text) : null);
+          if (contentMode === 'words') {
+            return parsedOpt.text || rawOpt;
+          }
+          if (contentMode === 'photos_gifs') {
+            return optImg || parsedOpt.text || rawOpt;
+          }
+          return formatOptionContent(parsedOpt.text, optImg, 'both');
+        });
+        return {
+          ...q,
+          text: cleanQText,
+          image: cleanQImg,
+          options: formattedOptions,
+        };
+      });
+  };
+
   const handleSave = () => {
-    const validQuestions = questions.filter((q) => q.text.trim());
+    const validQuestions = sanitizeQuestionsForSave();
     if (validQuestions.length === 0) {
       setErrorMsg('Please add at least one question before saving.');
       setTimeout(() => setErrorMsg(''), 3000);
@@ -5755,7 +5790,7 @@ function CoasterQuizEditor({
   };
 
   const handleQuickPlay = () => {
-    const validQuestions = questions.filter((q) => q.text.trim());
+    const validQuestions = sanitizeQuestionsForSave();
     const finalQuestions = validQuestions.length > 0 ? validQuestions : SAMPLE_COASTER_QUESTIONS;
     onPlayNow({
       ...quiz,
@@ -5768,7 +5803,7 @@ function CoasterQuizEditor({
   };
 
   const confirmSave = (isPublic: boolean) => {
-    const validQuestions = questions.filter((q) => q.text.trim());
+    const validQuestions = sanitizeQuestionsForSave();
     onSave({
       ...quiz,
       title: topic || 'Roller Coaster Quiz',
@@ -5783,41 +5818,47 @@ function CoasterQuizEditor({
 
   return (
     <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
-      <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
-        <div className="w-full max-w-4xl bg-white/80 dark:bg-slate-800/90 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8 mt-8">
-          {/* Header matching BubblePop */}
+      <div className="w-full min-h-full flex flex-col items-center py-6 px-4">
+        <div className="w-full max-w-4xl bg-white dark:bg-slate-800/90 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8">
+          {/* Unified Header matching AR Camera Games */}
           <div className="bg-white dark:bg-slate-800/80 p-6 sm:p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
-            <div className="flex flex-wrap justify-between items-center gap-4">
+            <div className="flex flex-wrap justify-between items-center gap-3">
               <div className="flex items-center gap-3">
-                <span className="text-3xl">🎢</span>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-black text-sm transition-colors cursor-pointer border border-slate-300 dark:border-slate-600"
+                >
+                  <ArrowLeft size={18} />
+                  <span>Back</span>
+                </button>
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">
-                    GAME SETUP
+                    ROLLER COASTER SETUP
                   </h2>
                   <p className="text-xs font-bold text-blue-600 dark:text-blue-400">
-                    Roller Coaster Quiz · 2 Options per Track Split (Left vs. Right)
+                    2 Options per Track Split (Left vs. Right)
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2.5 items-center">
                 <button
-                  onClick={onCancel}
-                  className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer text-sm"
-                >
-                  Cancel
-                </button>
-                <button
+                  type="button"
                   onClick={handleQuickPlay}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black transition-all shadow-lg shadow-amber-500/25 cursor-pointer text-sm"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-md shadow-emerald-600/25 cursor-pointer text-sm sm:text-base"
                 >
-                  <Play size={17} className="fill-current" /> Play Ride
+                  <Play size={17} fill="currentColor" />
+                  <span>Play Arena</span>
                 </button>
                 <button
+                  type="button"
                   onClick={handleSave}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm sm:text-base"
                 >
-                  <Save size={18} /> Save Quiz
+                  <Save size={18} />
+                  <span>Save Quiz</span>
                 </button>
+                <FullscreenButton targetId="roller-coaster-quiz-container" className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-600" />
               </div>
             </div>
 
@@ -5839,10 +5880,10 @@ function CoasterQuizEditor({
                 setQuestions(updated);
                 setToastMsg(
                   mode === 'words'
-                    ? '🔤 Switched all options to Words Only!'
+                    ? '🔤 Switched all options to Text Only!'
                     : mode === 'photos_gifs'
-                    ? '🖼️ Switched all options to Cartoon PNGs / GIFs!'
-                    : '✨ Switched all options to Words + Cartoon PNGs!'
+                    ? '🖼️ Switched all options to Pictures Only!'
+                    : '✨ Switched all options to Words + Pictures!'
                 );
                 setTimeout(() => setToastMsg(''), 3000);
               }}
@@ -5956,31 +5997,25 @@ function CoasterQuizEditor({
                     const opt = q.options[optIndex] || '';
                     const isCorrect = q.answerIndex === optIndex;
                     return (
-                      <div key={optIndex} className="flex items-start gap-2">
-                        <input
-                          type="radio"
-                          name={`coaster-answer-${q.id}`}
-                          checked={isCorrect}
-                          onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                          className="w-4 h-4 mt-3 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
-                          title="Mark as Correct Track Answer"
-                        />
-                        <SmartOptionInput
-                          value={opt}
-                          onChange={(val) => updateOption(q.id, optIndex, val)}
-                          onOpenMediaPicker={(initialQ) =>
-                            setActiveGiphyInput({ qId: q.id, optIndex, query: initialQ })
-                          }
-                          placeholder={
-                            isCorrect
-                              ? `Option ${optIndex + 1} (✓ Correct Track, e.g. apple)`
-                              : `Option ${optIndex + 1} (✗ Trap Track, e.g. banana)`
-                          }
-                          isCorrect={isCorrect}
-                          contentMode={contentMode}
-                          autoPhotosEnabled={autoPhotosEnabled}
-                        />
-                      </div>
+                      <SmartOptionInput
+                        key={optIndex}
+                        value={opt}
+                        optionIndex={optIndex}
+                        onChange={(val) => updateOption(q.id, optIndex, val)}
+                        onOpenMediaPicker={(initialQ) =>
+                          setActiveGiphyInput({ qId: q.id, optIndex, query: initialQ })
+                        }
+                        placeholder={
+                          isCorrect
+                            ? `Option ${optIndex + 1} (✓ Correct Track)`
+                            : `Option ${optIndex + 1} (✗ Trap Track)`
+                        }
+                        isCorrect={isCorrect}
+                        onSelectCorrect={() => updateQuestion(q.id, 'answerIndex', optIndex)}
+                        radioName={`coaster-answer-${q.id}`}
+                        contentMode={contentMode}
+                        autoPhotosEnabled={autoPhotosEnabled}
+                      />
                     );
                   })}
                 </div>
@@ -6011,13 +6046,10 @@ function CoasterQuizEditor({
               const rawExistingQ = targetQ?.text || '';
               const parsedExistingQ = parseOptionContent(rawExistingQ);
               const questionTextToKeep = parsedExistingQ.text;
-              const finalQuestionVal = questionTextToKeep
-                ? formatOptionContent(questionTextToKeep, url, 'both')
-                : url;
               setQuestions((prev) =>
                 prev.map((qItem) =>
                   qItem.id === activeGiphyInput.qId
-                    ? { ...qItem, text: finalQuestionVal, image: url }
+                    ? { ...qItem, text: questionTextToKeep, image: url }
                     : qItem
                 )
               );

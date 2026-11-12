@@ -87,6 +87,17 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     )
   );
   const [screen, setScreen] = useState<GameScreen>(initialGame && !initialGame.editMode && hasLoadedQuestions ? 'setup' : 'editor');
+  const screenHistoryRef = useRef<GameScreen[]>([]);
+  const screenRef = useRef<GameScreen>(screen);
+  screenRef.current = screen;
+
+  const navigateScreen = (next: GameScreen) => {
+    if (screenRef.current !== next) {
+      screenHistoryRef.current.push(screenRef.current);
+    }
+    setScreen(next);
+  };
+
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
   const [showModeModal, setShowModeModal] = useState(false);
 
@@ -1836,11 +1847,83 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   };
 
   
-  useEffect(() => {
-    if (screen === 'setup' && !isCameraActive && !cameraRef.current && !cameraError) {
-        setupCamera().catch(e => console.warn("Initial camera setup notice:", e?.message || e));
+  const stopCameraCleanly = () => {
+    if (cameraRef.current && cameraRef.current.stop) {
+      cameraRef.current.stop();
+      cameraRef.current = null;
     }
-  }, [screen, isCameraActive, cameraError]);
+    setIsCameraActive(false);
+    if (handsRef.current && handsRef.current.close) {
+      try { handsRef.current.close(); } catch (e) {}
+      handsRef.current = null;
+    }
+    if (faceMeshRef.current && faceMeshRef.current.close) {
+      try { faceMeshRef.current.close(); } catch (e) {}
+      faceMeshRef.current = null;
+    }
+  };
+
+  // 1-Step-Back handler: never cancels the whole app, always steps 1 screen back
+  const handleStepBack = (): boolean => {
+    const cur = screenRef.current;
+
+    if (cur === 'game' || cur === 'loading' || cur === 'results' || cur === 'study') {
+      gameState.current.isActive = false;
+      if (questionTimerRef.current) clearInterval(questionTimerRef.current);
+      if (matchTimerRef.current) clearInterval(matchTimerRef.current);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      setScreen('setup');
+      return true;
+    }
+
+    if (cur === 'editor') {
+      const hasValidQs = Boolean(
+        activeQuiz?.questions?.some((q) => (q.text && q.text.trim()) || q.image)
+      );
+      if (screenHistoryRef.current.includes('setup') || hasValidQs) {
+        setScreen('setup');
+        return true;
+      }
+      stopCameraCleanly();
+      onViewChange('home', { __stepBack: true });
+      return true;
+    }
+
+    if (cur === 'setup') {
+      const prevScreen = screenHistoryRef.current.pop();
+      if (prevScreen === 'editor') {
+        setScreen('editor');
+        return true;
+      }
+      stopCameraCleanly();
+      onViewChange('home', { __stepBack: true });
+      return true;
+    }
+
+    stopCameraCleanly();
+    onViewChange('home', { __stepBack: true });
+    return true;
+  };
+
+  const handleStepBackRef = useRef(handleStepBack);
+  handleStepBackRef.current = handleStepBack;
+
+  useEffect(() => {
+    (window as any).__activeViewStepBack = () => handleStepBackRef.current();
+    return () => {
+      delete (window as any).__activeViewStepBack;
+    };
+  }, []);
+
+  // Automatically retrieve camera when entering Setup screen
+  useEffect(() => {
+    if (screen === 'setup' && (!isCameraActive || !videoRef.current?.srcObject)) {
+      setupCamera().catch((e) => console.warn("Initial camera setup notice:", e?.message || e));
+    }
+  }, [screen]);
 
   useEffect(() => {
     if (canvasRef.current && screen === 'game') {
@@ -1949,40 +2032,28 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   return (
     <div id="game-container" className="w-full min-h-full flex-1 bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-white flex flex-col font-['Fredoka',sans-serif] overflow-hidden relative selection:bg-cyan-500/30 rounded-xl" ref={containerRef}>
       
-      {/* Back button overlay */}
-      <div className="absolute top-4 left-4 z-[60] flex items-center gap-3">
-        <button 
-          onClick={() => {
-              gameState.current.isActive = false;
-              if (cameraRef.current && cameraRef.current.stop) { cameraRef.current.stop(); setIsCameraActive(false); }
-              setIsCameraActive(false);
-              if (handsRef.current && handsRef.current.close) handsRef.current.close();
-              onViewChange("home");
-          }}
-          className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border text-slate-600 dark:text-white/80 hover:text-slate-900 dark:hover:text-white bg-slate-200/50 dark:bg-black/20 hover:bg-slate-300/50 dark:hover:bg-black/50 border-slate-300/50 dark:border-white/20"
-        >
-          <ArrowLeft size={24} />
-        </button>
+      {/* In-Game HUD Top Bar (Only rendered during active gameplay — no duplicate Back/Fullscreen/Mode buttons on Setup/Editor/Study) */}
+      {screen === 'game' && (
+        <>
+          <div className="absolute top-4 left-4 z-[60] flex items-center gap-2.5 pointer-events-auto">
+            <button
+              type="button"
+              onClick={() => handleStepBack()}
+              className="h-11 px-4 flex items-center gap-2 rounded-2xl transition-all backdrop-blur-md border-2 border-white/40 dark:border-white/20 text-slate-900 dark:text-white bg-white/90 dark:bg-slate-900/85 hover:bg-white dark:hover:bg-slate-800 font-black text-sm shadow-lg cursor-pointer active:scale-95"
+              title="Go 1 Step Back to Setup"
+            >
+              <ArrowLeft size={18} className="text-sky-600 dark:text-sky-400" />
+              <span>Back</span>
+            </button>
+          </div>
 
-        {/* Switch Mode Button */}
-        <button
-          onClick={() => setShowModeModal(true)}
-          className="px-3.5 py-1.5 rounded-full bg-slate-900/60 hover:bg-slate-900/80 dark:bg-white/10 dark:hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          title="Play this lesson in Yoga Quiz or Sumo Showdown"
-        >
-          <Shuffle size={14} className="text-amber-400" />
-          <span>Switch Mode</span>
-        </button>
-      </div>
-      <div className="absolute top-4 right-4 z-[70] flex items-center gap-2.5 pointer-events-auto">
-        {screen === 'game' && (
-          <>
+          <div className="absolute top-4 right-4 z-[70] flex items-center gap-2 pointer-events-auto">
             {/* Live Countdown Timer Pill */}
             <div
-              className={`h-12 px-4 flex items-center gap-2 rounded-full backdrop-blur-md border shadow-lg font-black text-sm sm:text-base tabular-nums transition-colors ${
+              className={`h-11 px-4 flex items-center gap-2 rounded-2xl backdrop-blur-md border-2 shadow-lg font-black text-sm sm:text-base tabular-nums transition-colors ${
                 timeLeftSeconds <= 15
                   ? 'bg-red-500/90 border-red-300 text-white animate-pulse'
-                  : 'bg-white/85 dark:bg-slate-900/80 border-white/40 dark:border-white/20 text-slate-800 dark:text-white'
+                  : 'bg-white/90 dark:bg-slate-900/85 border-white/40 dark:border-white/20 text-slate-800 dark:text-white'
               }`}
               title="Match Countdown Timer"
             >
@@ -1991,12 +2062,13 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             </div>
 
             {/* In-Game Tracker Selector Button */}
-            <button 
-              onClick={() => setShowTrackerModal(true)} 
-              className="h-12 px-3.5 sm:px-4 flex items-center gap-2 rounded-full bg-white/85 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md border border-white/40 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg hover:scale-105 active:scale-95 cursor-pointer font-bold" 
-              title="Choose Your Tracker"
+            <button
+              type="button"
+              onClick={() => setShowTrackerModal(true)}
+              className="h-11 px-3.5 sm:px-4 flex items-center gap-2 rounded-2xl bg-white/90 dark:bg-slate-900/85 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md border-2 border-white/40 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg active:scale-95 cursor-pointer font-bold"
+              title="Choose Your AR Tracker"
             >
-              <span className="text-xl">
+              <span className="text-lg">
                 {trackerMode === 'finger' && '☝️'}
                 {trackerMode === 'hand' && (
                   HAND_TRACKER_OPTIONS.find(h => h.id === handCharacter)?.icon || '🖐️'
@@ -2016,31 +2088,34 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
               </span>
             </button>
 
-            {/* End Game & View Results Icon Button next to Settings Icon */}
+            {/* End Game & View Results Button */}
             <button
+              type="button"
               onClick={() => {
                 setShowInGameSettings(false);
                 showResults();
               }}
-              className="h-12 px-3.5 sm:px-4 flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm border border-amber-200 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="h-11 px-3.5 sm:px-4 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm border-2 border-amber-200 shadow-lg transition-all active:scale-95 cursor-pointer"
               title="End Game & View Results"
             >
-              <Trophy size={18} className="text-slate-950 shrink-0" />
-              <span className="hidden md:inline uppercase tracking-wider">End Game</span>
+              <Trophy size={17} className="text-slate-950 shrink-0" />
+              <span className="hidden md:inline uppercase tracking-wider">Finish</span>
             </button>
 
             {/* Settings Icon Button */}
             <button
+              type="button"
               onClick={() => setShowInGameSettings(!showInGameSettings)}
-              className="w-12 h-12 flex justify-center items-center rounded-full bg-white/85 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md border border-white/40 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg hover:scale-105 active:scale-95 cursor-pointer"
+              className="w-11 h-11 flex justify-center items-center rounded-2xl bg-white/90 dark:bg-slate-900/85 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md border-2 border-white/40 dark:border-white/20 text-slate-800 dark:text-white transition-all shadow-lg active:scale-95 cursor-pointer"
               title="In-Game Settings"
             >
-              <Settings size={20} />
+              <Settings size={19} />
             </button>
-          </>
-        )}
-        <FullscreenButton targetId="game-container" className="" />
-      </div>
+
+            <FullscreenButton targetId="game-container" className="h-11 rounded-2xl bg-white/90 dark:bg-slate-900/85 text-slate-900 dark:text-white border-2 border-white/40" />
+          </div>
+        </>
+      )}
 
       {screen === 'study' && activeQuiz && (
         <div 
@@ -2549,20 +2624,24 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         <QuizEditor 
           quiz={activeQuiz} 
           onSave={saveQuiz} 
-          onCancel={() => onViewChange('games')} 
+          onCancel={() => handleStepBack()} 
+          onPreviewPlay={(updatedQuiz) => {
+            setActiveQuiz(updatedQuiz);
+            navigateScreen('setup');
+          }}
           folders={folders}
         />
       )}
 
       {/* Screen: Unified Minimalist 3D Setup */}
-      {screen === 'setup' && (
+      {screen === 'setup' && activeQuiz && (
         <UnifiedGameSetup
           title="BUBBLE POP 3D"
-          containerId="bubble-pop-container"
+          containerId="game-container"
           questionCount={activeQuiz.questions.length}
-          onBack={() => onViewChange('games')}
+          onBack={() => handleStepBack()}
           onOpenGameSwitcher={() => setShowModeModal(true)}
-          onOpenQuizEditor={() => setScreen('editor')}
+          onOpenQuizEditor={() => navigateScreen('editor')}
           playerModeOptions={[
             { id: 1, label: '1 PLAYER', icon: '🫧' },
             { id: 2, label: '2 PLAYERS', icon: '🔵⚡🔴' }
@@ -2579,26 +2658,43 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                   { id: 'p1', badge: 'P1', value: p1Name, placeholder: 'PLAYER 1', onChange: setP1Name, colorScheme: 'blue' }
                 ]
           }
+          timerTitle="Timer (Minutes)"
           timerValue={gameDurationMinutes * 60}
-          timerLabelDisplay={`${gameDurationMinutes}:00`}
+          timerLabelDisplay={`${gameDurationMinutes} ${gameDurationMinutes === 1 ? 'Minute' : 'Minutes'}`}
           timerOptions={[
-            { label: '1M', sec: 60 },
-            { label: '2M', sec: 120 },
-            { label: '3M', sec: 180 },
-            { label: '5M', sec: 300 },
-            { label: '10M', sec: 600 }
+            { label: '1 Minute', sec: 60 },
+            { label: '2 Minutes', sec: 120 },
+            { label: '3 Minutes', sec: 180 },
+            { label: '5 Minutes', sec: 300 },
+            { label: '10 Minutes', sec: 600 }
           ]}
           onTimerChange={(sec) => handleSetTimerMinutes(Math.max(1, Math.round(sec / 60)))}
           startLabel={`START ${numPlayers === 2 ? '2P BATTLE' : 'ARENA'}`}
           onStart={() => startGameMode(numPlayers)}
-          onStudy={() => setScreen('study')}
+          onStudy={() => navigateScreen('study')}
         >
-          {/* 1. AR TRACKER MODE & CHARACTER */}
-          <div className="p-4 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-3">
+          {/* 1. AR TRACKER MODE, LIVE CAMERA RETRIEVAL & CHARACTER */}
+          <div className="p-4 rounded-3xl bg-sky-50/95 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
-                🎯 AR TRACKER
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
+                  🎯 AR TRACKER &amp; CAMERA
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setupCamera()}
+                  className={`px-3 py-1 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                    isCameraActive
+                      ? 'bg-emerald-100 hover:bg-emerald-200 border-emerald-300 text-emerald-900'
+                      : 'bg-blue-600 hover:bg-blue-500 border-blue-700 text-white animate-pulse'
+                  }`}
+                  title="Retrieve or reconnect your webcam for AR tracking"
+                >
+                  <span className={`w-2 h-2 rounded-full ${isCameraActive ? 'bg-emerald-500' : 'bg-amber-300'}`} />
+                  <span>{isCameraActive ? '📷 Camera Active (Refresh)' : '📷 Retrieve Camera'}</span>
+                </button>
+              </div>
+
               <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-sky-200">
                 {([
                   { id: 'finger' as const, label: '☝️ FINGER' },
@@ -2623,8 +2719,21 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
               </div>
             </div>
 
+            {/* Live Camera & Interactive AR Tracker Preview Box */}
+            <TrackerLivePreview
+              videoRef={videoRef}
+              isCameraActive={isCameraActive}
+              trackerMode={trackerMode}
+              handCharacter={handCharacter}
+              noseStyle={noseStyle}
+              detectedHandsRef={detectedHandsRef}
+              detectedFacesRef={detectedFacesRef}
+              onPopSound={() => playSound('pop')}
+              onRetryCamera={() => setupCamera()}
+            />
+
             {trackerMode === 'hand' && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                 {HAND_TRACKER_OPTIONS.map((c) => {
                   const isSel = handCharacter === c.id;
                   return (
@@ -2632,14 +2741,14 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                       key={c.id}
                       type="button"
                       onClick={() => setHandCharacter(c.id)}
-                      className={`p-3 rounded-2xl border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      className={`p-2.5 rounded-2xl border-2 border-b-4 transition-all cursor-pointer flex items-center justify-center gap-2 ${
                         isSel
                           ? 'bg-gradient-to-b from-blue-500 to-blue-700 border-blue-300 border-b-blue-950 text-white -translate-y-0.5 shadow-md'
                           : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
                       }`}
                     >
-                      <span className="text-xl">{c.icon}</span>
-                      <span className="text-xs sm:text-sm font-black uppercase truncate">{c.name}</span>
+                      <span className="text-lg">{c.icon}</span>
+                      <span className="text-xs font-black uppercase truncate">{c.name}</span>
                     </button>
                   );
                 })}
@@ -2647,7 +2756,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             )}
 
             {trackerMode === 'nose' && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                 {NOSE_TRACKER_OPTIONS.map((n) => {
                   const isSel = noseStyle === n.id;
                   return (
@@ -2655,14 +2764,14 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                       key={n.id}
                       type="button"
                       onClick={() => setNoseStyle(n.id)}
-                      className={`p-3 rounded-2xl border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      className={`p-2.5 rounded-2xl border-2 border-b-4 transition-all cursor-pointer flex items-center justify-center gap-2 ${
                         isSel
                           ? 'bg-gradient-to-b from-pink-500 to-rose-600 border-pink-300 border-b-rose-900 text-white -translate-y-0.5 shadow-md'
                           : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
                       }`}
                     >
-                      <span className="text-xl">{n.icon}</span>
-                      <span className="text-xs sm:text-sm font-black uppercase truncate">{n.name}</span>
+                      <span className="text-lg">{n.icon}</span>
+                      <span className="text-xs font-black uppercase truncate">{n.name}</span>
                     </button>
                   );
                 })}
@@ -2671,7 +2780,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
           </div>
 
           {/* 2. SPEED, BUBBLE SIZE & ARENA THEME ROW */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             <div className="p-4 rounded-3xl bg-purple-50/90 border-2 border-purple-200 border-b-4 border-b-purple-300 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm sm:text-base font-black uppercase tracking-wider text-purple-950">
@@ -2833,14 +2942,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                     </div>
                 </div>
 
-                <div className="absolute top-20 left-6 z-[50] pointer-events-auto">
-                    <button onClick={() => {
-                        gameState.current.isActive = false;
-                        if (questionTimerRef.current) clearInterval(questionTimerRef.current);
-                        if (matchTimerRef.current) clearInterval(matchTimerRef.current);
-                        setScreen('setup');
-                    }} className="glass-panel px-6 py-2 rounded-full hover:bg-white/20 font-bold border border-white/20 cursor-pointer text-slate-800 dark:text-white shadow-sm transition-all hover:scale-105 active:scale-95 flex items-center justify-center">Exit</button>
-                </div>
+                {/* Removed duplicate Exit button (top-left Back button handles 1-step-back to Setup) */}
 
                 {/* Bottom HUD: Improved Player 1 Scoreboard, Question Prompt, Player 2 Scoreboard */}
                 <div className="flex justify-center items-end w-full gap-2 sm:gap-3 md:gap-4 pointer-events-none mt-auto px-2 sm:px-12 lg:px-20 relative z-30">
@@ -3155,7 +3257,19 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 }
 
 
-function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (q: Quiz) => void, onCancel: () => void, folders: { id: string; name: string }[] }) {
+function QuizEditor({
+  quiz,
+  onSave,
+  onCancel,
+  onPreviewPlay,
+  folders
+}: {
+  quiz: Quiz;
+  onSave: (q: Quiz) => void;
+  onCancel: () => void;
+  onPreviewPlay?: (q: Quiz) => void;
+  folders: { id: string; name: string }[];
+}) {
   const [folderId, setFolderId] = useState(quiz.folderId || "");
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
@@ -3334,8 +3448,35 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     }
   };
 
+  const sanitizeQuestionsForSave = () => {
+    return questions
+      .filter((q) => (q.text && q.text.trim()) || q.image)
+      .map((q) => {
+        const parsedQ = parseOptionContent(q.text || '');
+        const cleanQText = parsedQ.text || '';
+        const cleanQImg = q.image || parsedQ.imageUrl || undefined;
+        const formattedOptions = q.options.map((rawOpt) => {
+          const parsedOpt = parseOptionContent(rawOpt);
+          const optImg = parsedOpt.imageUrl || (contentMode !== 'words' ? getInstantCartoonPng(parsedOpt.text) : null);
+          if (contentMode === 'words') {
+            return parsedOpt.text || rawOpt;
+          }
+          if (contentMode === 'photos_gifs') {
+            return optImg || parsedOpt.text || rawOpt;
+          }
+          return formatOptionContent(parsedOpt.text, optImg, 'both');
+        });
+        return {
+          ...q,
+          text: cleanQText,
+          image: cleanQImg,
+          options: formattedOptions,
+        };
+      });
+  };
+
   const handleSave = () => {
-    const validQuestions = questions.filter(q => (q.text && q.text.trim()) || q.image);
+    const validQuestions = sanitizeQuestionsForSave();
     if(validQuestions.length === 0) {
       setErrorMsg("Please add at least one complete question.");
       setTimeout(() => setErrorMsg(""), 3000);
@@ -3345,8 +3486,8 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const confirmSave = (isPublic: boolean) => {
-    const generatedTitle = "Bubble Pop Game";
-    const validQuestions = questions.filter(q => (q.text && q.text.trim()) || q.image);
+    const generatedTitle = topic || quiz.title || "Bubble Pop Game";
+    const validQuestions = sanitizeQuestionsForSave();
     onSave({
       ...quiz,
       title: generatedTitle,
@@ -3359,20 +3500,65 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     setShowPublishModal(false);
   };
 
+  const handlePreviewPlay = () => {
+    const validQuestions = sanitizeQuestionsForSave();
+    if (validQuestions.length === 0) {
+      setErrorMsg("Please add at least one complete question before playing.");
+      setTimeout(() => setErrorMsg(""), 3000);
+      return;
+    }
+    if (onPreviewPlay) {
+      onPreviewPlay({
+        ...quiz,
+        title: topic || quiz.title || "Bubble Pop Game",
+        folderId,
+        topic,
+        classLevel,
+        questions: validQuestions
+      });
+    }
+  };
+
   return (
     <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
-      <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
+      <div className="w-full min-h-full flex flex-col items-center py-6 px-4">
       <div className="w-full max-w-4xl glass-panel rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8">
-        <div className="bg-white dark:bg-slate-800/80 p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
-            <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">GAME SETUP</h2>
-                <div className="flex gap-3 items-center">
-                    <button onClick={onCancel} className="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">
-                        Cancel
+        <div className="bg-white dark:bg-slate-800/80 p-6 sm:p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
+            <div className="flex flex-wrap justify-between items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={onCancel}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-black text-sm transition-colors cursor-pointer border border-slate-300 dark:border-slate-600"
+                    title="Go 1 Step Back"
+                  >
+                    <ArrowLeft size={18} />
+                    <span>Back</span>
+                  </button>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">
+                    BUBBLE POP SETUP
+                  </h2>
+                </div>
+                <div className="flex flex-wrap gap-2.5 items-center">
+                    {onPreviewPlay && (
+                      <button
+                        type="button"
+                        onClick={handlePreviewPlay}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-md shadow-emerald-600/25 cursor-pointer text-sm sm:text-base"
+                      >
+                        <Play size={17} fill="currentColor" />
+                        <span>Play Arena</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm sm:text-base"
+                    >
+                      <Save size={18} />
+                      <span>Save Quiz</span>
                     </button>
-                    <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer">
-                        <Save size={18} /> Save Quiz
-                    </button>
+                    <FullscreenButton targetId="game-container" className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-600" />
                 </div>
             </div>
             
@@ -3393,10 +3579,10 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                   setQuestions(updated);
                   setToastMsg(
                     mode === 'words'
-                      ? '🔤 Switched all options to Words Only!'
+                      ? '🔤 Switched all options to Text Only!'
                       : mode === 'photos_gifs'
-                      ? '🖼️ Switched all options to Cartoon PNGs / GIFs!'
-                      : '✨ Switched all options to Words + Cartoon PNGs!'
+                      ? '🖼️ Switched all options to Pictures Only!'
+                      : '✨ Switched all options to Words + Pictures!'
                   );
                   setTimeout(() => setToastMsg(''), 3000);
                 }}
@@ -3485,33 +3671,28 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                 />
               </div>
 
-              <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {q.options.map((opt, optIndex) => (
-                  <div key={optIndex} className="flex items-start gap-2">
-                    <input 
-                      type="radio" 
-                      name={`answer-${q.id}`} 
-                      checked={q.answerIndex === optIndex}
-                      onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                      className="w-4 h-4 mt-3 text-blue-500 focus:ring-blue-500 bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer shrink-0"
-                    />
-                    <SmartOptionInput
-                      value={opt}
-                      onChange={(val) => updateOption(q.id, optIndex, val)}
-                      onOpenMediaPicker={(initialQ) =>
-                        setActiveGiphyInput({ qId: q.id, optIndex, query: initialQ })
-                      }
-                      placeholder={`Option ${optIndex + 1} (e.g. apple)`}
-                      isCorrect={q.answerIndex === optIndex}
-                      contentMode={contentMode}
-                      autoPhotosEnabled={autoPhotosEnabled}
-                    />
-                  </div>
+                  <SmartOptionInput
+                    key={optIndex}
+                    value={opt}
+                    optionIndex={optIndex}
+                    onChange={(val) => updateOption(q.id, optIndex, val)}
+                    onOpenMediaPicker={(initialQ) =>
+                      setActiveGiphyInput({ qId: q.id, optIndex, query: initialQ })
+                    }
+                    placeholder={`Option ${optIndex + 1}`}
+                    isCorrect={q.answerIndex === optIndex}
+                    onSelectCorrect={() => updateQuestion(q.id, 'answerIndex', optIndex)}
+                    radioName={`answer-${q.id}`}
+                    contentMode={contentMode}
+                    autoPhotosEnabled={autoPhotosEnabled}
+                  />
                 ))}
               </div>
               <div className="ml-12 mt-3 flex gap-2">
-                  <button onClick={() => addOption(q.id)} disabled={q.options.length >= 6} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer">+ Option</button>
-                  <button onClick={() => removeOption(q.id)} disabled={q.options.length <= 2} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer">- Option</button>
+                  <button onClick={() => addOption(q.id)} disabled={q.options.length >= 6} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer font-bold">+ Option</button>
+                  <button onClick={() => removeOption(q.id)} disabled={q.options.length <= 2} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer font-bold">- Option</button>
               </div>
             </div>
           ))}
@@ -3537,13 +3718,10 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
               const rawExistingQ = targetQ?.text || '';
               const parsedExistingQ = parseOptionContent(rawExistingQ);
               const questionTextToKeep = parsedExistingQ.text;
-              const finalQuestionVal = questionTextToKeep
-                ? formatOptionContent(questionTextToKeep, url, 'both')
-                : url;
               setQuestions((prev) =>
                 prev.map((qItem) =>
                   qItem.id === activeGiphyInput.qId
-                    ? { ...qItem, text: finalQuestionVal, image: url }
+                    ? { ...qItem, text: questionTextToKeep, image: url }
                     : qItem
                 )
               );

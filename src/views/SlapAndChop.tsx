@@ -11,7 +11,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { logUserActivity } from "../utils/activityTracker";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
-import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
+import { OptionContentMode, parseOptionContent, formatOptionContent, getInstantCartoonPng } from "../utils/mediaAndPresets";
+import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 
 const slapChopImgCache: Record<string, HTMLImageElement> = {};
 function getCachedSlapChopImage(url: string): HTMLImageElement | null {
@@ -7017,523 +7018,384 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           folders={folders}
           onSave={saveQuiz}
           onCancel={() => onViewChange('games')}
-          onPlayDirect={() => setScreen('setup')}
+          onPlayDirect={(updatedQuiz) => {
+            if (updatedQuiz) setActiveQuiz(updatedQuiz);
+            setScreen('setup');
+          }}
         />
       )}
 
-      {/* Screen 2: Minimalist Immersive 3D Arcade Game Setup (Bold & Important Words Only) */}
+      {/* Screen 2: Unified Minimalist 3D AR Arena Setup */}
       {screen === 'setup' && (
-        <div className="absolute inset-0 z-40 flex flex-col items-center justify-between p-4 sm:p-6 overflow-y-auto custom-scrollbar bg-gradient-to-b from-sky-200 via-sky-100 to-amber-50">
-          {/* Ambient 3D Glow */}
-          <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
-            <div className="absolute -top-24 left-1/4 w-96 h-96 bg-white/80 rounded-full blur-3xl" />
-            <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-amber-200/50 rounded-full blur-3xl" />
-            <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-[42rem] h-72 bg-emerald-200/45 rounded-full blur-3xl" />
-          </div>
-
-          {/* Top Navigation Bar */}
-          <div className="w-full max-w-4xl flex items-center justify-between mb-3 z-20 flex-wrap gap-2">
-            <button
-              onClick={() => onViewChange('games')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white hover:bg-sky-50 border-2 border-sky-200 border-b-4 border-b-sky-300 text-slate-900 font-black shadow-md active:translate-y-0.5 transition-all cursor-pointer"
-            >
-              <ArrowLeft size={18} className="text-sky-600" />
-              <span>BACK</span>
-            </button>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={() => setShowSettingsModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 border-t border-amber-200 border-b-4 border-b-amber-600 text-slate-900 font-black shadow-md active:translate-y-0.5 transition-all cursor-pointer"
-              >
-                <span>⚙️ SETTINGS</span>
-              </button>
-              <button
-                onClick={() => setShowModeModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-sky-500 hover:bg-sky-400 border-t border-sky-200 border-b-4 border-b-sky-700 text-white font-black shadow-md active:translate-y-0.5 transition-all cursor-pointer"
-              >
-                <span>🎮 GAMES</span>
-              </button>
-              <button
-                onClick={() => setScreen('editor')}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white hover:bg-sky-50 border-2 border-sky-200 border-b-4 border-b-sky-300 text-slate-900 font-black shadow-md active:translate-y-0.5 transition-all cursor-pointer"
-              >
-                <Edit3 size={18} className="text-sky-600" />
-                <span>QUIZ ({activeQuiz.questions.length})</span>
-              </button>
-              <FullscreenButton targetId="slap-and-chop-container" className="bg-white hover:bg-sky-50 border-2 border-sky-200 border-b-4 border-b-sky-300 text-slate-900" />
+        <UnifiedGameSetup
+          title="MOSQUITO SLAP 3D"
+          containerId="slap-and-chop-container"
+          questionCount={activeQuiz.questions.length}
+          onBack={() => setScreen('editor')}
+          onOpenSettings={() => setShowSettingsModal(true)}
+          onOpenGameSwitcher={() => setShowModeModal(true)}
+          onOpenQuizEditor={() => setScreen('editor')}
+          playerModeOptions={[
+            { id: 1, label: '1 PLAYER', icon: '🧤' },
+            { id: 2, label: '2 PLAYERS', icon: '🔵⚡🔴' }
+          ]}
+          selectedPlayerMode={numPlayers}
+          onSelectPlayerMode={(val: number) => setNumPlayers(val)}
+          playerNames={
+            numPlayers === 2
+              ? [
+                  { id: 'p1', badge: 'P1', value: p1Name, placeholder: 'PLAYER 1', onChange: setP1Name, colorScheme: 'blue' },
+                  { id: 'p2', badge: 'P2', value: p2Name, placeholder: 'PLAYER 2', onChange: setP2Name, colorScheme: 'red' }
+                ]
+              : [
+                  { id: 'p1', badge: 'P1', value: p1Name, placeholder: 'PLAYER 1', onChange: setP1Name, colorScheme: 'blue' }
+                ]
+          }
+          arCameraConfig={{
+            label: 'AR CAMERA & HAND TRACKER',
+            badgeText: slapMode === 'clap' ? '👏 2-HAND CLAP' : '🖐️ 1-HAND SWAT',
+            helperText: 'Raise your hands in front of the camera to control the 3D gloves!'
+          }}
+          timerTitle="Timer (Minutes)"
+          timerValue={playingTime}
+          timerLabelDisplay={`${Math.max(1, Math.round(playingTime / 60))} ${Math.round(playingTime / 60) === 1 ? 'Minute' : 'Minutes'}`}
+          timerOptions={[
+            { label: '1 Minute', sec: 60 },
+            { label: '2 Minutes', sec: 120 },
+            { label: '3 Minutes', sec: 180 },
+            { label: '5 Minutes', sec: 300 },
+            { label: '10 Minutes', sec: 600 }
+          ]}
+          onTimerChange={(sec) => {
+            setPlayingTime(sec);
+            playingTimeRef.current = sec;
+            setHudTimeLeft(sec);
+            lastHudSecRef.current = sec;
+          }}
+          startLabel={`START ${numPlayers === 2 ? '2P BATTLE' : 'ARENA'}`}
+          onStart={() => startGame(numPlayers)}
+          onStudy={() => {
+            setStudyIndex(0);
+            setStudySelectedOption(null);
+            setScreen('study');
+          }}
+        >
+          {/* 1. ANSWER MODE PATCH: SINGLE ANSWER (+5 / -5) vs MULTIPLE ANSWER (+1 / -1) + 1–10 SLIDER */}
+          <div className="p-4 rounded-3xl bg-purple-50/90 border-2 border-purple-200 border-b-4 border-b-purple-300 space-y-3.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-sm sm:text-base font-black uppercase tracking-wider text-purple-950">
+                🎯 ANSWER MODE
+              </span>
+              <span className={`px-3 py-1 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wide ${
+                answerMode === 'multiple'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-sky-600 text-white'
+              }`}>
+                {answerMode === 'multiple' ? `+1 / -1 • ${multiAnswerCount} HITS` : '+5 / -5 • 1 HIT'}
+              </span>
             </div>
-          </div>
 
-          {/* Centered Minimalist Immersive Setup Stage */}
-          <div className="relative z-10 flex flex-col items-center w-full max-w-4xl my-auto">
-            {/* Hero Title — Bold Only */}
-            <h2 className="text-4xl sm:text-6xl font-black text-sky-950 drop-shadow-[0_4px_0_rgba(255,255,255,1)] tracking-tight text-center mb-5">
-              MOSQUITO SLAP 3D
-            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setAnswerMode('single')}
+                className={`py-3.5 px-4 rounded-2xl font-black text-base sm:text-lg border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                  answerMode === 'single'
+                    ? 'bg-gradient-to-b from-sky-500 to-blue-600 border-sky-300 border-b-blue-900 text-white shadow-md -translate-y-0.5'
+                    : 'bg-white hover:bg-purple-50 border-purple-200 border-b-purple-300 text-slate-900'
+                }`}
+              >
+                <span>SINGLE ANSWER</span>
+                <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black ${
+                  answerMode === 'single' ? 'bg-white/25 text-white' : 'bg-sky-100 text-sky-800'
+                }`}>
+                  +5 / -5
+                </span>
+              </button>
 
-            {/* Main Immersive Minimalist Setup Card */}
-            <div className="w-full bg-white/95 backdrop-blur-xl rounded-[2.4rem] border-2 border-sky-200 border-b-[10px] border-b-sky-300 p-5 sm:p-7 shadow-[0_20px_50px_rgba(14,165,233,0.2)] space-y-5">
-              
-              {/* 1. PLAYERS: 1 PLAYER vs 2 PLAYERS + BOLD NAME INPUTS */}
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setNumPlayers(1)}
-                    className={`group relative overflow-hidden rounded-3xl p-4 sm:p-5 transition-all duration-200 cursor-pointer flex items-center justify-center gap-3.5 ${
-                      numPlayers === 1
-                        ? 'bg-gradient-to-b from-sky-400 via-blue-500 to-blue-600 border-t-2 border-sky-200 border-x border-sky-400 border-b-[7px] border-b-blue-800 shadow-[0_10px_24px_rgba(37,99,235,0.32)] -translate-y-0.5 text-white'
-                        : 'bg-slate-50 border-2 border-sky-200 border-b-[7px] border-b-sky-300 hover:bg-white text-slate-900'
-                    }`}
-                  >
-                    <span className="text-3xl sm:text-4xl">🧤</span>
-                    <span className="text-xl sm:text-2xl font-black tracking-tight uppercase">
-                      1 PLAYER
+              <button
+                type="button"
+                onClick={() => setAnswerMode('multiple')}
+                className={`py-3.5 px-4 rounded-2xl font-black text-base sm:text-lg border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                  answerMode === 'multiple'
+                    ? 'bg-gradient-to-b from-purple-500 to-indigo-600 border-purple-300 border-b-indigo-950 text-white shadow-md -translate-y-0.5'
+                    : 'bg-white hover:bg-purple-50 border-purple-200 border-b-purple-300 text-slate-900'
+                }`}
+              >
+                <span>MULTIPLE ANSWER</span>
+                <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black ${
+                  answerMode === 'multiple' ? 'bg-white/25 text-white' : 'bg-purple-100 text-purple-800'
+                }`}>
+                  +1 / -1
+                </span>
+              </button>
+            </div>
+
+            {answerMode === 'multiple' && (
+              <div className="space-y-3 animate-in fade-in duration-150">
+                <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-purple-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-black uppercase tracking-wide text-purple-950">
+                      ANSWERS PER QUESTION
                     </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setNumPlayers(2)}
-                    className={`group relative overflow-hidden rounded-3xl p-4 sm:p-5 transition-all duration-200 cursor-pointer flex items-center justify-center gap-3.5 ${
-                      numPlayers === 2
-                        ? 'bg-gradient-to-b from-red-500 via-rose-500 to-red-600 border-t-2 border-red-200 border-x border-red-400 border-b-[7px] border-b-red-900 shadow-[0_10px_24px_rgba(239,68,68,0.32)] -translate-y-0.5 text-white'
-                        : 'bg-slate-50 border-2 border-sky-200 border-b-[7px] border-b-sky-300 hover:bg-white text-slate-900'
-                    }`}
-                  >
-                    <span className="text-2xl sm:text-3xl">🔵⚡🔴</span>
-                    <span className="text-xl sm:text-2xl font-black tracking-tight uppercase">
-                      2 PLAYERS
+                    <span className="px-3.5 py-1 rounded-xl bg-purple-600 text-white font-black text-base font-mono tabular-nums shadow-xs">
+                      {multiAnswerCount}
                     </span>
-                  </button>
-                </div>
-
-                {/* Minimalist Bold Player Name Inputs */}
-                <div className={`grid gap-3 ${numPlayers === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-                  <div className="flex items-center gap-3 bg-blue-50/90 p-2.5 rounded-2xl border-2 border-blue-200 border-b-4 border-b-blue-400">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-b from-blue-500 to-blue-700 border-b-2 border-blue-950 text-white flex items-center justify-center font-black text-base shadow shrink-0">
-                      P1
-                    </div>
-                    <input
-                      type="text"
-                      value={p1Name}
-                      onChange={e => setP1Name(e.target.value)}
-                      className="flex-1 min-w-0 bg-transparent text-slate-900 font-black placeholder-slate-400 outline-none text-lg px-1"
-                      placeholder="PLAYER 1"
-                    />
                   </div>
 
-                  {numPlayers === 2 && (
-                    <div className="flex items-center gap-3 bg-red-50/90 p-2.5 rounded-2xl border-2 border-red-200 border-b-4 border-b-red-400 animate-in fade-in duration-200">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-b from-red-500 to-red-700 border-b-2 border-red-950 text-white flex items-center justify-center font-black text-base shadow shrink-0">
-                        P2
-                      </div>
-                      <input
-                        type="text"
-                        value={p2Name}
-                        onChange={e => setP2Name(e.target.value)}
-                        className="flex-1 min-w-0 bg-transparent text-slate-900 font-black placeholder-slate-400 outline-none text-lg px-1"
-                        placeholder="PLAYER 2"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={multiAnswerCount}
+                    onChange={e => setMultiAnswerCount(Number(e.target.value))}
+                    className="w-full h-3 bg-purple-200 rounded-full appearance-none cursor-pointer accent-purple-600"
+                  />
 
-              {/* 2. ANSWER MODE PATCH: SINGLE ANSWER (+5 / -5) vs MULTIPLE ANSWER (+1 / -1) + 1–10 SLIDER */}
-              <div className="p-4 rounded-3xl bg-purple-50/90 border-2 border-purple-200 border-b-4 border-b-purple-300 space-y-3.5">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className="text-sm sm:text-base font-black uppercase tracking-wider text-purple-950">
-                    🎯 ANSWER MODE
-                  </span>
-                  <span className={`px-3 py-1 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wide ${
-                    answerMode === 'multiple'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-sky-600 text-white'
-                  }`}>
-                    {answerMode === 'multiple' ? `+1 / -1 • ${multiAnswerCount} HITS` : '+5 / -5 • 1 HIT'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAnswerMode('single')}
-                    className={`py-3.5 px-4 rounded-2xl font-black text-base sm:text-lg border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                      answerMode === 'single'
-                        ? 'bg-gradient-to-b from-sky-500 to-blue-600 border-sky-300 border-b-blue-900 text-white shadow-md -translate-y-0.5'
-                        : 'bg-white hover:bg-purple-50 border-purple-200 border-b-purple-300 text-slate-900'
-                    }`}
-                  >
-                    <span>SINGLE ANSWER</span>
-                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black ${
-                      answerMode === 'single' ? 'bg-white/25 text-white' : 'bg-sky-100 text-sky-800'
-                    }`}>
-                      +5 / -5
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAnswerMode('multiple')}
-                    className={`py-3.5 px-4 rounded-2xl font-black text-base sm:text-lg border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                      answerMode === 'multiple'
-                        ? 'bg-gradient-to-b from-purple-500 to-indigo-600 border-purple-300 border-b-indigo-950 text-white shadow-md -translate-y-0.5'
-                        : 'bg-white hover:bg-purple-50 border-purple-200 border-b-purple-300 text-slate-900'
-                    }`}
-                  >
-                    <span>MULTIPLE ANSWER</span>
-                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black ${
-                      answerMode === 'multiple' ? 'bg-white/25 text-white' : 'bg-purple-100 text-purple-800'
-                    }`}>
-                      +1 / -1
-                    </span>
-                  </button>
-                </div>
-
-                {/* 1–10 ANSWERS SLIDER + POWER-UPS & BOMBS (Shown in Multiple Answer Mode) */}
-                {answerMode === 'multiple' && (
-                  <div className="space-y-3 animate-in fade-in duration-150">
-                    {/* 1–10 Answers Slider */}
-                    <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-purple-200 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-black uppercase tracking-wide text-purple-950">
-                          ANSWERS PER QUESTION
-                        </span>
-                        <span className="px-3.5 py-1 rounded-xl bg-purple-600 text-white font-black text-base font-mono tabular-nums shadow-xs">
-                          {multiAnswerCount}
-                        </span>
-                      </div>
-
-                      <input
-                        type="range"
-                        min={1}
-                        max={10}
-                        step={1}
-                        value={multiAnswerCount}
-                        onChange={e => setMultiAnswerCount(Number(e.target.value))}
-                        className="w-full h-3 bg-purple-200 rounded-full appearance-none cursor-pointer accent-purple-600"
-                      />
-
-                      <div className="grid grid-cols-10 gap-1 pt-0.5">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
-                          <button
-                            key={num}
-                            type="button"
-                            onClick={() => setMultiAnswerCount(num)}
-                            className={`py-1.5 rounded-lg font-black text-xs sm:text-sm transition cursor-pointer ${
-                              multiAnswerCount === num
-                                ? 'bg-purple-600 text-white shadow-xs'
-                                : 'bg-purple-50 hover:bg-purple-100 text-purple-900'
-                            }`}
-                          >
-                            {num}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* POWER-UPS & HAZARDS GRID — BOLD ONLY */}
-                    <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-purple-200 space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-black uppercase tracking-wide text-purple-950">
-                          ⚡ POWER-UPS &amp; BOMBS
-                        </span>
-
-                        {/* SPAWN RATE SELECTOR */}
-                        <div className="flex items-center gap-1 bg-purple-50 p-1 rounded-xl border border-purple-200">
-                          {([
-                            { id: 'normal' as const, label: 'NORMAL' },
-                            { id: 'frenzy' as const, label: 'FRENZY' },
-                            { id: 'chaos' as const, label: 'CHAOS 🔥' }
-                          ]).map(sr => (
-                            <button
-                              key={sr.id}
-                              type="button"
-                              onClick={() => setMultiSpawnRate(sr.id)}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
-                                multiSpawnRate === sr.id
-                                  ? 'bg-purple-600 text-white shadow-2xs'
-                                  : 'text-purple-900 hover:bg-purple-100'
-                              }`}
-                            >
-                              {sr.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                        {([
-                          {
-                            key: 'bomb' as const,
-                            icon: '💣',
-                            title: 'BOMBS',
-                            tag: '-3 PTS',
-                            activeCls: 'bg-gradient-to-b from-rose-500 to-red-600 border-rose-300 border-b-red-900 text-white shadow-sm -translate-y-0.5',
-                            tagCls: 'bg-black/25 text-white'
-                          },
-                          {
-                            key: 'x2' as const,
-                            icon: '⚡',
-                            title: 'x2 DOUBLE',
-                            tag: '2X PTS',
-                            activeCls: 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
-                            tagCls: 'bg-slate-950/15 text-slate-950'
-                          },
-                          {
-                            key: 'x3' as const,
-                            icon: '🔥',
-                            title: 'x3 TRIPLE',
-                            tag: '3X PTS',
-                            activeCls: 'bg-gradient-to-b from-fuchsia-500 to-purple-600 border-fuchsia-300 border-b-purple-950 text-white shadow-sm -translate-y-0.5',
-                            tagCls: 'bg-black/25 text-white'
-                          },
-                          {
-                            key: 'gold' as const,
-                            icon: '👑',
-                            title: 'GOLD BUG',
-                            tag: '+5 PTS',
-                            activeCls: 'bg-gradient-to-b from-yellow-400 to-amber-500 border-yellow-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
-                            tagCls: 'bg-slate-950/15 text-slate-950'
-                          },
-                          {
-                            key: 'ice' as const,
-                            icon: '❄️',
-                            title: 'ICE TIME',
-                            tag: '+5S SLOW',
-                            activeCls: 'bg-gradient-to-b from-sky-400 to-cyan-600 border-sky-200 border-b-cyan-900 text-white shadow-sm -translate-y-0.5',
-                            tagCls: 'bg-black/25 text-white'
-                          },
-                          {
-                            key: 'zap' as const,
-                            icon: '⚡',
-                            title: 'AUTO-ZAP',
-                            tag: '1-HIT ZAP',
-                            activeCls: 'bg-gradient-to-b from-indigo-500 to-violet-600 border-indigo-300 border-b-violet-950 text-white shadow-sm -translate-y-0.5',
-                            tagCls: 'bg-black/25 text-white'
-                          }
-                        ]).map(item => {
-                          const isOn = multiItems[item.key];
-                          return (
-                            <button
-                              key={item.key}
-                              type="button"
-                              onClick={() => toggleMultiItem(item.key)}
-                              className={`p-3 rounded-2xl border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                                isOn
-                                  ? item.activeCls
-                                  : 'bg-slate-50 hover:bg-purple-50/60 border-slate-200 border-b-slate-300 text-slate-400'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="text-xl shrink-0">{item.icon}</span>
-                                <span className="font-black text-xs sm:text-sm tracking-tight truncate">
-                                  {item.title}
-                                </span>
-                              </div>
-                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 ${
-                                isOn ? item.tagCls : 'bg-slate-200 text-slate-500'
-                              }`}>
-                                {isOn ? item.tag : 'OFF'}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 3. 3D GLOVES & SIZE — BOLD ONLY */}
-              <div className="p-4 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
-                    🧤 3D GLOVES
-                  </span>
-
-                  <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-sky-200">
-                    {[
-                      { label: 'COMPACT', val: 0.78 },
-                      { label: 'NORMAL', val: 1.0 },
-                      { label: 'LARGE', val: 1.22 }
-                    ].map(sz => (
+                  <div className="grid grid-cols-10 gap-1 pt-0.5">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
                       <button
-                        key={sz.label}
+                        key={num}
                         type="button"
-                        onClick={() => setGloveSize(sz.val)}
-                        className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
-                          gloveSize === sz.val
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : 'text-slate-700 hover:bg-sky-50'
+                        onClick={() => setMultiAnswerCount(num)}
+                        className={`py-1.5 rounded-lg font-black text-xs sm:text-sm transition cursor-pointer ${
+                          multiAnswerCount === num
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-purple-50 hover:bg-purple-100 text-purple-900'
                         }`}
                       >
-                        {sz.label}
+                        {num}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  {[
-                    { id: 'slap' as const, icon: '🧤', title: '5-FINGER' },
-                    { id: 'boxing' as const, icon: '🥊', title: 'BOXING' },
-                    { id: 'swatter' as const, icon: '🏸', title: 'SWATTER' },
-                    { id: 'cyber' as const, icon: '🖐️', title: 'CYBER' }
-                  ].map(opt => {
-                    const active = gloveStyle === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setGloveStyle(opt.id)}
-                        className={`p-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2.5 border-2 border-b-[5px] ${
-                          active
-                            ? 'bg-gradient-to-b from-blue-500 to-blue-700 border-blue-300 border-b-blue-950 text-white -translate-y-0.5 shadow-md'
-                            : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
-                        }`}
-                      >
-                        <span className="text-2xl">{opt.icon}</span>
-                        <span className="text-sm sm:text-base font-black tracking-tight">{opt.title}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 4. TRIGGER & TIMER ROW — BOLD ONLY */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* TRIGGER MODE */}
-                <div className="p-4 rounded-3xl bg-amber-50/90 border-2 border-amber-200 border-b-4 border-b-amber-300 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm sm:text-base font-black uppercase tracking-wider text-amber-950">
-                      👏 TRIGGER
+                <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-purple-200 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-black uppercase tracking-wide text-purple-950">
+                      ⚡ POWER-UPS &amp; BOMBS
                     </span>
-                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-amber-200">
+
+                    <div className="flex items-center gap-1 bg-purple-50 p-1 rounded-xl border border-purple-200">
                       {([
-                        { id: 'easy' as const, label: 'EASY' },
-                        { id: 'balanced' as const, label: 'NORMAL' },
-                        { id: 'precise' as const, label: 'PRO' }
-                      ]).map(sn => (
+                        { id: 'normal' as const, label: 'NORMAL' },
+                        { id: 'frenzy' as const, label: 'FRENZY' },
+                        { id: 'chaos' as const, label: 'CHAOS 🔥' }
+                      ]).map(sr => (
                         <button
-                          key={sn.id}
+                          key={sr.id}
                           type="button"
-                          onClick={() => setSlapSensitivity(sn.id)}
+                          onClick={() => setMultiSpawnRate(sr.id)}
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
-                            slapSensitivity === sn.id
-                              ? 'bg-amber-500 text-white'
-                              : 'text-slate-700 hover:bg-amber-50'
+                            multiSpawnRate === sr.id
+                              ? 'bg-purple-600 text-white shadow-2xs'
+                              : 'text-purple-900 hover:bg-purple-100'
                           }`}
                         >
-                          {sn.label}
+                          {sr.label}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setSlapMode('clap')}
-                      className={`py-3 px-3 rounded-2xl font-black text-sm sm:text-base border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                        slapMode === 'clap'
-                          ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5'
-                          : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-900'
-                      }`}
-                    >
-                      <span className="text-xl">👏</span>
-                      <span>2-HAND CLAP</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSlapMode('swat')}
-                      className={`py-3 px-3 rounded-2xl font-black text-sm sm:text-base border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                        slapMode === 'swat'
-                          ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5'
-                          : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-900'
-                      }`}
-                    >
-                      <span className="text-xl">🖐️</span>
-                      <span>1-HAND SWAT</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* MATCH TIMER */}
-                <div className="p-4 rounded-3xl bg-emerald-50/90 border-2 border-emerald-200 border-b-4 border-b-emerald-300 space-y-3 flex flex-col justify-between">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm sm:text-base font-black uppercase tracking-wider text-emerald-950">
-                      ⏱️ TIMER
-                    </span>
-                    <span className="px-3 py-0.5 rounded-xl bg-emerald-600 text-white text-xs sm:text-sm font-black font-mono tabular-nums">
-                      {formatPlayTime(playingTime)}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-5 gap-2">
-                    {[
-                      { label: '1M', sec: 60 },
-                      { label: '2M', sec: 120 },
-                      { label: '3M', sec: 180 },
-                      { label: '4M', sec: 240 },
-                      { label: '5M', sec: 300 }
-                    ].map(tm => {
-                      const isSel = playingTime === tm.sec;
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {([
+                      {
+                        key: 'bomb' as const,
+                        icon: '💣',
+                        title: 'BOMBS',
+                        tag: '-3 PTS',
+                        activeCls: 'bg-gradient-to-b from-rose-500 to-red-600 border-rose-300 border-b-red-900 text-white shadow-sm -translate-y-0.5',
+                        tagCls: 'bg-black/25 text-white'
+                      },
+                      {
+                        key: 'x2' as const,
+                        icon: '⚡',
+                        title: 'x2 DOUBLE',
+                        tag: '2X PTS',
+                        activeCls: 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
+                        tagCls: 'bg-slate-950/15 text-slate-950'
+                      },
+                      {
+                        key: 'x3' as const,
+                        icon: '🔥',
+                        title: 'x3 TRIPLE',
+                        tag: '3X PTS',
+                        activeCls: 'bg-gradient-to-b from-fuchsia-500 to-purple-600 border-fuchsia-300 border-b-purple-950 text-white shadow-sm -translate-y-0.5',
+                        tagCls: 'bg-black/25 text-white'
+                      },
+                      {
+                        key: 'gold' as const,
+                        icon: '👑',
+                        title: 'GOLD BUG',
+                        tag: '+5 PTS',
+                        activeCls: 'bg-gradient-to-b from-yellow-400 to-amber-500 border-yellow-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
+                        tagCls: 'bg-slate-950/15 text-slate-950'
+                      },
+                      {
+                        key: 'ice' as const,
+                        icon: '❄️',
+                        title: 'ICE TIME',
+                        tag: '+5S SLOW',
+                        activeCls: 'bg-gradient-to-b from-sky-400 to-cyan-600 border-sky-200 border-b-cyan-900 text-white shadow-sm -translate-y-0.5',
+                        tagCls: 'bg-black/25 text-white'
+                      },
+                      {
+                        key: 'zap' as const,
+                        icon: '⚡',
+                        title: 'AUTO-ZAP',
+                        tag: '1-HIT ZAP',
+                        activeCls: 'bg-gradient-to-b from-indigo-500 to-violet-600 border-indigo-300 border-b-violet-950 text-white shadow-sm -translate-y-0.5',
+                        tagCls: 'bg-black/25 text-white'
+                      }
+                    ]).map(item => {
+                      const isOn = multiItems[item.key];
                       return (
                         <button
-                          key={tm.sec}
+                          key={item.key}
                           type="button"
-                          onClick={() => {
-                            setPlayingTime(tm.sec);
-                            playingTimeRef.current = tm.sec;
-                            setHudTimeLeft(tm.sec);
-                            lastHudSecRef.current = tm.sec;
-                          }}
-                          className={`py-3 rounded-2xl font-black text-sm sm:text-base border-2 border-b-[5px] transition cursor-pointer ${
-                            isSel
-                              ? 'bg-emerald-500 border-emerald-300 border-b-emerald-800 text-white shadow-sm -translate-y-0.5'
-                              : 'bg-white hover:bg-emerald-100/70 border-emerald-200 border-b-emerald-300 text-emerald-950'
+                          onClick={() => toggleMultiItem(item.key)}
+                          className={`p-3 rounded-2xl border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                            isOn
+                              ? item.activeCls
+                              : 'bg-slate-50 hover:bg-purple-50/60 border-slate-200 border-b-slate-300 text-slate-400'
                           }`}
                         >
-                          {tm.label}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xl shrink-0">{item.icon}</span>
+                            <span className="font-black text-xs sm:text-sm tracking-tight truncate">
+                              {item.title}
+                            </span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 ${
+                            isOn ? item.tagCls : 'bg-slate-200 text-slate-500'
+                          }`}>
+                            {isOn ? item.tag : 'OFF'}
+                          </span>
                         </button>
                       );
                     })}
                   </div>
                 </div>
               </div>
+            )}
+          </div>
 
-              {/* 5. BOTTOM ACTION BAR: START GAME + STUDY MODE */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => startGame(numPlayers)}
-                  className="sm:col-span-8 py-4.5 bg-gradient-to-b from-emerald-400 via-green-500 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-white font-black text-2xl sm:text-3xl rounded-2xl border-t-2 border-emerald-200 border-b-[8px] border-b-emerald-800 shadow-[0_14px_30px_rgba(16,185,129,0.35)] active:translate-y-1 transition-all cursor-pointer flex items-center justify-center gap-3 tracking-wide uppercase"
-                >
-                  <Play size={28} fill="currentColor" className="drop-shadow" />
-                  <span>START {numPlayers === 2 ? '2P BATTLE' : 'ARENA'}</span>
-                </button>
+          {/* 2. 3D GLOVES & TRIGGER */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className="p-4 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
+                  🧤 3D GLOVES
+                </span>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStudyIndex(0);
-                    setStudySelectedOption(null);
-                    setScreen('study');
-                  }}
-                  className="sm:col-span-4 py-4.5 bg-gradient-to-b from-amber-300 via-amber-400 to-orange-400 hover:from-amber-200 hover:to-orange-300 text-slate-950 font-black text-xl sm:text-2xl rounded-2xl border-t-2 border-white border-b-[8px] border-b-orange-600 shadow-lg active:translate-y-1 transition-all cursor-pointer flex items-center justify-center gap-2.5 uppercase"
-                >
-                  <span>📖</span>
-                  <span>STUDY</span>
-                </button>
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-sky-200">
+                  {[
+                    { label: 'COMPACT', val: 0.78 },
+                    { label: 'NORMAL', val: 1.0 },
+                    { label: 'LARGE', val: 1.22 }
+                  ].map(sz => (
+                    <button
+                      key={sz.label}
+                      type="button"
+                      onClick={() => setGloveSize(sz.val)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                        gloveSize === sz.val
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-700 hover:bg-sky-50'
+                      }`}
+                    >
+                      {sz.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'slap' as const, icon: '🧤', title: '5-FINGER' },
+                  { id: 'boxing' as const, icon: '🥊', title: 'BOXING' },
+                  { id: 'swatter' as const, icon: '🏸', title: 'SWATTER' },
+                  { id: 'cyber' as const, icon: '🖐️', title: 'CYBER' }
+                ].map(opt => {
+                  const active = gloveStyle === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setGloveStyle(opt.id)}
+                      className={`p-2.5 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2 border-2 border-b-4 ${
+                        active
+                          ? 'bg-gradient-to-b from-blue-500 to-blue-700 border-blue-300 border-b-blue-950 text-white -translate-y-0.5 shadow-md'
+                          : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
+                      }`}
+                    >
+                      <span className="text-lg">{opt.icon}</span>
+                      <span className="text-xs font-black tracking-tight">{opt.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-amber-50/90 border-2 border-amber-200 border-b-4 border-b-amber-300 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-amber-950">
+                  👏 TRIGGER
+                </span>
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-amber-200">
+                  {([
+                    { id: 'easy' as const, label: 'EASY' },
+                    { id: 'balanced' as const, label: 'NORMAL' },
+                    { id: 'precise' as const, label: 'PRO' }
+                  ]).map(sn => (
+                    <button
+                      key={sn.id}
+                      type="button"
+                      onClick={() => setSlapSensitivity(sn.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                        slapSensitivity === sn.id
+                          ? 'bg-amber-500 text-white'
+                          : 'text-slate-700 hover:bg-amber-50'
+                      }`}
+                    >
+                      {sn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSlapMode('clap')}
+                  className={`py-3 px-3 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    slapMode === 'clap'
+                      ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5'
+                      : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-900'
+                  }`}
+                >
+                  <span className="text-lg">👏</span>
+                  <span>2-HAND CLAP</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSlapMode('swat')}
+                  className={`py-3 px-3 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    slapMode === 'swat'
+                      ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5'
+                      : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-900'
+                  }`}
+                >
+                  <span className="text-lg">🖐️</span>
+                  <span>1-HAND SWAT</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </UnifiedGameSetup>
       )}
 
       {/* Screen 3: Bright Light Loading Screen */}
@@ -8828,12 +8690,13 @@ function QuizEditor({
   folders,
   onSave,
   onCancel,
+  onPlayDirect,
 }: {
   quiz: Quiz;
   folders: { id: string; name: string }[];
   onSave: (q: Quiz) => void;
   onCancel: () => void;
-  onPlayDirect?: () => void;
+  onPlayDirect?: (q?: Quiz) => void;
 }) {
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
@@ -9020,8 +8883,35 @@ function QuizEditor({
     setBulkText("");
   };
 
+  const sanitizeQuestionsForSave = () => {
+    return questions
+      .filter((q) => (q.text && q.text.trim()) || q.image)
+      .map((q) => {
+        const parsedQ = parseOptionContent(q.text || '');
+        const cleanQText = parsedQ.text || '';
+        const cleanQImg = q.image || parsedQ.imageUrl || undefined;
+        const formattedOptions = q.options.map((rawOpt) => {
+          const parsedOpt = parseOptionContent(rawOpt);
+          const optImg = parsedOpt.imageUrl || (contentMode !== 'words' ? getInstantCartoonPng(parsedOpt.text) : null);
+          if (contentMode === 'words') {
+            return parsedOpt.text || rawOpt;
+          }
+          if (contentMode === 'photos_gifs') {
+            return optImg || parsedOpt.text || rawOpt;
+          }
+          return formatOptionContent(parsedOpt.text, optImg, 'both');
+        });
+        return {
+          ...q,
+          text: cleanQText,
+          image: cleanQImg,
+          options: formattedOptions,
+        };
+      });
+  };
+
   const handleSave = () => {
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = sanitizeQuestionsForSave();
     if (validQuestions.length === 0) {
       setErrorMsg("Please add at least one complete question.");
       setTimeout(() => setErrorMsg(""), 3000);
@@ -9031,10 +8921,10 @@ function QuizEditor({
   };
 
   const confirmSave = (isPublic: boolean) => {
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = sanitizeQuestionsForSave();
     onSave({
       ...quiz,
-      title: topic || "Slap and Chop Game",
+      title: topic || "Mosquito Slap Game",
       folderId,
       topic,
       classLevel,
@@ -9044,29 +8934,64 @@ function QuizEditor({
     setShowPublishModal(false);
   };
 
+  const handlePlayArena = () => {
+    const validQuestions = sanitizeQuestionsForSave();
+    if (validQuestions.length === 0) {
+      setErrorMsg("Please add at least one complete question before playing.");
+      setTimeout(() => setErrorMsg(""), 3000);
+      return;
+    }
+    if (onPlayDirect) {
+      onPlayDirect({
+        ...quiz,
+        title: topic || quiz.title || "Mosquito Slap Game",
+        folderId,
+        topic,
+        classLevel,
+        questions: validQuestions,
+      });
+    }
+  };
+
   return (
-    <div className="absolute inset-0 z-40 bg-gradient-to-br from-sky-100 via-amber-50 to-emerald-100 overflow-y-auto custom-scrollbar">
-      <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
-        {/* 3D Light Glass Container */}
-        <div className="w-full max-w-4xl bg-white/95 rounded-3xl overflow-hidden flex flex-col shadow-2xl border-2 border-white mb-8">
-          <div className="bg-white p-8 flex flex-col gap-6 border-b-2 border-sky-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-3xl font-extrabold text-slate-800 tracking-wide">GAME SETUP</h2>
-              <div className="flex gap-3 items-center">
+    <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
+      <div className="w-full min-h-full flex flex-col items-center py-6 px-4">
+        <div className="w-full max-w-4xl bg-white dark:bg-slate-800/90 rounded-3xl overflow-hidden flex flex-col shadow-2xl border border-slate-200 dark:border-slate-700 mb-8">
+          <div className="bg-white dark:bg-slate-800/80 p-6 sm:p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
+            <div className="flex flex-wrap justify-between items-center gap-3">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="px-5 py-2.5 rounded-xl text-slate-600 font-bold bg-slate-100 hover:bg-slate-200 hover:text-slate-900 transition-colors cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-black text-sm transition-colors cursor-pointer border border-slate-300 dark:border-slate-600"
                 >
-                  Cancel
+                  <ArrowLeft size={18} />
+                  <span>Back</span>
                 </button>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">
+                  MOSQUITO SLAP SETUP
+                </h2>
+              </div>
+              <div className="flex flex-wrap gap-2.5 items-center">
+                {onPlayDirect && (
+                  <button
+                    type="button"
+                    onClick={handlePlayArena}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-md shadow-emerald-600/25 cursor-pointer text-sm sm:text-base"
+                  >
+                    <Play size={17} fill="currentColor" />
+                    <span>Play Arena</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-sky-500 text-white font-bold hover:bg-sky-600 transition-colors shadow-lg shadow-sky-500/30 cursor-pointer"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm sm:text-base"
                 >
-                  <Save size={18} /> Save Quiz
+                  <Save size={18} />
+                  <span>Save Quiz</span>
                 </button>
+                <FullscreenButton targetId="slap-and-chop-container" className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-600" />
               </div>
             </div>
 
@@ -9240,12 +9165,24 @@ function QuizEditor({
         onSelect={(url) => {
           if (activeGiphyInput) {
             if (activeGiphyInput.optIndex === 'question') {
-              updateQuestion(activeGiphyInput.qId, 'image', url);
+              const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
+              const parsedQ = parseOptionContent(targetQ?.text || '');
+              setQuestions((prev) =>
+                prev.map((qItem) =>
+                  qItem.id === activeGiphyInput.qId
+                    ? { ...qItem, text: parsedQ.text, image: url }
+                    : qItem
+                )
+              );
             } else {
               const targetQ = questions.find((q) => q.id === activeGiphyInput.qId);
               const currentRaw = targetQ?.options[activeGiphyInput.optIndex] || "";
               const parsed = parseOptionContent(currentRaw);
-              const nextVal = formatOptionContent(parsed.text, url, contentMode === "words" ? "both" : contentMode);
+              const wordToKeep = parsed.text || activeGiphyInput.initialQuery || "";
+              const nextVal =
+                contentMode === "photos_gifs" || !wordToKeep
+                  ? url
+                  : formatOptionContent(wordToKeep, url, "both");
               updateOption(activeGiphyInput.qId, activeGiphyInput.optIndex, nextVal);
             }
             setActiveGiphyInput(null);

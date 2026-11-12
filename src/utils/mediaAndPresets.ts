@@ -1,4 +1,4 @@
-// Multi-Source Cartoon PNG, Photo & GIF Search + Auto-Recommended Photo Engine + Setup Presets
+// Multi-Source Cartoon PNG, Photo & Real GIPHY GIF/Sticker Search + Auto-Recommended Photo Engine + Setup Presets
 
 export type AnswerContentMode = 'words' | 'photos_gifs' | 'both';
 export type OptionContentMode = AnswerContentMode;
@@ -28,10 +28,11 @@ export function isDirectMediaUrl(val: string): boolean {
 }
 
 /**
- * Parses an option string that may be:
+ * Parses an option or question string that may be:
  * - Plain text: "Apple"
  * - Direct image/GIF URL: "https://..."
  * - Combined Word + Image/GIF: "Apple|||https://..."
+ * Even if multiple "|||" delimiters were accidentally concatenated, extracts clean text and the last valid URL.
  */
 export function parseOptionContent(rawOpt: string): ParsedOptionContent {
   if (!rawOpt || typeof rawOpt !== 'string') {
@@ -39,10 +40,28 @@ export function parseOptionContent(rawOpt: string): ParsedOptionContent {
   }
   const trimmed = rawOpt.trim();
   if (trimmed.includes(OPTION_MEDIA_DELIMITER)) {
-    const [textPart, ...urlParts] = trimmed.split(OPTION_MEDIA_DELIMITER);
-    const url = urlParts.join(OPTION_MEDIA_DELIMITER).trim();
-    const cleanText = textPart.trim();
-    if (url && (url.startsWith('http') || url.startsWith('data:image') || url.startsWith('/'))) {
+    const parts = trimmed
+      .split(OPTION_MEDIA_DELIMITER)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    let cleanText = '';
+    let url = '';
+
+    for (const part of parts) {
+      if (
+        part.startsWith('http://') ||
+        part.startsWith('https://') ||
+        part.startsWith('data:image') ||
+        part.startsWith('/assets/')
+      ) {
+        url = part;
+      } else if (!cleanText) {
+        cleanText = part;
+      }
+    }
+
+    if (url) {
       if (cleanText) {
         return { raw: rawOpt, text: cleanText, imageUrl: url, mode: 'both' };
       }
@@ -59,15 +78,18 @@ export function parseOptionContent(rawOpt: string): ParsedOptionContent {
 }
 
 /**
- * Formats text and imageUrl according to the desired mode
+ * Formats text and imageUrl according to the desired mode.
+ * Note: In 'photos_gifs' mode, if both text and imageUrl exist, we preserve `text|||imageUrl`
+ * or `imageUrl` so the editor still knows what word was typed while games know to render Pictures Only.
  */
 export function formatOptionContent(
   text: string,
   imageUrl: string | null | undefined,
   mode: AnswerContentMode = 'words'
 ): string {
-  const cleanText = (text || '').replace(/\|\|\|/g, ' ').trim();
-  const cleanUrl = (imageUrl || '').trim();
+  const parsedExisting = parseOptionContent(text || '');
+  const cleanText = (parsedExisting.text || '').replace(/\|\|\|/g, ' ').trim();
+  const cleanUrl = (imageUrl || parsedExisting.imageUrl || '').trim();
 
   if (mode === 'words' || !cleanUrl) {
     return cleanText;
@@ -84,8 +106,6 @@ export function formatOptionContent(
 
 /**
  * Curated map of common classroom vocabulary words to Twemoji high-res transparent Cartoon PNGs
- * (72x72 / 512x512 crisp vector-rendered cartoon PNGs via jsDelivr CDN, 100% uptime & CORS-friendly)
- * Plus ARASAAC cartoon pictograms lookup for thousands more words!
  */
 const TWEMOJI_BASE = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72';
 
@@ -189,7 +209,6 @@ const WORD_TO_TWEMOJI_CODE: Record<string, string> = {
   pig: '1f437',
   frog: '1f438',
   monkey: '1f435',
-  chicken_bird: '1f414',
   hen: '1f414',
   rooster: '1f413',
   penguin: '1f427',
@@ -260,7 +279,6 @@ const WORD_TO_TWEMOJI_CODE: Record<string, string> = {
   plane: '2708',
   helicopter: '1f681',
   rocket: '1f680',
-  UFO: '1f6f8',
   boat: '26f5',
   ship: '1f6a2',
   submarine: '1f6a2',
@@ -365,7 +383,7 @@ const WORD_TO_TWEMOJI_CODE: Record<string, string> = {
   ocean: '1f30a',
   wave: '1f30a',
 
-  // Emotions, People, Body & Actions
+  // Emotions, People, Jobs, Body & Actions
   happy: '1f604',
   smile: '1f604',
   laugh: '1f602',
@@ -378,6 +396,7 @@ const WORD_TO_TWEMOJI_CODE: Record<string, string> = {
   sleepy: '1f634',
   tired: '1f634',
   sleep: '1f6cc',
+  sleeping: '1f6cc',
   sick: '1f912',
   cool: '1f60e',
   love: '2764',
@@ -391,21 +410,33 @@ const WORD_TO_TWEMOJI_CODE: Record<string, string> = {
   dance: '1f483',
   dancing: '1f483',
   sing: '1f3a4',
+  singing: '1f3a4',
   read: '1f4d6',
+  reading: '1f4d6',
   write: '270d',
+  writing: '270d',
   eat: '1f37d',
+  eating: '1f37d',
   drink: '1f964',
+  drinking: '1f964',
   cook: '1f468-200d-1f373',
   chef: '1f468-200d-1f373',
   teacher: '1f469-200d-1f3eb',
   doctor: '1f468-200d-2695-fe0f',
+  nurse: '1f469-200d-2695-fe0f',
   student: '1f468-200d-1f393',
-  police_officer: '1f46e',
+  policeman: '1f46e',
+  policewoman: '1f46e',
+  'police officer': '1f46e',
+  officer: '1f46e',
   firefighter: '1f468-200d-1f692',
+  fireman: '1f468-200d-1f692',
   astronaut: '1f468-200d-1f680',
   artist: '1f468-200d-1f3a8',
   pilot: '1f468-200d-2708-fe0f',
   farmer: '1f468-200d-1f33e',
+  singer: '1f469-200d-1f3a4',
+  scientist: '1f469-200d-1f52c',
   eye: '1f441',
   eyes: '1f440',
   ear: '1f442',
@@ -416,13 +447,12 @@ const WORD_TO_TWEMOJI_CODE: Record<string, string> = {
   brain: '1f9e0',
   tooth: '1f9b7',
 
-  // Colors & Numbers
+  // Colors
   red: '1f534',
   blue: '1f535',
   green: '1f7e2',
   yellow: '1f7e1',
   purple: '1f7e3',
-  orange_color: '1f7e0',
   black: '26ab',
   white: '26aa',
 };
@@ -430,20 +460,39 @@ const WORD_TO_TWEMOJI_CODE: Record<string, string> = {
 // In-memory cache for async cartoon PNG lookups
 const recommendedPhotoCache = new Map<string, string>();
 
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'is', 'are', 'am', 'was', 'were', 'he', 'she', 'it', 'they', 'we', 'you', 'i',
+  'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her', 'our', 'their', 'in', 'on', 'at',
+  'to', 'for', 'of', 'with', 'by', 'from', 'what', 'which', 'who', 'where', 'when', 'how', 'can',
+  'do', 'does', 'did', 'has', 'have', 'had', 'not', 'no', 'yes'
+]);
+
 /**
- * Normalizes a user's typed option text to a clean keyword for photo lookup
+ * Normalizes a user's typed option or question text to a clean keyword for photo lookup
  */
 export function normalizeKeyword(input: string): string {
   if (!input) return '';
   const parsed = parseOptionContent(input);
   const text = parsed.text || '';
-  return text
+  const cleaned = text
     .toLowerCase()
     .replace(/^[a-f]\)\s*/i, '')
     .replace(/^[1-6]\.\s*/, '')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  if (!cleaned) return '';
+
+  // If it's a full sentence like "He is a policeman", extract the meaningful noun/verb tokens
+  const tokens = cleaned.split(' ').filter(Boolean);
+  if (tokens.length > 2) {
+    const meaningful = tokens.filter((t) => !STOP_WORDS.has(t));
+    if (meaningful.length > 0) {
+      return meaningful.join(' ');
+    }
+  }
+  return cleaned;
 }
 
 /**
@@ -470,9 +519,10 @@ export function getInstantCartoonPng(word: string): string | null {
     return `${TWEMOJI_BASE}/${WORD_TO_TWEMOJI_CODE[clean.slice(0, -1)]}.png`;
   }
 
-  // Check if any word in a short phrase matches
-  const tokens = clean.split(' ');
-  for (const token of tokens) {
+  // Check if any meaningful token in a phrase matches
+  const tokens = clean.split(' ').filter((t) => !STOP_WORDS.has(t));
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const token = tokens[i];
     if (WORD_TO_TWEMOJI_CODE[token]) {
       return `${TWEMOJI_BASE}/${WORD_TO_TWEMOJI_CODE[token]}.png`;
     }
@@ -484,7 +534,7 @@ export function getInstantCartoonPng(word: string): string | null {
   return null;
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number = 2200): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs: number = 2500): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -496,7 +546,63 @@ async function fetchWithTimeout(url: string, timeoutMs: number = 2200): Promise<
 }
 
 /**
+ * Checks if a candidate title or filename genuinely matches the searched keyword
+ * (prevents "sea lion", "candle", "bench", "coat of arms" when searching "lion")
+ */
+function isRelevantMediaTitle(title: string, rawQuery: string): boolean {
+  if (!title) return false;
+  const cleanTitle = title
+    .toLowerCase()
+    .replace(/^file:/i, '')
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const cleanQ = normalizeKeyword(rawQuery);
+  if (!cleanQ) return true;
+
+  // Reject noisy heraldry, coats of arms, flags, maps, diagrams, stamps, signatures
+  const noiseWords = [
+    'coat of arms', 'blason', 'wappen', 'heraldry', 'escudo', 'stemma',
+    'flag of', 'map of', 'location', 'diagram', 'signature', 'autograph',
+    'postage stamp', 'coin', 'medal', 'logo', 'wikimedia', 'user ', 'template'
+  ];
+  for (const noise of noiseWords) {
+    if (cleanTitle.includes(noise) && !cleanQ.includes(noise)) {
+      return false;
+    }
+  }
+
+  // Specific disambiguations (e.g., "lion" should not match "sea lion" or "dandelion" or "mountain lion" unless asked)
+  if (cleanQ === 'lion') {
+    if (
+      cleanTitle.includes('sea lion') ||
+      cleanTitle.includes('sealion') ||
+      cleanTitle.includes('dandelion') ||
+      cleanTitle.includes('antlion') ||
+      cleanTitle.includes('lionel') ||
+      cleanTitle.includes('lions club')
+    ) {
+      return false;
+    }
+  }
+
+  const titleWords = new Set(cleanTitle.split(' '));
+  const queryTokens = cleanQ.split(' ').filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
+  if (queryTokens.length === 0) return true;
+
+  // Require at least the primary keyword (or its plural/singular form) as a whole word in the title
+  return queryTokens.some((qt) => {
+    const singular = qt.endsWith('s') ? qt.slice(0, -1) : qt;
+    const plural = `${singular}s`;
+    return titleWords.has(qt) || titleWords.has(singular) || titleWords.has(plural);
+  });
+}
+
+/**
  * Returns an instant list of Cartoon PNGs from the built-in dictionary (0ms latency)
+ * Strictly matches whole words/tokens so unrelated icons never appear.
  */
 export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchResult[] {
   const clean = normalizeKeyword(searchQuery);
@@ -505,7 +611,8 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
   const matched: PhotoSearchResult[] = [];
 
   if (clean) {
-    // Exact matches first, then partial matches
+    const queryTokens = new Set(clean.split(' ').filter(Boolean));
+    // 1. Exact phrase match
     for (const [word, code] of entries) {
       if (word === clean && !seenCodes.has(code)) {
         seenCodes.add(code);
@@ -514,32 +621,36 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
           id: `instant-exact-${word}`,
           alt_description: word,
           isCartoonPng: true,
-          source: 'Cartoon PNG',
+          source: 'Clipart PNG',
           urls: { regular: url, small: url },
         });
       }
     }
+    // 2. Whole-token match only (never arbitrary substring match)
     for (const [word, code] of entries) {
-      if ((word.includes(clean) || clean.includes(word)) && !seenCodes.has(code)) {
+      const wordTokens = word.split(' ');
+      const isTokenMatch =
+        wordTokens.some((wt) => queryTokens.has(wt) || queryTokens.has(`${wt}s`)) ||
+        queryTokens.has(word);
+      if (isTokenMatch && !seenCodes.has(code)) {
         seenCodes.add(code);
         const url = `${TWEMOJI_BASE}/${code}.png`;
         matched.push({
-          id: `instant-partial-${word}`,
+          id: `instant-token-${word}`,
           alt_description: word,
           isCartoonPng: true,
-          source: 'Cartoon PNG',
+          source: 'Clipart PNG',
           urls: { regular: url, small: url },
         });
       }
     }
   } else {
-    // Popular starter gallery when search box is empty (0ms loading!)
     const popularWords = [
       'cat', 'dog', 'hamster', 'lion', 'tiger', 'panda', 'monkey', 'elephant',
       'rabbit', 'shark', 'dolphin', 'butterfly', 'pizza', 'burger', 'ice cream',
       'cake', 'strawberry', 'banana', 'watermelon', 'car', 'airplane', 'rocket',
-      'book', 'school', 'soccer', 'guitar', 'sun', 'rainbow', 'happy', 'star',
-      'trophy', 'crown'
+      'book', 'school', 'policeman', 'doctor', 'teacher', 'soccer', 'guitar',
+      'sun', 'rainbow', 'happy'
     ];
     for (const word of popularWords) {
       const code = WORD_TO_TWEMOJI_CODE[word];
@@ -550,7 +661,7 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
           id: `instant-pop-${word}`,
           alt_description: word,
           isCartoonPng: true,
-          source: 'Cartoon PNG',
+          source: 'Clipart PNG',
           urls: { regular: url, small: url },
         });
       }
@@ -563,8 +674,8 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
 /**
  * Asynchronously fetches the best Cartoon PNG for any word or phrase:
  * 1. Checks instant Twemoji cartoon PNG dictionary (0ms)
- * 2. Queries ARASAAC Cartoon Pictograms API with fast timeout
- * 3. Queries Wikimedia Cartoon PNG search with fast timeout
+ * 2. Queries ARASAAC Cartoon Pictograms API with strict keyword check
+ * 3. Queries Wikipedia lead image / strict intitle Wikimedia search
  */
 export async function fetchRecommendedCartoonPng(word: string): Promise<string | null> {
   const clean = normalizeKeyword(word);
@@ -581,11 +692,11 @@ export async function fetchRecommendedCartoonPng(word: string): Promise<string |
     return instant;
   }
 
-  // 2. Try ARASAAC Educational Cartoon Pictogram PNG with fast 1.8s timeout
+  // 2. Try ARASAAC Educational Cartoon Pictogram PNG
   try {
     const arasaacRes = await fetchWithTimeout(
       `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(clean)}`,
-      1800
+      2000
     );
     if (arasaacRes.ok) {
       const data = await arasaacRes.json();
@@ -599,17 +710,17 @@ export async function fetchRecommendedCartoonPng(word: string): Promise<string |
     // Fallback to next source
   }
 
-  // 3. Try Wikimedia Commons Cartoon PNG search with fast 1.8s timeout
+  // 3. Try Wikipedia Page Lead Image (accurate canonical image for any noun)
   try {
-    const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
-      `filetype:bitmap|drawing ${clean} cartoon OR clipart OR icon`
-    )}&gsrnamespace=6&gsrlimit=4&prop=imageinfo&iiprop=url|mime&iiurlwidth=400&format=json&origin=*`;
-    const wikiRes = await fetchWithTimeout(wikiUrl, 1800);
-    if (wikiRes.ok) {
-      const wikiData = await wikiRes.json();
-      const pages = wikiData?.query?.pages ? Object.values(wikiData.query.pages) : [];
+    const wpUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(
+      clean
+    )}&prop=pageimages&piprop=thumbnail&pithumbsize=500&redirects=1&format=json&origin=*`;
+    const wpRes = await fetchWithTimeout(wpUrl, 2000);
+    if (wpRes.ok) {
+      const wpData = await wpRes.json();
+      const pages = wpData?.query?.pages ? Object.values(wpData.query.pages) : [];
       for (const page of pages as any[]) {
-        const thumb = page?.imageinfo?.[0]?.thumburl || page?.imageinfo?.[0]?.url;
+        const thumb = page?.thumbnail?.source;
         if (thumb) {
           recommendedPhotoCache.set(clean, thumb);
           return thumb;
@@ -638,6 +749,7 @@ export interface GifSearchResult {
   id: string;
   title: string;
   source?: string;
+  isSticker?: boolean;
   images: {
     fixed_height: { url: string };
     fixed_height_small: { url: string };
@@ -645,7 +757,12 @@ export interface GifSearchResult {
 }
 
 /**
- * Multi-source Cartoon PNG & Photo Search with fast timeouts and progressive streaming
+ * Multi-source Accurate Photo & Clipart Search:
+ * - Instant Twemoji Clipart (strict whole-word match)
+ * - ARASAAC Educational Clipart (strict keyword match)
+ * - Wikipedia Canonical Lead Photo (100% accurate real photo for any topic/noun)
+ * - Openverse Creative Commons Photos & Illustrations (strict title/tag relevance)
+ * - Wikimedia Commons with strict `intitle:` & parenthesized boolean query + filename relevance filter
  */
 export async function searchPhotosMultiSource(
   rawQuery: string,
@@ -653,7 +770,8 @@ export async function searchPhotosMultiSource(
   onProgress?: (partial: PhotoSearchResult[]) => void
 ): Promise<PhotoSearchResult[]> {
   const query = rawQuery.trim();
-  if (!query) {
+  const cleanQ = normalizeKeyword(query) || query.toLowerCase();
+  if (!cleanQ) {
     const starter = getInstantCartoonGallery('');
     onProgress?.(starter);
     return starter;
@@ -662,13 +780,24 @@ export async function searchPhotosMultiSource(
   const results: PhotoSearchResult[] = [];
   const seenUrls = new Set<string>();
 
+  const sortResults = (list: PhotoSearchResult[]) => {
+    return [...list].sort((a, b) => {
+      if (prioritizeCartoonPng) {
+        const aC = a.isCartoonPng ? 1 : 0;
+        const bC = b.isCartoonPng ? 1 : 0;
+        if (bC !== aC) return bC - aC;
+      } else {
+        const aP = !a.isCartoonPng ? 1 : 0;
+        const bP = !b.isCartoonPng ? 1 : 0;
+        if (bP !== aP) return bP - aP;
+      }
+      return 0;
+    });
+  };
+
   const notifyProgress = () => {
     if (!onProgress) return;
-    const copy = [...results];
-    if (prioritizeCartoonPng) {
-      copy.sort((a, b) => (b.isCartoonPng ? 1 : 0) - (a.isCartoonPng ? 1 : 0));
-    }
-    onProgress(copy);
+    onProgress(sortResults(results));
   };
 
   const pushUnique = (item: PhotoSearchResult) => {
@@ -677,77 +806,36 @@ export async function searchPhotosMultiSource(
     results.push(item);
   };
 
-  // 1. Instant local Cartoon PNG matches (0ms!)
-  const instantMatches = getInstantCartoonGallery(query);
+  // 1. Instant local Cartoon PNG matches (strict whole-word match)
+  const instantMatches = getInstantCartoonGallery(cleanQ);
   instantMatches.forEach((m) => pushUnique(m));
   if (results.length > 0) {
     notifyProgress();
   }
 
-  // 2. Fetch in parallel with fast 2.2s timeout per source so slow APIs never block UI
   const tasks: Promise<void>[] = [];
 
-  // Task A: ARASAAC Cartoon Pictograms API (Transparent 500x500 Cartoon PNGs!)
+  // Task A: Wikipedia Lead Image & Related Articles (Canonical high-accuracy real photos)
   tasks.push(
     (async () => {
       try {
-        const cleanQ = normalizeKeyword(query) || query;
-        const res = await fetchWithTimeout(
-          `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(cleanQ)}`,
-          2200
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            data.slice(0, 16).forEach((item: any, idx: number) => {
-              if (item && item._id) {
-                const pngUrl = `https://static.arasaac.org/pictograms/${item._id}/${item._id}_500.png`;
-                const kw = item.keywords?.[0]?.keyword || query;
-                pushUnique({
-                  id: `arasaac-${item._id}-${idx}`,
-                  alt_description: `${kw} (Cartoon PNG)`,
-                  isCartoonPng: true,
-                  source: 'Cartoon PNG',
-                  urls: { regular: pngUrl, small: pngUrl },
-                });
-              }
-            });
-            notifyProgress();
-          }
-        }
-      } catch {
-        // Ignore individual source timeout/error
-      }
-    })()
-  );
-
-  // Task B: Wikimedia Commons Cartoon PNGs / Clipart / Illustrations
-  tasks.push(
-    (async () => {
-      try {
-        const searchQ = prioritizeCartoonPng
-          ? `filetype:bitmap|drawing ${query} cartoon OR clipart OR illustration OR icon`
-          : `filetype:bitmap ${query}`;
-        const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
-          searchQ
-        )}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url|mime&iiurlwidth=480&format=json&origin=*`;
-        const res = await fetchWithTimeout(url, 2200);
+        const wpUrl = `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
+          `intitle:${cleanQ}`
+        )}&gsrlimit=8&prop=pageimages&piprop=thumbnail&pithumbsize=500&format=json&origin=*`;
+        const res = await fetchWithTimeout(wpUrl, 2400);
         if (res.ok) {
           const data = await res.json();
           const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
           (pages as any[]).forEach((page: any) => {
-            const info = page?.imageinfo?.[0];
-            const thumb = info?.thumburl || info?.url;
-            if (thumb) {
-              const isPng =
-                thumb.toLowerCase().endsWith('.png') ||
-                (info?.mime && info.mime.includes('png')) ||
-                (info?.mime && info.mime.includes('svg'));
+            const thumb = page?.thumbnail?.source;
+            const title = page?.title || '';
+            if (thumb && isRelevantMediaTitle(title, cleanQ)) {
+              const isSvgOrPng = thumb.toLowerCase().includes('.svg');
               pushUnique({
-                id: `wiki-${page.pageid}`,
-                alt_description: (page.title || query).replace(/^File:/i, ''),
-                isCartoonPng: isPng,
-                source: isPng ? 'Cartoon PNG' : 'Photo',
+                id: `wp-${page.pageid}`,
+                alt_description: title,
+                isCartoonPng: isSvgOrPng,
+                source: 'Encyclopedia Photo',
                 urls: { regular: thumb, small: thumb },
               });
             }
@@ -760,27 +848,152 @@ export async function searchPhotosMultiSource(
     })()
   );
 
-  // Task C: Wikimedia general photos
+  // Task B: ARASAAC Educational Cartoon Pictograms (Strict keyword relevance)
   tasks.push(
     (async () => {
       try {
+        const res = await fetchWithTimeout(
+          `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(cleanQ)}`,
+          2400
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const filtered = data.filter((item: any) => {
+              const kws: string[] = (item?.keywords || []).map((k: any) =>
+                String(k?.keyword || '').toLowerCase().trim()
+              );
+              return kws.some((k) => isRelevantMediaTitle(k, cleanQ));
+            });
+            const listToUse = filtered.length > 0 ? filtered : data.slice(0, 6);
+            listToUse.slice(0, 12).forEach((item: any, idx: number) => {
+              if (item && item._id) {
+                const pngUrl = `https://static.arasaac.org/pictograms/${item._id}/${item._id}_500.png`;
+                const kw = item.keywords?.[0]?.keyword || cleanQ;
+                pushUnique({
+                  id: `arasaac-${item._id}-${idx}`,
+                  alt_description: kw,
+                  isCartoonPng: true,
+                  source: 'Classroom Clipart',
+                  urls: { regular: pngUrl, small: pngUrl },
+                });
+              }
+            });
+            notifyProgress();
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    })()
+  );
+
+  // Task C: Openverse Photography & Illustrations API (High-quality curated photos & clipart)
+  tasks.push(
+    (async () => {
+      try {
+        const ovUrl = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(
+          cleanQ
+        )}&page_size=20&mature=false`;
+        const res = await fetchWithTimeout(ovUrl, 2600);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data?.results)) {
+            data.results.forEach((item: any) => {
+              const title = item?.title || '';
+              if (!isRelevantMediaTitle(title, cleanQ)) return;
+              const thumb = item?.thumbnail || item?.url;
+              const full = item?.url || thumb;
+              if (thumb && full) {
+                const isIllust =
+                  item?.category === 'illustration' ||
+                  full.toLowerCase().endsWith('.png') ||
+                  full.toLowerCase().endsWith('.svg');
+                pushUnique({
+                  id: `ov-${item.id}`,
+                  alt_description: title || cleanQ,
+                  isCartoonPng: isIllust,
+                  source: isIllust ? 'Clipart PNG' : 'HD Photo',
+                  urls: { regular: full, small: thumb },
+                });
+              }
+            });
+            notifyProgress();
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    })()
+  );
+
+  // Task D: Strict Wikimedia Commons Search (Parenthesized boolean query + strict title validation)
+  tasks.push(
+    (async () => {
+      try {
+        // CRITICAL FIX: Parenthesize (cartoon OR clipart OR illustration) and require intitle:"query"
+        // so Wikimedia never returns arbitrary files matching only "illustration" or "icon"
+        const strictWikiQuery = prioritizeCartoonPng
+          ? `intitle:"${cleanQ}" (cartoon OR clipart OR illustration OR svg) filetype:bitmap|drawing`
+          : `intitle:"${cleanQ}" filetype:bitmap -cartoon -icon -svg -map -coat -flag`;
+
         const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
-          `filetype:bitmap ${query}`
-        )}&gsrnamespace=6&gsrlimit=16&prop=imageinfo&iiprop=url|mime&iiurlwidth=480&format=json&origin=*`;
-        const res = await fetchWithTimeout(url, 2200);
+          strictWikiQuery
+        )}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url|mime&iiurlwidth=500&format=json&origin=*`;
+        const res = await fetchWithTimeout(url, 2500);
         if (res.ok) {
           const data = await res.json();
           const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
           (pages as any[]).forEach((page: any) => {
+            const rawTitle = (page.title || '').replace(/^File:/i, '');
+            if (!isRelevantMediaTitle(rawTitle, cleanQ)) return;
             const info = page?.imageinfo?.[0];
             const thumb = info?.thumburl || info?.url;
             if (thumb) {
-              const isPng = thumb.toLowerCase().endsWith('.png');
+              const isPngOrSvg =
+                thumb.toLowerCase().endsWith('.png') ||
+                (info?.mime && (info.mime.includes('png') || info.mime.includes('svg')));
               pushUnique({
-                id: `wiki-photo-${page.pageid}`,
-                alt_description: (page.title || query).replace(/^File:/i, ''),
+                id: `wiki-strict-${page.pageid}`,
+                alt_description: rawTitle,
+                isCartoonPng: Boolean(isPngOrSvg),
+                source: isPngOrSvg ? 'Clipart PNG' : 'Real Photo',
+                urls: { regular: thumb, small: thumb },
+              });
+            }
+          });
+          notifyProgress();
+        }
+      } catch {
+        // Ignore
+      }
+    })()
+  );
+
+  // Task E: Always also fetch Real Photos from Wikimedia with strict intitle match so switching to Real Photos has rich results
+  tasks.push(
+    (async () => {
+      try {
+        const photoWikiQuery = `intitle:"${cleanQ}" filetype:bitmap -svg -icon -coat -flag -map -diagram`;
+        const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
+          photoWikiQuery
+        )}&gsrnamespace=6&gsrlimit=18&prop=imageinfo&iiprop=url|mime&iiurlwidth=500&format=json&origin=*`;
+        const res = await fetchWithTimeout(url, 2500);
+        if (res.ok) {
+          const data = await res.json();
+          const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
+          (pages as any[]).forEach((page: any) => {
+            const rawTitle = (page.title || '').replace(/^File:/i, '');
+            if (!isRelevantMediaTitle(rawTitle, cleanQ)) return;
+            const info = page?.imageinfo?.[0];
+            const thumb = info?.thumburl || info?.url;
+            if (thumb && info?.mime && (info.mime.includes('jpeg') || info.mime.includes('png') || info.mime.includes('webp'))) {
+              const isPng = info.mime.includes('png');
+              pushUnique({
+                id: `wiki-realphoto-${page.pageid}`,
+                alt_description: rawTitle,
                 isCartoonPng: isPng,
-                source: isPng ? 'PNG Image' : 'Photo',
+                source: isPng ? 'Clipart PNG' : 'Real Photo',
                 urls: { regular: thumb, small: thumb },
               });
             }
@@ -794,27 +1007,26 @@ export async function searchPhotosMultiSource(
   );
 
   await Promise.allSettled(tasks);
-
-  if (prioritizeCartoonPng) {
-    results.sort((a, b) => {
-      const aScore = a.isCartoonPng ? 1 : 0;
-      const bScore = b.isCartoonPng ? 1 : 0;
-      return bScore - aScore;
-    });
-  }
-
-  return results;
+  return sortResults(results);
 }
 
+// Public GIPHY API Keys (tried in order for real GIPHY GIFs and Stickers)
+const GIPHY_PUBLIC_KEYS = [
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GIPHY_API_KEY) || '',
+  'GlVGYHkr3WSBnllca54iNt0yFbjz7L65',
+  'sXpGFDGZs0Dv1mmNFvYaGUvYwKX0PWIh',
+  'dc6zaTOxFJmzC',
+].filter(Boolean);
+
 /**
- * Multi-source GIF Search with fast timeouts and progressive results
+ * Multi-source Real GIPHY GIF & Sticker Search with Tenor animated fallback
  */
 export async function searchGifsMultiSource(
   rawQuery: string,
-  onProgress?: (partial: GifSearchResult[]) => void
+  onProgress?: (partial: GifSearchResult[]) => void,
+  gifMode: 'gifs' | 'stickers' = 'gifs'
 ): Promise<GifSearchResult[]> {
-  const query = rawQuery.trim() || 'happy cartoon';
-
+  const clean = normalizeKeyword(rawQuery) || rawQuery.trim() || 'happy excited';
   const results: GifSearchResult[] = [];
   const seenUrls = new Set<string>();
 
@@ -827,13 +1039,64 @@ export async function searchGifsMultiSource(
 
   const tasks: Promise<void>[] = [];
 
-  // 1. Direct Tenor Public API (Client-side CORS enabled, super fast, millions of GIFs)
+  // 1. Real GIPHY v1 API (GIFs or Stickers endpoint, G-rated for classroom safety)
+  tasks.push(
+    (async () => {
+      const endpoint = gifMode === 'stickers' ? 'stickers' : 'gifs';
+      for (const apiKey of GIPHY_PUBLIC_KEYS) {
+        try {
+          const giphyUrl = `https://api.giphy.com/v1/${endpoint}/search?api_key=${encodeURIComponent(
+            apiKey
+          )}&q=${encodeURIComponent(clean)}&limit=24&rating=g&lang=en`;
+          const res = await fetchWithTimeout(giphyUrl, 2400);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data?.data) && data.data.length > 0) {
+              data.data.forEach((item: any) => {
+                const imgs = item?.images;
+                const fullGif =
+                  imgs?.fixed_height?.url ||
+                  imgs?.downsized_medium?.url ||
+                  imgs?.original?.url;
+                const smallGif =
+                  imgs?.fixed_height_small?.url ||
+                  imgs?.fixed_width_small?.url ||
+                  imgs?. fixed_height_downsampled?.url ||
+                  fullGif;
+                if (fullGif) {
+                  pushUnique({
+                    id: `giphy-${endpoint}-${item.id}`,
+                    title: item.title || clean,
+                    source: gifMode === 'stickers' ? 'GIPHY Sticker' : 'GIPHY',
+                    isSticker: gifMode === 'stickers',
+                    images: {
+                      fixed_height: { url: fullGif },
+                      fixed_height_small: { url: smallGif || fullGif },
+                    },
+                  });
+                }
+              });
+              onProgress?.([...results]);
+              break; // Succeeded with this GIPHY key
+            }
+          }
+        } catch {
+          // Try next GIPHY key
+        }
+      }
+    })()
+  );
+
+  // 2. Tenor Animated GIFs & Stickers API (High-speed supplementary source)
   tasks.push(
     (async () => {
       try {
+        const tenorQuery = gifMode === 'stickers' ? `${clean} sticker cartoon` : clean;
         const tenorRes = await fetchWithTimeout(
-          `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=LIVDSRZULELA&limit=24`,
-          2200
+          `https://g.tenor.com/v1/search?q=${encodeURIComponent(
+            tenorQuery
+          )}&key=LIVDSRZULELA&limit=24&contentfilter=high`,
+          2400
         );
         if (tenorRes.ok) {
           const tenorData = await tenorRes.json();
@@ -845,8 +1108,9 @@ export async function searchGifsMultiSource(
               if (fullGif) {
                 pushUnique({
                   id: `tenor-${item.id}`,
-                  title: item.content_description || item.title || query,
-                  source: 'Tenor GIF',
+                  title: item.content_description || item.title || clean,
+                  source: gifMode === 'stickers' ? 'Animated Sticker' : 'Animated GIF',
+                  isSticker: gifMode === 'stickers',
                   images: {
                     fixed_height: { url: fullGif },
                     fixed_height_small: { url: smallGif || fullGif },
@@ -863,40 +1127,15 @@ export async function searchGifsMultiSource(
     })()
   );
 
-  // 2. Wikimedia Commons Animated GIFs
-  tasks.push(
-    (async () => {
-      try {
-        const wikiGifUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
-          `filetype:bitmap mime:image/gif ${query}`
-        )}&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url&format=json&origin=*`;
-        const res = await fetchWithTimeout(wikiGifUrl, 2200);
-        if (res.ok) {
-          const data = await res.json();
-          const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
-          (pages as any[]).forEach((page: any) => {
-            const gifUrl = page?.imageinfo?.[0]?.url;
-            if (gifUrl && gifUrl.toLowerCase().endsWith('.gif')) {
-              pushUnique({
-                id: `wikigif-${page.pageid}`,
-                title: (page.title || query).replace(/^File:/i, ''),
-                source: 'Commons GIF',
-                images: {
-                  fixed_height: { url: gifUrl },
-                  fixed_height_small: { url: gifUrl },
-                },
-              });
-            }
-          });
-          onProgress?.([...results]);
-        }
-      } catch {
-        // Ignore
-      }
-    })()
-  );
-
   await Promise.allSettled(tasks);
+
+  // Prioritize official GIPHY results first
+  results.sort((a, b) => {
+    const aGiphy = a.source?.startsWith('GIPHY') ? 1 : 0;
+    const bGiphy = b.source?.startsWith('GIPHY') ? 1 : 0;
+    return bGiphy - aGiphy;
+  });
+
   return results;
 }
 
@@ -1020,10 +1259,6 @@ export const DEFAULT_SUGGESTED_FOLDERS: { id: string; name: string }[] = [
   { id: 'folder-favorites', name: '⭐ Teacher Favorites' },
 ];
 
-/**
- * Built-in Topic Starter Question Decks so selecting a Topic + Content Mode (Words Only / Photos & GIFs / Both)
- * can immediately generate rich questions with cartoon PNGs!
- */
 export interface StarterQuestionTemplate {
   text: string;
   options: string[];

@@ -236,8 +236,37 @@ export default function App() {
     syncClassesBackground();
   }, [user]);
 
+  const viewHistoryRef = useRef<Array<{ view: ViewState; game: any }>>([]);
+  const currentViewRef = useRef<ViewState>(currentView);
+  currentViewRef.current = currentView;
+  const selectedGameRef = useRef<any>(selectedGame);
+  selectedGameRef.current = selectedGame;
+
   useEffect(() => {
-    const checkUrlParams = () => {
+    const checkUrlParams = (e?: PopStateEvent) => {
+      // If user clicked Browser Back and an active game screen can step 1 step back internally:
+      const activeStepBack = (window as any).__activeViewStepBack;
+      if (e && typeof activeStepBack === 'function') {
+        const handledInternally = activeStepBack();
+        if (handledInternally) {
+          try {
+            window.history.pushState({ appStep: true, view: currentViewRef.current }, '', window.location.href);
+          } catch {}
+          return;
+        }
+      }
+
+      // If user clicked Browser Back and we have previous views in our history stack, go 1 step back:
+      if (e && viewHistoryRef.current.length > 0) {
+        const prev = viewHistoryRef.current.pop()!;
+        setCurrentView(prev.view);
+        setSelectedGame(prev.game || null);
+        try {
+          window.history.pushState({ appStep: true, view: prev.view }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
       const hwPin = getUrlHwPin(false);
       if (hwPin) {
         setIsLockedHomeworkLink(true);
@@ -266,11 +295,16 @@ export default function App() {
     };
 
     checkUrlParams();
-    window.addEventListener('popstate', checkUrlParams);
-    window.addEventListener('hashchange', checkUrlParams);
+    try {
+      window.history.replaceState({ appStep: true, view: currentViewRef.current }, '', window.location.href);
+    } catch {}
+    const onPopState = (e: PopStateEvent) => checkUrlParams(e);
+    const onHashChange = () => checkUrlParams();
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('hashchange', onHashChange);
     return () => {
-      window.removeEventListener('popstate', checkUrlParams);
-      window.removeEventListener('hashchange', checkUrlParams);
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('hashchange', onHashChange);
     };
   }, []);
 
@@ -308,10 +342,31 @@ export default function App() {
       return;
     }
 
+    // Support 1-step-back navigation when data?.stepBack is passed or when navigating between views
+    if (data && data.__stepBack && viewHistoryRef.current.length > 0) {
+      const prev = viewHistoryRef.current.pop()!;
+      setCurrentView(prev.view);
+      setSelectedGame(prev.game || null);
+      return;
+    }
+
+    if (currentViewRef.current !== view) {
+      viewHistoryRef.current.push({
+        view: currentViewRef.current,
+        game: selectedGameRef.current
+      });
+      if (viewHistoryRef.current.length > 20) {
+        viewHistoryRef.current.shift();
+      }
+      try {
+        window.history.pushState({ appStep: true, view }, '', window.location.href);
+      } catch {}
+    }
+
     setCurrentView(view);
-    if (data) {
+    if (data && !data.__stepBack) {
       setSelectedGame(data);
-    } else {
+    } else if (!data) {
       setSelectedGame(null);
     }
   };
