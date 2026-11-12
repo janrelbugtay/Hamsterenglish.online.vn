@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { ViewState } from '../types';
 import { FullscreenButton } from '../components/FullscreenButton';
+import { UnifiedGameSetup } from '../components/UnifiedGameSetup';
 import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { GameModeModal } from '../components/GameModeModal';
@@ -352,405 +353,189 @@ export function RollerCoasterQuiz({
         />
       )}
 
-      {/* SCREEN 2: SETUP (Pre-Game Setup with Timer 1-10m Slider, Lives, Difficulty Slow-to-Fast, Voice On/Off & Webcam Steering) */}
+      {/* SCREEN 2: UNIFIED MINIMALIST 3D SETUP */}
       {screen === 'setup' && (
-        <div
-          className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-6 sm:p-8 overflow-y-auto backdrop-blur-sm transition-colors duration-700 ${
-            parkTheme === 'sunset'
-              ? 'bg-gradient-to-b from-orange-500/90 via-rose-500/90 to-indigo-900/95'
-              : parkTheme === 'neon'
-              ? 'bg-gradient-to-b from-slate-950/95 via-indigo-950/95 to-fuchsia-950/95'
-              : 'bg-gradient-to-b from-sky-500/90 via-blue-500/90 to-indigo-800/90 dark:from-sky-900/95 dark:to-slate-950/95'
-          }`}
+        <UnifiedGameSetup
+          title="ROLLER COASTER QUIZ"
+          containerId="roller-coaster-quiz-container"
+          questionCount={getPlayableQuestions().length}
+          onBack={() => onViewChange('games')}
+          onOpenGameSwitcher={() => setShowModeModal(true)}
+          onOpenQuizEditor={() => setScreen('editor')}
+          playerModeOptions={[
+            { id: 'coaster', label: '3D COASTER RIDE', icon: '🎢' },
+            { id: 'pose-chase', label: '3D POSE CHASE', icon: '🏃‍♂️' }
+          ]}
+          selectedPlayerMode={playRideMode}
+          onSelectPlayerMode={(val: 'coaster' | 'pose-chase') => setPlayRideMode(val)}
+          playerNames={[
+            {
+              id: 'rider',
+              badge: 'P1',
+              value: riderName,
+              placeholder: 'PILOT / TEAM NAME',
+              onChange: setRiderName,
+              colorScheme: 'blue'
+            }
+          ]}
+          timerValue={timerMinutes * 60}
+          timerLabelDisplay={`${timerMinutes}:00`}
+          timerOptions={[
+            { label: '1M', sec: 60 },
+            { label: '2M', sec: 120 },
+            { label: '3M', sec: 180 },
+            { label: '5M', sec: 300 },
+            { label: '10M', sec: 600 }
+          ]}
+          onTimerChange={(sec) => setTimerMinutes(Math.max(1, Math.round(sec / 60)))}
+          startLabel={playRideMode === 'pose-chase' ? 'START 3D POSE CHASE' : 'START COASTER RIDE'}
+          onStart={() => setScreen('game')}
+          onStudy={() => {
+            setStudyIndex(0);
+            setStudySelectedOption(null);
+            setScreen('study');
+          }}
         >
-          {/* Floating Theme Park Clouds & Stars Background */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute top-12 left-12 w-40 h-40 bg-amber-300/25 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-16 right-16 w-56 h-56 bg-rose-400/20 rounded-full blur-3xl"></div>
-          </div>
-
-          <div className="relative z-10 flex flex-col items-center w-full max-w-6xl my-auto py-8">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-200 text-xs sm:text-sm font-black uppercase tracking-widest mb-3 shadow-lg">
-              <span>🎢 3D Theme Park Challenge · 2-Track Split Edition</span>
+          {playRideMode === 'pose-chase' && (
+            <div className="p-3 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300">
+              <BodyHeadToFeetSetupScanner compact />
             </div>
-            <h2
-              className="text-4xl sm:text-6xl md:text-7xl font-black mb-8 text-white drop-shadow-[0_6px_0_rgba(15,23,42,0.7)] text-center tracking-tight"
-              style={{ WebkitTextStroke: '1.5px #0f172a' }}
-            >
-              ROLLER COASTER QUIZ
-            </h2>
+          )}
 
-            <div className="flex flex-col xl:flex-row gap-6 w-full justify-center items-stretch relative z-10">
-              {/* Left Setup Card */}
-              <div className="flex-1 bg-white/15 dark:bg-slate-900/60 backdrop-blur-xl rounded-[2rem] border border-white/25 p-6 sm:p-8 shadow-2xl flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-4 mb-5 pb-4 border-b border-white/15">
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center text-3xl shadow-lg border-2 border-white/40">
-                        🐹
-                      </div>
-                      <div>
-                        <h3 className="text-xl sm:text-2xl font-black text-white">
-                          {activeQuiz.topic || activeQuiz.title || 'Theme Park Coaster Run'}
-                        </h3>
-                        <p className="text-xs sm:text-sm text-sky-100/80 font-semibold">
-                          {getPlayableQuestions().length} Track Junctions · 2 Options per Gate (Left vs. Right)
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setScreen('editor')}
-                      className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 border border-white/25 transition-all cursor-pointer shrink-0"
-                    >
-                      <Edit3 size={15} />
-                      <span>Edit Questions</span>
-                    </button>
-                  </div>
-
-                  {/* Game Mode Selector: 3D Coaster Track vs Single-Player 3D Pose & Action Chase */}
-                  <div className="mb-5">
-                    <label className="text-xs font-black uppercase tracking-wider text-amber-300 block mb-2">
-                      Select 3D Game Mode
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setPlayRideMode('coaster')}
-                        className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3 ${
-                          playRideMode === 'coaster'
-                            ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 border-white shadow-[0_0_20px_rgba(251,191,36,0.5)] scale-[1.02]'
-                            : 'bg-black/30 text-white border-white/20 hover:bg-black/45'
-                        }`}
-                      >
-                        <span className="text-2xl shrink-0">🎢</span>
-                        <div>
-                          <div className="font-black text-sm sm:text-base">3D Coaster Track Mode</div>
-                          <div
-                            className={`text-[11px] font-bold leading-snug mt-0.5 ${
-                              playRideMode === 'coaster' ? 'text-slate-900' : 'text-white/75'
-                            }`}
-                          >
-                            1-2-3 Players or Solo · Lean Left/Right at track splits &amp; Jump for Power-Ups!
-                          </div>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPlayRideMode('pose-chase')}
-                        className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3 ${
-                          playRideMode === 'pose-chase'
-                            ? 'bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400 text-slate-950 border-white shadow-[0_0_20px_rgba(56,189,248,0.55)] scale-[1.02]'
-                            : 'bg-black/30 text-white border-white/20 hover:bg-black/45'
-                        }`}
-                      >
-                        <span className="text-2xl shrink-0">🏃‍♂️</span>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-black text-sm sm:text-base">
-                              Single Player Pose &amp; Action Chase
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 text-[9px] font-black uppercase">
-                              HEAD-TO-FEET AI
-                            </span>
-                          </div>
-                          <div
-                            className={`text-[11px] font-bold leading-snug mt-0.5 ${
-                              playRideMode === 'pose-chase' ? 'text-slate-900' : 'text-white/75'
-                            }`}
-                          >
-                            Jump &amp; Follow Pose of Correct Option, Punch Enemy, Wall Kick &amp; Dodge Left/Right!
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Full-Body Head-to-Feet Detection Setup Scanner when Single-Player Pose & Action Chase is selected */}
-                  {playRideMode === 'pose-chase' && (
-                    <div className="mb-5">
-                      <BodyHeadToFeetSetupScanner compact />
-                    </div>
-                  )}
-
-                  {/* Rider Name */}
-                  <div className="mb-4">
-                    <label className="text-xs font-black uppercase tracking-wider text-sky-100 block mb-2">
-                      Coaster Pilot Name
-                    </label>
-                    <div className="flex gap-3 items-center">
-                      <div className="w-11 h-11 rounded-xl bg-rose-500 text-white flex items-center justify-center font-black text-lg shadow-md">
-                        🎢
-                      </div>
-                      <input
-                        type="text"
-                        value={riderName}
-                        onChange={(e) => setRiderName(e.target.value)}
-                        className="flex-1 bg-black/25 text-white font-bold placeholder-white/50 border border-white/25 rounded-2xl px-4 py-2.5 outline-none focus:border-amber-400 transition-colors text-base"
-                        placeholder="Enter Pilot or Team Name"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Ride Settings Box */}
-                  <div className="bg-black/25 p-4 sm:p-5 rounded-2xl border border-white/15 flex flex-col gap-4 mb-6">
-                    {/* 1. Countdown Timer Slider (1 to 10 Minutes) */}
-                    <div className="text-white pb-3 border-b border-white/10">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="font-bold flex items-center gap-2 text-sm sm:text-base">
-                          <span>⏱️</span> Ride Timer (1 – 10 Minutes)
-                        </span>
-                        <span className="px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow">
-                          {timerMinutes} {timerMinutes === 1 ? 'Minute' : 'Minutes'} ({timerMinutes}:00)
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-black text-white/75">1m</span>
-                        <input
-                          type="range"
-                          min={1}
-                          max={10}
-                          step={1}
-                          value={timerMinutes}
-                          onChange={(e) => setTimerMinutes(Number(e.target.value))}
-                          className="w-full h-2.5 bg-white/25 rounded-lg appearance-none cursor-pointer accent-amber-400"
-                        />
-                        <span className="text-xs font-black text-white/75">10m</span>
-                      </div>
-                    </div>
-
-                    {/* 2. Player Lives (Heart Revives before Game Over) */}
-                    <div className="flex flex-wrap justify-between items-center gap-2 text-white pb-3 border-b border-white/10">
-                      <div>
-                        <span className="font-bold flex items-center gap-2 text-sm sm:text-base">
-                          <span>❤️</span> Player Lives (Revives)
-                        </span>
-                        <span className="text-[11px] text-white/70 block">
-                          Revive on crash until lives reach 0 (Game Over)
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {[1, 2, 3, 4, 5].map((lv) => (
-                          <button
-                            key={lv}
-                            onClick={() => setInitialLives(lv)}
-                            className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-1 ${
-                              initialLives === lv
-                                ? 'bg-rose-500 text-white border-2 border-white shadow-[0_0_15px_rgba(244,63,94,0.65)] scale-105'
-                                : 'bg-white/15 text-white hover:bg-white/25 border border-transparent'
-                            }`}
-                          >
-                            <span>❤️</span>
-                            <span>{lv}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 3. Difficulty Level (Easy, Medium, Hard) */}
-                    <div className="flex flex-col gap-2 text-white pb-3 border-b border-white/10">
-                      <span className="font-bold flex items-center gap-2 text-sm sm:text-base">
-                        <Gauge size={18} className="text-amber-400" /> Difficulty (Speed &amp; Track Obstacles)
-                      </span>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { label: 'Easy', sub: 'Slow · Few Obstacles', val: 0.7 },
-                          { label: 'Medium', sub: 'Bit Fast · Obstacles', val: 1 },
-                          { label: 'Hard', sub: 'Fast · Many Obstacles', val: 1.45 },
-                        ].map((s) => (
-                          <button
-                            key={s.label}
-                            onClick={() => setSpeedMultiplier(s.val)}
-                            className={`px-3 py-2 rounded-2xl text-center transition-all cursor-pointer border ${
-                              speedMultiplier === s.val
-                                ? 'bg-amber-400 text-slate-950 border-white shadow-[0_0_15px_rgba(251,191,36,0.6)] scale-[1.03]'
-                                : 'bg-white/15 text-white border-white/15 hover:bg-white/25'
-                            }`}
-                          >
-                            <div className="text-xs sm:text-sm font-black">{s.label}</div>
-                            <div
-                              className={`text-[10px] font-bold leading-tight mt-0.5 ${
-                                speedMultiplier === s.val ? 'text-slate-900' : 'text-white/75'
-                              }`}
-                            >
-                              {s.sub}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 4. Voice Question Reader (Voice On / Voice Off) */}
-                    <div className="flex flex-wrap justify-between items-center gap-2 text-white pb-3 border-b border-white/10">
-                      <span className="font-bold text-sm sm:text-base">Voice Question Reader</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setVoiceEnabled(true)}
-                          className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                            voiceEnabled
-                              ? 'bg-emerald-400 text-slate-950 shadow-[0_0_15px_rgba(52,211,153,0.6)] scale-105'
-                              : 'bg-white/15 text-white hover:bg-white/25'
-                          }`}
-                        >
-                          <Volume2 size={15} />
-                          <span>Voice On</span>
-                        </button>
-                        <button
-                          onClick={() => setVoiceEnabled(false)}
-                          className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                            !voiceEnabled
-                              ? 'bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.6)] scale-105'
-                              : 'bg-white/15 text-white hover:bg-white/25'
-                          }`}
-                        >
-                          <VolumeX size={15} />
-                          <span>Voice Off</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 5. Webcam Always-On Mode (Lean Left/Right & Jump for Power-Ups) */}
-                    <div className="text-white space-y-2">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm sm:text-base">Webcam Motion &amp; Jump Tracking</span>
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-400/25 border border-emerald-300/60 text-emerald-200 text-[10px] font-black uppercase tracking-wider">
-                              Always On Mode
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-white/75 block mt-0.5">
-                            Lean Left/Right to steer &amp; Jump up to grab high Power-Ups!
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => setCameraLeanEnabled(!cameraLeanEnabled)}
-                          className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                            cameraLeanEnabled ? 'bg-emerald-400' : 'bg-white/30'
-                          }`}
-                        >
-                          <div
-                            className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${
-                              cameraLeanEnabled ? 'left-7' : 'left-1'
-                            }`}
-                          />
-                        </button>
-                      </div>
-
-                      {cameraLeanEnabled && (
-                        <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-xs font-bold text-amber-300">
-                            Player Tracking:
-                          </span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setCameraMode('group')}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                                cameraMode === 'group'
-                                  ? 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(251,191,36,0.5)] scale-105'
-                                  : 'bg-white/15 text-white hover:bg-white/25'
-                              }`}
-                            >
-                              <Users size={13} />
-                              <span>1-2-3 Players Mode</span>
-                            </button>
-                            <button
-                              onClick={() => setCameraMode('solo')}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                                cameraMode === 'solo'
-                                  ? 'bg-sky-400 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.5)] scale-105'
-                                  : 'bg-white/15 text-white hover:bg-white/25'
-                              }`}
-                            >
-                              <User size={13} />
-                              <span>Solo Player</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setScreen('game')}
-                  className="w-full py-4 sm:py-5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-300 hover:to-rose-400 text-slate-950 font-black text-xl sm:text-2xl rounded-2xl shadow-[0_10px_30px_rgba(245,158,11,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-3"
-                >
-                  <Play className="w-6 h-6 fill-current" />
-                  <span>
-                    {playRideMode === 'pose-chase'
-                      ? 'START 3D POSE & ACTION CHASE!'
-                      : 'START COASTER RIDE!'}
-                  </span>
-                </button>
+          {/* 1. LIVES & DIFFICULTY ROW */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-3xl bg-rose-50/90 border-2 border-rose-200 border-b-4 border-b-rose-300 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-rose-950">
+                  ❤️ LIVES
+                </span>
+                <span className="px-2.5 py-0.5 rounded-xl bg-rose-600 text-white text-xs font-black tabular-nums">
+                  {initialLives} ❤️
+                </span>
               </div>
-
-              {/* Right Column: Park Time-of-Day Theme & Study Mode */}
-              <div className="w-full xl:w-96 flex flex-col gap-6">
-                <div className="w-full rounded-[2rem] bg-white/15 dark:bg-slate-900/60 backdrop-blur-xl border border-white/25 shadow-2xl p-6 flex flex-col justify-center flex-1">
-                  <h3 className="text-xl sm:text-2xl font-black text-white mb-4 text-center drop-shadow-md">
-                    Theme Park Atmosphere
-                  </h3>
-                  <div className="grid grid-cols-1 gap-3">
-                    {[
-                      { id: 'sunny', name: 'Sunny Theme Park', desc: 'Bright blue skies, wildflowers & Ferris wheel', icon: '☀️' },
-                      { id: 'sunset', name: 'Golden Sunset Carnival', desc: 'Warm golden hour glow & festival lights', icon: '🌅' },
-                      { id: 'neon', name: 'Starlight Neon Park', desc: 'Cyber night coaster with glowing neon rails', icon: '🎡' },
-                    ].map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => setParkTheme(t.id as any)}
-                        className={`p-3.5 rounded-2xl flex items-center gap-3.5 transition-all text-left cursor-pointer border-2 ${
-                          parkTheme === t.id
-                            ? 'bg-white text-slate-900 border-amber-400 scale-[1.02] shadow-xl'
-                            : 'bg-white/15 text-white border-transparent hover:bg-white/25'
-                        }`}
-                      >
-                        <span className="text-3xl">{t.icon}</span>
-                        <div>
-                          <div className="font-black text-sm sm:text-base">{t.name}</div>
-                          <div className={`text-xs ${parkTheme === t.id ? 'text-slate-600' : 'text-white/75'}`}>
-                            {t.desc}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setStudyIndex(0);
-                    setStudySelectedOption(null);
-                    setScreen('study');
-                  }}
-                  className="group relative w-full h-40 rounded-[2rem] bg-white/15 dark:bg-slate-900/60 backdrop-blur-xl border border-white/25 shadow-2xl overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:bg-white/25 cursor-pointer flex items-center justify-center p-6 gap-5"
-                >
-                  <div className="text-6xl transform group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300 drop-shadow-xl">
-                    📖
-                  </div>
-                  <div className="flex flex-col items-start text-left">
-                    <h3 className="text-2xl sm:text-3xl font-black text-white mb-1 drop-shadow-md">
-                      Study Mode
-                    </h3>
-                    <p className="text-sky-100 font-medium text-xs sm:text-sm">
-                      Review all {getPlayableQuestions().length} 2-choice questions before riding!
-                    </p>
-                  </div>
-                </button>
+              <div className="grid grid-cols-5 gap-2">
+                {[1, 2, 3, 4, 5].map(lv => (
+                  <button
+                    key={lv}
+                    type="button"
+                    onClick={() => setInitialLives(lv)}
+                    className={`py-2.5 rounded-2xl font-black text-sm border-2 border-b-[5px] transition cursor-pointer tabular-nums ${
+                      initialLives === lv
+                        ? 'bg-rose-500 border-rose-300 border-b-rose-800 text-white shadow-sm -translate-y-0.5'
+                        : 'bg-white hover:bg-rose-100/60 border-rose-200 border-b-rose-300 text-rose-950'
+                    }`}
+                  >
+                    {lv}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="flex flex-wrap justify-center gap-4 mt-8 relative z-10">
-              <button
-                onClick={() => onViewChange('games')}
-                className="px-7 py-3.5 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-base sm:text-lg font-bold text-white border border-white/35 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-              >
-                <ArrowLeft size={20} /> Back to My Games
-              </button>
+            <div className="p-4 rounded-3xl bg-amber-50/90 border-2 border-amber-200 border-b-4 border-b-amber-300 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-amber-950">
+                  ⚡ SPEED
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setVoiceEnabled(!voiceEnabled)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-black transition cursor-pointer ${
+                    voiceEnabled ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 border border-amber-200'
+                  }`}
+                >
+                  {voiceEnabled ? '🔊 VOICE ON' : '🔇 VOICE OFF'}
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'EASY', val: 0.7 },
+                  { label: 'NORMAL', val: 1 },
+                  { label: 'FAST', val: 1.45 }
+                ].map(sp => (
+                  <button
+                    key={sp.label}
+                    type="button"
+                    onClick={() => setSpeedMultiplier(sp.val)}
+                    className={`py-2.5 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer ${
+                      speedMultiplier === sp.val
+                        ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 -translate-y-0.5'
+                        : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-900'
+                    }`}
+                  >
+                    {sp.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+
+          {/* 2. WEBCAM MOTION STEERING & THEME PARK ATMOSPHERE */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
+                  📷 CAMERA LEAN
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCameraLeanEnabled(!cameraLeanEnabled)}
+                  className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${
+                    cameraLeanEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {cameraLeanEnabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'group' as const, label: '👥 1-3 PLAYERS' },
+                  { id: 'solo' as const, label: '👤 SOLO PILOT' }
+                ].map(cm => (
+                  <button
+                    key={cm.id}
+                    type="button"
+                    onClick={() => setCameraMode(cm.id)}
+                    className={`py-2.5 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer ${
+                      cameraMode === cm.id
+                        ? 'bg-gradient-to-b from-sky-500 to-blue-600 border-sky-300 border-b-blue-900 text-white -translate-y-0.5'
+                        : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
+                    }`}
+                  >
+                    {cm.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-purple-50/90 border-2 border-purple-200 border-b-4 border-b-purple-300 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-purple-950">
+                  🎡 PARK THEME
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'sunny', name: '☀️ SUNNY' },
+                  { id: 'sunset', name: '🌅 SUNSET' },
+                  { id: 'neon', name: '🎡 NEON' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setParkTheme(t.id as any)}
+                    className={`py-2.5 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer ${
+                      parkTheme === t.id
+                        ? 'bg-gradient-to-b from-purple-500 to-indigo-600 border-purple-300 border-b-indigo-950 text-white -translate-y-0.5'
+                        : 'bg-white hover:bg-purple-50 border-purple-200 border-b-purple-300 text-slate-900'
+                    }`}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </UnifiedGameSetup>
       )}
 
       {/* SCREEN 3: STUDY FLASHCARDS (2-Option Preview) */}

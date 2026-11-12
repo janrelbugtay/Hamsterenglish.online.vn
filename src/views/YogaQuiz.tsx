@@ -41,6 +41,7 @@ import { drawSuperheroHands } from "../utils/superheroHands";
 import { SetupCurriculumHeader } from "../components/SetupSmartControls";
 import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng } from "../utils/mediaAndPresets";
 import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay, normalizeChaseQuestions } from "./CityPoseChase";
+import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 
 export interface Question {
   id: number | string;
@@ -2611,24 +2612,90 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
 
         {/* LOBBY / START SCREEN */}
         {gameState === 'start' && (
-          <div className="flex flex-col h-full flex-grow relative overflow-y-auto items-center justify-center p-4 md:p-8 z-10">
-            <div className="bg-white/95 backdrop-blur-md rounded-[2.5rem] w-full max-w-3xl shadow-2xl relative flex flex-col items-center p-6 sm:p-8 md:p-10 border-4 border-teal-300">
-              {onSwitchMode && (
-                <button
-                  onClick={onSwitchMode}
-                  className="absolute top-5 left-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black py-2 px-4 rounded-2xl flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer text-xs sm:text-sm uppercase tracking-wide"
-                  title="Choose another game mode"
-                >
-                  <Shuffle size={16} className="text-amber-300" />
-                  <span>Switch Game</span>
-                </button>
-              )}
-              <button onClick={onBack} className="absolute top-5 right-6 text-rose-400 hover:text-rose-500 transition-colors cursor-pointer">
-                <X size={40} strokeWidth={3.5} />
-              </button>
+          <UnifiedGameSetup
+            title={quiz.title || 'YOGA QUIZ 3D'}
+            questionCount={quiz.questions.length}
+            onBack={onBack}
+            onOpenSettings={() => setShowSettings(true)}
+            onOpenGameSwitcher={onSwitchMode}
+            playerModeOptions={[
+              { id: 1, label: '1 PLAYER', icon: '🧘' },
+              { id: 2, label: '2 PLAYERS', icon: '⚡' }
+            ]}
+            selectedPlayerMode={teams.length >= 2 ? 2 : 1}
+            onSelectPlayerMode={(count: number) => setPlayerPreset(count === 2 ? 2 : 1)}
+            playerNames={teams.map((team, idx) => ({
+              id: String(team.id),
+              badge: `P${idx + 1}`,
+              value: team.name,
+              placeholder: `Player ${idx + 1}`,
+              colorScheme: (['blue', 'red', 'emerald', 'amber'][idx % 4] as 'blue' | 'red' | 'emerald' | 'amber'),
+              onChange: (val: string) =>
+                setTeams(prev => prev.map(t => (t.id === team.id ? { ...t, name: val } : t)))
+            }))}
+            startLabel="START YOGA STUDIO"
+            onStart={startGame}
+          >
+            {/* 1. YOGA ARENA MODE SELECTOR */}
+            <div className="p-4 rounded-3xl bg-teal-50/90 border-2 border-teal-200 border-b-4 border-b-teal-300 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-teal-950">
+                  🧘 MOTION MODE
+                </span>
+                <div className="flex items-center gap-2">
+                  {playMode === 'studio' && (
+                    <button
+                      type="button"
+                      onClick={addTeam}
+                      className="px-3 py-1 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-black text-xs border-b-2 border-sky-700 cursor-pointer"
+                    >
+                      + ADD PLAYER
+                    </button>
+                  )}
+                  <span className="px-2.5 py-1 rounded-xl bg-teal-600 text-white font-black text-xs uppercase">
+                    POSES ({activePoses.length})
+                  </span>
+                </div>
+              </div>
 
-              {/* Mode-Aware Pose Preview Strip */}
-              <div className="flex items-center justify-center gap-3 sm:gap-5 mt-6 mb-3 bg-teal-50/90 px-5 py-3 rounded-3xl border-2 border-teal-200 shadow-inner">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPlayMode('camera')}
+                  className={`py-3 px-4 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer flex items-center justify-center gap-2 ${
+                    playMode === 'camera'
+                      ? 'bg-teal-600 border-teal-400 border-b-teal-900 text-white shadow-sm -translate-y-0.5'
+                      : 'bg-white border-teal-200 border-b-teal-300 text-teal-950'
+                  }`}
+                >
+                  <span>📷 HAND AI</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlayMode('pose-chase')}
+                  className={`py-3 px-4 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer flex items-center justify-center gap-2 ${
+                    playMode === 'pose-chase'
+                      ? 'bg-gradient-to-b from-amber-500 to-rose-600 border-amber-300 border-b-rose-900 text-white shadow-sm -translate-y-0.5'
+                      : 'bg-white border-teal-200 border-b-teal-300 text-teal-950'
+                  }`}
+                >
+                  <span>🏃‍♂️ 3D POSE CHASE</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlayMode('studio')}
+                  className={`py-3 px-4 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer flex items-center justify-center gap-2 ${
+                    playMode === 'studio'
+                      ? 'bg-emerald-600 border-emerald-400 border-b-emerald-900 text-white shadow-sm -translate-y-0.5'
+                      : 'bg-white border-teal-200 border-b-teal-300 text-teal-950'
+                  }`}
+                >
+                  <span>🧘 STUDIO POSES</span>
+                </button>
+              </div>
+
+              {/* Active Pose Preview Strip */}
+              <div className="flex items-center justify-center gap-3 sm:gap-5 bg-white/90 px-4 py-2.5 rounded-2xl border-2 border-teal-200">
                 {playMode === 'studio' ? (
                   <>
                     <StandingPoseFigure poseId="tree-pose" emoji="🌳" size="sm" />
@@ -2646,210 +2713,10 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
                   </>
                 )}
               </div>
-
-              <div className="flex items-center gap-3 mb-1">
-                <span className="text-3xl sm:text-4xl">🧘‍♀️</span>
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-teal-950 tracking-tight text-center">
-                  Yoga Pose Studio
-                </h1>
-              </div>
-              <p className="text-teal-700 font-bold text-xs sm:text-base mb-6 text-center max-w-lg">
-                {playMode === 'studio'
-                  ? 'Classic Yoga Mode: Follow the classic full-body yoga poses and click to answer!'
-                  : playMode === 'pose-chase'
-                  ? 'Single-Player 3D Pose & Action Chase: Jump & match the pose wall of the correct option, punch the right enemy, wall kick & dodge obstacles with Head-to-Feet body detection!'
-                  : 'Camera Hand Mode: Show hand gestures (1 finger, 2 fingers, 3 fingers, fist, rock) to answer!'}
-              </p>
-
-              {/* Mode Selector: Camera Mode vs Classic Studio Mode vs 3D Pose & Action Chase */}
-              <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-                <button
-                  onClick={() => setPlayMode('camera')}
-                  className={`p-3.5 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
-                    playMode === 'camera'
-                      ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-teal-600 shadow-lg scale-[1.02]'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-teal-300 hover:bg-teal-50/40'
-                  }`}
-                >
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${playMode === 'camera' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>
-                    <Camera size={24} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-black text-sm sm:text-base">Camera Hand Mode</span>
-                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${playMode === 'camera' ? 'bg-amber-300 text-slate-900' : 'bg-teal-100 text-teal-800'}`}>
-                        HAND AI
-                      </span>
-                    </div>
-                    <p className={`text-[11px] font-semibold leading-snug mt-0.5 ${playMode === 'camera' ? 'text-teal-50' : 'text-slate-500'}`}>
-                      1 finger, 2 fingers, 3 fingers, fist & rock gestures.
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setPlayMode('pose-chase')}
-                  className={`p-3.5 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
-                    playMode === 'pose-chase'
-                      ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white border-amber-300 shadow-lg scale-[1.02]'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-amber-300 hover:bg-amber-50/40'
-                  }`}
-                >
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-xl ${playMode === 'pose-chase' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-600'}`}>
-                    🏃‍♂️
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-black text-sm sm:text-base">3D Pose & Action Chase</span>
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-emerald-300 text-slate-950">
-                        HEAD-TO-FEET
-                      </span>
-                    </div>
-                    <p className={`text-[11px] font-semibold leading-snug mt-0.5 ${playMode === 'pose-chase' ? 'text-amber-50' : 'text-slate-500'}`}>
-                      Jump & pose wall, punch correct enemy, wall kick & dodge!
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setPlayMode('studio')}
-                  className={`p-3.5 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
-                    playMode === 'studio'
-                      ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-teal-600 shadow-lg scale-[1.02]'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-teal-300 hover:bg-teal-50/40'
-                  }`}
-                >
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${playMode === 'studio' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>
-                    <Sparkles size={24} />
-                  </div>
-                  <div>
-                    <div className="font-black text-sm sm:text-base">Classic Studio Mode</div>
-                    <p className={`text-[11px] font-semibold leading-snug mt-0.5 ${playMode === 'studio' ? 'text-teal-50' : 'text-slate-500'}`}>
-                      Classic yoga poses (Tree, Warrior, Star) & click to answer.
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              {playMode === 'pose-chase' && (
-                <div className="w-full max-w-2xl mb-6">
-                  <BodyHeadToFeetSetupScanner compact />
-                </div>
-              )}
-
-              {/* Players Setup */}
-              <div className="w-full max-w-xl bg-teal-50/70 rounded-3xl p-4 sm:p-5 border-2 border-teal-200/80 mb-6">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2 text-teal-900 font-black text-base sm:text-lg">
-                    <Users className="text-teal-600" size={22} />
-                    <span>Players ({teams.length})</span>
-                    {playMode === 'camera' && teams.length >= 2 && (
-                      <span className="text-xs bg-indigo-100 text-indigo-700 font-black px-2.5 py-0.5 rounded-full border border-indigo-200">
-                        2-Player Split Camera Active
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPlayerPreset(1)}
-                      className={`px-3 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
-                        teams.length === 1
-                          ? 'bg-teal-600 text-white shadow-xs'
-                          : 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-100'
-                      }`}
-                    >
-                      1 Player
-                    </button>
-                    <button
-                      onClick={() => setPlayerPreset(2)}
-                      className={`px-3 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
-                        teams.length === 2
-                          ? 'bg-teal-600 text-white shadow-xs'
-                          : 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-100'
-                      }`}
-                    >
-                      2 Players (Split Screen)
-                    </button>
-                    {playMode === 'studio' && (
-                      <button
-                        onClick={addTeam}
-                        className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-black text-xs flex items-center gap-1 cursor-pointer shadow-xs"
-                      >
-                        <Plus size={14} /> Add
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2.5">
-                  {teams.map((team, idx) => (
-                    <div key={team.id} className="relative flex items-center">
-                      {editingTeamId === team.id ? (
-                        <input
-                          autoFocus
-                          defaultValue={team.name}
-                          onBlur={(e) => {
-                            const newName = e.target.value.trim();
-                            if (newName) {
-                              setTeams(teams.map(t => t.id === team.id ? { ...t, name: newName } : t));
-                            }
-                            setEditingTeamId(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') e.currentTarget.blur();
-                          }}
-                          className="bg-white text-teal-800 font-bold py-2 px-4 rounded-full border-2 border-teal-500 focus:outline-none text-sm w-36"
-                        />
-                      ) : (
-                        <div className={`flex items-center gap-1.5 text-white font-bold py-2 px-4 rounded-full shadow-xs text-sm ${teamColors[team.colorIdx].bg}`}>
-                          <button
-                            onClick={() => setEditingTeamId(team.id)}
-                            className="flex items-center gap-1.5 cursor-pointer"
-                            title="Click to rename player"
-                          >
-                            <span>{team.name}</span>
-                            {playMode === 'camera' && idx < 2 && (
-                              <span className="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full">
-                                {idx === 0 ? 'Left Side' : 'Right Side'}
-                              </span>
-                            )}
-                            <Pencil size={13} className="text-yellow-200" />
-                          </button>
-                          {teams.length > 1 && (
-                            <button
-                              onClick={() => removeTeam(team.id)}
-                              className="ml-1 text-white/80 hover:text-white cursor-pointer"
-                              title="Remove player"
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 w-full max-w-xl">
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="px-5 py-5 rounded-3xl bg-teal-100 hover:bg-teal-200 text-teal-800 font-black text-base flex items-center justify-center gap-2 border-2 border-teal-300 cursor-pointer transition-all shrink-0"
-                  title="Customize Active Standing Poses"
-                >
-                  <Settings size={22} />
-                  <span className="hidden sm:inline">Poses ({activePoses.length})</span>
-                </button>
-                <button
-                  onClick={startGame}
-                  className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-black text-2xl md:text-3xl py-5 rounded-3xl shadow-[0_6px_0_#0f766e] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-3 cursor-pointer"
-                >
-                  <span>🚀 START YOGA STUDIO</span>
-                </button>
-              </div>
             </div>
-          </div>
+
+            {playMode === 'pose-chase' && <BodyHeadToFeetSetupScanner compact />}
+          </UnifiedGameSetup>
         )}
 
         {/* PLAYING SCREEN: 3D POSE & ACTION CHASE */}

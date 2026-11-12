@@ -9,6 +9,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
+import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import {
   SumoStadiumEnvironment,
   SumoCharacter,
@@ -831,171 +832,120 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     const rightInfo = SUMO_CHARACTER_OPTIONS.find((c) => c.id === rightCharacter);
 
     return (
-      <div id="game-container" className="w-full min-h-full flex-1 bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-950 text-white flex flex-col justify-between font-sans p-4 sm:p-6 md:p-8 overflow-y-auto relative select-none">
-        {/* FULL-SCREEN TOP HEADER BAR */}
-        <div className="w-full max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/15 z-20 shrink-0">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => onViewChange("home")}
-              className="flex items-center gap-2 p-2.5 rounded-full transition-colors bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
-              title="Back to Home"
-            >
-              <ArrowLeft size={22} />
-            </button>
-            <FullscreenButton targetId="game-container" />
-            <button
-              onClick={() => setShowModeModal(true)}
-              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
-              title="Switch to Bubble Pop or Yoga Quiz"
-            >
-              <Shuffle size={15} className="text-amber-400" />
-              <span>Switch Mode</span>
-            </button>
-          </div>
-
-          <div className="text-center flex-1 min-w-[200px]">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white italic uppercase tracking-tight leading-none drop-shadow">
-              {activeGame?.title || "SUMO SHOWDOWN"}
-            </h1>
-            <p className="text-amber-300 font-bold text-xs sm:text-sm uppercase tracking-widest mt-1">
-              {activeGame?.topic || "Choose Your Sumo Fighters & Start Battle"}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setStudyIndex(0); setStudySelectedOption(null); setScreen('study'); }}
-              className="px-4 sm:px-5 py-2.5 rounded-full bg-white hover:bg-slate-100 text-slate-900 font-black text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all hover:scale-105 cursor-pointer"
-            >
-              <span>📖</span>
-              <span>STUDY MODE</span>
-            </button>
-          </div>
-        </div>
-
-        {/* FULL-SCREEN CHOOSE FIGHTER ARENA (LEFT BLUE ROSTER · CENTER VS STAGE · RIGHT RED ROSTER) */}
-        <div className="w-full max-w-[1440px] mx-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch my-4 z-20">
-          {/* BLUE TEAM FIGHTER ROSTER (5 cols) */}
-          <div className="lg:col-span-5 bg-blue-950/65 border-2 border-blue-500/50 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-blue-500 inline-block shadow-[0_0_10px_#3b82f6]" />
-                <span className="font-black text-base sm:text-lg md:text-xl text-blue-300 uppercase tracking-wider">
-                  Choose Blue Fighter
+      <div id="game-container" className="w-full min-h-full flex-1 relative select-none">
+        <UnifiedGameSetup
+          title={activeGame?.title || 'SUMO TAGS 3D'}
+          containerId="game-container"
+          questionCount={activeGame?.questions?.length}
+          onBack={() => onViewChange('games')}
+          onOpenGameSwitcher={() => setShowModeModal(true)}
+          onOpenQuizEditor={() => setScreen('setup')}
+          startLabel="⚔️ START BATTLE"
+          onStart={() => setShowStartBattleModal(true)}
+          onStudy={() => {
+            setStudyIndex(0);
+            setStudySelectedOption(null);
+            setScreen('study');
+          }}
+        >
+          {/* 3D BLUE VS RED SUMO FIGHTER ROSTER */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
+            {/* BLUE TEAM FIGHTER ROSTER (5 cols) */}
+            <div className="lg:col-span-5 bg-blue-50/90 border-2 border-blue-200 border-b-4 border-b-blue-400 rounded-3xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="font-black text-xs sm:text-sm text-blue-950 uppercase tracking-wider">
+                  🔵 BLUE FIGHTER
+                </span>
+                <span className="bg-blue-600 text-white font-black text-xs px-2.5 py-0.5 rounded-xl">
+                  {leftInfo?.name}
                 </span>
               </div>
-              <span className="bg-blue-600 text-white font-black text-xs px-3 py-1 rounded-full shadow">
-                {leftInfo?.name}
-              </span>
-            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
-              {SUMO_CHARACTER_OPTIONS.map((opt) => {
-                const selected = leftCharacter === opt.id;
-                return (
-                  <button
-                    key={`menu-left-${opt.id}`}
-                    onClick={() => setLeftCharacter(opt.id)}
-                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
-                      selected
-                        ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white border-amber-300 shadow-[0_0_20px_rgba(59,130,246,0.65)] scale-[1.03]'
-                        : 'bg-slate-900/80 hover:bg-blue-900/50 text-slate-200 border-blue-500/30 hover:border-blue-400'
-                    }`}
-                  >
-                    <div className="py-1 flex items-center justify-center">
-                      <SumoCharacter team="left" character={opt.id} size="card" />
-                    </div>
-                    <div className="mt-1">
-                      <div className="font-black text-xs sm:text-sm leading-tight">{opt.name}</div>
-                      <div className={`text-[10px] font-semibold mt-0.5 ${selected ? 'text-blue-100' : 'text-slate-400'}`}>
-                        {opt.title}
+              <div className="grid grid-cols-3 gap-2">
+                {SUMO_CHARACTER_OPTIONS.map((opt) => {
+                  const selected = leftCharacter === opt.id;
+                  return (
+                    <button
+                      key={`menu-left-${opt.id}`}
+                      type="button"
+                      onClick={() => setLeftCharacter(opt.id)}
+                      className={`p-2 rounded-2xl border-2 border-b-4 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
+                        selected
+                          ? 'bg-gradient-to-b from-blue-500 to-blue-600 text-white border-blue-300 border-b-blue-900 shadow-md -translate-y-0.5'
+                          : 'bg-white hover:bg-blue-100/60 text-slate-900 border-blue-200 border-b-blue-300'
+                      }`}
+                    >
+                      <div className="py-0.5 flex items-center justify-center scale-90">
+                        <SumoCharacter team="left" character={opt.id} size="card" />
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* CENTER LIVE MATCHUP SHOWCASE & START BATTLE CTA (2 cols) */}
-          <div className="lg:col-span-2 bg-gradient-to-b from-sky-200 via-emerald-100 to-emerald-300 text-slate-900 rounded-3xl p-4 sm:p-5 border-4 border-amber-400 shadow-2xl flex flex-col items-center justify-between gap-3">
-            <div className="flex flex-col items-center text-center w-full">
-              <span className="text-[11px] font-black uppercase tracking-wider text-white bg-blue-600 px-3 py-0.5 rounded-full shadow mb-1">
-                Blue: {leftInfo?.name}
-              </span>
-              <SumoCharacter team="left" character={leftCharacter} compact />
+                      <div className="font-black text-[11px] leading-tight uppercase truncate w-full">
+                        {opt.name}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="w-12 h-12 rounded-full bg-amber-400 border-4 border-white shadow-lg flex items-center justify-center font-black italic text-xl text-slate-950 shrink-0">
-              VS
-            </div>
+            {/* CENTER LIVE MATCHUP SHOWCASE (2 cols) */}
+            <div className="lg:col-span-2 bg-gradient-to-b from-sky-100 via-white to-amber-50 text-slate-900 rounded-3xl p-3 border-2 border-amber-300 border-b-4 border-b-amber-500 flex flex-row lg:flex-col items-center justify-around gap-2">
+              <div className="flex flex-col items-center text-center">
+                <span className="text-[10px] font-black uppercase text-white bg-blue-600 px-2.5 py-0.5 rounded-lg mb-1">
+                  {leftInfo?.name}
+                </span>
+                <SumoCharacter team="left" character={leftCharacter} compact />
+              </div>
 
-            <div className="flex flex-col items-center text-center w-full">
-              <SumoCharacter team="right" character={rightCharacter} compact />
-              <span className="text-[11px] font-black uppercase tracking-wider text-white bg-red-600 px-3 py-0.5 rounded-full shadow mt-1">
-                Red: {rightInfo?.name}
-              </span>
-            </div>
-          </div>
+              <div className="w-10 h-10 rounded-2xl bg-amber-400 border-2 border-white border-b-4 border-b-amber-600 shadow flex items-center justify-center font-black italic text-base text-slate-950 shrink-0">
+                VS
+              </div>
 
-          {/* RED TEAM FIGHTER ROSTER (5 cols) */}
-          <div className="lg:col-span-5 bg-red-950/65 border-2 border-red-500/50 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-red-500 inline-block shadow-[0_0_10px_#ef4444]" />
-                <span className="font-black text-base sm:text-lg md:text-xl text-red-300 uppercase tracking-wider">
-                  Choose Red Fighter
+              <div className="flex flex-col items-center text-center">
+                <SumoCharacter team="right" character={rightCharacter} compact />
+                <span className="text-[10px] font-black uppercase text-white bg-red-600 px-2.5 py-0.5 rounded-lg mt-1">
+                  {rightInfo?.name}
                 </span>
               </div>
-              <span className="bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow">
-                {rightInfo?.name}
-              </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
-              {SUMO_CHARACTER_OPTIONS.map((opt) => {
-                const selected = rightCharacter === opt.id;
-                return (
-                  <button
-                    key={`menu-right-${opt.id}`}
-                    onClick={() => setRightCharacter(opt.id)}
-                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
-                      selected
-                        ? 'bg-gradient-to-b from-red-500 to-red-700 text-white border-amber-300 shadow-[0_0_20px_rgba(239,68,68,0.65)] scale-[1.03]'
-                        : 'bg-slate-900/80 hover:bg-red-900/50 text-slate-200 border-red-500/30 hover:border-red-400'
-                    }`}
-                  >
-                    <div className="py-1 flex items-center justify-center">
-                      <SumoCharacter team="right" character={opt.id} size="card" />
-                    </div>
-                    <div className="mt-1">
-                      <div className="font-black text-xs sm:text-sm leading-tight">{opt.name}</div>
-                      <div className={`text-[10px] font-semibold mt-0.5 ${selected ? 'text-red-100' : 'text-slate-400'}`}>
-                        {opt.title}
+            {/* RED TEAM FIGHTER ROSTER (5 cols) */}
+            <div className="lg:col-span-5 bg-red-50/90 border-2 border-red-200 border-b-4 border-b-red-400 rounded-3xl p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="font-black text-xs sm:text-sm text-red-950 uppercase tracking-wider">
+                  🔴 RED FIGHTER
+                </span>
+                <span className="bg-red-600 text-white font-black text-xs px-2.5 py-0.5 rounded-xl">
+                  {rightInfo?.name}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {SUMO_CHARACTER_OPTIONS.map((opt) => {
+                  const selected = rightCharacter === opt.id;
+                  return (
+                    <button
+                      key={`menu-right-${opt.id}`}
+                      type="button"
+                      onClick={() => setRightCharacter(opt.id)}
+                      className={`p-2 rounded-2xl border-2 border-b-4 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
+                        selected
+                          ? 'bg-gradient-to-b from-red-500 to-red-600 text-white border-red-300 border-b-red-900 shadow-md -translate-y-0.5'
+                          : 'bg-white hover:bg-red-100/60 text-slate-900 border-red-200 border-b-red-300'
+                      }`}
+                    >
+                      <div className="py-0.5 flex items-center justify-center scale-90">
+                        <SumoCharacter team="right" character={opt.id} size="card" />
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
+                      <div className="font-black text-[11px] leading-tight uppercase truncate w-full">
+                        {opt.name}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* FULL-SCREEN BOTTOM ACTION BAR */}
-        <div className="w-full max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-center gap-4 pt-2 z-20 shrink-0">
-          <button 
-            onClick={() => setShowStartBattleModal(true)} 
-            className="bg-yellow-400 hover:bg-yellow-300 text-slate-950 text-xl sm:text-2xl md:text-3xl font-black px-14 py-4 sm:py-5 rounded-full shadow-[0_8px_0_#ca8a04] active:translate-y-1 active:shadow-none transition-all w-full sm:w-auto cursor-pointer hover:scale-105"
-          >
-            ⚔️ START BATTLE
-          </button>
-          <button
-            onClick={() => { setStudyIndex(0); setStudySelectedOption(null); setScreen('study'); }}
-            className="bg-white hover:bg-slate-100 text-slate-900 text-lg sm:text-xl font-black px-10 py-4 sm:py-5 rounded-full shadow-[0_6px_0_#94a3b8] active:translate-y-1 active:shadow-none transition-all w-full sm:w-auto flex items-center justify-center gap-2.5 cursor-pointer"
-          >
-            <span>📖</span> STUDY MODE
-          </button>
-        </div>
+        </UnifiedGameSetup>
 
         {/* Sumo Battle Mode Selection Modal (Single Question vs Split Questions) */}
         {showStartBattleModal && (

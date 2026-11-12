@@ -315,9 +315,9 @@ function Navbar({ navigateTo, xp, streak, onViewChange }: any) {
             className="flex items-center gap-2 cursor-pointer group"
             onClick={() => navigateTo('home')}
           >
-            <span className="text-3xl group-hover:scale-110 transition-transform drop-shadow-sm">🐹</span>
+            <span className="text-3xl group-hover:scale-110 transition-transform drop-shadow-sm">🎬</span>
             <h1 className="text-2xl font-black font-fredoka bg-gradient-to-r from-sky-400 to-sky-600 bg-clip-text text-transparent">
-              Hamster <span className="text-yellow-400">Pop Quiz</span>
+              Video <span className="text-yellow-400">Quiz</span>
             </h1>
           </div>
         </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
+import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
@@ -2553,439 +2554,213 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         />
       )}
 
-      {/* Screen: Setup */}
+      {/* Screen: Unified Minimalist 3D Setup */}
       {screen === 'setup' && (
-        <div className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto custom-scrollbar backdrop-blur-sm transition-colors duration-1000 ${selectedTheme === "theme-ocean" ? "bg-gradient-to-b from-sky-600/95 to-cyan-700/95 dark:from-sky-900/95 dark:to-cyan-950/95" : selectedTheme === "theme-space" ? "bg-gradient-to-b from-slate-900/95 to-indigo-950/95" : selectedTheme === "theme-jungle" ? "bg-gradient-to-b from-emerald-700/95 to-teal-800/95 dark:from-green-950/95 dark:to-emerald-900/95" : selectedTheme === "theme-sunset" ? "bg-gradient-to-b from-orange-500/95 to-rose-600/95 dark:from-orange-900/95 dark:to-rose-950/95" : "bg-gradient-to-b from-sky-500/95 to-blue-600/95 dark:from-sky-900/95 dark:to-blue-950/95"}`}>
-            {/* Immersive Background Elements */}
-            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-                <div className="absolute top-10 left-10 w-32 h-32 bg-white/20 rounded-full blur-3xl"></div>
-                <div className="absolute bottom-20 right-20 w-48 h-48 bg-blue-300/30 rounded-full blur-3xl"></div>
-                {/* Clouds */}
-                <div className="absolute top-14 left-[8%] opacity-80 animate-float" style={{ animationDelay: '0s' }}>
-                    <div className="w-24 h-8 bg-white rounded-full absolute top-4 left-4"></div>
-                    <div className="w-16 h-16 bg-white rounded-full absolute top-0 left-8"></div>
-                    <div className="w-12 h-12 bg-white rounded-full absolute top-2 left-2"></div>
-                </div>
-                <div className="absolute top-28 right-[10%] opacity-60 animate-float" style={{ animationDelay: '2s' }}>
-                    <div className="w-32 h-10 bg-white rounded-full absolute top-6 left-6"></div>
-                    <div className="w-20 h-20 bg-white rounded-full absolute top-0 left-10"></div>
-                </div>
-                {/* Floating Bubbles */}
-                {Array.from({ length: 12 }).map((_, i) => (
-                    <div 
-                        key={i} 
-                        className="absolute rounded-full border border-white/40 bg-gradient-to-tr from-white/10 to-white/30 backdrop-blur-[2px] shadow-[inset_0_0_10px_rgba(255,255,255,0.5)] animate-float-up"
-                        style={{
-                            width: `${(i % 4) * 12 + 22}px`,
-                            height: `${(i % 4) * 12 + 22}px`,
-                            left: `${(i * 8.5) % 96}%`,
-                            bottom: `-${(i % 5) * 5 + 10}%`,
-                            animationDuration: `${(i % 5) * 2 + 10}s`,
-                            animationDelay: `${(i % 4)}s`
-                        }}
-                    >
-                        <div className="absolute top-[15%] left-[20%] w-1/4 h-1/4 bg-white/60 rounded-full blur-[1px]"></div>
-                    </div>
-                ))}
-            </div>
-
-            <div className="relative z-10 flex flex-col items-center w-full max-w-[1400px] my-auto py-3">
-                <h2 className="text-4xl sm:text-6xl font-black mb-4 text-white drop-shadow-[0_6px_12px_rgba(15,23,42,0.45)] text-center tracking-tight">
-                    Bubble Pop
-                </h2>
-                
-                {/* 3-Column High-Visibility Setup Layout: [1. Players & Settings] | [2. Choose Your Tracker + Live Camera] | [3. Choose Theme & Study Mode] */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch relative z-10 mb-5">
-                    
-                    {/* COLUMN 1: PLAYERS & GAME SETTINGS */}
-                    <div className="lg:col-span-4 bg-slate-900/80 dark:bg-slate-950/85 backdrop-blur-2xl rounded-[2rem] border-2 border-white/40 p-5 sm:p-6 shadow-[0_20px_50px_rgba(15,23,42,0.5)] flex flex-col justify-between gap-4">
-                        <div className="flex flex-col gap-4">
-                            {/* High-Contrast Player 1 & Player 2 Mode Cards */}
-                            <div className="grid grid-cols-2 gap-3.5">
-                                <button
-                                    type="button"
-                                    onClick={() => setNumPlayers(1)}
-                                    className={`relative group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden ${
-                                        numPlayers === 1
-                                            ? 'bg-gradient-to-b from-blue-500 to-blue-600 border-white text-white shadow-[0_8px_25px_rgba(59,130,246,0.65)] ring-2 ring-white/50 scale-[1.02]'
-                                            : 'bg-slate-800/95 hover:bg-slate-700 border-white/30 hover:border-white/60 text-white shadow-md'
-                                    }`}
-                                >
-                                    {numPlayers === 1 && (
-                                        <span className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full bg-white text-blue-600 flex items-center justify-center text-xs font-black shadow-md">
-                                            ✓
-                                        </span>
-                                    )}
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
-                                        numPlayers === 1 ? 'bg-white text-blue-600' : 'bg-blue-600 text-white border border-white/30'
-                                    }`}>
-                                        <User size={30} strokeWidth={2.75} />
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="font-black text-lg leading-tight text-white">1 Player</div>
-                                        <div className="text-xs font-extrabold text-blue-100">Solo Arena</div>
-                                    </div>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setNumPlayers(2)}
-                                    className={`relative group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden ${
-                                        numPlayers === 2
-                                            ? 'bg-gradient-to-b from-rose-500 to-red-600 border-white text-white shadow-[0_8px_25px_rgba(244,63,94,0.65)] ring-2 ring-white/50 scale-[1.02]'
-                                            : 'bg-slate-800/95 hover:bg-slate-700 border-white/30 hover:border-white/60 text-white shadow-md'
-                                    }`}
-                                >
-                                    {numPlayers === 2 && (
-                                        <span className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full bg-white text-rose-600 flex items-center justify-center text-xs font-black shadow-md">
-                                            ✓
-                                        </span>
-                                    )}
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
-                                        numPlayers === 2 ? 'bg-white text-rose-600' : 'bg-rose-600 text-white border border-white/30'
-                                    }`}>
-                                        <Users size={30} strokeWidth={2.75} />
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="font-black text-lg leading-tight text-white">2 Players</div>
-                                        <div className="text-xs font-extrabold text-rose-100">Team Battle</div>
-                                    </div>
-                                </button>
-                            </div>
-
-                            {/* High-Contrast Player 1 & Player 2 Team Name Cards */}
-                            <div className="flex flex-col gap-2.5">
-                                {/* Player 1 Card */}
-                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-blue-600/80 to-indigo-600/80 border-2 border-blue-300 shadow-lg">
-                                    <div className="w-11 h-11 rounded-xl bg-white text-blue-600 flex flex-col items-center justify-center font-black leading-none shadow-md shrink-0">
-                                        <span className="text-[10px] uppercase tracking-wider font-black">P1</span>
-                                        <span className="text-sm">🔵</span>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-[11px] font-black uppercase tracking-wider text-white mb-1">Player 1 / Team 1</div>
-                                        <input
-                                            type="text"
-                                            value={p1Name}
-                                            onChange={e => setP1Name(e.target.value)}
-                                            className="w-full bg-slate-950/75 hover:bg-slate-950/90 focus:bg-slate-950 text-white font-black placeholder-white/60 border-2 border-white/40 rounded-xl px-3 py-1.5 outline-none focus:border-amber-300 transition-colors text-sm shadow-inner"
-                                            placeholder="Team 1"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Player 2 Card */}
-                                {numPlayers === 2 ? (
-                                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-rose-600/85 to-red-600/85 border-2 border-rose-300 shadow-lg animate-in fade-in duration-200">
-                                        <div className="w-11 h-11 rounded-xl bg-white text-rose-600 flex flex-col items-center justify-center font-black leading-none shadow-md shrink-0">
-                                            <span className="text-[10px] uppercase tracking-wider font-black">P2</span>
-                                            <span className="text-sm">🔴</span>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-[11px] font-black uppercase tracking-wider text-white mb-1">Player 2 / Team 2</div>
-                                            <input
-                                                type="text"
-                                                value={p2Name}
-                                                onChange={e => setP2Name(e.target.value)}
-                                                className="w-full bg-slate-950/75 hover:bg-slate-950/90 focus:bg-slate-950 text-white font-black placeholder-white/60 border-2 border-white/40 rounded-xl px-3 py-1.5 outline-none focus:border-amber-300 transition-colors text-sm shadow-inner"
-                                                placeholder="Team 2"
-                                            />
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => setNumPlayers(2)}
-                                        className="w-full py-2.5 px-3 rounded-xl bg-slate-800/90 hover:bg-rose-600/80 border-2 border-dashed border-white/40 hover:border-white text-white text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow"
-                                    >
-                                        <Plus size={15} />
-                                        <span>Add Player 2 (2 Players Battle)</span>
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* Game Settings Box + 1-10 Min Timer Slider */}
-                            <div className="bg-slate-950/70 p-4 rounded-2xl border-2 border-white/25 flex flex-col gap-3 shadow-inner">
-                                {/* Timer Slider: 1 Minute to 10 Minutes */}
-                                <div className="flex flex-col gap-1.5 pb-2.5 border-b border-white/20 text-white">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-black text-sm flex items-center gap-1.5 text-white">
-                                            <Timer size={16} className="text-amber-400" />
-                                            <span>Timer</span>
-                                        </span>
-                                        <span className="px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs shadow">
-                                            {gameDurationMinutes} {gameDurationMinutes === 1 ? 'Min' : 'Mins'}
-                                        </span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min={1}
-                                        max={10}
-                                        step={1}
-                                        value={gameDurationMinutes}
-                                        onChange={(e) => handleSetTimerMinutes(Number(e.target.value))}
-                                        className="w-full h-2.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400 border border-white/20"
-                                    />
-                                    <div className="flex justify-between text-[11px] font-black text-white/90 px-0.5">
-                                        <span>1m</span>
-                                        <span>3m</span>
-                                        <span>5m</span>
-                                        <span>8m</span>
-                                        <span>10m</span>
-                                    </div>
-                                </div>
-
-                                <div className="flex justify-between items-center text-white">
-                                    <span className="font-black text-sm">Speed</span>
-                                    <div className="flex gap-1.5">
-                                        <button onClick={() => handleSetSpeed(0.25)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${speed === 0.25 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Slow</button>
-                                        <button onClick={() => handleSetSpeed(1)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${speed === 1 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Normal</button>
-                                        <button onClick={() => handleSetSpeed(2.5)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${speed === 2.5 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Fast</button>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center text-white">
-                                    <span className="font-black text-sm">Bubble Size</span>
-                                    <div className="flex gap-1.5">
-                                        <button onClick={() => handleSetBubbleSize(0.5)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${bubbleSize === 0.5 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Small</button>
-                                        <button onClick={() => handleSetBubbleSize(1)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${bubbleSize === 1 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Normal</button>
-                                        <button onClick={() => handleSetBubbleSize(2)} className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer border ${bubbleSize === 2 ? 'bg-blue-500 text-white border-white shadow-md scale-105' : 'bg-slate-800 text-white/90 border-white/25 hover:bg-slate-700'}`}>Big</button>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center text-white">
-                                    <span className="font-black text-sm">Twist Mode</span>
-                                    <button onClick={() => handleSetTwistEnabled(!twistEnabled)} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer border ${twistEnabled ? 'bg-blue-500 border-white' : 'bg-slate-700 border-white/30'}`}>
-                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all shadow ${twistEnabled ? 'left-6' : 'left-1'}`}></div>
-                                    </button>
-                                </div>
-                                <div className="flex justify-between items-center text-white">
-                                    <span className="font-black text-sm">Voice Narration</span>
-                                    <button onClick={() => handleSetVoiceEnabled(!voiceEnabled)} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer border ${voiceEnabled ? 'bg-blue-500 border-white' : 'bg-slate-700 border-white/30'}`}>
-                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all shadow ${voiceEnabled ? 'left-6' : 'left-1'}`}></div>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={() => startGameMode(numPlayers)}
-                            className="py-4 px-8 bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 hover:from-sky-300 hover:to-indigo-500 text-white font-black text-xl rounded-full border-2 border-white/80 shadow-[0_10px_30px_rgba(59,130,246,0.7)] hover:scale-[1.02] active:scale-95 transition-all w-full cursor-pointer tracking-wide"
-                        >
-                            START GAME
-                        </button>
-                    </div>
-
-                    {/* COLUMN 2: EXPANDED CHOOSE YOUR TRACKER + SMALL LIVE CAMERA PREVIEW */}
-                    <div className="lg:col-span-5 bg-slate-900/80 dark:bg-slate-950/85 backdrop-blur-2xl rounded-[2rem] border-2 border-white/40 p-5 sm:p-6 shadow-[0_20px_50px_rgba(15,23,42,0.5)] flex flex-col justify-between gap-3.5">
-                        <div className="flex flex-col gap-3.5 h-full">
-                            <div className="flex items-center justify-center gap-2.5">
-                                <span className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 border border-white/50 text-white flex items-center justify-center text-xl shadow-lg">
-                                    {trackerMode === 'finger' ? '☝️' : trackerMode === 'hand' ? '🖐️' : '👃'}
-                                </span>
-                                <h3 className="text-2xl font-black text-white drop-shadow-md">
-                                    Choose Your Tracker
-                                </h3>
-                            </div>
-
-                            {/* 3 Tracker Category Tabs (Words + Icons Only — High Contrast) */}
-                            <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-950/85 rounded-2xl border-2 border-white/25">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTrackerMode('finger');
-                                        detectedHandsRef.current = [];
-                                        detectedFacesRef.current = [];
-                                    }}
-                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer border ${
-                                        trackerMode === 'finger'
-                                            ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-white shadow-lg scale-[1.02]'
-                                            : 'bg-slate-800/90 text-white hover:bg-slate-700 border-white/15'
-                                    }`}
-                                >
-                                    <span className="text-lg">☝️</span>
-                                    <span>Finger Ball</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTrackerMode('hand');
-                                        detectedHandsRef.current = [];
-                                        detectedFacesRef.current = [];
-                                    }}
-                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer border ${
-                                        trackerMode === 'hand'
-                                            ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white border-white shadow-lg scale-[1.02]'
-                                            : 'bg-slate-800/90 text-white hover:bg-slate-700 border-white/15'
-                                    }`}
-                                >
-                                    <span className="text-lg">🖐️</span>
-                                    <span>Hand Tracker</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTrackerMode('nose');
-                                        detectedHandsRef.current = [];
-                                        detectedFacesRef.current = [];
-                                    }}
-                                    className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs sm:text-sm transition-all cursor-pointer border ${
-                                        trackerMode === 'nose'
-                                            ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white border-white shadow-lg scale-[1.02]'
-                                            : 'bg-slate-800/90 text-white hover:bg-slate-700 border-white/15'
-                                    }`}
-                                >
-                                    <span className="text-lg">👃</span>
-                                    <span>Nose Tracker</span>
-                                </button>
-                            </div>
-
-                            {/* SMALL LIVE CAMERA PREVIEW SO USER CAN TRY THE TRACKER */}
-                            <TrackerLivePreview
-                                videoRef={videoRef}
-                                isCameraActive={isCameraActive}
-                                trackerMode={trackerMode}
-                                handCharacter={handCharacter}
-                                noseStyle={noseStyle}
-                                detectedHandsRef={detectedHandsRef}
-                                detectedFacesRef={detectedFacesRef}
-                                onPopSound={() => playSound('pop')}
-                                onRetryCamera={() => setupCamera()}
-                            />
-
-                            {/* Expanded Tracker Options Grid — ONLY WORDS & ICONS, HIGH VISIBILITY */}
-                            <div className="flex-1 flex flex-col justify-center">
-                                {trackerMode === 'finger' && (
-                                    <div className="grid grid-cols-1 gap-3 my-auto">
-                                        <button
-                                            type="button"
-                                            onClick={() => setTrackerMode('finger')}
-                                            className="p-4 rounded-2xl bg-white text-slate-950 border-2 border-amber-400 shadow-xl flex items-center justify-center gap-3.5 cursor-pointer transition-transform hover:scale-[1.01]"
-                                        >
-                                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-3xl shadow-md">
-                                                ☝️
-                                            </div>
-                                            <span className="text-lg font-black text-slate-950">Finger Ball</span>
-                                            <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow">✓</span>
-                                        </button>
-                                    </div>
-                                )}
-
-                                {trackerMode === 'hand' && (
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        {HAND_TRACKER_OPTIONS.map((c) => {
-                                            const isSelected = handCharacter === c.id;
-                                            return (
-                                                <button
-                                                    key={c.id}
-                                                    type="button"
-                                                    onClick={() => setHandCharacter(c.id)}
-                                                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all cursor-pointer ${
-                                                        isSelected
-                                                            ? 'bg-white text-slate-950 border-amber-400 shadow-[0_6px_20px_rgba(255,255,255,0.25)] scale-[1.02]'
-                                                            : 'bg-slate-800/95 hover:bg-slate-700 text-white border-white/30 hover:border-white/60 shadow-md'
-                                                    }`}
-                                                >
-                                                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${c.color} text-white flex items-center justify-center text-xl shadow-md shrink-0 border border-white/30`}>
-                                                        {c.icon}
-                                                    </div>
-                                                    <span className={`font-black text-xs sm:text-sm leading-tight flex-1 text-left ${isSelected ? 'text-slate-950' : 'text-white'}`}>
-                                                        {c.name}
-                                                    </span>
-                                                    {isSelected && (
-                                                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow">
-                                                            ✓
-                                                        </span>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {trackerMode === 'nose' && (
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        {NOSE_TRACKER_OPTIONS.map((n) => {
-                                            const isSelected = noseStyle === n.id;
-                                            return (
-                                                <button
-                                                    key={n.id}
-                                                    type="button"
-                                                    onClick={() => setNoseStyle(n.id)}
-                                                    className={`p-2.5 sm:p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all cursor-pointer ${
-                                                        isSelected
-                                                            ? 'bg-white text-slate-950 border-pink-400 shadow-[0_6px_20px_rgba(255,255,255,0.25)] scale-[1.02]'
-                                                            : 'bg-slate-800/95 hover:bg-slate-700 text-white border-white/30 hover:border-white/60 shadow-md'
-                                                    }`}
-                                                >
-                                                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${n.color} text-white flex items-center justify-center text-xl shadow-md shrink-0 border border-white/30`}>
-                                                        {n.icon}
-                                                    </div>
-                                                    <span className={`font-black text-xs sm:text-sm leading-tight flex-1 text-left ${isSelected ? 'text-slate-950' : 'text-white'}`}>
-                                                        {n.name}
-                                                    </span>
-                                                    {isSelected && (
-                                                        <span className="w-5 h-5 rounded-full bg-pink-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow">
-                                                            ✓
-                                                        </span>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* COLUMN 3: CHOOSE THEME & STUDY MODE (HIGH VISIBILITY) */}
-                    <div className="lg:col-span-3 flex flex-col gap-5">
-                        <div className="w-full rounded-[2rem] bg-slate-900/80 dark:bg-slate-950/85 backdrop-blur-2xl border-2 border-white/40 shadow-[0_20px_50px_rgba(15,23,42,0.5)] p-5 sm:p-6 flex flex-col justify-center flex-1">
-                            <h3 className="text-2xl font-black text-white mb-4 text-center drop-shadow-md">Choose Theme</h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                {[
-                                    { id: 'theme-sky', name: 'Sky', icon: '☁️' },
-                                    { id: 'theme-ocean', name: 'Ocean', icon: '🌊' },
-                                    { id: 'theme-space', name: 'Space', icon: '🚀' },
-                                    { id: 'theme-jungle', name: 'Jungle', icon: '🌴' },
-                                    { id: 'theme-sunset', name: 'Sunset', icon: '🌅' }
-                                ].map(t => (
-                                    <button
-                                        key={t.id}
-                                        onClick={() => setSelectedTheme(t.id)}
-                                        className={`py-3.5 px-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition-all font-black text-sm cursor-pointer border-2 ${
-                                            selectedTheme === t.id
-                                                ? 'bg-white text-blue-700 border-amber-400 scale-105 shadow-[0_6px_20px_rgba(255,255,255,0.25)]'
-                                                : 'bg-slate-800/95 hover:bg-slate-700 text-white border-white/30 hover:border-white/60 shadow-md'
-                                        }`}
-                                    >
-                                        <span className="text-2xl">{t.icon}</span>
-                                        <span>{t.name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={() => setScreen('study')}
-                            className="group relative w-full h-36 rounded-[2rem] bg-gradient-to-br from-indigo-600/95 via-purple-600/95 to-pink-600/90 border-2 border-white/50 shadow-[0_20px_50px_rgba(15,23,42,0.5)] overflow-hidden transition-all duration-300 hover:scale-[1.03] cursor-pointer flex items-center justify-center p-5 gap-4"
-                        >
-                            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-2xl group-hover:bg-white/30 transition-colors"></div>
-                            <div className="relative z-10 text-5xl transform group-hover:scale-110 transition-transform duration-300 drop-shadow-xl">
-                                📖
-                            </div>
-                            <div className="flex flex-col items-start relative z-10 text-left">
-                                <h3 className="text-2xl font-black text-white leading-tight drop-shadow-md">Study Mode</h3>
-                                <p className="text-amber-200 font-black text-xs">Review Questions!</p>
-                            </div>
-                        </button>
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap justify-center gap-4 relative z-10">
-                  <button onClick={() => onViewChange('games')} className="px-7 py-3 rounded-full bg-slate-900/80 hover:bg-slate-900 backdrop-blur-md shadow-xl text-base font-black text-white border-2 border-white/50 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
-                    <ArrowLeft size={20} /> Back to Games
+        <UnifiedGameSetup
+          title="BUBBLE POP 3D"
+          containerId="bubble-pop-container"
+          questionCount={activeQuiz.questions.length}
+          onBack={() => onViewChange('games')}
+          onOpenGameSwitcher={() => setShowModeModal(true)}
+          onOpenQuizEditor={() => setScreen('editor')}
+          playerModeOptions={[
+            { id: 1, label: '1 PLAYER', icon: '🫧' },
+            { id: 2, label: '2 PLAYERS', icon: '🔵⚡🔴' }
+          ]}
+          selectedPlayerMode={numPlayers}
+          onSelectPlayerMode={(val: number) => setNumPlayers(val)}
+          playerNames={
+            numPlayers === 2
+              ? [
+                  { id: 'p1', badge: 'P1', value: p1Name, placeholder: 'PLAYER 1', onChange: setP1Name, colorScheme: 'blue' },
+                  { id: 'p2', badge: 'P2', value: p2Name, placeholder: 'PLAYER 2', onChange: setP2Name, colorScheme: 'red' }
+                ]
+              : [
+                  { id: 'p1', badge: 'P1', value: p1Name, placeholder: 'PLAYER 1', onChange: setP1Name, colorScheme: 'blue' }
+                ]
+          }
+          timerValue={gameDurationMinutes * 60}
+          timerLabelDisplay={`${gameDurationMinutes}:00`}
+          timerOptions={[
+            { label: '1M', sec: 60 },
+            { label: '2M', sec: 120 },
+            { label: '3M', sec: 180 },
+            { label: '5M', sec: 300 },
+            { label: '10M', sec: 600 }
+          ]}
+          onTimerChange={(sec) => handleSetTimerMinutes(Math.max(1, Math.round(sec / 60)))}
+          startLabel={`START ${numPlayers === 2 ? '2P BATTLE' : 'ARENA'}`}
+          onStart={() => startGameMode(numPlayers)}
+          onStudy={() => setScreen('study')}
+        >
+          {/* 1. AR TRACKER MODE & CHARACTER */}
+          <div className="p-4 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
+                🎯 AR TRACKER
+              </span>
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-sky-200">
+                {([
+                  { id: 'finger' as const, label: '☝️ FINGER' },
+                  { id: 'hand' as const, label: '🖐️ HAND' },
+                  { id: 'nose' as const, label: '👃 NOSE' }
+                ]).map(tr => (
+                  <button
+                    key={tr.id}
+                    type="button"
+                    onClick={() => {
+                      setTrackerMode(tr.id);
+                      detectedHandsRef.current = [];
+                      detectedFacesRef.current = [];
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
+                      trackerMode === tr.id ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 hover:bg-sky-50'
+                    }`}
+                  >
+                    {tr.label}
                   </button>
-                </div>
+                ))}
+              </div>
             </div>
-        </div>
+
+            {trackerMode === 'hand' && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {HAND_TRACKER_OPTIONS.map((c) => {
+                  const isSel = handCharacter === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setHandCharacter(c.id)}
+                      className={`p-3 rounded-2xl border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        isSel
+                          ? 'bg-gradient-to-b from-blue-500 to-blue-700 border-blue-300 border-b-blue-950 text-white -translate-y-0.5 shadow-md'
+                          : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
+                      }`}
+                    >
+                      <span className="text-xl">{c.icon}</span>
+                      <span className="text-xs sm:text-sm font-black uppercase truncate">{c.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {trackerMode === 'nose' && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {NOSE_TRACKER_OPTIONS.map((n) => {
+                  const isSel = noseStyle === n.id;
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => setNoseStyle(n.id)}
+                      className={`p-3 rounded-2xl border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        isSel
+                          ? 'bg-gradient-to-b from-pink-500 to-rose-600 border-pink-300 border-b-rose-900 text-white -translate-y-0.5 shadow-md'
+                          : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
+                      }`}
+                    >
+                      <span className="text-xl">{n.icon}</span>
+                      <span className="text-xs sm:text-sm font-black uppercase truncate">{n.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 2. SPEED, BUBBLE SIZE & ARENA THEME ROW */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-3xl bg-purple-50/90 border-2 border-purple-200 border-b-4 border-b-purple-300 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-purple-950">
+                  ⚡ SPEED &amp; SIZE
+                </span>
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-purple-200">
+                  {[
+                    { label: 'SMALL', val: 0.5 },
+                    { label: 'NORMAL', val: 1 },
+                    { label: 'BIG', val: 2 }
+                  ].map(bs => (
+                    <button
+                      key={bs.label}
+                      type="button"
+                      onClick={() => handleSetBubbleSize(bs.val)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                        bubbleSize === bs.val ? 'bg-purple-600 text-white' : 'text-slate-700 hover:bg-purple-50'
+                      }`}
+                    >
+                      {bs.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'SLOW', val: 0.25 },
+                  { label: 'NORMAL', val: 1 },
+                  { label: 'FAST', val: 2.5 }
+                ].map(sp => (
+                  <button
+                    key={sp.label}
+                    type="button"
+                    onClick={() => handleSetSpeed(sp.val)}
+                    className={`py-2.5 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer ${
+                      speed === sp.val
+                        ? 'bg-gradient-to-b from-purple-500 to-indigo-600 border-purple-300 border-b-indigo-950 text-white shadow-sm -translate-y-0.5'
+                        : 'bg-white hover:bg-purple-50 border-purple-200 border-b-purple-300 text-slate-900'
+                    }`}
+                  >
+                    {sp.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-amber-50/90 border-2 border-amber-200 border-b-4 border-b-amber-300 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-amber-950">
+                  🌈 THEME
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSetVoiceEnabled(!voiceEnabled)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-black transition cursor-pointer ${
+                    voiceEnabled ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 border border-amber-200'
+                  }`}
+                >
+                  {voiceEnabled ? '🔊 VOICE ON' : '🔇 VOICE OFF'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1.5">
+                {[
+                  { id: 'theme-sky', name: 'SKY', icon: '☁️' },
+                  { id: 'theme-ocean', name: 'OCEAN', icon: '🌊' },
+                  { id: 'theme-space', name: 'SPACE', icon: '🚀' },
+                  { id: 'theme-jungle', name: 'JUNGLE', icon: '🌴' },
+                  { id: 'theme-sunset', name: 'SUNSET', icon: '🌅' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedTheme(t.id)}
+                    className={`py-2 px-1 rounded-2xl font-black text-[11px] border-2 border-b-[5px] transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                      selectedTheme === t.id
+                        ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 -translate-y-0.5'
+                        : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-800'
+                    }`}
+                  >
+                    <span className="text-base">{t.icon}</span>
+                    <span>{t.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </UnifiedGameSetup>
       )}
 
       {/* Screen: Loading */}

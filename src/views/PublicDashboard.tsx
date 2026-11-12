@@ -396,13 +396,11 @@ export function PublicDashboard({
     { id: "yoga-quiz", title: "Yoga Quiz", color: "text-emerald-600", icon: "https://drive.google.com/thumbnail?id=16viKskpD4hXygTg-0UaGSjfrWibNoqeQ&sz=w1000" },
     { id: "family-feud", title: "Family Feud", color: "text-yellow-600", icon: "https://drive.google.com/thumbnail?id=1DDWdERo9zS6SEbpXA7J8FSh__1CNqxZN&sz=w1000" },
     { id: "sumo", title: "Sumo", color: "text-red-600", icon: "https://drive.google.com/thumbnail?id=19zB6Kpor6pry7TV3XvX3eIZdxpd3ys40&sz=w1000" },
-    { id: "hamster-pop-quiz", title: "Hamster Pop", color: "text-pink-600", icon: "https://images.unsplash.com/photo-1548767797-d8c844163c4c?q=80&w=1000&auto=format&fit=crop" },
-    { id: "student-race", title: "Student Race", color: "text-violet-600", icon: "https://images.unsplash.com/photo-1541604193435-22287d32c2c2?q=80&w=1000&auto=format&fit=crop" },
-    { id: "letter-lock", title: "Letter Lock", color: "text-blue-600", icon: "https://images.unsplash.com/photo-1555448248-2571daf6344b?q=80&w=1000&auto=format&fit=crop" },
+    { id: "hamster-pop-quiz", title: "Video Quiz", color: "text-pink-600", icon: "/images/hamster-pop-quiz-card.jpg" },
     { id: "squid-game-picker", title: "Name Picker", color: "text-rose-600", icon: "/images/name-picker-card.jpg" },
-    { id: "neon-chain", title: "Neon Chain", color: "text-cyan-600", icon: "https://drive.google.com/thumbnail?id=1kovfYZSlp6X8HTqQ9OF_gSpf3wgJgNYG&sz=w1000" },
-    { id: "tic-tac-toe", title: "Tic Tac Toe Battle", color: "text-gray-800", icon: "https://images.unsplash.com/photo-1668901382969-8c73e450a1f5?q=80&w=1000&auto=format&fit=crop" },
-    { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "https://images.unsplash.com/photo-1546410531-bf4caa381ce6?q=80&w=1000&auto=format&fit=crop" }
+    { id: "neon-chain", title: "Neon Chain", color: "text-cyan-600", icon: "/images/neon-chain-card.jpg" },
+    { id: "tic-tac-toe", title: "Tic Tac Toe Battle", color: "text-gray-800", icon: "/images/tic-tac-toe-card.jpg" },
+    { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "/images/phonemic-master-card.jpg" }
   ];
 
   const normalizeGameType = (type: string | undefined): string => {

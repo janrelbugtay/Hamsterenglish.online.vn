@@ -1,15 +1,46 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Play, Users, Clock, PlusCircle, QrCode, LogIn } from "lucide-react";
-import { Game, ViewState } from "../types";
+import { PlusCircle, QrCode, LogIn, Camera, Gamepad2, Wrench, Users, LayoutGrid } from "lucide-react";
+import { Game, GameCategoryId, ViewState } from "../types";
 import { cn } from "../lib/utils";
-import { GameThumbnail } from "../components/GameThumbnail";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 
 const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg";
 const hamsterPaintballCardImg = "/images/hamster-paintball-card.jpg";
+
+const GAME_CATEGORY_SECTIONS: {
+  id: GameCategoryId;
+  title: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  accentText: string;
+}[] = [
+  {
+    id: "classroom-tools",
+    title: "Classroom Tools",
+    icon: Wrench,
+    accentText: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    id: "ar-camera",
+    title: "AR Camera Games",
+    icon: Camera,
+    accentText: "text-sky-600 dark:text-sky-400",
+  },
+  {
+    id: "board-trivia",
+    title: "Board Trivia & Team Games",
+    icon: Gamepad2,
+    accentText: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    id: "multiplayer-games",
+    title: "Multiplayer Games",
+    icon: Users,
+    accentText: "text-purple-600 dark:text-purple-400",
+  },
+];
 
 export function Home({
   onViewChange,
@@ -59,7 +90,7 @@ export function Home({
             <button
               type="submit"
               disabled={!joinRoomInput.trim()}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 disabled:opacity-40 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 disabled:opacity-40 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer whitespace-nowrap shrink-0"
             >
               <LogIn size={14} />
               <span>Join Lobby</span>
@@ -73,7 +104,7 @@ export function Home({
                 onViewChange("generator");
               }
             }}
-            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-purple-700 hover:to-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none transition-all cursor-pointer"
+            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-purple-700 hover:to-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none transition-all cursor-pointer whitespace-nowrap shrink-0"
           >
             <PlusCircle size={22} />
             <span>Create a Game</span>
@@ -93,6 +124,7 @@ function FeaturedGamesSection({
 }) {
   const { user } = useAuth();
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
+  const [selectedCategory, setSelectedCategory] = useState<"all" | GameCategoryId>("all");
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
     try {
       const cached = localStorage.getItem('publishedGames');
@@ -121,6 +153,7 @@ function FeaturedGamesSection({
   }, []);
 
   const allGames: Game[] = [
+    // 1. Classroom Tools (4)
     {
       id: "squid-game-picker",
       title: "NAME PICKER",
@@ -134,37 +167,72 @@ function FeaturedGamesSection({
       isAI: false,
       color: "from-rose-600 to-rose-400",
       icon: "🎯",
+      category: "classroom-tools",
     },
     {
-      id: "neon-chain",
-      title: "Neon Chain",
-      description: "A fast-paced category word game with glowing visuals.",
-      difficulty: "Hard",
-      players: "2 Teams",
-      time: "10-15m",
-      subject: "Vocabulary",
-      grade: "B1-B2",
-      imageUrl: "https://drive.google.com/thumbnail?id=1kovfYZSlp6X8HTqQ9OF_gSpf3wgJgNYG&sz=w1000",
-      isAI: false,
-      color: "from-cyan-400 to-blue-600",
-      icon: "⚡",
-    },
-    {
-      id: "mystery-box",
-      title: "Mystery Box",
+      id: "flashcards-match",
+      title: "Flashcard",
       description:
-        "Answer questions to open mystery boxes containing points or penalties!",
-      difficulty: "Medium",
-      players: "2-4 Teams",
-      time: "15m",
-      subject: "Trivia",
-      grade: "A2-B1",
-      imageUrl: "https://drive.google.com/thumbnail?id=1ugM0rhtk40XdbSDrdDJja5QpLNkWebQn&sz=w1000",
+        "Interactive 3D flashcards with 1-sided and 2-sided flip modes, media picker, audio reader, and card dealer stage!",
+      difficulty: "Easy",
+      players: "1 Player / Class",
+      time: "5-10m",
+      subject: "Vocabulary",
+      grade: "All",
+      imageUrl: "/images/flashcards-card.jpg",
       isAI: false,
-      color: "from-orange-400 to-yellow-500",
-      icon: "🎁",
+      color: "from-indigo-400 to-purple-500",
+      icon: "🎴",
+      category: "classroom-tools",
     },
-    
+    {
+      id: "hamster-pop-quiz",
+      title: "Video Quiz",
+      description: "Turn any video into a sunny ESL adventure with interactive video quizzes!",
+      difficulty: "Medium",
+      players: "1 Player",
+      time: "10-15 mins",
+      subject: "Video Comprehension",
+      grade: "All",
+      imageUrl: "/images/hamster-pop-quiz-card.jpg",
+      isAI: true,
+      color: "from-sky-400 to-yellow-400",
+      icon: "🎬",
+      category: "classroom-tools",
+    },
+    {
+      id: "phonemic-master",
+      title: "Phonemic Master",
+      description: "Listen, speak, and master the 44 sounds of English.",
+      difficulty: "Hard",
+      players: "1 Player",
+      time: "10m",
+      subject: "ESL",
+      grade: "All",
+      imageUrl: "/images/phonemic-master-card.jpg",
+      isAI: false,
+      color: "from-emerald-700 to-emerald-900",
+      icon: "🗣️",
+      category: "classroom-tools",
+    },
+
+    // 2. AR Camera Games (4)
+    {
+      id: "slap-and-chop",
+      title: "Mosquito Slap",
+      description:
+        "3D Motion AR game! Track both hands on camera and clap your 3D gloves together to slap buzzing mosquitoes!",
+      difficulty: "Easy",
+      players: "1-2 Players",
+      time: "5-10m",
+      subject: "ESL & Science",
+      grade: "All",
+      imageUrl: mosquitoSlapCardImg,
+      isAI: false,
+      color: "from-purple-500 to-indigo-600",
+      icon: "🦟",
+      category: "ar-camera",
+    },
     {
       id: "bubble-pop",
       title: "Bubble Pop",
@@ -175,10 +243,11 @@ function FeaturedGamesSection({
       time: "5m",
       subject: "Grammar",
       grade: "A1-B1",
-      imageUrl: "https://drive.google.com/thumbnail?id=1AHwLQ7lCIsKt9fzMlWAJWMnRCfFE4mE-&sz=w1000",
+      imageUrl: "/images/bubble-pop-card.jpg",
       isAI: false,
       color: "from-blue-400 to-cyan-400",
       icon: "🫧",
+      category: "ar-camera",
     },
     {
       id: "roller-coaster-quiz",
@@ -195,37 +264,72 @@ function FeaturedGamesSection({
       isAI: false,
       color: "from-red-500 to-amber-500",
       icon: "🎢",
+      category: "ar-camera",
     },
     {
-      id: "hamster-paintball",
-      title: "Hamster Paintball",
+      id: "yoga-quiz",
+      title: "Yoga Quiz",
       description:
-        "3D Outdoor Tactical Speedball Park Arena! Fire glossy paintballs, slide across the duck pond, deploy inflatable air bunkers, and earn ammo through trivia!",
+        "Test your grammar with this relaxing yet challenging vocabulary quiz!",
       difficulty: "Medium",
-      players: "Multiplayer Lobby (QR & Code)",
-      time: "5-15m",
-      subject: "ESL & Science Trivia",
+      players: "1 Player",
+      time: "10m",
+      subject: "Grammar",
       grade: "All",
-      imageUrl: hamsterPaintballCardImg,
-      isNew: true,
+      imageUrl: "/images/yoga-quiz-card.jpg",
       isAI: false,
-      color: "from-lime-500 to-emerald-600",
-      icon: "🎯",
+      color: "from-teal-400 to-emerald-500",
+      icon: "🧘‍♀️",
+      category: "ar-camera",
+    },
+
+    // 3. Board Trivia & Team Games (7)
+    {
+      id: "mystery-box",
+      title: "Mystery Box",
+      description:
+        "Answer questions to open mystery boxes containing points or penalties!",
+      difficulty: "Medium",
+      players: "2-4 Teams",
+      time: "15m",
+      subject: "Trivia",
+      grade: "A2-B1",
+      imageUrl: "/images/mystery-box-card.jpg",
+      isAI: false,
+      color: "from-orange-400 to-yellow-500",
+      icon: "🎁",
+      category: "board-trivia",
     },
     {
-      id: "slap-and-chop",
-      title: "Mosquito Slap",
-      description:
-        "3D Motion AR game! Track both hands on camera and clap your 3D gloves together to slap buzzing mosquitoes!",
-      difficulty: "Easy",
-      players: "1-2 Players",
-      time: "5-10m",
-      subject: "ESL & Science",
-      grade: "All",
-      imageUrl: mosquitoSlapCardImg,
+      id: "neon-chain",
+      title: "Neon Chain",
+      description: "A fast-paced category word game with glowing visuals.",
+      difficulty: "Hard",
+      players: "2 Teams",
+      time: "10-15m",
+      subject: "Vocabulary",
+      grade: "B1-B2",
+      imageUrl: "/images/neon-chain-card.jpg",
       isAI: false,
-      color: "from-purple-500 to-indigo-600",
-      icon: "🦟",
+      color: "from-cyan-400 to-blue-600",
+      icon: "⚡",
+      category: "board-trivia",
+    },
+    {
+      id: "bubble-sentence-pro",
+      title: "Bubble Island",
+      description:
+        "Pop bubbles in the correct order to form sentences. Includes a Teacher Studio!",
+      difficulty: "Medium",
+      players: "1 Player / Class",
+      time: "10m",
+      subject: "Grammar",
+      grade: "A1-B1",
+      imageUrl: "/images/bubble-island-card.jpg",
+      isAI: false,
+      color: "from-blue-500 to-sky-300",
+      icon: "🎈",
+      category: "board-trivia",
     },
     {
       id: "shark-attack",
@@ -241,51 +345,7 @@ function FeaturedGamesSection({
       isAI: false,
       color: "from-cyan-500 to-blue-900",
       icon: "🦈",
-    },
-    {
-      id: "flashcards-match",
-      title: "Flashcard",
-      description:
-        "Interactive 3D flashcards with 1-sided and 2-sided flip modes, media picker, audio reader, and card dealer stage!",
-      difficulty: "Easy",
-      players: "1 Player / Class",
-      time: "5-10m",
-      subject: "Vocabulary",
-      grade: "All",
-      imageUrl: "/assets/aistudio/image_82f283f4.png",
-      isAI: false,
-      color: "from-indigo-400 to-purple-500",
-      icon: "🎴",
-    },
-    {
-      id: "bubble-sentence-pro",
-      title: "Bubble Island",
-      description:
-        "Pop bubbles in the correct order to form sentences. Includes a Teacher Studio!",
-      difficulty: "Medium",
-      players: "1 Player / Class",
-      time: "10m",
-      subject: "Grammar",
-      grade: "A1-B1",
-      imageUrl: "https://drive.google.com/thumbnail?id=136UAXGhVDr4ZhJd3bRABHDKp40RJIQSJ&sz=w1000",
-      isAI: false,
-      color: "from-blue-500 to-sky-300",
-      icon: "🎈",
-    },
-    {
-      id: "yoga-quiz",
-      title: "Yoga Quiz",
-      description:
-        "Test your grammar with this relaxing yet challenging vocabulary quiz!",
-      difficulty: "Medium",
-      players: "1 Player",
-      time: "10m",
-      subject: "Grammar",
-      grade: "All",
-      imageUrl: "https://drive.google.com/thumbnail?id=16viKskpD4hXygTg-0UaGSjfrWibNoqeQ&sz=w1000",
-      isAI: false,
-      color: "from-teal-400 to-emerald-500",
-      icon: "🧘‍♀️",
+      category: "board-trivia",
     },
     {
       id: "family-feud",
@@ -296,10 +356,11 @@ function FeaturedGamesSection({
       time: "15m",
       subject: "Vocabulary",
       grade: "All",
-      imageUrl: "https://drive.google.com/thumbnail?id=1DDWdERo9zS6SEbpXA7J8FSh__1CNqxZN&sz=w1000",
+      imageUrl: "/images/family-feud-card.jpg",
       isAI: false,
       color: "from-yellow-400 to-orange-500",
       icon: "👨‍👩‍👧‍👦",
+      category: "board-trivia",
     },
     {
       id: "sumo",
@@ -310,55 +371,31 @@ function FeaturedGamesSection({
       time: "10m",
       subject: "Grammar",
       grade: "All",
-      imageUrl: "https://drive.google.com/thumbnail?id=19zB6Kpor6pry7TV3XvX3eIZdxpd3ys40&sz=w1000",
+      imageUrl: "/images/sumo-tags-card.jpg",
       isAI: false,
       color: "from-indigo-600 to-red-600",
       icon: "🤼",
+      category: "board-trivia",
     },
+
+    // 4. Multiplayer Games (2)
     {
-      id: "hamster-pop-quiz",
-      title: "Hamster Pop Quiz",
-      description: "Turn any video into a sunny ESL adventure with interactive pop quizzes!",
+      id: "hamster-paintball",
+      title: "Hamster Paintball",
+      description:
+        "3D Outdoor Tactical Speedball Park Arena! Fire glossy paintballs, slide across the duck pond, deploy inflatable air bunkers, and earn ammo through trivia!",
       difficulty: "Medium",
-      players: "1 Player",
-      time: "10-15 mins",
-      subject: "Video Comprehension",
+      players: "Multiplayer Lobby (QR & Code)",
+      time: "5-15m",
+      subject: "ESL & Science Trivia",
       grade: "All",
-      imageUrl: "https://images.unsplash.com/photo-1548767797-d8c844163c4c?q=80&w=1000&auto=format&fit=crop",
-      isAI: true,
-      color: "from-sky-400 to-yellow-400",
-      icon: "🐹",
-    },
-    {
-      id: "letter-lock",
-      title: "Letter Lock",
-      description: "Spin the wheel, guess the word, and beat the timer in this fast-paced letter game!",
-      difficulty: "Medium",
-      players: "2 Teams",
-      time: "15m",
-      subject: "Vocabulary",
-      grade: "All",
-      imageUrl: "https://images.unsplash.com/photo-1555448248-2571daf6344b?q=80&w=1000&auto=format&fit=crop",
+      imageUrl: hamsterPaintballCardImg,
+      isNew: true,
       isAI: false,
-      color: "from-sky-400 to-blue-600",
+      color: "from-lime-500 to-emerald-600",
       icon: "🎯",
+      category: "multiplayer-games",
     },
-    {
-      id: "student-race",
-      title: "Name Picker",
-      description: "Pick a student. Start a race. Make every classroom activity exciting.",
-      difficulty: "Easy",
-      players: "Classroom",
-      time: "5m",
-      subject: "Classroom Management",
-      grade: "All",
-      imageUrl: "https://images.unsplash.com/photo-1541604193435-22287d32c2c2?q=80&w=1000&auto=format&fit=crop",
-      isAI: false,
-      color: "from-indigo-600 to-yellow-400",
-      icon: "🏎️",
-    },
-    
-    
     {
       id: "tic-tac-toe",
       title: "Tic Tac Toe Battle",
@@ -368,40 +405,101 @@ function FeaturedGamesSection({
       time: "5m",
       subject: "Logic",
       grade: "All",
-      imageUrl: "https://images.unsplash.com/photo-1668901382969-8c73e450a1f5?q=80&w=1000&auto=format&fit=crop",
+      imageUrl: "/images/tic-tac-toe-card.jpg",
       isAI: false,
       color: "from-gray-700 to-gray-900",
       icon: "❌",
+      category: "multiplayer-games",
     },
-    {
-      id: "phonemic-master",
-      title: "Phonemic Master",
-      description: "Listen, speak, and master the 44 sounds of English.",
-      difficulty: "Hard",
-      players: "1 Player",
-      time: "10m",
-      subject: "ESL",
-      grade: "All",
-      imageUrl: "https://images.unsplash.com/photo-1546410531-bf4caa381ce6?q=80&w=1000&auto=format&fit=crop",
-      isAI: false,
-      color: "from-emerald-700 to-emerald-900",
-      icon: "🗣️",
-    }
   ];
 
-  const games = allGames.filter(g => g.id === 'hamster-paintball' || isAdmin || publishedGames[g.id] !== false);
+  const games = allGames.filter(
+    (g) => g.id === "hamster-paintball" || isAdmin || publishedGames[g.id] !== false
+  );
+
+  const visibleSections = GAME_CATEGORY_SECTIONS.map((section) => ({
+    ...section,
+    games: games.filter((g) => g.category === section.id),
+  })).filter(
+    (section) =>
+      section.games.length > 0 &&
+      (selectedCategory === "all" || selectedCategory === section.id)
+  );
+
+  const countByCategory = (catId: GameCategoryId) =>
+    games.filter((g) => g.category === catId).length;
 
   return (
-    <section className="py-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {games.map((game, idx) => (
-          <GameCard
-            key={game.id}
-            game={game}
-            delay={idx * 0.1}
-            onViewChange={onViewChange}
-          />
-        ))}
+    <section className="py-2 flex flex-col gap-8">
+      {/* Interactive Top Category Filter Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <div className="inline-flex items-center gap-1.5 p-1.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("all")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
+              selectedCategory === "all"
+                ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+                : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
+            )}
+          >
+            <LayoutGrid size={16} />
+            <span>All Games</span>
+            <span className="text-xs opacity-75 tabular-nums">({games.length})</span>
+          </button>
+
+          {GAME_CATEGORY_SECTIONS.map((cat) => {
+            const Icon = cat.icon;
+            const count = countByCategory(cat.id);
+            const isActive = selectedCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(cat.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
+                  isActive
+                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
+                )}
+              >
+                <Icon size={16} className={isActive ? "text-current" : cat.accentText} />
+                <span>{cat.title}</span>
+                <span className="text-xs opacity-75 tabular-nums">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Category Sections with Bold Minimalist Headers & 100% Clean 3D Model Cards */}
+      <div className="flex flex-col gap-12">
+        {visibleSections.map((section) => {
+          const SectionIcon = section.icon;
+          return (
+            <div key={section.id} className="flex flex-col gap-5">
+              <div className="flex items-center gap-2.5">
+                <SectionIcon size={24} className={section.accentText} />
+                <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                  {section.title}
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {section.games.map((game, idx) => (
+                  <GameCard
+                    key={game.id}
+                    game={game}
+                    delay={idx * 0.06}
+                    onViewChange={onViewChange}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -419,12 +517,12 @@ function GameCard({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 12 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.4, delay }}
+      transition={{ duration: 0.3, delay: Math.min(delay, 0.3) }}
       onClick={() => onViewChange && onViewChange(game.id as ViewState)}
-      className="w-full relative aspect-[1000/791] bg-white dark:bg-slate-800 border-[6px] border-white rounded-[40px] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.08)] group hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(0,0,0,0.12)] ring-1 ring-slate-100 transition-all duration-300 cursor-pointer"
+      className="w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden shadow-[0_22px_44px_-12px_rgba(15,23,42,0.36),0_10px_20px_-8px_rgba(15,23,42,0.22)] group hover:-translate-y-2.5 hover:scale-[1.02] hover:shadow-[0_32px_60px_-12px_rgba(15,23,42,0.45)] active:translate-y-0.5 transition-all duration-300 cursor-pointer select-none"
     >
       {game.imageUrl ? (
         <>
@@ -437,11 +535,13 @@ function GameCard({
                 e.currentTarget.src = '/images/hamster-paintball-card.png';
               }
             }}
-            className="w-full h-full object-cover scale-[1.12] group-hover:scale-[1.20] transition-transform duration-700"
+            className="w-full h-full object-cover scale-[1.01] group-hover:scale-[1.06] transition-transform duration-300"
           />
-          <div className="absolute inset-0 bg-brand-purple/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <div className="w-16 h-16 bg-white dark:bg-slate-800/90 backdrop-blur-sm rounded-full flex items-center justify-center text-brand-purple shadow-lg transform scale-50 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-300 delay-75">
-              <svg className="w-8 h-8 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+          {/* Subtle 3D model surface lighting without any enclosing frame/border */}
+          <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),inset_0_-8px_16px_rgba(15,23,42,0.25)]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+            <div className="w-16 h-16 bg-white/95 backdrop-blur-md rounded-full shadow-[0_12px_28px_rgba(15,23,42,0.35)] flex items-center justify-center text-slate-950 transform scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-200">
+              <svg className="w-8 h-8 ml-1 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
             </div>
           </div>
         </>
@@ -453,9 +553,9 @@ function GameCard({
           )}
         >
           {game.icon?.startsWith("http") ? (
-             <img src={game.icon} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover group-hover:scale-[1.03] group-hover:scale-[1.20] transition-transform duration-500" />
+            <img src={game.icon} referrerPolicy="no-referrer" alt={game.title} className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-300" />
           ) : (
-            <span className="text-7xl drop-shadow-md group-hover:scale-[1.20] transition-transform duration-500">
+            <span className="text-7xl drop-shadow-md group-hover:scale-110 transition-transform duration-300">
               {game.icon}
             </span>
           )}

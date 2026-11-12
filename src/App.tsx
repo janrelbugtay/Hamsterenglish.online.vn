@@ -223,8 +223,8 @@ export default function App() {
             if (Array.isArray(data?.classes) && data.classes.length > 0) {
               const sorted = sortClassesByName(data.classes);
               localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-              localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sorted));
-              localStorage.setItem('squid_user_classes', JSON.stringify(sorted));
+              localStorage.removeItem('squid_hamster_class_dollars_v13');
+              localStorage.removeItem('squid_user_classes');
             }
           }
         }

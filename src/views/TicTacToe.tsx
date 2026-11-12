@@ -4,6 +4,7 @@ import { ViewState } from '../types';
 import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, orderBy, deleteDoc } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
+import { UnifiedGameSetup } from '../components/UnifiedGameSetup';
 
 
 /**
@@ -473,44 +474,26 @@ function gameReducer(state: typeof initialState, action: any): typeof initialSta
     }
 }
 
-const ModeSelection = ({ onSelectMode, onViewChange }: { onSelectMode: (mode: string) => void, onViewChange: (view: ViewState) => void }) => (
-    <div className="min-h-screen bg-emerald-100 flex items-center justify-center p-6 text-gray-900 font-sans relative">
-        <div className="absolute top-4 left-4 z-[60]">
-            <button 
-                onClick={() => onViewChange("games")}
-                className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border border-gray-800 text-gray-400 hover:text-white bg-gray-900/50 hover:bg-gray-800 shadow-sm"
-            >
-                <ArrowLeft size={24} />
-            </button>
+const ModeSelection = ({ onSelectMode, onViewChange }: { onSelectMode: (mode: string) => void, onViewChange: (view: ViewState) => void }) => {
+    const [pickedMode, setPickedMode] = useState<'LOCAL' | 'HOST' | 'JOIN'>('LOCAL');
+    return (
+        <div className="min-h-screen w-full relative">
+            <UnifiedGameSetup
+                title="TIC-TAC-TOE BATTLE"
+                onBack={() => onViewChange("games")}
+                playerModeOptions={[
+                    { id: 'LOCAL', label: 'LOCAL 2P', icon: '🖥️' },
+                    { id: 'HOST', label: 'HOST ROOM', icon: '👑' },
+                    { id: 'JOIN', label: 'JOIN ROOM', icon: '📱' }
+                ]}
+                selectedPlayerMode={pickedMode}
+                onSelectPlayerMode={(id: 'LOCAL' | 'HOST' | 'JOIN') => setPickedMode(id)}
+                startLabel={pickedMode === 'JOIN' ? 'ENTER ROOM CODE' : pickedMode === 'HOST' ? 'SETUP ROOM' : 'SETUP LOCAL 2P'}
+                onStart={() => onSelectMode(pickedMode)}
+            />
         </div>
-
-        <div className="max-w-4xl w-full">
-            <h1 className="text-6xl md:text-7xl font-black text-center mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-red-400">TIC-TAC-TOE BATTLE</h1>
-            <p className="text-xl text-center text-gray-400 mb-16 uppercase tracking-widest font-bold">Classroom Multiplayer Edition</p>
-            
-            <div className="grid md:grid-cols-3 gap-8">
-                <button onClick={() => onSelectMode('LOCAL')} className="bg-gray-900 border border-gray-800 p-8 rounded-3xl hover:border-gray-600 transition-all hover:scale-105 group text-left">
-                    <MonitorUp size={48} className="text-gray-500 mb-6 group-hover:text-white transition-colors" />
-                    <h2 className="text-2xl font-black mb-2">Local Mode</h2>
-                    <p className="text-gray-500 font-medium">Play on a single device with a shared keyboard.</p>
-                </button>
-                
-                <button onClick={() => onSelectMode('HOST')} className="bg-gray-900 border-2 border-blue-900/50 p-8 rounded-3xl hover:border-blue-500 hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] transition-all hover:scale-105 group text-left relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-colors"></div>
-                    <Crown size={48} className="text-blue-500 mb-6" />
-                    <h2 className="text-2xl font-black mb-2 text-white">Host a Game</h2>
-                    <p className="text-gray-400 font-medium">Create a room for your class. Display on the projector.</p>
-                </button>
-                
-                <button onClick={() => onSelectMode('JOIN')} className="bg-blue-600 border border-blue-500 p-8 rounded-3xl hover:bg-blue-500 hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] transition-all hover:scale-105 group text-left">
-                    <Smartphone size={48} className="text-white mb-6 animate-pulse" />
-                    <h2 className="text-2xl font-black mb-2 text-white">Join a Game</h2>
-                    <p className="text-blue-100 font-medium">Enter a room code on your phone to play.</p>
-                </button>
-            </div>
-        </div>
-    </div>
-);
+    );
+};
 
 const JoinScreen = ({ onJoin, onBack }: { onJoin: (code: string, name: string) => void, onBack: () => void }) => {
     const [code, setCode] = useState('');
@@ -559,8 +542,19 @@ const JoinScreen = ({ onJoin, onBack }: { onJoin: (code: string, name: string) =
     );
 };
 
-const HostSetupScreen = ({ state, dispatch, isMultiplayer }: { state: any, dispatch: any, isMultiplayer: boolean }) => {
-    // Reusing setup components for brevity, adding Room generation
+const HostSetupScreen = ({
+    state,
+    dispatch,
+    isMultiplayer,
+    onChangeMode,
+    onBack
+}: {
+    state: any;
+    dispatch: any;
+    isMultiplayer: boolean;
+    onChangeMode?: (mode: string) => void;
+    onBack?: () => void;
+}) => {
     const startMultiplayerRoom = () => {
         const code = generateRoomCode();
         dispatch({ type: 'CREATE_ROOM', payload: code });
@@ -568,41 +562,43 @@ const HostSetupScreen = ({ state, dispatch, isMultiplayer }: { state: any, dispa
     };
 
     return (
-        <div className="min-h-screen bg-emerald-100 text-gray-900 p-8 font-sans overflow-y-auto pt-24">
-            <div className="max-w-5xl mx-auto space-y-8">
-                <div className="flex justify-between items-center bg-gray-900 p-6 rounded-3xl shadow-xl border border-gray-800">
-                    <div>
-                        <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-red-400 tracking-tight">TIC-TAC-TOE BATTLE</h1>
-                        <p className="text-gray-400 font-bold uppercase tracking-widest text-sm mt-1">{isMultiplayer ? 'Multiplayer Host Setup' : 'Local Setup'}</p>
-                    </div>
-                    <button 
-                        onClick={() => {
-                            if (state.questions.length === 0) return alert("Add a question first.");
-                            isMultiplayer ? startMultiplayerRoom() : dispatch({ type: 'START_GAME' });
-                        }}
-                        className="bg-white text-gray-950 hover:scale-105 font-black py-4 px-10 rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.2)] transition-all flex items-center gap-3 text-xl"
-                    >
-                        <Play size={24} /> {isMultiplayer ? 'CREATE ROOM' : 'START LOCAL'}
-                    </button>
+        <UnifiedGameSetup
+            title={state.settings?.title || "TIC-TAC-TOE BATTLE"}
+            questionCount={state.questions.length}
+            onBack={() => onBack && onBack()}
+            playerModeOptions={[
+                { id: 'LOCAL', label: 'LOCAL 2P (X VS O)', icon: '🖥️' },
+                { id: 'HOST', label: 'HOST CLASS ROOM', icon: '👑' },
+                { id: 'JOIN', label: 'JOIN ROOM', icon: '📱' }
+            ]}
+            selectedPlayerMode={isMultiplayer ? 'HOST' : 'LOCAL'}
+            onSelectPlayerMode={(mode: string) => onChangeMode && onChangeMode(mode)}
+            startLabel={isMultiplayer ? 'CREATE ROOM' : 'START BATTLE'}
+            onStart={() => {
+                if (state.questions.length === 0) return;
+                isMultiplayer ? startMultiplayerRoom() : dispatch({ type: 'START_GAME' });
+            }}
+        >
+            <div className="p-4 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-2.5">
+                <div className="flex items-center justify-between">
+                    <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
+                        ❌⭕ QUESTION BANK ({state.questions.length})
+                    </span>
+                    <span className="px-3 py-0.5 rounded-xl bg-emerald-500 text-white text-xs font-black uppercase">
+                        READY
+                    </span>
                 </div>
-                {/* Question Bank Display */}
-                <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800">
-                    <h2 className="text-xl font-bold mb-4 flex items-center justify-between text-white">
-                        <span>Question Bank ({state.questions.length})</span>
-                        <span className="text-sm font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1 rounded-full">
-                            {state.settings.title !== "TIC-TAC-TOE BATTLE" ? `Loaded: ${state.settings.title}` : "Ready to Play"}
-                        </span>
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {state.questions.slice(0, 6).map((q: any, i: number) => (
-                            <div key={i} className="bg-gray-950 border border-gray-800 p-4 rounded-xl">
-                                <p className="font-medium text-gray-300 line-clamp-2">{q.text}</p>
-                            </div>
-                        ))}
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                    {state.questions.slice(0, 6).map((q: any, i: number) => (
+                        <div key={i} className="bg-white border-2 border-sky-200 rounded-2xl px-3.5 py-2">
+                            <p className="font-bold text-xs sm:text-sm text-slate-800 line-clamp-1">
+                                {i + 1}. {q.text}
+                            </p>
+                        </div>
+                    ))}
                 </div>
             </div>
-        </div>
+        </UnifiedGameSetup>
     );
 };
 
@@ -1264,7 +1260,19 @@ export const TicTacToe = ({
                 </button>
             </div>
             {state.status === 'SETUP' && (
-                <HostSetupScreen state={state} dispatch={dispatch} isMultiplayer={appMode === 'HOST'} />
+                <HostSetupScreen
+                    state={state}
+                    dispatch={dispatch}
+                    isMultiplayer={appMode === 'HOST'}
+                    onChangeMode={(m) => setAppMode(m)}
+                    onBack={() => {
+                        setAppMode(null);
+                        dispatch({ type: 'RETURN_TO_SETUP' });
+                        NetworkManager.cleanup();
+                        NetworkManager.messageCallback = null;
+                        onViewChange("games");
+                    }}
+                />
             )}
             
             {state.status === 'LOBBY' && appMode === 'HOST' && (

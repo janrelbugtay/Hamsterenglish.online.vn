@@ -123,9 +123,7 @@ const APP_GAMES = [
   { id: "yoga-quiz", title: "Yoga Quiz", icon: "🧘" },
   { id: "family-feud", title: "Family Feud", icon: "👨‍👩‍👧‍👦" },
   { id: "sumo", title: "Sumo Tags", icon: "🤼" },
-  { id: "letter-lock", title: "Letter Lock", icon: "🎯" },
-  { id: "hamster-pop-quiz", title: "Hamster Pop Quiz", icon: "🐹" },
-  { id: "student-race", title: "Name Picker", icon: "🏎️" },
+  { id: "hamster-pop-quiz", title: "Video Quiz", icon: "🎬" },
   { id: "tic-tac-toe", title: "Tic Tac Toe Battle", icon: "❌" },
   { id: "phonemic-master", title: "Phonemic Master", icon: "🗣️" }
 ];

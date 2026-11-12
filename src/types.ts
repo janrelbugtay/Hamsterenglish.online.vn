@@ -31,6 +31,12 @@ export type ViewState =
   | "hamster-paintball"
   | "my-slides";
 
+export type GameCategoryId =
+  | "classroom-tools"
+  | "ar-camera"
+  | "board-trivia"
+  | "multiplayer-games";
+
 export interface Game {
   id: string;
   title: string;
@@ -46,6 +52,7 @@ export interface Game {
   isAI?: boolean;
   color: string;
   icon?: string;
+  category?: GameCategoryId;
 }
 
 export interface Category {
