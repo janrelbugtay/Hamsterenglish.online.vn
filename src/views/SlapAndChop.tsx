@@ -96,6 +96,22 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [slapSensitivity, setSlapSensitivity] = useState<'easy' | 'balanced' | 'precise'>('balanced');
   const [answerMode, setAnswerMode] = useState<'single' | 'multiple'>('single');
   const [multiAnswerCount, setMultiAnswerCount] = useState<number>(3); // 1 - 10 answers per question in Multiple Answer Mode
+  const [multiItems, setMultiItems] = useState<{
+    bomb: boolean;
+    x2: boolean;
+    x3: boolean;
+    gold: boolean;
+    ice: boolean;
+    zap: boolean;
+  }>({
+    bomb: true,
+    x2: true,
+    x3: true,
+    gold: true,
+    ice: true,
+    zap: true
+  });
+  const [multiSpawnRate, setMultiSpawnRate] = useState<'normal' | 'frenzy' | 'chaos'>('frenzy');
 
   // In-Game Live HUD States
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
@@ -107,6 +123,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [hudHandsDetected, setHudHandsDetected] = useState<[[boolean, boolean], [boolean, boolean]]>([[false, false], [false, false]]);
   const [hudClapArmed, setHudClapArmed] = useState<[boolean, boolean]>([false, false]);
   const [hudMultiProgress, setHudMultiProgress] = useState<number>(0);
+  const [hudActiveMults, setHudActiveMults] = useState<[number, number]>([1, 1]);
+  const [hudSlowMo, setHudSlowMo] = useState<boolean>(false);
   const [timerPct, setTimerPct] = useState<number>(100);
   const [hudTimeLeft, setHudTimeLeft] = useState<number>(120);
   const [nextQCountdown, setNextQCountdown] = useState<number | null>(null);
@@ -198,6 +216,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const slapSensitivityRef = useRef<'easy' | 'balanced' | 'precise'>(slapSensitivity);
   const answerModeRef = useRef<'single' | 'multiple'>(answerMode);
   const multiAnswerCountRef = useRef<number>(multiAnswerCount);
+  const multiItemsRef = useRef(multiItems);
+  const multiSpawnRateRef = useRef<'normal' | 'frenzy' | 'chaos'>(multiSpawnRate);
+  const lastHudMultsSigRef = useRef<string>('1-1-0');
   const nextQTimerRef = useRef<number | null>(null);
   const lastHudSecRef = useRef<number>(playingTime);
   const lastHudHandsRef = useRef<string>('0000');
@@ -205,6 +226,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const cameraLastSendMsRef = useRef<number>(0);
   const onHandsResultsRef = useRef<((results: any) => void) | null>(null);
   const onFaceResultsRef = useRef<((results: any) => void) | null>(null);
+
+  const toggleMultiItem = (key: keyof typeof multiItems) => {
+    setMultiItems(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      multiItemsRef.current = next;
+      return next;
+    });
+  };
 
   const formatPlayTime = (totalSec: number) => {
     const clamped = Math.max(0, Math.ceil(totalSec));
@@ -240,6 +269,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   useEffect(() => {
     multiAnswerCountRef.current = multiAnswerCount;
   }, [multiAnswerCount]);
+
+  useEffect(() => {
+    multiItemsRef.current = multiItems;
+  }, [multiItems]);
+
+  useEffect(() => {
+    multiSpawnRateRef.current = multiSpawnRate;
+  }, [multiSpawnRate]);
 
   useEffect(() => {
     if (handsRef.current) {
@@ -533,7 +570,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
   };
 
-  const playSoundEffect = (type: 'slap' | 'airclap' | 'slash' | 'correct' | 'wrong' | 'whoosh' | 'freeze' | 'victory' | 'countdown' | 'launch') => {
+  const playSoundEffect = (type: 'slap' | 'airclap' | 'slash' | 'correct' | 'wrong' | 'whoosh' | 'freeze' | 'victory' | 'countdown' | 'launch' | 'bomb' | 'powerup' | 'zap') => {
     if (!soundFxRef.current) return;
     initAudio();
     const ctx = audioCtxRef.current;
@@ -785,6 +822,68 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       gain.connect(ctx.destination);
       osc.start(now);
       osc.stop(now + 0.17);
+    } else if (type === 'bomb') {
+      // Deep 3D Bomb Explosion: Sub-bass boom + fiery blast rumble
+      const bufferSize = Math.floor(ctx.sampleRate * 0.42);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.12));
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(620, now);
+      lp.frequency.exponentialRampToValueAtTime(65, now + 0.38);
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.95, now);
+      nGain.gain.exponentialRampToValueAtTime(0.01, now + 0.40);
+      noise.connect(lp);
+      lp.connect(nGain);
+      nGain.connect(ctx.destination);
+      noise.start(now);
+
+      const boom = ctx.createOscillator();
+      const bGain = ctx.createGain();
+      boom.type = 'sawtooth';
+      boom.frequency.setValueAtTime(150, now);
+      boom.frequency.exponentialRampToValueAtTime(26, now + 0.36);
+      bGain.gain.setValueAtTime(0.85, now);
+      bGain.gain.exponentialRampToValueAtTime(0.005, now + 0.38);
+      boom.connect(bGain);
+      bGain.connect(ctx.destination);
+      boom.start(now);
+      boom.stop(now + 0.40);
+    } else if (type === 'powerup') {
+      // Euphoric Arcade Power-Up Collect Arpeggio (x2, x3, Gold)
+      const pNotes = [587.33, 783.99, 987.77, 1174.66, 1567.98];
+      pNotes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        const st = now + idx * 0.045;
+        osc.frequency.setValueAtTime(freq, st);
+        gain.gain.setValueAtTime(0.32, st);
+        gain.gain.exponentialRampToValueAtTime(0.001, st + 0.26);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(st);
+        osc.stop(st + 0.28);
+      });
+    } else if (type === 'zap') {
+      // High-Voltage Lightning Bolt Strike SFX
+      const zOsc = ctx.createOscillator();
+      const zGain = ctx.createGain();
+      zOsc.type = 'sawtooth';
+      zOsc.frequency.setValueAtTime(2200, now);
+      zOsc.frequency.exponentialRampToValueAtTime(140, now + 0.22);
+      zGain.gain.setValueAtTime(0.55, now);
+      zGain.gain.exponentialRampToValueAtTime(0.005, now + 0.24);
+      zOsc.connect(zGain);
+      zGain.connect(ctx.destination);
+      zOsc.start(now);
+      zOsc.stop(now + 0.25);
     }
   };
 
@@ -2597,6 +2696,121 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }, 100);
   };
 
+  // Helper: Pick a random power-up/hazard badge for an option card in Multiple Answer Mode
+  const pickRandomMultiBadge = (isCorrectTarget: boolean): 'x2' | 'x3' | 'gold' | 'bomb' | null => {
+    if (answerModeRef.current !== 'multiple') return null;
+    const cfg = multiItemsRef.current;
+    const rate = multiSpawnRateRef.current;
+    const chance = rate === 'chaos' ? 0.62 : rate === 'frenzy' ? 0.42 : 0.25;
+    if (Math.random() > chance) return null;
+
+    if (isCorrectTarget) {
+      const pool: ('x2' | 'x3' | 'gold')[] = [];
+      if (cfg.x2) pool.push('x2', 'x2');
+      if (cfg.x3) pool.push('x3');
+      if (cfg.gold) pool.push('gold');
+      if (pool.length === 0) return null;
+      return pool[Math.floor(Math.random() * pool.length)];
+    } else {
+      if (cfg.bomb && Math.random() < 0.55) return 'bomb';
+      return null;
+    }
+  };
+
+  // Helper: Create an independent flying 3D Power-Up or Bomb Mosquito/Orb in Multiple Answer Mode
+  const createSpecialArenaTarget = (
+    specialType: 'bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap',
+    team: 'all' | 'p1' | 'p2',
+    cw: number,
+    ch: number,
+    curSpd: number
+  ) => {
+    const safeTopY = Math.max(135, Math.min(ch * 0.34, ch * 0.30));
+    const safeBotY = Math.max(safeTopY + 115, Math.min(ch - 155, ch * 0.62));
+    const minX = team === 'p1' ? cw * 0.14 : team === 'p2' ? cw * 0.62 : cw * 0.18;
+    const maxX = team === 'p1' ? cw * 0.38 : team === 'p2' ? cw * 0.86 : cw * 0.82;
+    const startX = minX + Math.random() * Math.max(40, maxX - minX);
+    const startY = safeTopY + Math.random() * Math.max(40, safeBotY - safeTopY);
+    const angle = Math.random() * Math.PI * 2;
+    const spdMult = specialType === 'gold' ? 1.28 : specialType === 'bomb' ? 1.05 : 1.12;
+    const baseSpeed = (team === 'all' ? 2.2 : 2.0) * curSpd * spdMult;
+
+    const metaMap: Record<typeof specialType, { letter: string; text: string; color: { main: string; light: string; dark: string; rim: string } }> = {
+      bomb: {
+        letter: '💣',
+        text: 'BOMB (-3)',
+        color: { main: '#dc2626', light: '#fca5a5', dark: '#7f1d1d', rim: '#fecaca' }
+      },
+      x2: {
+        letter: 'x2',
+        text: 'DOUBLE PTS',
+        color: { main: '#0284c7', light: '#7dd3fc', dark: '#0369a1', rim: '#e0f2fe' }
+      },
+      x3: {
+        letter: 'x3',
+        text: 'TRIPLE PTS',
+        color: { main: '#9333ea', light: '#d8b4fe', dark: '#581c87', rim: '#f3e8ff' }
+      },
+      gold: {
+        letter: '👑',
+        text: 'GOLD (+5)',
+        color: { main: '#d97706', light: '#fde047', dark: '#92400e', rim: '#fef9c3' }
+      },
+      ice: {
+        letter: '❄️',
+        text: '+5s & SLOW',
+        color: { main: '#0891b2', light: '#67e8f9', dark: '#155e75', rim: '#cffafe' }
+      },
+      zap: {
+        letter: '⚡',
+        text: 'AUTO-ZAP',
+        color: { main: '#4f46e5', light: '#a5b4fc', dark: '#312e81', rim: '#e0e7ff' }
+      }
+    };
+
+    const meta = metaMap[specialType];
+    return {
+      optionIndex: 90 + Math.floor(Math.random() * 10),
+      isSpecialItem: true,
+      specialType,
+      letter: meta.letter,
+      text: meta.text,
+      isCorrect: specialType !== 'bomb',
+      team,
+      homeX: startX,
+      x: startX,
+      y: startY,
+      vx: Math.cos(angle) * baseSpeed,
+      vy: Math.sin(angle) * baseSpeed * 0.85,
+      wobblePhase: Math.random() * 10,
+      wingPhase: Math.random() * 10,
+      rotation: 0,
+      rotSpeed: 0,
+      radius: 54,
+      color: meta.color,
+      alive: true,
+      cooldown: 10,
+      frozen: false,
+      frozenTimer: 0,
+      leftKnifeHitTime: 0,
+      rightKnifeHitTime: 0
+    };
+  };
+
+  // Pick a random enabled special item type from multiItemsRef
+  const pickEnabledSpecialType = (): 'bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap' | null => {
+    const cfg = multiItemsRef.current;
+    const pool: ('bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap')[] = [];
+    if (cfg.bomb) pool.push('bomb', 'bomb');
+    if (cfg.x2) pool.push('x2', 'x2');
+    if (cfg.x3) pool.push('x3');
+    if (cfg.gold) pool.push('gold');
+    if (cfg.ice) pool.push('ice');
+    if (cfg.zap) pool.push('zap');
+    if (pool.length === 0) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
+
   // Target spawning:
   // - In Mosquito Mode: Mosquitoes spawn in the arena and actively fly around!
   // - In Chop Mode: Fruits launch FROM BELOW the bottom of the screen and rise UPWARD in an arc!
@@ -2636,8 +2850,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     if (!is2P) {
       if (mode === 'chop') {
-        // 1 Player CHOP MODE: 4 distinct horizontal lanes launching UPWARD from below the bottom of the screen!
-        // Dynamically scale launch velocity to screen height so fruits always arc into the upper-middle play zone!
         const laneXs = [width * 0.20, width * 0.40, width * 0.60, width * 0.80];
         const gBase = 0.135 * curSpd * Math.max(0.85, height / 600);
         opts.forEach((optText, i) => {
@@ -2654,6 +2866,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             letter: OPTION_LETTERS[i] || '?',
             text: optText || `Option ${i + 1}`,
             isCorrect: i === qObj.answerIndex,
+            powerBadge: pickRandomMultiBadge(i === qObj.answerIndex),
             team: 'all',
             homeX,
             x: startX,
@@ -2676,7 +2889,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           });
         });
       } else {
-        // 1 Player MOSQUITO MODE: 4 distinct quadrant zones in the upper/middle arena above the bottom question bar!
         const safeTopY = Math.max(135, Math.min(height * 0.34, height * 0.30));
         const safeBotY = Math.max(safeTopY + 115, Math.min(height - 155, height * 0.62));
         const quadrantAnchors = [
@@ -2698,6 +2910,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             letter: OPTION_LETTERS[i] || '?',
             text: optText || `Option ${i + 1}`,
             isCorrect: i === qObj.answerIndex,
+            powerBadge: pickRandomMultiBadge(i === qObj.answerIndex),
             team: 'all',
             homeX: anchor.x,
             x: colX,
@@ -2732,12 +2945,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const peakY = Math.max(168, height * (0.26 + (i % 2) * 0.07));
           const riseDist = Math.max(240, startY - peakY);
           const upVy = -Math.sqrt(2 * gBase * riseDist);
+          const sharedBadge = pickRandomMultiBadge(i === qObj.answerIndex);
 
           targets.push({
             optionIndex: i,
             letter: OPTION_LETTERS[i] || '?',
             text: optText || `Option ${i + 1}`,
             isCorrect: i === qObj.answerIndex,
+            powerBadge: sharedBadge,
             team: 'p1',
             homeX,
             x: homeX + (Math.random() - 0.5) * 12,
@@ -2772,6 +2987,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             letter: OPTION_LETTERS[i] || '?',
             text: optText || `Option ${i + 1}`,
             isCorrect: i === qObj.answerIndex,
+            powerBadge: targets[i]?.powerBadge ?? null,
             team: 'p2',
             homeX,
             x: homeX + (Math.random() - 0.5) * 12,
@@ -2816,12 +3032,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           const rowY = anchor.y + (Math.random() - 0.5) * 18;
           const angle = (i * Math.PI * 0.5) + 0.35 + (Math.random() - 0.5) * 0.5;
           const baseSpeed = 2.0 * curSpd;
+          const sharedBadge = pickRandomMultiBadge(i === qObj.answerIndex);
 
           targets.push({
             optionIndex: i,
             letter: OPTION_LETTERS[i] || '?',
             text: optText || `Option ${i + 1}`,
             isCorrect: i === qObj.answerIndex,
+            powerBadge: sharedBadge,
             team: 'p1',
             homeX: anchor.x,
             x: colX,
@@ -2855,6 +3073,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             letter: OPTION_LETTERS[i] || '?',
             text: optText || `Option ${i + 1}`,
             isCorrect: i === qObj.answerIndex,
+            powerBadge: targets[i]?.powerBadge ?? null,
             team: 'p2',
             homeX: anchor.x,
             x: colX,
@@ -2878,11 +3097,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       }
     }
 
+    // In Multiple Answer Mode: Also spawn independent flying 3D Power-Up & Bomb targets!
+    if (answerModeRef.current === 'multiple') {
+      const rate = multiSpawnRateRef.current;
+      const countPerCourt = rate === 'chaos' ? 3 : rate === 'frenzy' ? 2 : 1;
+      for (let s = 0; s < countPerCourt; s++) {
+        const sType = pickEnabledSpecialType();
+        if (!sType) break;
+        if (!is2P) {
+          targets.push(createSpecialArenaTarget(sType, 'all', width, height, curSpd));
+        } else {
+          targets.push(createSpecialArenaTarget(sType, 'p1', width, height, curSpd));
+          targets.push(createSpecialArenaTarget(sType, 'p2', width, height, curSpd));
+        }
+      }
+    }
+
     engineRef.current.targets = targets;
   };
 
   // Handle interaction hit (Mosquito Slap or Hand-Blade Fruit Slice)
-  // Pointing System: +5 Points if Correct, -5 Points & SIDE FROZEN if Wrong (in 2P, waits for other side; if both wrong, both unfreeze!)
   const handleTargetHit = (playerIdx: number, target: any, sliceAngle: number = -0.35) => {
     if (engineRef.current.resolved || !target.alive || target.frozen) return;
     const eng = engineRef.current;
@@ -2900,7 +3134,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       x: target.x,
       y: target.y,
       angle: sliceAngle,
-      color: target.isCorrect ? (target.color?.main || '#10b981') : '#38bdf8',
+      color: target.specialType === 'bomb'
+        ? '#ef4444'
+        : target.isCorrect
+        ? (target.color?.main || '#10b981')
+        : '#38bdf8',
       life: 1.0,
       radius: eng.roundMode === 'chop' ? 128 : 96,
       isChop: eng.roundMode === 'chop'
@@ -2908,11 +3146,289 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     const isMultiMode = answerModeRef.current === 'multiple';
     const requiredHits = isMultiMode ? Math.max(1, Math.min(10, multiAnswerCountRef.current || 3)) : 1;
+    const cw = containerRef.current?.clientWidth || 960;
+    const ch = containerRef.current?.clientHeight || 540;
+    const teamPrefix = eng.numPlayers === 2 ? `${playerIdx === 0 ? p1Name : p2Name}: ` : '';
+
+    // =========================================================================
+    // SPECIAL ARENA POWER-UPS & HAZARDS IN MULTIPLE ANSWER MODE
+    // (💣 BOMB, ⚡ x2, 🔥 x3, 👑 GOLD, ❄️ ICE +5s, ⚡ AUTO-ZAP)
+    // =========================================================================
+    if (target.isSpecialItem) {
+      const sType = target.specialType as 'bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap';
+      target.alive = false;
+
+      // Schedule a replacement special item after a short delay if round is still active
+      setTimeout(() => {
+        if (!eng.isActive || eng.resolved || answerModeRef.current !== 'multiple') return;
+        const nextType = pickEnabledSpecialType();
+        if (!nextType) return;
+        const curSpdNow = speedRef.current || 1.0;
+        eng.targets.push(createSpecialArenaTarget(nextType, target.team, cw, ch, curSpdNow));
+      }, 1600);
+
+      if (sType === 'bomb') {
+        // 💣 BOMB DETONATION: -3 PTS + Massive Fiery Blast Shockwave + Screen Shake!
+        p.streak = 1;
+        p.wrongHits = (p.wrongHits || 0) + 1;
+        p.score -= 3;
+        eng.screenShake = 26;
+
+        eng.shockwaves.push({
+          x: target.x,
+          y: target.y,
+          radius: 28,
+          maxRadius: 175,
+          color: '#ef4444',
+          secondaryColor: '#f97316',
+          life: 1.0
+        });
+
+        playSoundEffect('slap');
+        setTimeout(() => playSoundEffect('bomb'), 35);
+
+        spawnBurstParticles(target.x, target.y, '#ef4444', 32);
+        spawnBurstParticles(target.x, target.y, '#f97316', 24);
+        spawnBurstParticles(target.x, target.y, '#fde047', 16);
+        spawnBurstParticles(target.x, target.y, '#1e293b', 14);
+
+        setHudScores([eng.players[0].score, eng.players[1].score]);
+        setHudStreaks([eng.players[0].streak, eng.players[1].streak]);
+        setHudScorePops(prev => {
+          const next = [...prev] as [string | null, string | null];
+          next[playerIdx] = `💥 BOMB! -3 PTS`;
+          return next;
+        });
+        setTimeout(() => setHudScorePops([null, null]), 1150);
+
+        spawnFloatingText(target.x, target.y - 24, `${teamPrefix}💥 BOOM! -3 PTS`, '#ef4444');
+        return;
+      }
+
+      if (sType === 'x2' || sType === 'x3') {
+        const multVal = sType === 'x3' ? 3 : 2;
+        const bonusPts = multVal;
+        p.activeMult = Math.max(p.activeMult || 1, multVal);
+        p.multTimer = sType === 'x3' ? 8.5 : 10.5;
+        p.score += bonusPts;
+        p.hits++;
+        p.correctHits = (p.correctHits || 0) + 1;
+        eng.screenShake = 14;
+
+        setHudActiveMults([
+          eng.players[0]?.activeMult || 1,
+          eng.players[1]?.activeMult || 1
+        ]);
+
+        eng.shockwaves.push({
+          x: target.x,
+          y: target.y,
+          radius: 26,
+          maxRadius: 150,
+          color: sType === 'x3' ? '#a855f7' : '#0ea5e9',
+          secondaryColor: '#facc15',
+          life: 1.0
+        });
+
+        playSoundEffect('slap');
+        setTimeout(() => playSoundEffect('powerup'), 40);
+
+        spawnBurstParticles(target.x, target.y, sType === 'x3' ? '#c084fc' : '#38bdf8', 32);
+        spawnBurstParticles(target.x, target.y, '#facc15', 20);
+
+        setHudScores([eng.players[0].score, eng.players[1].score]);
+        setHudScorePops(prev => {
+          const next = [...prev] as [string | null, string | null];
+          next[playerIdx] = sType === 'x3' ? `🔥 x3 ACTIVE! +3 PTS` : `⚡ x2 ACTIVE! +2 PTS`;
+          return next;
+        });
+        setTimeout(() => setHudScorePops([null, null]), 1200);
+
+        (eng as any).scoreOrbs = (eng as any).scoreOrbs || [];
+        (eng as any).scoreOrbs.push({
+          startX: target.x,
+          startY: target.y,
+          x: target.x,
+          y: target.y,
+          targetX: eng.numPlayers === 2 ? (playerIdx === 0 ? cw * 0.42 : cw * 0.58) : cw * 0.46,
+          targetY: 50,
+          progress: 0,
+          color: sType === 'x3' ? '#a855f7' : '#0ea5e9',
+          points: `+${bonusPts}`,
+          streak: p.streak
+        });
+
+        spawnFloatingText(
+          target.x,
+          target.y - 24,
+          sType === 'x3' ? `${teamPrefix}🔥 x3 MULTIPLIER! (+3)` : `${teamPrefix}⚡ x2 MULTIPLIER! (+2)`,
+          sType === 'x3' ? '#c084fc' : '#38bdf8'
+        );
+        return;
+      }
+
+      if (sType === 'gold') {
+        const curMult = Math.max(1, p.activeMult || 1);
+        const goldPts = 5 * curMult;
+        p.score += goldPts;
+        p.hits++;
+        p.correctHits = (p.correctHits || 0) + 1;
+        p.streak = Math.min(15, p.streak + 1);
+        p.bestStreak = Math.max(p.bestStreak || 1, p.streak);
+        eng.screenShake = 18;
+
+        // Golden mosquito also counts as +1 progress toward the current question!
+        const hitsNow = ((eng as any).roundHitsCollected || 0) + 1;
+        (eng as any).roundHitsCollected = hitsNow;
+        setHudMultiProgress(hitsNow);
+
+        eng.shockwaves.push({
+          x: target.x,
+          y: target.y,
+          radius: 30,
+          maxRadius: 165,
+          color: '#facc15',
+          secondaryColor: '#ffffff',
+          life: 1.0
+        });
+
+        playSoundEffect('slap');
+        setTimeout(() => playSoundEffect('powerup'), 40);
+
+        spawnBurstParticles(target.x, target.y, '#facc15', 42);
+        spawnBurstParticles(target.x, target.y, '#fef08a', 24);
+
+        setHudScores([eng.players[0].score, eng.players[1].score]);
+        setHudStreaks([eng.players[0].streak, eng.players[1].streak]);
+        setHudScorePops(prev => {
+          const next = [...prev] as [string | null, string | null];
+          next[playerIdx] = `👑 GOLD! +${goldPts} PTS`;
+          return next;
+        });
+        setTimeout(() => setHudScorePops([null, null]), 1200);
+
+        (eng as any).scoreOrbs = (eng as any).scoreOrbs || [];
+        (eng as any).scoreOrbs.push({
+          startX: target.x,
+          startY: target.y,
+          x: target.x,
+          y: target.y,
+          targetX: eng.numPlayers === 2 ? (playerIdx === 0 ? cw * 0.42 : cw * 0.58) : cw * 0.46,
+          targetY: 50,
+          progress: 0,
+          color: '#eab308',
+          points: `+${goldPts}`,
+          streak: p.streak
+        });
+
+        spawnFloatingText(target.x, target.y - 24, `${teamPrefix}👑 GOLDEN JACKPOT! +${goldPts} PTS`, '#facc15');
+
+        if (hitsNow >= requiredHits) {
+          eng.resolved = true;
+          stopMosquitoBuzz();
+          startNextQuestionCountdown();
+        }
+        return;
+      }
+
+      if (sType === 'ice') {
+        // ❄️ ICE CLOCK: +5s Timer Bonus + 6s Slow-Motion on all mosquitoes + 1 PT!
+        eng.timer = Math.min(eng.maxTimer + 30, eng.timer + 5);
+        (eng as any).slowMoTimer = 6.0;
+        setHudSlowMo(true);
+        const ceilSec = Math.ceil(eng.timer);
+        lastHudSecRef.current = ceilSec;
+        setHudTimeLeft(ceilSec);
+
+        const icePts = 1 * Math.max(1, p.activeMult || 1);
+        p.score += icePts;
+        p.hits++;
+        p.correctHits = (p.correctHits || 0) + 1;
+
+        eng.shockwaves.push({
+          x: target.x,
+          y: target.y,
+          radius: 26,
+          maxRadius: 155,
+          color: '#06b6d4',
+          secondaryColor: '#cffafe',
+          life: 1.0
+        });
+
+        playSoundEffect('slap');
+        setTimeout(() => playSoundEffect('freeze'), 40);
+
+        spawnBurstParticles(target.x, target.y, '#22d3ee', 30);
+        spawnBurstParticles(target.x, target.y, '#ffffff', 18);
+
+        setHudScores([eng.players[0].score, eng.players[1].score]);
+        setHudScorePops(prev => {
+          const next = [...prev] as [string | null, string | null];
+          next[playerIdx] = `❄️ +5s & SLOW-MO! (+${icePts})`;
+          return next;
+        });
+        setTimeout(() => setHudScorePops([null, null]), 1200);
+
+        spawnFloatingText(target.x, target.y - 24, `${teamPrefix}❄️ +5s TIME & SLOW-MO!`, '#22d3ee');
+        return;
+      }
+
+      if (sType === 'zap') {
+        // ⚡ AUTO-ZAP: Strikes the correct answer mosquito on this player's court with a 3D Sky Lightning Bolt!
+        playSoundEffect('slap');
+        setTimeout(() => playSoundEffect('zap'), 35);
+
+        const myCourtCorrect = eng.targets.find(
+          t => t.alive && !t.isSpecialItem && t.isCorrect && (eng.numPlayers === 1 || (playerIdx === 0 ? t.team === 'p1' : t.team === 'p2'))
+        );
+
+        if (myCourtCorrect) {
+          (eng as any).lightningBolts = (eng as any).lightningBolts || [];
+          (eng as any).lightningBolts.push({
+            startX: target.x,
+            startY: target.y,
+            endX: myCourtCorrect.x,
+            endY: myCourtCorrect.y,
+            life: 1.0,
+            color: '#facc15'
+          });
+          spawnFloatingText(target.x, target.y - 24, `${teamPrefix}⚡ LIGHTNING AUTO-ZAP!`, '#a855f7');
+          myCourtCorrect.cooldown = 0;
+          handleTargetHit(playerIdx, myCourtCorrect, 0);
+        } else {
+          const zapPts = 2 * Math.max(1, p.activeMult || 1);
+          p.score += zapPts;
+          setHudScores([eng.players[0].score, eng.players[1].score]);
+          spawnFloatingText(target.x, target.y - 24, `${teamPrefix}⚡ ZAP BONUS +${zapPts}!`, '#a855f7');
+        }
+        return;
+      }
+    }
 
     if (target.isCorrect) {
       const hitsNow = ((eng as any).roundHitsCollected || 0) + 1;
       (eng as any).roundHitsCollected = hitsNow;
       setHudMultiProgress(hitsNow);
+
+      // Check if this correct mosquito carried a bonus badge in Multiple Answer Mode
+      const badge = isMultiMode ? (target.powerBadge as 'x2' | 'x3' | 'gold' | null) : null;
+      if (badge === 'x2') {
+        p.activeMult = Math.max(p.activeMult || 1, 2);
+        p.multTimer = 10.0;
+        setHudActiveMults([eng.players[0]?.activeMult || 1, eng.players[1]?.activeMult || 1]);
+        setTimeout(() => playSoundEffect('powerup'), 55);
+      } else if (badge === 'x3') {
+        p.activeMult = 3;
+        p.multTimer = 8.0;
+        setHudActiveMults([eng.players[0]?.activeMult || 1, eng.players[1]?.activeMult || 1]);
+        setTimeout(() => playSoundEffect('powerup'), 55);
+      } else if (badge === 'gold') {
+        setTimeout(() => playSoundEffect('powerup'), 55);
+      }
+
+      const activeMult = isMultiMode ? Math.max(1, p.activeMult || 1) : 1;
+      const basePts = isMultiMode ? (badge === 'gold' ? 5 : 1) : 5;
+      const addedPoints = basePts * activeMult;
 
       const roundCompleted = !isMultiMode || hitsNow >= requiredHits;
       if (roundCompleted) {
@@ -2922,7 +3438,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       } else {
         // In Multiple Answer Mode (when more hits are needed for this question):
         // Pop the slapped mosquito and immediately respawn a fresh correct mosquito at a new flight angle so players can keep slapping up to 1-10 times!
-        target.cooldown = 16;
+        target.cooldown = 15;
         const cwNow = containerRef.current?.clientWidth || 960;
         const chNow = containerRef.current?.clientHeight || 540;
         const curSpd = speedRef.current || 1.0;
@@ -2936,13 +3452,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         const baseSpd = (eng.numPlayers === 2 ? 2.0 : 2.15) * curSpd;
         target.vx = Math.cos(newAng) * baseSpd;
         target.vy = Math.sin(newAng) * baseSpd * 0.85;
+        target.powerBadge = pickRandomMultiBadge(true);
       }
 
       eng.screenShake = 14;
 
       p.hits++;
       p.correctHits = (p.correctHits || 0) + 1;
-      const addedPoints = isMultiMode ? 1 : 5;
       p.score += addedPoints;
       p.streak = Math.min(15, p.streak + 1);
       p.bestStreak = Math.max(p.bestStreak || 1, p.streak);
@@ -2958,7 +3474,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         y: target.y,
         radius: 26,
         maxRadius: 138,
-        color: '#10b981',
+        color: badge === 'gold' ? '#facc15' : activeMult >= 3 ? '#a855f7' : activeMult === 2 ? '#0ea5e9' : '#10b981',
         secondaryColor: '#facc15',
         life: 1.0
       });
@@ -2969,10 +3485,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       setHudScores([eng.players[0].score, eng.players[1].score]);
       setHudStreaks([eng.players[0].streak, eng.players[1].streak]);
       setHudFrozen([false, false]);
+      const multTag = activeMult > 1 ? ` 🔥x${activeMult}` : '';
       setHudScorePops(prev => {
         const next = [...prev] as [string | null, string | null];
         next[playerIdx] = isMultiMode
-          ? `+1 PT (${hitsNow}/${requiredHits})`
+          ? `+${addedPoints} PT${addedPoints > 1 ? 'S' : ''}${multTag} (${hitsNow}/${requiredHits})`
           : (p.streak >= 3 ? `+5 PTS! 🔥x${p.streak}` : `+5 PTS! 🎉`);
         return next;
       });
@@ -2996,15 +3513,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         });
       }
 
-      const cw = containerRef.current?.clientWidth || 960;
-      const teamPrefix = eng.numPlayers === 2 ? `${playerIdx === 0 ? p1Name : p2Name}: ` : '';
       spawnFloatingText(
         target.x,
         target.y - 24,
         isMultiMode
-          ? `${teamPrefix}+1 PT! (${hitsNow}/${requiredHits})`
+          ? `${teamPrefix}+${addedPoints} PT${addedPoints > 1 ? 'S' : ''}!${multTag} (${hitsNow}/${requiredHits})`
           : `${teamPrefix}+5 PTS!`,
-        '#10b981'
+        badge === 'gold' ? '#facc15' : '#10b981'
       );
 
       // Launch a glowing 3D Score Orb from the slapped mosquito straight into the Center Scoreboard!
@@ -3018,7 +3533,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         targetY: 50,
         progress: 0,
         color: playerIdx === 1 ? '#f43f5e' : '#3b82f6',
-        points: isMultiMode ? '+1' : '+5',
+        points: `+${addedPoints}`,
         streak: p.streak
       });
 
@@ -3028,39 +3543,46 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       }
 
     } else {
-      // WRONG WORD HIT -> -1 POINT in Multiple Answer Mode, -5 POINTS in Single Answer Mode!
-      const penaltyPoints = isMultiMode ? 1 : 5;
+      // WRONG WORD HIT -> Check if it carried a 💣 BOMB hazard badge in Multiple Answer Mode!
+      const isBombOption = isMultiMode && target.powerBadge === 'bomb';
+      const penaltyPoints = isBombOption ? 3 : (isMultiMode ? 1 : 5);
+      if (isBombOption) {
+        target.powerBadge = null;
+      }
+
       p.streak = 1;
       p.wrongHits = (p.wrongHits || 0) + 1;
       p.score -= penaltyPoints;
-      eng.screenShake = 9;
+      eng.screenShake = isBombOption ? 24 : 9;
 
       eng.shockwaves.push({
         x: target.x,
         y: target.y,
         radius: 22,
-        maxRadius: 108,
-        color: '#38bdf8',
-        secondaryColor: '#e0f2fe',
+        maxRadius: isBombOption ? 165 : 108,
+        color: isBombOption ? '#ef4444' : '#38bdf8',
+        secondaryColor: isBombOption ? '#f97316' : '#e0f2fe',
         life: 1.0
       });
 
       playSoundEffect(eng.roundMode === 'chop' ? 'slash' : 'slap');
-      setTimeout(() => playSoundEffect('freeze'), 55);
+      setTimeout(() => playSoundEffect(isBombOption ? 'bomb' : 'freeze'), 45);
 
       setHudScores([eng.players[0].score, eng.players[1].score]);
       setHudStreaks([eng.players[0].streak, eng.players[1].streak]);
       setHudScorePops(prev => {
         const next = [...prev] as [string | null, string | null];
-        next[playerIdx] = isMultiMode ? `-1 PT ❄️` : `-5 PTS ❄️`;
+        next[playerIdx] = isBombOption
+          ? `💥 BOMB! -3 PTS`
+          : (isMultiMode ? `-1 PT ❄️` : `-5 PTS ❄️`);
         return next;
       });
       setTimeout(() => {
         setHudScorePops([null, null]);
       }, 1100);
 
-      spawnBurstParticles(target.x, target.y, '#38bdf8', 24);
-      spawnBurstParticles(target.x, target.y, '#e0f2fe', 16);
+      spawnBurstParticles(target.x, target.y, isBombOption ? '#ef4444' : '#38bdf8', 28);
+      spawnBurstParticles(target.x, target.y, isBombOption ? '#f97316' : '#e0f2fe', 18);
 
       if (!isMultiMode && eng.numPlayers === 2) {
         const otherIdx = playerIdx === 0 ? 1 : 0;
@@ -3126,12 +3648,17 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         // Freeze that incorrect option in 3D ice briefly
         p.frozenTimer = 0.45;
         target.frozen = true;
-        target.frozenTimer = isMultiMode ? 2.2 : 4.8;
+        target.frozenTimer = isMultiMode ? 2.0 : 4.8;
         target.vx = 0;
         target.vy = 0;
-        target.cooldown = isMultiMode ? 55 : 120;
+        target.cooldown = isMultiMode ? 50 : 120;
         setHudFrozen([eng.players[0].frozenTimer > 0, Boolean(eng.players[1] && eng.players[1].frozenTimer > 0)]);
-        spawnFloatingText(target.x, target.y - 24, `❄️ -${penaltyPoints} ${penaltyPoints === 1 ? 'PT' : 'PTS'}`, '#0284c7');
+        spawnFloatingText(
+          target.x,
+          target.y - 24,
+          isBombOption ? `💥 BOMB! -3 PTS` : `❄️ -${penaltyPoints} ${penaltyPoints === 1 ? 'PT' : 'PTS'}`,
+          isBombOption ? '#ef4444' : '#0284c7'
+        );
       }
     }
   };
@@ -3838,8 +4365,31 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         // 4. Update & Draw Targets:
         //    - In Mosquito Mode: Mosquitoes actively fly around the arena and periodically lunge in to BITE the player!
         //    - In Chop Mode: Fruits launch FROM BELOW the bottom of the screen and rise UPWARD in an arc!
+        // Decay Slow-Mo & Player Multipliers in Multiple Answer Mode
+        if ((eng as any).slowMoTimer > 0) {
+          (eng as any).slowMoTimer = Math.max(0, ((eng as any).slowMoTimer || 0) - dt);
+        }
+        eng.players.forEach(pl => {
+          if (pl && (pl.multTimer || 0) > 0) {
+            pl.multTimer = Math.max(0, pl.multTimer - dt);
+            if (pl.multTimer === 0) {
+              pl.activeMult = 1;
+            }
+          }
+        });
+        const m0 = eng.players[0]?.activeMult || 1;
+        const m1 = eng.players[1]?.activeMult || 1;
+        const smNow = ((eng as any).slowMoTimer || 0) > 0 ? 1 : 0;
+        const multsSig = `${m0}-${m1}-${smNow}`;
+        if (multsSig !== lastHudMultsSigRef.current) {
+          lastHudMultsSigRef.current = multsSig;
+          setHudActiveMults([m0, m1]);
+          setHudSlowMo(smNow === 1);
+        }
+
+        const slowMoFactor = smNow === 1 ? 0.48 : 1.0;
         const mvStyle = movementStyleRef.current;
-        const moveMult = mvStyle === 'hover' ? 0.45 : mvStyle === 'calm' ? 0.78 : mvStyle === 'zigzag' ? 1.32 : 1.05;
+        const moveMult = (mvStyle === 'hover' ? 0.45 : mvStyle === 'calm' ? 0.78 : mvStyle === 'zigzag' ? 1.32 : 1.05) * slowMoFactor;
         // Keep mosquitoes & answer capsules safely below the Minimalist Top Scoreboard and above the Bottom Question Bar!
         const padTop = Math.max(96, Math.min(124, ch * 0.15));
         const padBottom = Math.max(118, Math.min(148, ch * 0.20));
@@ -4388,26 +4938,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             ctx.scale(scale, scale);
 
             // Outer golden halo
-            const halo = ctx.createRadialGradient(0, 0, 4, 0, 0, 32);
+            const halo = ctx.createRadialGradient(0, 0, 5, 0, 0, 42);
             halo.addColorStop(0, '#fef08a');
             halo.addColorStop(0.55, orb.color || '#10b981');
             halo.addColorStop(1, 'rgba(250, 204, 21, 0)');
             ctx.fillStyle = halo;
             ctx.beginPath();
-            ctx.arc(0, 0, 32, 0, Math.PI * 2);
+            ctx.arc(0, 0, 42, 0, Math.PI * 2);
             ctx.fill();
 
             // 3D Medallion Pill
             ctx.fillStyle = '#facc15';
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 3.5;
             ctx.beginPath();
-            ctx.arc(0, 0, 20, 0, Math.PI * 2);
+            ctx.arc(0, 0, 26, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
             ctx.fillStyle = '#0f172a';
-            ctx.font = '900 16px Fredoka, sans-serif';
+            ctx.font = '900 22px Fredoka, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(orb.points || '+5', 0, 1);
@@ -4415,27 +4965,62 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         }
 
-        // 7. Floating 3D Feedback Texts
+        // 6c. Render 3D Sky Lightning Bolts from ⚡ AUTO-ZAP Power-Up!
+        const bolts = (eng as any).lightningBolts as any[] | undefined;
+        if (bolts && bolts.length > 0) {
+          for (let i = bolts.length - 1; i >= 0; i--) {
+            const b = bolts[i];
+            b.life -= dt * 3.2;
+            if (b.life <= 0) {
+              bolts.splice(i, 1);
+              continue;
+            }
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, b.life);
+            ctx.strokeStyle = b.color || '#facc15';
+            ctx.lineWidth = 8 * b.life;
+            ctx.shadowColor = '#a855f7';
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.moveTo(b.startX, b.startY);
+            const steps = 6;
+            for (let s = 1; s < steps; s++) {
+              const frac = s / steps;
+              const jx = b.startX + (b.endX - b.startX) * frac + (Math.random() - 0.5) * 44;
+              const jy = b.startY + (b.endY - b.startY) * frac + (Math.random() - 0.5) * 28;
+              ctx.lineTo(jx, jy);
+            }
+            ctx.lineTo(b.endX, b.endY);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3 * b.life;
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        // 7. Bigger Floating 3D Feedback Texts
         for (let i = eng.floatingTexts.length - 1; i >= 0; i--) {
           const ft = eng.floatingTexts[i];
-          ft.y -= 1.8;
-          ft.life -= dt * 0.92;
+          ft.y -= 2.0;
+          ft.life -= dt * 0.9;
           if (ft.life <= 0) {
             eng.floatingTexts.splice(i, 1);
             continue;
           }
           ctx.save();
           ctx.globalAlpha = ft.life;
-          const popScale = 1 + Math.sin((1 - ft.life) * Math.PI) * 0.22;
+          const popScale = 1 + Math.sin((1 - ft.life) * Math.PI) * 0.28;
           ctx.translate(ft.x, ft.y);
           ctx.scale(popScale, popScale);
-          ctx.font = '900 24px Fredoka, sans-serif';
+          ctx.font = '900 34px Fredoka, sans-serif';
           ctx.textAlign = 'center';
-          ctx.shadowColor = 'rgba(0,0,0,0.75)';
-          ctx.shadowBlur = 8;
-          ctx.shadowOffsetY = 4;
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 10;
+          ctx.shadowOffsetY = 5;
           ctx.strokeStyle = '#0f172a';
-          ctx.lineWidth = 6;
+          ctx.lineWidth = 8;
           ctx.strokeText(ft.text, 0, 0);
           ctx.fillStyle = ft.color;
           ctx.fillText(ft.text, 0, 0);
@@ -5833,11 +6418,80 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     // High-Contrast Dark Slate Option Answer Text Perfectly Contained Inside Capsule
     if (displayStr) {
-      ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
+      ctx.fillStyle = t.frozen ? '#0369a1' : (t.specialType === 'bomb' ? '#991b1b' : '#0f172a');
       ctx.font = `800 ${fitFontPx}px "Plus Jakarta Sans", Inter, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(displayStr, textStartX, cardY + cardH / 2 + 0.5);
+    }
+
+    // 1b. Draw 3D Power-Up / Bomb Corner Pill Badge on Regular Option Capsules in Multiple Answer Mode!
+    if (t.powerBadge && !t.isSpecialItem && !t.frozen) {
+      const pb = t.powerBadge as 'x2' | 'x3' | 'gold' | 'bomb';
+      const pbMeta = pb === 'bomb'
+        ? { label: '💣 -3', bg: '#dc2626', border: '#fecaca' }
+        : pb === 'x3'
+        ? { label: '🔥 x3', bg: '#9333ea', border: '#f3e8ff' }
+        : pb === 'gold'
+        ? { label: '👑 +5', bg: '#d97706', border: '#fef08a' }
+        : { label: '⚡ x2', bg: '#0284c7', border: '#bae6fd' };
+
+      ctx.save();
+      const pw = 56;
+      const ph = 22;
+      const px = cardW / 2 - pw + 8;
+      const py = cardY - 12;
+      ctx.fillStyle = pbMeta.bg;
+      ctx.strokeStyle = pbMeta.border;
+      ctx.lineWidth = 2;
+      roundRect(ctx, px, py, pw, ph, 11);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 11px Fredoka, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pbMeta.label, px + pw / 2, py + ph / 2 + 0.5);
+      ctx.restore();
+    }
+
+    // 1c. Special 3D Aura & Burning Bomb Fuse for Independent Power-Up / Hazard Mosquitoes!
+    if (t.isSpecialItem && !t.frozen) {
+      ctx.save();
+      const pulseR = 38 + Math.sin(time * 0.018) * 5;
+      if (t.specialType === 'bomb') {
+        // Pulsing Red Danger Ring + Sizzling Bomb Fuse Spark above the mosquito!
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.arc(0, -4, pulseR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Sizzling Fuse & Flickering Spark
+        ctx.strokeStyle = '#78350f';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, -18);
+        ctx.quadraticCurveTo(8, -34, 18, -38);
+        ctx.stroke();
+
+        const sparkR = 5 + Math.sin(time * 0.05) * 2.5;
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(18, -38, sparkR, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Radiant Power-Up Halo Ring (Gold / Cyan / Purple)
+        ctx.strokeStyle = t.color?.light || '#fde047';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, -4, pulseR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     // ---------------------------------------------
@@ -6538,43 +7192,156 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   </button>
                 </div>
 
-                {/* 1–10 ANSWERS SLIDER (Shown in Multiple Answer Mode) */}
+                {/* 1–10 ANSWERS SLIDER + POWER-UPS & BOMBS (Shown in Multiple Answer Mode) */}
                 {answerMode === 'multiple' && (
-                  <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-purple-200 space-y-2.5 animate-in fade-in duration-150">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-black uppercase tracking-wide text-purple-950">
-                        ANSWERS PER QUESTION
-                      </span>
-                      <span className="px-3.5 py-1 rounded-xl bg-purple-600 text-white font-black text-base font-mono tabular-nums shadow-xs">
-                        {multiAnswerCount}
-                      </span>
+                  <div className="space-y-3 animate-in fade-in duration-150">
+                    {/* 1–10 Answers Slider */}
+                    <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-purple-200 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-black uppercase tracking-wide text-purple-950">
+                          ANSWERS PER QUESTION
+                        </span>
+                        <span className="px-3.5 py-1 rounded-xl bg-purple-600 text-white font-black text-base font-mono tabular-nums shadow-xs">
+                          {multiAnswerCount}
+                        </span>
+                      </div>
+
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={multiAnswerCount}
+                        onChange={e => setMultiAnswerCount(Number(e.target.value))}
+                        className="w-full h-3 bg-purple-200 rounded-full appearance-none cursor-pointer accent-purple-600"
+                      />
+
+                      <div className="grid grid-cols-10 gap-1 pt-0.5">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setMultiAnswerCount(num)}
+                            className={`py-1.5 rounded-lg font-black text-xs sm:text-sm transition cursor-pointer ${
+                              multiAnswerCount === num
+                                ? 'bg-purple-600 text-white shadow-xs'
+                                : 'bg-purple-50 hover:bg-purple-100 text-purple-900'
+                            }`}
+                          >
+                            {num}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <input
-                      type="range"
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={multiAnswerCount}
-                      onChange={e => setMultiAnswerCount(Number(e.target.value))}
-                      className="w-full h-3 bg-purple-200 rounded-full appearance-none cursor-pointer accent-purple-600"
-                    />
+                    {/* POWER-UPS & HAZARDS GRID — BOLD ONLY */}
+                    <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-purple-200 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-black uppercase tracking-wide text-purple-950">
+                          ⚡ POWER-UPS &amp; BOMBS
+                        </span>
 
-                    <div className="grid grid-cols-10 gap-1 pt-0.5">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => setMultiAnswerCount(num)}
-                          className={`py-1.5 rounded-lg font-black text-xs sm:text-sm transition cursor-pointer ${
-                            multiAnswerCount === num
-                              ? 'bg-purple-600 text-white shadow-xs'
-                              : 'bg-purple-50 hover:bg-purple-100 text-purple-900'
-                          }`}
-                        >
-                          {num}
-                        </button>
-                      ))}
+                        {/* SPAWN RATE SELECTOR */}
+                        <div className="flex items-center gap-1 bg-purple-50 p-1 rounded-xl border border-purple-200">
+                          {([
+                            { id: 'normal' as const, label: 'NORMAL' },
+                            { id: 'frenzy' as const, label: 'FRENZY' },
+                            { id: 'chaos' as const, label: 'CHAOS 🔥' }
+                          ]).map(sr => (
+                            <button
+                              key={sr.id}
+                              type="button"
+                              onClick={() => setMultiSpawnRate(sr.id)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                                multiSpawnRate === sr.id
+                                  ? 'bg-purple-600 text-white shadow-2xs'
+                                  : 'text-purple-900 hover:bg-purple-100'
+                              }`}
+                            >
+                              {sr.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        {([
+                          {
+                            key: 'bomb' as const,
+                            icon: '💣',
+                            title: 'BOMBS',
+                            tag: '-3 PTS',
+                            activeCls: 'bg-gradient-to-b from-rose-500 to-red-600 border-rose-300 border-b-red-900 text-white shadow-sm -translate-y-0.5',
+                            tagCls: 'bg-black/25 text-white'
+                          },
+                          {
+                            key: 'x2' as const,
+                            icon: '⚡',
+                            title: 'x2 DOUBLE',
+                            tag: '2X PTS',
+                            activeCls: 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
+                            tagCls: 'bg-slate-950/15 text-slate-950'
+                          },
+                          {
+                            key: 'x3' as const,
+                            icon: '🔥',
+                            title: 'x3 TRIPLE',
+                            tag: '3X PTS',
+                            activeCls: 'bg-gradient-to-b from-fuchsia-500 to-purple-600 border-fuchsia-300 border-b-purple-950 text-white shadow-sm -translate-y-0.5',
+                            tagCls: 'bg-black/25 text-white'
+                          },
+                          {
+                            key: 'gold' as const,
+                            icon: '👑',
+                            title: 'GOLD BUG',
+                            tag: '+5 PTS',
+                            activeCls: 'bg-gradient-to-b from-yellow-400 to-amber-500 border-yellow-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
+                            tagCls: 'bg-slate-950/15 text-slate-950'
+                          },
+                          {
+                            key: 'ice' as const,
+                            icon: '❄️',
+                            title: 'ICE TIME',
+                            tag: '+5S SLOW',
+                            activeCls: 'bg-gradient-to-b from-sky-400 to-cyan-600 border-sky-200 border-b-cyan-900 text-white shadow-sm -translate-y-0.5',
+                            tagCls: 'bg-black/25 text-white'
+                          },
+                          {
+                            key: 'zap' as const,
+                            icon: '⚡',
+                            title: 'AUTO-ZAP',
+                            tag: '1-HIT ZAP',
+                            activeCls: 'bg-gradient-to-b from-indigo-500 to-violet-600 border-indigo-300 border-b-violet-950 text-white shadow-sm -translate-y-0.5',
+                            tagCls: 'bg-black/25 text-white'
+                          }
+                        ]).map(item => {
+                          const isOn = multiItems[item.key];
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              onClick={() => toggleMultiItem(item.key)}
+                              className={`p-3 rounded-2xl border-2 border-b-[5px] transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                isOn
+                                  ? item.activeCls
+                                  : 'bg-slate-50 hover:bg-purple-50/60 border-slate-200 border-b-slate-300 text-slate-400'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-xl shrink-0">{item.icon}</span>
+                                <span className="font-black text-xs sm:text-sm tracking-tight truncate">
+                                  {item.title}
+                                </span>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 ${
+                                isOn ? item.tagCls : 'bg-slate-200 text-slate-500'
+                              }`}>
+                                {isOn ? item.tag : 'OFF'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -6810,27 +7577,36 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                 </button>
               </div>
 
-              {/* CENTER MINIMALIST SCOREBOARD & TIMER (Only Player Name + Score + Middle Timer) */}
+              {/* CENTER MINIMALIST SCOREBOARD & TIMER (BIGGER Player Name + BIGGER Score + Middle Timer) */}
               <div className="flex items-center justify-center">
-                <div className="flex items-center bg-slate-950/85 backdrop-blur-xl p-1 rounded-2xl border border-white/15 shadow-[0_8px_28px_rgba(15,23,42,0.32)] gap-1.5">
+                <div className="flex items-center bg-slate-950/90 backdrop-blur-xl p-1.5 sm:p-2 rounded-[1.35rem] border-2 border-white/20 shadow-[0_12px_36px_rgba(15,23,42,0.4)] gap-2">
                   
-                  {/* PLAYER 1: Only Name & Score */}
-                  <div className={`relative flex items-center justify-between gap-3 px-3.5 sm:px-4 h-9 sm:h-10 rounded-xl transition-all duration-200 min-w-[125px] sm:min-w-[175px] ${
+                  {/* PLAYER 1: Bigger Name, Multiplier Badge & Giant Score */}
+                  <div className={`relative flex items-center justify-between gap-3.5 px-4 sm:px-6 h-12 sm:h-15 rounded-2xl transition-all duration-200 min-w-[155px] sm:min-w-[235px] ${
                     hudFrozen[0]
                       ? 'bg-sky-100 text-sky-900 ring-2 ring-sky-400'
                       : hudScorePops[0]
-                      ? 'bg-blue-600 text-white scale-105 shadow-[0_0_20px_rgba(37,99,235,0.7)]'
+                      ? 'bg-blue-600 text-white scale-105 shadow-[0_0_24px_rgba(37,99,235,0.75)]'
                       : 'bg-white text-slate-900'
                   }`}>
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${hudScorePops[0] ? 'bg-white' : 'bg-blue-600'}`} />
-                      <span className={`text-xs sm:text-sm font-extrabold uppercase tracking-wide truncate max-w-[78px] sm:max-w-[115px] ${
+                      <span className={`w-3 h-3 rounded-full shrink-0 ${hudScorePops[0] ? 'bg-white' : 'bg-blue-600'}`} />
+                      <span className={`text-sm sm:text-lg font-black uppercase tracking-wide truncate max-w-[90px] sm:max-w-[135px] ${
                         hudScorePops[0] ? 'text-white' : 'text-blue-700'
                       }`}>
                         {p1Name || "Player 1"}
                       </span>
+                      {hudActiveMults[0] > 1 && (
+                        <span className={`px-2 py-0.5 rounded-lg text-xs sm:text-sm font-black leading-none animate-pulse shrink-0 ${
+                          hudActiveMults[0] >= 3
+                            ? 'bg-fuchsia-600 text-white shadow-[0_0_12px_rgba(192,38,211,0.85)]'
+                            : 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.85)]'
+                        }`}>
+                          {hudActiveMults[0] >= 3 ? '🔥x3' : '⚡x2'}
+                        </span>
+                      )}
                     </div>
-                    <span className={`font-black text-lg sm:text-2xl font-mono leading-none tabular-nums ${
+                    <span className={`font-black text-2xl sm:text-4xl font-mono leading-none tabular-nums tracking-tight ${
                       hudScorePops[0]
                         ? 'text-amber-300 scale-110'
                         : hudScores[0] < 0
@@ -6841,7 +7617,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                     </span>
 
                     {hudScorePops[0] && (
-                      <div className={`absolute -bottom-6 right-1 px-2.5 py-0.5 rounded-full text-[11px] font-black text-white shadow animate-bounce z-50 whitespace-nowrap ${
+                      <div className={`absolute -bottom-8 right-1 px-3.5 py-1 rounded-full text-xs sm:text-sm font-black text-white shadow-lg animate-bounce z-50 whitespace-nowrap border border-white/40 ${
                         hudScorePops[0].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
                       }`}>
                         {hudScorePops[0]}
@@ -6849,25 +7625,28 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                     )}
                   </div>
 
-                  {/* MIDDLE TIMER */}
-                  <div className={`flex items-center justify-center px-3 sm:px-4 h-9 sm:h-10 rounded-xl font-mono font-black text-base sm:text-xl tabular-nums transition-all ${
-                    hudTimeLeft <= 15
+                  {/* MIDDLE TIMER — BIGGER */}
+                  <div className={`flex items-center justify-center gap-1.5 px-4 sm:px-6 h-12 sm:h-15 rounded-2xl font-mono font-black text-xl sm:text-3xl tabular-nums transition-all ${
+                    hudSlowMo
+                      ? 'bg-sky-400 text-slate-950 ring-2 ring-sky-200 shadow-[0_0_18px_rgba(56,189,248,0.85)]'
+                      : hudTimeLeft <= 15
                       ? 'bg-rose-600 text-white animate-pulse'
                       : 'bg-amber-400 text-slate-950'
                   }`}>
-                    {formatPlayTime(hudTimeLeft)}
+                    {hudSlowMo && <span className="text-base sm:text-xl">❄️</span>}
+                    <span>{formatPlayTime(hudTimeLeft)}</span>
                   </div>
 
-                  {/* PLAYER 2: Only Score & Name (in 2P Mode) */}
+                  {/* PLAYER 2: Giant Score, Multiplier Badge & Bigger Name (in 2P Mode) */}
                   {numPlayers === 2 && (
-                    <div className={`relative flex items-center justify-between gap-3 px-3.5 sm:px-4 h-9 sm:h-10 rounded-xl transition-all duration-200 min-w-[125px] sm:min-w-[175px] ${
+                    <div className={`relative flex items-center justify-between gap-3.5 px-4 sm:px-6 h-12 sm:h-15 rounded-2xl transition-all duration-200 min-w-[155px] sm:min-w-[235px] ${
                       hudFrozen[1]
                         ? 'bg-sky-100 text-sky-900 ring-2 ring-sky-400'
                         : hudScorePops[1]
-                        ? 'bg-red-600 text-white scale-105 shadow-[0_0_20px_rgba(220,38,38,0.7)]'
+                        ? 'bg-red-600 text-white scale-105 shadow-[0_0_24px_rgba(220,38,38,0.75)]'
                         : 'bg-white text-slate-900'
                     }`}>
-                      <span className={`font-black text-lg sm:text-2xl font-mono leading-none tabular-nums ${
+                      <span className={`font-black text-2xl sm:text-4xl font-mono leading-none tabular-nums tracking-tight ${
                         hudScorePops[1]
                           ? 'text-amber-300 scale-110'
                           : hudScores[1] < 0
@@ -6877,16 +7656,25 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         {hudScores[1]}
                       </span>
                       <div className="flex items-center justify-end gap-2 min-w-0">
-                        <span className={`text-xs sm:text-sm font-extrabold uppercase tracking-wide truncate max-w-[78px] sm:max-w-[115px] text-right ${
+                        {hudActiveMults[1] > 1 && (
+                          <span className={`px-2 py-0.5 rounded-lg text-xs sm:text-sm font-black leading-none animate-pulse shrink-0 ${
+                            hudActiveMults[1] >= 3
+                              ? 'bg-fuchsia-600 text-white shadow-[0_0_12px_rgba(192,38,211,0.85)]'
+                              : 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.85)]'
+                          }`}>
+                            {hudActiveMults[1] >= 3 ? '🔥x3' : '⚡x2'}
+                          </span>
+                        )}
+                        <span className={`text-sm sm:text-lg font-black uppercase tracking-wide truncate max-w-[90px] sm:max-w-[135px] text-right ${
                           hudScorePops[1] ? 'text-white' : 'text-red-600'
                         }`}>
                           {p2Name || "Player 2"}
                         </span>
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${hudScorePops[1] ? 'bg-white' : 'bg-red-600'}`} />
+                        <span className={`w-3 h-3 rounded-full shrink-0 ${hudScorePops[1] ? 'bg-white' : 'bg-red-600'}`} />
                       </div>
 
                       {hudScorePops[1] && (
-                        <div className={`absolute -bottom-6 left-1 px-2.5 py-0.5 rounded-full text-[11px] font-black text-white shadow animate-bounce z-50 whitespace-nowrap ${
+                        <div className={`absolute -bottom-8 left-1 px-3.5 py-1 rounded-full text-xs sm:text-sm font-black text-white shadow-lg animate-bounce z-50 whitespace-nowrap border border-white/40 ${
                           hudScorePops[1].includes('-') ? 'bg-rose-500' : 'bg-emerald-500'
                         }`}>
                           {hudScorePops[1]}
@@ -6970,31 +7758,31 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             />
           </div>
 
-          {/* MINIMALIST BOTTOM QUESTION BAR */}
-          <div className="absolute bottom-3 left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none">
-            <div className="max-w-3xl mx-auto w-full pointer-events-auto">
-              <div className="relative overflow-hidden rounded-2xl bg-white/92 backdrop-blur-xl px-4 py-2.5 sm:px-5 sm:py-3 shadow-[0_10px_32px_rgba(15,23,42,0.22)] border border-slate-200/90 flex items-center justify-between gap-3.5">
-                {/* Subtle Minimalist Progress Line along bottom edge */}
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100">
+          {/* BIGGER MINIMALIST BOTTOM QUESTION BAR */}
+          <div className="absolute bottom-3.5 left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none">
+            <div className="max-w-5xl mx-auto w-full pointer-events-auto">
+              <div className="relative overflow-hidden rounded-3xl bg-white/95 backdrop-blur-xl px-5 py-3.5 sm:px-8 sm:py-5 shadow-[0_14px_40px_rgba(15,23,42,0.28)] border-2 border-slate-200/95 flex items-center justify-between gap-4 sm:gap-5">
+                {/* Progress Line along bottom edge */}
+                <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-100">
                   <div
                     className="h-full bg-sky-500 transition-all duration-150"
                     style={{ width: `${nextQCountdown !== null ? nextQProgressPct : timerPct}%` }}
                   />
                 </div>
 
-                {/* Minimalist Question Counter & Multi-Answer Hit Counter */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-xs font-extrabold text-slate-500 tabular-nums whitespace-nowrap">
-                    Q{currentQIndex + 1}<span className="text-slate-300 mx-0.5">/</span>{activeQuiz.questions.length}
+                {/* Question Counter & Multi-Answer Hit Counter */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-3 py-1 rounded-xl bg-slate-100 text-sm sm:text-base font-black text-slate-700 tabular-nums whitespace-nowrap">
+                    Q{currentQIndex + 1}<span className="text-slate-400 mx-0.5">/</span>{activeQuiz.questions.length}
                   </span>
                   {answerMode === 'multiple' && (
-                    <span className="px-2 py-0.5 rounded-lg bg-purple-600 text-white text-[11px] font-black tabular-nums whitespace-nowrap shadow-2xs">
+                    <span className="px-3 py-1 rounded-xl bg-purple-600 text-white text-xs sm:text-sm font-black tabular-nums whitespace-nowrap shadow-xs">
                       🎯 {hudMultiProgress}/{multiAnswerCount}
                     </span>
                   )}
                 </div>
 
-                {/* Minimalist Question Text */}
+                {/* Bigger Question Text */}
                 {(() => {
                   const qParsed = parseOptionContent(currentQ?.text || '');
                   const qImg = currentQ?.image || qParsed.imageUrl;
@@ -7002,18 +7790,18 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                     ? `Next question in ${nextQCountdown}s...`
                     : (qParsed.text || currentQ?.text || "Loading question...");
                   return (
-                    <div className="flex-1 flex items-center justify-center gap-3 min-w-0 text-center">
+                    <div className="flex-1 flex items-center justify-center gap-4 min-w-0 text-center">
                       {qImg && nextQCountdown === null && (
                         <img
                           src={qImg}
                           alt="Question"
                           referrerPolicy="no-referrer"
-                          className="h-10 sm:h-12 w-auto max-w-[96px] rounded-lg object-contain bg-slate-50 border border-slate-200 p-0.5 shrink-0"
+                          className="h-14 sm:h-16 w-auto max-w-[120px] rounded-xl object-contain bg-slate-50 border border-slate-200 p-1 shrink-0"
                         />
                       )}
                       <p
-                        className="font-bold text-slate-900 tracking-tight leading-snug break-words"
-                        style={{ fontSize: `${Math.round(20 * textSize)}px`, textWrap: 'balance' } as React.CSSProperties}
+                        className="font-extrabold text-slate-950 tracking-tight leading-snug break-words"
+                        style={{ fontSize: `${Math.round(28 * textSize)}px`, textWrap: 'balance' } as React.CSSProperties}
                       >
                         {qTextDisplay}
                       </p>
@@ -7021,14 +7809,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   );
                 })()}
 
-                {/* Minimalist Audio Read-Aloud Button */}
+                {/* Audio Read-Aloud Button */}
                 <button
                   type="button"
                   onClick={() => currentQ?.text && speakText(currentQ.text)}
                   title="Read Question Aloud"
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 cursor-pointer transition"
+                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 cursor-pointer transition"
                 >
-                  <Volume2 size={16} />
+                  <Volume2 size={20} />
                 </button>
               </div>
             </div>
@@ -7126,27 +7914,84 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
               </div>
 
               {answerMode === 'multiple' && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between text-xs font-black text-purple-950">
-                    <span>Answers Per Question (1–10)</span>
-                    <span className="px-2.5 py-0.5 rounded-md bg-purple-600 text-white font-mono">{multiAnswerCount}</span>
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-black text-purple-950">
+                      <span>Answers Per Question (1–10)</span>
+                      <span className="px-2.5 py-0.5 rounded-md bg-purple-600 text-white font-mono">{multiAnswerCount}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={multiAnswerCount}
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        setMultiAnswerCount(val);
+                        multiAnswerCountRef.current = val;
+                        if (engineRef.current.isActive) {
+                          engineRef.current.roundHitsRequired = val;
+                        }
+                      }}
+                      className="w-full h-2.5 bg-purple-200 rounded-full appearance-none cursor-pointer accent-purple-600"
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    step={1}
-                    value={multiAnswerCount}
-                    onChange={e => {
-                      const val = Number(e.target.value);
-                      setMultiAnswerCount(val);
-                      multiAnswerCountRef.current = val;
-                      if (engineRef.current.isActive) {
-                        engineRef.current.roundHitsRequired = val;
-                      }
-                    }}
-                    className="w-full h-2.5 bg-purple-200 rounded-full appearance-none cursor-pointer accent-purple-600"
-                  />
+
+                  {/* Power-Ups & Bombs Toggles inside Settings */}
+                  <div className="space-y-2 pt-1 border-t border-purple-200/80">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-xs font-black uppercase text-purple-950">⚡ Power-Ups &amp; Bombs</span>
+                      <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-purple-200">
+                        {([
+                          { id: 'normal' as const, label: 'Normal' },
+                          { id: 'frenzy' as const, label: 'Frenzy' },
+                          { id: 'chaos' as const, label: 'Chaos 🔥' }
+                        ]).map(sr => (
+                          <button
+                            key={sr.id}
+                            type="button"
+                            onClick={() => setMultiSpawnRate(sr.id)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black transition cursor-pointer ${
+                              multiSpawnRate === sr.id
+                                ? 'bg-purple-600 text-white'
+                                : 'text-purple-800 hover:bg-purple-50'
+                            }`}
+                          >
+                            {sr.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        { key: 'bomb' as const, label: '💣 Bombs (-3)' },
+                        { key: 'x2' as const, label: '⚡ x2 Double' },
+                        { key: 'x3' as const, label: '🔥 x3 Triple' },
+                        { key: 'gold' as const, label: '👑 Gold (+5)' },
+                        { key: 'ice' as const, label: '❄️ Ice (+5s)' },
+                        { key: 'zap' as const, label: '⚡ Auto-Zap' }
+                      ]).map(it => {
+                        const active = multiItems[it.key];
+                        return (
+                          <button
+                            key={it.key}
+                            type="button"
+                            onClick={() => toggleMultiItem(it.key)}
+                            className={`py-2 px-2 rounded-xl font-black text-[11px] border-b-4 transition cursor-pointer flex items-center justify-between gap-1 ${
+                              active
+                                ? 'bg-purple-600 border-purple-950 text-white shadow-2xs'
+                                : 'bg-white border-purple-200 text-slate-400 hover:bg-purple-50'
+                            }`}
+                          >
+                            <span className="truncate">{it.label}</span>
+                            <span className="text-[9px] uppercase">{active ? 'ON' : 'OFF'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
