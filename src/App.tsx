@@ -34,6 +34,7 @@ import { ClassRecord, getBestSavedClasses, isDefaultMockClasses, STORAGE_KEY, so
 import { PhonemicMaster } from "./views/PhonemicMaster";
 import SquidGamePicker from "./views/SquidGamePicker";
 import { HamsterPaintball } from "./views/HamsterPaintball";
+import { SleepingHamster } from "./views/SleepingHamster";
 import { MySlides } from "./views/MySlides";
 import { useAuth } from "./contexts/AuthContext";
 import { doc, onSnapshot, getDoc, updateDoc, increment, setDoc } from "firebase/firestore";
@@ -312,7 +313,7 @@ export default function App() {
 
   // Name Picker games, Homework, My Slides, and Hamster Paintball multiplayer links can be used freely by students without signing in
   const isNamePickerView = (v: ViewState) => v === "squid-game-picker" || v === "student-race";
-  const isPublicStudentView = (v: ViewState) => isNamePickerView(v) || v === "homework" || v === "public-dashboard" || v === "hamster-paintball" || v === "my-slides";
+  const isPublicStudentView = (v: ViewState) => isNamePickerView(v) || v === "homework" || v === "public-dashboard" || v === "hamster-paintball" || v === "sleeping-hamster" || v === "my-slides";
 
   // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {
@@ -558,6 +559,8 @@ export default function App() {
         return <ClassRecord onViewChange={handleViewChange} openAuthModal={() => setIsAuthModalOpen(true)} />;
       case "phonemic-master":
         return <PhonemicMaster onViewChange={handleViewChange} />;
+      case "sleeping-hamster":
+        return <SleepingHamster onViewChange={handleViewChange} />;
       case "dashboard":
         return <UserDashboard />;
       case "public-dashboard":
@@ -593,7 +596,7 @@ export default function App() {
     "mystery-box", "bubble-pop", "roller-coaster-quiz", "hamster-paintball", "slap-and-chop", "shark-attack", "yoga-quiz", "bubble-sentence-pro",
     "family-feud", "sumo", "hamster-pop-quiz", "student-race",
     "squid-game-picker", "letter-lock", "tic-tac-toe", "neon-chain",
-    "flashcards-match", "phonemic-master"
+    "flashcards-match", "phonemic-master", "sleeping-hamster"
   ].includes(currentView);
   const isClass = currentView === "class-record" || currentView === "class-rewards";
   const isAdminView = currentView === "admin-dashboard" && isAdmin;

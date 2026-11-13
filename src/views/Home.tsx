@@ -213,6 +213,22 @@ function FeaturedGamesSection({
       icon: "🗣️",
       category: "classroom-tools",
     },
+    {
+      id: "sleeping-hamster",
+      title: "Sleeping Hamster",
+      description: "Smart classroom noise monitor! Keep your class quiet so the cozy hamster stays fast asleep.",
+      difficulty: "Easy",
+      players: "Classroom",
+      time: "3-30m",
+      subject: "Classroom Management",
+      grade: "All",
+      imageUrl: "/images/sleeping-hamster-card.jpg?v=1",
+      isNew: true,
+      isAI: false,
+      color: "from-purple-700 to-indigo-900",
+      icon: "🐹",
+      category: "classroom-tools",
+    },
 
     // 2. AR Camera Games (4)
     {

@@ -430,6 +430,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
     'sumo-tags': '/images/sumo-tags-card.jpg?v=3',
     'hamster-paintball': '/images/hamster-paintball-card.jpg?v=3',
     'tic-tac-toe': '/images/tic-tac-toe-card.jpg?v=3',
+    'sleeping-hamster': '/images/sleeping-hamster-card.jpg?v=1',
   };
 
   const resolvedCardImg =
@@ -1001,9 +1002,21 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
 
   // 7. FLASHCARDS MATCH (flashcards-match)
   if (normalizedType === 'flashcards-match') {
-    const cardItems = content.rawCards.length > 0
-      ? content.rawCards.slice(0, 2).flatMap((c: any) => [c.front, c.back]).filter(Boolean)
-      : options.slice(0, 4);
+    const extractedCardTexts = content.rawCards.length > 0
+      ? content.rawCards
+          .slice(0, 4)
+          .flatMap((c: any) => [
+            c?.front || c?.word || c?.term || c?.text || c?.question,
+            c?.back || c?.definition || c?.meaning || c?.answer,
+          ])
+          .map((v: any) => (typeof v === 'string' ? v.trim() : ''))
+          .filter((v: string) => v && !v.startsWith('http') && !v.startsWith('data:image'))
+      : [];
+    const fallbackCardItems = options.filter(
+      (v: string) => v && !v.startsWith('http') && !v.startsWith('data:image')
+    );
+    const mergedCards = [...extractedCardTexts, ...fallbackCardItems, 'Vocabulary', 'Meaning', 'Picture Card', 'Match Pair'];
+    const cardItems = mergedCards.slice(0, 4);
 
     return (
       <div className={`absolute inset-0 w-full h-full bg-gradient-to-br ${palette.bgGradient} overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none`}>
@@ -1012,24 +1025,30 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
             <span className="text-xs leading-none">🎴</span>
             <span className="text-[10px] font-black text-white uppercase tracking-wider">Flashcards</span>
           </div>
-          <span className="text-[10px] font-black text-indigo-200 bg-black/35 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-black text-indigo-200 bg-black/35 px-2 py-0.5 rounded-full border border-indigo-400/30">
             {totalCount} Cards
           </span>
         </div>
 
-        <div className="relative z-10 text-center">
-          <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider block truncate">
-            {cleanTitle}
-          </span>
+        <div className="relative z-10 bg-slate-900/55 border border-white/20 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="text-[9px] font-black text-indigo-300 uppercase tracking-wider block truncate">
+              {cleanTitle}
+            </span>
+            <p className="text-[11px] font-extrabold text-white truncate">
+              Flip & Match Memory Deck
+            </p>
+          </div>
+          <span className="text-base leading-none shrink-0">{emojis[0]}</span>
         </div>
 
-        <div className="relative z-10 grid grid-cols-2 gap-2">
-          {cardItems.slice(0, 4).map((item: string, idx: number) => (
+        <div className="relative z-10 grid grid-cols-2 gap-1.5">
+          {cardItems.map((item: string, idx: number) => (
             <div
               key={idx}
-              className={`bg-white rounded-xl p-2 border-2 ${
-                idx < 2 ? 'border-emerald-400' : 'border-indigo-200'
-              } flex items-center justify-between gap-1`}
+              className={`bg-white/95 rounded-xl px-2.5 py-1.5 border-2 ${
+                idx < 2 ? 'border-emerald-400' : 'border-indigo-300'
+              } flex items-center justify-between gap-1 shadow-xs`}
             >
               <span className="text-[11px] font-black text-slate-800 truncate">{item}</span>
               <span className="text-xs shrink-0">{emojis[idx % emojis.length]}</span>

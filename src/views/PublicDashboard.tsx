@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { collection, query, where, getDocs, onSnapshot, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, onSnapshot, doc, getDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { ViewState } from "../types";
 import { GameThumbnail } from "../components/GameThumbnail";
@@ -17,16 +17,22 @@ import {
   ArrowUpDown, 
   X,
   Award,
-  BookOpen
+  BookOpen,
+  Trash2,
+  ShieldAlert,
+  CheckCircle2,
+  Layers
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
+import { SUPER_ADMIN_EMAIL } from "../utils/threatDetector";
 import {
   mergePublicGames,
   isGameOwnedByUser,
   getCachedPageVisits,
   setCachedPageVisits,
   syncWithServerPlatformCache,
+  markGameDeleted,
 } from "../utils/platformCache";
 
 const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg";
@@ -223,6 +229,11 @@ export function PublicDashboard({
   onViewChange: (view: ViewState, data?: any) => void;
 }) {
   const { user } = useAuth();
+  const isAdmin = Boolean(
+    user &&
+    !user.isAnonymous &&
+    user.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase()
+  );
   const [games, setGames] = useState<any[]>(() => mergePublicGames([], user));
   const [pageVisits, setPageVisits] = useState<number>(() => getCachedPageVisits());
   const [loading, setLoading] = useState(false);
@@ -232,7 +243,45 @@ export function PublicDashboard({
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [sortBy, setSortBy] = useState<SortMode>('latest');
   const [onlyMyGames, setOnlyMyGames] = useState(false);
+  const [onlyOthersGames, setOnlyOthersGames] = useState(false);
   const [modeModalGame, setModeModalGame] = useState<any | null>(null);
+  const [gameToDelete, setGameToDelete] = useState<any | null>(null);
+  const [isDeletingGame, setIsDeletingGame] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    window.setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 3500);
+  };
+
+  const handleConfirmAdminDelete = async () => {
+    if (!isAdmin || !gameToDelete) return;
+    if (isGameOwnedByUser(gameToDelete, user)) {
+      setGameToDelete(null);
+      return;
+    }
+
+    const targetId = String(gameToDelete.id || "").trim();
+    const targetTitle = gameToDelete.topic || gameToDelete.name || gameToDelete.title || "Untitled Game";
+    const targetCreator = gameToDelete.creatorName || "Community User";
+
+    setIsDeletingGame(true);
+    try {
+      if (targetId) {
+        markGameDeleted(targetId);
+        await deleteDoc(doc(db, "mysteryBoxGames", targetId)).catch((err) => {
+          console.warn("Firestore delete notice:", err);
+        });
+      }
+      setGames((prev) => prev.filter((g) => String(g.id) !== targetId));
+      setGameToDelete(null);
+      showToast(`Deleted "${targetTitle}" (published by ${targetCreator}) from Community`);
+    } finally {
+      setIsDeletingGame(false);
+    }
+  };
 
   const getTime = (val: any) => {
     if (!val) return 0;
@@ -403,7 +452,8 @@ export function PublicDashboard({
     { id: "squid-game-picker", title: "Name Picker", color: "text-rose-600", icon: "/images/name-picker-card-v3.png?v=3" },
     { id: "neon-chain", title: "Neon Chain", color: "text-cyan-600", icon: "/images/neon-chain-card.jpg?v=3" },
     { id: "tic-tac-toe", title: "Tic Tac Toe Battle", color: "text-gray-800", icon: "/images/tic-tac-toe-card.jpg?v=3" },
-    { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "/images/phonemic-master-card-v3.jpg?v=3" }
+    { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "/images/phonemic-master-card-v3.jpg?v=3" },
+    { id: "sleeping-hamster", title: "Sleeping Hamster", color: "text-purple-600", icon: "/images/sleeping-hamster-card.jpg?v=1" }
   ];
 
   const normalizeGameType = (type: string | undefined): string => {
@@ -420,6 +470,7 @@ export function PublicDashboard({
     if (clean === "hamsterpopquiz") return "hamster-pop-quiz";
     if (clean === "studentrace") return "student-race";
     if (clean === "squidgamepicker") return "squid-game-picker";
+    if (clean === "sleepinghamster") return "sleeping-hamster";
     if (clean === "tictactoe") return "tic-tac-toe";
     return type;
   };
@@ -491,6 +542,11 @@ export function PublicDashboard({
     return games.filter((g) => isGameOwnedByUser(g, user)).length;
   }, [games, user]);
 
+  const othersGamesCount = useMemo(() => {
+    if (!user) return games.length;
+    return games.filter((g) => !isGameOwnedByUser(g, user)).length;
+  }, [games, user]);
+
   // Filtered games
   const filteredGames = useMemo(() => {
     return games.filter((game) => {
@@ -501,7 +557,9 @@ export function PublicDashboard({
 
       const matchesSearch = !q || titleStr.includes(q) || creatorStr.includes(q) || classStr.includes(q);
       const matchesType = filterType === "all" || normalizeGameType(game.gameType) === normalizeGameType(filterType);
-      const matchesMyGames = !onlyMyGames || isGameOwnedByUser(game, user);
+      const isOwned = isGameOwnedByUser(game, user);
+      const matchesMyGames = !onlyMyGames || isOwned;
+      const matchesOthersGames = !onlyOthersGames || !isOwned;
 
       let matchesLevel = true;
       if (selectedLevel !== 'all') {
@@ -515,9 +573,9 @@ export function PublicDashboard({
         }
       }
 
-      return matchesSearch && matchesType && matchesMyGames && matchesLevel;
+      return matchesSearch && matchesType && matchesMyGames && matchesOthersGames && matchesLevel;
     });
-  }, [games, searchTerm, filterType, onlyMyGames, selectedLevel, user]);
+  }, [games, searchTerm, filterType, onlyMyGames, onlyOthersGames, selectedLevel, user]);
 
   // Sorted games
   const sortedGames = useMemo(() => {
@@ -580,13 +638,14 @@ export function PublicDashboard({
     return time > fortyEightHoursAgo;
   };
 
-  const hasActiveFilters = Boolean(searchTerm || filterType !== 'all' || selectedLevel !== 'all' || onlyMyGames);
+  const hasActiveFilters = Boolean(searchTerm || filterType !== 'all' || selectedLevel !== 'all' || onlyMyGames || onlyOthersGames);
 
   const clearAllFilters = () => {
     setSearchTerm("");
     setFilterType("all");
     setSelectedLevel("all");
     setOnlyMyGames(false);
+    setOnlyOthersGames(false);
   };
 
   return (
@@ -769,7 +828,7 @@ export function PublicDashboard({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {hasActiveFilters && (
               <button
                 onClick={clearAllFilters}
@@ -780,9 +839,32 @@ export function PublicDashboard({
               </button>
             )}
 
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  const next = !onlyOthersGames;
+                  setOnlyOthersGames(next);
+                  if (next) setOnlyMyGames(false);
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs md:text-sm ${
+                  onlyOthersGames
+                    ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20'
+                    : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-500/30 hover:bg-rose-100'
+                }`}
+                title="Admin filter: Show only games published by other users in the community"
+              >
+                <ShieldAlert size={15} />
+                <span>Published by Others ({othersGamesCount})</span>
+              </button>
+            )}
+
             {user && (
               <button
-                onClick={() => setOnlyMyGames(!onlyMyGames)}
+                onClick={() => {
+                  const next = !onlyMyGames;
+                  setOnlyMyGames(next);
+                  if (next) setOnlyOthersGames(false);
+                }}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs md:text-sm ${
                   onlyMyGames
                     ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
@@ -937,11 +1019,27 @@ export function PublicDashboard({
             const isOwner = isGameOwnedByUser(game, user);
             const isFresh = isRecentGame(game);
             const badge = getGameDisplayBadge(game);
+            const itemCount =
+              game.customQuestions?.length ||
+              game.questions?.length ||
+              game.customSentences?.length ||
+              game.sentences?.length ||
+              game.cards?.length ||
+              10;
+            const itemUnit =
+              game.gameType === "bubble-sentence-pro" && (game.customSentences?.length || game.sentences?.length)
+                ? "Sentences"
+                : game.gameType === "flashcards-match"
+                ? "Cards"
+                : "Questions";
+            const creatorLabel = (game.creatorName || "Community Teacher").trim();
+            const creatorInitial = creatorLabel.charAt(0).toUpperCase() || "T";
+            const canAdminDeleteOtherGame = isAdmin && !isOwner;
 
             return (
               <div
                 key={game.id}
-                className="perf-card group bg-white dark:bg-slate-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-shadow duration-200 border-2 border-slate-100 dark:border-slate-700 flex flex-col cursor-pointer relative"
+                className="perf-card group bg-white dark:bg-slate-800/95 rounded-[26px] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 border border-slate-200/85 dark:border-slate-700/80 hover:border-brand-purple/40 dark:hover:border-purple-500/40 flex flex-col cursor-pointer relative"
                 onClick={() => {
                   if (isMultiModeCompatible) {
                     setModeModalGame(game);
@@ -950,65 +1048,177 @@ export function PublicDashboard({
                   }
                 }}
               >
-                <div className="aspect-[4/3] bg-slate-50 dark:bg-slate-900 flex items-center justify-center relative overflow-hidden border-b-2 border-slate-100 dark:border-slate-700">
-                   <div className="absolute inset-0 bg-gradient-to-br from-brand-purple/5 to-transparent z-10"></div>
-                   <GameThumbnail gameType={game.gameType} info={info} game={game} />
+                {/* Thumbnail Stage — clean, unobstructed top header inside GameThumbnail */}
+                <div className="aspect-[4/3] bg-slate-900 flex items-center justify-center relative overflow-hidden border-b border-slate-100 dark:border-slate-700/80">
+                  <GameThumbnail gameType={game.gameType} info={info} game={game} />
 
-                   {/* Badges Overlay */}
-                   <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-20">
-                     {isOwner && (
-                       <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500 text-white shadow-md flex items-center gap-1">
-                         <Sparkles size={11} /> Your Game
-                       </span>
-                     )}
-                     {isFresh && !isOwner && (
-                       <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md flex items-center gap-1">
-                         <Flame size={11} /> New
-                       </span>
-                     )}
-                   </div>
-
-                   {/* Play overlay */}
-                   <div className="absolute inset-0 bg-slate-900/45 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200 z-30">
-                     <div className="w-16 h-16 bg-brand-purple text-white rounded-full flex items-center justify-center transform scale-75 group-hover:scale-100 transition-transform duration-200 shadow-lg">
-                       <Play className="ml-1" size={28} />
-                     </div>
-                   </div>
+                  {/* Hover Play Stage Overlay */}
+                  <div className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200 z-20">
+                    <div className="px-4 py-2.5 bg-brand-purple text-white rounded-2xl flex items-center gap-2 transform scale-90 group-hover:scale-100 transition-transform duration-200 shadow-lg font-extrabold text-sm">
+                      <Play className="fill-current" size={16} />
+                      <span>Play Game</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <h3 className="font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100 line-clamp-1" title={game.topic || game.name || game.title}>
-                        {game.topic || game.name || game.title || "Untitled Game"}
-                      </h3>
-                      {badge && (
-                        <span 
-                          className={`px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 border ${badge.badgeClass}`}
-                        >
-                          {badge.label}
+                {/* Card Content Body */}
+                <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-3.5">
+                  <div className="flex flex-col gap-2">
+                    {/* Row 1: Game Mode + Status / Curriculum Badges (never overlapping the thumbnail) */}
+                    <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/70 text-slate-700 dark:text-slate-200 text-[11px] font-extrabold tracking-tight">
+                        <Layers size={11} className="text-brand-purple dark:text-purple-400 shrink-0" />
+                        <span className="truncate max-w-[115px]">{info.title}</span>
+                        <span className="text-slate-300 dark:text-slate-500">·</span>
+                        <span className="text-slate-500 dark:text-slate-300 shrink-0">
+                          {itemCount} {itemUnit}
                         </span>
-                      )}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isOwner ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1">
+                            <Sparkles size={10} /> Your Game
+                          </span>
+                        ) : isFresh ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 flex items-center gap-1">
+                            <Flame size={10} /> New
+                          </span>
+                        ) : null}
+
+                        {badge && (
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold whitespace-nowrap border ${badge.badgeClass}`}
+                          >
+                            {badge.label}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
-                      <span>{info.title}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>
-                        {(game.customQuestions?.length || game.questions?.length || game.customSentences?.length || game.sentences?.length || 10)}{" "}
-                        {game.gameType === 'bubble-sentence-pro' && (game.customSentences?.length || game.sentences?.length) ? 'Sentences' : 'Questions'}
+
+                    {/* Row 2: Full 2-line readable Game Title */}
+                    <h3
+                      className="font-extrabold text-[15px] sm:text-base text-slate-900 dark:text-white leading-snug line-clamp-2 min-h-[2.6rem] group-hover:text-brand-purple dark:group-hover:text-purple-400 transition-colors"
+                      title={game.topic || game.name || game.title}
+                    >
+                      {game.topic || game.name || game.title || "Untitled Game"}
+                    </h3>
+                  </div>
+
+                  {/* Row 3: Creator Attribution & Admin-Only Delete Function for Others' Games */}
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${
+                          isOwner
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300"
+                            : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300"
+                        }`}
+                      >
+                        {creatorInitial}
+                      </div>
+                      <span
+                        className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate"
+                        title={`Published by ${creatorLabel}`}
+                      >
+                        by {creatorLabel}
                       </span>
-                      {game.creatorName && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="truncate">by {game.creatorName}</span>
-                        </>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {canAdminDeleteOtherGame && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setGameToDelete(game);
+                          }}
+                          title="Admin Only: Delete game published by others from Community"
+                          className="px-2.5 py-1.5 rounded-xl text-xs font-extrabold bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-600 dark:hover:text-white border border-rose-200 dark:border-rose-800/60 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                        >
+                          <Trash2 size={13} />
+                          <span>Delete</span>
+                        </button>
                       )}
+
+                      <div className="w-7 h-7 rounded-xl bg-slate-100 dark:bg-slate-700/70 group-hover:bg-brand-purple text-slate-600 dark:text-slate-300 group-hover:text-white flex items-center justify-center transition-colors">
+                        <Play size={13} className="ml-0.5 fill-current" />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Admin-Only Community Game Deletion Modal */}
+      {isAdmin && gameToDelete && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => !isDeletingGame && setGameToDelete(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-800/60">
+                <Trash2 size={22} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-black uppercase tracking-wider mb-1 border border-rose-200/70 dark:border-rose-800/50">
+                  <ShieldAlert size={11} /> Admin Function Only
+                </div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white leading-snug">
+                  Delete Community Game?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  You are removing a game published by another user from the public Community Hub.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-900/70 rounded-2xl p-3.5 border border-slate-200/70 dark:border-slate-700/70 flex flex-col gap-1">
+              <div className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                {gameToDelete.topic || gameToDelete.name || gameToDelete.title || "Untitled Game"}
+              </div>
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <span>{getTemplateInfo(gameToDelete.gameType).title}</span>
+                <span>·</span>
+                <span>Published by {gameToDelete.creatorName || "Community User"}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingGame}
+                onClick={() => setGameToDelete(null)}
+                className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-slate-600 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingGame}
+                onClick={handleConfirmAdminDelete}
+                className="px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-600/20 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 size={15} />
+                <span>{isDeletingGame ? "Deleting..." : "Delete Game"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Action Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl border border-slate-700 flex items-center gap-2.5 text-xs sm:text-sm font-bold">
+          <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
         </div>
       )}
 

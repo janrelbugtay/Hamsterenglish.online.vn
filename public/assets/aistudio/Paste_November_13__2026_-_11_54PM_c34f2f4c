@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Don't Wake the Hamster!</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Nunito', 'sans-serif'],
+                    },
+                    colors: {
+                        app: {
+                            bg: '#1a103c',       // Deep purple background
+                            panel: '#2a1b54',    // Lighter purple for panels
+                            glass: 'rgba(42, 27, 84, 0.6)',
+                            glassBorder: 'rgba(255, 255, 255, 0.1)',
+                            accent: '#a881ff',   // Soft violet highlight
+                            text: '#e2d9f3',     // Off-white for text
+                            
+                            // Status Colors
+                            green: '#4ade80',    // Deep Sleep
+                            blue: '#60a5fa',     // Light Sleep
+                            yellow: '#fbbf24',   // Disturbed
+                            orange: '#f97316',   // Almost Awake
+                            red: '#f87171',      // Awake
+                        }
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                        'glow-green': '0 0 15px rgba(74, 222, 128, 0.5)',
+                        'glow-red': '0 0 25px rgba(248, 113, 113, 0.6)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background: radial-gradient(circle at 50% 20%, #2b195c 0%, #170d33 60%, #0d0720 100%);
+            color: #e2d9f3;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: rgba(38, 23, 77, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.45);
+        }
+
+        /* 3D Glass Enclosure Habitat */
+        .habitat-enclosure {
+            position: relative;
+            border-radius: 2.75rem;
+            background: linear-gradient(180deg, rgba(67, 43, 125, 0.25) 0%, rgba(28, 17, 61, 0.65) 85%, #23144a 100%);
+            border: 6px solid rgba(186, 154, 255, 0.35);
+            box-shadow: 
+                0 30px 70px rgba(0, 0, 0, 0.7),
+                0 0 40px rgba(168, 129, 255, 0.18),
+                inset 0 2px 25px rgba(255, 255, 255, 0.18),
+                inset 0 -18px 35px rgba(18, 9, 43, 0.9);
+            transition: border-color 0.6s ease, box-shadow 0.6s ease, transform 0.3s ease;
+        }
+
+        /* Top & Bottom Tank Rim */
+        .tank-rim-top {
+            position: absolute;
+            top: -14px;
+            left: 2%;
+            right: 2%;
+            height: 26px;
+            background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 45%, #4c1d95 100%);
+            border-radius: 14px 14px 6px 6px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.55), inset 0 2px 4px rgba(255,255,255,0.45);
+            z-index: 25;
+        }
+        .tank-lid-vent {
+            position: absolute;
+            top: -24px;
+            left: 22%;
+            right: 22%;
+            height: 14px;
+            background: linear-gradient(180deg, #6d28d9 0%, #4c1d95 100%);
+            border-radius: 12px 12px 0 0;
+            border-top: 2px solid rgba(255,255,255,0.3);
+            z-index: 24;
+        }
+
+        .tank-rim-base {
+            position: absolute;
+            bottom: -16px;
+            left: 0.5%;
+            right: 0.5%;
+            height: 34px;
+            background: linear-gradient(180deg, #7c3aed 0%, #5b21b6 55%, #3b0764 100%);
+            border-radius: 0.75rem 0.75rem 1.75rem 1.75rem;
+            box-shadow: 0 18px 38px rgba(0,0,0,0.85), inset 0 3px 6px rgba(255,255,255,0.35);
+            z-index: 25;
+        }
+
+        /* Realistic Glass Corner Pillars */
+        .glass-pillar-left, .glass-pillar-right {
+            position: absolute;
+            top: 10px;
+            bottom: 16px;
+            width: 18px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.22), rgba(167,139,250,0.05), rgba(255,255,255,0.12));
+            z-index: 22;
+            pointer-events: none;
+        }
+        .glass-pillar-left { left: 6px; border-right: 1px solid rgba(255,255,255,0.15); }
+        .glass-pillar-right { right: 6px; border-left: 1px solid rgba(255,255,255,0.15); }
+
+        @keyframes waterBubble {
+            0% { transform: translateY(0) scale(0.6); opacity: 0; }
+            20% { opacity: 0.85; }
+            90% { opacity: 0.85; }
+            100% { transform: translateY(-95px) scale(1.25); opacity: 0; }
+        }
+        .water-bubble-anim {
+            animation: waterBubble 4.5s ease-in infinite;
+        }
+
+        @keyframes heartFloat {
+            0% { transform: translateY(0) scale(0.5); opacity: 0; }
+            25% { opacity: 1; }
+            100% { transform: translateY(-85px) scale(1.35); opacity: 0; }
+        }
+        .heart-particle {
+            position: absolute;
+            font-size: 1.5rem;
+            animation: heartFloat 1.8s ease-out forwards;
+            pointer-events: none;
+            filter: drop-shadow(0 0 8px rgba(244,114,182,0.8));
+        }
+
+        /* State Glows for Enclosure */
+        .state-deep.habitat-enclosure {
+            border-color: rgba(74, 222, 128, 0.4);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.7), 0 0 50px rgba(74, 222, 128, 0.18), inset 0 2px 25px rgba(255,255,255,0.18);
+        }
+        .state-light.habitat-enclosure {
+            border-color: rgba(96, 165, 250, 0.45);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.7), 0 0 50px rgba(96, 165, 250, 0.2), inset 0 2px 25px rgba(255,255,255,0.18);
+        }
+        .state-disturbed.habitat-enclosure {
+            border-color: rgba(251, 191, 36, 0.55);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.7), 0 0 55px rgba(251, 191, 36, 0.25), inset 0 2px 25px rgba(255,251,235,0.2);
+        }
+        .state-almost.habitat-enclosure {
+            border-color: rgba(249, 115, 22, 0.7);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.7), 0 0 65px rgba(249, 115, 22, 0.35), inset 0 0 35px rgba(249, 115, 22, 0.25);
+            animation: enclosureShake 0.45s infinite;
+        }
+        .state-awake.habitat-enclosure {
+            border-color: rgba(248, 113, 113, 0.85);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.7), 0 0 80px rgba(248, 113, 113, 0.5), inset 0 0 50px rgba(248, 113, 113, 0.3);
+        }
+        .state-recovering.habitat-enclosure {
+            border-color: rgba(167, 139, 250, 0.55);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.7), 0 0 55px rgba(167, 139, 250, 0.25), inset 0 2px 25px rgba(255,255,255,0.18);
+        }
+
+        /* Animations */
+        @keyframes enclosureShake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-2px); }
+            75% { transform: translateX(2px); }
+        }
+        @keyframes hamsterBreathe {
+            0%, 100% { transform: scale(1, 1) translateY(0); }
+            50% { transform: scale(1.035, 0.97) translateY(2px); }
+        }
+        @keyframes hamsterBreatheFast {
+            0%, 100% { transform: scale(1, 1) translateY(0); }
+            50% { transform: scale(1.05, 0.95) translateY(3px); }
+        }
+        @keyframes earTwitch {
+            0%, 88%, 100% { transform: rotate(0deg); }
+            92% { transform: rotate(-14deg); }
+            96% { transform: rotate(8deg); }
+        }
+        @keyframes starSwingCalm {
+            0%, 100% { transform: rotate(-4deg); }
+            50% { transform: rotate(4deg); }
+        }
+        @keyframes starSwingNoisy {
+            0%, 100% { transform: rotate(-18deg); }
+            50% { transform: rotate(18deg); }
+        }
+        @keyframes wheelRock {
+            0%, 100% { transform: rotate(0deg); }
+            30% { transform: rotate(12deg); }
+            70% { transform: rotate(-8deg); }
+        }
+        @keyframes wheelSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes floatZ {
+            0% { transform: translateY(0) translateX(0) scale(0.4) rotate(-12deg); opacity: 0; }
+            20% { opacity: 0.95; }
+            50% { transform: translateY(-55px) translateX(14px) scale(1) rotate(8deg); opacity: 0.85; }
+            100% { transform: translateY(-120px) translateX(-10px) scale(1.45) rotate(-8deg); opacity: 0; }
+        }
+        @keyframes floatDust {
+            0%, 100% { transform: translateY(0) translateX(0); opacity: 0.25; }
+            50% { transform: translateY(-18px) translateX(10px); opacity: 0.65; }
+        }
+
+        .hamster-body-calm {
+            transform-origin: 500px 410px;
+            animation: hamsterBreathe 4.2s ease-in-out infinite;
+        }
+        .hamster-body-fast {
+            transform-origin: 500px 410px;
+            animation: hamsterBreatheFast 1.6s ease-in-out infinite;
+        }
+        .hamster-ear-anim {
+            transform-origin: 435px 285px;
+            animation: earTwitch 4.5s infinite;
+        }
+        .star-calm {
+            transform-origin: 690px 40px;
+            animation: starSwingCalm 5s ease-in-out infinite;
+        }
+        .star-noisy {
+            transform-origin: 690px 40px;
+            animation: starSwingNoisy 1.1s ease-in-out infinite;
+        }
+        .wheel-stationary {
+            transform-origin: 295px 255px;
+        }
+        .wheel-rocking {
+            transform-origin: 295px 255px;
+            animation: wheelRock 1.8s ease-in-out infinite;
+        }
+        .wheel-spinning {
+            transform-origin: 295px 255px;
+            animation: wheelSpin 1.4s linear infinite;
+        }
+
+        /* Sleep Bubble & Startled Shock Animations */
+        @keyframes snotBubbleBreath {
+            0%, 100% { transform: scale(0.72) rotate(-3deg); opacity: 0.82; }
+            50% { transform: scale(1.18) rotate(4deg); opacity: 0.96; }
+        }
+        @keyframes shockPulse {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.14) rotate(3deg); }
+        }
+        .sleep-snot-bubble {
+            transform-origin: 486px 382px;
+            animation: snotBubbleBreath 4.2s ease-in-out infinite;
+        }
+        .shock-sparks {
+            transform-origin: 555px 195px;
+            animation: shockPulse 0.45s ease-in-out infinite;
+        }
+
+        /* Particle Layer */
+        .zzz-particle {
+            position: absolute;
+            color: #f5f3ff;
+            font-family: 'Nunito', sans-serif;
+            font-weight: 900;
+            text-shadow: 0 0 14px rgba(168, 129, 255, 0.95), 0 2px 4px rgba(0,0,0,0.5);
+            animation: floatZ linear forwards;
+            pointer-events: none;
+        }
+
+        .dust-mote {
+            position: absolute;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(168,129,255,0) 70%);
+            animation: floatDust 6s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        /* Smooth Meter Fill */
+        #noise-fill {
+            transition: width 0.08s ease-out, background 0.3s ease;
+        }
+        #spike-marker {
+            transition: left 0.05s linear, opacity 0.25s ease;
+        }
+    </style>
+</head>
+
+<body class="h-screen w-screen flex flex-col p-3 md:p-5 lg:p-6 antialiased select-none">
+
+    <!-- START SCREEN OVERLAY -->
+    <div id="start-screen" class="absolute inset-0 z-50 flex items-center justify-center bg-app-bg/95 backdrop-blur-xl transition-opacity duration-500 p-4">
+        <div class="glass-panel p-8 md:p-10 rounded-3xl max-w-xl w-full text-center shadow-2xl border-app-accent/30 text-white relative overflow-hidden">
+            <div class="absolute -top-24 -right-24 w-52 h-52 bg-app-accent rounded-full mix-blend-screen filter blur-3xl opacity-25"></div>
+            <div class="absolute -bottom-24 -left-24 w-52 h-52 bg-pink-500 rounded-full mix-blend-screen filter blur-3xl opacity-20"></div>
+            
+            <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-300/20 to-purple-500/20 border border-white/15 shadow-inner mb-4 text-5xl">
+                🐹
+            </div>
+
+            <h1 class="text-3xl md:text-4xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-purple-200 to-pink-300">
+                Don't Wake the Hamster!
+            </h1>
+            <p class="text-base text-app-text/80 mb-6">Smart Classroom Noise Monitor & Interactive Habitat</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6 text-left">
+                <div class="bg-black/25 p-3.5 rounded-2xl flex items-center gap-3.5 border border-white/10">
+                    <div class="w-10 h-10 shrink-0 rounded-xl bg-app-green/20 flex items-center justify-center text-app-green"><i class="fas fa-shield-alt"></i></div>
+                    <div>
+                        <h3 class="font-bold text-sm">Smart Spike Filter</h3>
+                        <p class="text-xs text-gray-400">Ignores brief coughs or dropped pencils.</p>
+                    </div>
+                </div>
+                <div class="bg-black/25 p-3.5 rounded-2xl flex items-center gap-3.5 border border-white/10">
+                    <div class="w-10 h-10 shrink-0 rounded-xl bg-app-accent/20 flex items-center justify-center text-app-accent"><i class="fas fa-heart"></i></div>
+                    <div>
+                        <h3 class="font-bold text-sm">Auto Recovery</h3>
+                        <p class="text-xs text-gray-400">Get quiet again to help the hamster fall back asleep!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="mic-status" class="mb-4 text-sm text-amber-300 bg-amber-500/10 border border-amber-400/20 py-2 px-4 rounded-xl hidden">
+                <i class="fas fa-microphone mr-1"></i> Requesting microphone access...
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button id="btn-start" class="flex-1 py-4 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-black text-lg rounded-2xl shadow-[0_6px_0_#4c1d95] active:translate-y-[4px] active:shadow-[0_2px_0_#4c1d95] transition-all flex justify-center items-center gap-2">
+                    <i class="fas fa-microphone"></i> START WITH MIC
+                </button>
+                <button id="btn-start-sim" class="py-4 px-5 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-sm rounded-2xl transition-all flex justify-center items-center gap-2" title="Test without a microphone">
+                    <i class="fas fa-sliders-h"></i> Demo Mode
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CALIBRATION / AUDIO SETTINGS MODAL -->
+    <div id="settings-modal" class="absolute inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-md p-4">
+        <div class="glass-panel p-6 md:p-8 rounded-3xl max-w-lg w-full text-white border border-white/15 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-black flex items-center gap-2.5">
+                    <i class="fas fa-sliders-h text-app-accent"></i> Smart Noise Engine Settings
+                </h2>
+                <button id="btn-close-modal" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="space-y-5">
+                <!-- Room Baseline Calibration -->
+                <div class="bg-black/30 p-4 rounded-2xl border border-white/10">
+                    <div class="flex justify-between items-center mb-2">
+                        <div>
+                            <h3 class="font-bold text-sm">Ambient Room Noise Floor</h3>
+                            <p class="text-xs text-gray-400">Filters out AC hum, projector fans, or distant traffic.</p>
+                        </div>
+                        <span id="ui-noise-floor" class="font-mono font-bold text-app-accent text-sm">0 dB</span>
+                    </div>
+                    <button id="btn-calibrate" class="w-full mt-2 py-2.5 bg-app-accent/25 hover:bg-app-accent/40 border border-app-accent/50 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
+                        <i class="fas fa-crosshairs"></i> Calibrate Quiet Room Now (3s)
+                    </button>
+                </div>
+
+                <!-- Microphone Gain Boost -->
+                <div class="bg-black/30 p-4 rounded-2xl border border-white/10">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="font-bold text-sm">Microphone Sensitivity Gain</label>
+                        <span id="ui-gain-val" class="font-mono text-xs font-bold text-app-green">1.0x</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-3">Increase if your microphone is far from the students.</p>
+                    <input id="slider-gain" type="range" min="0.4" max="2.5" step="0.1" value="1.0" class="w-full accent-purple-400 cursor-pointer">
+                </div>
+
+                <!-- Spike Forgiveness (Sustained Time) -->
+                <div class="bg-black/30 p-4 rounded-2xl border border-white/10">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="font-bold text-sm">Spike Forgiveness (Sustained Filter)</label>
+                        <span id="ui-forgiveness-val" class="font-mono text-xs font-bold text-amber-300">Balanced</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-3">How long noise must continue before disturbing the hamster.</p>
+                    <input id="slider-forgiveness" type="range" min="1" max="3" step="1" value="2" class="w-full accent-purple-400 cursor-pointer">
+                    <div class="flex justify-between text-[10px] text-gray-400 font-bold mt-1">
+                        <span>Fast Reaction</span>
+                        <span>Balanced (Classroom)</span>
+                        <span>Very Forgiving</span>
+                    </div>
+                </div>
+
+                <!-- Session Goal -->
+                <div class="flex items-center justify-between bg-black/30 p-4 rounded-2xl border border-white/10">
+                    <div>
+                        <h3 class="font-bold text-sm">Session Quiet Goal</h3>
+                        <p class="text-xs text-gray-400">Target duration for class completion</p>
+                    </div>
+                    <select id="select-goal" class="bg-app-panel border border-white/15 rounded-xl px-3 py-2 text-sm font-bold text-white outline-none">
+                        <option value="300">5 Minutes</option>
+                        <option value="600">10 Minutes</option>
+                        <option value="900">15 Minutes</option>
+                        <option value="1800" selected>30 Minutes</option>
+                    </select>
+                </div>
+            </div>
+
+            <button id="btn-save-settings" class="w-full mt-6 py-3 bg-app-accent hover:bg-purple-500 text-white font-bold rounded-xl shadow-lg transition">
+                Done
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div id="app-content" class="flex-1 flex flex-col max-w-7xl mx-auto w-full relative opacity-0 transition-opacity duration-700 justify-between">
+        
+        <!-- TOP HUD -->
+        <header class="flex justify-between items-start z-30 shrink-0">
+            <!-- Left: Current Quiet Time -->
+            <div class="flex items-center gap-3">
+                <div class="glass-panel px-5 py-2.5 rounded-2xl flex flex-col shadow-lg border-t border-white/15">
+                    <span class="text-[11px] font-extrabold text-app-accent uppercase tracking-wider">Current Quiet Time</span>
+                    <div class="flex items-baseline gap-2">
+                        <span id="ui-current-time" class="text-3xl md:text-4xl font-black font-mono text-white drop-shadow">00:00</span>
+                    </div>
+                </div>
+                <div class="glass-panel px-3.5 py-2 rounded-full hidden sm:inline-flex items-center gap-2 shadow-md">
+                    <i class="fas fa-star text-app-yellow text-xs"></i>
+                    <span id="ui-goal-label" class="text-xs font-bold text-gray-200">Goal: 30:00</span>
+                </div>
+            </div>
+
+            <!-- Top Center: Floating Sleep Status Badge -->
+            <div class="flex flex-col items-center">
+                <div id="ui-status-badge" class="glass-panel px-5 py-2 rounded-full flex items-center gap-2.5 border-2 border-app-green/60 shadow-glow-green bg-black/50 backdrop-blur-md transition-all duration-300">
+                    <span id="ui-status-icon" class="text-app-green text-lg">💤</span>
+                    <span id="ui-status-text" class="font-extrabold text-white tracking-wide text-sm md:text-base">DEEP SLEEP</span>
+                </div>
+                <span id="ui-sub-message" class="text-xs font-bold text-purple-200/80 mt-1.5 tracking-wide transition-opacity duration-300">
+                    The classroom is peaceful and quiet.
+                </span>
+            </div>
+
+            <!-- Right: Best Streak & Sound Controls -->
+            <div class="flex items-center gap-3">
+                <button id="btn-sound-toggle" class="glass-panel px-3.5 py-2.5 rounded-2xl flex items-center gap-2 hover:bg-white/10 transition-colors text-xs font-bold text-gray-200" title="Toggle Gentle Sound Effects">
+                    <i id="icon-sound" class="fas fa-volume-up text-app-accent"></i>
+                    <span class="hidden md:inline">Sound On</span>
+                </button>
+                <div class="glass-panel px-5 py-2.5 rounded-2xl flex flex-col items-end shadow-lg border-t border-white/15">
+                    <span class="text-[11px] font-extrabold text-app-accent uppercase tracking-wider">Best Streak</span>
+                    <span id="ui-best-streak" class="text-2xl md:text-3xl font-black font-mono text-white/95">00:00</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- CENTER: LIVING INTERACTIVE HAMSTER HABITAT -->
+        <main class="flex-1 relative flex items-center justify-center my-2 min-h-[290px] max-h-[58vh]">
+            
+            <!-- Dynamic Classroom Warning Banner -->
+            <div id="warning-msg" class="absolute z-40 top-3 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-600 text-white px-7 py-3 rounded-2xl font-black text-lg md:text-xl shadow-[0_12px_35px_rgba(248,113,113,0.65)] border-2 border-white/30 opacity-0 -translate-y-3 transition-all duration-300 pointer-events-none text-center">
+                ⚠️ Shhh... the hamster is waking up!
+            </div>
+
+            <!-- 3D Glass Enclosure -->
+            <div id="habitat-wrapper" class="habitat-enclosure state-deep w-full max-w-4xl h-full flex items-center justify-center relative overflow-visible">
+                
+                <!-- Top & Bottom Purple Enclosure Caps & Ventilated Lid -->
+                <div class="tank-lid-vent"></div>
+                <div class="tank-rim-top"></div>
+                <div class="tank-rim-base"></div>
+                <div class="glass-pillar-left"></div>
+                <div class="glass-pillar-right"></div>
+
+                <!-- Inner Clipping Container for Scene -->
+                <div class="relative w-full h-full overflow-hidden rounded-[2.4rem] flex items-center justify-center">
+                    
+                    <!-- Ambient Dust Motes -->
+                    <div id="dust-layer" class="absolute inset-0 pointer-events-none z-10"></div>
+
+                    <!-- Floating Zzz & Heart Particle Layer -->
+                    <div id="particle-layer" class="absolute top-[10%] left-[42%] w-52 h-56 pointer-events-none z-20"></div>
+
+                    <!-- Interactive SVG Habitat & Character -->
+                    <svg id="habitat-svg" viewBox="0 0 1000 540" preserveAspectRatio="xMidYMid slice" class="w-full h-full select-none">
+                        <defs>
+                            <!-- Soft 3D Drop Shadows -->
+                            <filter id="softShadow" x="-15%" y="-15%" width="130%" height="135%">
+                                <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#0d0521" flood-opacity="0.55"/>
+                            </filter>
+                            <filter id="hamsterFurShadow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#14072e" flood-opacity="0.65"/>
+                            </filter>
+                            <filter id="warmLampBlur" x="-30%" y="-30%" width="160%" height="160%">
+                                <feGaussianBlur stdDeviation="24" />
+                            </filter>
+
+                            <!-- Night Window & Habitat Lighting Gradients -->
+                            <radialGradient id="ambientGlow" cx="50%" cy="58%" r="62%">
+                                <stop id="glow-stop-1" offset="0%" stop-color="#a881ff" stop-opacity="0.24" />
+                                <stop offset="100%" stop-color="#12092b" stop-opacity="0" />
+                            </radialGradient>
+
+                            <!-- Dynamic Hamster Coat Gradients (Customizable) -->
+                            <radialGradient id="furGrad" cx="42%" cy="30%" r="68%">
+                                <stop id="fur-stop-1" offset="0%" stop-color="#fbd38d" />
+                                <stop id="fur-stop-2" offset="50%" stop-color="#dd842c" />
+                                <stop id="fur-stop-3" offset="100%" stop-color="#9c4221" />
+                            </radialGradient>
+                            <radialGradient id="furHeadGrad" cx="45%" cy="35%" r="65%">
+                                <stop id="head-stop-1" offset="0%" stop-color="#f6ad55" />
+                                <stop id="head-stop-2" offset="65%" stop-color="#c06c22" />
+                                <stop id="head-stop-3" offset="100%" stop-color="#8c4215" />
+                            </radialGradient>
+                            <radialGradient id="creamBelly" cx="50%" cy="35%" r="65%">
+                                <stop offset="0%" stop-color="#ffffff" />
+                                <stop offset="65%" stop-color="#fff5eb" />
+                                <stop offset="100%" stop-color="#e6d0c1" />
+                            </radialGradient>
+                            <radialGradient id="cheekGrad" cx="45%" cy="40%" r="60%">
+                                <stop offset="0%" stop-color="#ffffff" />
+                                <stop offset="75%" stop-color="#fdf2e9" />
+                                <stop offset="100%" stop-color="#e8cfc1" />
+                            </radialGradient>
+                            <radialGradient id="pinkNose" cx="35%" cy="30%" r="65%">
+                                <stop offset="0%" stop-color="#fbcfe8" />
+                                <stop offset="55%" stop-color="#f472b6" />
+                                <stop offset="100%" stop-color="#be185d" />
+                            </radialGradient>
+                            <linearGradient id="sleepMaskGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#fef08a" />
+                                <stop offset="55%" stop-color="#facc15" />
+                                <stop offset="100%" stop-color="#ca8a04" />
+                            </linearGradient>
+                            <radialGradient id="snotBubbleGrad" cx="35%" cy="30%" r="70%">
+                                <stop offset="0%" stop-color="rgba(255, 255, 255, 0.92)" />
+                                <stop offset="45%" stop-color="rgba(147, 197, 253, 0.65)" />
+                                <stop offset="85%" stop-color="rgba(59, 130, 246, 0.45)" />
+                                <stop offset="100%" stop-color="rgba(191, 219, 254, 0.8)" />
+                            </radialGradient>
+
+                            <!-- Habitat Object Gradients -->
+                            <linearGradient id="woodHouse" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#e8c396" />
+                                <stop offset="55%" stop-color="#c7955d" />
+                                <stop offset="100%" stop-color="#946534" />
+                            </linearGradient>
+                            <linearGradient id="woodRoof" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#d4a068" />
+                                <stop offset="50%" stop-color="#a8733e" />
+                                <stop offset="100%" stop-color="#6e471f" />
+                            </linearGradient>
+                            <linearGradient id="wheelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#b794f4" />
+                                <stop offset="50%" stop-color="#805ad5" />
+                                <stop offset="100%" stop-color="#44337a" />
+                            </linearGradient>
+                            <linearGradient id="wheelInnerDrum" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#442b82" />
+                                <stop offset="50%" stop-color="#6b46c1" />
+                                <stop offset="100%" stop-color="#321d63" />
+                            </linearGradient>
+                            <linearGradient id="glassBottle" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="rgba(255,255,255,0.45)" />
+                                <stop offset="28%" stop-color="rgba(255,255,255,0.12)" />
+                                <stop offset="75%" stop-color="rgba(167,139,250,0.15)" />
+                                <stop offset="100%" stop-color="rgba(255,255,255,0.38)" />
+                            </linearGradient>
+                            <linearGradient id="beddingBase" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#fcf5f0" />
+                                <stop offset="45%" stop-color="#e8d7e4" />
+                                <stop offset="100%" stop-color="#ab92bd" />
+                            </linearGradient>
+                            <radialGradient id="houseWarmth" cx="50%" cy="50%" r="50%">
+                                <stop offset="0%" stop-color="#fde68a" stop-opacity="0.85" />
+                                <stop offset="50%" stop-color="#f59e0b" stop-opacity="0.45" />
+                                <stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+                            </radialGradient>
+                        </defs>
+
+                        <!-- Background Ambient Glow -->
+                        <rect width="1000" height="540" fill="url(#ambientGlow)" />
+
+                        <!-- Right-side Desk Lamp Warm Spotlight Hint -->
+                        <circle cx="940" cy="210" r="160" fill="#fbbf24" opacity="0.1" filter="url(#warmLampBlur)" />
+
+                        <!-- Distant Classroom Night Window & Moon -->
+                        <g opacity="0.42">
+                            <rect x="365" y="16" width="270" height="175" rx="20" fill="#090518" stroke="#4c3285" stroke-width="5"/>
+                            <line x1="500" y1="16" x2="500" y2="191" stroke="#311d61" stroke-width="4" />
+                            <line x1="365" y1="103" x2="635" y2="103" stroke="#311d61" stroke-width="4" />
+                            <!-- Glowing Crescent Moon -->
+                            <circle cx="578" cy="68" r="24" fill="#fef08a" />
+                            <circle cx="567" cy="60" r="22" fill="#090518" />
+                            <!-- Twinkling Stars -->
+                            <circle cx="415" cy="55" r="2.5" fill="#fff" />
+                            <circle cx="465" cy="45" r="1.8" fill="#fde68a" />
+                            <circle cx="435" cy="135" r="2.8" fill="#e9d5ff" />
+                            <circle cx="540" cy="145" r="2" fill="#fff" />
+                        </g>
+
+                        <!-- BACK LAYER FLUFFY PAPER BEDDING HILLS -->
+                        <path d="M 15 402 Q 165 348 345 384 T 680 372 T 985 398 L 985 520 L 15 520 Z" fill="#c7b2d1" opacity="0.7" />
+                        <path d="M 25 418 Q 220 375 430 402 T 830 388 T 985 415 L 985 525 L 25 525 Z" fill="#dfd0e6" opacity="0.82" />
+
+                        <!-- LEFT SIDE: REALISTIC 3D RIBBED EXERCISE WHEEL -->
+                        <g id="habitat-wheel-stand" transform="translate(8, 6)" filter="url(#softShadow)">
+                            <!-- Heavy Moulded Stand Base -->
+                            <path d="M 222 426 L 295 255 L 368 426" fill="none" stroke="#3b2370" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+                            <rect x="198" y="416" width="194" height="18" rx="9" fill="#553c9a" stroke="#7c3aed" stroke-width="2" />
+                            
+                            <!-- Rotating Wheel Group -->
+                            <g id="svg-wheel" class="wheel-stationary">
+                                <!-- Deep 3D Running Drum Rim -->
+                                <ellipse cx="307" cy="255" rx="114" ry="118" fill="url(#wheelInnerDrum)" />
+                                <circle cx="295" cy="255" r="118" fill="#231347" opacity="0.7" />
+                                
+                                <!-- Internal Grip Ridges (3D Running Track) -->
+                                <g stroke="#805ad5" stroke-width="3.5" opacity="0.55">
+                                    <line x1="295" y1="138" x2="295" y2="372" />
+                                    <line x1="178" y1="255" x2="412" y2="255" />
+                                    <line x1="212" y1="172" x2="378" y2="338" />
+                                    <line x1="378" y1="172" x2="212" y2="338" />
+                                    <line x1="250" y1="147" x2="340" y2="363" />
+                                    <line x1="187" y1="210" x2="403" y2="300" />
+                                    <line x1="187" y1="300" x2="403" y2="210" />
+                                    <line x1="340" y1="147" x2="250" y2="363" />
+                                </g>
+
+                                <!-- Outer Moulded Wheel Rim with Specular Highlight -->
+                                <circle cx="295" cy="255" r="115" fill="none" stroke="#4c2889" stroke-width="20" />
+                                <circle cx="295" cy="255" r="115" fill="none" stroke="url(#wheelGrad)" stroke-width="13" />
+                                <path d="M 205 182 A 115 115 0 0 1 380 178" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="4" stroke-linecap="round" />
+
+                                <!-- Center Axle Spinner Cap -->
+                                <circle cx="295" cy="255" r="26" fill="#6b46c1" stroke="#3b2370" stroke-width="5" />
+                                <circle cx="295" cy="255" r="15" fill="#c4b5fd" />
+                                <circle cx="291" cy="251" r="5" fill="#ffffff" opacity="0.8" />
+                            </g>
+                        </g>
+
+                        <!-- LEFT SIDE: REALISTIC GLASS WATER BOTTLE WITH RISING BUBBLE -->
+                        <g id="habitat-water-bottle" transform="translate(52, 112)" filter="url(#softShadow)">
+                            <!-- Stainless Steel Drinking Tube & Ball Bearing -->
+                            <path d="M 42 185 L 76 226" stroke="#94a3b8" stroke-width="12" stroke-linecap="round" />
+                            <path d="M 42 183 L 75 224" stroke="#f1f5f9" stroke-width="4" stroke-linecap="round" />
+                            <circle cx="80" cy="230" r="6" fill="#cbd5e1" stroke="#64748b" stroke-width="1.5" />
+                            <!-- Hanging Water Droplet at Tip -->
+                            <path d="M 80 236 C 77 242 76 247 80 248 C 84 247 83 242 80 236 Z" fill="#7dd3fc" opacity="0.9" />
+
+                            <!-- Cylindrical Clear Bottle Body -->
+                            <rect x="8" y="0" width="60" height="170" rx="28" fill="url(#glassBottle)" stroke="rgba(255,255,255,0.55)" stroke-width="2.5" />
+                            <!-- Water Column & Meniscus -->
+                            <rect x="12" y="38" width="52" height="125" rx="22" fill="rgba(56, 189, 248, 0.35)" />
+                            <ellipse cx="38" cy="38" rx="26" ry="7" fill="rgba(186, 230, 253, 0.7)" />
+                            <!-- Animated Air Bubble Inside Bottle -->
+                            <circle cx="32" cy="145" r="4" fill="rgba(255,255,255,0.75)" class="water-bubble-anim" />
+                            <!-- Bottle Measurement Tick Marks -->
+                            <g stroke="rgba(255,255,255,0.45)" stroke-width="2" stroke-linecap="round">
+                                <line x1="52" y1="55" x2="60" y2="55" />
+                                <line x1="52" y1="80" x2="60" y2="80" />
+                                <line x1="52" y1="105" x2="60" y2="105" />
+                                <line x1="52" y1="130" x2="60" y2="130" />
+                            </g>
+                            <!-- Specular Glass Highlight -->
+                            <rect x="16" y="12" width="7" height="135" rx="3.5" fill="rgba(255,255,255,0.45)" />
+
+                            <!-- Tank Mounting Clamp & Cap -->
+                            <rect x="4" y="96" width="68" height="18" rx="7" fill="#7c3aed" stroke="#a78bfa" stroke-width="1.5" />
+                            <rect x="-8" y="99" width="16" height="12" rx="4" fill="#4c1d95" />
+                            <rect x="14" y="152" width="48" height="34" rx="9" fill="#6d28d9" stroke="#a78bfa" stroke-width="1.5" />
+                        </g>
+
+                        <!-- RIGHT SIDE: COZY WOODEN CABIN HOUSE WITH SHINGLES & WINDOW -->
+                        <g id="habitat-house" transform="translate(620, 198)" filter="url(#softShadow)">
+                            <!-- Ground Shadow -->
+                            <ellipse cx="140" cy="222" rx="145" ry="22" fill="rgba(0,0,0,0.45)" />
+                            <!-- Cabin Side Wall (3D Perspective) -->
+                            <polygon points="242,88 272,72 262,198 235,215" fill="#8c5a2b" stroke="#5c3a1a" stroke-width="2.5" stroke-linejoin="round" />
+                            <!-- Cabin Front Wall -->
+                            <path d="M 25 88 L 242 88 L 235 215 L 35 215 Z" fill="url(#woodHouse)" stroke="#784b21" stroke-width="3" stroke-linejoin="round" />
+                            <!-- Wood Plank Grooves -->
+                            <line x1="30" y1="120" x2="239" y2="120" stroke="#855528" stroke-width="2" opacity="0.55" />
+                            <line x1="32" y1="152" x2="238" y2="152" stroke="#855528" stroke-width="2" opacity="0.55" />
+                            <line x1="34" y1="184" x2="236" y2="184" stroke="#855528" stroke-width="2" opacity="0.55" />
+
+                            <!-- Arched Doorway -->
+                            <path d="M 82 215 L 82 142 A 44 42 0 0 1 170 142 L 170 215 Z" fill="#241208" stroke="#5c3a1a" stroke-width="4" />
+                            <!-- Cute Heart Cutout Window -->
+                            <path d="M 204 128 C 204 123 197 118 193 123 C 189 128 204 138 204 138 C 204 138 219 128 215 123 C 211 118 204 123 204 128 Z" fill="#3b1d0c" stroke="#784b21" stroke-width="2" />
+
+                            <!-- Warm Interior Sleep Glow -->
+                            <circle id="house-warm-glow" cx="126" cy="178" r="62" fill="url(#houseWarmth)" opacity="0.95" />
+
+                            <!-- 3D Slanted Wooden Roof -->
+                            <polygon points="215,20 250,12 286,76 260,95" fill="#6e471f" stroke="#4d3013" stroke-width="2.5" stroke-linejoin="round" />
+                            <path d="M 8 95 L 54 20 L 218 20 L 260 95 Z" fill="url(#woodRoof)" stroke="#5c3a1a" stroke-width="3.5" stroke-linejoin="round" />
+                            <!-- Roof Wood Texture Ridges -->
+                            <line x1="32" y1="58" x2="238" y2="58" stroke="#5c3a1a" stroke-width="2" opacity="0.45" />
+                            <line x1="45" y1="38" x2="226" y2="38" stroke="#ebc394" stroke-width="2" opacity="0.3" />
+                        </g>
+
+                        <!-- TOP RIGHT: HANGING PLUSH STAR TOY ON GOLDEN CHAIN -->
+                        <g id="svg-star-toy" class="star-calm">
+                            <!-- Mounting Ring -->
+                            <circle cx="690" cy="14" r="7" fill="none" stroke="#fbbf24" stroke-width="4" />
+                            <!-- Golden Chain Links -->
+                            <line x1="690" y1="20" x2="690" y2="122" stroke="#fcd34d" stroke-width="4.5" stroke-dasharray="7 5" stroke-linecap="round" />
+                            <!-- Glowing 3D Star -->
+                            <g transform="translate(690, 148)">
+                                <polygon points="0,-38 12,-13 39,-8 20,12 24,38 0,25 -24,38 -20,12 -39,-8 -12,-13" fill="#fbbf24" stroke="#fef08a" stroke-width="3.5" stroke-linejoin="round" filter="drop-shadow(0 0 15px rgba(251,191,36,0.75))" />
+                                <!-- Rosy Cheeks & Cute Smile on Star -->
+                                <ellipse cx="-12" cy="3" rx="4" ry="2.5" fill="#f97316" opacity="0.55" />
+                                <ellipse cx="12" cy="3" rx="4" ry="2.5" fill="#f97316" opacity="0.55" />
+                                <circle cx="-8" cy="-3" r="2.8" fill="#451a03" />
+                                <circle cx="8" cy="-3" r="2.8" fill="#451a03" />
+                                <path d="M -4 5 Q 0 9 4 5" fill="none" stroke="#451a03" stroke-width="2.2" stroke-linecap="round" />
+                            </g>
+                        </g>
+
+                        <!-- MID-GROUND FLUFFY BEDDING CLUSTERS -->
+                        <g fill="#f5ebf2" filter="url(#softShadow)">
+                            <circle cx="125" cy="432" r="36" />
+                            <circle cx="185" cy="422" r="44" fill="#e9d8e4" />
+                            <circle cx="255" cy="438" r="38" fill="#fffaf5" />
+                            <circle cx="335" cy="426" r="46" fill="#f7edf5" />
+                            <circle cx="405" cy="435" r="35" fill="#fffaf5" />
+                            <circle cx="625" cy="432" r="42" fill="#fffaf5" />
+                            <circle cx="705" cy="435" r="38" fill="#e9d8e4" />
+                            <circle cx="795" cy="426" r="46" fill="#fcf5f0" />
+                            <circle cx="885" cy="438" r="38" fill="#e9d8e4" />
+                        </g>
+
+                        <!-- =================================================== -->
+                        <!-- THE LIVING, HIGHLY DETAILED 3D HAMSTER CHARACTER    -->
+                        <!-- =================================================== -->
+                        <g id="hamster-root" class="hamster-body-calm cursor-pointer" filter="url(#hamsterFurShadow)" title="Click to gently pet the hamster!">
+                            <!-- Deep Plush Nest Shadow under Hamster -->
+                            <ellipse cx="496" cy="438" rx="155" ry="30" fill="rgba(16, 6, 38, 0.7)" />
+
+                            <!-- 1. SLEEPING / DISTURBED / ALMOST AWAKE POSTURE GROUP (Matches Left Reference) -->
+                            <g id="hamster-posture-sleep">
+                                <!-- Left & Right Rounded Hamster Ears -->
+                                <g id="hamster-front-ear" class="hamster-ear-anim">
+                                    <circle cx="386" cy="292" r="34" fill="url(#furHeadGrad)" stroke="#6b2710" stroke-width="4" />
+                                    <circle cx="388" cy="295" r="21" fill="#f48fb1" />
+                                    <path d="M 375 292 Q 388 278 398 294" fill="none" stroke="#f8bbd0" stroke-width="3" stroke-linecap="round" opacity="0.65" />
+                                </g>
+                                <g>
+                                    <circle cx="536" cy="272" r="33" fill="url(#furHeadGrad)" stroke="#6b2710" stroke-width="4" />
+                                    <circle cx="534" cy="275" r="20" fill="#f48fb1" />
+                                    <path d="M 523 272 Q 535 260 544 275" fill="none" stroke="#f8bbd0" stroke-width="3" stroke-linecap="round" opacity="0.65" />
+                                </g>
+
+                                <!-- Plump Golden Mound Body & Head -->
+                                <path d="M 342 430 C 330 342, 382 268, 468 265 C 555 262, 622 325, 628 422 C 610 448, 370 450, 342 430 Z" fill="url(#furGrad)" stroke="#6b2710" stroke-width="4" stroke-linejoin="round" />
+
+                                <!-- Wide Soft Cream Face & Chubby Cheeks -->
+                                <path d="M 355 426 C 344 372, 388 338, 435 344 C 455 346, 476 346, 498 340 C 546 328, 594 358, 588 418 C 562 446, 385 448, 355 426 Z" fill="url(#cheekGrad)" />
+
+                                <!-- Cute Yellow Bear Sleeping Mask on Forehead -->
+                                <g id="sleeping-bear-mask">
+                                    <!-- Elastic Mask Straps -->
+                                    <path d="M 348 370 Q 356 335 376 318" fill="none" stroke="#facc15" stroke-width="9" stroke-linecap="round" />
+                                    <path d="M 348 370 Q 356 335 376 318" fill="none" stroke="#713f12" stroke-width="4" stroke-linecap="round" opacity="0.45" />
+                                    <path d="M 554 308 Q 582 325 598 354" fill="none" stroke="#facc15" stroke-width="9" stroke-linecap="round" />
+                                    <!-- Bear Mask Ears -->
+                                    <circle cx="404" cy="276" r="15" fill="url(#sleepMaskGrad)" stroke="#713f12" stroke-width="3.5" />
+                                    <circle cx="512" cy="264" r="15" fill="url(#sleepMaskGrad)" stroke="#713f12" stroke-width="3.5" />
+                                    <!-- Main Plush Mask Body -->
+                                    <path d="M 372 324 C 362 288, 408 262, 462 258 C 516 254, 560 274, 558 308 C 556 328, 524 328, 496 318 C 474 310, 456 314, 434 328 C 408 344, 378 344, 372 324 Z" fill="url(#sleepMaskGrad)" stroke="#713f12" stroke-width="3.8" stroke-linejoin="round" />
+                                    <!-- Glossy Highlight on Mask -->
+                                    <path d="M 392 292 Q 455 266 528 278" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="4.5" stroke-linecap="round" />
+                                    <!-- Tiny Bear Face Drawn on Mask -->
+                                    <circle cx="442" cy="292" r="4" fill="#451a03" />
+                                    <circle cx="486" cy="286" r="4" fill="#451a03" />
+                                    <ellipse cx="464" cy="291" rx="4.5" ry="3" fill="#451a03" />
+                                    <path d="M 456 297 Q 460 302 464 295 Q 469 301 473 295" fill="none" stroke="#451a03" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+                                </g>
+
+                                <!-- Rosy Pink Oval Cheeks with Cute Diagonal Blush Lines -->
+                                <g>
+                                    <ellipse cx="398" cy="392" rx="22" ry="12" transform="rotate(-8 398 392)" fill="#fda4af" opacity="0.78" />
+                                    <line x1="391" y1="396" x2="397" y2="387" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+                                    <line x1="400" y1="397" x2="406" y2="388" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+
+                                    <ellipse cx="546" cy="374" rx="21" ry="11.5" transform="rotate(-8 546 374)" fill="#fda4af" opacity="0.78" />
+                                    <line x1="539" y1="378" x2="545" y2="369" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+                                    <line x1="548" y1="379" x2="554" y2="370" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+                                </g>
+
+                                <!-- FACIAL EXPRESSIONS (Toggled by State) -->
+                                <!-- 1. Closed Peaceful Curved Eyes (Deep & Light Sleep & Recovering) -->
+                                <g id="eyes-closed">
+                                    <path d="M 408 358 Q 427 372 444 354" fill="none" stroke="#3b1106" stroke-width="5.5" stroke-linecap="round" />
+                                    <path d="M 492 346 Q 511 360 528 342" fill="none" stroke="#3b1106" stroke-width="5.5" stroke-linecap="round" />
+                                </g>
+
+                                <!-- 2. One Eye Peeking Open & Furrowed Brow (Disturbed) -->
+                                <g id="eyes-peeking" class="hidden">
+                                    <path d="M 408 358 Q 427 369 444 354" fill="none" stroke="#3b1106" stroke-width="5.5" stroke-linecap="round" />
+                                    <circle cx="510" cy="348" r="13.5" fill="#2d1206" />
+                                    <circle cx="505" cy="343" r="5" fill="#ffffff" />
+                                    <circle cx="515" cy="353" r="2.2" fill="#ffffff" opacity="0.85" />
+                                    <line x1="490" y1="332" x2="526" y2="324" stroke="#5c1f08" stroke-width="4.5" stroke-linecap="round" />
+                                </g>
+
+                                <!-- 3. Both Eyes Wide & Grumpy Brows (Almost Awake) -->
+                                <g id="eyes-almost" class="hidden">
+                                    <circle cx="426" cy="356" r="14" fill="#2d1206" />
+                                    <circle cx="421" cy="350" r="5.2" fill="#ffffff" />
+                                    <circle cx="431" cy="361" r="2.2" fill="#ffffff" />
+                                    <circle cx="510" cy="346" r="14" fill="#2d1206" />
+                                    <circle cx="505" cy="340" r="5.2" fill="#ffffff" />
+                                    <circle cx="515" cy="351" r="2.2" fill="#ffffff" />
+                                    <!-- Grumpy Angled Brows -->
+                                    <line x1="408" y1="332" x2="442" y2="342" stroke="#5c1f08" stroke-width="5" stroke-linecap="round" />
+                                    <line x1="528" y1="320" x2="494" y2="334" stroke="#5c1f08" stroke-width="5" stroke-linecap="round" />
+                                </g>
+
+                                <!-- Soft Pink Triangle Nose & Mouths -->
+                                <path d="M 462 365 C 462 359, 480 358, 480 364 C 480 370, 474 375, 471 375 C 468 375, 462 371, 462 365 Z" fill="url(#pinkNose)" />
+                                <!-- Peaceful W-Smile -->
+                                <path id="mouth-calm" d="M 455 382 Q 464 391 471 375 Q 479 389 488 379" fill="none" stroke="#451a03" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" />
+                                <!-- Grumpy Disturbed Mouth -->
+                                <path id="mouth-disturbed" class="hidden" d="M 456 392 Q 472 376 488 390" fill="none" stroke="#451a03" stroke-width="4.2" stroke-linecap="round" />
+
+                                <!-- Glossy Translucent Blue Sleep Snot Bubble (Matches Left Reference) -->
+                                <g id="dream-bubble" class="sleep-snot-bubble">
+                                    <path d="M 486 382 C 502 364, 544 352, 550 380 C 556 406, 516 420, 496 394 Z" fill="url(#snotBubbleGrad)" stroke="rgba(147, 197, 253, 0.85)" stroke-width="2.2" />
+                                    <ellipse cx="528" cy="371" rx="8" ry="5" transform="rotate(-20 528 371)" fill="#ffffff" opacity="0.85" />
+                                    <circle cx="538" cy="384" r="3" fill="#ffffff" opacity="0.65" />
+                                </g>
+
+                                <!-- Cute Pink Paws Resting on Fluffy Clouds -->
+                                <g id="paws-relaxed">
+                                    <!-- Left Paw -->
+                                    <g transform="translate(425, 424) rotate(-10)">
+                                        <path d="M -22 12 C -24 -10, 24 -10, 22 12 Z" fill="#fda4af" stroke="#881337" stroke-width="3.2" />
+                                        <path d="M -7 -5 L -7 4 M 2 -6 L 2 4 M 11 -4 L 11 4" stroke="#9f1239" stroke-width="2.6" stroke-linecap="round" />
+                                    </g>
+                                    <!-- Right Paw -->
+                                    <g transform="translate(518, 416) rotate(-12)">
+                                        <path d="M -22 12 C -24 -10, 24 -10, 22 12 Z" fill="#fda4af" stroke="#881337" stroke-width="3.2" />
+                                        <path d="M -7 -5 L -7 4 M 2 -6 L 2 4 M 11 -4 L 11 4" stroke="#9f1239" stroke-width="2.6" stroke-linecap="round" />
+                                    </g>
+                                </g>
+
+                                <!-- Paw Covering Ear (Shown when Disturbed) -->
+                                <g id="paw-cover-ear" class="hidden">
+                                    <path d="M 420 420 Q 388 355 390 302" fill="none" stroke="url(#furGrad)" stroke-width="32" stroke-linecap="round" />
+                                    <circle cx="390" cy="298" r="17" fill="#fda4af" stroke="#881337" stroke-width="3" />
+                                </g>
+                            </g>
+
+                            <!-- 2. STARTLED AWAKE POSTURE GROUP (Matches Right Reference) -->
+                            <g id="hamster-posture-awake" class="hidden">
+                                <!-- Startled Shock Exclamation Marks & White Action Lines -->
+                                <g class="shock-sparks">
+                                    <!-- Yellow Exclamation Wedges (Top Right) -->
+                                    <polygon points="534,195 524,132 548,130 546,194" fill="#facc15" stroke="#713f12" stroke-width="3.5" stroke-linejoin="round" />
+                                    <polygon points="558,205 588,146 610,160 568,214" fill="#facc15" stroke="#713f12" stroke-width="3.5" stroke-linejoin="round" />
+                                    <polygon points="572,226 618,204 625,224 576,238" fill="#facc15" stroke="#713f12" stroke-width="3.5" stroke-linejoin="round" />
+                                    <!-- White Startle ticks (Top Left) -->
+                                    <line x1="388" y1="218" x2="365" y2="195" stroke="#ffffff" stroke-width="6" stroke-linecap="round" />
+                                    <line x1="408" y1="208" x2="398" y2="176" stroke="#ffffff" stroke-width="6" stroke-linecap="round" />
+                                </g>
+
+                                <!-- Alert Rounded Ears -->
+                                <g>
+                                    <circle cx="382" cy="264" r="36" fill="url(#furHeadGrad)" stroke="#6b2710" stroke-width="4" />
+                                    <circle cx="385" cy="267" r="23" fill="#f48fb1" />
+                                    <circle cx="534" cy="236" r="34" fill="url(#furHeadGrad)" stroke="#6b2710" stroke-width="4" />
+                                    <circle cx="532" cy="240" r="21" fill="#f48fb1" />
+                                </g>
+
+                                <!-- Upright Startled Golden Body -->
+                                <path d="M 352 435 C 344 330, 385 235, 472 232 C 556 230, 608 310, 604 432 Z" fill="url(#furGrad)" stroke="#6b2710" stroke-width="4" stroke-linejoin="round" />
+
+                                <!-- Upright Cream Face & Chest -->
+                                <path d="M 380 432 C 372 352, 405 312, 456 315 C 485 316, 505 308, 535 304 C 584 298, 604 350, 588 430 Z" fill="url(#cheekGrad)" />
+
+                                <!-- Pushed-Up Yellow Bear Sleeping Mask on Top of Head -->
+                                <g>
+                                    <path d="M 355 348 Q 375 295 402 268" fill="none" stroke="#facc15" stroke-width="9" stroke-linecap="round" />
+                                    <path d="M 355 348 Q 375 295 402 268" fill="none" stroke="#713f12" stroke-width="3.5" stroke-linecap="round" opacity="0.45" />
+                                    <circle cx="424" cy="226" r="14" fill="url(#sleepMaskGrad)" stroke="#713f12" stroke-width="3.5" />
+                                    <circle cx="516" cy="218" r="14" fill="url(#sleepMaskGrad)" stroke="#713f12" stroke-width="3.5" />
+                                    <path d="M 398 268 C 392 234, 430 212, 478 210 C 525 208, 562 228, 558 256 C 555 272, 526 266, 502 258 C 480 252, 460 256, 440 268 C 418 280, 402 282, 398 268 Z" fill="url(#sleepMaskGrad)" stroke="#713f12" stroke-width="3.8" stroke-linejoin="round" />
+                                    <path d="M 416 240 Q 475 218 534 232" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="4" stroke-linecap="round" />
+                                    <!-- Bear Face on Pushed-Up Mask -->
+                                    <circle cx="458" cy="236" r="3.8" fill="#451a03" />
+                                    <circle cx="496" cy="232" r="3.8" fill="#451a03" />
+                                    <ellipse cx="477" cy="236" rx="4" ry="2.6" fill="#451a03" />
+                                    <path d="M 470 241 Q 474 246 477 240 Q 481 245 485 240" fill="none" stroke="#451a03" stroke-width="2.5" stroke-linecap="round" />
+                                </g>
+
+                                <!-- Rosy Blush Cheeks with Diagonal Hash Lines -->
+                                <g>
+                                    <ellipse cx="424" cy="348" rx="22" ry="12" transform="rotate(-10 424 348)" fill="#fda4af" opacity="0.82" />
+                                    <line x1="417" y1="352" x2="423" y2="343" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+                                    <line x1="426" y1="353" x2="432" y2="344" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+
+                                    <ellipse cx="562" cy="332" rx="20" ry="11" transform="rotate(-10 562 332)" fill="#fda4af" opacity="0.82" />
+                                    <line x1="555" y1="336" x2="561" y2="327" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+                                    <line x1="564" y1="337" x2="570" y2="328" stroke="#f43f5e" stroke-width="2.6" stroke-linecap="round" opacity="0.65" />
+                                </g>
+
+                                <!-- Furrowed Angry/Startled Eyebrows & Big Glossy Dark Eyes -->
+                                <line x1="432" y1="286" x2="466" y2="298" stroke="#5c1f08" stroke-width="5" stroke-linecap="round" />
+                                <line x1="538" y1="270" x2="510" y2="288" stroke="#5c1f08" stroke-width="5" stroke-linecap="round" />
+
+                                <circle cx="456" cy="316" r="16.5" fill="#2d1206" />
+                                <circle cx="450" cy="309" r="6" fill="#ffffff" />
+                                <circle cx="462" cy="322" r="2.5" fill="#ffffff" opacity="0.85" />
+
+                                <circle cx="534" cy="304" r="16" fill="#2d1206" />
+                                <circle cx="528" cy="297" r="5.8" fill="#ffffff" />
+                                <circle cx="540" cy="310" r="2.5" fill="#ffffff" opacity="0.85" />
+
+                                <!-- Pink Nose & Tall Gasping Shocked Mouth with Pink Tongue -->
+                                <path d="M 488 316 C 488 311, 504 310, 504 315 C 504 320, 498 325, 496 325 C 493 325, 488 321, 488 316 Z" fill="url(#pinkNose)" />
+                                <path d="M 496 325 L 496 332" stroke="#5c1f08" stroke-width="3.5" stroke-linecap="round" />
+                                <path d="M 476 376 C 474 344, 486 330, 498 330 C 512 330, 526 346, 526 372 C 512 368, 490 370, 476 376 Z" fill="#7f1d1d" stroke="#450a0a" stroke-width="3.8" stroke-linejoin="round" />
+                                <!-- Pink Tongue Inside Open Mouth -->
+                                <path d="M 479 374 C 485 356, 512 354, 523 370 C 510 368, 492 370, 479 374 Z" fill="#fb7185" />
+
+                                <!-- Raised Startled Front Paws with Claws/Toes -->
+                                <g transform="translate(448, 398) rotate(-18)">
+                                    <path d="M -20 35 L -16 -6 C -16 -22, 16 -22, 16 -6 L 20 35 Z" fill="url(#cheekGrad)" stroke="#6b2710" stroke-width="3.5" />
+                                    <ellipse cx="0" cy="-6" rx="15" ry="13" fill="#fda4af" />
+                                    <path d="M -6 -16 L -6 -7 M 2 -17 L 2 -7 M 9 -15 L 9 -6" stroke="#9f1239" stroke-width="2.5" stroke-linecap="round" />
+                                </g>
+                                <g transform="translate(536, 395) rotate(-12)">
+                                    <path d="M -19 35 L -15 -6 C -15 -22, 15 -22, 15 -6 L 19 35 Z" fill="url(#cheekGrad)" stroke="#6b2710" stroke-width="3.5" />
+                                    <ellipse cx="0" cy="-6" rx="14" ry="12.5" fill="#fda4af" />
+                                    <path d="M -6 -15 L -6 -6 M 2 -16 L 2 -6 M 9 -14 L 9 -5" stroke="#9f1239" stroke-width="2.5" stroke-linecap="round" />
+                                </g>
+                            </g>
+                        </g>
+
+                        <!-- FOREGROUND FLUFFY BEDDING, DROPPED TREATS & FOOD BOWL -->
+                        <g>
+                            <!-- Soft Layered Bedding Particles across bottom -->
+                            <path d="M 10 446 Q 140 412 280 442 T 540 438 T 810 440 T 990 445 L 990 540 L 10 540 Z" fill="url(#beddingBase)" />
+                            
+                            <!-- Individual Cozy Bedding Puffs & Wood Shaving Flecks -->
+                            <g fill="#fffaf7" opacity="0.95">
+                                <circle cx="88" cy="458" r="25" />
+                                <circle cx="132" cy="468" r="29" fill="#f3e5f5" />
+                                <circle cx="176" cy="456" r="22" fill="#fef3c7" />
+                                <circle cx="218" cy="454" r="27" />
+                                <circle cx="290" cy="465" r="31" fill="#f3e5f5" />
+                                <circle cx="348" cy="456" r="24" fill="#fffaf0" />
+                                <circle cx="392" cy="448" r="23" />
+                                <circle cx="430" cy="457" r="26" fill="#fef3c7" />
+                                <circle cx="562" cy="453" r="27" />
+                                <circle cx="614" cy="462" r="25" fill="#f3e5f5" />
+                                <circle cx="660" cy="454" r="22" fill="#fef3c7" />
+                                <circle cx="865" cy="460" r="29" />
+                                <circle cx="920" cy="452" r="25" fill="#f3e5f5" />
+                            </g>
+
+                            <!-- Interactive Treat Drop Layer -->
+                            <g id="svg-treats-layer"></g>
+
+                            <!-- FRONT-RIGHT: GLAZED CERAMIC FOOD BOWL -->
+                            <g id="habitat-food-bowl" transform="translate(686, 408)" filter="url(#softShadow)">
+                                <ellipse cx="60" cy="60" rx="68" ry="15" fill="rgba(0,0,0,0.38)" />
+                                <!-- Ceramic Bowl Body -->
+                                <path d="M 12 22 L 108 22 L 120 55 Q 60 70 0 55 Z" fill="#84a955" stroke="#536e2e" stroke-width="3" stroke-linejoin="round" />
+                                <!-- Glossy Rim Highlight -->
+                                <path d="M 16 32 L 10 50" stroke="rgba(255,255,255,0.35)" stroke-width="4" stroke-linecap="round" />
+                                <!-- Bowl Inner Basin -->
+                                <ellipse cx="60" cy="22" rx="48" ry="13" fill="#47301f" stroke="#a3c572" stroke-width="4" />
+                                <!-- Detailed Seeds, Broccoli Floret, Carrot Slice & Corn -->
+                                <circle cx="38" cy="22" r="5.5" fill="#f59e0b" />
+                                <circle cx="52" cy="19" r="6.5" fill="#d97706" />
+                                <circle cx="72" cy="21" r="5.5" fill="#fbbf24" />
+                                <circle cx="85" cy="23" r="5" fill="#d97706" />
+                                <!-- Tiny Broccoli & Carrot -->
+                                <circle cx="46" cy="25" r="5.5" fill="#22c55e" />
+                                <circle cx="64" cy="24" r="6" fill="#f97316" stroke="#fdba74" stroke-width="1.5" />
+                                <!-- Sunflower Seed -->
+                                <ellipse cx="56" cy="21" rx="5" ry="3" transform="rotate(-18 56 21)" fill="#27272a" stroke="#e4e4e7" stroke-width="1" />
+                                <!-- Cute Embossed Heart on Bowl -->
+                                <path d="M 60 45 C 60 41 54 37 51 41 C 48 45 60 53 60 53 C 60 53 72 45 69 41 C 66 37 60 41 60 45 Z" fill="#fbcfe8" opacity="0.9" />
+                            </g>
+                        </g>
+
+                        <!-- Realistic Curved Front Glass Reflections -->
+                        <polygon points="75,0 155,0 65,540 0,540" fill="rgba(255,255,255,0.04)" />
+                        <polygon points="195,0 222,0 132,540 105,540" fill="rgba(255,255,255,0.028)" />
+                        <polygon points="885,0 925,0 855,540 815,540" fill="rgba(255,255,255,0.02)" />
+                    </svg>
+                </div>
+
+                <!-- Floating Right Achievement Card -->
+                <div class="absolute -right-2 md:-right-5 top-1/2 -translate-y-1/2 z-30 hidden sm:flex flex-col items-center glass-panel px-4 py-4 rounded-3xl border border-white/20 shadow-2xl bg-app-panel/90">
+                    <span class="text-[10px] font-extrabold text-gray-300 uppercase tracking-wider text-center leading-tight mb-2">Today's<br>Stars</span>
+                    <div class="relative flex items-center justify-center mb-1">
+                        <i class="fas fa-star text-4xl text-app-yellow drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]"></i>
+                    </div>
+                    <span id="ui-star-count" class="text-2xl font-black text-white mb-3">0</span>
+                    <div class="w-full h-px bg-white/10 mb-2.5"></div>
+                    <span class="text-[10px] font-bold text-gray-400">Quiet Streak</span>
+                    <span id="ui-side-timer" class="text-sm font-black font-mono text-app-accent">00:00</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- BOTTOM: ENHANCED CLASSROOM NOISE CONTROL PANEL -->
+        <footer class="shrink-0 z-30">
+            <div class="glass-panel px-5 py-4 rounded-3xl shadow-2xl relative overflow-hidden border border-white/15">
+                
+                <!-- Top Row of Noise Panel: Title, Live dB, Spectrum Visualizer, Sensitivity -->
+                <div class="flex flex-wrap justify-between items-center gap-3 mb-3">
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-sm md:text-base font-extrabold text-white tracking-wide uppercase">Classroom Noise Level</h2>
+                        
+                        <!-- Live Decibel Readout -->
+                        <div class="bg-black/40 border border-white/10 px-3 py-1 rounded-full flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-app-green animate-pulse" id="mic-live-dot"></span>
+                            <span id="ui-db-readout" class="font-mono font-extrabold text-xs text-white">28 dB</span>
+                        </div>
+
+                        <!-- Current State Pill -->
+                        <span id="meter-status-pill" class="px-3 py-1 text-xs font-extrabold rounded-full bg-app-green/20 text-app-green border border-app-green/30">
+                            💤 Deep Sleep
+                        </span>
+                    </div>
+
+                    <!-- Mini 16-Bar Live Frequency Visualizer & Controls -->
+                    <div class="flex items-center gap-4">
+                        <div id="freq-bars" class="hidden lg:flex items-end gap-1 h-6 px-2.5 py-1 bg-black/35 rounded-lg border border-white/5" title="Live Voice Spectrum">
+                            <!-- 16 bars dynamically updated -->
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                            <div class="w-1 bg-purple-400/70 rounded-full h-1 transition-all duration-75"></div>
+                        </div>
+
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="text-gray-300 font-bold">Mode:</span>
+                            <select id="sensitivity-select" class="bg-black/40 border border-white/15 text-white font-bold rounded-xl px-3 py-1.5 outline-none focus:border-app-accent cursor-pointer">
+                                <option value="easy">🟢 Relaxed</option>
+                                <option value="normal" selected>🟡 Normal</option>
+                                <option value="hard">🔴 Challenge</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Horizontal Noise Meter with 3 Clear Zones & Instant Spike Indicator -->
+                <div class="relative mb-5">
+                    <div class="h-7 w-full bg-black/50 rounded-full overflow-hidden border border-white/10 relative shadow-inner p-1">
+                        
+                        <!-- Zone Dividers -->
+                        <div id="marker-disturbed" class="absolute inset-y-0 left-[50%] w-0.5 bg-yellow-400/50 z-20"></div>
+                        <div id="marker-awake" class="absolute inset-y-0 left-[85%] w-0.5 bg-red-500/70 z-20"></div>
+
+                        <!-- Instantaneous Raw Peak Marker (Shows transient spikes vs sustained bar) -->
+                        <div id="spike-marker" class="absolute inset-y-1 w-1.5 bg-white/80 rounded-full z-30 shadow-[0_0_8px_#fff]" style="left: 5%;" title="Instant Sound Peak (Filtered)"></div>
+
+                        <!-- Smooth Sustained Noise Fill Bar -->
+                        <div id="noise-fill" class="h-full w-[5%] rounded-full bg-gradient-to-r from-emerald-400 to-green-500 relative z-10">
+                            <div class="absolute top-0 left-0 right-0 h-1/2 bg-white/25 rounded-t-full"></div>
+                        </div>
+                    </div>
+
+                    <!-- Zone Labels Below Bar -->
+                    <div class="flex justify-between text-[10px] font-extrabold tracking-widest uppercase mt-1.5 px-2">
+                        <span class="text-app-green">Quiet (0–50 dB)</span>
+                        <span class="text-app-yellow">Disturbed (51–75 dB)</span>
+                        <span class="text-app-red">Awake! (80+ dB)</span>
+                    </div>
+                </div>
+
+                <!-- Bottom Action & Calibration Bar -->
+                <div class="flex flex-wrap justify-between items-center gap-3 pt-2.5 border-t border-white/10">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                        <button id="btn-open-settings" class="bg-white/10 hover:bg-white/15 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border border-white/10">
+                            <i class="fas fa-sliders-h text-app-accent"></i> Calibrate & Audio
+                        </button>
+
+                        <!-- Hamster Coat Customizer -->
+                        <button id="btn-coat-style" class="bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-400/30 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="Change Hamster Fur Breed">
+                            <i class="fas fa-palette text-amber-300"></i> <span id="ui-coat-label">Golden Syrian</span>
+                        </button>
+
+                        <!-- Reward Quiet Class with a Treat -->
+                        <button id="btn-drop-treat" class="bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="Drop a sunflower seed or carrot treat into the cage">
+                            <span>🌻</span> Drop Treat
+                        </button>
+
+                        <!-- Interactive Simulator Slider for Testing / Smartboard Demos -->
+                        <div class="flex items-center gap-2 bg-black/30 px-3 py-1.5 rounded-xl border border-white/10">
+                            <label for="sim-slider" class="text-[11px] font-bold text-gray-300 whitespace-nowrap">
+                                <i class="fas fa-flask text-app-accent mr-1"></i>Test Noise:
+                            </label>
+                            <input id="sim-slider" type="range" min="0" max="100" value="0" class="w-16 sm:w-24 accent-purple-400 cursor-pointer" title="Drag to simulate classroom noise">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2.5">
+                        <button id="btn-calm-now" class="bg-purple-500/20 hover:bg-purple-500/35 text-purple-200 border border-purple-400/30 px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="Soothe the hamster back to sleep">
+                            <i class="fas fa-magic"></i> Soothe Hamster
+                        </button>
+
+                        <button id="btn-pause" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/30 px-4 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2">
+                            <i class="fas fa-pause"></i> Pause
+                        </button>
+
+                        <button id="btn-end" class="bg-white/5 hover:bg-red-500/20 text-gray-300 hover:text-red-300 border border-white/10 px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                            <i class="fas fa-redo-alt"></i> Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        /**
+         * Smart Classroom Noise & Living Hamster State Machine
+         * States: DEEP_SLEEP, LIGHT_SLEEP, DISTURBED, ALMOST_AWAKE, AWAKE, RECOVERING
+         */
+        const SLEEP_STATES = {
+            DEEP_SLEEP: 'DEEP_SLEEP',
+            LIGHT_SLEEP: 'LIGHT_SLEEP',
+            DISTURBED: 'DISTURBED',
+            ALMOST_AWAKE: 'ALMOST_AWAKE',
+            AWAKE: 'AWAKE',
+            RECOVERING: 'RECOVERING'
+        };
+
+        const State = {
+            isRunning: false,
+            isPaused: false,
+            demoMode: false,
+            soundEnabled: true,
+
+            // Web Audio API
+            audioContext: null,
+            analyser: null,
+            microphone: null,
+            highpassFilter: null,
+
+            // Advanced Noise Processing Metrics
+            rawLevel: 0,           // Instantaneous 0-100 microphone level
+            sustainedEnergy: 8,    // Asymmetric smoothed classroom disturbance level (0-100)
+            estimatedDb: 28,       // Mapped 25 - 95 dB classroom readout
+            noiseFloor: 0,         // Calibrated ambient room baseline (0-45)
+            micGain: 1.0,          // Teacher microphone sensitivity multiplier
+            forgivenessLevel: 2,   // 1 = Fast, 2 = Balanced, 3 = Very Forgiving
+            simulatedLevel: 0,     // Manual test slider value
+
+            // Classroom Session Timers
+            timerSeconds: 0,
+            goalSeconds: 1800,
+            bestStreakSeconds: parseInt(localStorage.getItem('hamsterBestStreak')) || 0,
+            earnedStars: 0,
+
+            // State Machine Tracking
+            currentState: SLEEP_STATES.DEEP_SLEEP,
+            highestStateReached: SLEEP_STATES.DEEP_SLEEP,
+            recoveryHoldFrames: 0,
+            lastWarningSoundTime: 0,
+
+            // Difficulty Thresholds (0-100 sustained energy scale)
+            settings: {
+                sensitivity: 'normal',
+                thresholds: {
+                    easy:   { light: 42, disturbed: 62, almost: 82, awake: 95 },
+                    normal: { light: 30, disturbed: 50, almost: 72, awake: 88 },
+                    hard:   { light: 22, disturbed: 38, almost: 58, awake: 76 }
+                }
+            }
+        };
+
+        const DOM = {
+            screens: {
+                start: document.getElementById('start-screen'),
+                app: document.getElementById('app-content'),
+                settingsModal: document.getElementById('settings-modal')
+            },
+            ui: {
+                timer: document.getElementById('ui-current-time'),
+                sideTimer: document.getElementById('ui-side-timer'),
+                bestStreak: document.getElementById('ui-best-streak'),
+                stars: document.getElementById('ui-star-count'),
+                goalLabel: document.getElementById('ui-goal-label'),
+
+                habitat: document.getElementById('habitat-wrapper'),
+                particleLayer: document.getElementById('particle-layer'),
+                dustLayer: document.getElementById('dust-layer'),
+                warningMsg: document.getElementById('warning-msg'),
+
+                statusBadge: document.getElementById('ui-status-badge'),
+                statusIcon: document.getElementById('ui-status-icon'),
+                statusText: document.getElementById('ui-status-text'),
+                subMessage: document.getElementById('ui-sub-message'),
+
+                dbReadout: document.getElementById('ui-db-readout'),
+                meterFill: document.getElementById('noise-fill'),
+                spikeMarker: document.getElementById('spike-marker'),
+                meterPill: document.getElementById('meter-status-pill'),
+                freqBars: document.getElementById('freq-bars').children,
+                markerDisturbed: document.getElementById('marker-disturbed'),
+                markerAwake: document.getElementById('marker-awake'),
+                micStatus: document.getElementById('mic-status'),
+
+                // SVG Interactive Parts
+                hamsterRoot: document.getElementById('hamster-root'),
+                postureSleep: document.getElementById('hamster-posture-sleep'),
+                postureAwake: document.getElementById('hamster-posture-awake'),
+                eyesClosed: document.getElementById('eyes-closed'),
+                eyesPeeking: document.getElementById('eyes-peeking'),
+                eyesAlmost: document.getElementById('eyes-almost'),
+                mouthCalm: document.getElementById('mouth-calm'),
+                mouthDisturbed: document.getElementById('mouth-disturbed'),
+                pawsRelaxed: document.getElementById('paws-relaxed'),
+                pawCoverEar: document.getElementById('paw-cover-ear'),
+                dreamBubble: document.getElementById('dream-bubble'),
+                svgWheel: document.getElementById('svg-wheel'),
+                svgStarToy: document.getElementById('svg-star-toy'),
+                houseWarmGlow: document.getElementById('house-warm-glow'),
+                glowStop1: document.getElementById('glow-stop-1'),
+                treatsLayer: document.getElementById('svg-treats-layer'),
+                furStop1: document.getElementById('fur-stop-1'),
+                furStop2: document.getElementById('fur-stop-2'),
+                furStop3: document.getElementById('fur-stop-3'),
+                headStop1: document.getElementById('head-stop-1'),
+                headStop2: document.getElementById('head-stop-2'),
+                headStop3: document.getElementById('head-stop-3')
+            },
+            controls: {
+                btnStart: document.getElementById('btn-start'),
+                btnStartSim: document.getElementById('btn-start-sim'),
+                btnPause: document.getElementById('btn-pause'),
+                btnEnd: document.getElementById('btn-end'),
+                btnCalmNow: document.getElementById('btn-calm-now'),
+                btnCoatStyle: document.getElementById('btn-coat-style'),
+                uiCoatLabel: document.getElementById('ui-coat-label'),
+                btnDropTreat: document.getElementById('btn-drop-treat'),
+                btnSoundToggle: document.getElementById('btn-sound-toggle'),
+                iconSound: document.getElementById('icon-sound'),
+                sensitivitySelect: document.getElementById('sensitivity-select'),
+                simSlider: document.getElementById('sim-slider'),
+
+                // Modal Controls
+                btnOpenSettings: document.getElementById('btn-open-settings'),
+                btnCloseModal: document.getElementById('btn-close-modal'),
+                btnSaveSettings: document.getElementById('btn-save-settings'),
+                btnCalibrate: document.getElementById('btn-calibrate'),
+                sliderGain: document.getElementById('slider-gain'),
+                sliderForgiveness: document.getElementById('slider-forgiveness'),
+                selectGoal: document.getElementById('select-goal'),
+                uiNoiseFloor: document.getElementById('ui-noise-floor'),
+                uiGainVal: document.getElementById('ui-gain-val'),
+                uiForgivenessVal: document.getElementById('ui-forgiveness-val')
+            }
+        };
+
+        let animFrameId;
+        let clockIntervalId;
+        let particleIntervalId;
+
+        /**
+         * Procedural Web Audio Sound Effects (Chimes, Gentle Shhh Alert, Wake Alert)
+         */
+        function playToneEffect(type) {
+            if (!State.soundEnabled) return;
+            try {
+                const ctx = State.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+                if (ctx.state === 'suspended') ctx.resume();
+                const now = ctx.currentTime;
+
+                if (type === 'warning') {
+                    if (now - State.lastWarningSoundTime < 4) return;
+                    State.lastWarningSoundTime = now;
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(520, now);
+                    osc.frequency.exponentialRampToValueAtTime(340, now + 0.35);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                } else if (type === 'awake') {
+                    const notes = [440, 554, 659];
+                    notes.forEach((freq, idx) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+                        gain.gain.setValueAtTime(0.1, now + idx * 0.12);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.35);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(now + idx * 0.12);
+                        osc.stop(now + idx * 0.12 + 0.36);
+                    });
+                } else if (type === 'star') {
+                    const notes = [523.25, 659.25, 783.99, 1046.5];
+                    notes.forEach((freq, idx) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+                        gain.gain.setValueAtTime(0.08, now + idx * 0.09);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.4);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(now + idx * 0.09);
+                        osc.stop(now + idx * 0.09 + 0.42);
+                    });
+                }
+            } catch (e) {
+                // Ignore audio context restrictions
+            }
+        }
+
+        /**
+         * Initialize Ambient Dust Particles in Habitat
+         */
+        function initAmbientDust() {
+            DOM.ui.dustLayer.innerHTML = '';
+            for (let i = 0; i < 14; i++) {
+                const mote = document.createElement('div');
+                mote.className = 'dust-mote';
+                const size = 4 + Math.random() * 6;
+                mote.style.width = `${size}px`;
+                mote.style.height = `${size}px`;
+                mote.style.left = `${10 + Math.random() * 80}%`;
+                mote.style.top = `${15 + Math.random() * 65}%`;
+                mote.style.animationDelay = `${Math.random() * 5}s`;
+                mote.style.animationDuration = `${4 + Math.random() * 4}s`;
+                DOM.ui.dustLayer.appendChild(mote);
+            }
+        }
+
+        /**
+         * Connect Microphone with Vocal Bandpass/Highpass Filtering
+         */
+        async function requestMicrophone() {
+            try {
+                DOM.ui.micStatus.classList.remove('hidden');
+                DOM.ui.micStatus.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Connecting to classroom microphone...';
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    },
+                    video: false
+                });
+
+                State.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                State.analyser = State.audioContext.createAnalyser();
+                State.analyser.fftSize = 512;
+                State.analyser.smoothingTimeConstant = 0.65;
+
+                // Filter out low-frequency AC rumble (< 120Hz)
+                State.highpassFilter = State.audioContext.createBiquadFilter();
+                State.highpassFilter.type = 'highpass';
+                State.highpassFilter.frequency.value = 120;
+
+                State.microphone = State.audioContext.createMediaStreamSource(stream);
+                State.microphone.connect(State.highpassFilter);
+                State.highpassFilter.connect(State.analyser);
+
+                DOM.ui.micStatus.classList.add('hidden');
+                return true;
+            } catch (err) {
+                DOM.ui.micStatus.innerHTML = '<i class="fas fa-info-circle mr-1"></i> Mic unavailable — launching interactive Demo Mode!';
+                State.demoMode = true;
+                return true;
+            }
+        }
+
+        async function startSession(useDemo = false) {
+            State.demoMode = useDemo;
+            if (!useDemo && !State.audioContext) {
+                await requestMicrophone();
+            }
+            if (State.audioContext && State.audioContext.state === 'suspended') {
+                await State.audioContext.resume();
+            }
+
+            State.isRunning = true;
+            State.isPaused = false;
+            State.timerSeconds = 0;
+            State.earnedStars = 0;
+            State.sustainedEnergy = 8;
+
+            initAmbientDust();
+            updateThresholdMarkers();
+            updateClockUI();
+            DOM.ui.bestStreak.innerText = formatTime(State.bestStreakSeconds);
+            DOM.ui.stars.innerText = '0';
+
+            DOM.screens.start.classList.add('opacity-0');
+            setTimeout(() => {
+                DOM.screens.start.classList.add('hidden');
+                DOM.screens.app.classList.remove('opacity-0');
+            }, 450);
+
+            applySleepState(SLEEP_STATES.DEEP_SLEEP);
+
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            if (clockIntervalId) clearInterval(clockIntervalId);
+            if (particleIntervalId) clearInterval(particleIntervalId);
+
+            audioProcessingLoop();
+            clockIntervalId = setInterval(tickClock, 1000);
+            particleIntervalId = setInterval(spawnZParticle, 950);
+        }
+
+        /**
+         * Advanced Classroom Audio Processing Loop
+         * Separates transient spikes from sustained classroom noise
+         */
+        function audioProcessingLoop() {
+            if (!State.isRunning) return;
+
+            if (!State.isPaused) {
+                let rawInput = 0;
+
+                if (State.analyser && !State.demoMode) {
+                    const bufferLength = State.analyser.frequencyBinCount;
+                    const freqData = new Uint8Array(bufferLength);
+                    State.analyser.getByteFrequencyData(freqData);
+
+                    // Focus on human speech frequency bins (~150Hz to 4500Hz)
+                    let speechSum = 0;
+                    const startBin = 2;
+                    const endBin = Math.min(85, bufferLength);
+                    for (let i = startBin; i < endBin; i++) {
+                        speechSum += freqData[i] * freqData[i];
+                    }
+                    const rms = Math.sqrt(speechSum / (endBin - startBin));
+
+                    // Apply ambient noise floor subtraction & sensitivity gain
+                    const adjustedRms = Math.max(0, rms - State.noiseFloor) * State.micGain;
+
+                    // Logarithmic curve for natural dB-like classroom perception
+                    rawInput = Math.min(100, Math.pow(adjustedRms / 115, 0.82) * 100);
+
+                    // Update live mini spectrum bars
+                    updateSpectrumBars(freqData);
+                }
+
+                // Combine with manual Test Noise Simulator slider if active
+                rawInput = Math.max(rawInput, State.simulatedLevel);
+                State.rawLevel = rawInput;
+
+                // Asymmetric Attack & Release Filter (absorbs brief spikes like coughs or dropped books)
+                const attackRates = { 1: 0.08, 2: 0.038, 3: 0.018 };
+                const releaseRate = 0.028;
+                const attackRate = attackRates[State.forgivenessLevel] || 0.038;
+
+                if (rawInput > State.sustainedEnergy) {
+                    // Dampen brief spikes: only climb steadily if noise persists
+                    const delta = Math.min(rawInput - State.sustainedEnergy, 28);
+                    State.sustainedEnergy += delta * attackRate;
+                } else {
+                    // Smooth recovery when students quiet down
+                    State.sustainedEnergy -= (State.sustainedEnergy - rawInput) * releaseRate;
+                }
+
+                State.sustainedEnergy = Math.max(4, Math.min(100, State.sustainedEnergy));
+                State.estimatedDb = Math.round(25 + (State.sustainedEnergy * 0.68));
+
+                evaluateSleepState();
+                updateNoiseMeterUI();
+            }
+
+            animFrameId = requestAnimationFrame(audioProcessingLoop);
+        }
+
+        function updateSpectrumBars(freqData) {
+            const bars = DOM.ui.freqBars;
+            if (!bars || !bars.length) return;
+            for (let i = 0; i < bars.length; i++) {
+                const val = freqData[i * 4 + 3] || 0;
+                const heightPct = Math.max(15, Math.min(100, (val / 200) * 100));
+                bars[i].style.height = `${heightPct}%`;
+            }
+        }
+
+        /**
+         * Evaluate Emotional Progression & Recovery System
+         */
+        function evaluateSleepState() {
+            const t = State.settings.thresholds[State.settings.sensitivity];
+            const energy = State.sustainedEnergy;
+
+            // If Hamster is AWAKE, check if classroom has become quiet enough to enter RECOVERING
+            if (State.currentState === SLEEP_STATES.AWAKE) {
+                if (energy < t.disturbed) {
+                    State.recoveryHoldFrames++;
+                    if (State.recoveryHoldFrames > 75) { // ~1.2 seconds of quiet initiates recovery
+                        State.recoveryHoldFrames = 0;
+                        applySleepState(SLEEP_STATES.RECOVERING);
+                    }
+                } else {
+                    State.recoveryHoldFrames = 0;
+                }
+                return;
+            }
+
+            // Determine target state from sustained classroom energy
+            let nextState = SLEEP_STATES.DEEP_SLEEP;
+            if (energy >= t.awake) {
+                nextState = SLEEP_STATES.AWAKE;
+            } else if (energy >= t.almost) {
+                nextState = SLEEP_STATES.ALMOST_AWAKE;
+            } else if (energy >= t.disturbed) {
+                nextState = SLEEP_STATES.DISTURBED;
+            } else if (energy >= t.light) {
+                nextState = SLEEP_STATES.LIGHT_SLEEP;
+            } else {
+                // If recovering from a disturbed/awake state, show RECOVERING briefly before DEEP_SLEEP
+                if (
+                    (State.currentState === SLEEP_STATES.DISTURBED ||
+                     State.currentState === SLEEP_STATES.ALMOST_AWAKE ||
+                     State.currentState === SLEEP_STATES.RECOVERING) &&
+                    energy > t.light * 0.65
+                ) {
+                    nextState = SLEEP_STATES.RECOVERING;
+                } else {
+                    nextState = SLEEP_STATES.DEEP_SLEEP;
+                }
+            }
+
+            if (nextState !== State.currentState) {
+                applySleepState(nextState);
+            }
+        }
+
+        /**
+         * Visual & Habitat Configuration for All 6 States
+         */
+        const STATE_PRESENTATION = {
+            [SLEEP_STATES.DEEP_SLEEP]: {
+                enclosureClass: 'state-deep',
+                icon: '💤',
+                label: 'DEEP SLEEP',
+                subMessage: 'The hamster is sleeping peacefully. Great job!',
+                badgeBorder: 'border-app-green/60 shadow-glow-green',
+                pillClass: 'bg-app-green/20 text-app-green border-app-green/30',
+                barGradient: 'from-emerald-400 to-green-500',
+                glowColor: '#4ade80',
+                warning: null
+            },
+            [SLEEP_STATES.LIGHT_SLEEP]: {
+                enclosureClass: 'state-light',
+                icon: '😴',
+                label: 'LIGHT SLEEP',
+                subMessage: 'Be careful... the hamster is starting to notice the noise.',
+                badgeBorder: 'border-app-blue/60',
+                pillClass: 'bg-app-blue/20 text-app-blue border-app-blue/30',
+                barGradient: 'from-sky-400 to-blue-500',
+                glowColor: '#60a5fa',
+                warning: null
+            },
+            [SLEEP_STATES.DISTURBED]: {
+                enclosureClass: 'state-disturbed',
+                icon: '😟',
+                label: 'DISTURBED',
+                subMessage: 'Shhh... the hamster is covering its ears!',
+                badgeBorder: 'border-app-yellow/70',
+                pillClass: 'bg-app-yellow/20 text-app-yellow border-app-yellow/40',
+                barGradient: 'from-amber-400 to-yellow-500',
+                glowColor: '#fbbf24',
+                warning: '😟 Shhh... the hamster is waking up!'
+            },
+            [SLEEP_STATES.ALMOST_AWAKE]: {
+                enclosureClass: 'state-almost',
+                icon: '⚠️',
+                label: 'ALMOST AWAKE',
+                subMessage: 'Quiet, everyone! The hamster is almost awake!',
+                badgeBorder: 'border-app-orange/80',
+                pillClass: 'bg-app-orange/25 text-app-orange border-app-orange/50',
+                barGradient: 'from-orange-500 to-red-500',
+                glowColor: '#f97316',
+                warning: '⚠️ Quiet, everyone! The hamster is almost awake!'
+            },
+            [SLEEP_STATES.AWAKE]: {
+                enclosureClass: 'state-awake',
+                icon: '🐹',
+                label: 'HAMSTER AWAKE!',
+                subMessage: 'Oh no! Become quiet so the hamster can go back to sleep.',
+                badgeBorder: 'border-app-red/90 shadow-glow-red',
+                pillClass: 'bg-app-red/30 text-app-red border-app-red/50',
+                barGradient: 'from-red-500 to-rose-600',
+                glowColor: '#f87171',
+                warning: '🐹 Oh no! You woke the hamster! Get quiet to help it sleep again.'
+            },
+            [SLEEP_STATES.RECOVERING]: {
+                enclosureClass: 'state-recovering',
+                icon: '💜',
+                label: 'CALMING DOWN...',
+                subMessage: 'Nice and quiet! The hamster is relaxing back to sleep...',
+                badgeBorder: 'border-purple-400/70',
+                pillClass: 'bg-purple-500/25 text-purple-300 border-purple-400/40',
+                barGradient: 'from-purple-400 to-indigo-400',
+                glowColor: '#a881ff',
+                warning: null
+            }
+        };
+
+        function applySleepState(newState) {
+            State.currentState = newState;
+            const cfg = STATE_PRESENTATION[newState];
+
+            // 1. Update Enclosure Glow & Rim
+            DOM.ui.habitat.className = `habitat-enclosure ${cfg.enclosureClass} w-full max-w-4xl h-full flex items-center justify-center relative overflow-visible`;
+            DOM.ui.glowStop1.setAttribute('stop-color', cfg.glowColor);
+
+            // 2. Update Top Badge & Meter Pill
+            DOM.ui.statusIcon.innerText = cfg.icon;
+            DOM.ui.statusText.innerText = cfg.label;
+            DOM.ui.subMessage.innerText = cfg.subMessage;
+            DOM.ui.statusBadge.className = `glass-panel px-5 py-2 rounded-full flex items-center gap-2.5 border-2 bg-black/50 backdrop-blur-md transition-all duration-300 ${cfg.badgeBorder}`;
+            DOM.ui.meterPill.className = `px-3 py-1 text-xs font-extrabold rounded-full border ${cfg.pillClass}`;
+            DOM.ui.meterPill.innerText = `${cfg.icon} ${cfg.label}`;
+            DOM.ui.meterFill.className = `h-full rounded-full bg-gradient-to-r ${cfg.barGradient} relative z-10`;
+
+            // 3. Update Hamster SVG Character & Habitat Animations
+            DOM.ui.postureSleep.classList.remove('hidden');
+            DOM.ui.postureAwake.classList.add('hidden');
+            DOM.ui.eyesClosed.classList.add('hidden');
+            DOM.ui.eyesPeeking.classList.add('hidden');
+            DOM.ui.eyesAlmost.classList.add('hidden');
+            if (DOM.ui.mouthCalm) DOM.ui.mouthCalm.classList.remove('hidden');
+            if (DOM.ui.mouthDisturbed) DOM.ui.mouthDisturbed.classList.add('hidden');
+            DOM.ui.pawsRelaxed.classList.remove('hidden');
+            DOM.ui.pawCoverEar.classList.add('hidden');
+            if (DOM.ui.dreamBubble) DOM.ui.dreamBubble.classList.add('hidden');
+
+            if (newState === SLEEP_STATES.DEEP_SLEEP || newState === SLEEP_STATES.RECOVERING) {
+                DOM.ui.hamsterRoot.setAttribute('class', 'hamster-body-calm cursor-pointer');
+                DOM.ui.eyesClosed.classList.remove('hidden');
+                if (newState === SLEEP_STATES.DEEP_SLEEP && DOM.ui.dreamBubble) {
+                    DOM.ui.dreamBubble.classList.remove('hidden');
+                }
+                DOM.ui.svgWheel.setAttribute('class', 'wheel-stationary');
+                DOM.ui.svgStarToy.setAttribute('class', 'star-calm');
+                DOM.ui.houseWarmGlow.setAttribute('opacity', '0.95');
+            } else if (newState === SLEEP_STATES.LIGHT_SLEEP) {
+                DOM.ui.hamsterRoot.setAttribute('class', 'hamster-body-calm cursor-pointer');
+                DOM.ui.eyesClosed.classList.remove('hidden');
+                if (DOM.ui.dreamBubble) DOM.ui.dreamBubble.classList.remove('hidden');
+                DOM.ui.svgWheel.setAttribute('class', 'wheel-stationary');
+                DOM.ui.svgStarToy.setAttribute('class', 'star-calm');
+                DOM.ui.houseWarmGlow.setAttribute('opacity', '0.6');
+            } else if (newState === SLEEP_STATES.DISTURBED) {
+                DOM.ui.hamsterRoot.setAttribute('class', 'hamster-body-fast');
+                DOM.ui.eyesPeeking.classList.remove('hidden');
+                if (DOM.ui.mouthCalm) DOM.ui.mouthCalm.classList.add('hidden');
+                if (DOM.ui.mouthDisturbed) DOM.ui.mouthDisturbed.classList.remove('hidden');
+                DOM.ui.pawsRelaxed.classList.add('hidden');
+                DOM.ui.pawCoverEar.classList.remove('hidden');
+                DOM.ui.svgWheel.setAttribute('class', 'wheel-rocking');
+                DOM.ui.svgStarToy.setAttribute('class', 'star-noisy');
+                DOM.ui.houseWarmGlow.setAttribute('opacity', '0.35');
+                playToneEffect('warning');
+            } else if (newState === SLEEP_STATES.ALMOST_AWAKE) {
+                DOM.ui.hamsterRoot.setAttribute('class', 'hamster-body-fast');
+                DOM.ui.eyesAlmost.classList.remove('hidden');
+                if (DOM.ui.mouthCalm) DOM.ui.mouthCalm.classList.add('hidden');
+                if (DOM.ui.mouthDisturbed) DOM.ui.mouthDisturbed.classList.remove('hidden');
+                DOM.ui.svgWheel.setAttribute('class', 'wheel-rocking');
+                DOM.ui.svgStarToy.setAttribute('class', 'star-noisy');
+                DOM.ui.houseWarmGlow.setAttribute('opacity', '0.15');
+                playToneEffect('warning');
+            } else if (newState === SLEEP_STATES.AWAKE) {
+                DOM.ui.postureSleep.classList.add('hidden');
+                DOM.ui.postureAwake.classList.remove('hidden');
+                DOM.ui.svgWheel.setAttribute('class', 'wheel-spinning');
+                DOM.ui.svgStarToy.setAttribute('class', 'star-noisy');
+                DOM.ui.houseWarmGlow.setAttribute('opacity', '0');
+                playToneEffect('awake');
+            }
+
+            // 4. Warning Banner
+            if (cfg.warning) {
+                DOM.ui.warningMsg.innerText = cfg.warning;
+                DOM.ui.warningMsg.classList.remove('opacity-0', '-translate-y-3');
+                DOM.ui.warningMsg.classList.add('opacity-100', 'translate-y-0');
+            } else {
+                DOM.ui.warningMsg.classList.add('opacity-0', '-translate-y-3');
+                DOM.ui.warningMsg.classList.remove('opacity-100', 'translate-y-0');
+            }
+        }
+
+        function updateNoiseMeterUI() {
+            DOM.ui.meterFill.style.width = `${State.sustainedEnergy}%`;
+            DOM.ui.spikeMarker.style.left = `${Math.min(98, Math.max(2, State.rawLevel))}%`;
+            DOM.ui.dbReadout.innerText = `${State.estimatedDb} dB`;
+        }
+
+        function updateThresholdMarkers() {
+            const t = State.settings.thresholds[State.settings.sensitivity];
+            DOM.ui.markerDisturbed.style.left = `${t.disturbed}%`;
+            DOM.ui.markerAwake.style.left = `${t.awake}%`;
+        }
+
+        function formatTime(totalSeconds) {
+            const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const s = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function tickClock() {
+            if (State.isPaused || State.currentState === SLEEP_STATES.AWAKE) return;
+
+            State.timerSeconds++;
+            updateClockUI();
+
+            if (State.timerSeconds > State.bestStreakSeconds) {
+                State.bestStreakSeconds = State.timerSeconds;
+                localStorage.setItem('hamsterBestStreak', State.bestStreakSeconds);
+                DOM.ui.bestStreak.innerText = formatTime(State.bestStreakSeconds);
+            }
+
+            // Award 1 star every 5 minutes (300s) of quiet time
+            const newStars = Math.floor(State.timerSeconds / 300);
+            if (newStars > State.earnedStars) {
+                State.earnedStars = newStars;
+                DOM.ui.stars.innerText = State.earnedStars;
+                playToneEffect('star');
+            }
+        }
+
+        function updateClockUI() {
+            const formatted = formatTime(State.timerSeconds);
+            DOM.ui.timer.innerText = formatted;
+            DOM.ui.sideTimer.innerText = formatted;
+        }
+
+        /**
+         * Floating "Z" Symbol Generator
+         */
+        function spawnZParticle() {
+            if (!State.isRunning || State.isPaused) return;
+            if (
+                State.currentState !== SLEEP_STATES.DEEP_SLEEP &&
+                State.currentState !== SLEEP_STATES.LIGHT_SLEEP &&
+                State.currentState !== SLEEP_STATES.RECOVERING
+            ) {
+                return;
+            }
+
+            const z = document.createElement('div');
+            z.innerText = 'Z';
+            z.className = 'zzz-particle';
+
+            const offsetX = Math.random() * 36 - 18;
+            z.style.left = `calc(40% + ${offsetX}px)`;
+            z.style.bottom = '10px';
+
+            const isDeep = State.currentState === SLEEP_STATES.DEEP_SLEEP;
+            const sizeRem = isDeep ? (1.4 + Math.random() * 1.1) : (0.95 + Math.random() * 0.5);
+            z.style.fontSize = `${sizeRem}rem`;
+
+            const duration = isDeep ? (3.2 + Math.random() * 1.2) : 2.1;
+            z.style.animationDuration = `${duration}s`;
+
+            DOM.ui.particleLayer.appendChild(z);
+            setTimeout(() => {
+                if (z.parentNode) z.parentNode.removeChild(z);
+            }, duration * 1000);
+        }
+
+        /**
+         * Event Listeners & Teacher Controls
+         */
+        DOM.controls.btnStart.addEventListener('click', () => startSession(false));
+        DOM.controls.btnStartSim.addEventListener('click', () => startSession(true));
+
+        DOM.controls.sensitivitySelect.addEventListener('change', (e) => {
+            State.settings.sensitivity = e.target.value;
+            updateThresholdMarkers();
+        });
+
+        DOM.controls.simSlider.addEventListener('input', (e) => {
+            State.simulatedLevel = parseFloat(e.target.value);
+        });
+
+        DOM.controls.btnCalmNow.addEventListener('click', () => {
+            State.sustainedEnergy = 8;
+            State.simulatedLevel = 0;
+            DOM.controls.simSlider.value = 0;
+            applySleepState(SLEEP_STATES.RECOVERING);
+            setTimeout(() => {
+                if (State.sustainedEnergy < 25) applySleepState(SLEEP_STATES.DEEP_SLEEP);
+            }, 2200);
+        });
+
+        // Coat Color Customizer (4 Realistic Hamster Breeds)
+        const COAT_STYLES = [
+            { name: 'Golden Syrian', body: ['#fbd38d', '#dd842c', '#9c4221'], head: ['#f6ad55', '#c06c22', '#8c4215'] },
+            { name: 'Cream Caramel', body: ['#fef3c7', '#eab308', '#a16207'], head: ['#fde68a', '#d97706', '#92400e'] },
+            { name: 'Winter Pearl',  body: ['#ffffff', '#e2e8f0', '#94a3b8'], head: ['#f8fafc', '#cbd5e1', '#64748b'] },
+            { name: 'Cocoa Bear',    body: ['#d6bcfa', '#78350f', '#451a03'], head: ['#a78bfa', '#78350f', '#3f1d0b'] }
+        ];
+        let currentCoatIdx = 0;
+
+        DOM.controls.btnCoatStyle.addEventListener('click', () => {
+            currentCoatIdx = (currentCoatIdx + 1) % COAT_STYLES.length;
+            const coat = COAT_STYLES[currentCoatIdx];
+            DOM.controls.uiCoatLabel.innerText = coat.name;
+            DOM.ui.furStop1.setAttribute('stop-color', coat.body[0]);
+            DOM.ui.furStop2.setAttribute('stop-color', coat.body[1]);
+            DOM.ui.furStop3.setAttribute('stop-color', coat.body[2]);
+            DOM.ui.headStop1.setAttribute('stop-color', coat.head[0]);
+            DOM.ui.headStop2.setAttribute('stop-color', coat.head[1]);
+            DOM.ui.headStop3.setAttribute('stop-color', coat.head[2]);
+        });
+
+        // Interactive Petting on Hamster Click
+        DOM.ui.hamsterRoot.addEventListener('click', () => {
+            const heart = document.createElement('div');
+            heart.className = 'heart-particle';
+            heart.innerText = '💖';
+            heart.style.left = `${35 + Math.random() * 30}%`;
+            heart.style.bottom = '25px';
+            DOM.ui.particleLayer.appendChild(heart);
+            setTimeout(() => { if (heart.parentNode) heart.parentNode.removeChild(heart); }, 1800);
+
+            if (State.sustainedEnergy > 15) {
+                State.sustainedEnergy = Math.max(8, State.sustainedEnergy - 15);
+                updateNoiseMeterUI();
+            }
+        });
+
+        // Drop Sunflower Seed / Veggie Treat into Bedding
+        DOM.controls.btnDropTreat.addEventListener('click', () => {
+            const x = 350 + Math.random() * 280;
+            const y = 445 + Math.random() * 20;
+            const isSeed = Math.random() > 0.4;
+            const treat = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            treat.setAttribute('transform', `translate(${x}, ${y})`);
+            if (isSeed) {
+                treat.innerHTML = `<ellipse cx="0" cy="0" rx="7" ry="4" transform="rotate(-20)" fill="#27272a" stroke="#fef08a" stroke-width="1.5"/>`;
+            } else {
+                treat.innerHTML = `<circle cx="0" cy="0" r="6" fill="#f97316" stroke="#fdba74" stroke-width="1.5"/>`;
+            }
+            DOM.ui.treatsLayer.appendChild(treat);
+            if (DOM.ui.treatsLayer.children.length > 10) {
+                DOM.ui.treatsLayer.removeChild(DOM.ui.treatsLayer.firstChild);
+            }
+            playToneEffect('star');
+        });
+
+        DOM.controls.btnSoundToggle.addEventListener('click', () => {
+            State.soundEnabled = !State.soundEnabled;
+            DOM.controls.iconSound.className = State.soundEnabled
+                ? 'fas fa-volume-up text-app-accent'
+                : 'fas fa-volume-mute text-gray-400';
+            DOM.controls.btnSoundToggle.querySelector('span').innerText = State.soundEnabled ? 'Sound On' : 'Muted';
+        });
+
+        DOM.controls.btnPause.addEventListener('click', () => {
+            State.isPaused = !State.isPaused;
+            DOM.controls.btnPause.innerHTML = State.isPaused
+                ? '<i class="fas fa-play"></i> Resume'
+                : '<i class="fas fa-pause"></i> Pause';
+        });
+
+        DOM.controls.btnEnd.addEventListener('click', () => {
+            State.timerSeconds = 0;
+            State.sustainedEnergy = 8;
+            State.simulatedLevel = 0;
+            DOM.controls.simSlider.value = 0;
+            updateClockUI();
+            applySleepState(SLEEP_STATES.DEEP_SLEEP);
+        });
+
+        // Settings & Room Calibration Modal
+        DOM.controls.btnOpenSettings.addEventListener('click', () => {
+            DOM.screens.settingsModal.classList.remove('hidden');
+            DOM.screens.settingsModal.classList.add('flex');
+        });
+
+        const closeSettings = () => {
+            DOM.screens.settingsModal.classList.add('hidden');
+            DOM.screens.settingsModal.classList.remove('flex');
+        };
+        DOM.controls.btnCloseModal.addEventListener('click', closeSettings);
+        DOM.controls.btnSaveSettings.addEventListener('click', closeSettings);
+
+        DOM.controls.sliderGain.addEventListener('input', (e) => {
+            State.micGain = parseFloat(e.target.value);
+            DOM.controls.uiGainVal.innerText = `${State.micGain.toFixed(1)}x`;
+        });
+
+        DOM.controls.sliderForgiveness.addEventListener('input', (e) => {
+            State.forgivenessLevel = parseInt(e.target.value);
+            const labels = { 1: 'Fast Reaction', 2: 'Balanced', 3: 'Very Forgiving' };
+            DOM.controls.uiForgivenessVal.innerText = labels[State.forgivenessLevel];
+        });
+
+        DOM.controls.selectGoal.addEventListener('change', (e) => {
+            State.goalSeconds = parseInt(e.target.value);
+            DOM.ui.goalLabel.innerText = `Goal: ${formatTime(State.goalSeconds)}`;
+        });
+
+        // 3-Second Automatic Quiet Room Baseline Calibration
+        DOM.controls.btnCalibrate.addEventListener('click', () => {
+            if (!State.analyser) {
+                DOM.controls.btnCalibrate.innerHTML = '<i class="fas fa-check"></i> Demo Mode Calibrated!';
+                return;
+            }
+            DOM.controls.btnCalibrate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sampling Quiet Room (3s)...';
+            const samples = [];
+            const sampleInterval = setInterval(() => {
+                const buf = new Uint8Array(State.analyser.frequencyBinCount);
+                State.analyser.getByteFrequencyData(buf);
+                let sum = 0;
+                for (let i = 2; i < 85; i++) sum += buf[i] * buf[i];
+                samples.push(Math.sqrt(sum / 83));
+            }, 100);
+
+            setTimeout(() => {
+                clearInterval(sampleInterval);
+                if (samples.length > 0) {
+                    const avgRms = samples.reduce((a, b) => a + b, 0) / samples.length;
+                    State.noiseFloor = Math.min(45, Math.round(avgRms * 1.15));
+                    DOM.controls.uiNoiseFloor.innerText = `+${State.noiseFloor} dB Filtered`;
+                }
+                DOM.controls.btnCalibrate.innerHTML = '<i class="fas fa-check text-app-green"></i> Room Calibrated!';
+                setTimeout(() => {
+                    DOM.controls.btnCalibrate.innerHTML = '<i class="fas fa-crosshairs"></i> Calibrate Quiet Room Now (3s)';
+                }, 2000);
+            }, 3000);
+        });
+
+        // Initialize Best Streak Display
+        DOM.ui.bestStreak.innerText = formatTime(State.bestStreakSeconds);
+    </script>
+</body>
+</html>

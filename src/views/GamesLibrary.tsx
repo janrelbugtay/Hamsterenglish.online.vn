@@ -199,6 +199,7 @@ export const GamesLibrary = ({
     { id: "flashcards-match", title: "Flashcard", icon: "/images/flashcards-card-v3.jpg?v=3", color: "bg-indigo-100 text-indigo-600", category: "classroom-tools" },
     { id: "hamster-pop-quiz", title: "Video Quiz", icon: "/images/video-quiz-card-v3.jpg?v=3", color: "bg-yellow-100 text-yellow-600", category: "classroom-tools" },
     { id: "phonemic-master", title: "Phonemic Master", icon: "/images/phonemic-master-card-v3.jpg?v=3", color: "bg-emerald-100 text-emerald-600", category: "classroom-tools" },
+    { id: "sleeping-hamster", title: "Sleeping Hamster", icon: "/images/sleeping-hamster-card.jpg?v=1", color: "bg-purple-100 text-purple-600", category: "classroom-tools" },
     // AR Camera Games
     { id: "slap-and-chop", title: "Mosquito Slap", icon: mosquitoSlapCardImg, color: "bg-purple-100 text-purple-600", category: "ar-camera" },
     { id: "bubble-pop", title: "Bubble Pop", icon: "/images/bubble-pop-card.jpg?v=3", color: "bg-blue-100 text-blue-600", category: "ar-camera" },

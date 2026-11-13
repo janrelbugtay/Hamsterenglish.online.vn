@@ -29,6 +29,7 @@ export type ViewState =
   | "slap-and-chop"
   | "roller-coaster-quiz"
   | "hamster-paintball"
+  | "sleeping-hamster"
   | "my-slides";
 
 export type GameCategoryId =

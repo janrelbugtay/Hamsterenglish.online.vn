@@ -142,6 +142,7 @@ const APP_GAMES = [
   { id: "flashcards-match", title: "Flashcard", category: "Classroom Tools", imageUrl: "/images/flashcards-card-v3.jpg?v=3", icon: "🃏" },
   { id: "hamster-pop-quiz", title: "Video Quiz", category: "Classroom Tools", imageUrl: "/images/video-quiz-card-v3.jpg?v=3", icon: "🎬" },
   { id: "phonemic-master", title: "Phonemic Master", category: "Classroom Tools", imageUrl: "/images/phonemic-master-card-v3.jpg?v=3", icon: "🗣️" },
+  { id: "sleeping-hamster", title: "Sleeping Hamster", category: "Classroom Tools", imageUrl: "/images/sleeping-hamster-card.jpg?v=1", icon: "🐹" },
   // AR Camera Games
   { id: "slap-and-chop", title: "Mosquito Slap", category: "AR Camera Games", imageUrl: "/images/mosquito-slap-card.jpg?v=3", icon: "🦟" },
   { id: "bubble-pop", title: "Bubble Pop", category: "AR Camera Games", imageUrl: "/images/bubble-pop-card.jpg?v=3", icon: "🫧" },

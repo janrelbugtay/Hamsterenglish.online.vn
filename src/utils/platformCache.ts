@@ -1078,8 +1078,14 @@ export function isGameOwnedByUser(game: any, user: any): boolean {
       gameEmail &&
       gameEmail !== SUPER_ADMIN_EMAIL.toLowerCase() &&
       !GENERIC_NAMES.has(gameEmail);
+    const hasOtherCreatorName =
+      gameCreatorName &&
+      gameCreatorName !== 'teacher jan' &&
+      gameCreatorName !== 'janrel bugtay' &&
+      gameCreatorName !== 'admin' &&
+      !GENERIC_NAMES.has(gameCreatorName);
 
-    if (!hasOtherUserId && !hasOtherEmail) {
+    if (!hasOtherUserId && !hasOtherEmail && !hasOtherCreatorName) {
       if (
         gameCreatorName === 'teacher jan' ||
         gameCreatorName === 'admin' ||
