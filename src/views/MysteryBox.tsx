@@ -17,6 +17,7 @@ import {
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
+import { saveAndSyncUserGame } from "../utils/platformCache";
 
 type GameScreen = 'editor' | 'setup' | 'game' | 'study';
 
@@ -463,19 +464,27 @@ export function MysteryBox({
         isPublic: isPublicBool,
       }));
 
-      if (isOwnExistingGame) {
-        try {
-          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-        } catch (err: any) {
-          if (err?.code === 'not-found') {
-            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          } else {
-            throw err;
+      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-mystery-box-${Date.now()}`;
+      try {
+        if (isOwnExistingGame) {
+          try {
+            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+          } catch (err: any) {
+            if (err?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+              savedId = docRef.id;
+            } else {
+              throw err;
+            }
           }
+        } else {
+          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          savedId = docRef.id;
         }
-      } else {
-        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+      } catch (cloudErr) {
+        console.warn("Firestore save fallback to local storage:", cloudErr);
       }
+      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);

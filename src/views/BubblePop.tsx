@@ -14,6 +14,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { drawCharacterHand, HandCharacterType, toPx, distPx } from "../utils/superheroHands";
 import { drawAnimatedNose, NoseStyle } from "../utils/animatedNose";
+import { saveAndSyncUserGame } from "../utils/platformCache";
 
 type GameScreen = 'intro' | 'lobby' | 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
 
@@ -198,23 +199,31 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         isPublic: isPublicBool,
       }));
 
-      if (isOwnExistingGame) {
-        try {
-          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-        } catch (err: any) {
-          if (err?.code === 'not-found') {
-            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          } else {
-            throw err;
+      let savedId = isOwnExistingGame && initialGame?.id ? String(initialGame.id) : `local-bp-${Date.now()}`;
+      try {
+        if (isOwnExistingGame) {
+          try {
+            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+            savedId = String(initialGame.id);
+          } catch (err: any) {
+            if (err?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+              savedId = docRef.id;
+            } else {
+              throw err;
+            }
           }
+        } else {
+          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          savedId = docRef.id;
         }
-      } else {
-        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+      } catch (cloudErr) {
+        console.warn("Saved Bubble Pop game to local computer storage:", cloudErr);
       }
+      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);
-      alert("Failed to save game: " + (error?.message || String(error)));
       onViewChange("games");
     }
   };
@@ -3474,12 +3483,16 @@ function QuizEditor({
           }
           return parsedOpt.text || rawOpt;
         });
-        return {
-          ...q,
+        const nextQ: Question = {
+          id: q.id,
           text: cleanQText,
-          image: cleanQImg,
           options: formattedOptions,
+          answerIndex: q.answerIndex,
         };
+        if (cleanQImg) {
+          nextQ.image = cleanQImg;
+        }
+        return nextQ;
       });
   };
 

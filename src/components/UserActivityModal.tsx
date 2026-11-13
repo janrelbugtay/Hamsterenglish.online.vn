@@ -5,7 +5,7 @@ import {
   User, Mail, Copy, Check, ChevronDown, ChevronUp, Layers, HelpCircle
 } from 'lucide-react';
 import { getGameTypeMeta, formatRelativeTime, UserActivityEvent } from '../utils/activityTracker';
-import { isGameOwnedByUser } from '../utils/platformCache';
+import { isGameOwnedByUser, getUserCreatedGames } from '../utils/platformCache';
 
 interface UserActivityModalProps {
   user: any;
@@ -28,18 +28,10 @@ export function UserActivityModal({
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
 
-  // Filter games by user
+  // Filter games by user (including public, private, local computer saves, and activity-tracked games)
   const userGames = useMemo(() => {
-    const uid = user.uid || user.id;
-    const email = (user.email || '').toLowerCase().trim();
-
-    return games.filter(g => {
-      if (isGameOwnedByUser(g, user)) return true;
-      if (g.userId && (g.userId === uid || g.userId === user.id)) return true;
-      if (email && email !== 'user' && email !== 'guest' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
-      return false;
-    });
-  }, [games, user]);
+    return getUserCreatedGames(user, games, activities);
+  }, [games, activities, user]);
 
   // Filtered games based on search and type filter
   const filteredGames = useMemo(() => {

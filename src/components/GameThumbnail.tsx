@@ -389,9 +389,12 @@ function extractGameContent(game: any, gameType: string, info: any) {
   };
 }
 
-export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: GameThumbnailProps) => {
+export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = false }: GameThumbnailProps) => {
   const normalizedType = (gameType || game?.gameType || '').toLowerCase().trim();
-  const content = extractGameContent(game, normalizedType, info);
+  const content = React.useMemo(
+    () => extractGameContent(game, normalizedType, info),
+    [game, normalizedType, info?.title, info?.icon]
+  );
   const {
     cleanTitle,
     firstQuestion,
@@ -440,6 +443,8 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
       return (
         <img
           src={resolvedCardImg}
+          loading="lazy"
+          decoding="async"
           referrerPolicy="no-referrer"
           alt={info?.title || cleanTitle}
           className="absolute inset-0 w-full h-full object-cover scale-110 pointer-events-none select-none"
@@ -448,7 +453,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     }
     return (
       <div className={`absolute inset-0 w-full h-full bg-gradient-to-br ${palette.bgGradient} flex flex-col items-center justify-center p-1 overflow-hidden pointer-events-none select-none`}>
-        <span className="text-2xl leading-none drop-shadow-md">{emojis[0]}</span>
+        <span className="text-2xl leading-none">{emojis[0]}</span>
         <span className="text-[8px] font-black text-white/90 uppercase tracking-tighter truncate max-w-full mt-0.5 px-1 bg-black/30 rounded">
           {normalizedType === 'bubble-sentence-pro' ? 'Island' : normalizedType.replace(/-/g, ' ')}
         </span>
@@ -461,9 +466,11 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     return (
       <img
         src={resolvedCardImg}
+        loading="lazy"
+        decoding="async"
         referrerPolicy="no-referrer"
         alt={info?.title || cleanTitle}
-        className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500"
+        className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-300"
       />
     );
   }
@@ -490,26 +497,26 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     return (
       <div className={`absolute inset-0 w-full h-full bg-gradient-to-b ${palette.skyGradient} overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none`}>
         {/* Sun & Tropical Clouds */}
-        <div className="absolute -top-6 -right-6 w-24 h-24 bg-yellow-300/90 rounded-full blur-[1px] shadow-[0_0_30px_rgba(253,224,71,0.9)]" />
-        <div className="absolute top-[18%] -left-4 w-24 h-7 bg-white/65 rounded-full blur-[0.5px]" />
-        <div className="absolute top-[36%] right-[8%] w-20 h-6 bg-white/55 rounded-full blur-[0.5px]" />
+        <div className="absolute -top-6 -right-6 w-24 h-24 bg-yellow-300/90 rounded-full" />
+        <div className="absolute top-[18%] -left-4 w-24 h-7 bg-white/75 rounded-full" />
+        <div className="absolute top-[36%] right-[8%] w-20 h-6 bg-white/65 rounded-full" />
 
         {/* Top Bar: Mode & Real Count */}
         <div className="relative z-10 flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5 bg-white/85 backdrop-blur-md px-2.5 py-1 rounded-full shadow-sm border border-white">
+          <div className="flex items-center gap-1.5 bg-white/95 px-2.5 py-1 rounded-full shadow-xs border border-white">
             <span className="text-sm leading-none">{emojis[0]}</span>
             <span className="text-[10px] font-black uppercase tracking-wider text-sky-900">
               {isMcq ? 'Bubble Quiz' : isAnagram ? 'Word Anagram' : 'Bubble Island'}
             </span>
           </div>
-          <div className="w-7 h-7 rounded-full border-2 border-emerald-500 bg-white flex items-center justify-center shadow-sm shrink-0">
+          <div className="w-7 h-7 rounded-full border-2 border-emerald-500 bg-white flex items-center justify-center shadow-xs shrink-0">
             <span className="text-[10px] font-black text-emerald-700">{totalCount}</span>
           </div>
         </div>
 
         {/* If MCQ mode, show the real question prompt cloud */}
         {isMcq && (
-          <div className="relative z-10 mx-auto w-full bg-white/90 backdrop-blur-sm rounded-xl px-2.5 py-1.5 shadow-sm border border-white/80 text-center">
+          <div className="relative z-10 mx-auto w-full bg-white/95 rounded-xl px-2.5 py-1.5 shadow-xs border border-white/80 text-center">
             <p className="text-[11px] font-extrabold text-slate-800 line-clamp-1 leading-tight">
               {firstQuestion}
             </p>
@@ -521,9 +528,8 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           {displayBubbles.map((word, idx) => (
             <div
               key={idx}
-              className={`absolute ${bubblePositions[idx % bubblePositions.length]} px-2.5 py-1 bg-gradient-to-br from-white/95 via-white/85 to-sky-100/90 rounded-full shadow-[0_4px_12px_rgba(14,116,144,0.18),inset_0_2px_4px_rgba(255,255,255,1)] border border-white flex items-center justify-center`}
+              className={`absolute ${bubblePositions[idx % bubblePositions.length]} px-2.5 py-1 bg-white/95 rounded-full shadow-xs border border-sky-200 flex items-center justify-center`}
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-white absolute top-1 left-2 opacity-90" />
               <span className="text-xs font-black text-sky-950 tracking-tight max-w-[110px] truncate">
                 {word}
               </span>
@@ -532,7 +538,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
         </div>
 
         {/* Sandy Island Wave & Sentence Tray at Bottom showing exact sentence */}
-        <div className="relative z-10 w-full bg-white/75 backdrop-blur-md rounded-2xl p-2 border border-white/90 shadow-md">
+        <div className="relative z-10 w-full bg-white/90 rounded-2xl p-2 border border-white/90 shadow-xs">
           <div className="flex items-center justify-between gap-1.5 mb-1">
             <span className="text-[9px] font-black uppercase tracking-wider text-sky-800/80 truncate">
               {cleanTitle}
@@ -552,35 +558,33 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
   // 2. BUBBLE POP (bubble-pop)
   if (normalizedType === 'bubble-pop') {
     const bubbleColors = [
-      'from-blue-400 via-blue-500 to-indigo-600 border-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.5)]',
-      'from-pink-400 via-rose-500 to-purple-600 border-pink-300 shadow-[0_0_15px_rgba(244,63,94,0.5)]',
-      'from-emerald-400 via-teal-500 to-cyan-600 border-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.5)]',
-      'from-amber-400 via-orange-500 to-red-500 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)]',
+      'from-blue-500 to-indigo-600 border-blue-300',
+      'from-pink-500 to-purple-600 border-pink-300',
+      'from-emerald-500 to-cyan-600 border-emerald-300',
+      'from-amber-500 to-red-500 border-amber-300',
     ];
 
     return (
       <div className={`absolute inset-0 w-full h-full bg-gradient-to-br ${palette.bgGradient} overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none`}>
-        {/* Ambient glowing orbs */}
-        <div className="absolute -top-6 -left-6 w-24 h-24 bg-blue-500/30 rounded-full blur-xl" />
-        <div className="absolute -bottom-6 -right-6 w-28 h-28 bg-purple-500/30 rounded-full blur-xl" />
-
         {/* Header Row */}
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-white/15 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20">
+          <div className="flex items-center gap-1.5 bg-white/20 px-2.5 py-1 rounded-full border border-white/25">
             <span className="text-sm leading-none">{emojis[0]}</span>
             <span className="text-[10px] font-black text-white uppercase tracking-wider">Bubble Pop</span>
           </div>
-          <span className="text-[10px] font-extrabold text-cyan-200 bg-black/30 px-2 py-0.5 rounded-full border border-cyan-400/30">
+          <span className="text-[10px] font-extrabold text-cyan-200 bg-black/40 px-2 py-0.5 rounded-full border border-cyan-400/30">
             {totalCount} Qs
           </span>
         </div>
 
         {/* Exact Question Banner */}
-        <div className="relative z-10 bg-white/15 backdrop-blur-md border border-white/25 rounded-xl p-2 shadow-lg flex items-center gap-2">
+        <div className="relative z-10 bg-slate-900/60 border border-white/25 rounded-xl p-2 flex items-center gap-2">
           {customImage ? (
             <img
               src={customImage}
               alt=""
+              loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               className="w-9 h-9 rounded-lg object-cover border border-white/40 shrink-0"
             />
@@ -608,8 +612,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
                 key={idx}
                 className={`relative px-2.5 py-1.5 rounded-full bg-gradient-to-br ${bubbleColors[idx % bubbleColors.length]} border flex items-center justify-between gap-1 overflow-hidden`}
               >
-                <div className="w-2 h-1 bg-white/60 rounded-full absolute top-1 left-2.5 rotate-[-15deg]" />
-                <span className="text-[11px] font-black text-white truncate drop-shadow-sm">
+                <span className="text-[11px] font-black text-white truncate">
                   {opt}
                 </span>
                 {isCorrect && (
@@ -629,13 +632,9 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
   if (normalizedType === 'slap-and-chop' || normalizedType === 'slapandchop') {
     return (
       <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-purple-950 via-indigo-950 to-slate-950 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
-        {/* Glow & Clap Shockwave Rings */}
-        <div className="absolute -top-6 -left-6 w-28 h-28 bg-purple-500/25 rounded-full blur-xl" />
-        <div className="absolute -bottom-6 -right-6 w-28 h-28 bg-cyan-500/25 rounded-full blur-xl" />
-
         {/* Header Row */}
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-white/15 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20">
+          <div className="flex items-center gap-1.5 bg-white/20 px-2.5 py-1 rounded-full border border-white/25">
             <span className="text-sm leading-none">🦟</span>
             <span className="text-[10px] font-black text-white uppercase tracking-wider">Mosquito Slap</span>
           </div>
@@ -645,8 +644,8 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
         </div>
 
         {/* Question Banner */}
-        <div className="relative z-10 bg-white/15 backdrop-blur-md border border-white/25 rounded-xl p-2 shadow-lg flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-base shadow-sm shrink-0">
+        <div className="relative z-10 bg-slate-900/60 border border-white/25 rounded-xl p-2 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-base shrink-0">
             🧤
           </div>
           <div className="min-w-0 flex-1">
@@ -668,11 +667,11 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
                 key={idx}
                 className={`relative px-2.5 py-1.5 rounded-full border flex items-center justify-between gap-1 overflow-hidden ${
                   isCorrect
-                    ? 'bg-gradient-to-r from-emerald-600/80 to-teal-600/80 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.4)]'
-                    : 'bg-slate-900/80 border-white/20'
+                    ? 'bg-emerald-700/90 border-emerald-400'
+                    : 'bg-slate-900/85 border-white/20'
                 }`}
               >
-                <span className="text-[11px] font-black text-white truncate drop-shadow-sm">
+                <span className="text-[11px] font-black text-white truncate">
                   {opt}
                 </span>
                 <span className="text-[10px] bg-white/20 text-white font-black px-1.5 py-0.5 rounded-full leading-tight shrink-0">
@@ -694,17 +693,17 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     return (
       <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-sky-300 via-cyan-200 to-blue-600 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-white/90 border border-sky-500/40 px-2.5 py-0.5 rounded-full shadow-xs">
+          <div className="flex items-center gap-1.5 bg-white/95 border border-sky-500/40 px-2.5 py-0.5 rounded-full">
             <span className="text-xs leading-none">🐹</span>
             <span className="text-[10px] font-black text-sky-900 uppercase tracking-wider">Shark Lagoon</span>
           </div>
-          <span className="text-[10px] font-black text-sky-950 bg-white/85 px-2 py-0.5 rounded-full border border-sky-500/30">
+          <span className="text-[10px] font-black text-sky-950 bg-white/90 px-2 py-0.5 rounded-full border border-sky-500/30">
             {totalCount} Qs
           </span>
         </div>
 
         {/* Question Banner */}
-        <div className="relative z-10 bg-white/95 border-2 border-sky-400 rounded-xl px-2.5 py-1.5 shadow-md">
+        <div className="relative z-10 bg-white/95 border-2 border-sky-400 rounded-xl px-2.5 py-1.5">
           <div className="flex items-center justify-between gap-1 text-[9px] font-black text-sky-700 uppercase tracking-wider">
             <span className="truncate">{cleanTitle}</span>
             <span>🦈</span>
@@ -716,12 +715,12 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
         {/* Hamsters on Stairs & Center Shark */}
         <div className="relative z-10 flex items-center justify-between px-3 my-0.5">
-          <div className="px-2 py-1 rounded-lg bg-[#0055fe] text-white text-[10px] font-black shadow border border-white/50 flex items-center gap-1">
+          <div className="px-2 py-1 rounded-lg bg-[#0055fe] text-white text-[10px] font-black border border-white/50 flex items-center gap-1">
             <span>🐹</span>
             <span>BLUE</span>
           </div>
-          <div className="text-xl drop-shadow">🦈</div>
-          <div className="px-2 py-1 rounded-lg bg-[#cc0000] text-white text-[10px] font-black shadow border border-white/50 flex items-center gap-1">
+          <div className="text-xl">🦈</div>
+          <div className="px-2 py-1 rounded-lg bg-[#cc0000] text-white text-[10px] font-black border border-white/50 flex items-center gap-1">
             <span>RED</span>
             <span>🐹</span>
           </div>
@@ -755,17 +754,17 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
       <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-sky-300 via-emerald-200 to-green-500 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
         {/* Sunny Park Sumo Header */}
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-white/85 border border-emerald-500/40 px-2.5 py-0.5 rounded-full shadow-xs">
+          <div className="flex items-center gap-1.5 bg-white/90 border border-emerald-500/40 px-2.5 py-0.5 rounded-full">
             <span className="text-xs leading-none">🐹</span>
             <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Sumo Park</span>
           </div>
-          <span className="text-[10px] font-black text-emerald-950 bg-white/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
+          <span className="text-[10px] font-black text-emerald-950 bg-white/85 px-2 py-0.5 rounded-full border border-emerald-500/30">
             {totalCount} Qs
           </span>
         </div>
 
         {/* Exact Question Scroll Banner */}
-        <div className="relative z-10 bg-gradient-to-r from-amber-100 via-orange-50 to-amber-100 border-2 border-amber-500 rounded-xl px-2.5 py-1.5 shadow-md">
+        <div className="relative z-10 bg-amber-50 border-2 border-amber-500 rounded-xl px-2.5 py-1.5">
           <div className="flex items-center justify-between gap-1 text-[9px] font-black text-amber-900/70 uppercase tracking-wider">
             <span className="truncate">{cleanTitle}</span>
             <span>{emojis[0]}</span>
@@ -777,23 +776,21 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
         {/* Sumo Dohyo Ring in Center */}
         <div className="relative z-10 flex items-center justify-center my-0.5">
-          <div className="w-[88%] h-14 rounded-full border-4 border-amber-400 bg-gradient-to-b from-orange-200 to-amber-300 shadow-[0_4px_15px_rgba(245,158,11,0.35),inset_0_2px_6px_rgba(120,53,15,0.35)] flex items-center justify-between px-3 relative">
-            {/* Inner ring lines */}
-            <div className="absolute inset-2 rounded-full border border-amber-700/25 pointer-events-none" />
+          <div className="w-[88%] h-14 rounded-full border-4 border-amber-400 bg-gradient-to-b from-orange-200 to-amber-300 flex items-center justify-between px-3 relative">
             <div className="flex items-center gap-1 z-10">
-              <div className="w-7 h-7 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-sm">
+              <div className="w-7 h-7 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center text-sm">
                 🐹
               </div>
               <span className="text-[10px] font-black text-blue-950 uppercase">Blue</span>
             </div>
 
-            <div className="z-10 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black tracking-wider shadow-sm border border-yellow-300">
+            <div className="z-10 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black tracking-wider border border-yellow-300">
               VS ⚡
             </div>
 
             <div className="flex items-center gap-1 z-10">
               <span className="text-[10px] font-black text-red-950 uppercase">Red</span>
-              <div className="w-7 h-7 rounded-full bg-red-600 border-2 border-white shadow-md flex items-center justify-center text-sm">
+              <div className="w-7 h-7 rounded-full bg-red-600 border-2 border-white flex items-center justify-center text-sm">
                 🐹
               </div>
             </div>
@@ -802,10 +799,10 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
 
         {/* Bottom Team Option Clash Bars showing exact game options */}
         <div className="relative z-10 grid grid-cols-2 gap-2">
-          <div className="bg-blue-600 border-b-2 border-blue-800 rounded-lg px-2 py-1 text-center shadow-sm">
+          <div className="bg-blue-600 border-b-2 border-blue-800 rounded-lg px-2 py-1 text-center">
             <span className="block text-[11px] font-black text-white truncate">{leftOpt}</span>
           </div>
-          <div className="bg-red-600 border-b-2 border-red-800 rounded-lg px-2 py-1 text-center shadow-sm">
+          <div className="bg-red-600 border-b-2 border-red-800 rounded-lg px-2 py-1 text-center">
             <span className="block text-[11px] font-black text-white truncate">{rightOpt}</span>
           </div>
         </div>
@@ -817,31 +814,32 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
   if (normalizedType === 'yoga-quiz' || normalizedType === 'yoga') {
     return (
       <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-emerald-900 via-teal-800 to-slate-900 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none">
-        {/* Subtle background image blend if info.icon exists */}
         {info?.icon && (
           <img
             src={info.icon}
             alt=""
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
-            className="absolute inset-0 w-full h-full object-cover opacity-25 mix-blend-luminosity scale-105"
+            className="absolute inset-0 w-full h-full object-cover opacity-25 scale-105"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-teal-950/55 to-emerald-950/40" />
 
         {/* Top Zen Header */}
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-emerald-400/20 backdrop-blur-md border border-emerald-300/40 px-2.5 py-1 rounded-full">
+          <div className="flex items-center gap-1.5 bg-emerald-500/25 border border-emerald-300/40 px-2.5 py-1 rounded-full">
             <span className="text-sm leading-none">🧘</span>
             <span className="text-[10px] font-black text-emerald-200 uppercase tracking-wider">Yoga Quiz</span>
           </div>
-          <div className="flex items-center gap-1 bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full border border-white/15">
+          <div className="flex items-center gap-1 bg-black/45 px-2 py-0.5 rounded-full border border-white/15">
             <span className="text-xs leading-none">{emojis[0]}</span>
             <span className="text-[10px] font-extrabold text-emerald-200">{totalCount} Qs</span>
           </div>
         </div>
 
         {/* Center Question Card with Exact Content */}
-        <div className="relative z-10 bg-white/95 backdrop-blur-md rounded-2xl p-2.5 shadow-lg border border-emerald-200/80">
+        <div className="relative z-10 bg-white/95 rounded-2xl p-2.5 border border-emerald-200/80">
           <div className="flex items-center justify-between gap-1 mb-0.5">
             <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 truncate">
               {cleanTitle}
@@ -862,14 +860,14 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
                 key={idx}
                 className={`px-2 py-1 rounded-lg border text-[10px] font-extrabold truncate flex items-center gap-1 ${
                   isCorrect
-                    ? 'bg-emerald-500 text-white border-emerald-300 shadow-sm'
-                    : 'bg-white/85 text-slate-800 border-white/60'
+                    ? 'bg-emerald-500 text-white border-emerald-300'
+                    : 'bg-white/90 text-slate-800 border-white/60'
                 }`}
               >
                 <span className="opacity-75 font-black">{String.fromCharCode(65 + idx)}.</span>
                 {typeof opt === 'string' && (opt.startsWith('http') || opt.startsWith('data:image')) ? (
                   <span className="inline-flex items-center gap-1 truncate">
-                    <img src={opt} alt="" className="w-3.5 h-3.5 rounded object-cover inline shrink-0" />
+                    <img src={opt} alt="" loading="lazy" decoding="async" className="w-3.5 h-3.5 rounded object-cover inline shrink-0" />
                     <span>Picture</span>
                   </span>
                 ) : (
@@ -887,7 +885,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
   if (normalizedType === 'mystery-box') {
     const boxColors = [
       'from-blue-500 to-blue-600 border-blue-300',
-      'from-amber-400 to-orange-500 border-yellow-200 ring-2 ring-yellow-300/60',
+      'from-amber-400 to-orange-500 border-yellow-200',
       'from-emerald-500 to-teal-600 border-emerald-300',
       'from-rose-500 to-pink-600 border-rose-300',
     ];
@@ -900,13 +898,13 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
             <span className="text-xs leading-none">🎁</span>
             <span className="text-[10px] font-black text-amber-200 uppercase tracking-wider">Mystery Box</span>
           </div>
-          <span className="text-[10px] font-black text-amber-200 bg-black/35 px-2 py-0.5 rounded-full border border-amber-400/30">
+          <span className="text-[10px] font-black text-amber-200 bg-black/40 px-2 py-0.5 rounded-full border border-amber-400/30">
             {totalCount} Boxes
           </span>
         </div>
 
         {/* Exact Question & Options Preview Card */}
-        <div className="relative z-10 bg-white/95 backdrop-blur-md rounded-xl p-2 shadow-md border border-white/80">
+        <div className="relative z-10 bg-white/95 rounded-xl p-2 border border-white/80">
           <div className="flex items-center justify-between gap-1 mb-0.5">
             <span className="text-[9px] font-black uppercase tracking-wider text-indigo-700 truncate">
               {cleanTitle}
@@ -937,12 +935,12 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           {[1, 2, 3, 4].map((num, idx) => (
             <div
               key={num}
-              className={`h-11 rounded-xl bg-gradient-to-b ${boxColors[idx]} border shadow-md flex flex-col items-center justify-center relative overflow-hidden`}
+              className={`h-11 rounded-xl bg-gradient-to-b ${boxColors[idx]} border flex flex-col items-center justify-center relative overflow-hidden`}
             >
               {idx === 1 ? (
                 <>
                   <span className="text-[10px] leading-none">✨🎁</span>
-                  <span className="text-[9px] font-black text-white drop-shadow">+500</span>
+                  <span className="text-[9px] font-black text-white">+500</span>
                 </>
               ) : (
                 <>
@@ -967,7 +965,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
       <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-blue-950 via-indigo-950 to-slate-950 overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none border-4 border-amber-400/80">
         {/* Survey Header */}
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full shadow-sm">
+          <div className="flex items-center gap-1.5 bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full">
             <span className="text-xs leading-none">🔔</span>
             <span className="text-[10px] font-black uppercase tracking-wider">Family Feud</span>
           </div>
@@ -975,7 +973,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
         </div>
 
         {/* Survey Question Prompt */}
-        <div className="relative z-10 bg-blue-900/90 border border-amber-400/60 rounded-xl px-2.5 py-1.5 text-center shadow-inner">
+        <div className="relative z-10 bg-blue-900/90 border border-amber-400/60 rounded-xl px-2.5 py-1.5 text-center">
           <p className="text-[11px] font-black text-white line-clamp-1">
             {firstQuestion}
           </p>
@@ -986,7 +984,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           {displayAnswers.map((ans, idx) => (
             <div
               key={idx}
-              className="bg-gradient-to-b from-blue-800 to-blue-950 border border-amber-400/70 rounded-lg px-2 py-1 flex items-center justify-between gap-1 shadow-sm"
+              className="bg-gradient-to-b from-blue-800 to-blue-950 border border-amber-400/70 rounded-lg px-2 py-1 flex items-center justify-between gap-1"
             >
               <span className="text-[10px] font-black text-white truncate">
                 {idx + 1}. {ans.text}
@@ -1010,11 +1008,11 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     return (
       <div className={`absolute inset-0 w-full h-full bg-gradient-to-br ${palette.bgGradient} overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none`}>
         <div className="relative z-10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-white/15 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-white/25">
+          <div className="flex items-center gap-1.5 bg-white/20 px-2.5 py-0.5 rounded-full border border-white/25">
             <span className="text-xs leading-none">🎴</span>
             <span className="text-[10px] font-black text-white uppercase tracking-wider">Flashcards</span>
           </div>
-          <span className="text-[10px] font-black text-indigo-200 bg-black/30 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-black text-indigo-200 bg-black/35 px-2 py-0.5 rounded-full">
             {totalCount} Cards
           </span>
         </div>
@@ -1029,7 +1027,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           {cardItems.slice(0, 4).map((item: string, idx: number) => (
             <div
               key={idx}
-              className={`bg-white rounded-xl p-2 shadow-md border-2 ${
+              className={`bg-white rounded-xl p-2 border-2 ${
                 idx < 2 ? 'border-emerald-400' : 'border-indigo-200'
               } flex items-center justify-between gap-1`}
             >
@@ -1047,16 +1045,16 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     return (
       <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-sky-400 via-cyan-300 to-amber-200 flex flex-col justify-between p-3 pointer-events-none select-none overflow-hidden">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-white/90 px-2.5 py-0.5 rounded-full shadow-sm">
+          <div className="flex items-center gap-1.5 bg-white/95 px-2.5 py-0.5 rounded-full">
             <span className="text-sm leading-none">🐹</span>
             <span className="text-[10px] font-black text-sky-900 uppercase tracking-wider">Video Pop Quiz</span>
           </div>
-          <span className="text-[10px] font-black text-sky-950 bg-white/75 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-black text-sky-950 bg-white/85 px-2 py-0.5 rounded-full">
             {totalCount} Qs
           </span>
         </div>
 
-        <div className="bg-white/95 rounded-2xl p-2.5 shadow-md border border-white">
+        <div className="bg-white/95 rounded-2xl p-2.5 border border-white">
           <div className="text-[9px] font-black text-sky-700 uppercase tracking-wider truncate mb-0.5">
             {cleanTitle}
           </div>
@@ -1081,7 +1079,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     return (
       <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-slate-950 via-slate-900 to-lime-950 flex flex-col justify-between p-3 pointer-events-none select-none overflow-hidden border border-lime-500/20">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-lime-400 text-slate-950 font-black px-2.5 py-0.5 rounded-full shadow-sm text-[10px] tracking-wider uppercase">
+          <div className="flex items-center gap-1.5 bg-lime-400 text-slate-950 font-black px-2.5 py-0.5 rounded-full text-[10px] tracking-wider uppercase">
             <span className="text-sm leading-none">🐹🎯</span>
             <span>Speedball Park</span>
           </div>
@@ -1090,7 +1088,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           </span>
         </div>
 
-        <div className="bg-slate-900/90 rounded-2xl p-2.5 shadow-md border border-lime-400/30 backdrop-blur-sm">
+        <div className="bg-slate-900/95 rounded-2xl p-2.5 border border-lime-400/30">
           <div className="text-[9px] font-black text-lime-400 uppercase tracking-wider truncate mb-0.5">
             {cleanTitle}
           </div>
@@ -1120,7 +1118,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           </span>
           <span className="text-[10px] font-bold text-slate-300 truncate max-w-[110px]">{cleanTitle}</span>
         </div>
-        <div className="grid grid-cols-3 gap-1 w-28 aspect-square mx-auto bg-slate-700 p-1 rounded-xl shadow-lg">
+        <div className="grid grid-cols-3 gap-1 w-28 aspect-square mx-auto bg-slate-700 p-1 rounded-xl">
           <div className="bg-slate-800 rounded flex items-center justify-center text-blue-400 font-black text-base">X</div>
           <div className="bg-slate-800 rounded flex items-center justify-center text-rose-400 font-black text-base">O</div>
           <div className="bg-slate-800 rounded flex items-center justify-center text-[9px] text-slate-300 font-bold truncate px-0.5">{options[0] || 'Q1'}</div>
@@ -1146,11 +1144,11 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
           <span className="text-xs">{emojis[0]}</span>
         </div>
         <div className="flex flex-col items-center gap-1.5 my-auto">
-          <div className="px-3 py-1 rounded-full border border-cyan-400 bg-cyan-950/90 text-xs text-cyan-300 font-black tracking-widest shadow-[0_0_12px_rgba(6,182,212,0.5)]">
+          <div className="px-3 py-1 rounded-full border border-cyan-400 bg-cyan-950/90 text-xs text-cyan-300 font-black tracking-widest">
             {w1}
           </div>
           <div className="w-0.5 h-2.5 bg-gradient-to-b from-cyan-400 to-fuchsia-400" />
-          <div className="px-3 py-1 rounded-full border border-fuchsia-400 bg-fuchsia-950/90 text-xs text-fuchsia-300 font-black tracking-widest shadow-[0_0_12px_rgba(217,70,239,0.5)]">
+          <div className="px-3 py-1 rounded-full border border-fuchsia-400 bg-fuchsia-950/90 text-xs text-fuchsia-300 font-black tracking-widest">
             {w2}
           </div>
         </div>
@@ -1165,9 +1163,11 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
     return (
       <img
         src={src}
+        loading="lazy"
+        decoding="async"
         referrerPolicy="no-referrer"
         alt={info?.title || cleanTitle}
-        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
       />
     );
   }
@@ -1176,18 +1176,18 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
   return (
     <div className={`absolute inset-0 w-full h-full bg-gradient-to-br ${palette.bgGradient} overflow-hidden flex flex-col justify-between p-3 pointer-events-none select-none`}>
       <div className="relative z-10 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 bg-white/15 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-white/25">
+        <div className="flex items-center gap-1.5 bg-white/20 px-2.5 py-0.5 rounded-full border border-white/25">
           <span className="text-xs leading-none">{emojis[0]}</span>
           <span className="text-[10px] font-black text-white uppercase tracking-wider truncate max-w-[120px]">
             {info?.title || normalizedType.replace(/-/g, ' ') || 'ESL Game'}
           </span>
         </div>
-        <span className="text-[10px] font-extrabold text-white/90 bg-black/30 px-2 py-0.5 rounded-full">
+        <span className="text-[10px] font-extrabold text-white/90 bg-black/35 px-2 py-0.5 rounded-full">
           {totalCount} Items
         </span>
       </div>
 
-      <div className="relative z-10 bg-white/95 backdrop-blur-md rounded-xl p-2.5 shadow-md">
+      <div className="relative z-10 bg-white/95 rounded-xl p-2.5">
         <div className="text-[9px] font-black uppercase tracking-wider text-indigo-700 truncate mb-0.5">
           {cleanTitle}
         </div>
@@ -1200,7 +1200,7 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
         {options.slice(0, 4).map((opt, idx) => (
           <div
             key={idx}
-            className="bg-white/20 backdrop-blur-sm border border-white/30 rounded-lg px-2 py-1 text-[10px] font-bold text-white truncate text-center"
+            className="bg-white/20 border border-white/30 rounded-lg px-2 py-1 text-[10px] font-bold text-white truncate text-center"
           >
             {opt}
           </div>
@@ -1208,4 +1208,4 @@ export const GameThumbnail = ({ gameType, info = {}, game, compact = false }: Ga
       </div>
     </div>
   );
-};
+});

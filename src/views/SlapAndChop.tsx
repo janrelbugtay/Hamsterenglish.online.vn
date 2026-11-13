@@ -13,6 +13,7 @@ import { logUserActivity } from "../utils/activityTracker";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent, getInstantCartoonPng } from "../utils/mediaAndPresets";
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
+import { saveAndSyncUserGame } from "../utils/platformCache";
 
 const slapChopImgCache: Record<string, HTMLImageElement> = {};
 function getCachedSlapChopImage(url: string): HTMLImageElement | null {
@@ -5057,27 +5058,55 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       return;
     }
     try {
+      const isPublicBool = Boolean(quiz.isPublic);
       const now = new Date().toISOString();
-      const gameToSave = {
-        name: quiz.title || quiz.topic || "Slap and Chop Game",
-        title: quiz.title || quiz.topic || "Slap and Chop Game",
-        folderId: quiz.folderId || "",
-        topic: quiz.topic || "",
-        className: quiz.classLevel || "",
-        gameType: "slap-and-chop",
-        customQuestions: quiz.questions,
-        userId: user.uid,
-        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-        creatorEmail: user.email || "",
-        updatedAt: now,
-        isPublic: Boolean(quiz.isPublic)
-      };
+      const isOwnExistingGame = Boolean(
+        initialGame?.id &&
+          !String(initialGame.id).startsWith('sample-') &&
+          (!initialGame.userId || initialGame.userId === user.uid)
+      );
 
-      if (initialGame?.id && !String(initialGame.id).startsWith('sample-')) {
-        await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-      } else {
-        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+      const gameToSave = JSON.parse(
+        JSON.stringify({
+          name: quiz.title || quiz.topic || "Slap and Chop Game",
+          title: quiz.title || quiz.topic || "Slap and Chop Game",
+          folderId: quiz.folderId || "",
+          topic: quiz.topic || "",
+          className: quiz.classLevel || "",
+          gameType: "slap-and-chop",
+          customQuestions: quiz.questions,
+          userId: user.uid,
+          creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
+          creatorEmail: user.email || "",
+          updatedAt: now,
+          publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
+          createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+          isPublic: isPublicBool
+        })
+      );
+
+      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-slap-chop-${Date.now()}`;
+      try {
+        if (isOwnExistingGame) {
+          try {
+            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+          } catch (err: any) {
+            if (err?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+              savedId = docRef.id;
+            } else {
+              throw err;
+            }
+          }
+        } else {
+          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          savedId = docRef.id;
+        }
+      } catch (cloudErr) {
+        console.warn("Firestore save fallback to local storage:", cloudErr);
       }
+
+      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
 
       logUserActivity({
         userId: user.uid,
@@ -8903,12 +8932,16 @@ function QuizEditor({
           }
           return parsedOpt.text || rawOpt;
         });
-        return {
-          ...q,
+        const nextQ: Question = {
+          id: q.id,
           text: cleanQText,
-          image: cleanQImg,
           options: formattedOptions,
+          answerIndex: q.answerIndex,
         };
+        if (cleanQImg) {
+          nextQ.image = cleanQImg;
+        }
+        return nextQ;
       });
   };
 

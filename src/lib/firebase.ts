@@ -95,6 +95,7 @@ try {
     app,
     {
       localCache: memoryLocalCache(),
+      ignoreUndefinedProperties: true,
     },
     DATABASE_ID
   );

@@ -43,6 +43,7 @@ import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng, pa
 import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay, normalizeChaseQuestions } from "./CityPoseChase";
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import { FullscreenButton } from "../components/FullscreenButton";
+import { saveAndSyncUserGame } from "../utils/platformCache";
 
 export interface Question {
   id: number | string;
@@ -489,40 +490,50 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
         (!initialGame.userId || initialGame.userId === user.uid)
       );
 
-      const gameToSave = {
-        name: quiz.title || quiz.topic || "Yoga Studio Quiz",
-        title: quiz.title || quiz.topic || "Yoga Studio Quiz",
-        folderId: quiz.folderId || "",
-        topic: quiz.topic || "",
-        className: quiz.classLevel || "",
-        gameType: "yoga-quiz",
-        customQuestions: quiz.questions,
-        userId: user.uid,
-        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-        creatorEmail: user.email || "",
-        updatedAt: now,
-        publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
-        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
-        isPublic: isPublicBool,
-      };
+      const gameToSave = JSON.parse(
+        JSON.stringify({
+          name: quiz.title || quiz.topic || "Yoga Studio Quiz",
+          title: quiz.title || quiz.topic || "Yoga Studio Quiz",
+          folderId: quiz.folderId || "",
+          topic: quiz.topic || "",
+          className: quiz.classLevel || "",
+          gameType: "yoga-quiz",
+          customQuestions: quiz.questions,
+          userId: user.uid,
+          creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
+          creatorEmail: user.email || "",
+          updatedAt: now,
+          publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
+          createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+          isPublic: isPublicBool,
+        })
+      );
 
-      if (isOwnExistingGame) {
-        try {
-          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-        } catch (err: any) {
-          if (err?.code === 'not-found') {
-            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          } else {
-            throw err;
+      let savedId = isOwnExistingGame && initialGame?.id ? String(initialGame.id) : `local-yoga-${Date.now()}`;
+      try {
+        if (isOwnExistingGame) {
+          try {
+            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+            savedId = String(initialGame.id);
+          } catch (err: any) {
+            if (err?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+              savedId = docRef.id;
+            } else {
+              throw err;
+            }
           }
+        } else {
+          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          savedId = docRef.id;
         }
-      } else {
-        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+      } catch (cloudErr) {
+        console.warn("Saved Yoga Quiz to local computer storage:", cloudErr);
       }
+      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);
-      alert("Failed to save game: " + (error?.message || String(error)));
       onViewChange("games");
     }
   };
@@ -965,14 +976,18 @@ function QuizEditor({
           nextImgs[i] = img || null;
           nextOpts[i] = contentMode === 'photos_gifs' && img ? '' : parsedOpt.text;
         }
-        return {
-          ...q,
+        const nextQ: Question = {
+          id: q.id,
           text: parsedQ.text,
-          image: cleanQImg,
-          imageUrl: cleanQImg,
           options: nextOpts,
+          answerIndex: q.answerIndex,
           optionImages: nextImgs,
         };
+        if (cleanQImg) {
+          nextQ.image = cleanQImg;
+          nextQ.imageUrl = cleanQImg;
+        }
+        return nextQ;
       });
   };
 

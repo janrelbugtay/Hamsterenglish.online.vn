@@ -41,6 +41,7 @@ import { collection, query, where, getDocs, doc, addDoc, updateDoc } from 'fireb
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { saveGameRecord } from '../lib/gameStore';
+import { saveAndSyncUserGame } from '../utils/platformCache';
 
 /*************************************************************
  * 1. THEMES DEFINITION (5 ILLUSTRATED STAGE THEMES)
@@ -823,26 +824,17 @@ export function FlashcardsMatch({
           setGameId(docRef.id);
         }
 
-        // Sync final Firestore ID to local game store & cache
+        // Sync final ID to local game store & server platform cache
         if (finalId) {
           saveGameRecord({ ...cleanPayload, id: finalId });
-          try {
-            const cached = localStorage.getItem('hamster_cached_user_games');
-            const list = cached ? JSON.parse(cached) : [];
-            const existingIdx = list.findIndex((g: any) => String(g.id) === String(finalId));
-            if (existingIdx >= 0) {
-              list[existingIdx] = { ...cleanPayload, id: finalId };
-            } else {
-              list.unshift({ ...cleanPayload, id: finalId });
-            }
-            localStorage.setItem('hamster_cached_user_games', JSON.stringify(list));
-          } catch (e) {}
+          saveAndSyncUserGame({ ...cleanPayload, id: finalId }, user, { isUpdate: Boolean(isOwnExistingGame && candidateId) });
         }
 
         showToast(isPublicBool ? '🚀 Published flashcards to Community!' : '🔒 Saved private flashcard deck!');
       } else {
         // Guest user saved locally
         setGameId(localRecord.id);
+        saveAndSyncUserGame({ ...cleanPayload, id: localRecord.id }, null);
         showToast('💾 Saved flashcard deck to local library! (Log in anytime to sync to Cloud)');
       }
     } catch (err: any) {

@@ -92,7 +92,11 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
 }
 
-/* Custom Scrollbar */
+/* Custom Scrollbar & Smooth GPU Scroll Container */
+.custom-scrollbar {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -112,6 +116,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #334155;
+}
+
+/* Offscreen rendering optimization for large card grids and tables */
+.perf-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 260px;
 }
 
 .no-scrollbar::-webkit-scrollbar {

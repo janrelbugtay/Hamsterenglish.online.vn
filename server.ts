@@ -106,6 +106,59 @@ async function startServer() {
       }
       if (!Array.isArray(parsed.homeworkSubmissions)) parsed.homeworkSubmissions = [];
 
+      const deletedUserIdsSet = new Set<string>(
+        Array.isArray(parsed.deletedUserIds) ? parsed.deletedUserIds.map(String) : []
+      );
+
+      const isSyntheticUserRecord = (u: any) => {
+        if (!u) return true;
+        const uid = String(u.uid || u.id || "").trim();
+        return (
+          uid === "admin-teacher-jan" ||
+          uid === "user-dang-ngoc-bich" ||
+          deletedUserIdsSet.has(uid)
+        );
+      };
+
+      const deletedGameIdsSet = new Set<string>([
+        "lbwoT7kdbBzxdxZF85nk",
+        ...(Array.isArray(parsed.deletedGameIds) ? parsed.deletedGameIds.map(String) : []),
+      ]);
+
+      const isInvalidGameRecord = (g: any) => {
+        if (!g || !g.id) return true;
+        const id = String(g.id).trim();
+        if (id.startsWith("comm-") || id.startsWith("sample-") || deletedGameIdsSet.has(id)) {
+          return true;
+        }
+        return false;
+      };
+
+      const prevUserCount = parsed.users.length;
+      const prevGameCount = parsed.games.length;
+      parsed.users = parsed.users.filter((u: any) => !isSyntheticUserRecord(u));
+      parsed.games = parsed.games.filter((g: any) => !isInvalidGameRecord(g));
+      let cleanedAny = parsed.users.length !== prevUserCount || parsed.games.length !== prevGameCount;
+
+      // Enrich games with creatorEmail and creatorName from matched users
+      const userMapByUid = new Map<string, any>();
+      parsed.users.forEach((u: any) => {
+        const uid = String(u?.uid || u?.id || "").trim();
+        if (uid) userMapByUid.set(uid, u);
+      });
+      parsed.games = parsed.games.map((g: any) => {
+        if (!g) return g;
+        const owner = g.userId ? userMapByUid.get(String(g.userId)) : null;
+        if (owner) {
+          return {
+            ...g,
+            creatorEmail: g.creatorEmail || owner.email || "",
+            creatorName: g.creatorName || owner.displayName || "",
+          };
+        }
+        return g;
+      });
+
       // Ensure the 3 known homework assignments from teacher wnxUHR2dywQqrTmD6LE5LPamkQI2 exist so their PINs (764273, 333169, 978021) always resolve
       const teacherUid = "wnxUHR2dywQqrTmD6LE5LPamkQI2";
       const simplePastGame = parsed.games.find((g: any) => g && g.id === "ykBLO9m76dim1HUqTD0Y");
@@ -208,8 +261,9 @@ async function startServer() {
         }
       }
 
+      parsed.deletedGameIds = Array.from(deletedGameIdsSet);
       memoryCache = parsed;
-      if (seededAny) {
+      if (seededAny || cleanedAny) {
         await writePlatformCache(parsed);
       }
       return memoryCache;
@@ -222,6 +276,7 @@ async function startServer() {
         homeworkTrash: [],
         deletedHomeworkKeys: {},
         homeworkSubmissions: [],
+        deletedGameIds: ["lbwoT7kdbBzxdxZF85nk"],
         pageVisits: 558
       };
     }
@@ -256,52 +311,137 @@ async function startServer() {
       const existing = await readPlatformCache();
       const incoming = req.body || {};
 
-      // Merge games by id
-      const gamesMap = new Map<string, any>();
-      if (Array.isArray(existing.games)) {
-        existing.games.forEach((g: any) => {
-          if (g && g.id) gamesMap.set(String(g.id), g);
-        });
-      }
-      if (Array.isArray(incoming.games)) {
-        incoming.games.forEach((g: any) => {
-          if (g && g.id) gamesMap.set(String(g.id), { ...(gamesMap.get(String(g.id)) || {}), ...g });
-        });
-      }
+      const deletedUserIds = new Set<string>([
+        ...(Array.isArray(existing.deletedUserIds) ? existing.deletedUserIds.map(String) : []),
+        ...(Array.isArray(incoming.deletedUserIds) ? incoming.deletedUserIds.map(String) : []),
+      ]);
 
-      // Merge users by uid/id/email
+      const isSyntheticUserRecord = (u: any) => {
+        if (!u) return true;
+        const uid = String(u.uid || u.id || "").trim();
+        return (
+          uid === "admin-teacher-jan" ||
+          uid === "user-dang-ngoc-bich" ||
+          deletedUserIds.has(uid)
+        );
+      };
+
+      const getTimeMs = (val: any): number => {
+        if (!val) return 0;
+        if (val.seconds) return val.seconds * 1000;
+        if (typeof val === "number") return val;
+        if (typeof val === "string") {
+          const p = new Date(val).getTime();
+          return isNaN(p) ? 0 : p;
+        }
+        return 0;
+      };
+
+      const deletedGameIds = new Set<string>([
+        "lbwoT7kdbBzxdxZF85nk",
+        ...(Array.isArray(existing.deletedGameIds) ? existing.deletedGameIds.map(String) : []),
+        ...(Array.isArray(incoming.deletedGameIds) ? incoming.deletedGameIds.map(String) : []),
+      ]);
+
+      const isInvalidGameRecord = (g: any) => {
+        if (!g || !g.id) return true;
+        const id = String(g.id).trim();
+        if (id.startsWith("comm-") || id.startsWith("sample-") || deletedGameIds.has(id)) {
+          return true;
+        }
+        return false;
+      };
+
+      const isLocalOnlyGameId = (id: string) =>
+        id.startsWith("local-") ||
+        id.startsWith("game-") ||
+        id.startsWith("slide-game-") ||
+        id.startsWith("yoga-") ||
+        id.startsWith("pq-");
+
+      // Merge users by uid/id/email without ever overwriting a valid lastLoginAt or photoURL with null
       const usersMap = new Map<string, any>();
       if (Array.isArray(existing.users)) {
         existing.users.forEach((u: any) => {
+          if (isSyntheticUserRecord(u)) return;
           const key = String(u?.uid || u?.id || u?.email || "");
-          if (key) usersMap.set(key, u);
+          if (key && !deletedUserIds.has(key)) usersMap.set(key, u);
         });
       }
       if (Array.isArray(incoming.users)) {
         incoming.users.forEach((u: any) => {
+          if (isSyntheticUserRecord(u)) return;
           const key = String(u?.uid || u?.id || u?.email || "");
-          if (key) usersMap.set(key, { ...(usersMap.get(key) || {}), ...u });
+          if (!key || deletedUserIds.has(key)) return;
+          const prev = usersMap.get(key) || {};
+          const bestLogin = Math.max(getTimeMs(prev.lastLoginAt), getTimeMs(u.lastLoginAt));
+          usersMap.set(key, {
+            ...prev,
+            ...u,
+            photoURL: u.photoURL || prev.photoURL || null,
+            lastLoginAt: bestLogin > 0 ? bestLogin : prev.lastLoginAt || u.lastLoginAt || Date.now(),
+          });
+        });
+      }
+
+      // Merge games by id and enrich with creatorEmail/creatorName
+      const gamesMap = new Map<string, any>();
+      if (Array.isArray(existing.games)) {
+        existing.games.forEach((g: any) => {
+          if (isInvalidGameRecord(g)) return;
+          const id = String(g.id);
+          if (incoming.replaceGames && !isLocalOnlyGameId(id)) return;
+          gamesMap.set(id, g);
+        });
+      }
+      if (Array.isArray(incoming.games)) {
+        incoming.games.forEach((g: any) => {
+          if (isInvalidGameRecord(g)) return;
+          const id = String(g.id);
+          const prev = gamesMap.get(id) || {};
+          const combined = { ...prev, ...g };
+          const owner = combined.userId ? usersMap.get(String(combined.userId)) : null;
+          if (owner) {
+            combined.creatorEmail = combined.creatorEmail || owner.email || "";
+            combined.creatorName = combined.creatorName || owner.displayName || "";
+          }
+          gamesMap.set(id, combined);
         });
       }
 
       // Merge activities by id
       const actsMap = new Map<string, any>();
+      const addAct = (a: any) => {
+        if (!a || !a.id) return;
+        const gid = String(a.gameId || "");
+        if (gid && (gid.startsWith("comm-") || gid.startsWith("sample-") || deletedGameIds.has(gid))) return;
+        const owner = a.userId ? usersMap.get(String(a.userId)) : null;
+        if (owner && String(a.userId) !== "wnxUHR2dywQqrTmD6LE5LPamkQI2") {
+          actsMap.set(String(a.id), {
+            ...a,
+            userEmail: owner.email || a.userEmail,
+            userName: owner.displayName || a.userName,
+          });
+        } else {
+          actsMap.set(String(a.id), a);
+        }
+      };
       if (Array.isArray(existing.activities)) {
-        existing.activities.forEach((a: any) => {
-          if (a && a.id) actsMap.set(String(a.id), a);
-        });
+        existing.activities.forEach(addAct);
       }
       if (Array.isArray(incoming.activities)) {
-        incoming.activities.forEach((a: any) => {
-          if (a && a.id) actsMap.set(String(a.id), a);
-        });
+        incoming.activities.forEach(addAct);
       }
 
       const merged = {
         ...existing,
         games: Array.from(gamesMap.values()),
-        users: Array.from(usersMap.values()),
+        users: Array.from(usersMap.values()).sort(
+          (a: any, b: any) => getTimeMs(b.lastLoginAt) - getTimeMs(a.lastLoginAt)
+        ),
         activities: Array.from(actsMap.values()).slice(0, 300),
+        deletedGameIds: Array.from(deletedGameIds),
+        deletedUserIds: Array.from(deletedUserIds),
         pageVisits: Math.max(
           Number(existing.pageVisits) || 0,
           Number(incoming.pageVisits) || 0,

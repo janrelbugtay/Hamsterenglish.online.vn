@@ -23,6 +23,8 @@ import {
   setCachedPageVisits,
   syncWithServerPlatformCache,
   isGameOwnedByUser,
+  getUserCreatedGames,
+  markUserDeleted,
 } from '../utils/platformCache';
 
 // Helper to safely format last login timestamps
@@ -462,13 +464,7 @@ const DashboardOverview = ({
               {users.slice(0, 10).map((user: any) => {
                 const threat = examineUserThreat(user);
                 const uid = user.uid || user.id;
-                const email = (user.email || '').toLowerCase().trim();
-                const userCreatedGames = games.filter((g: any) => {
-                  if (isGameOwnedByUser(g, user)) return true;
-                  if (g.userId && (g.userId === uid || g.userId === user.id)) return true;
-                  if (email && email !== 'user' && email !== 'guest' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
-                  return false;
-                });
+                const userCreatedGames = getUserCreatedGames(user, games, activities);
 
                 return (
                   <tr 
@@ -595,7 +591,7 @@ const DashboardOverview = ({
 };
 
 // --- USERS MANAGEMENT WITH AUTOMATED THREAT ENGINE & ADMIN DELETION ---
-const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', games = [], onInspectUserActivity }: any) => {
+const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', games = [], activities = [], onInspectUserActivity }: any) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'threats' | 'suspicious' | 'safe' | 'guests'>(initialFilter);
   const [isScanning, setIsScanning] = useState(false);
@@ -619,13 +615,14 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Analyze all users with the threat engine
+  // Analyze all users with the threat engine and memoize their created games once
   const analyzedUsers = useMemo(() => {
     return users.map((u: any) => ({
       ...u,
-      _threat: examineUserThreat(u)
+      _threat: examineUserThreat(u),
+      _createdGames: getUserCreatedGames(u, games, activities),
     }));
-  }, [users]);
+  }, [users, games, activities]);
 
   // Threat categorizations
   const threatCategories = useMemo(() => {
@@ -671,11 +668,24 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
 
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, 'users', uid));
+      markUserDeleted(uid);
+      await deleteDoc(doc(db, 'users', uid)).catch(() => {});
+      try {
+        const cached = JSON.parse(localStorage.getItem('hamster_cached_admin_users_v2') || '[]');
+        localStorage.setItem(
+          'hamster_cached_admin_users_v2',
+          JSON.stringify(cached.filter((u: any) => (u?.uid || u?.id) !== uid))
+        );
+      } catch {}
+      fetch('/api/platform-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletedUserIds: [uid] }),
+      }).catch(() => {});
       showToast(`User ${email} deleted successfully.`, 'success');
       setUserToDelete(null);
-      // Remove from selection if present
       setSelectedUserIds(prev => prev.filter(id => id !== uid));
+      if (onSync) onSync();
     } catch (error) {
       console.error('Error deleting user:', error);
       showToast('Failed to delete user. Please check permissions.', 'error');
@@ -689,18 +699,37 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
     if (selectedUserIds.length === 0) return;
     setIsDeleting(true);
     let deletedCount = 0;
+    const deletedIds: string[] = [];
     try {
       for (const uid of selectedUserIds) {
         const target = users.find((u: any) => (u.uid || u.id) === uid);
         if (target && target.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase()) {
           continue; // Protected
         }
-        await deleteDoc(doc(db, 'users', uid));
+        markUserDeleted(uid);
+        await deleteDoc(doc(db, 'users', uid)).catch(() => {});
+        deletedIds.push(uid);
         deletedCount++;
+      }
+      if (deletedIds.length > 0) {
+        try {
+          const delSet = new Set(deletedIds);
+          const cached = JSON.parse(localStorage.getItem('hamster_cached_admin_users_v2') || '[]');
+          localStorage.setItem(
+            'hamster_cached_admin_users_v2',
+            JSON.stringify(cached.filter((u: any) => !delSet.has(u?.uid || u?.id)))
+          );
+        } catch {}
+        fetch('/api/platform-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deletedUserIds: deletedIds }),
+        }).catch(() => {});
       }
       showToast(`Successfully deleted ${deletedCount} user account(s).`, 'success');
       setSelectedUserIds([]);
       setShowBatchDeleteModal(false);
+      if (onSync) onSync();
     } catch (error) {
       console.error('Error in batch deletion:', error);
       showToast('Error during batch deletion. Some accounts may remain.', 'error');
@@ -1055,11 +1084,7 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
                 const uid = user.uid || user.id;
                 const isSelected = selectedUserIds.includes(uid);
                 const isSuperAdmin = threat.isSuperAdmin;
-                const userCreatedGames = games.filter((g: any) => {
-                  if (g.userId && (g.userId === uid || g.userId === user.id)) return true;
-                  if (user.email && user.email !== 'User' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
-                  return false;
-                });
+                const userCreatedGames = user._createdGames || [];
 
                 return (
                   <tr 
@@ -1532,6 +1557,16 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
   const [pageVisits, setPageVisits] = useState<number>(() => getCachedPageVisits());
 
+  // Keep refs to latest games and activities so real-time onSnapshot listeners never read stale state
+  const gamesRef = React.useRef<any[]>(games);
+  const activitiesRef = React.useRef<UserActivityEvent[]>(activities);
+  useEffect(() => {
+    gamesRef.current = games;
+  }, [games]);
+  useEffect(() => {
+    activitiesRef.current = activities;
+  }, [activities]);
+
   // Sync users, games, and activities logic
   const handleSyncUsers = async () => {
     setIsSyncing(true);
@@ -1571,21 +1606,32 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       ]);
 
       const fetchedUsers: any[] = [];
-      usersSnap.forEach((doc: any) => {
-        fetchedUsers.push({ id: doc.id, ...doc.data() });
+      usersSnap.forEach((docSnap: any) => {
+        const data = docSnap.data();
+        fetchedUsers.push({
+          id: docSnap.id,
+          ...data,
+          // If serverTimestamp() in memoryLocalCache hasn't resolved yet, preserve current time for currentUser
+          lastLoginAt:
+            data.lastLoginAt ||
+            (currentUser && docSnap.id === currentUser.uid ? Date.now() : null),
+        });
       });
 
       const fetchedGames: any[] = [];
-      gamesSnap.forEach((doc: any) => {
-        fetchedGames.push({ id: doc.id, ...doc.data() });
+      gamesSnap.forEach((docSnap: any) => {
+        fetchedGames.push({ id: docSnap.id, ...docSnap.data() });
       });
 
       const fetchedActs: any[] = [];
-      actSnap.forEach((doc: any) => {
-        fetchedActs.push({ id: doc.id, ...doc.data() });
+      actSnap.forEach((docSnap: any) => {
+        fetchedActs.push({ id: docSnap.id, ...docSnap.data() });
       });
 
-      const mergedGames = mergeAdminGames(fetchedGames, currentUser);
+      const hasAuthoritativeGames = fetchedGames.length > 0;
+      const mergedGames = mergeAdminGames(fetchedGames, currentUser, {
+        replaceCloudCache: hasAuthoritativeGames,
+      });
       const mergedActs = mergeAdminActivities(fetchedActs, mergedGames);
       const mergedUsers = mergePlatformUsers(fetchedUsers, mergedGames, mergedActs, currentUser);
 
@@ -1598,12 +1644,23 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
         users: mergedUsers,
         activities: mergedActs,
         pageVisits,
+        replaceGames: hasAuthoritativeGames,
       });
 
       if (serverCache) {
-        const finalGames = mergeAdminGames([...mergedGames, ...(serverCache.games || [])], currentUser);
-        const finalActs = mergeAdminActivities([...mergedActs, ...(serverCache.activities || [])], finalGames);
-        const finalUsers = mergePlatformUsers([...mergedUsers, ...(serverCache.users || [])], finalGames, finalActs, currentUser);
+        const finalGames = hasAuthoritativeGames
+          ? mergedGames
+          : mergeAdminGames([...mergedGames, ...(serverCache.games || [])], currentUser);
+        const finalActs = mergeAdminActivities(
+          [...mergedActs, ...(serverCache.activities || [])],
+          finalGames
+        );
+        const finalUsers = mergePlatformUsers(
+          [...mergedUsers, ...(serverCache.users || [])],
+          finalGames,
+          finalActs,
+          currentUser
+        );
         setGames(finalGames);
         setActivities(finalActs);
         setUsers(finalUsers);
@@ -1642,7 +1699,9 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       activities: initialActs,
     }).then((serverData) => {
       if (serverData) {
-        const g = mergeAdminGames(serverData.games || [], currentUser);
+        const g = mergeAdminGames(serverData.games || [], currentUser, {
+          replaceCloudCache: Array.isArray(serverData.games) && serverData.games.length > 0,
+        });
         const a = mergeAdminActivities(serverData.activities || [], g);
         const u = mergePlatformUsers(serverData.users || [], g, a, currentUser);
         setGames(g);
@@ -1658,15 +1717,29 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const usersData: any[] = [];
-      snapshot.forEach((doc) => {
-        usersData.push({ id: doc.id, ...doc.data() });
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        usersData.push({
+          id: docSnap.id,
+          ...data,
+          lastLoginAt:
+            data.lastLoginAt ||
+            (currentUser && docSnap.id === currentUser.uid ? Date.now() : null),
+        });
       });
 
-      setUsers((prev) => mergePlatformUsers([...prev, ...usersData], games, activities, currentUser));
+      setUsers((prev) =>
+        mergePlatformUsers(
+          usersData.length > 0 ? usersData : prev,
+          gamesRef.current,
+          activitiesRef.current,
+          currentUser
+        )
+      );
       setLoading(false);
     }, (error) => {
       console.warn("Notice fetching users: ", error?.message || error);
-      setUsers((prev) => mergePlatformUsers(prev, games, activities, currentUser));
+      setUsers((prev) => mergePlatformUsers(prev, gamesRef.current, activitiesRef.current, currentUser));
       setLoading(false);
     });
 
@@ -1677,14 +1750,17 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'mysteryBoxGames'), (snapshot) => {
       const gamesData: any[] = [];
-      snapshot.forEach((doc) => {
-        gamesData.push({ id: doc.id, ...doc.data() });
+      snapshot.forEach((docSnap) => {
+        gamesData.push({ id: docSnap.id, ...docSnap.data() });
       });
-      setGames((prev) => {
-        const merged = mergeAdminGames([...prev, ...gamesData], currentUser);
-        setUsers((prevUsers) => mergePlatformUsers(prevUsers, merged, activities, currentUser));
-        return merged;
+      const merged = mergeAdminGames(gamesData, currentUser, {
+        replaceCloudCache: gamesData.length > 0,
       });
+      gamesRef.current = merged;
+      setGames(merged);
+      setUsers((prevUsers) =>
+        mergePlatformUsers(prevUsers, merged, activitiesRef.current, currentUser)
+      );
     }, (error) => {
       console.warn("Notice fetching mysteryBoxGames: ", error?.message || error);
       setGames((prev) => mergeAdminGames(prev, currentUser));
@@ -1698,18 +1774,21 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
     if (!currentUser) return;
     const unsubscribe = onSnapshot(collection(db, 'userActivities'), (snapshot) => {
       const actData: any[] = [];
-      snapshot.forEach((doc) => {
-        actData.push({ id: doc.id, ...doc.data() });
+      snapshot.forEach((docSnap) => {
+        actData.push({ id: docSnap.id, ...docSnap.data() });
       });
 
       setActivities((prev) => {
-        const merged = mergeAdminActivities([...prev, ...actData], games);
-        setUsers((prevUsers) => mergePlatformUsers(prevUsers, games, merged, currentUser));
+        const merged = mergeAdminActivities([...prev, ...actData], gamesRef.current);
+        activitiesRef.current = merged;
+        setUsers((prevUsers) =>
+          mergePlatformUsers(prevUsers, gamesRef.current, merged, currentUser)
+        );
         return merged;
       });
     }, (error) => {
       console.warn("Notice fetching userActivities: ", error?.message || error);
-      setActivities((prev) => mergeAdminActivities(prev, games));
+      setActivities((prev) => mergeAdminActivities(prev, gamesRef.current));
     });
 
     return () => unsubscribe();
@@ -1837,7 +1916,7 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-slate-100/90 dark:bg-slate-950 font-sans overflow-hidden text-slate-800 dark:text-slate-200 -mx-4 -my-4 md:-mx-8 md:-my-8" style={{ margin: '-2rem' }}>
+    <div className="flex h-full w-full bg-slate-100/90 dark:bg-slate-950 font-sans overflow-hidden text-slate-800 dark:text-slate-200">
       
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
@@ -2020,6 +2099,7 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
                   isSyncing={isSyncing}
                   initialFilter={usersFilter}
                   games={games}
+                  activities={activities}
                   onInspectUserActivity={(u: any) => setInspectingUserActivity(u)}
                 />
               )}

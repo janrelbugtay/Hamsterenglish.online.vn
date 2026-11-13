@@ -503,40 +503,36 @@ function FeaturedGamesSection({
 
 function GameCard({
   game,
-  delay,
   onViewChange,
 }: {
   key?: string;
   game: Game & { icon?: string };
-  delay: number;
+  delay?: number;
   onViewChange?: (view: ViewState, data?: any) => void;
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.3, delay: Math.min(delay, 0.3) }}
+    <div
       onClick={() => onViewChange && onViewChange(game.id as ViewState)}
-      className="w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden shadow-[0_22px_44px_-12px_rgba(15,23,42,0.36),0_10px_20px_-8px_rgba(15,23,42,0.22)] group hover:-translate-y-2.5 hover:scale-[1.02] hover:shadow-[0_32px_60px_-12px_rgba(15,23,42,0.45)] active:translate-y-0.5 transition-all duration-300 cursor-pointer select-none"
+      className="w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden shadow-lg hover:shadow-2xl group hover:-translate-y-2 transition-transform duration-200 cursor-pointer select-none"
     >
       {game.imageUrl ? (
         <>
           <img
             src={game.imageUrl}
             alt={game.title}
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             onError={(e: any) => {
               if (game.id === 'hamster-paintball') {
                 e.currentTarget.src = '/images/hamster-paintball-card.png';
               }
             }}
-            className="w-full h-full object-cover scale-[1.01] group-hover:scale-[1.06] transition-transform duration-300"
+            className="w-full h-full object-cover scale-[1.01] group-hover:scale-[1.05] transition-transform duration-200"
           />
-          {/* Subtle 3D model surface lighting without any enclosing frame/border */}
-          <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),inset_0_-8px_16px_rgba(15,23,42,0.25)]" />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-            <div className="w-16 h-16 bg-white/95 backdrop-blur-md rounded-full shadow-[0_12px_28px_rgba(15,23,42,0.35)] flex items-center justify-center text-slate-950 transform scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-200">
+          <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] ring-1 ring-inset ring-white/25" />
+          <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">
+            <div className="w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center text-slate-950 transform scale-90 group-hover:scale-100 transition-transform duration-150">
               <svg className="w-8 h-8 ml-1 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
             </div>
           </div>
@@ -549,15 +545,15 @@ function GameCard({
           )}
         >
           {game.icon?.startsWith("http") ? (
-            <img src={game.icon} referrerPolicy="no-referrer" alt={game.title} className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-300" />
+            <img src={game.icon} loading="lazy" decoding="async" referrerPolicy="no-referrer" alt={game.title} className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-200" />
           ) : (
-            <span className="text-7xl drop-shadow-md group-hover:scale-110 transition-transform duration-300">
+            <span className="text-7xl group-hover:scale-110 transition-transform duration-200">
               {game.icon}
             </span>
           )}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }
 

@@ -6,7 +6,7 @@ import {
   ExternalLink, UserCheck, Flame, User, RefreshCw
 } from 'lucide-react';
 import { getGameTypeMeta, formatRelativeTime, UserActivityEvent } from '../utils/activityTracker';
-import { isGameOwnedByUser, isRegisteredUser } from '../utils/platformCache';
+import { isGameOwnedByUser, isRegisteredUser, getUserCreatedGames } from '../utils/platformCache';
 
 interface AdminActivityGamesViewProps {
   users: any[];
@@ -26,11 +26,7 @@ export function AdminActivityGamesView({
   const [viewMode, setViewMode] = useState<'by-user' | 'all-games' | 'live-feed'>('by-user');
   const [selectedUserId, setSelectedUserId] = useState<string>(() => {
     // Default to first user who has games or first user
-    const withGames = users.find(u => {
-      const uid = u.uid || u.id;
-      const email = (u.email || '').toLowerCase().trim();
-      return games.some(g => isGameOwnedByUser(g, u) || (g.userId === uid || g.userId === u.id) || (email && email !== 'user' && email !== 'guest' && g.creatorEmail?.toLowerCase().trim() === email));
-    });
+    const withGames = users.find(u => getUserCreatedGames(u, games, activities).length > 0);
     return withGames?.uid || withGames?.id || users[0]?.uid || users[0]?.id || '';
   });
 
@@ -40,22 +36,16 @@ export function AdminActivityGamesView({
   const [selectedGameType, setSelectedGameType] = useState<string>('all');
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
 
-  // Map each user to their created games
+  // Map each user to their created games (including public, private, local computer saves, and activity-tracked games)
   const userGamesMap = useMemo(() => {
     const map = new Map<string, any[]>();
     users.forEach(u => {
       const uid = u.uid || u.id;
-      const email = (u.email || '').toLowerCase().trim();
-      const userCreatedGames = games.filter(g => {
-        if (isGameOwnedByUser(g, u)) return true;
-        if (g.userId && (g.userId === uid || g.userId === u.id)) return true;
-        if (email && email !== 'user' && email !== 'guest' && g.creatorEmail && g.creatorEmail.toLowerCase().trim() === email) return true;
-        return false;
-      });
+      const userCreatedGames = getUserCreatedGames(u, games, activities);
       map.set(uid, userCreatedGames);
     });
     return map;
-  }, [users, games]);
+  }, [users, games, activities]);
 
   // Overall statistics
   const stats = useMemo(() => {

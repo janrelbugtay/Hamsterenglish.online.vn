@@ -307,8 +307,11 @@ export function PublicDashboard({
       const merged = mergePublicGames(firestorePublic, user);
       setGames(merged);
 
-      // Sync with server cache in background
-      syncWithServerPlatformCache({ games: merged }).then((serverData) => {
+      // Sync with server cache in background (excluding fallback comm-* games)
+      const realPublicGames = merged.filter(
+        (g: any) => g && g.id && !String(g.id).startsWith('comm-') && !String(g.id).startsWith('sample-')
+      );
+      syncWithServerPlatformCache({ games: realPublicGames }).then((serverData) => {
         if (serverData && Array.isArray(serverData.games) && serverData.games.length > 0) {
           setGames((prev) => mergePublicGames([...prev, ...serverData.games], user));
         }
@@ -938,7 +941,7 @@ export function PublicDashboard({
             return (
               <div
                 key={game.id}
-                className="group bg-white dark:bg-slate-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border-2 border-slate-100 dark:border-slate-700 flex flex-col cursor-pointer relative"
+                className="perf-card group bg-white dark:bg-slate-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-shadow duration-200 border-2 border-slate-100 dark:border-slate-700 flex flex-col cursor-pointer relative"
                 onClick={() => {
                   if (isMultiModeCompatible) {
                     setModeModalGame(game);
@@ -966,8 +969,8 @@ export function PublicDashboard({
                    </div>
 
                    {/* Play overlay */}
-                   <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300 z-30">
-                     <div className="w-16 h-16 bg-brand-purple text-white rounded-full flex items-center justify-center transform scale-50 group-hover:scale-100 transition-transform duration-300 shadow-xl">
+                   <div className="absolute inset-0 bg-slate-900/45 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200 z-30">
+                     <div className="w-16 h-16 bg-brand-purple text-white rounded-full flex items-center justify-center transform scale-75 group-hover:scale-100 transition-transform duration-200 shadow-lg">
                        <Play className="ml-1" size={28} />
                      </div>
                    </div>

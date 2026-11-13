@@ -60,6 +60,7 @@ import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { saveAndSyncUserGame } from '../utils/platformCache';
 import {
   collection,
   query,
@@ -2102,21 +2103,29 @@ export default function HamsterPaintball({
           })
         );
 
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, 'mysteryBoxGames', String(initialGame.id)), gameToSave);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-            } else {
-              throw err;
+        let savedId = isOwnExistingGame ? String(initialGame.id) : `local-paintball-${Date.now()}`;
+        try {
+          if (isOwnExistingGame) {
+            try {
+              await updateDoc(doc(db, 'mysteryBoxGames', String(initialGame.id)), gameToSave);
+            } catch (err: any) {
+              if (err?.code === 'not-found') {
+                const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
+                savedId = docRef.id;
+              } else {
+                throw err;
+              }
             }
+          } else {
+            const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
+            savedId = docRef.id;
           }
-        } else {
-          await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
+        } catch (cloudErr) {
+          console.warn('Could not save paintball quiz to mysteryBoxGames:', cloudErr);
         }
+        saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
       } catch (e) {
-        console.warn('Could not save paintball quiz to mysteryBoxGames:', e);
+        console.warn('Could not save paintball quiz:', e);
       }
     }
 

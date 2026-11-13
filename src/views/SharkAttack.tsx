@@ -28,6 +28,7 @@ import { db } from '../lib/firebase';
 import { collection, addDoc, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaPickerModal } from '../components/MediaPickerModal';
+import { saveAndSyncUserGame } from '../utils/platformCache';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { FullscreenButton } from '../components/FullscreenButton';
 import { GameModeModal } from '../components/GameModeModal';
@@ -1815,19 +1816,27 @@ export function SharkAttack({
         })
       );
 
-      if (isOwnExistingGame) {
-        try {
-          await updateDoc(doc(db, 'mysteryBoxGames', initialGame.id), gameToSave);
-        } catch (err: any) {
-          if (err?.code === 'not-found') {
-            await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-          } else {
-            throw err;
+      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-shark-attack-${Date.now()}`;
+      try {
+        if (isOwnExistingGame) {
+          try {
+            await updateDoc(doc(db, 'mysteryBoxGames', initialGame.id), gameToSave);
+          } catch (err: any) {
+            if (err?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
+              savedId = docRef.id;
+            } else {
+              throw err;
+            }
           }
+        } else {
+          const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
+          savedId = docRef.id;
         }
-      } else {
-        await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
+      } catch (cloudErr) {
+        console.warn('Firestore save fallback to local storage:', cloudErr);
       }
+      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
       onViewChange('games');
     } catch (e: any) {
       console.error('Error saving game', e);

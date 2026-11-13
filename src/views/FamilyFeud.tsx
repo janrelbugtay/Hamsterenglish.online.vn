@@ -7,6 +7,7 @@ import { collection, addDoc, updateDoc, doc, getDocs, query, where } from 'fireb
 import { Plus, Folder } from 'lucide-react';
 import { fetchAllAvailableFolders, mergeAllFolders } from '../lib/gameStore';
 import { UnifiedGameSetup } from '../components/UnifiedGameSetup';
+import { saveAndSyncUserGame } from '../utils/platformCache';
 
 const GAME_DATA = [
   {
@@ -550,19 +551,27 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
         isPublic: isPublicBool,
       }));
 
-      if (isOwnExistingGame) {
-        try {
-          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-        } catch (err: any) {
-          if (err?.code === 'not-found') {
-            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          } else {
-            throw err;
+      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-family-feud-${Date.now()}`;
+      try {
+        if (isOwnExistingGame) {
+          try {
+            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+          } catch (err: any) {
+            if (err?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+              savedId = docRef.id;
+            } else {
+              throw err;
+            }
           }
+        } else {
+          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          savedId = docRef.id;
         }
-      } else {
-        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+      } catch (cloudErr) {
+        console.warn("Firestore save fallback to local storage:", cloudErr);
       }
+      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);

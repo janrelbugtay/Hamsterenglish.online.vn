@@ -11,6 +11,7 @@ import { MediaPickerModal } from "../components/MediaPickerModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput } from "../components/SetupSmartControls";
 import { AnswerContentMode, formatOptionContent, parseOptionContent } from "../utils/mediaAndPresets";
 import { fetchAllAvailableFolders, mergeAllFolders } from "../lib/gameStore";
+import { saveAndSyncUserGame } from "../utils/platformCache";
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'study';
 
@@ -156,19 +157,27 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
         isPublic: isPublicBool,
       }));
 
-      if (isOwnExistingGame) {
-        try {
-          await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-        } catch (err: any) {
-          if (err?.code === 'not-found') {
-            await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          } else {
-            throw err;
+      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-bubble-sentence-${Date.now()}`;
+      try {
+        if (isOwnExistingGame) {
+          try {
+            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
+          } catch (err: any) {
+            if (err?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+              savedId = docRef.id;
+            } else {
+              throw err;
+            }
           }
+        } else {
+          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+          savedId = docRef.id;
         }
-      } else {
-        await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
+      } catch (cloudErr) {
+        console.warn("Firestore save fallback to local storage:", cloudErr);
       }
+      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);

@@ -34,6 +34,16 @@ import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '..
 import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
 import { logUserActivity } from '../utils/activityTracker';
 import { getSavedGames, mergeAllFolders, createUnifiedFolder } from '../lib/gameStore';
+import {
+  getAllLocalUserGames,
+  getDeletedGameIds,
+  isGameOwnedByUser,
+  isLocalOnlyGameId,
+  isSyntheticOrSampleGame,
+  markGameDeleted,
+  saveAndSyncUserGame,
+  syncLocalComputerGamesForUser,
+} from '../utils/platformCache';
 
 const mosquitoSlapCardImg = '/images/mosquito-slap-card.jpg';
 const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
@@ -275,31 +285,59 @@ export const GamesLibrary = ({
         userFolders.push({ id: doc.id, ...doc.data() });
       });
 
-      if (userGames.length > 0) {
-        setGames(userGames);
-        try { localStorage.setItem('hamster_cached_user_games', JSON.stringify(userGames)); } catch (e) {}
+      // Merge cloud games with any privately saved local games on the user's computer (without resurrecting deleted cloud games)
+      const deletedIds = getDeletedGameIds();
+      const cloudSucceeded = userGames.length > 0;
+      const localComputerGames = getAllLocalUserGames(user).filter((lg: any) => {
+        if (!lg || !lg.id || isSyntheticOrSampleGame(lg) || deletedIds.has(String(lg.id))) return false;
+        if (cloudSucceeded && !isLocalOnlyGameId(String(lg.id))) return false;
+        return !lg.userId || isGameOwnedByUser(lg, user);
+      });
+      const mergedById = new Map<string, any>();
+      localComputerGames.forEach((lg: any) => {
+        if (lg && lg.id) {
+          mergedById.set(String(lg.id), {
+            ...lg,
+            userId: user?.uid || lg.userId,
+            creatorEmail: lg.creatorEmail || user?.email || '',
+            creatorName:
+              lg.creatorName ||
+              user?.displayName ||
+              (user?.email ? user.email.split('@')[0] : 'Teacher'),
+          });
+        }
+      });
+      userGames.forEach((cg: any) => {
+        if (cg && cg.id && !deletedIds.has(String(cg.id)) && !isSyntheticOrSampleGame(cg)) {
+          mergedById.set(String(cg.id), {
+            ...(mergedById.get(String(cg.id)) || {}),
+            ...cg,
+            userId: cg.userId || user?.uid,
+            creatorEmail: cg.creatorEmail || user?.email || '',
+            creatorName:
+              cg.creatorName ||
+              user?.displayName ||
+              (user?.email ? user.email.split('@')[0] : 'Teacher'),
+          });
+        }
+      });
+
+      const finalUserGames = Array.from(mergedById.values());
+      if (finalUserGames.length > 0) {
+        setGames(finalUserGames);
+        try {
+          localStorage.setItem('hamster_cached_user_games', JSON.stringify(finalUserGames));
+        } catch (e) {}
         fetch('/api/platform-cache', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ games: userGames }),
+          body: JSON.stringify({ games: finalUserGames }),
         }).catch(() => {});
-      } else {
-        try {
-          const cached = localStorage.getItem('hamster_cached_user_games');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            setGames(parsed);
-            fetch('/api/platform-cache', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ games: parsed }),
-            }).catch(() => {});
-          } else {
-            setGames(getSavedGames());
-          }
-        } catch (e) {
-          setGames(getSavedGames());
+        if (user) {
+          syncLocalComputerGamesForUser(user, db).catch(() => {});
         }
+      } else {
+        setGames(getSavedGames().filter((g: any) => !isSyntheticOrSampleGame(g) && !deletedIds.has(String(g.id))));
       }
 
       const mergedFolders = mergeAllFolders(userFolders);
@@ -310,8 +348,8 @@ export const GamesLibrary = ({
     } catch (error: any) {
       console.warn("Notice fetching library from cloud (using local cache):", error?.message || error);
       try {
-        const cached = localStorage.getItem('hamster_cached_user_games');
-        setGames(cached ? JSON.parse(cached) : getSavedGames());
+        const localGames = getAllLocalUserGames(user).filter((g: any) => isGameOwnedByUser(g, user));
+        setGames(localGames.length > 0 ? localGames : getSavedGames());
         setFolders(mergeAllFolders());
       } catch (e) {
         setGames(getSavedGames());
@@ -324,8 +362,9 @@ export const GamesLibrary = ({
 
   const confirmDelete = async (gameId: string) => {
     try {
+      markGameDeleted(gameId);
       await deleteDoc(doc(db, "mysteryBoxGames", gameId)).catch(() => {});
-      setGames(games.filter(g => g.id !== gameId));
+      setGames(prev => prev.filter(g => g.id !== gameId));
       setGameToDelete(null);
       setToastMsg("Game deleted.");
       setTimeout(() => setToastMsg(null), 2500);
@@ -488,26 +527,25 @@ export const GamesLibrary = ({
         name: `${game.name || game.topic || game.title || 'Game'} (Copy)`,
         title: `${game.title || game.name || game.topic || 'Game'} (Copy)`,
         userId: user?.uid,
+        creatorEmail: user?.email || game.creatorEmail || '',
+        creatorName:
+          user?.displayName ||
+          (user?.email ? user.email.split('@')[0] : game.creatorName || 'Teacher'),
         isPublic: false,
         createdAt: now,
         updatedAt: now,
       };
       delete newGame.id;
-      const docRef = await addDoc(collection(db, "mysteryBoxGames"), newGame);
-      setGames([...games, { id: docRef.id, ...newGame }]);
-      if (user) {
-        logUserActivity({
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.displayName || 'User',
-          userPhoto: user.photoURL || null,
-          action: 'create_game',
-          title: `Duplicated Game: "${newGame.name}"`,
-          gameTitle: newGame.name,
-          gameType: newGame.gameType,
-          details: `Created copy of ${newGame.gameType || 'game'} in My Games.`
-        });
+      const cleanNewGame = JSON.parse(JSON.stringify(newGame));
+      let savedId = `local-copy-${Date.now()}`;
+      try {
+        const docRef = await addDoc(collection(db, "mysteryBoxGames"), cleanNewGame);
+        savedId = docRef.id;
+      } catch (cloudErr) {
+        console.warn("Cloud duplicate fallback to local storage:", cloudErr);
       }
+      const synced = saveAndSyncUserGame({ id: savedId, ...cleanNewGame }, user);
+      setGames([synced || { id: savedId, ...cleanNewGame }, ...games]);
       setToastMsg("Game duplicated as private copy!");
       setTimeout(() => setToastMsg(null), 3000);
     } catch (error) {
@@ -1070,7 +1108,7 @@ export const GamesLibrary = ({
                           onViewChange((game.gameType as any) || "mystery-box", game);
                         }
                       }}
-                      className={`group bg-white dark:bg-slate-900 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.05)] hover:shadow-md transition-all duration-150 border border-slate-200/90 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500/60 flex flex-col relative cursor-pointer ${
+                      className={`perf-card group bg-white dark:bg-slate-900 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.05)] hover:shadow-md transition-shadow duration-150 border border-slate-200/90 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500/60 flex flex-col relative cursor-pointer ${
                         openMenuId === game.id ? 'z-50' : 'z-10'
                       }`}
                     >

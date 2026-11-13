@@ -596,6 +596,7 @@ export default function App() {
     "flashcards-match", "phonemic-master"
   ].includes(currentView);
   const isClass = currentView === "class-record" || currentView === "class-rewards";
+  const isAdminView = currentView === "admin-dashboard" && isAdmin;
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 font-sans text-slate-800 dark:text-slate-200 overflow-hidden">
@@ -664,9 +665,19 @@ export default function App() {
             />
           </div>
         )}
-        <main className={`flex-1 ${isLockedHomeworkLink || isGame ? "p-0 space-y-0 h-full flex flex-col overflow-y-auto" : isClass ? "p-2 md:p-3 space-y-0 overflow-y-auto" : "p-4 md:p-8 space-y-6 overflow-y-auto"}`}>
+        <main
+          className={`flex-1 custom-scrollbar ${
+            isAdminView
+              ? "p-0 space-y-0 h-full flex flex-col overflow-hidden"
+              : isLockedHomeworkLink || isGame
+              ? "p-0 space-y-0 h-full flex flex-col overflow-y-auto"
+              : isClass
+              ? "p-2 md:p-3 space-y-0 overflow-y-auto"
+              : "p-4 md:p-8 space-y-6 overflow-y-auto"
+          }`}
+        >
           {renderView()}
-          {!isLockedHomeworkLink && !isGame && !isClass && <Footer />}
+          {!isLockedHomeworkLink && !isGame && !isClass && !isAdminView && <Footer />}
         </main>
       </div>
     </div>

@@ -15,6 +15,7 @@ import {
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider, facebookProvider } from '../lib/firebase';
 import { logUserActivity } from '../utils/activityTracker';
+import { syncLocalComputerGamesForUser } from '../utils/platformCache';
 
 interface AuthContextType {
   user: User | null;
@@ -48,6 +49,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (currentUser) {
         setAuthError(null);
+        // Sync any privately saved local games on the user's computer to platform cache & cloud
+        syncLocalComputerGamesForUser(currentUser, db).catch(() => {});
+
         // Sync user profile in background without blocking rendering
         if (!currentUser.isAnonymous) {
           const userRef = doc(db, 'users', currentUser.uid);
