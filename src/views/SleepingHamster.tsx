@@ -29,6 +29,8 @@ type SleepState =
 
 type NoiseAlertMode = 'hamster' | 'beep' | 'shush' | 'none';
 
+type HabitatThemeId = 'midnight' | 'sakura' | 'forest' | 'sunrise' | 'ocean';
+
 interface CoatStyle {
   id: string;
   name: string;
@@ -36,6 +38,184 @@ interface CoatStyle {
   head: [string, string, string];
   swatch: string;
 }
+
+interface HabitatTheme {
+  id: HabitatThemeId;
+  name: string;
+  swatch: string;
+  pageBg: string;
+  panelBg: string;
+  tankBg: string;
+  capGradient: string;
+  rimTopGradient: string;
+  rimBottomGradient: string;
+  windowSky: [string, string];
+  windowFrame: string;
+  windowMullion: string;
+  wheelColors: [string, string, string, string]; // [light, mid, dark, hub]
+  bottleAccent: string;
+  bottleCap: string;
+  woodHouse: [string, string, string];
+  woodRoof: [string, string, string];
+  bowlBody: string;
+  bowlRim: string;
+  bowlStroke: string;
+  beddingBack: string;
+  beddingMid: string;
+  beddingGrad: [string, string, string];
+  puffColors: [string, string, string];
+  fairyColor: string;
+  fairyGlow: string;
+  dustColor: string;
+}
+
+const HABITAT_THEMES: HabitatTheme[] = [
+  {
+    id: 'midnight',
+    name: 'Midnight Starlight',
+    swatch: '#7c3aed',
+    pageBg: 'from-[#281658] via-[#150c30] to-[#0a051a]',
+    panelBg: 'bg-[#23144a]/90',
+    tankBg: '#160d32',
+    capGradient: 'linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%)',
+    rimTopGradient: 'linear-gradient(180deg, #b794f4 0%, #7c3aed 45%, #4c1d95 100%)',
+    rimBottomGradient: 'linear-gradient(180deg, #7c3aed 0%, #5b21b6 55%, #3b0764 100%)',
+    windowSky: ['#070416', '#1e1042'],
+    windowFrame: '#4c3285',
+    windowMullion: '#311d61',
+    wheelColors: ['#b794f4', '#805ad5', '#3b2370', '#c4b5fd'],
+    bottleAccent: '#7c3aed',
+    bottleCap: '#5b21b6',
+    woodHouse: ['#e8c396', '#c7955d', '#946534'],
+    woodRoof: ['#d4a068', '#a8733e', '#6e471f'],
+    bowlBody: '#84a955',
+    bowlRim: '#a3c572',
+    bowlStroke: '#536e2e',
+    beddingBack: '#b9a3ca',
+    beddingMid: '#d9c9e2',
+    beddingGrad: ['#fdf7f2', '#e8d8e6', '#ad94be'],
+    puffColors: ['#fffaf7', '#efe2f5', '#fef3c7'],
+    fairyColor: '#fde68a',
+    fairyGlow: 'rgba(253, 224, 71, 0.7)',
+    dustColor: 'rgba(216, 180, 254, 0.85)',
+  },
+  {
+    id: 'sakura',
+    name: 'Cozy Sakura',
+    swatch: '#ec4899',
+    pageBg: 'from-[#42183a] via-[#260e24] to-[#130612]',
+    panelBg: 'bg-[#381430]/90',
+    tankBg: '#240f22',
+    capGradient: 'linear-gradient(180deg, #db2777 0%, #831843 100%)',
+    rimTopGradient: 'linear-gradient(180deg, #f9a8d4 0%, #db2777 45%, #831843 100%)',
+    rimBottomGradient: 'linear-gradient(180deg, #db2777 0%, #9d174d 55%, #500724 100%)',
+    windowSky: ['#1b0a1c', '#4a193f'],
+    windowFrame: '#831843',
+    windowMullion: '#500724',
+    wheelColors: ['#f9a8d4', '#ec4899', '#831843', '#fbcfe8'],
+    bottleAccent: '#db2777',
+    bottleCap: '#9d174d',
+    woodHouse: ['#f3d5c0', '#d8a48f', '#a66e5c'],
+    woodRoof: ['#e5989b', '#b56576', '#6d3544'],
+    bowlBody: '#f472b6',
+    bowlRim: '#fbcfe8',
+    bowlStroke: '#9d174d',
+    beddingBack: '#d9b4c8',
+    beddingMid: '#f2d9e6',
+    beddingGrad: ['#fff5f8', '#f5d7e5', '#be8aa5'],
+    puffColors: ['#fff8fa', '#fce7f3', '#fef3c7'],
+    fairyColor: '#fbcfe8',
+    fairyGlow: 'rgba(244, 114, 182, 0.7)',
+    dustColor: 'rgba(249, 168, 212, 0.85)',
+  },
+  {
+    id: 'forest',
+    name: 'Enchanted Forest',
+    swatch: '#10b981',
+    pageBg: 'from-[#10382e] via-[#09211b] to-[#04110e]',
+    panelBg: 'bg-[#0e2d24]/90',
+    tankBg: '#0b221c',
+    capGradient: 'linear-gradient(180deg, #059669 0%, #064e3b 100%)',
+    rimTopGradient: 'linear-gradient(180deg, #6ee7b7 0%, #059669 45%, #064e3b 100%)',
+    rimBottomGradient: 'linear-gradient(180deg, #059669 0%, #047857 55%, #022c22 100%)',
+    windowSky: ['#03120e', '#0f3629'],
+    windowFrame: '#166534',
+    windowMullion: '#14532d',
+    wheelColors: ['#6ee7b7', '#10b981', '#064e3b', '#a7f3d0'],
+    bottleAccent: '#0d9488',
+    bottleCap: '#115e59',
+    woodHouse: ['#e3cca8', '#ba9665', '#7d5f37'],
+    woodRoof: ['#65a30d', '#3f6212', '#263d0b'],
+    bowlBody: '#d97706',
+    bowlRim: '#fbbf24',
+    bowlStroke: '#78350f',
+    beddingBack: '#a7c4b5',
+    beddingMid: '#d2e5db',
+    beddingGrad: ['#f7fbf8', '#d9ebe0', '#8bb09c'],
+    puffColors: ['#f8fcf9', '#dcfce7', '#fef9c3'],
+    fairyColor: '#bef264',
+    fairyGlow: 'rgba(190, 242, 100, 0.72)',
+    dustColor: 'rgba(167, 243, 208, 0.85)',
+  },
+  {
+    id: 'sunrise',
+    name: 'Golden Sunrise',
+    swatch: '#f59e0b',
+    pageBg: 'from-[#422118] via-[#281311] to-[#140908]',
+    panelBg: 'bg-[#361b15]/90',
+    tankBg: '#231312',
+    capGradient: 'linear-gradient(180deg, #d97706 0%, #78350f 100%)',
+    rimTopGradient: 'linear-gradient(180deg, #fcd34d 0%, #d97706 45%, #78350f 100%)',
+    rimBottomGradient: 'linear-gradient(180deg, #d97706 0%, #b45309 55%, #451a03 100%)',
+    windowSky: ['#3b1c2a', '#d97706'],
+    windowFrame: '#92400e',
+    windowMullion: '#78350f',
+    wheelColors: ['#fcd34d', '#f59e0b', '#78350f', '#fef08a'],
+    bottleAccent: '#ea580c',
+    bottleCap: '#9a3412',
+    woodHouse: ['#f5d0a9', '#d49a6a', '#9c6238'],
+    woodRoof: ['#ea580c', '#c2410c', '#7c2d12'],
+    bowlBody: '#0ea5e9',
+    bowlRim: '#7dd3fc',
+    bowlStroke: '#0369a1',
+    beddingBack: '#dfbfa9',
+    beddingMid: '#f4dfd0',
+    beddingGrad: ['#fffaf5', '#f6e1d2', '#c89e86'],
+    puffColors: ['#fffaf3', '#fef3c7', '#ffedd5'],
+    fairyColor: '#fde047',
+    fairyGlow: 'rgba(251, 191, 36, 0.75)',
+    dustColor: 'rgba(253, 230, 138, 0.85)',
+  },
+  {
+    id: 'ocean',
+    name: 'Ocean Dreamland',
+    swatch: '#0ea5e9',
+    pageBg: 'from-[#0e2d4d] via-[#091c33] to-[#040d1a]',
+    panelBg: 'bg-[#0e243d]/90',
+    tankBg: '#091b30',
+    capGradient: 'linear-gradient(180deg, #0284c7 0%, #075985 100%)',
+    rimTopGradient: 'linear-gradient(180deg, #7dd3fc 0%, #0284c7 45%, #075985 100%)',
+    rimBottomGradient: 'linear-gradient(180deg, #0284c7 0%, #0369a1 55%, #082f49 100%)',
+    windowSky: ['#031326', '#0c4a6e'],
+    windowFrame: '#0369a1',
+    windowMullion: '#075985',
+    wheelColors: ['#7dd3fc', '#0ea5e9', '#0c4a6e', '#bae6fd'],
+    bottleAccent: '#0284c7',
+    bottleCap: '#075985',
+    woodHouse: ['#e2d9c8', '#b8ad99', '#7d7362'],
+    woodRoof: ['#38bdf8', '#0284c7', '#075985'],
+    bowlBody: '#fb7185',
+    bowlRim: '#fecdd3',
+    bowlStroke: '#9f1239',
+    beddingBack: '#9ec4d8',
+    beddingMid: '#cce4f0',
+    beddingGrad: ['#f5fbff', '#d6ebf7', '#86aec7'],
+    puffColors: ['#f8fcff', '#e0f2fe', '#fef9c3'],
+    fairyColor: '#a5f3fc',
+    fairyGlow: 'rgba(103, 232, 249, 0.72)',
+    dustColor: 'rgba(186, 230, 253, 0.85)',
+  },
+];
 
 const COAT_STYLES: CoatStyle[] = [
   {
@@ -65,6 +245,20 @@ const COAT_STYLES: CoatStyle[] = [
     body: ['#d6bcfa', '#78350f', '#451a03'],
     head: ['#a78bfa', '#78350f', '#3f1d0b'],
     swatch: '#92400e',
+  },
+  {
+    id: 'panda',
+    name: 'Panda Oreo',
+    body: ['#71717a', '#3f3f46', '#18181b'],
+    head: ['#52525b', '#27272a', '#09090b'],
+    swatch: '#3f3f46',
+  },
+  {
+    id: 'peach',
+    name: 'Peach Apricot',
+    body: ['#fed7aa', '#fb923c', '#c2410c'],
+    head: ['#fdba74', '#f97316', '#9a3412'],
+    swatch: '#fb923c',
   },
 ];
 
@@ -201,10 +395,12 @@ export function SleepingHamster({
   const [isConnectingMic, setIsConnectingMic] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Right-Hand Controls: Default sensitivity = 50 (Normal), Default alert = Hamster Voice
+  // Right-Hand Controls, Theme & Coat Color
   const [sensitivityValue, setSensitivityValue] = useState(50);
   const [noiseAlert, setNoiseAlert] = useState<NoiseAlertMode>('hamster');
+  const [themeIndex, setThemeIndex] = useState(0);
   const [coatIndex, setCoatIndex] = useState(0);
+
   const [activeMusicTrack, setActiveMusicTrack] = useState<number | null>(null);
   const [pendingMusicTrack, setPendingMusicTrack] = useState<number | null>(null);
   const musicIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -267,6 +463,7 @@ export function SleepingHamster({
     isTimerPaused,
   };
 
+  const currentTheme = HABITAT_THEMES[themeIndex];
   const currentCoat = COAT_STYLES[coatIndex];
   const currentThreshold = getThresholdsForSensitivity(sensitivityValue);
   const activeUi = STATE_UI[sleepState];
@@ -624,7 +821,7 @@ export function SleepingHamster({
           rawInput = sustainedRef.current * 0.96;
         }
 
-        // Responsive attack (detects voices accurately in ~200ms) & smooth release (~0.8s)
+        // Responsive attack (detects voices accurately in ~200ms) & smooth calm-down release
         const attackRate = 0.13;
         const releaseRate = snap.isMicMuted ? 0.12 : 0.055;
 
@@ -640,11 +837,13 @@ export function SleepingHamster({
         // Hysteresis & hold window to prevent rapid state flickering / face glitching
         const curState = sleepStateRef.current;
         const elapsedSinceChange = nowPerf - lastStateChangeRef.current;
+        const awakeHoldFrames = 65;
+        const holdWindowMs = 950;
 
         if (curState === 'AWAKE') {
           if (energy < t.disturbed - 6) {
             recoveryHoldFramesRef.current += 1;
-            if (recoveryHoldFramesRef.current > 65) {
+            if (recoveryHoldFramesRef.current > awakeHoldFrames) {
               recoveryHoldFramesRef.current = 0;
               applySleepState('RECOVERING');
             }
@@ -668,12 +867,12 @@ export function SleepingHamster({
             nextState = 'LIGHT_SLEEP';
           } else {
             // De-escalation
-            const holdOk = elapsedSinceChange > 950;
+            const holdOk = elapsedSinceChange > holdWindowMs;
             if (curState === 'ALMOST_AWAKE' && holdOk && energy < t.almost - 6) {
               nextState = energy >= t.disturbed - 5 ? 'DISTURBED' : 'RECOVERING';
             } else if (curState === 'DISTURBED' && holdOk && energy < t.disturbed - 6) {
               nextState = 'RECOVERING';
-            } else if (curState === 'RECOVERING' && elapsedSinceChange > 1100) {
+            } else if (curState === 'RECOVERING' && elapsedSinceChange > holdWindowMs + 150) {
               nextState = energy >= t.light ? 'LIGHT_SLEEP' : 'DEEP_SLEEP';
             } else if (curState === 'LIGHT_SLEEP' && holdOk && energy < t.light - 5) {
               nextState = 'DEEP_SLEEP';
@@ -996,7 +1195,7 @@ export function SleepingHamster({
   return (
     <div
       ref={containerRef}
-      className="w-full h-full min-h-[calc(100vh-4.5rem)] flex flex-col bg-gradient-to-b from-[#2b195c] via-[#170d33] to-[#0d0720] text-[#e2d9f3] relative overflow-hidden select-none"
+      className={`w-full h-full min-h-[calc(100vh-4.5rem)] flex flex-col bg-gradient-to-b ${currentTheme.pageBg} text-[#e2d9f3] relative overflow-hidden select-none transition-colors duration-500`}
     >
       <style>{`
         @keyframes shEnclosureShake {
@@ -1061,6 +1260,10 @@ export function SleepingHamster({
           0% { transform: scale(0.85); opacity: 0.7; }
           100% { transform: scale(1.35); opacity: 0; }
         }
+        @keyframes shFairyGlow {
+          0%, 100% { opacity: 0.7; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1.12); }
+        }
         .sh-enclosure-shake { animation: shEnclosureShake 0.45s infinite; }
         .sh-body-calm { transform-origin: 500px 410px; animation: shBreatheCalm 4.2s ease-in-out infinite; }
         .sh-body-fast { transform-origin: 500px 410px; animation: shBreatheFast 1.4s ease-in-out infinite; }
@@ -1076,6 +1279,7 @@ export function SleepingHamster({
         .sh-particle { animation: shFloatParticle ease-out forwards; }
         .sh-dust { animation: shDustFloat ease-in-out infinite; }
         .sh-wave-pulse { transform-origin: 495px 345px; animation: shSoundWavePulse 1.4s ease-out infinite; }
+        .sh-fairy-bulb { animation: shFairyGlow 3.2s ease-in-out infinite; }
         @keyframes shStarDrainShake {
           0%, 100% { transform: scale(1) rotate(0deg); }
           25% { transform: scale(1.09) rotate(-6deg); }
@@ -1084,15 +1288,15 @@ export function SleepingHamster({
         .sh-star-drain { animation: shStarDrainShake 0.45s ease-in-out infinite; }
       `}</style>
 
-      {/* CLEAN TOP HEADER: Left navigation | Center Time (Reset + Timer) & Individual Stars */}
+      {/* CLEAN TOP HEADER: Left navigation & Themes/Options | Center Time & Individual Stars */}
       {hasStarted && (
         <header className="relative z-40 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 md:px-6 pt-3 pb-2 shrink-0">
-          {/* Left Navigation & Breed Switch */}
+          {/* Left Navigation, Theme & Coat Color Click Triggers */}
           <div className="flex items-center gap-2 justify-self-start">
             <button
               type="button"
               onClick={() => onViewChange('home')}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs sm:text-sm font-bold text-purple-100 transition cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs sm:text-sm font-bold text-white/90 transition cursor-pointer whitespace-nowrap shrink-0"
             >
               <ArrowLeft size={16} />
               <span className="hidden sm:inline">Back</span>
@@ -1100,22 +1304,36 @@ export function SleepingHamster({
 
             <button
               type="button"
-              onClick={() => setCoatIndex((i) => (i + 1) % COAT_STYLES.length)}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs sm:text-sm font-bold text-amber-200 transition cursor-pointer whitespace-nowrap shrink-0"
-              title="Switch Hamster Coat"
+              onClick={() => setThemeIndex((i) => (i + 1) % HABITAT_THEMES.length)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs sm:text-sm font-bold text-white/95 transition cursor-pointer whitespace-nowrap shrink-0"
+              title="Click to switch Habitat Theme"
             >
               <span
-                className="w-3.5 h-3.5 rounded-full border border-white/60 shrink-0"
-                style={{ backgroundColor: currentCoat.swatch }}
+                className="w-3.5 h-3.5 rounded-full border border-white/65 shrink-0"
+                style={{ backgroundColor: currentTheme.swatch }}
               />
-              <span className="hidden md:inline">{currentCoat.name}</span>
+              <span className="hidden md:inline">{currentTheme.name}</span>
               <Palette size={14} className="md:hidden" />
             </button>
 
             <button
               type="button"
+              onClick={() => setCoatIndex((i) => (i + 1) % COAT_STYLES.length)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs sm:text-sm font-bold text-amber-200 transition cursor-pointer whitespace-nowrap shrink-0"
+              title="Click to switch Hamster Coat Color"
+            >
+              <span
+                className="w-3.5 h-3.5 rounded-full border border-white/60 shrink-0"
+                style={{ backgroundColor: currentCoat.swatch }}
+              />
+              <span className="hidden xl:inline">{currentCoat.name}</span>
+              <Palette size={14} className="xl:hidden" />
+            </button>
+
+            <button
+              type="button"
               onClick={toggleFullScreen}
-              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-purple-100 transition cursor-pointer shrink-0"
+              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white/90 transition cursor-pointer shrink-0"
               title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             >
               {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
@@ -1123,7 +1341,7 @@ export function SleepingHamster({
           </div>
 
           {/* CENTER HUD: Bigger Stopwatch/Editable Timer + Bigger Individual Stars */}
-          <div className="relative justify-self-center bg-[#26174d]/95 backdrop-blur-md border border-white/15 px-6 sm:px-7 py-3.5 rounded-3xl flex flex-wrap sm:flex-nowrap items-center justify-center gap-6 sm:gap-7 shadow-2xl">
+          <div className={`relative justify-self-center ${currentTheme.panelBg} backdrop-blur-md border border-white/15 px-6 sm:px-7 py-3.5 rounded-3xl flex flex-wrap sm:flex-nowrap items-center justify-center gap-6 sm:gap-7 shadow-2xl`}>
             {/* Time + Mode Options (Stopwatch / Timer), Pause, Reset & Edit Timer Controls */}
             <div className="flex items-center gap-4">
               <div className="flex flex-col">
@@ -1390,34 +1608,38 @@ export function SleepingHamster({
           <main className="flex-1 relative flex items-center justify-center min-h-[260px] pt-2">
 
             <div
-              className={`relative w-full h-full max-h-[580px] rounded-[2.25rem] border-[5px] bg-gradient-to-b from-[#332063]/70 via-[#190f38]/95 to-[#23144a] transition-all duration-300 flex items-center justify-center overflow-visible ${activeUi.enclosureBorder}`}
+              className={`relative w-full h-full max-h-[580px] rounded-[2.25rem] border-[5px] transition-all duration-300 flex items-center justify-center overflow-visible ${activeUi.enclosureBorder}`}
+              style={{ backgroundColor: currentTheme.tankBg }}
             >
-              {/* Top & Bottom Tank Rims */}
+              {/* Top & Bottom Beveled Terrarium Rims */}
               <div
-                className="absolute -top-5 left-[22%] right-[22%] h-3 rounded-t-xl border-t-2 border-white/30 z-20"
-                style={{ background: 'linear-gradient(180deg, #6d28d9 0%, #4c1d95 100%)' }}
+                className="absolute -top-5 left-[22%] right-[22%] h-3 rounded-t-xl border-t-2 border-white/35 z-20"
+                style={{ background: currentTheme.capGradient }}
               />
               <div
-                className="absolute -top-3 left-[2%] right-[2%] h-5 rounded-t-2xl rounded-b-md shadow-lg z-20"
-                style={{ background: 'linear-gradient(180deg, #a78bfa 0%, #7c3aed 45%, #4c1d95 100%)' }}
+                className="absolute -top-3 left-[1.5%] right-[1.5%] h-5 rounded-t-2xl rounded-b-md shadow-lg border-t border-white/30 z-20"
+                style={{ background: currentTheme.rimTopGradient }}
               />
               <div
-                className="absolute -bottom-3 left-[0.5%] right-[0.5%] h-7 rounded-b-3xl rounded-t-xl shadow-2xl z-20"
-                style={{ background: 'linear-gradient(180deg, #7c3aed 0%, #5b21b6 55%, #3b0764 100%)' }}
+                className="absolute -bottom-3 left-[0.5%] right-[0.5%] h-7 rounded-b-3xl rounded-t-xl shadow-2xl border-b border-black/40 z-20"
+                style={{ background: currentTheme.rimBottomGradient }}
               />
 
               {/* Glass Pillars */}
-              <div className="absolute top-3 bottom-4 left-1.5 w-4 bg-gradient-to-r from-white/20 via-purple-300/5 to-white/10 border-r border-white/15 z-20 pointer-events-none" />
-              <div className="absolute top-3 bottom-4 right-1.5 w-4 bg-gradient-to-r from-white/10 via-purple-300/5 to-white/20 border-l border-white/15 z-20 pointer-events-none" />
+              <div className="absolute top-3 bottom-4 left-1.5 w-4 bg-gradient-to-r from-white/20 via-white/5 to-transparent border-r border-white/15 z-20 pointer-events-none" />
+              <div className="absolute top-3 bottom-4 right-1.5 w-4 bg-gradient-to-l from-white/20 via-white/5 to-transparent border-l border-white/15 z-20 pointer-events-none" />
 
               {/* Inner Clipping Container */}
-              <div className="relative w-full h-full overflow-hidden rounded-[2rem] flex items-center justify-center bg-[#180e34]">
+              <div
+                className="relative w-full h-full overflow-hidden rounded-[2rem] flex items-center justify-center transition-colors duration-500"
+                style={{ backgroundColor: currentTheme.tankBg }}
+              >
                 {/* Soft Ambient Fireflies / Dream Motes */}
                 <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
                   {AMBIENT_DUST_MOTES.map((m, idx) => (
                     <div
                       key={idx}
-                      className="sh-dust absolute rounded-full bg-purple-200/75"
+                      className="sh-dust absolute rounded-full"
                       style={{
                         left: m.left,
                         top: m.top,
@@ -1425,7 +1647,8 @@ export function SleepingHamster({
                         height: `${m.size}px`,
                         animationDelay: m.delay,
                         animationDuration: m.dur,
-                        boxShadow: '0 0 10px rgba(216, 180, 254, 0.85)',
+                        backgroundColor: currentTheme.dustColor,
+                        boxShadow: `0 0 12px ${currentTheme.dustColor}`,
                       }}
                     />
                   ))}
@@ -1436,7 +1659,7 @@ export function SleepingHamster({
                   {particles.map((p) => (
                     <div
                       key={p.id}
-                      className="sh-particle absolute bottom-[34%] font-black text-purple-50 drop-shadow-[0_0_12px_rgba(168,129,255,0.9)]"
+                      className="sh-particle absolute bottom-[34%] font-black text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.85)]"
                       style={{
                         left: `${p.leftPct}%`,
                         fontSize: `${p.sizeRem}rem`,
@@ -1448,7 +1671,7 @@ export function SleepingHamster({
                   ))}
                 </div>
 
-                {/* Interactive SVG Habitat & Character (meet keeps whole hamster & bowl visible without slicing) */}
+                {/* Interactive SVG Habitat & Character */}
                 <svg
                   viewBox="0 0 1000 540"
                   preserveAspectRatio="xMidYMid meet"
@@ -1456,19 +1679,24 @@ export function SleepingHamster({
                 >
                   <defs>
                     <filter id="shSoftShadow" x="-15%" y="-15%" width="130%" height="135%">
-                      <feDropShadow dx="0" dy="8" stdDeviation="7" floodColor="#0d0521" floodOpacity="0.55" />
+                      <feDropShadow dx="0" dy="8" stdDeviation="7" floodColor="#090314" floodOpacity="0.55" />
                     </filter>
                     <filter id="shFurShadow" x="-20%" y="-20%" width="140%" height="140%">
-                      <feDropShadow dx="0" dy="10" stdDeviation="9" floodColor="#14072e" floodOpacity="0.65" />
+                      <feDropShadow dx="0" dy="10" stdDeviation="9" floodColor="#0d051a" floodOpacity="0.65" />
                     </filter>
                     <filter id="shWarmLamp" x="-30%" y="-30%" width="160%" height="160%">
                       <feGaussianBlur stdDeviation="24" />
                     </filter>
 
-                    <radialGradient id="shAmbientGlow" cx="50%" cy="58%" r="62%">
-                      <stop offset="0%" stopColor={activeUi.glowColor} stopOpacity="0.26" />
-                      <stop offset="100%" stopColor="#12092b" stopOpacity="0" />
+                    <radialGradient id="shAmbientGlow" cx="50%" cy="56%" r="65%">
+                      <stop offset="0%" stopColor={activeUi.glowColor} stopOpacity="0.24" />
+                      <stop offset="100%" stopColor={currentTheme.tankBg} stopOpacity="0" />
                     </radialGradient>
+
+                    <linearGradient id="shWindowSkyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor={currentTheme.windowSky[0]} />
+                      <stop offset="100%" stopColor={currentTheme.windowSky[1]} />
+                    </linearGradient>
 
                     <radialGradient id="shFurGrad" cx="42%" cy="30%" r="68%">
                       <stop offset="0%" stopColor={currentCoat.body[0]} />
@@ -1503,67 +1731,146 @@ export function SleepingHamster({
                     </radialGradient>
 
                     <linearGradient id="shWoodHouse" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#e8c396" />
-                      <stop offset="55%" stopColor="#c7955d" />
-                      <stop offset="100%" stopColor="#946534" />
+                      <stop offset="0%" stopColor={currentTheme.woodHouse[0]} />
+                      <stop offset="55%" stopColor={currentTheme.woodHouse[1]} />
+                      <stop offset="100%" stopColor={currentTheme.woodHouse[2]} />
                     </linearGradient>
                     <linearGradient id="shWoodRoof" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#d4a068" />
-                      <stop offset="50%" stopColor="#a8733e" />
-                      <stop offset="100%" stopColor="#6e471f" />
+                      <stop offset="0%" stopColor={currentTheme.woodRoof[0]} />
+                      <stop offset="50%" stopColor={currentTheme.woodRoof[1]} />
+                      <stop offset="100%" stopColor={currentTheme.woodRoof[2]} />
                     </linearGradient>
                     <linearGradient id="shWheelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#b794f4" />
-                      <stop offset="50%" stopColor="#805ad5" />
-                      <stop offset="100%" stopColor="#44337a" />
+                      <stop offset="0%" stopColor={currentTheme.wheelColors[0]} />
+                      <stop offset="50%" stopColor={currentTheme.wheelColors[1]} />
+                      <stop offset="100%" stopColor={currentTheme.wheelColors[2]} />
                     </linearGradient>
                     <linearGradient id="shWheelDrum" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#442b82" />
-                      <stop offset="50%" stopColor="#6b46c1" />
-                      <stop offset="100%" stopColor="#321d63" />
+                      <stop offset="0%" stopColor={currentTheme.wheelColors[2]} />
+                      <stop offset="50%" stopColor={currentTheme.wheelColors[1]} />
+                      <stop offset="100%" stopColor={currentTheme.wheelColors[2]} />
                     </linearGradient>
                     <linearGradient id="shGlassBottle" x1="0%" y1="0%" x2="100%" y2="0%">
                       <stop offset="0%" stopColor="rgba(255,255,255,0.45)" />
                       <stop offset="28%" stopColor="rgba(255,255,255,0.12)" />
-                      <stop offset="75%" stopColor="rgba(167,139,250,0.15)" />
+                      <stop offset="75%" stopColor="rgba(255,255,255,0.14)" />
                       <stop offset="100%" stopColor="rgba(255,255,255,0.38)" />
                     </linearGradient>
                     <linearGradient id="shBeddingBase" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#fcf5f0" />
-                      <stop offset="45%" stopColor="#e8d7e4" />
-                      <stop offset="100%" stopColor="#ab92bd" />
+                      <stop offset="0%" stopColor={currentTheme.beddingGrad[0]} />
+                      <stop offset="48%" stopColor={currentTheme.beddingGrad[1]} />
+                      <stop offset="100%" stopColor={currentTheme.beddingGrad[2]} />
                     </linearGradient>
+                    <radialGradient id="shPuff0" cx="35%" cy="30%" r="70%">
+                      <stop offset="0%" stopColor={currentTheme.puffColors[0]} />
+                      <stop offset="70%" stopColor={currentTheme.beddingGrad[1]} />
+                      <stop offset="100%" stopColor={currentTheme.beddingGrad[2]} stopOpacity="0.9" />
+                    </radialGradient>
+                    <radialGradient id="shPuff1" cx="35%" cy="30%" r="70%">
+                      <stop offset="0%" stopColor={currentTheme.puffColors[1]} />
+                      <stop offset="72%" stopColor={currentTheme.beddingMid} />
+                      <stop offset="100%" stopColor={currentTheme.beddingGrad[2]} stopOpacity="0.88" />
+                    </radialGradient>
+                    <radialGradient id="shPuff2" cx="35%" cy="30%" r="70%">
+                      <stop offset="0%" stopColor={currentTheme.puffColors[2]} />
+                      <stop offset="72%" stopColor={currentTheme.beddingGrad[1]} />
+                      <stop offset="100%" stopColor={currentTheme.beddingGrad[2]} stopOpacity="0.88" />
+                    </radialGradient>
                     <radialGradient id="shHouseWarmth" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#fde68a" stopOpacity="0.85" />
-                      <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.45" />
+                      <stop offset="0%" stopColor="#fde68a" stopOpacity="0.9" />
+                      <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.48" />
                       <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
                     </radialGradient>
+                    <clipPath id="shWindowClip">
+                      <rect x="365" y="20" width="270" height="172" rx="22" />
+                    </clipPath>
                   </defs>
 
                   <rect width="1000" height="540" fill="url(#shAmbientGlow)" />
-                  <circle cx="940" cy="210" r="160" fill="#fbbf24" opacity="0.1" filter="url(#shWarmLamp)" />
+                  <circle cx="920" cy="195" r="170" fill={currentTheme.fairyColor} opacity="0.09" filter="url(#shWarmLamp)" />
 
-                  {/* Night Window */}
-                  <g opacity="0.45">
-                    <rect x="365" y="16" width="270" height="175" rx="20" fill="#090518" stroke="#4c3285" strokeWidth="5" />
-                    <line x1="500" y1="16" x2="500" y2="191" stroke="#311d61" strokeWidth="4" />
-                    <line x1="365" y1="103" x2="635" y2="103" stroke="#311d61" strokeWidth="4" />
-                    <circle cx="578" cy="68" r="24" fill="#fef08a" />
-                    <circle cx="567" cy="60" r="22" fill="#090518" />
-                    <circle cx="415" cy="55" r="2.5" fill="#fff" />
-                    <circle cx="465" cy="45" r="1.8" fill="#fde68a" />
-                    <circle cx="435" cy="135" r="2.8" fill="#e9d5ff" />
-                    <circle cx="540" cy="145" r="2" fill="#fff" />
+                  {/* Theme-Specific Scenic Window */}
+                  <g opacity="0.82">
+                    <rect x="365" y="20" width="270" height="172" rx="22" fill="url(#shWindowSkyGrad)" />
+                    <g clipPath="url(#shWindowClip)">
+                      {currentTheme.id === 'midnight' && (
+                        <g>
+                          <circle cx="578" cy="68" r="24" fill="#fef08a" />
+                          <circle cx="567" cy="60" r="22" fill={currentTheme.windowSky[0]} />
+                          <circle cx="410" cy="52" r="2.6" fill="#fff" />
+                          <circle cx="465" cy="44" r="2" fill="#fde68a" />
+                          <circle cx="435" cy="136" r="2.8" fill="#e9d5ff" />
+                          <circle cx="545" cy="145" r="2.2" fill="#fff" />
+                          <circle cx="605" cy="126" r="2" fill="#fde68a" />
+                        </g>
+                      )}
+                      {currentTheme.id === 'sakura' && (
+                        <g>
+                          <circle cx="568" cy="76" r="26" fill="#fbcfe8" opacity="0.85" />
+                          <path d="M 360 155 Q 430 120 510 148 T 640 135 L 640 198 L 360 198 Z" fill="#3a1030" opacity="0.65" />
+                          <ellipse cx="418" cy="62" rx="7" ry="4" transform="rotate(-25 418 62)" fill="#f9a8d4" />
+                          <ellipse cx="474" cy="90" rx="6" ry="3.5" transform="rotate(20 474 90)" fill="#fbcfe8" />
+                          <ellipse cx="520" cy="52" rx="6" ry="3.5" transform="rotate(-15 520 52)" fill="#f472b6" />
+                          <ellipse cx="445" cy="140" rx="7" ry="4" transform="rotate(35 445 140)" fill="#f9a8d4" />
+                        </g>
+                      )}
+                      {currentTheme.id === 'forest' && (
+                        <g>
+                          <circle cx="578" cy="66" r="21" fill="#ecfccb" opacity="0.88" />
+                          <polygon points="390,192 422,102 454,192" fill="#052e16" />
+                          <polygon points="440,192 478,86 516,192" fill="#064e3b" />
+                          <polygon points="518,192 554,114 590,192" fill="#052e16" />
+                          <circle cx="425" cy="72" r="3" fill="#bef264" />
+                          <circle cx="515" cy="62" r="2.5" fill="#fde047" />
+                          <circle cx="545" cy="122" r="3" fill="#bef264" />
+                        </g>
+                      )}
+                      {currentTheme.id === 'sunrise' && (
+                        <g>
+                          <circle cx="500" cy="148" r="44" fill="#fde047" opacity="0.78" />
+                          <g fill="#fff7ed" opacity="0.72">
+                            <circle cx="415" cy="68" r="18" />
+                            <circle cx="436" cy="64" r="22" />
+                            <circle cx="458" cy="70" r="16" />
+                            <circle cx="556" cy="84" r="15" />
+                            <circle cx="575" cy="80" r="19" />
+                            <circle cx="596" cy="86" r="14" />
+                          </g>
+                        </g>
+                      )}
+                      {currentTheme.id === 'ocean' && (
+                        <g>
+                          <circle cx="575" cy="65" r="22" fill="#e0f2fe" opacity="0.88" />
+                          <path d="M 360 146 Q 425 130 495 146 T 640 140 L 640 198 L 360 198 Z" fill="#075985" opacity="0.75" />
+                          <circle cx="420" cy="82" r="5" fill="none" stroke="#bae6fd" strokeWidth="2" opacity="0.75" />
+                          <circle cx="468" cy="114" r="3.5" fill="none" stroke="#bae6fd" strokeWidth="1.8" opacity="0.65" />
+                          <circle cx="534" cy="125" r="4.5" fill="none" stroke="#bae6fd" strokeWidth="1.8" opacity="0.7" />
+                        </g>
+                      )}
+                      {/* Diagonal glass shine */}
+                      <polygon points="392,20 435,20 375,192 365,192" fill="rgba(255,255,255,0.06)" />
+                    </g>
+                    <rect x="365" y="20" width="270" height="172" rx="22" fill="none" stroke={currentTheme.windowFrame} strokeWidth="6" />
+                    <line x1="500" y1="20" x2="500" y2="192" stroke={currentTheme.windowMullion} strokeWidth="4.5" />
+                    <line x1="365" y1="106" x2="635" y2="106" stroke={currentTheme.windowMullion} strokeWidth="4.5" />
                   </g>
 
-                  {/* Background Bedding Hills */}
-                  <path d="M 15 402 Q 165 348 345 384 T 680 372 T 985 398 L 985 520 L 15 520 Z" fill="#c7b2d1" opacity="0.7" />
-                  <path d="M 25 418 Q 220 375 430 402 T 830 388 T 985 415 L 985 525 L 25 525 Z" fill="#dfd0e6" opacity="0.82" />
+                  {/* Edge-to-Edge Background Bedding Hills (zero vertical edge cutoffs!) */}
+                  <path
+                    d="M -15 398 Q 165 344 345 380 T 680 368 T 1015 394 L 1015 545 L -15 545 Z"
+                    fill={currentTheme.beddingBack}
+                    opacity="0.72"
+                  />
+                  <path
+                    d="M -15 415 Q 220 372 430 398 T 830 384 T 1015 410 L 1015 545 L -15 545 Z"
+                    fill={currentTheme.beddingMid}
+                    opacity="0.86"
+                  />
 
                   {/* Exercise Wheel */}
                   <g transform="translate(8, 6)" filter="url(#shSoftShadow)">
-                    <path d="M 222 426 L 295 255 L 368 426" fill="none" stroke="#3b2370" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round" />
-                    <rect x="198" y="416" width="194" height="18" rx="9" fill="#553c9a" stroke="#7c3aed" strokeWidth="2" />
+                    <path d="M 222 426 L 295 255 L 368 426" fill="none" stroke={currentTheme.wheelColors[2]} strokeWidth="16" strokeLinecap="round" strokeLinejoin="round" />
+                    <rect x="198" y="416" width="194" height="18" rx="9" fill={currentTheme.wheelColors[1]} stroke={currentTheme.wheelColors[0]} strokeWidth="2" />
                     <g
                       className={
                         sleepState === 'AWAKE'
@@ -1574,8 +1881,8 @@ export function SleepingHamster({
                       }
                     >
                       <ellipse cx="307" cy="255" rx="114" ry="118" fill="url(#shWheelDrum)" />
-                      <circle cx="295" cy="255" r="118" fill="#231347" opacity="0.7" />
-                      <g stroke="#805ad5" strokeWidth="3.5" opacity="0.55">
+                      <circle cx="295" cy="255" r="118" fill="#090314" opacity="0.45" />
+                      <g stroke={currentTheme.wheelColors[0]} strokeWidth="3.5" opacity="0.55">
                         <line x1="295" y1="138" x2="295" y2="372" />
                         <line x1="178" y1="255" x2="412" y2="255" />
                         <line x1="212" y1="172" x2="378" y2="338" />
@@ -1585,12 +1892,12 @@ export function SleepingHamster({
                         <line x1="187" y1="300" x2="403" y2="210" />
                         <line x1="340" y1="147" x2="250" y2="363" />
                       </g>
-                      <circle cx="295" cy="255" r="115" fill="none" stroke="#4c2889" strokeWidth="20" />
+                      <circle cx="295" cy="255" r="115" fill="none" stroke={currentTheme.wheelColors[2]} strokeWidth="20" />
                       <circle cx="295" cy="255" r="115" fill="none" stroke="url(#shWheelGrad)" strokeWidth="13" />
                       <path d="M 205 182 A 115 115 0 0 1 380 178" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="4" strokeLinecap="round" />
-                      <circle cx="295" cy="255" r="26" fill="#6b46c1" stroke="#3b2370" strokeWidth="5" />
-                      <circle cx="295" cy="255" r="15" fill="#c4b5fd" />
-                      <circle cx="291" cy="251" r="5" fill="#ffffff" opacity="0.8" />
+                      <circle cx="295" cy="255" r="26" fill={currentTheme.wheelColors[1]} stroke={currentTheme.wheelColors[2]} strokeWidth="5" />
+                      <circle cx="295" cy="255" r="15" fill={currentTheme.wheelColors[3]} />
+                      <circle cx="291" cy="251" r="5" fill="#ffffff" opacity="0.85" />
                     </g>
                   </g>
 
@@ -1600,9 +1907,9 @@ export function SleepingHamster({
                     <path d="M 42 183 L 75 224" stroke="#f1f5f9" strokeWidth="4" strokeLinecap="round" />
                     <circle cx="80" cy="230" r="6" fill="#cbd5e1" stroke="#64748b" strokeWidth="1.5" />
                     <path d="M 80 236 C 77 242 76 247 80 248 C 84 247 83 242 80 236 Z" fill="#7dd3fc" opacity="0.9" />
-                    <rect x="8" y="0" width="60" height="170" rx="28" fill="url(#shGlassBottle)" stroke="rgba(255,255,255,0.55)" strokeWidth="2.5" />
-                    <rect x="12" y="38" width="52" height="125" rx="22" fill="rgba(56, 189, 248, 0.35)" />
-                    <ellipse cx="38" cy="38" rx="26" ry="7" fill="rgba(186, 230, 253, 0.7)" />
+                    <rect x="8" y="0" width="60" height="170" rx="28" fill="url(#shGlassBottle)" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" />
+                    <rect x="12" y="38" width="52" height="125" rx="22" fill="rgba(56, 189, 248, 0.36)" />
+                    <ellipse cx="38" cy="38" rx="26" ry="7" fill="rgba(186, 230, 253, 0.72)" />
                     <circle cx="32" cy="145" r="4" fill="rgba(255,255,255,0.75)" className="sh-water-bubble" />
                     <g stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round">
                       <line x1="52" y1="55" x2="60" y2="55" />
@@ -1611,25 +1918,25 @@ export function SleepingHamster({
                       <line x1="52" y1="130" x2="60" y2="130" />
                     </g>
                     <rect x="16" y="12" width="7" height="135" rx="3.5" fill="rgba(255,255,255,0.45)" />
-                    <rect x="4" y="96" width="68" height="18" rx="7" fill="#7c3aed" stroke="#a78bfa" strokeWidth="1.5" />
-                    <rect x="-8" y="99" width="16" height="12" rx="4" fill="#4c1d95" />
-                    <rect x="14" y="152" width="48" height="34" rx="9" fill="#6d28d9" stroke="#a78bfa" strokeWidth="1.5" />
+                    <rect x="4" y="96" width="68" height="18" rx="7" fill={currentTheme.bottleAccent} stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
+                    <rect x="-8" y="99" width="16" height="12" rx="4" fill={currentTheme.bottleCap} />
+                    <rect x="14" y="152" width="48" height="34" rx="9" fill={currentTheme.bottleCap} stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" />
                   </g>
 
-                  {/* Cozy Wooden Cabin */}
+                  {/* Cozy Wooden Cabin + Porch Lantern */}
                   <g transform="translate(620, 198)" filter="url(#shSoftShadow)">
                     <ellipse cx="140" cy="222" rx="145" ry="22" fill="rgba(0,0,0,0.45)" />
-                    <polygon points="242,88 272,72 262,198 235,215" fill="#8c5a2b" stroke="#5c3a1a" strokeWidth="2.5" strokeLinejoin="round" />
-                    <path d="M 25 88 L 242 88 L 235 215 L 35 215 Z" fill="url(#shWoodHouse)" stroke="#784b21" strokeWidth="3" strokeLinejoin="round" />
-                    <line x1="30" y1="120" x2="239" y2="120" stroke="#855528" strokeWidth="2" opacity="0.55" />
-                    <line x1="32" y1="152" x2="238" y2="152" stroke="#855528" strokeWidth="2" opacity="0.55" />
-                    <line x1="34" y1="184" x2="236" y2="184" stroke="#855528" strokeWidth="2" opacity="0.55" />
-                    <path d="M 82 215 L 82 142 A 44 42 0 0 1 170 142 L 170 215 Z" fill="#241208" stroke="#5c3a1a" strokeWidth="4" />
-                    <path d="M 204 128 C 204 123 197 118 193 123 C 189 128 204 138 204 138 C 204 138 219 128 215 123 C 211 118 204 123 204 128 Z" fill="#3b1d0c" stroke="#784b21" strokeWidth="2" />
+                    <polygon points="242,88 272,72 262,198 235,215" fill={currentTheme.woodHouse[2]} stroke="rgba(0,0,0,0.35)" strokeWidth="2.5" strokeLinejoin="round" />
+                    <path d="M 25 88 L 242 88 L 235 215 L 35 215 Z" fill="url(#shWoodHouse)" stroke={currentTheme.woodHouse[2]} strokeWidth="3" strokeLinejoin="round" />
+                    <line x1="30" y1="120" x2="239" y2="120" stroke={currentTheme.woodHouse[2]} strokeWidth="2" opacity="0.45" />
+                    <line x1="32" y1="152" x2="238" y2="152" stroke={currentTheme.woodHouse[2]} strokeWidth="2" opacity="0.45" />
+                    <line x1="34" y1="184" x2="236" y2="184" stroke={currentTheme.woodHouse[2]} strokeWidth="2" opacity="0.45" />
+                    <path d="M 82 215 L 82 142 A 44 42 0 0 1 170 142 L 170 215 Z" fill="#241208" stroke={currentTheme.woodHouse[2]} strokeWidth="4" />
+                    <path d="M 204 128 C 204 123 197 118 193 123 C 189 128 204 138 204 138 C 204 138 219 128 215 123 C 211 118 204 123 204 128 Z" fill="#3b1d0c" stroke={currentTheme.woodHouse[2]} strokeWidth="2" />
                     <circle
                       cx="126"
                       cy="178"
-                      r="62"
+                      r="64"
                       fill="url(#shHouseWarmth)"
                       opacity={
                         sleepState === 'DEEP_SLEEP' || sleepState === 'RECOVERING'
@@ -1643,10 +1950,16 @@ export function SleepingHamster({
                           : 0
                       }
                     />
-                    <polygon points="215,20 250,12 286,76 260,95" fill="#6e471f" stroke="#4d3013" strokeWidth="2.5" strokeLinejoin="round" />
-                    <path d="M 8 95 L 54 20 L 218 20 L 260 95 Z" fill="url(#shWoodRoof)" stroke="#5c3a1a" strokeWidth="3.5" strokeLinejoin="round" />
-                    <line x1="32" y1="58" x2="238" y2="58" stroke="#5c3a1a" strokeWidth="2" opacity="0.45" />
-                    <line x1="45" y1="38" x2="226" y2="38" stroke="#ebc394" strokeWidth="2" opacity="0.3" />
+                    <polygon points="215,20 250,12 286,76 260,95" fill={currentTheme.woodRoof[2]} stroke="rgba(0,0,0,0.35)" strokeWidth="2.5" strokeLinejoin="round" />
+                    <path d="M 8 95 L 54 20 L 218 20 L 260 95 Z" fill="url(#shWoodRoof)" stroke={currentTheme.woodRoof[2]} strokeWidth="3.5" strokeLinejoin="round" />
+                    <line x1="32" y1="58" x2="238" y2="58" stroke={currentTheme.woodRoof[2]} strokeWidth="2" opacity="0.45" />
+                    <line x1="45" y1="38" x2="226" y2="38" stroke="rgba(255,255,255,0.28)" strokeWidth="2" />
+                    {/* Warm Hanging Porch Lantern */}
+                    <g transform="translate(52, 95)">
+                      <line x1="0" y1="0" x2="0" y2="14" stroke="#451a03" strokeWidth="2.5" />
+                      <circle cx="0" cy="24" r="18" fill={currentTheme.fairyGlow} opacity="0.55" />
+                      <rect x="-7" y="14" width="14" height="18" rx="4" fill="#fef08a" stroke="#78350f" strokeWidth="2" />
+                    </g>
                   </g>
 
                   {/* Hanging Plush Star Toy */}
@@ -1675,17 +1988,19 @@ export function SleepingHamster({
                     </g>
                   </g>
 
-                  {/* Mid-ground Bedding Clusters */}
-                  <g fill="#f5ebf2" filter="url(#shSoftShadow)">
-                    <circle cx="125" cy="432" r="36" />
-                    <circle cx="185" cy="422" r="44" fill="#e9d8e4" />
-                    <circle cx="255" cy="438" r="38" fill="#fffaf5" />
-                    <circle cx="335" cy="426" r="46" fill="#f7edf5" />
-                    <circle cx="405" cy="435" r="35" fill="#fffaf5" />
-                    <circle cx="625" cy="432" r="42" fill="#fffaf5" />
-                    <circle cx="705" cy="435" r="38" fill="#e9d8e4" />
-                    <circle cx="795" cy="426" r="46" fill="#fcf5f0" />
-                    <circle cx="885" cy="438" r="38" fill="#e9d8e4" />
+                  {/* Soft Shaded Mid-ground Bedding Puffs (edge-to-edge cozy nest) */}
+                  <g filter="url(#shSoftShadow)">
+                    <circle cx="38" cy="434" r="42" fill="url(#shPuff1)" />
+                    <circle cx="110" cy="428" r="42" fill="url(#shPuff0)" />
+                    <circle cx="182" cy="422" r="46" fill="url(#shPuff1)" />
+                    <circle cx="255" cy="435" r="40" fill="url(#shPuff2)" />
+                    <circle cx="335" cy="425" r="46" fill="url(#shPuff0)" />
+                    <circle cx="405" cy="434" r="36" fill="url(#shPuff1)" />
+                    <circle cx="622" cy="430" r="42" fill="url(#shPuff0)" />
+                    <circle cx="705" cy="434" r="40" fill="url(#shPuff1)" />
+                    <circle cx="795" cy="424" r="46" fill="url(#shPuff2)" />
+                    <circle cx="885" cy="434" r="42" fill="url(#shPuff0)" />
+                    <circle cx="965" cy="430" r="44" fill="url(#shPuff1)" />
                   </g>
 
                   {/* Sound Wave Disturbance Ripples around Hamster when Noisy */}
@@ -1740,7 +2055,15 @@ export function SleepingHamster({
                           fill="url(#shCheekGrad)"
                         />
 
-                        {/* Yellow Bear Sleeping Mask (lifts cleanly on Disturbed/Almost Awake so eyebrows & face never overlap) */}
+                        {/* Soft Cute Whiskers */}
+                        <g stroke="#9a6b52" strokeWidth="2.4" strokeLinecap="round" opacity="0.55">
+                          <line x1="366" y1="382" x2="340" y2="378" />
+                          <line x1="368" y1="393" x2="342" y2="397" />
+                          <line x1="576" y1="364" x2="602" y2="358" />
+                          <line x1="576" y1="375" x2="603" y2="378" />
+                        </g>
+
+                        {/* Bear Sleep Mask (lifts cleanly when Disturbed / Almost Awake) */}
                         <g
                           transform={
                             isDisturbedFace
@@ -1783,11 +2106,8 @@ export function SleepingHamster({
 
                         {isDisturbedFace && (
                           <g>
-                            {/* Furrowed Disturbed Eyebrows */}
                             <line x1="404" y1="330" x2="444" y2="342" stroke="#5c1f08" strokeWidth="5.5" strokeLinecap="round" />
                             <line x1="534" y1="316" x2="494" y2="334" stroke="#5c1f08" strokeWidth="5.5" strokeLinecap="round" />
-
-                            {/* Left Tightly Squinting Wince Eye (>), Right Wide Worried Eye */}
                             <path
                               d="M 410 347 L 439 356 L 412 367"
                               fill="none"
@@ -1799,8 +2119,6 @@ export function SleepingHamster({
                             <circle cx="513" cy="347" r="14" fill="#2d1206" />
                             <circle cx="508" cy="341" r="5" fill="#ffffff" />
                             <circle cx="518" cy="352" r="2.2" fill="#ffffff" opacity="0.85" />
-
-                            {/* Tiny Blue Sweat / Stress Drop */}
                             <path
                               d="M 556 320 C 550 331, 548 339, 556 341 C 564 339, 562 331, 556 320 Z"
                               fill="#7dd3fc"
@@ -1826,7 +2144,6 @@ export function SleepingHamster({
                         {/* Nose & Mouth */}
                         <path d="M 462 365 C 462 359, 480 358, 480 364 C 480 370, 474 375, 471 375 C 468 375, 462 371, 462 365 Z" fill="url(#shPinkNose)" />
                         {isDisturbedFace ? (
-                          /* Disturbed wavy grimace mouth */
                           <path
                             d="M 448 392 Q 459 382 471 390 Q 483 398 494 386"
                             fill="none"
@@ -1850,10 +2167,9 @@ export function SleepingHamster({
                           </g>
                         )}
 
-                        {/* Paws (clean closed shapes, no broken stroke-gradient artifact!) */}
+                        {/* Paws */}
                         {isDisturbedFace ? (
                           <g>
-                            {/* Raised paws covering ears/cheeks without blocking face */}
                             <g transform="translate(362, 342) rotate(-22)">
                               <ellipse cx="0" cy="0" rx="18" ry="22" fill="#fda4af" stroke="#881337" strokeWidth="3.2" />
                               <path d="M -6 -13 L -6 -4 M 0 -15 L 0 -4 M 6 -13 L 6 -4" stroke="#9f1239" strokeWidth="2.4" strokeLinecap="round" />
@@ -1897,7 +2213,7 @@ export function SleepingHamster({
                         <path d="M 352 435 C 344 330, 385 235, 472 232 C 556 230, 608 310, 604 432 Z" fill="url(#shFurGrad)" stroke="#6b2710" strokeWidth="4" strokeLinejoin="round" />
                         <path d="M 380 432 C 372 352, 405 312, 456 315 C 485 316, 505 308, 535 304 C 584 298, 604 350, 588 430 Z" fill="url(#shCheekGrad)" />
 
-                        {/* Pushed-Up Bear Mask */}
+                        {/* Pushed-Up Bear Sleep Mask on Forehead */}
                         <g>
                           <path d="M 355 348 Q 375 295 402 268" fill="none" stroke="#facc15" strokeWidth="9" strokeLinecap="round" />
                           <path d="M 355 348 Q 375 295 402 268" fill="none" stroke="#713f12" strokeWidth="3.5" strokeLinecap="round" opacity="0.45" />
@@ -1950,31 +2266,36 @@ export function SleepingHamster({
                     )}
                   </g>
 
-                  {/* Foreground Bedding & Food Bowl */}
+                  {/* Edge-to-Edge Foreground Bedding Puffs & Ceramic Food Bowl */}
                   <g>
-                    <path d="M 10 446 Q 140 412 280 442 T 540 438 T 810 440 T 990 445 L 990 540 L 10 540 Z" fill="url(#shBeddingBase)" />
-                    <g fill="#fffaf7" opacity="0.95">
-                      <circle cx="88" cy="458" r="25" />
-                      <circle cx="132" cy="468" r="29" fill="#f3e5f5" />
-                      <circle cx="176" cy="456" r="22" fill="#fef3c7" />
-                      <circle cx="218" cy="454" r="27" />
-                      <circle cx="290" cy="465" r="31" fill="#f3e5f5" />
-                      <circle cx="348" cy="456" r="24" fill="#fffaf0" />
-                      <circle cx="392" cy="448" r="23" />
-                      <circle cx="430" cy="457" r="26" fill="#fef3c7" />
-                      <circle cx="562" cy="453" r="27" />
-                      <circle cx="614" cy="462" r="25" fill="#f3e5f5" />
-                      <circle cx="660" cy="454" r="22" fill="#fef3c7" />
-                      <circle cx="865" cy="460" r="29" />
-                      <circle cx="920" cy="452" r="25" fill="#f3e5f5" />
+                    <path
+                      d="M -15 446 Q 140 412 280 442 T 540 438 T 810 440 T 1015 444 L 1015 550 L -15 550 Z"
+                      fill="url(#shBeddingBase)"
+                    />
+                    <g opacity="0.96">
+                      <circle cx="24" cy="462" r="28" fill="url(#shPuff1)" />
+                      <circle cx="82" cy="458" r="28" fill="url(#shPuff0)" />
+                      <circle cx="132" cy="468" r="30" fill="url(#shPuff1)" />
+                      <circle cx="176" cy="456" r="24" fill="url(#shPuff2)" />
+                      <circle cx="222" cy="454" r="28" fill="url(#shPuff0)" />
+                      <circle cx="290" cy="465" r="31" fill="url(#shPuff1)" />
+                      <circle cx="348" cy="456" r="25" fill="url(#shPuff0)" />
+                      <circle cx="392" cy="448" r="24" fill="url(#shPuff2)" />
+                      <circle cx="434" cy="458" r="26" fill="url(#shPuff0)" />
+                      <circle cx="562" cy="454" r="28" fill="url(#shPuff0)" />
+                      <circle cx="614" cy="462" r="26" fill="url(#shPuff1)" />
+                      <circle cx="660" cy="454" r="24" fill="url(#shPuff2)" />
+                      <circle cx="865" cy="460" r="30" fill="url(#shPuff0)" />
+                      <circle cx="922" cy="452" r="28" fill="url(#shPuff1)" />
+                      <circle cx="978" cy="460" r="28" fill="url(#shPuff0)" />
                     </g>
 
                     {/* Ceramic Food Bowl */}
                     <g transform="translate(686, 408)" filter="url(#shSoftShadow)">
                       <ellipse cx="60" cy="60" rx="68" ry="15" fill="rgba(0,0,0,0.38)" />
-                      <path d="M 12 22 L 108 22 L 120 55 Q 60 70 0 55 Z" fill="#84a955" stroke="#536e2e" strokeWidth="3" strokeLinejoin="round" />
+                      <path d="M 12 22 L 108 22 L 120 55 Q 60 70 0 55 Z" fill={currentTheme.bowlBody} stroke={currentTheme.bowlStroke} strokeWidth="3" strokeLinejoin="round" />
                       <path d="M 16 32 L 10 50" stroke="rgba(255,255,255,0.35)" strokeWidth="4" strokeLinecap="round" />
-                      <ellipse cx="60" cy="22" rx="48" ry="13" fill="#47301f" stroke="#a3c572" strokeWidth="4" />
+                      <ellipse cx="60" cy="22" rx="48" ry="13" fill="#47301f" stroke={currentTheme.bowlRim} strokeWidth="4" />
                       <circle cx="38" cy="22" r="5.5" fill="#f59e0b" />
                       <circle cx="52" cy="19" r="6.5" fill="#d97706" />
                       <circle cx="72" cy="21" r="5.5" fill="#fbbf24" />
@@ -1986,25 +2307,51 @@ export function SleepingHamster({
                     </g>
                   </g>
 
+                  {/* Draped Warm Fairy String Lights */}
+                  <g pointerEvents="none">
+                    <path
+                      d="M -10 12 Q 165 56 335 22 T 675 26 T 1010 12"
+                      fill="none"
+                      stroke="rgba(255,255,255,0.28)"
+                      strokeWidth="2.2"
+                    />
+                    {[
+                      { x: 92, y: 31, delay: '0s' },
+                      { x: 196, y: 38, delay: '0.7s' },
+                      { x: 300, y: 27, delay: '1.3s' },
+                      { x: 432, y: 12, delay: '0.4s' },
+                      { x: 565, y: 15, delay: '1.1s' },
+                      { x: 705, y: 29, delay: '0.2s' },
+                      { x: 825, y: 36, delay: '0.9s' },
+                      { x: 928, y: 26, delay: '1.5s' },
+                    ].map((bulb, i) => (
+                      <g key={i} className="sh-fairy-bulb" style={{ animationDelay: bulb.delay }}>
+                        <circle cx={bulb.x} cy={bulb.y + 8} r="14" fill={currentTheme.fairyGlow} opacity="0.4" />
+                        <circle cx={bulb.x} cy={bulb.y + 7} r="5.5" fill={currentTheme.fairyColor} />
+                        <circle cx={bulb.x - 1.5} cy={bulb.y + 5.5} r="1.8" fill="#ffffff" opacity="0.85" />
+                      </g>
+                    ))}
+                  </g>
+
                   {/* Curved Glass Reflections */}
-                  <polygon points="75,0 155,0 65,540 0,540" fill="rgba(255,255,255,0.04)" />
-                  <polygon points="195,0 222,0 132,540 105,540" fill="rgba(255,255,255,0.028)" />
+                  <polygon points="75,0 155,0 65,540 0,540" fill="rgba(255,255,255,0.038)" />
+                  <polygon points="195,0 222,0 132,540 105,540" fill="rgba(255,255,255,0.025)" />
                   <polygon points="885,0 925,0 855,540 815,540" fill="rgba(255,255,255,0.02)" />
                 </svg>
               </div>
             </div>
           </main>
 
-          {/* CLEAN BOTTOM NOISE MONITOR BAR (Only Meter, dB & Spectrum — no cluttered pills/buttons) */}
+          {/* CLEAN BOTTOM NOISE MONITOR BAR */}
           {hasStarted && (
             <footer className="relative z-30 shrink-0">
-              <div className="bg-[#26174d]/85 backdrop-blur-xl border border-white/15 rounded-3xl px-4 sm:px-5 py-3.5 shadow-2xl">
+              <div className={`${currentTheme.panelBg} backdrop-blur-xl border border-white/15 rounded-3xl px-4 sm:px-5 py-3.5 shadow-2xl transition-colors duration-500`}>
                 <div className="flex items-center justify-between gap-3 mb-2.5">
                   <div className="flex items-center gap-3">
                     <div className="bg-black/40 border border-white/10 px-3 py-1 rounded-full flex items-center gap-2">
                       <span
                         className={`w-2 h-2 rounded-full ${
-                          isMicMuted ? 'bg-rose-400' : 'bg-emerald-400 animate-pulse'
+                          isMicMuted ? 'bg-rose-400' : 'bg-emerald-400'
                         }`}
                       />
                       <span className="font-mono tabular-nums font-extrabold text-xs text-white">
@@ -2017,7 +2364,7 @@ export function SleepingHamster({
                       {freqBars.map((h, idx) => (
                         <div
                           key={idx}
-                          className="w-1 bg-purple-400/85 rounded-full transition-all duration-75"
+                          className="w-1 bg-white/75 rounded-full transition-all duration-75"
                           style={{ height: `${h}%` }}
                         />
                       ))}
@@ -2061,7 +2408,7 @@ export function SleepingHamster({
 
         {/* RIGHT-HAND SIDE CONTROL RAIL: Microphone Mute, Sensitivity Slider, Noise Alert, Music */}
         {hasStarted && (
-          <aside className="relative z-30 w-full lg:w-64 shrink-0 bg-[#23144a]/90 backdrop-blur-xl border border-white/15 rounded-3xl p-4 shadow-2xl flex flex-row flex-wrap lg:flex-nowrap lg:flex-col items-center justify-between lg:justify-evenly gap-3 overflow-y-auto">
+          <aside className={`relative z-30 w-full lg:w-64 shrink-0 ${currentTheme.panelBg} backdrop-blur-xl border border-white/15 rounded-3xl p-4 shadow-2xl flex flex-row flex-wrap lg:flex-nowrap lg:flex-col items-center justify-between lg:justify-evenly gap-3 overflow-y-auto transition-colors duration-500`}>
             {/* 1. MICROPHONE MUTE / UNMUTE */}
             <div className="flex flex-col items-center text-center gap-2 w-auto lg:w-full">
               <span className="text-xs font-extrabold uppercase tracking-widest text-purple-200/90">
