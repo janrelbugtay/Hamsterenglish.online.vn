@@ -38,10 +38,11 @@ import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { drawSuperheroHands } from "../utils/superheroHands";
-import { SetupCurriculumHeader } from "../components/SetupSmartControls";
-import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng } from "../utils/mediaAndPresets";
+import { SetupCurriculumHeader, SmartQuestionInput, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
+import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay, normalizeChaseQuestions } from "./CityPoseChase";
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
+import { FullscreenButton } from "../components/FullscreenButton";
 
 export interface Question {
   id: number | string;
@@ -579,10 +580,24 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
     };
   };
 
-  const currentQuizData = getQuizData();
+  const [activeQuizOverride, setActiveQuizOverride] = useState<Quiz | null>(null);
+  const currentQuizData = activeQuizOverride || getQuizData();
 
   if (screen === 'editor') {
-    return <QuizEditor quiz={currentQuizData} onSave={handleSaveQuiz} onCancel={() => onViewChange("games")} folders={folders} />;
+    return (
+      <div id="yoga-editor-container" className="w-full min-h-full flex-1 relative">
+        <QuizEditor
+          quiz={currentQuizData}
+          onSave={handleSaveQuiz}
+          onPlayDirect={(updatedQuiz) => {
+            setActiveQuizOverride(updatedQuiz);
+            setScreen('game');
+          }}
+          onCancel={() => onViewChange("games")}
+          folders={folders}
+        />
+      </div>
+    );
   }
 
   return (
@@ -604,6 +619,7 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
       <YogaGame 
         quiz={currentQuizData} 
         onBack={() => onViewChange("games")} 
+        onEditQuestions={() => setScreen('editor')}
         onSwitchMode={() => setShowModeModal(true)}
       />
 
@@ -629,7 +645,19 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
 
 // --- Editor Component ---
 
-function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (q: Quiz) => void, onCancel: () => void, folders: { id: string; name: string }[] }) {
+function QuizEditor({
+  quiz,
+  onSave,
+  onPlayDirect,
+  onCancel,
+  folders
+}: {
+  quiz: Quiz;
+  onSave: (q: Quiz) => void;
+  onPlayDirect?: (q: Quiz) => void;
+  onCancel: () => void;
+  folders: { id: string; name: string }[];
+}) {
   const [folderId, setFolderId] = useState(quiz.folderId || "");
   const [topic, setTopic] = useState(quiz.topic || "");
   const [classLevel, setClassLevel] = useState(quiz.classLevel || "");
@@ -797,48 +825,34 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const updateQuestion = (id: number | string, field: keyof Question, value: any) => {
-    setQuestions(questions.map(q => q.id === id ? { ...q, [field]: value } : q));
+    setQuestions(prev => prev.map(q => q.id === id ? { ...q, [field]: value } : q));
   };
 
-  const updateOptionText = (qId: number | string, optIndex: number, textValue: string) => {
+  const updateOptionCombined = (qId: number | string, optIndex: number, combinedVal: string) => {
+    const parsed = parseOptionContent(combinedVal);
     setQuestions(prev => prev.map(q => {
       if (q.id === qId) {
         const newOptions = [...q.options];
-        newOptions[optIndex] = textValue;
         const newImgs = [...(q.optionImages || Array(q.options.length).fill(null))];
-        if (autoRecommendPhoto && contentMode !== "words") {
-          const instant = getInstantCartoonPng(textValue);
-          if (instant) {
-            newImgs[optIndex] = instant;
-          }
+        while (newImgs.length < q.options.length) newImgs.push(null);
+
+        if (parsed.mode === 'image') {
+          newImgs[optIndex] = parsed.imageUrl || null;
+        } else if (parsed.mode === 'both') {
+          newOptions[optIndex] = parsed.text;
+          newImgs[optIndex] = parsed.imageUrl || null;
+        } else {
+          newOptions[optIndex] = parsed.text;
+          newImgs[optIndex] = null;
         }
         return { ...q, options: newOptions, optionImages: newImgs };
       }
       return q;
     }));
-
-    if (autoRecommendPhoto && contentMode !== "words" && textValue.trim().length >= 2 && !getInstantCartoonPng(textValue)) {
-      const trimmed = textValue.trim();
-      setTimeout(async () => {
-        const recommended = await fetchRecommendedCartoonPng(trimmed);
-        if (recommended) {
-          setQuestions(curr => curr.map(q => {
-            if (q.id === qId && q.options[optIndex]?.trim() === trimmed) {
-              const imgs = [...(q.optionImages || Array(q.options.length).fill(null))];
-              if (!imgs[optIndex]) {
-                imgs[optIndex] = recommended;
-              }
-              return { ...q, optionImages: imgs };
-            }
-            return q;
-          }));
-        }
-      }, 320);
-    }
   };
 
   const updateOptionImage = (qId: number | string, optIndex: number, imgUrl: string) => {
-    setQuestions(questions.map(q => {
+    setQuestions(prev => prev.map(q => {
       if (q.id === qId) {
         const newOptionImages = [...(q.optionImages || Array(q.options.length).fill(null))];
         while (newOptionImages.length < q.options.length) newOptionImages.push(null);
@@ -854,38 +868,18 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     }));
   };
 
-  const removeOptionImage = (qId: number | string, optIndex: number) => {
-    setQuestions(questions.map(q => {
+  const updateQuestionImage = (qId: number | string, imgUrl: string | null) => {
+    setQuestions(prev => prev.map(q => {
       if (q.id === qId) {
-        const newOptionImages = [...(q.optionImages || [])];
-        if (newOptionImages[optIndex]) {
-          newOptionImages[optIndex] = null;
+        const parsedQ = parseOptionContent(q.text || '');
+        const copy = { ...q, text: parsedQ.text };
+        if (imgUrl) {
+          copy.image = imgUrl;
+          copy.imageUrl = imgUrl;
+        } else {
+          delete copy.image;
+          delete copy.imageUrl;
         }
-        const newOptions = [...q.options];
-        if (isImageUrl(newOptions[optIndex])) {
-          newOptions[optIndex] = "";
-        }
-        return { ...q, options: newOptions, optionImages: newOptionImages };
-      }
-      return q;
-    }));
-  };
-
-  const updateQuestionImage = (qId: number | string, imgUrl: string) => {
-    setQuestions(questions.map(q => {
-      if (q.id === qId) {
-        return { ...q, image: imgUrl, imageUrl: imgUrl };
-      }
-      return q;
-    }));
-  };
-
-  const removeQuestionImage = (qId: number | string) => {
-    setQuestions(questions.map(q => {
-      if (q.id === qId) {
-        const copy = { ...q };
-        delete copy.image;
-        delete copy.imageUrl;
         return copy;
       }
       return q;
@@ -893,7 +887,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const addOption = (qId: number | string) => {
-    setQuestions(questions.map(q => {
+    setQuestions(prev => prev.map(q => {
       if (q.id === qId && q.options.length < 6) {
         const newImgs = q.optionImages ? [...q.optionImages, null] : Array(q.options.length + 1).fill(null);
         return { ...q, options: [...q.options, ''], optionImages: newImgs };
@@ -903,7 +897,7 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
   };
 
   const removeOption = (qId: number | string) => {
-    setQuestions(questions.map(q => {
+    setQuestions(prev => prev.map(q => {
       if (q.id === qId && q.options.length > 2) {
         const newOptions = [...q.options];
         newOptions.pop();
@@ -957,9 +951,34 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     }
   };
 
+  const sanitizeQuestionsForSave = (): Question[] => {
+    return questions
+      .filter(q => (q.text && q.text.trim()) || q.image || q.options.some((o, i) => (o && o.trim()) || q.optionImages?.[i]))
+      .map(q => {
+        const parsedQ = parseOptionContent(q.text || '');
+        const cleanQImg = q.image || q.imageUrl || parsedQ.imageUrl || undefined;
+        const nextOpts = [...q.options];
+        const nextImgs = [...(q.optionImages || Array(q.options.length).fill(null))];
+        for (let i = 0; i < nextOpts.length; i++) {
+          const parsedOpt = parseOptionContent(nextOpts[i] || '');
+          const img = nextImgs[i] || parsedOpt.imageUrl || (contentMode !== 'words' ? getInstantCartoonPng(parsedOpt.text) : null);
+          nextImgs[i] = img || null;
+          nextOpts[i] = contentMode === 'photos_gifs' && img ? '' : parsedOpt.text;
+        }
+        return {
+          ...q,
+          text: parsedQ.text,
+          image: cleanQImg,
+          imageUrl: cleanQImg,
+          options: nextOpts,
+          optionImages: nextImgs,
+        };
+      });
+  };
+
   const handleSave = () => {
-    const validQuestions = questions.filter(q => q.text.trim() || q.image || q.options.some((o, i) => o.trim() || q.optionImages?.[i]));
-    if(validQuestions.length === 0) {
+    const validQuestions = sanitizeQuestionsForSave();
+    if (validQuestions.length === 0) {
       setErrorMsg("Please add at least one complete question or picture question.");
       setTimeout(() => setErrorMsg(""), 3000);
       return;
@@ -967,9 +986,28 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
     setShowPublishModal(true);
   };
 
+  const handlePlayArena = () => {
+    const validQuestions = sanitizeQuestionsForSave();
+    if (validQuestions.length === 0) {
+      setErrorMsg("Please add at least one complete question before playing.");
+      setTimeout(() => setErrorMsg(""), 3000);
+      return;
+    }
+    if (onPlayDirect) {
+      onPlayDirect({
+        ...quiz,
+        title: topic.trim() ? topic.trim() : (quiz.title || "Yoga Studio Quiz"),
+        folderId,
+        topic,
+        classLevel,
+        questions: validQuestions,
+      });
+    }
+  };
+
   const confirmSave = (isPublic: boolean) => {
     const generatedTitle = topic.trim() ? topic.trim() : "Yoga Studio Quiz";
-    const validQuestions = questions.filter(q => q.text.trim() || q.image || q.options.some((o, i) => o.trim() || q.optionImages?.[i]));
+    const validQuestions = sanitizeQuestionsForSave();
     onSave({
       ...quiz,
       title: generatedTitle,
@@ -984,24 +1022,33 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
 
   return (
     <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
-      <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
+      <div className="w-full min-h-full flex flex-col items-center py-6 px-4">
       <div className="w-full max-w-4xl glass-panel rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8">
-        <div className="bg-white dark:bg-slate-800/80 p-8 flex flex-col gap-6 border-b-2 border-teal-500/50">
-            <div className="flex justify-between items-center">
+        <div className="bg-white dark:bg-slate-800/80 p-6 sm:p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
+            <div className="flex flex-wrap justify-between items-center gap-3">
                 <div className="flex items-center gap-3">
-                  <span className="text-3xl">🧘‍♀️</span>
-                  <div>
-                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">YOGA STUDIO SETUP</h2>
-                    <p className="text-xs text-teal-600 dark:text-teal-400 font-semibold">Students follow the standing pose of the correct choice in Studio or AI Camera Mode!</p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={onCancel}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-black text-sm transition-colors cursor-pointer border border-slate-300 dark:border-slate-600"
+                  >
+                    <ArrowLeft size={18} />
+                    <span>Back</span>
+                  </button>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">
+                    YOGA QUIZ SETUP
+                  </h2>
                 </div>
-                <div className="flex gap-3 items-center">
-                    <button onClick={onCancel} className="px-4 sm:px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer text-sm">
-                        Cancel
+                <div className="flex flex-wrap gap-2.5 items-center">
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm sm:text-base"
+                    >
+                        <Save size={18} />
+                        <span>Save Quiz</span>
                     </button>
-                    <button onClick={handleSave} className="flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-xl bg-teal-500 text-white font-bold hover:bg-teal-600 transition-colors shadow-lg shadow-teal-500/30 cursor-pointer text-sm">
-                        <Save size={18} /> Save Quiz
-                    </button>
+                    <FullscreenButton targetId="yoga-editor-container" className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-600" />
                 </div>
             </div>
             
@@ -1052,35 +1099,41 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
           </div>
         )}
 
-        {/* Bulk Paste Modal */}
+        {/* Clean Bulk Paste Modal */}
         {showBulkPasteModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 transform scale-100 animate-in fade-in zoom-in duration-200 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+            <div
+              className="bg-white dark:bg-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl flex flex-col gap-4 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-500 flex items-center justify-center font-bold">
-                    <ClipboardList size={22} />
+                  <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-500 flex items-center justify-center font-bold shrink-0">
+                    <ClipboardList size={20} />
                   </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">
-                      Bulk Paste & Auto-Divide
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Paste numbered questions, option lines, image links, or Excel tabular data.
-                    </p>
-                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white">
+                    Bulk Paste
+                  </h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCopyAiPrompt}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {copiedPromptInModal ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                    <span>{copiedPromptInModal ? "Copied!" : "Copy AI Prompt"}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowVideoGuide(true)}
-                    className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="Watch Video Tutorial"
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                   >
-                    <Play size={13} className="fill-current text-purple-500" />
-                    <span>Video Guide</span>
+                    <Play size={12} className="fill-current" />
+                    <span>How to Bulk Paste</span>
                   </button>
                   <button 
+                    type="button"
                     onClick={() => { setShowBulkPasteModal(false); setBulkText(""); }}
                     className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
                   >
@@ -1089,80 +1142,38 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
                 </div>
               </div>
 
-              {/* Walkthrough Banner: 3 Simple Steps */}
-              <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-teal-500/10 border border-purple-500/20 rounded-2xl p-4 flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
-                    <Sparkles size={14} /> 3 Simple Steps to Generate 50+ Questions
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyAiPrompt}
-                    className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                  >
-                    {copiedPromptInModal ? (
-                      <>
-                        <Check size={12} className="text-green-300" />
-                        <span>Copied Prompt!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy size={12} />
-                        <span>Copy AI Prompt</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-600 dark:text-slate-300">
-                  <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-purple-500/20 flex flex-col gap-1">
-                    <span className="font-bold text-purple-600 dark:text-purple-400">1. Prompt ChatGPT / Claude</span>
-                    <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">Click &ldquo;Copy AI Prompt&rdquo; above and paste it into ChatGPT, Claude, or Gemini.</span>
-                  </div>
-                  <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-indigo-500/20 flex flex-col gap-1">
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">2. Copy AI Output</span>
-                    <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">Copy the 50 numbered questions and answer choices directly from the AI.</span>
-                  </div>
-                  <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-teal-500/20 flex flex-col gap-1">
-                    <span className="font-bold text-teal-600 dark:text-teal-400">3. Paste Here &amp; Click Apply</span>
-                    <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">Paste in the box below and click &ldquo;Append&rdquo; or &ldquo;Replace All&rdquo; to auto-divide!</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Paste Text Below (Supports questions with image URLs as options)
-                </label>
-                <textarea 
-                  rows={7}
-                  value={bulkText}
-                  onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={"Example:\n1. Which sentence is correct?\na) She doesn't like apples.\nb) She don't like apples.\nc) She not like apples.\nAnswer: A"}
-                  className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-teal-500 transition-colors custom-scrollbar"
-                />
-              </div>
+              <textarea 
+                rows={8}
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"1. Which sentence is correct?\na) She doesn't like apples.\nb) She don't like apples.\nc) She not like apples.\nAnswer: A"}
+                className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-teal-500 transition-colors custom-scrollbar"
+              />
 
               {bulkText.trim() && (
-                <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <div className="text-teal-500 mt-0.5"><Info size={16} /></div>
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <Info size={16} className="text-teal-500 shrink-0" />
                   <p className="text-sm text-slate-600 dark:text-slate-300">
-                    Found <span className="font-bold text-slate-800 dark:text-white">{parsePastedQuiz(bulkText).length}</span> items. 
+                    Found <span className="font-bold text-slate-800 dark:text-white">{parsePastedQuiz(bulkText).length}</span> questions.
                   </p>
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
                 <button 
+                  type="button"
                   onClick={() => handleApplyBulkPaste('replace')}
                   className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
                 >
                   Replace All
                 </button>
                 <button 
+                  type="button"
                   onClick={() => handleApplyBulkPaste('append')}
-                  className="flex-1 py-3 rounded-xl font-bold text-white bg-teal-500 hover:bg-teal-600 transition-colors shadow-lg shadow-teal-500/30 cursor-pointer"
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-teal-500 hover:bg-teal-600 transition-colors shadow-lg shadow-teal-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  Append to End
+                  <Plus size={18} />
+                  <span>+ Add</span>
                 </button>
               </div>
             </div>
@@ -1170,33 +1181,30 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
         )}
 
         <div className="p-6 flex flex-col gap-6 bg-slate-100 dark:bg-slate-900/50">
-          {/* Smart Tip Bar */}
-          <div className="bg-teal-500/10 dark:bg-teal-950/30 border border-teal-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-teal-900 dark:text-teal-200">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0 font-bold">
-                <ImageIcon size={18} />
-              </div>
-              <p className="text-xs sm:text-sm font-medium">
-                <span className="font-bold">Picture Options Enabled:</span> Click <span className="text-teal-600 dark:text-teal-300 font-bold">+ Picture</span> on any option to add photos, uploaded images, or GIFs!
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
+          {/* Questions Action Bar */}
+          <div className="bg-teal-500/10 dark:bg-teal-950/30 border border-teal-500/20 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <span className="font-bold text-sm text-teal-900 dark:text-teal-200 uppercase tracking-wider">
+              Questions ({questions.length})
+            </span>
+            <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+              <button
+                type="button"
+                onClick={() => setShowBulkPasteModal(true)}
+                className="px-5 py-2.5 bg-teal-500 hover:bg-teal-600 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-teal-500/25 flex items-center gap-2.5 cursor-pointer"
+              >
+                <ClipboardList size={20} />
+                <span>Bulk Paste</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setShowVideoGuide(true)}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-1.5 cursor-pointer border border-purple-400/30"
-                title="Watch Video Tutorial: How to Bulk Paste with AI"
+                className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-2 cursor-pointer border border-purple-400/30"
+                title="Watch Video Tutorial: How to Bulk Paste"
               >
-                <div className="w-4 h-4 rounded-full bg-white text-purple-700 flex items-center justify-center shrink-0">
-                  <Play size={10} className="ml-0.5 fill-current" />
+                <div className="w-5 h-5 rounded-full bg-white text-purple-700 flex items-center justify-center shrink-0">
+                  <Play size={11} className="ml-0.5 fill-current" />
                 </div>
                 <span>How to Bulk Paste</span>
-              </button>
-              <button
-                onClick={() => setShowBulkPasteModal(true)}
-                className="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-              >
-                <ClipboardList size={14} /> Bulk Paste
               </button>
             </div>
           </div>
@@ -1219,138 +1227,57 @@ function QuizEditor({ quiz, onSave, onCancel, folders }: { quiz: Quiz, onSave: (
               </button>
               
               {/* Question Row */}
-              <div className="flex gap-3 mb-4 items-start">
-                <div className="w-8 h-8 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 font-bold flex items-center justify-center shrink-0 border border-teal-500/30">
+              <div className="flex gap-4 mb-4 items-start">
+                <div className="w-8 h-8 mt-2 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
                   {index + 1}
                 </div>
-                <div className="flex-1 flex flex-col gap-2">
-                  <div className="flex gap-2 items-center">
-                    <input 
-                      id={`question-input-${index}`}
-                      type="text"
-                      value={q.text}
-                      onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(e, index)}
-                      onPaste={(e) => handlePaste(e, index)}
-                      placeholder="Type your question prompt here..."
-                      className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-teal-500 text-slate-800 dark:text-white font-medium text-sm sm:text-base"
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setActiveMediaPicker({ type: 'question', qId: q.id })}
-                      className="px-3 py-3 bg-teal-50 hover:bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:hover:bg-teal-900 dark:text-teal-300 rounded-xl flex items-center gap-1.5 text-xs sm:text-sm font-bold border border-teal-200 dark:border-teal-800 transition-all shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95"
-                      title="Attach picture to this question"
-                    >
-                      <ImageIcon size={16} />
-                      <span className="hidden sm:inline">{q.image ? 'Change Picture' : '+ Clue Picture'}</span>
-                    </button>
-                  </div>
-                  
-                  {q.image && (
-                    <div className="flex items-center gap-3 bg-teal-50/50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60 rounded-xl p-2 w-fit">
-                      <img src={q.image} alt="Question Visual" className="w-14 h-14 object-cover rounded-lg border border-teal-200 dark:border-teal-700" />
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs font-bold text-teal-900 dark:text-teal-200">Question Clue Picture Attached</span>
-                        <button 
-                          type="button"
-                          onClick={() => removeQuestionImage(q.id)}
-                          className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
-                        >
-                          <X size={12} /> Remove
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <SmartQuestionInput
+                  id={`question-input-${index}`}
+                  value={q.text}
+                  imageUrl={q.image || q.imageUrl}
+                  onChange={(newVal) => updateQuestion(q.id, 'text', newVal)}
+                  onChangeImage={(newImg) => updateQuestionImage(q.id, newImg)}
+                  onOpenMediaPicker={(initialQ) =>
+                    setActiveMediaPicker({ type: 'question', qId: q.id, initialQuery: initialQ })
+                  }
+                  onKeyDown={(e) => handleKeyDown(e, index)}
+                  onPaste={(e) => handlePaste(e, index)}
+                  placeholder="Type your question here..."
+                  autoPhotosEnabled={autoRecommendPhoto}
+                />
               </div>
 
               {/* Options Grid */}
-              <div className="ml-11 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="ml-12 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {q.options.map((opt, optIndex) => {
                   const optImg = q.optionImages?.[optIndex] || (isImageUrl(opt) ? opt : null);
                   const optText = isImageUrl(opt) && !q.optionImages?.[optIndex] ? "" : opt;
+                  const combinedVal = optImg
+                    ? contentMode === 'photos_gifs'
+                      ? optImg
+                      : formatOptionContent(optText, optImg, 'both')
+                    : optText;
 
                   return (
-                    <div key={optIndex} className="flex flex-col gap-1.5 p-2 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80">
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="radio" 
-                          name={`answer-${q.id}`} 
-                          checked={q.answerIndex === optIndex}
-                          onChange={() => updateQuestion(q.id, 'answerIndex', optIndex)}
-                          className="w-4 h-4 text-teal-500 focus:ring-teal-500 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
-                          title="Mark as correct answer"
-                        />
-                        <span className="text-xs font-black text-slate-500 dark:text-slate-400 w-5">
-                          {String.fromCharCode(65 + optIndex)}.
-                        </span>
-
-                        {optImg ? (
-                          <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700 rounded-xl p-1.5 pr-2.5 shadow-xs">
-                            <div 
-                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex, initialQuery: optText })}
-                              className="relative group w-11 h-11 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 shrink-0 cursor-pointer hover:border-teal-400 transition-colors"
-                              title="Click to replace picture"
-                            >
-                              <img src={optImg} alt="Option Visual" className="w-full h-full object-contain p-0.5" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                                <Pencil size={14} />
-                              </div>
-                            </div>
-                            <input 
-                              type="text"
-                              value={optText}
-                              onChange={(e) => updateOptionText(q.id, optIndex, e.target.value)}
-                              placeholder="Type word (e.g. apple)..."
-                              className="flex-1 min-w-0 bg-transparent outline-none text-slate-800 dark:text-white text-xs sm:text-sm font-medium"
-                            />
-                            <button 
-                              type="button"
-                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex, initialQuery: optText })}
-                              className="px-2 py-1 text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950 rounded-lg cursor-pointer transition-colors shrink-0"
-                              title="Replace Picture"
-                            >
-                              Replace
-                            </button>
-                            <button 
-                              type="button"
-                              onClick={() => removeOptionImage(q.id, optIndex)}
-                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg cursor-pointer transition-colors"
-                              title="Remove Picture"
-                            >
-                              <X size={15} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex-1 flex items-center gap-2">
-                            <input 
-                              type="text"
-                              value={opt}
-                              onChange={(e) => updateOptionText(q.id, optIndex, e.target.value)}
-                              placeholder={`Option ${optIndex + 1} (e.g. apple)`}
-                              className={`flex-1 min-w-0 bg-white dark:bg-slate-800 border ${
-                                q.answerIndex === optIndex 
-                                  ? 'border-teal-500/60 bg-teal-50/30 dark:bg-teal-950/20 text-teal-900 dark:text-teal-200 font-bold' 
-                                  : 'border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-                              } rounded-xl px-3 py-2 outline-none focus:border-teal-500 text-xs sm:text-sm font-medium transition-colors`}
-                            />
-                            <button 
-                              type="button"
-                              onClick={() => setActiveMediaPicker({ type: 'option', qId: q.id, optIndex, initialQuery: opt })}
-                              className="px-2.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:hover:bg-teal-900 dark:text-teal-300 rounded-xl flex items-center gap-1 text-xs font-bold border border-teal-200/80 dark:border-teal-800 transition-all shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95"
-                              title="Add Picture / Photo / GIF to this option"
-                            >
-                              <ImageIcon size={14} className="text-teal-600 dark:text-teal-400" />
-                              <span className="hidden sm:inline">+ Picture</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <SmartOptionInput
+                      key={optIndex}
+                      value={combinedVal}
+                      optionIndex={optIndex}
+                      isCorrect={q.answerIndex === optIndex}
+                      onSelectCorrect={() => updateQuestion(q.id, 'answerIndex', optIndex)}
+                      onChangeValue={(val) => updateOptionCombined(q.id, optIndex, val)}
+                      onOpenMediaPicker={(initialQ) =>
+                        setActiveMediaPicker({ type: 'option', qId: q.id, optIndex, initialQuery: initialQ })
+                      }
+                      contentMode={contentMode}
+                      autoRecommendPhoto={autoRecommendPhoto}
+                      placeholder={`Option ${optIndex + 1}`}
+                      radioName={`answer-${q.id}`}
+                    />
                   );
                 })}
               </div>
-              <div className="ml-11 mt-3 flex gap-2">
+              <div className="ml-12 mt-3 flex gap-2">
                   <button onClick={() => addOption(q.id)} disabled={q.options.length >= 6} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer font-bold">+ Option</button>
                   <button onClick={() => removeOption(q.id)} disabled={q.options.length <= 2} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer font-bold">- Option</button>
               </div>
@@ -1590,9 +1517,20 @@ function getInitialCameraHandPoses(): string[] {
   return DEFAULT_CAMERA_HAND_VALUES;
 }
 
-function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => void, onSwitchMode?: () => void }) {
+function YogaGame({
+  quiz,
+  onBack,
+  onEditQuestions,
+  onSwitchMode
+}: {
+  quiz: Quiz;
+  onBack: () => void;
+  onEditQuestions?: () => void;
+  onSwitchMode?: () => void;
+}) {
   const [gameState, setGameState] = useState<'start' | 'playing' | 'end'>('start');
   const [playMode, setPlayMode] = useState<'studio' | 'camera' | 'pose-chase'>('camera');
+  const [yogaTimerMinutes, setYogaTimerMinutes] = useState<number>(3);
 
   // Persisted pose selections: Classic Mode uses previous yoga poses; Camera Mode uses pure hand gestures
   const [classicPoses, setClassicPoses] = useState<string[]>(getInitialClassicPoses);
@@ -1810,9 +1748,10 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
 
     let validOpts = rawOptions.map((opt: any, i: number) => {
       const raw = typeof opt === 'string' ? opt : '';
+      const parsedOpt = parseOptionContent(raw);
       const imgField = optionImages[i];
-      const image = isImageUrl(imgField) ? imgField : (isImageUrl(raw) ? raw : undefined);
-      const displayText = isImageUrl(raw) && !imgField ? "" : raw;
+      const image = isImageUrl(imgField) ? imgField : (parsedOpt.imageUrl || undefined);
+      const displayText = parsedOpt.mode === 'image' ? "" : parsedOpt.text;
 
       return {
         originalIndex: i,
@@ -2616,6 +2555,7 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
             title={quiz.title || 'YOGA QUIZ 3D'}
             questionCount={quiz.questions.length}
             onBack={onBack}
+            onOpenQuizEditor={onEditQuestions}
             onOpenSettings={() => setShowSettings(true)}
             onOpenGameSwitcher={onSwitchMode}
             playerModeOptions={[
@@ -2633,6 +2573,20 @@ function YogaGame({ quiz, onBack, onSwitchMode }: { quiz: Quiz, onBack: () => vo
               onChange: (val: string) =>
                 setTeams(prev => prev.map(t => (t.id === team.id ? { ...t, name: val } : t)))
             }))}
+            timerValue={yogaTimerMinutes * 60}
+            timerLabelDisplay={`${yogaTimerMinutes} ${yogaTimerMinutes === 1 ? 'Minute' : 'Minutes'}`}
+            timerOptions={[
+              { sec: 60, label: '1 Minute' },
+              { sec: 120, label: '2 Minutes' },
+              { sec: 180, label: '3 Minutes' },
+              { sec: 300, label: '5 Minutes' }
+            ]}
+            onTimerChange={(sec: number) => setYogaTimerMinutes(Math.max(1, Math.round(sec / 60)))}
+            arCameraConfig={{
+              enabled: playMode !== 'studio',
+              label: 'AR Camera Tracker',
+              helperText: 'Show your hand or body in front of the camera to select answers!'
+            }}
             startLabel="START YOGA STUDIO"
             onStart={startGame}
           >

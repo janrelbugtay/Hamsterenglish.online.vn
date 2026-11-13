@@ -6,7 +6,6 @@ import {
   Link as LinkIcon,
   Upload,
   Image as ImageIcon,
-  Sparkles,
   Film,
 } from 'lucide-react';
 import {
@@ -27,7 +26,6 @@ interface MediaPickerModalProps {
 }
 
 type Tab = 'photos' | 'giphy' | 'upload';
-type PhotoFilter = 'all' | 'photos' | 'clipart';
 type GifFilter = 'gifs' | 'stickers';
 
 const QUICK_SEARCH_CHIPS = [
@@ -61,7 +59,6 @@ export function MediaPickerModal({
   const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [photoFilter, setPhotoFilter] = useState<PhotoFilter>('all');
   const [gifFilter, setGifFilter] = useState<GifFilter>('gifs');
   const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,11 +66,10 @@ export function MediaPickerModal({
   const runSearch = async (
     searchWord: string,
     tab: Tab,
-    pFilter: PhotoFilter = photoFilter,
-    gFilter: GifFilter = gifFilter
+    gFilter: GifFilter = gifFilter,
+    fallbackIfEmpty: boolean = false
   ) => {
     const clean = searchWord.trim();
-    const prioritizeClipart = pFilter === 'clipart';
 
     if (!clean) {
       if (tab === 'photos') {
@@ -100,19 +96,25 @@ export function MediaPickerModal({
     try {
       if (tab === 'photos') {
         const instant = getInstantCartoonGallery(clean);
-        if (instant.length > 0 && pFilter !== 'photos') {
+        if (instant.length > 0) {
           setPhotoResults(instant);
           setIsLoading(false);
         } else {
           setIsLoading(true);
         }
-        const items = await searchPhotosMultiSource(clean, prioritizeClipart, (partial) => {
+        // Always prioritize PNGs first (prioritizePng = true)
+        const items = await searchPhotosMultiSource(clean, true, (partial) => {
           setPhotoResults(partial);
           if (partial.length > 0) {
             setIsLoading(false);
           }
         });
-        setPhotoResults(items);
+        if (items.length === 0 && fallbackIfEmpty) {
+          setQuery('');
+          setPhotoResults(getInstantCartoonGallery(''));
+        } else {
+          setPhotoResults(items);
+        }
       } else if (tab === 'giphy') {
         setIsLoading(true);
         const items = await searchGifsMultiSource(
@@ -149,13 +151,13 @@ export function MediaPickerModal({
       const cleanedInit = normalizeKeyword(initialQuery) || initialQuery.trim();
       if (cleanedInit) {
         setQuery(cleanedInit);
-        runSearch(cleanedInit, startTab, photoFilter, gifFilter);
+        runSearch(cleanedInit, startTab, gifFilter, true);
       } else {
         setQuery('');
         setPhotoResults(getInstantCartoonGallery(''));
         setIsLoading(false);
         if (startTab === 'giphy') {
-          runSearch('', 'giphy', photoFilter, gifFilter);
+          runSearch('', 'giphy', gifFilter, true);
         }
       }
     }
@@ -163,32 +165,27 @@ export function MediaPickerModal({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    runSearch(query, activeTab, photoFilter, gifFilter);
+    runSearch(query, activeTab, gifFilter, false);
   };
 
   const handleSwitchTab = (tab: Tab) => {
     setActiveTab(tab);
     setError('');
     if (tab === 'photos') {
-      runSearch(query, 'photos', photoFilter, gifFilter);
+      runSearch(query, 'photos', gifFilter, false);
     } else if (tab === 'giphy') {
-      runSearch(query, 'giphy', photoFilter, gifFilter);
+      runSearch(query, 'giphy', gifFilter, false);
     }
-  };
-
-  const handlePhotoFilterChange = (nextFilter: PhotoFilter) => {
-    setPhotoFilter(nextFilter);
-    runSearch(query, 'photos', nextFilter, gifFilter);
   };
 
   const handleGifFilterChange = (nextGifFilter: GifFilter) => {
     setGifFilter(nextGifFilter);
-    runSearch(query, 'giphy', photoFilter, nextGifFilter);
+    runSearch(query, 'giphy', nextGifFilter, false);
   };
 
   const handleQuickChip = (word: string) => {
     setQuery(word);
-    runSearch(word, activeTab, photoFilter, gifFilter);
+    runSearch(word, activeTab, gifFilter, false);
   };
 
   const handleLinkSubmit = (e: React.FormEvent) => {
@@ -221,19 +218,9 @@ export function MediaPickerModal({
 
   if (!isOpen) return null;
 
-  const displayedPhotos = photoResults.filter((item) => {
-    if (failedUrls.has(item.urls.small) || failedUrls.has(item.urls.regular)) return false;
-    if (photoFilter === 'photos') return !item.isCartoonPng;
-    if (photoFilter === 'clipart') return Boolean(item.isCartoonPng);
-    return true;
-  });
-
-  const finalPhotos =
-    displayedPhotos.length > 0
-      ? displayedPhotos
-      : photoResults.filter(
-          (item) => !failedUrls.has(item.urls.small) && !failedUrls.has(item.urls.regular)
-        );
+  const finalPhotos = photoResults.filter(
+    (item) => !failedUrls.has(item.urls.small) && !failedUrls.has(item.urls.regular)
+  );
 
   const displayedGifs = gifResults.filter(
     (g) =>
@@ -244,65 +231,56 @@ export function MediaPickerModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4">
       <div className="bg-white dark:bg-slate-800 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] border border-slate-200 dark:border-slate-700">
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/60">
-          <div>
-            <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
-              <Sparkles size={19} className="text-blue-600 dark:text-blue-400" />
-              Select Classroom Photo, Clipart, or GIPHY GIF
-            </h3>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Accurate keyword-matched Photos &amp; Clipart plus real animated GIPHY GIFs &amp; Stickers
-            </p>
+        {/* Top Bar: Photos (Prioritize PNG) | GIPHY | Upload + Close Button */}
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-900/60 p-2">
+          <div className="grid grid-cols-3 flex-1 gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleSwitchTab('photos')}
+              className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'photos'
+                  ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ImageIcon size={16} />
+              <span>Photos</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSwitchTab('giphy')}
+              className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'giphy'
+                  ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Film size={16} />
+              <span>GIPHY</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSwitchTab('upload')}
+              className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'upload'
+                  ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Upload size={16} />
+              <span>Upload</span>
+            </button>
           </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            className="p-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer shrink-0"
+            title="Close"
           >
             <X size={20} />
-          </button>
-        </div>
-
-        {/* Primary Tabs */}
-        <div className="grid grid-cols-3 border-b border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/50 p-1.5 gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleSwitchTab('photos')}
-            className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-              activeTab === 'photos'
-                ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <ImageIcon size={16} />
-            <span>Photos &amp; Clipart</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSwitchTab('giphy')}
-            className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-              activeTab === 'giphy'
-                ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Film size={16} />
-            <span>GIPHY GIFs &amp; Stickers</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSwitchTab('upload')}
-            className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-              activeTab === 'upload'
-                ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Upload size={16} />
-            <span>Upload / Link</span>
           </button>
         </div>
 
@@ -318,8 +296,8 @@ export function MediaPickerModal({
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={
                     activeTab === 'photos'
-                      ? 'Search accurate Photos & Clipart (e.g. lion, policeman, pizza, swim)...'
-                      : 'Search real GIPHY GIFs & Stickers (e.g. lion roaring, happy dance, policeman)...'
+                      ? 'Search PNGs & Photos (e.g. lion, policeman, pizza, swim)...'
+                      : 'Search GIPHY GIFs & Stickers (e.g. lion, happy dance, policeman)...'
                   }
                   className="w-full bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-2xl pl-11 pr-28 py-3 outline-none focus:border-blue-500 text-slate-900 dark:text-white font-semibold shadow-xs text-sm sm:text-base"
                   autoFocus
@@ -330,7 +308,7 @@ export function MediaPickerModal({
                     type="button"
                     onClick={() => {
                       setQuery('');
-                      runSearch('', activeTab, photoFilter, gifFilter);
+                      runSearch('', activeTab, gifFilter, false);
                     }}
                     className="absolute right-24 top-3.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                     title="Clear search"
@@ -347,45 +325,9 @@ export function MediaPickerModal({
                 </button>
               </form>
 
-              {/* Sub-Filters & Quick Vocabulary Chips */}
+              {/* Quick Vocabulary Chips & GIPHY Sub-toggle */}
               <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3.5 shrink-0">
-                {activeTab === 'photos' ? (
-                  <div className="flex items-center gap-1 bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => handlePhotoFilterChange('all')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                        photoFilter === 'all'
-                          ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-xs'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                      }`}
-                    >
-                      ✨ All ({photoResults.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePhotoFilterChange('photos')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                        photoFilter === 'photos'
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                      }`}
-                    >
-                      📸 Real Photos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePhotoFilterChange('clipart')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                        photoFilter === 'clipart'
-                          ? 'bg-amber-500 text-slate-950 shadow-xs'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                      }`}
-                    >
-                      🎨 Clipart &amp; PNGs
-                    </button>
-                  </div>
-                ) : (
+                {activeTab === 'giphy' && (
                   <div className="flex items-center gap-1 bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl">
                     <button
                       type="button"
@@ -396,7 +338,7 @@ export function MediaPickerModal({
                           : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                       }`}
                     >
-                      🎬 GIPHY GIFs
+                      GIPHY GIFs
                     </button>
                     <button
                       type="button"
@@ -407,7 +349,7 @@ export function MediaPickerModal({
                           : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                       }`}
                     >
-                      ✨ GIPHY Stickers
+                      GIPHY Stickers
                     </button>
                   </div>
                 )}
@@ -437,8 +379,8 @@ export function MediaPickerModal({
                     <Loader2 className="animate-spin text-blue-600" size={36} />
                     <span className="text-xs font-bold text-slate-500">
                       {activeTab === 'giphy'
-                        ? 'Searching real GIPHY GIFs & Stickers...'
-                        : 'Searching accurate Photos & Clipart...'}
+                        ? 'Searching GIPHY...'
+                        : 'Searching PNGs & Photos...'}
                     </span>
                   </div>
                 ) : error ? (
@@ -456,11 +398,11 @@ export function MediaPickerModal({
                           <span
                             className={`absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shadow-xs ${
                               photo.isCartoonPng
-                                ? 'bg-amber-400 text-slate-950'
+                                ? 'bg-emerald-500 text-white'
                                 : 'bg-blue-600 text-white'
                             }`}
                           >
-                            {photo.source || (photo.isCartoonPng ? 'Clipart' : 'Photo')}
+                            {photo.isCartoonPng ? 'PNG' : 'Photo'}
                           </span>
                           <img
                             src={photo.urls.small}
@@ -481,7 +423,7 @@ export function MediaPickerModal({
                           />
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 via-slate-950/40 to-transparent p-2 pt-5 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center">
                             <span className="text-white text-xs font-black px-3 py-1 bg-blue-600 rounded-lg shadow">
-                              Select Image
+                              Select
                             </span>
                           </div>
                         </button>
@@ -495,7 +437,7 @@ export function MediaPickerModal({
                         onClick={() => handleSwitchTab('giphy')}
                         className="text-purple-600 font-bold underline cursor-pointer"
                       >
-                        GIPHY GIFs
+                        GIPHY
                       </button>{' '}
                       or try another keyword!
                     </div>
@@ -514,7 +456,7 @@ export function MediaPickerModal({
                         } shadow-xs hover:shadow-md`}
                       >
                         <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md bg-purple-600/90 text-white text-[10px] font-black uppercase tracking-wider shadow-xs">
-                          {gif.source || 'GIPHY'}
+                          GIPHY
                         </span>
                         <img
                           src={gif.images.fixed_height_small.url}
@@ -533,7 +475,7 @@ export function MediaPickerModal({
                         />
                         <div className="absolute inset-0 bg-slate-950/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <span className="text-white text-xs font-black px-3.5 py-1.5 bg-purple-600 rounded-xl shadow">
-                            Use {gif.isSticker ? 'Sticker' : 'GIF'}
+                            Select
                           </span>
                         </div>
                       </button>

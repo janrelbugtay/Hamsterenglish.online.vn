@@ -9,7 +9,7 @@ import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { GameModeModal } from '../components/GameModeModal';
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
-import { parseOptionContent, formatOptionContent, AnswerContentMode } from '../utils/mediaAndPresets';
+import { parseOptionContent, formatOptionContent, AnswerContentMode, getInstantCartoonPng } from '../utils/mediaAndPresets';
 import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay } from './CityPoseChase';
 import {
   ArrowLeft,
@@ -5700,17 +5700,17 @@ function CoasterQuizEditor({
   };
 
   const addQuestion = () => {
-    setQuestions([...questions, { id: Date.now() + Math.random(), text: '', options: ['', ''], answerIndex: 0 }]);
+    setQuestions((prev) => [...prev, { id: Date.now() + Math.random(), text: '', options: ['', ''], answerIndex: 0 }]);
   };
 
   const updateQuestion = (id: number | string, field: keyof Question, value: any) => {
-    setQuestions(questions.map((q) => (q.id === id ? { ...q, [field]: value } : q)));
+    setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, [field]: value } : q)));
   };
 
   const updateOption = (qId: number | string, optIndex: number, value: string) => {
     if (optIndex > 1) return; // Strictly 2 options
-    setQuestions(
-      questions.map((q) => {
+    setQuestions((prev) =>
+      prev.map((q) => {
         if (q.id === qId) {
           const newOptions = [q.options[0] || '', q.options[1] || ''];
           newOptions[optIndex] = value;
@@ -5754,7 +5754,7 @@ function CoasterQuizEditor({
 
   const sanitizeQuestionsForSave = () => {
     return questions
-      .filter((q) => (q.text && q.text.trim()) || q.image)
+      .filter((q) => (q.text && q.text.trim()) || q.image || q.options.some((o) => o && o.trim()))
       .map((q) => {
         const parsedQ = parseOptionContent(q.text || '');
         const cleanQText = parsedQ.text || '';
@@ -5762,13 +5762,15 @@ function CoasterQuizEditor({
         const formattedOptions = q.options.map((rawOpt) => {
           const parsedOpt = parseOptionContent(rawOpt);
           const optImg = parsedOpt.imageUrl || (contentMode !== 'words' ? getInstantCartoonPng(parsedOpt.text) : null);
-          if (contentMode === 'words') {
-            return parsedOpt.text || rawOpt;
-          }
           if (contentMode === 'photos_gifs') {
             return optImg || parsedOpt.text || rawOpt;
           }
-          return formatOptionContent(parsedOpt.text, optImg, 'both');
+          if (optImg) {
+            return parsedOpt.text
+              ? formatOptionContent(parsedOpt.text, optImg, 'both')
+              : optImg;
+          }
+          return parsedOpt.text || rawOpt;
         });
         return {
           ...q,
@@ -5842,14 +5844,6 @@ function CoasterQuizEditor({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2.5 items-center">
-                <button
-                  type="button"
-                  onClick={handleQuickPlay}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-md shadow-emerald-600/25 cursor-pointer text-sm sm:text-base"
-                >
-                  <Play size={17} fill="currentColor" />
-                  <span>Play Arena</span>
-                </button>
                 <button
                   type="button"
                   onClick={handleSave}
@@ -5986,7 +5980,7 @@ function CoasterQuizEditor({
                     }
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     onPaste={(e) => handlePaste(e, index)}
-                    placeholder="Type your question here (or click Add Media for picture/GIF question)..."
+                    placeholder="Type your question here..."
                     autoPhotosEnabled={autoPhotosEnabled}
                   />
                 </div>
@@ -6107,77 +6101,73 @@ function CoasterQuizEditor({
           document.body
         )}
 
-      {/* Bulk Paste Modal */}
+      {/* Clean Bulk Paste Modal */}
       {showBulkPasteModal &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
             <div
-              className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="bg-white dark:bg-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl flex flex-col gap-4 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto custom-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
-                    <ClipboardList size={22} />
+                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold shrink-0">
+                    <ClipboardList size={20} />
                   </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">
-                      Bulk Paste (2-Option Coaster Mode)
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Paste numbered questions with 2 options (or 4 options — we automatically keep the correct answer + 1 wrong distractor!).
-                    </p>
-                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white">
+                    Bulk Paste
+                  </h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBulkPasteModal(false);
-                    setBulkText('');
-                  }}
-                  className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-4 flex items-center justify-between gap-3">
-                <div className="text-xs text-slate-600 dark:text-slate-300">
-                  <span className="font-black text-slate-800 dark:text-white block mb-0.5">
-                    Generate 2-Choice Questions with AI
-                  </span>
-                  Copy our ready-made prompt for ChatGPT/Claude to create 2-option questions instantly.
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCopyAiPrompt}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {copiedPromptInModal ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                    <span>{copiedPromptInModal ? 'Copied!' : 'Copy AI Prompt'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoGuide(true)}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Play size={12} className="fill-current" />
+                    <span>How to Bulk Paste</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBulkPasteModal(false);
+                      setBulkText('');
+                    }}
+                    className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopyAiPrompt}
-                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  {copiedPromptInModal ? <Check size={14} /> : <Copy size={14} />}
-                  <span>{copiedPromptInModal ? 'Copied!' : 'Copy AI Prompt'}</span>
-                </button>
               </div>
 
               <textarea
-                rows={7}
+                rows={8}
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
                 placeholder={
-                  'Example:\n1. She ___ to school every day.\na) goes\nb) go\nAnswer: A\n\n2. 7 × 8 = ?\na) 56\nb) 54\nAnswer: A'
+                  '1. She ___ to school every day.\na) goes\nb) go\nAnswer: A\n\n2. 7 × 8 = ?\na) 56\nb) 54\nAnswer: A'
                 }
                 className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white p-4 rounded-2xl focus:border-cyan-500 transition-colors custom-scrollbar"
               />
 
               {bulkText.trim() && (
-                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <Info size={16} className="text-cyan-500" />
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <Info size={16} className="text-cyan-500 shrink-0" />
                   <p className="text-sm text-slate-600 dark:text-slate-300">
                     Found{' '}
                     <span className="font-bold text-slate-800 dark:text-white">
                       {parseTwoOptionQuiz(bulkText).length}
                     </span>{' '}
-                    questions (automatically formatted to 2 options).
+                    questions.
                   </p>
                 </div>
               )}

@@ -621,7 +621,7 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
           id: `instant-exact-${word}`,
           alt_description: word,
           isCartoonPng: true,
-          source: 'Clipart PNG',
+          source: 'PNG',
           urls: { regular: url, small: url },
         });
       }
@@ -639,7 +639,7 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
           id: `instant-token-${word}`,
           alt_description: word,
           isCartoonPng: true,
-          source: 'Clipart PNG',
+          source: 'PNG',
           urls: { regular: url, small: url },
         });
       }
@@ -661,7 +661,7 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
           id: `instant-pop-${word}`,
           alt_description: word,
           isCartoonPng: true,
-          source: 'Clipart PNG',
+          source: 'PNG',
           urls: { regular: url, small: url },
         });
       }
@@ -672,10 +672,9 @@ export function getInstantCartoonGallery(searchQuery: string = ''): PhotoSearchR
 }
 
 /**
- * Asynchronously fetches the best Cartoon PNG for any word or phrase:
- * 1. Checks instant Twemoji cartoon PNG dictionary (0ms)
- * 2. Queries ARASAAC Cartoon Pictograms API with strict keyword check
- * 3. Queries Wikipedia lead image / strict intitle Wikimedia search
+ * Asynchronously fetches the best PNG or Photo for a real word or phrase:
+ * 1. Checks instant transparent PNG dictionary (0ms)
+ * 2. Queries Wikipedia canonical lead image with strict title verification
  */
 export async function fetchRecommendedCartoonPng(word: string): Promise<string | null> {
   const clean = normalizeKeyword(word);
@@ -685,32 +684,14 @@ export async function fetchRecommendedCartoonPng(word: string): Promise<string |
     return recommendedPhotoCache.get(clean)!;
   }
 
-  // 1. Check instant Twemoji cartoon PNG first for 0ms response!
+  // 1. Check instant transparent PNG first for 0ms response
   const instant = getInstantCartoonPng(clean);
   if (instant) {
     recommendedPhotoCache.set(clean, instant);
     return instant;
   }
 
-  // 2. Try ARASAAC Educational Cartoon Pictogram PNG
-  try {
-    const arasaacRes = await fetchWithTimeout(
-      `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(clean)}`,
-      2000
-    );
-    if (arasaacRes.ok) {
-      const data = await arasaacRes.json();
-      if (Array.isArray(data) && data.length > 0 && data[0]._id) {
-        const url = `https://static.arasaac.org/pictograms/${data[0]._id}/${data[0]._id}_500.png`;
-        recommendedPhotoCache.set(clean, url);
-        return url;
-      }
-    }
-  } catch {
-    // Fallback to next source
-  }
-
-  // 3. Try Wikipedia Page Lead Image (accurate canonical image for any noun)
+  // 2. Try Wikipedia Page Lead Image (strictly verified against keyword)
   try {
     const wpUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(
       clean
@@ -721,7 +702,8 @@ export async function fetchRecommendedCartoonPng(word: string): Promise<string |
       const pages = wpData?.query?.pages ? Object.values(wpData.query.pages) : [];
       for (const page of pages as any[]) {
         const thumb = page?.thumbnail?.source;
-        if (thumb) {
+        const title = page?.title || '';
+        if (thumb && isRelevantMediaTitle(title, clean)) {
           recommendedPhotoCache.set(clean, thumb);
           return thumb;
         }
@@ -757,16 +739,14 @@ export interface GifSearchResult {
 }
 
 /**
- * Multi-source Accurate Photo & Clipart Search:
- * - Instant Twemoji Clipart (strict whole-word match)
- * - ARASAAC Educational Clipart (strict keyword match)
- * - Wikipedia Canonical Lead Photo (100% accurate real photo for any topic/noun)
- * - Openverse Creative Commons Photos & Illustrations (strict title/tag relevance)
- * - Wikimedia Commons with strict `intitle:` & parenthesized boolean query + filename relevance filter
+ * Multi-source Photo Search (Prioritizes PNGs, removes Clipart):
+ * - Instant transparent PNGs (strict whole-word match)
+ * - Wikimedia & Openverse transparent PNGs and high-res Photos (strict title match)
+ * - Wikipedia Canonical Lead Photos
  */
 export async function searchPhotosMultiSource(
   rawQuery: string,
-  prioritizeCartoonPng: boolean = true,
+  prioritizePng: boolean = true,
   onProgress?: (partial: PhotoSearchResult[]) => void
 ): Promise<PhotoSearchResult[]> {
   const query = rawQuery.trim();
@@ -782,13 +762,9 @@ export async function searchPhotosMultiSource(
 
   const sortResults = (list: PhotoSearchResult[]) => {
     return [...list].sort((a, b) => {
-      if (prioritizeCartoonPng) {
-        const aC = a.isCartoonPng ? 1 : 0;
-        const bC = b.isCartoonPng ? 1 : 0;
-        if (bC !== aC) return bC - aC;
-      } else {
-        const aP = !a.isCartoonPng ? 1 : 0;
-        const bP = !b.isCartoonPng ? 1 : 0;
+      if (prioritizePng) {
+        const aP = a.isCartoonPng ? 1 : 0;
+        const bP = b.isCartoonPng ? 1 : 0;
         if (bP !== aP) return bP - aP;
       }
       return 0;
@@ -806,7 +782,7 @@ export async function searchPhotosMultiSource(
     results.push(item);
   };
 
-  // 1. Instant local Cartoon PNG matches (strict whole-word match)
+  // 1. Instant local PNG matches (strict whole-word match)
   const instantMatches = getInstantCartoonGallery(cleanQ);
   instantMatches.forEach((m) => pushUnique(m));
   if (results.length > 0) {
@@ -815,13 +791,13 @@ export async function searchPhotosMultiSource(
 
   const tasks: Promise<void>[] = [];
 
-  // Task A: Wikipedia Lead Image & Related Articles (Canonical high-accuracy real photos)
+  // Task A: Wikipedia Lead Image & Related Articles (Canonical high-accuracy photos & PNGs)
   tasks.push(
     (async () => {
       try {
         const wpUrl = `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
           `intitle:${cleanQ}`
-        )}&gsrlimit=8&prop=pageimages&piprop=thumbnail&pithumbsize=500&format=json&origin=*`;
+        )}&gsrlimit=10&prop=pageimages&piprop=thumbnail&pithumbsize=500&format=json&origin=*`;
         const res = await fetchWithTimeout(wpUrl, 2400);
         if (res.ok) {
           const data = await res.json();
@@ -830,12 +806,12 @@ export async function searchPhotosMultiSource(
             const thumb = page?.thumbnail?.source;
             const title = page?.title || '';
             if (thumb && isRelevantMediaTitle(title, cleanQ)) {
-              const isSvgOrPng = thumb.toLowerCase().includes('.svg');
+              const isPng = thumb.toLowerCase().endsWith('.png');
               pushUnique({
                 id: `wp-${page.pageid}`,
                 alt_description: title,
-                isCartoonPng: isSvgOrPng,
-                source: 'Encyclopedia Photo',
+                isCartoonPng: isPng,
+                source: isPng ? 'PNG' : 'Photo',
                 urls: { regular: thumb, small: thumb },
               });
             }
@@ -848,39 +824,34 @@ export async function searchPhotosMultiSource(
     })()
   );
 
-  // Task B: ARASAAC Educational Cartoon Pictograms (Strict keyword relevance)
+  // Task B: Wikimedia Commons PNGs prioritized (strict intitle match, no clipart/icons)
   tasks.push(
     (async () => {
       try {
-        const res = await fetchWithTimeout(
-          `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(cleanQ)}`,
-          2400
-        );
+        const pngWikiQuery = `intitle:"${cleanQ}" filemime:png -coat -flag -map -diagram -signature`;
+        const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
+          pngWikiQuery
+        )}&gsrnamespace=6&gsrlimit=16&prop=imageinfo&iiprop=url|mime&iiurlwidth=500&format=json&origin=*`;
+        const res = await fetchWithTimeout(url, 2500);
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data)) {
-            const filtered = data.filter((item: any) => {
-              const kws: string[] = (item?.keywords || []).map((k: any) =>
-                String(k?.keyword || '').toLowerCase().trim()
-              );
-              return kws.some((k) => isRelevantMediaTitle(k, cleanQ));
-            });
-            const listToUse = filtered.length > 0 ? filtered : data.slice(0, 6);
-            listToUse.slice(0, 12).forEach((item: any, idx: number) => {
-              if (item && item._id) {
-                const pngUrl = `https://static.arasaac.org/pictograms/${item._id}/${item._id}_500.png`;
-                const kw = item.keywords?.[0]?.keyword || cleanQ;
-                pushUnique({
-                  id: `arasaac-${item._id}-${idx}`,
-                  alt_description: kw,
-                  isCartoonPng: true,
-                  source: 'Classroom Clipart',
-                  urls: { regular: pngUrl, small: pngUrl },
-                });
-              }
-            });
-            notifyProgress();
-          }
+          const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
+          (pages as any[]).forEach((page: any) => {
+            const rawTitle = (page.title || '').replace(/^File:/i, '');
+            if (!isRelevantMediaTitle(rawTitle, cleanQ)) return;
+            const info = page?.imageinfo?.[0];
+            const thumb = info?.thumburl || info?.url;
+            if (thumb) {
+              pushUnique({
+                id: `wiki-png-${page.pageid}`,
+                alt_description: rawTitle,
+                isCartoonPng: true,
+                source: 'PNG',
+                urls: { regular: thumb, small: thumb },
+              });
+            }
+          });
+          notifyProgress();
         }
       } catch {
         // Ignore
@@ -888,13 +859,13 @@ export async function searchPhotosMultiSource(
     })()
   );
 
-  // Task C: Openverse Photography & Illustrations API (High-quality curated photos & clipart)
+  // Task C: Openverse Photography & PNGs (High-quality curated photos & PNGs, no clipart)
   tasks.push(
     (async () => {
       try {
         const ovUrl = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(
           cleanQ
-        )}&page_size=20&mature=false`;
+        )}&category=photograph&page_size=20&mature=false`;
         const res = await fetchWithTimeout(ovUrl, 2600);
         if (res.ok) {
           const data = await res.json();
@@ -905,15 +876,12 @@ export async function searchPhotosMultiSource(
               const thumb = item?.thumbnail || item?.url;
               const full = item?.url || thumb;
               if (thumb && full) {
-                const isIllust =
-                  item?.category === 'illustration' ||
-                  full.toLowerCase().endsWith('.png') ||
-                  full.toLowerCase().endsWith('.svg');
+                const isPng = full.toLowerCase().endsWith('.png');
                 pushUnique({
                   id: `ov-${item.id}`,
                   alt_description: title || cleanQ,
-                  isCartoonPng: isIllust,
-                  source: isIllust ? 'Clipart PNG' : 'HD Photo',
+                  isCartoonPng: isPng,
+                  source: isPng ? 'PNG' : 'Photo',
                   urls: { regular: full, small: thumb },
                 });
               }
@@ -927,50 +895,7 @@ export async function searchPhotosMultiSource(
     })()
   );
 
-  // Task D: Strict Wikimedia Commons Search (Parenthesized boolean query + strict title validation)
-  tasks.push(
-    (async () => {
-      try {
-        // CRITICAL FIX: Parenthesize (cartoon OR clipart OR illustration) and require intitle:"query"
-        // so Wikimedia never returns arbitrary files matching only "illustration" or "icon"
-        const strictWikiQuery = prioritizeCartoonPng
-          ? `intitle:"${cleanQ}" (cartoon OR clipart OR illustration OR svg) filetype:bitmap|drawing`
-          : `intitle:"${cleanQ}" filetype:bitmap -cartoon -icon -svg -map -coat -flag`;
-
-        const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
-          strictWikiQuery
-        )}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url|mime&iiurlwidth=500&format=json&origin=*`;
-        const res = await fetchWithTimeout(url, 2500);
-        if (res.ok) {
-          const data = await res.json();
-          const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
-          (pages as any[]).forEach((page: any) => {
-            const rawTitle = (page.title || '').replace(/^File:/i, '');
-            if (!isRelevantMediaTitle(rawTitle, cleanQ)) return;
-            const info = page?.imageinfo?.[0];
-            const thumb = info?.thumburl || info?.url;
-            if (thumb) {
-              const isPngOrSvg =
-                thumb.toLowerCase().endsWith('.png') ||
-                (info?.mime && (info.mime.includes('png') || info.mime.includes('svg')));
-              pushUnique({
-                id: `wiki-strict-${page.pageid}`,
-                alt_description: rawTitle,
-                isCartoonPng: Boolean(isPngOrSvg),
-                source: isPngOrSvg ? 'Clipart PNG' : 'Real Photo',
-                urls: { regular: thumb, small: thumb },
-              });
-            }
-          });
-          notifyProgress();
-        }
-      } catch {
-        // Ignore
-      }
-    })()
-  );
-
-  // Task E: Always also fetch Real Photos from Wikimedia with strict intitle match so switching to Real Photos has rich results
+  // Task D: Wikimedia Commons Real Photos (strict intitle match)
   tasks.push(
     (async () => {
       try {
@@ -993,7 +918,7 @@ export async function searchPhotosMultiSource(
                 id: `wiki-realphoto-${page.pageid}`,
                 alt_description: rawTitle,
                 isCartoonPng: isPng,
-                source: isPng ? 'Clipart PNG' : 'Real Photo',
+                source: isPng ? 'PNG' : 'Photo',
                 urls: { regular: thumb, small: thumb },
               });
             }
