@@ -33,7 +33,16 @@ import { GameThumbnail } from '../components/GameThumbnail';
 import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '../components/GameModeModal';
 import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
 import { logUserActivity } from '../utils/activityTracker';
-import { getSavedGames, mergeAllFolders, createUnifiedFolder } from '../lib/gameStore';
+import {
+  getSavedGames,
+  mergeAllFolders,
+  mergeUserFolders,
+  createUnifiedFolder,
+  getUserFoldersCacheKey,
+  getDeletedFolderIds,
+  markFolderDeleted,
+  PRESET_FOLDER_IDS,
+} from '../lib/gameStore';
 import {
   getAllLocalUserGames,
   getDeletedGameIds,
@@ -42,8 +51,36 @@ import {
   isSyntheticOrSampleGame,
   markGameDeleted,
   saveAndSyncUserGame,
+  persistUserGameToCloudAndCache,
   syncLocalComputerGamesForUser,
 } from '../utils/platformCache';
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(fallback);
+      }
+    }, ms);
+    promise
+      .then((val) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      })
+      .catch(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      });
+  });
+}
 
 const mosquitoSlapCardImg = '/images/mosquito-slap-card.jpg';
 const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
@@ -227,6 +264,115 @@ export const GamesLibrary = ({
     }
   }, [user]);
 
+  const persistUserFolders = (nextFolders: any[], syncServer = true) => {
+    const uid = user?.uid;
+    const cleaned = (nextFolders || []).filter(
+      (f: any) => f && f.id && f.name && !PRESET_FOLDER_IDS.has(String(f.id))
+    );
+    try {
+      if (uid) {
+        localStorage.setItem(getUserFoldersCacheKey(uid), JSON.stringify(cleaned));
+      }
+      localStorage.setItem('hamster_cached_user_folders', JSON.stringify(cleaned));
+      const customRaw = localStorage.getItem('esl_custom_setup_folders');
+      if (customRaw) {
+        const parsedCustom = JSON.parse(customRaw);
+        if (Array.isArray(parsedCustom)) {
+          const cleanedCustom = parsedCustom.filter(
+            (f: any) =>
+              f &&
+              f.id &&
+              !PRESET_FOLDER_IDS.has(String(f.id)) &&
+              (!uid || !f.userId || String(f.userId) === String(uid))
+          );
+          localStorage.setItem('esl_custom_setup_folders', JSON.stringify(cleanedCustom));
+        }
+      }
+    } catch {}
+    if (syncServer) {
+      const realFolders = cleaned.filter((f: any) => !f.inferred);
+      if (realFolders.length > 0) {
+        fetch('/api/platform-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folders: realFolders }),
+        }).catch(() => {});
+      }
+    }
+  };
+
+  const persistUserGames = (nextGames: any[]) => {
+    try {
+      localStorage.setItem('hamster_cached_user_games', JSON.stringify(nextGames));
+    } catch {}
+    if (nextGames.length > 0) {
+      fetch('/api/platform-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ games: nextGames }),
+      }).catch(() => {});
+    }
+  };
+
+  const inferMissingFoldersForGames = (userGamesList: any[], existingFolders: any[], uid: string) => {
+    const knownIds = new Set(existingFolders.map((f) => String(f.id)));
+    const knownNames = new Map<string, any>();
+    existingFolders.forEach((f) => {
+      if (f?.name) knownNames.set(String(f.name).toLowerCase().trim(), f);
+    });
+
+    const missingByFolderId = new Map<string, any[]>();
+    userGamesList.forEach((g) => {
+      const fid = g?.folderId ? String(g.folderId).trim() : '';
+      if (!fid) return;
+      if (knownIds.has(fid) || knownNames.has(fid.toLowerCase())) return;
+      if (!missingByFolderId.has(fid)) missingByFolderId.set(fid, []);
+      missingByFolderId.get(fid)!.push(g);
+    });
+
+    if (missingByFolderId.size === 0) return existingFolders;
+
+    const inferredFolders: any[] = [];
+    missingByFolderId.forEach((folderGames, fid) => {
+      // Pick an explicit folderName if stored on any game, or readable ID (like "Starters"),
+      // or the most frequent className/classLevel among games in this folder.
+      const explicitName = folderGames.find((g) => g?.folderName)?.folderName;
+      let inferredName = explicitName ? String(explicitName).trim() : '';
+      if (!inferredName) {
+        const looksLikeFirestoreId = /^[A-Za-z0-9]{18,24}$/.test(fid) || fid.startsWith('folder-');
+        if (!looksLikeFirestoreId) {
+          inferredName = fid;
+        } else {
+          const counts = new Map<string, number>();
+          folderGames.forEach((g) => {
+            const label = String(g?.className || g?.classLevel || '').trim();
+            if (label && label.toLowerCase() !== 'general' && label.toLowerCase() !== 'all') {
+              counts.set(label, (counts.get(label) || 0) + 1);
+            }
+          });
+          let bestLabel = '';
+          let bestCount = 0;
+          counts.forEach((cnt, lbl) => {
+            if (cnt > bestCount) {
+              bestCount = cnt;
+              bestLabel = lbl;
+            }
+          });
+          inferredName = bestLabel || `Folder ${inferredFolders.length + 1}`;
+        }
+      }
+      inferredFolders.push({
+        id: fid,
+        name: inferredName,
+        parentId: null,
+        userId: uid,
+        inferred: true,
+      });
+    });
+
+    return mergeUserFolders(uid, existingFolders, inferredFolders);
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -236,18 +382,15 @@ export const GamesLibrary = ({
           const parsedQuizzes = JSON.parse(savedYogaQuizzes);
           for (const q of parsedQuizzes) {
             if (q.title && q.questions && q.questions.length > 0) {
-              await addDoc(collection(db, "mysteryBoxGames"), {
+              await persistUserGameToCloudAndCache(db, user, {
                 name: q.title || "Yoga Quiz",
                 folderId: "",
                 topic: q.topic || "",
                 className: q.classLevel || "",
                 gameType: "yoga-quiz",
                 customQuestions: q.questions,
-                userId: user.uid,
-                updatedAt: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
                 isPublic: false,
-              });
+              }, { skipActivityLog: true });
             }
           }
           localStorage.removeItem('yogaQuizzes');
@@ -256,105 +399,175 @@ export const GamesLibrary = ({
         }
       }
 
+      const currentUid = user!.uid;
       const qGames = query(
         collection(db, "mysteryBoxGames"),
-        where("userId", "==", user!.uid),
+        where("userId", "==", currentUid),
       );
       const qFolders = query(
         collection(db, "gameFolders"),
-        where("userId", "==", user!.uid),
+        where("userId", "==", currentUid),
       );
-      
-      const [gamesSnap, foldersSnap] = await Promise.all([
-        getDocs(qGames).catch((err) => {
-          console.warn("Notice querying games from cloud (falling back to cache):", err?.message || err);
-          return { forEach: () => {} } as any;
-        }),
-        getDocs(qFolders).catch((err) => {
-          console.warn("Notice querying folders from cloud (falling back to cache):", err?.message || err);
-          return { forEach: () => {} } as any;
-        })
+
+      const [serverCacheData, gamesSnap, foldersSnap] = await Promise.all([
+        fetch('/api/platform-cache')
+          .then((res) => (res.ok ? res.json() : null))
+          .catch(() => null),
+        withTimeout(getDocs(qGames), 3500, null as any),
+        withTimeout(getDocs(qFolders), 3500, null as any),
       ]);
 
       const userGames: any[] = [];
-      gamesSnap.forEach((doc: any) => {
-        userGames.push({ id: doc.id, ...doc.data() });
-      });
+      if (gamesSnap && typeof gamesSnap.forEach === 'function') {
+        gamesSnap.forEach((docSnap: any) => {
+          userGames.push({ id: docSnap.id, ...docSnap.data() });
+        });
+      }
 
       const userFolders: any[] = [];
-      foldersSnap.forEach((doc: any) => {
-        userFolders.push({ id: doc.id, ...doc.data() });
-      });
+      if (foldersSnap && typeof foldersSnap.forEach === 'function') {
+        foldersSnap.forEach((docSnap: any) => {
+          userFolders.push({ id: docSnap.id, ...docSnap.data() });
+        });
+      }
 
-      // Merge cloud games with any privately saved local games on the user's computer (without resurrecting deleted cloud games)
+      // Sync deleted IDs from server cache as well
       const deletedIds = getDeletedGameIds();
+      if (Array.isArray(serverCacheData?.deletedGameIds)) {
+        serverCacheData.deletedGameIds.forEach((id: any) => deletedIds.add(String(id)));
+      }
+      const deletedFolderIds = getDeletedFolderIds(currentUid);
+      if (Array.isArray(serverCacheData?.deletedFolderIds)) {
+        serverCacheData.deletedFolderIds.forEach((id: any) => deletedFolderIds.add(String(id)));
+      }
+
+      const serverUserGames: any[] = Array.isArray(serverCacheData?.games)
+        ? serverCacheData.games.filter(
+            (g: any) =>
+              g &&
+              g.id &&
+              !deletedIds.has(String(g.id)) &&
+              !isSyntheticOrSampleGame(g) &&
+              isGameOwnedByUser(g, user)
+          )
+        : [];
+
+      const serverUserFolders: any[] = Array.isArray(serverCacheData?.folders)
+        ? serverCacheData.folders.filter(
+            (f: any) =>
+              f &&
+              f.id &&
+              f.name &&
+              !PRESET_FOLDER_IDS.has(String(f.id)) &&
+              !deletedFolderIds.has(String(f.id)) &&
+              (!f.userId || String(f.userId) === String(currentUid))
+          )
+        : [];
+
       const cloudSucceeded = userGames.length > 0;
       const localComputerGames = getAllLocalUserGames(user).filter((lg: any) => {
         if (!lg || !lg.id || isSyntheticOrSampleGame(lg) || deletedIds.has(String(lg.id))) return false;
-        if (cloudSucceeded && !isLocalOnlyGameId(String(lg.id))) return false;
         return !lg.userId || isGameOwnedByUser(lg, user);
       });
+
+      const getTimeMs = (val: any): number => {
+        if (!val) return 0;
+        if (typeof val.toMillis === 'function') return val.toMillis();
+        if (val.seconds) return val.seconds * 1000;
+        if (typeof val === 'number') return val;
+        if (typeof val === 'string') {
+          const p = new Date(val).getTime();
+          return isNaN(p) ? 0 : p;
+        }
+        return 0;
+      };
+
       const mergedById = new Map<string, any>();
-      localComputerGames.forEach((lg: any) => {
-        if (lg && lg.id) {
-          mergedById.set(String(lg.id), {
-            ...lg,
-            userId: user?.uid || lg.userId,
-            creatorEmail: lg.creatorEmail || user?.email || '',
-            creatorName:
-              lg.creatorName ||
-              user?.displayName ||
-              (user?.email ? user.email.split('@')[0] : 'Teacher'),
-          });
+      const addUserGame = (g: any) => {
+        if (!g || !g.id || deletedIds.has(String(g.id)) || isSyntheticOrSampleGame(g)) return;
+        const id = String(g.id);
+        const existing = mergedById.get(id);
+        if (existing) {
+          const prevTime = getTimeMs(existing.updatedAt || existing.createdAt);
+          const nextTime = getTimeMs(g.updatedAt || g.createdAt);
+          if (prevTime > 0 && nextTime > 0 && nextTime < prevTime) {
+            return;
+          }
         }
-      });
-      userGames.forEach((cg: any) => {
-        if (cg && cg.id && !deletedIds.has(String(cg.id)) && !isSyntheticOrSampleGame(cg)) {
-          mergedById.set(String(cg.id), {
-            ...(mergedById.get(String(cg.id)) || {}),
-            ...cg,
-            userId: cg.userId || user?.uid,
-            creatorEmail: cg.creatorEmail || user?.email || '',
-            creatorName:
-              cg.creatorName ||
-              user?.displayName ||
-              (user?.email ? user.email.split('@')[0] : 'Teacher'),
-          });
-        }
-      });
+        mergedById.set(id, {
+          ...(existing || {}),
+          ...g,
+          userId: g.userId || currentUid,
+          creatorEmail: g.creatorEmail || user?.email || '',
+          creatorName:
+            g.creatorName ||
+            user?.displayName ||
+            (user?.email ? user.email.split('@')[0] : 'Teacher'),
+        });
+      };
+
+      // Merge all sources keeping the newest updatedAt copy per game ID
+      localComputerGames.forEach(addUserGame);
+      serverUserGames.forEach(addUserGame);
+      userGames.forEach(addUserGame);
 
       const finalUserGames = Array.from(mergedById.values());
       if (finalUserGames.length > 0) {
         setGames(finalUserGames);
         try {
           localStorage.setItem('hamster_cached_user_games', JSON.stringify(finalUserGames));
-        } catch (e) {}
-        fetch('/api/platform-cache', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ games: finalUserGames }),
-        }).catch(() => {});
-        if (user) {
+        } catch {}
+        if (cloudSucceeded || localComputerGames.some((lg: any) => !serverUserGames.some((sg: any) => String(sg.id) === String(lg.id)))) {
+          fetch('/api/platform-cache', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ games: finalUserGames }),
+          }).catch(() => {});
+        }
+        if (user && cloudSucceeded) {
           syncLocalComputerGamesForUser(user, db).catch(() => {});
         }
       } else {
         setGames(getSavedGames().filter((g: any) => !isSyntheticOrSampleGame(g) && !deletedIds.has(String(g.id))));
       }
 
-      const mergedFolders = mergeAllFolders(userFolders);
-      setFolders(mergedFolders);
+      // Clean legacy local caches of any foreign or uncreated preset folders before merging
       try {
-        localStorage.setItem('hamster_cached_user_folders', JSON.stringify(mergedFolders));
-      } catch (e) {}
+        const legacyCached = localStorage.getItem('hamster_cached_user_folders');
+        if (legacyCached) {
+          const parsedLegacy = JSON.parse(legacyCached);
+          if (Array.isArray(parsedLegacy)) {
+            const sanitizedLegacy = parsedLegacy.filter(
+              (f: any) =>
+                f &&
+                f.id &&
+                !PRESET_FOLDER_IDS.has(String(f.id)) &&
+                !deletedFolderIds.has(String(f.id)) &&
+                (!f.userId || String(f.userId) === String(currentUid))
+            );
+            localStorage.setItem('hamster_cached_user_folders', JSON.stringify(sanitizedLegacy));
+          }
+        }
+      } catch {}
+
+      const mergedRealFolders = mergeUserFolders(currentUid, userFolders, serverUserFolders).filter(
+        (f: any) => !deletedFolderIds.has(String(f.id)) && !PRESET_FOLDER_IDS.has(String(f.id))
+      );
+      const finalFolders = inferMissingFoldersForGames(finalUserGames, mergedRealFolders, currentUid);
+      setFolders(finalFolders);
+      persistUserFolders(finalFolders, true);
     } catch (error: any) {
       console.warn("Notice fetching library from cloud (using local cache):", error?.message || error);
       try {
+        const currentUid = user?.uid;
         const localGames = getAllLocalUserGames(user).filter((g: any) => isGameOwnedByUser(g, user));
-        setGames(localGames.length > 0 ? localGames : getSavedGames());
-        setFolders(mergeAllFolders());
+        const resolvedGames = localGames.length > 0 ? localGames : [];
+        setGames(resolvedGames);
+        const fallbackFolders = currentUid ? mergeUserFolders(currentUid) : [];
+        setFolders(currentUid ? inferMissingFoldersForGames(resolvedGames, fallbackFolders, currentUid) : []);
       } catch (e) {
-        setGames(getSavedGames());
-        setFolders(mergeAllFolders());
+        setGames([]);
+        setFolders([]);
       }
     } finally {
       setLoading(false);
@@ -364,7 +577,7 @@ export const GamesLibrary = ({
   const confirmDelete = async (gameId: string) => {
     try {
       markGameDeleted(gameId);
-      await deleteDoc(doc(db, "mysteryBoxGames", gameId)).catch(() => {});
+      deleteDoc(doc(db, "mysteryBoxGames", gameId)).catch(() => {});
       setGames(prev => prev.filter(g => g.id !== gameId));
       setGameToDelete(null);
       setToastMsg("Game deleted.");
@@ -379,8 +592,9 @@ export const GamesLibrary = ({
       const folderToDeleteObj = folders.find(f => f.id === folderId);
       const parentId = folderToDeleteObj?.parentId || null;
 
-      await deleteDoc(doc(db, "gameFolders", folderId)).catch(() => {});
-      
+      markFolderDeleted(folderId, user?.uid);
+      deleteDoc(doc(db, "gameFolders", folderId)).catch(() => {});
+
       try {
         const batch = writeBatch(db);
         const gamesToUpdate = games.filter(g => g.folderId === folderId);
@@ -395,13 +609,19 @@ export const GamesLibrary = ({
           batch.update(folderRef, { parentId });
         });
 
-        await batch.commit();
+        batch.commit().catch(() => {});
       } catch (e) {}
 
-      const nextFolders = folders.map(f => f.parentId === folderId ? { ...f, parentId } : f).filter(f => f.id !== folderId);
+      const nextFolders = folders
+        .map(f => f.parentId === folderId ? { ...f, parentId, updatedAt: new Date().toISOString() } : f)
+        .filter(f => f.id !== folderId);
       setFolders(nextFolders);
-      try { localStorage.setItem('hamster_cached_user_folders', JSON.stringify(nextFolders)); } catch (e) {}
-      setGames(games.map(g => g.folderId === folderId ? { ...g, folderId: parentId } : g));
+      persistUserFolders(nextFolders, true);
+
+      const nextGames = games.map(g => g.folderId === folderId ? { ...g, folderId: parentId || '' } : g);
+      setGames(nextGames);
+      persistUserGames(nextGames);
+
       setFolderToDelete(null);
       if (selectedFolderId === folderId) {
         setSelectedFolderId(parentId);
@@ -422,7 +642,11 @@ export const GamesLibrary = ({
         newFolderName.trim(),
         selectedFolderId || null
       );
-      setFolders((prev) => mergeAllFolders([created], prev));
+      setFolders((prev) => {
+        const next = mergeUserFolders(user?.uid, [created], prev);
+        persistUserFolders(next, true);
+        return next;
+      });
       setShowNewFolderModal(false);
       setNewFolderName("");
       setToastMsg(`Folder "${created.name}" created.`);
@@ -435,11 +659,14 @@ export const GamesLibrary = ({
   const handleRenameFolder = async () => {
     if (!folderToRename || !renameFolderInput.trim()) return;
     const trimmed = renameFolderInput.trim();
+    const updatedAt = new Date().toISOString();
     try {
-      await updateDoc(doc(db, "gameFolders", folderToRename.id), { name: trimmed }).catch(() => {});
-      const updated = folders.map(f => f.id === folderToRename.id ? { ...f, name: trimmed } : f);
+      updateDoc(doc(db, "gameFolders", folderToRename.id), { name: trimmed, updatedAt }).catch(() => {});
+      const updated = folders.map(f =>
+        f.id === folderToRename.id ? { ...f, name: trimmed, inferred: false, updatedAt } : f
+      );
       setFolders(updated);
-      try { localStorage.setItem('hamster_cached_user_folders', JSON.stringify(updated)); } catch (e) {}
+      persistUserFolders(updated, true);
       setFolderToRename(null);
       setRenameFolderInput('');
       setToastMsg(`Folder renamed to "${trimmed}".`);
@@ -453,34 +680,40 @@ export const GamesLibrary = ({
     const targetGameId = dragGameId || gameToMove;
     if (!targetGameId) return;
     try {
-       const gameRef = doc(db, "mysteryBoxGames", targetGameId);
-       await updateDoc(gameRef, { folderId }).catch(() => {});
-       setGames(games.map(g => g.id === targetGameId ? { ...g, folderId } : g));
-       setGameToMove(null);
-       const destName = folderId ? (folders.find(f => f.id === folderId)?.name || 'Folder') : 'My Games Folder';
-       setToastMsg(`Moved game to "${destName}".`);
-       setTimeout(() => setToastMsg(null), 2500);
+      const normalizedFolderId = folderId || '';
+      updateDoc(doc(db, "mysteryBoxGames", targetGameId), { folderId: normalizedFolderId }).catch(() => {});
+      const nextGames = games.map(g => g.id === targetGameId ? { ...g, folderId: normalizedFolderId } : g);
+      setGames(nextGames);
+      persistUserGames(nextGames);
+      setGameToMove(null);
+      const destName = folderId ? (folders.find(f => f.id === folderId)?.name || 'Folder') : 'My Games Folder';
+      setToastMsg(`Moved game to "${destName}".`);
+      setTimeout(() => setToastMsg(null), 2500);
     } catch (error) {
-       console.error("Error moving game:", error);
+      console.error("Error moving game:", error);
     }
   };
 
   const handleMoveFolder = async (targetFolderId: string | null, dragFolderId: string) => {
     if (targetFolderId === dragFolderId) return;
-    
+
     let current = targetFolderId;
     while (current) {
-        if (current === dragFolderId) return;
-        const parent = folders.find(f => f.id === current);
-        current = parent?.parentId || null;
+      if (current === dragFolderId) return;
+      const parent = folders.find(f => f.id === current);
+      current = parent?.parentId || null;
     }
 
     try {
-       const folderRef = doc(db, "gameFolders", dragFolderId);
-       await updateDoc(folderRef, { parentId: targetFolderId }).catch(() => {});
-       setFolders(folders.map(f => f.id === dragFolderId ? { ...f, parentId: targetFolderId } : f));
+      const updatedAt = new Date().toISOString();
+      updateDoc(doc(db, "gameFolders", dragFolderId), { parentId: targetFolderId, updatedAt }).catch(() => {});
+      const updated = folders.map(f =>
+        f.id === dragFolderId ? { ...f, parentId: targetFolderId, inferred: false, updatedAt } : f
+      );
+      setFolders(updated);
+      persistUserFolders(updated, true);
     } catch (error) {
-       console.error("Error moving folder:", error);
+      console.error("Error moving folder:", error);
     }
   };
 
@@ -490,12 +723,12 @@ export const GamesLibrary = ({
       const nextPublic = !currentPublic;
       const now = new Date().toISOString();
       const gameRef = doc(db, "mysteryBoxGames", game.id);
-      
+
       const updateData: any = {
         isPublic: nextPublic,
         updatedAt: now,
       };
-      
+
       if (nextPublic) {
         updateData.publishedAt = now;
         if (user) {
@@ -507,8 +740,10 @@ export const GamesLibrary = ({
         updateData.createdAt = now;
       }
 
-      await updateDoc(gameRef, updateData).catch(() => {});
-      setGames(games.map(g => g.id === game.id ? { ...g, ...updateData } : g));
+      updateDoc(gameRef, updateData).catch(() => {});
+      const nextGames = games.map(g => g.id === game.id ? { ...g, ...updateData } : g);
+      setGames(nextGames);
+      persistUserGames(nextGames);
       setToastMsg(nextPublic ? `"${game.topic || game.name || game.title || 'Game'}" published to Community!` : `"${game.topic || game.name || game.title || 'Game'}" set to Private.`);
       setTimeout(() => setToastMsg(null), 3500);
     } catch (error) {
@@ -538,15 +773,12 @@ export const GamesLibrary = ({
       };
       delete newGame.id;
       const cleanNewGame = JSON.parse(JSON.stringify(newGame));
-      let savedId = `local-copy-${Date.now()}`;
-      try {
-        const docRef = await addDoc(collection(db, "mysteryBoxGames"), cleanNewGame);
-        savedId = docRef.id;
-      } catch (cloudErr) {
-        console.warn("Cloud duplicate fallback to local storage:", cloudErr);
-      }
-      const synced = saveAndSyncUserGame({ id: savedId, ...cleanNewGame }, user);
-      setGames([synced || { id: savedId, ...cleanNewGame }, ...games]);
+      const { savedGame } = await persistUserGameToCloudAndCache(db, user, cleanNewGame, {
+        existingGame: null,
+        candidateId: null,
+      });
+      const nextGames = [savedGame, ...games];
+      setGames(nextGames);
       setToastMsg("Game duplicated as private copy!");
       setTimeout(() => setToastMsg(null), 3000);
     } catch (error) {

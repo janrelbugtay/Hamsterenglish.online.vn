@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
+import { db } from "../lib/firebase";
+import { useAuth } from "../contexts/AuthContext";
+import { persistUserGameToCloudAndCache } from "../utils/platformCache";
 
 const customStyles = `
   @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap');
@@ -146,6 +149,11 @@ const CEFR_LEVELS = ['Pre-A1', 'A1 Starters', 'A2 Movers', 'A2 Key', 'B1 Prelimi
 const QUESTION_TYPES = ['Multiple Choice', 'True or False', 'Vocabulary Meaning', 'Grammar Choice', 'Listen & Type', 'Put in Order'];
 
 export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (view: ViewState) => void; initialGame?: any; }) {
+  const { user } = useAuth();
+  const [savedGameRecord, setSavedGameRecord] = useState<any>(initialGame || null);
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+
   const buildQuestionsFromInitialGame = (game: any) => {
     const raw = game?.customQuestions || game?.questions || [];
     if (!Array.isArray(raw) || raw.length === 0) return null;
@@ -153,18 +161,21 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
     return raw.map((q: any, idx: number) => {
       const text = q.text || q.question || `Question ${idx + 1}`;
       const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['Yes', 'No'];
-      const ansIdx = typeof q.answerIndex === 'number' ? q.answerIndex : 0;
+      const foundCorrect = opts.findIndex((o: any) => typeof o === 'object' && Boolean(o?.isCorrect));
+      const ansIdx = typeof q.answerIndex === 'number' ? q.answerIndex : (foundCorrect >= 0 ? foundCorrect : 0);
       return {
         id: q.id || idx + 1,
-        timeTrigger: Math.round(((idx + 1) / (total + 1)) * 90) + 5,
-        type: 'Multiple Choice',
-        xp: 100,
+        timeTrigger: typeof q.timeTrigger === 'number' ? q.timeTrigger : Math.round(((idx + 1) / (total + 1)) * 90) + 5,
+        type: q.type || 'Multiple Choice',
+        xp: q.xp || 100,
         question: text,
         options: opts.map((o: any, oIdx: number) => ({
           text: typeof o === 'string' ? o : o?.text || `Option ${oIdx + 1}`,
           isCorrect: oIdx === ansIdx,
         })),
-        explanation: `Correct Answer: ${typeof opts[ansIdx] === 'string' ? opts[ansIdx] : opts[ansIdx]?.text || ''}`,
+        explanation: q.explanation || `Correct Answer: ${typeof opts[ansIdx] === 'string' ? opts[ansIdx] : opts[ansIdx]?.text || ''}`,
+        ...(q.word ? { word: q.word } : {}),
+        ...(q.pronunciation ? { pronunciation: q.pronunciation } : {}),
       };
     });
   };
@@ -177,26 +188,125 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
       ? {
           topic: initialGame.topic || initialGame.name || initialGame.title || 'Custom Quiz',
           level: initialGame.classLevel || initialGame.className || 'All Levels',
+          folder: initialGame.folderName || '',
         }
       : null
   );
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState(initialGame?.videoUrl || '');
   
   const [xp, setXp] = useState(0);
   const [streak, setStreak] = useState(0);
   const [wordsLearned, setWordsLearned] = useState(0);
 
   useEffect(() => {
+    setSavedGameRecord(initialGame || null);
+    if (initialGame?.videoUrl) {
+      setVideoUrl(initialGame.videoUrl);
+    }
     const mapped = buildQuestionsFromInitialGame(initialGame);
     if (mapped) {
       setQuestions(mapped);
       setLessonConfig({
         topic: initialGame.topic || initialGame.name || initialGame.title || 'Custom Quiz',
         level: initialGame.classLevel || initialGame.className || 'All Levels',
+        folder: initialGame.folderName || '',
       });
       setCurrentView('player');
     }
   }, [initialGame]);
+
+  const handleSaveVideoQuiz = async (): Promise<{ ok: boolean; message: string }> => {
+    if (savingRef.current) return { ok: false, message: 'Already saving...' };
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      const existing = savedGameRecord || initialGame;
+      const resolvedTitle =
+        lessonConfig?.topic ||
+        existing?.topic ||
+        existing?.name ||
+        existing?.title ||
+        'Video Quiz';
+      const resolvedClass =
+        lessonConfig?.level ||
+        lessonConfig?.className ||
+        existing?.classLevel ||
+        existing?.className ||
+        '';
+
+      let resolvedFolderId = existing?.folderId || '';
+      let resolvedFolderName = lessonConfig?.folder || existing?.folderName || '';
+      if (!resolvedFolderId && resolvedFolderName && user?.uid) {
+        try {
+          const { mergeUserFolders } = await import('../lib/gameStore');
+          const userFolders = mergeUserFolders(user.uid);
+          const match = userFolders.find(
+            (f) => f.name.toLowerCase().trim() === String(resolvedFolderName).toLowerCase().trim()
+          );
+          if (match) {
+            resolvedFolderId = match.id;
+            resolvedFolderName = match.name;
+          }
+        } catch {}
+      }
+
+      const normalizedQuestions = (questions || []).map((q: any, idx: number) => {
+        const rawOpts = Array.isArray(q.options) ? q.options : [];
+        const optionTexts = rawOpts.map((o: any, oIdx: number) =>
+          typeof o === 'string' ? o : o?.text || `Option ${oIdx + 1}`
+        );
+        const foundAnsIdx = rawOpts.findIndex((o: any) => typeof o === 'object' && Boolean(o?.isCorrect));
+        const answerIndex = foundAnsIdx >= 0 ? foundAnsIdx : (typeof q.answerIndex === 'number' ? q.answerIndex : 0);
+        return {
+          id: q.id || idx + 1,
+          text: q.question || q.text || `Question ${idx + 1}`,
+          options: optionTexts.length >= 2 ? optionTexts : ['True', 'False'],
+          answerIndex,
+          timeTrigger:
+            typeof q.timeTrigger === 'number'
+              ? q.timeTrigger
+              : Math.round(((idx + 1) / ((questions?.length || 1) + 1)) * 90) + 5,
+          type: q.type || 'Multiple Choice',
+          xp: q.xp || 100,
+          explanation: q.explanation || '',
+          ...(q.word ? { word: q.word } : {}),
+          ...(q.pronunciation ? { pronunciation: q.pronunciation } : {}),
+        };
+      });
+
+      const gameToSave = {
+        name: resolvedTitle,
+        title: resolvedTitle,
+        topic: resolvedTitle,
+        className: resolvedClass,
+        classLevel: resolvedClass,
+        folderId: resolvedFolderId,
+        ...(resolvedFolderName ? { folderName: resolvedFolderName } : {}),
+        gameType: 'hamster-pop-quiz',
+        videoUrl: videoUrl || existing?.videoUrl || '',
+        lessonConfig: lessonConfig || existing?.lessonConfig || null,
+        customQuestions: normalizedQuestions,
+        isPublic: Boolean(existing?.isPublic),
+      };
+
+      const result = await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: existing,
+      });
+      setSavedGameRecord(result.savedGame);
+      return {
+        ok: true,
+        message: result.cloudSynced
+          ? 'Quiz saved to My Games & Cloud! 🌻'
+          : 'Quiz saved to My Games! 🌻',
+      };
+    } catch (err) {
+      console.error('Error saving Video Quiz:', err);
+      return { ok: false, message: 'Failed to save quiz. Please try again.' };
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
+  };
 
   const navigateTo = (view: string) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -296,6 +406,8 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
             streak={streak} setStreak={setStreak}
             wordsLearned={wordsLearned} setWordsLearned={setWordsLearned}
             videoUrl={videoUrl}
+            onSaveQuiz={handleSaveVideoQuiz}
+            isSaving={isSaving}
           />
         )}
       </main>
@@ -593,7 +705,7 @@ function ConfigView({ onStartLesson, isGenerating }: any) {
   );
 }
 
-function PlayerView({ config, questions, setQuestions, xp, setXp, streak, setStreak, wordsLearned, setWordsLearned, videoUrl }: any) {
+function PlayerView({ config, questions, setQuestions, xp, setXp, streak, setStreak, wordsLearned, setWordsLearned, videoUrl, onSaveQuiz, isSaving }: any) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0); 
   const [activeQuiz, setActiveQuiz] = useState<any>(null);
@@ -760,13 +872,16 @@ function PlayerView({ config, questions, setQuestions, xp, setXp, streak, setStr
              <Settings size={20} /> Edit Quizzes
            </button>
            <button 
-             onClick={() => {
-               setToastMessage('Quiz Saved to Folder! 🌻');
+             disabled={isSaving}
+             onClick={async () => {
+               const res = await onSaveQuiz();
+               setToastMessage(res?.message || 'Quiz Saved! 🌻');
                setTimeout(() => setToastMessage(''), 3000);
              }} 
-             className="flex-1 bg-yellow-400 text-yellow-900 font-bold py-3 rounded-2xl hover:shadow-lg hover:bg-yellow-500 transition-all flex justify-center items-center gap-2 shadow-md border-2 border-white"
+             className="flex-1 bg-yellow-400 text-yellow-900 font-bold py-3 rounded-2xl hover:shadow-lg hover:bg-yellow-500 disabled:opacity-60 transition-all flex justify-center items-center gap-2 shadow-md border-2 border-white"
            >
-             <Folder size={20} /> Save Quiz
+             {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Folder size={20} />}
+             {isSaving ? 'Saving...' : 'Save Quiz'}
            </button>
         </div>
 

@@ -14,7 +14,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { drawCharacterHand, HandCharacterType, toPx, distPx } from "../utils/superheroHands";
 import { drawAnimatedNose, NoseStyle } from "../utils/animatedNose";
-import { saveAndSyncUserGame } from "../utils/platformCache";
+import { persistUserGameToCloudAndCache } from "../utils/platformCache";
 
 type GameScreen = 'intro' | 'lobby' | 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
 
@@ -166,21 +166,13 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     }
   }, [initialGame]);
 
+  const savingQuizRef = useRef(false);
   const saveQuiz = async (quiz: Quiz) => {
-    if (!user) {
-      alert("You must be logged in to save games.");
-      return;
-    }
-
+    if (savingQuizRef.current) return;
+    savingQuizRef.current = true;
     try {
       const isPublicBool = Boolean(quiz.isPublic);
       const now = new Date().toISOString();
-
-      const isOwnExistingGame = Boolean(
-        initialGame?.id &&
-        !String(initialGame.id).startsWith('sample-') &&
-        (!initialGame.userId || initialGame.userId === user.uid)
-      );
 
       const gameToSave = JSON.parse(JSON.stringify({
         name: quiz.title || quiz.topic || "Bubble Pop Game",
@@ -190,41 +182,24 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         className: quiz.classLevel || "",
         gameType: "bubble-pop",
         customQuestions: quiz.questions,
-        userId: user.uid,
-        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-        creatorEmail: user.email || "",
+        userId: user?.uid || 'local-user',
+        creatorName: user?.displayName || user?.email?.split('@')[0] || "Teacher",
+        creatorEmail: user?.email || "",
         updatedAt: now,
         publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
-        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+        createdAt: initialGame?.createdAt || now,
         isPublic: isPublicBool,
       }));
 
-      let savedId = isOwnExistingGame && initialGame?.id ? String(initialGame.id) : `local-bp-${Date.now()}`;
-      try {
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-            savedId = String(initialGame.id);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-              savedId = docRef.id;
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          savedId = docRef.id;
-        }
-      } catch (cloudErr) {
-        console.warn("Saved Bubble Pop game to local computer storage:", cloudErr);
-      }
-      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);
       onViewChange("games");
+    } finally {
+      savingQuizRef.current = false;
     }
   };
 

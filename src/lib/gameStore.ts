@@ -4,14 +4,24 @@ export interface StoredGame {
   title?: string;
   topic?: string;
   className?: string;
+  classLevel?: string;
   folderId?: string;
   gameType: string;
   originalGameType?: string;
   customQuestions: any[];
+  cards?: any[];
+  cardSides?: 1 | 2;
+  contentMode?: string;
+  theme?: string;
+  questions?: any[];
   userId?: string;
+  creatorName?: string;
+  creatorEmail?: string;
   isPublic?: boolean;
+  publishedAt?: any;
   createdAt?: string;
   updatedAt?: string;
+  [key: string]: any;
 }
 
 const LOCAL_GAMES_KEY = 'hamster_esl_saved_games_v1';
@@ -110,6 +120,7 @@ export function saveGameRecord(game: Partial<StoredGame> & { id?: string | numbe
 
   const now = new Date().toISOString();
   const record: StoredGame = {
+    ...game,
     id: idStr,
     name: game.name || game.title || game.topic || 'Untitled Quiz',
     title: game.title || game.name || game.topic || 'Untitled Quiz',
@@ -144,27 +155,69 @@ export function deleteGameRecord(id: string | number) {
   } catch (e) {}
 }
 
+export const PRESET_FOLDER_IDS = new Set([
+  'folder-grammar',
+  'folder-vocab',
+  'folder-phonics',
+  'folder-speaking',
+  'folder-exam',
+  'folder-warmup',
+]);
+
+const DELETED_FOLDERS_KEY_PREFIX = 'hamster_deleted_folders_v1_';
+
+export function getUserFoldersCacheKey(userId?: string | null): string {
+  return userId ? `hamster_cached_user_folders_u_${userId}` : 'hamster_cached_user_folders';
+}
+
+export function getDeletedFolderIds(userId?: string | null): Set<string> {
+  const result = new Set<string>();
+  try {
+    if (userId) {
+      const raw = localStorage.getItem(`${DELETED_FOLDERS_KEY_PREFIX}${userId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) parsed.forEach((id) => result.add(String(id)));
+      }
+    }
+  } catch {}
+  return result;
+}
+
+export function markFolderDeleted(folderId: string, userId?: string | null): void {
+  const cleanId = String(folderId || '').trim();
+  if (!cleanId) return;
+  try {
+    if (userId) {
+      const set = getDeletedFolderIds(userId);
+      set.add(cleanId);
+      localStorage.setItem(`${DELETED_FOLDERS_KEY_PREFIX}${userId}`, JSON.stringify(Array.from(set)));
+    }
+  } catch {}
+  fetch('/api/platform-cache', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deletedFolderIds: [cleanId] }),
+  }).catch(() => {});
+}
+
 export function getSavedFolders(): { id: string; name: string }[] {
   try {
     const raw = localStorage.getItem(LOCAL_FOLDERS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((f: any) => f && f.id && !PRESET_FOLDER_IDS.has(String(f.id)));
+      }
     }
   } catch (e) {}
-  return [
-    { id: 'folder-grammar', name: 'Grammar Sets' },
-    { id: 'folder-vocab', name: 'Vocabulary' },
-    { id: 'folder-phonics', name: 'Phonics & Reading' },
-    { id: 'folder-speaking', name: 'Speaking & Conversation' },
-    { id: 'folder-exam', name: 'Exam Prep (KET / Starters)' },
-    { id: 'folder-warmup', name: 'Classroom Warm-Ups' },
-  ];
+  return [];
 }
 
 export function saveFoldersList(folders: { id: string; name: string }[]) {
   try {
-    localStorage.setItem(LOCAL_FOLDERS_KEY, JSON.stringify(folders));
+    const cleaned = (folders || []).filter((f) => f && f.id && !PRESET_FOLDER_IDS.has(String(f.id)));
+    localStorage.setItem(LOCAL_FOLDERS_KEY, JSON.stringify(cleaned));
   } catch (e) {}
 }
 
@@ -174,127 +227,232 @@ export interface UnifiedFolderItem {
   parentId?: string | null;
   userId?: string;
   createdAt?: any;
+  updatedAt?: any;
+  inferred?: boolean;
+}
+
+function withTimeoutPromise<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(fallback);
+      }
+    }, ms);
+    promise
+      .then((val) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      })
+      .catch(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      });
+  });
 }
 
 /**
- * Merges folders from Firestore, cached user folders, custom setup folders, and default saved folders,
- * deduplicating by both ID and case-insensitive name (preferring real Firestore/user folders first).
+ * Merges folders from explicit sources and local user caches,
+ * deduplicating by both ID and case-insensitive (parentId, name),
+ * never injecting uncreated preset folders or folders owned by another user.
  */
-export function mergeAllFolders(
+export function mergeUserFolders(
+  userId: string | null | undefined,
   ...sources: Array<Array<{ id: string; name: string; parentId?: string | null; [key: string]: any }> | undefined | null>
 ): UnifiedFolderItem[] {
   const result: UnifiedFolderItem[] = [];
-  const seenIds = new Set<string>();
-  const seenNames = new Set<string>();
+  const indexById = new Map<string, number>();
+  const indexByName = new Map<string, number>();
+  const deletedIds = getDeletedFolderIds(userId);
 
-  const addList = (list?: Array<any> | null) => {
+  const addList = (list?: Array<any> | null, enforceUserMatch = false) => {
     if (!Array.isArray(list)) return;
     for (const item of list) {
       if (!item || !item.id || !item.name) continue;
       const cleanId = String(item.id).trim();
       const cleanName = String(item.name).trim();
       if (!cleanId || !cleanName) continue;
+      if (PRESET_FOLDER_IDS.has(cleanId) || deletedIds.has(cleanId)) continue;
+
+      if (userId && item.userId && String(item.userId) !== String(userId)) continue;
+      if (enforceUserMatch && userId && !item.userId) {
+        // Legacy unscoped item: only include if we don't have a scoped conflict, stamp with userId
+      }
+
       const nameKey = `${item.parentId || 'root'}::${cleanName.toLowerCase()}`;
-      if (seenIds.has(cleanId) || seenNames.has(nameKey)) continue;
-      seenIds.add(cleanId);
-      seenNames.add(nameKey);
-      result.push({
+      const existingIdx = indexById.get(cleanId) ?? indexByName.get(nameKey);
+      const normalized: UnifiedFolderItem = {
         ...item,
         id: cleanId,
         name: cleanName,
         parentId: item.parentId || null,
-      });
+        userId: item.userId || userId || undefined,
+      };
+
+      if (existingIdx !== undefined) {
+        const prev = result[existingIdx];
+        // Prefer non-inferred real folders over inferred placeholders
+        if (prev.inferred && !normalized.inferred) {
+          result[existingIdx] = normalized;
+          indexById.set(cleanId, existingIdx);
+          indexByName.set(nameKey, existingIdx);
+        }
+        continue;
+      }
+
+      const idx = result.length;
+      result.push(normalized);
+      indexById.set(cleanId, idx);
+      indexByName.set(nameKey, idx);
     }
   };
 
-  // 1. Explicit passed sources (e.g. Firestore folders from caller)
+  // 1. Explicit passed sources (e.g. Firestore & server cache folders from caller)
   for (const src of sources) {
-    addList(src);
+    addList(src, false);
   }
 
-  // 2. Cached user folders from GamesLibrary
+  // 2. Scoped user folder cache
+  if (userId) {
+    try {
+      const scopedRaw = localStorage.getItem(getUserFoldersCacheKey(userId));
+      if (scopedRaw) addList(JSON.parse(scopedRaw), true);
+    } catch {}
+  }
+
+  // 3. Fallback legacy cached user folders (strictly filtered by userId)
   try {
     const cachedUser = localStorage.getItem('hamster_cached_user_folders');
-    if (cachedUser) addList(JSON.parse(cachedUser));
+    if (cachedUser) addList(JSON.parse(cachedUser), true);
   } catch {}
 
-  // 3. Custom setup folders created in Game Setup
+  // 4. Custom setup folders created in Game Setup (strictly filtered by userId)
   try {
     const customSetup = localStorage.getItem('esl_custom_setup_folders');
-    if (customSetup) addList(JSON.parse(customSetup));
+    if (customSetup) addList(JSON.parse(customSetup), true);
   } catch {}
-
-  // 4. Saved folders / default preset curriculum folders
-  addList(getSavedFolders());
 
   return result;
 }
 
+export function mergeAllFolders(
+  ...sources: Array<Array<{ id: string; name: string; parentId?: string | null; [key: string]: any }> | undefined | null>
+): UnifiedFolderItem[] {
+  let detectedUserId: string | undefined;
+  for (const src of sources) {
+    if (Array.isArray(src)) {
+      const match = src.find((item) => item?.userId);
+      if (match?.userId) {
+        detectedUserId = String(match.userId);
+        break;
+      }
+    }
+  }
+  return mergeUserFolders(detectedUserId, ...sources);
+}
+
 /**
- * Fetches all folders from Firestore `gameFolders` (both user-specific and all accessible folders),
- * syncs them to localStorage cache, and merges with local/preset folders.
+ * Fetches folders owned ONLY by `userId` from Firestore `gameFolders` + `/api/platform-cache`,
+ * syncs them to user-scoped localStorage cache, and merges cleanly without preset folders.
  */
 export async function fetchAllAvailableFolders(
   db: any,
   userId?: string | null
 ): Promise<UnifiedFolderItem[]> {
-  const firestoreFolders: UnifiedFolderItem[] = [];
-  if (db) {
-    try {
-      const { collection, getDocs, query, where } = await import('firebase/firestore');
-      if (userId) {
-        try {
-          const userSnap = await getDocs(
-            query(collection(db, 'gameFolders'), where('userId', '==', userId))
-          );
-          userSnap.docs.forEach((d) => {
-            const data = d.data() as any;
-            if (data?.name) {
-              firestoreFolders.push({
-                id: d.id,
-                name: data.name,
-                parentId: data.parentId || null,
-                userId: data.userId,
-                createdAt: data.createdAt,
-              });
-            }
-          });
-        } catch {}
-      }
-
-      // Also fetch any other accessible gameFolders in the collection so shared/existing folders are never missing
-      try {
-        const allSnap = await getDocs(collection(db, 'gameFolders'));
-        allSnap.docs.forEach((d) => {
-          const data = d.data() as any;
-          if (data?.name && !firestoreFolders.some((f) => f.id === d.id)) {
-            if (!userId || !data.userId || data.userId === userId) {
-              firestoreFolders.push({
-                id: d.id,
-                name: data.name,
-                parentId: data.parentId || null,
-                userId: data.userId,
-                createdAt: data.createdAt,
-              });
-            }
-          }
-        });
-      } catch {}
-
-      if (firestoreFolders.length > 0) {
-        try {
-          localStorage.setItem('hamster_cached_user_folders', JSON.stringify(firestoreFolders));
-        } catch {}
-      }
-    } catch {}
+  if (!userId) {
+    return [];
   }
 
-  return mergeAllFolders(firestoreFolders);
+  const deletedIds = getDeletedFolderIds(userId);
+  const firestoreFolders: UnifiedFolderItem[] = [];
+  const serverFolders: UnifiedFolderItem[] = [];
+
+  const serverPromise = fetch('/api/platform-cache')
+    .then(async (res) => {
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data?.deletedFolderIds)) {
+        const mergedDel = getDeletedFolderIds(userId);
+        data.deletedFolderIds.forEach((id: any) => mergedDel.add(String(id)));
+        try {
+          localStorage.setItem(`${DELETED_FOLDERS_KEY_PREFIX}${userId}`, JSON.stringify(Array.from(mergedDel)));
+        } catch {}
+      }
+      if (Array.isArray(data?.folders)) {
+        data.folders.forEach((f: any) => {
+          if (!f || !f.id || !f.name) return;
+          if (f.userId && String(f.userId) !== String(userId)) return;
+          if (PRESET_FOLDER_IDS.has(String(f.id)) || deletedIds.has(String(f.id))) return;
+          serverFolders.push({
+            id: String(f.id),
+            name: String(f.name),
+            parentId: f.parentId || null,
+            userId: f.userId || userId,
+            createdAt: f.createdAt,
+            updatedAt: f.updatedAt,
+            inferred: Boolean(f.inferred),
+          });
+        });
+      }
+    })
+    .catch(() => {});
+
+  const firestorePromise = (async () => {
+    if (!db) return;
+    try {
+      const { collection, getDocs, query, where } = await import('firebase/firestore');
+      const userSnap = await withTimeoutPromise(
+        getDocs(query(collection(db, 'gameFolders'), where('userId', '==', userId))),
+        3000,
+        null as any
+      );
+      if (userSnap && typeof userSnap.forEach === 'function') {
+        userSnap.forEach((d: any) => {
+          const data = d.data() as any;
+          if (data?.name && !deletedIds.has(d.id) && !PRESET_FOLDER_IDS.has(d.id)) {
+            firestoreFolders.push({
+              id: d.id,
+              name: data.name,
+              parentId: data.parentId || null,
+              userId: data.userId || userId,
+              createdAt: data.createdAt,
+            });
+          }
+        });
+      }
+    } catch {}
+  })();
+
+  await Promise.all([serverPromise, firestorePromise]);
+
+  const merged = mergeUserFolders(userId, firestoreFolders, serverFolders);
+  try {
+    localStorage.setItem(getUserFoldersCacheKey(userId), JSON.stringify(merged));
+    localStorage.setItem('hamster_cached_user_folders', JSON.stringify(merged));
+  } catch {}
+
+  const realFolders = merged.filter((f) => !f.inferred);
+  if (realFolders.length > 0) {
+    fetch('/api/platform-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folders: realFolders }),
+    }).catch(() => {});
+  }
+
+  return merged;
 }
 
 /**
- * Creates a new folder in Firestore `gameFolders` (if possible) AND saves it to local caches,
- * returning the created folder object with its real ID.
+ * Creates a new folder in Firestore `gameFolders` (with timeout fallback),
+ * backend `/api/platform-cache`, and scoped local caches.
  */
 export async function createUnifiedFolder(
   db: any,
@@ -306,16 +464,22 @@ export async function createUnifiedFolder(
   let folderId = `folder-${Date.now()}`;
   const createdAt = new Date().toISOString();
 
-  if (db) {
+  if (db && userId) {
     try {
       const { collection, addDoc } = await import('firebase/firestore');
-      const docRef = await addDoc(collection(db, 'gameFolders'), {
-        name: cleanName,
-        parentId: parentId || null,
-        userId: userId || 'teacher-studio-user',
-        createdAt,
-      });
-      folderId = docRef.id;
+      const docRef = await withTimeoutPromise(
+        addDoc(collection(db, 'gameFolders'), {
+          name: cleanName,
+          parentId: parentId || null,
+          userId,
+          createdAt,
+        }),
+        3000,
+        null as any
+      );
+      if (docRef?.id) {
+        folderId = docRef.id;
+      }
     } catch {}
   }
 
@@ -325,28 +489,31 @@ export async function createUnifiedFolder(
     parentId: parentId || null,
     userId: userId || 'teacher-studio-user',
     createdAt,
+    updatedAt: createdAt,
   };
 
   try {
-    const cachedRaw = localStorage.getItem('hamster_cached_user_folders');
-    const cachedList = cachedRaw ? JSON.parse(cachedRaw) : [];
-    const nextCached = mergeAllFolders([newFolder], Array.isArray(cachedList) ? cachedList : []);
-    localStorage.setItem('hamster_cached_user_folders', JSON.stringify(nextCached));
+    const nextList = mergeUserFolders(userId, [newFolder]);
+    if (userId) {
+      localStorage.setItem(getUserFoldersCacheKey(userId), JSON.stringify(nextList));
+    }
+    localStorage.setItem('hamster_cached_user_folders', JSON.stringify(nextList));
   } catch {}
 
   try {
     const customRaw = localStorage.getItem('esl_custom_setup_folders');
     const customList = customRaw ? JSON.parse(customRaw) : [];
-    const nextCustom = Array.isArray(customList) ? [...customList, newFolder] : [newFolder];
+    const nextCustom = Array.isArray(customList)
+      ? [...customList.filter((f: any) => f && (!userId || !f.userId || f.userId === userId)), newFolder]
+      : [newFolder];
     localStorage.setItem('esl_custom_setup_folders', JSON.stringify(nextCustom));
   } catch {}
 
-  try {
-    const savedList = getSavedFolders();
-    if (!savedList.some((f) => f.name.toLowerCase() === cleanName.toLowerCase())) {
-      saveFoldersList([...savedList, { id: newFolder.id, name: newFolder.name }]);
-    }
-  } catch {}
+  fetch('/api/platform-cache', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folders: [newFolder] }),
+  }).catch(() => {});
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('hamster-folders-updated', { detail: newFolder }));

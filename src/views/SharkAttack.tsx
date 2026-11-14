@@ -28,7 +28,7 @@ import { db } from '../lib/firebase';
 import { collection, addDoc, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaPickerModal } from '../components/MediaPickerModal';
-import { saveAndSyncUserGame } from '../utils/platformCache';
+import { persistUserGameToCloudAndCache } from '../utils/platformCache';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { FullscreenButton } from '../components/FullscreenButton';
 import { GameModeModal } from '../components/GameModeModal';
@@ -1780,21 +1780,10 @@ export function SharkAttack({
       questions: sanitizeQuestionsList(gameData.questions),
     };
     setActiveGame(cleanedGame);
-    if (!user) {
-      alert("You must be logged in to save games.");
-      setScreen('menu');
-      return;
-    }
 
     try {
       const isPublicBool = Boolean(cleanedGame.isPublic);
       const now = new Date().toISOString();
-
-      const isOwnExistingGame = Boolean(
-        initialGame?.id &&
-        !String(initialGame.id).startsWith('sample-') &&
-        (!initialGame.userId || initialGame.userId === user.uid)
-      );
 
       const gameToSave = JSON.parse(
         JSON.stringify({
@@ -1807,40 +1796,21 @@ export function SharkAttack({
           originalGameType: 'shark-attack',
           customQuestions: cleanedGame.questions,
           isPublic: isPublicBool,
-          userId: user.uid,
-          creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-          creatorEmail: user.email || "",
+          userId: user?.uid || 'local-user',
+          creatorName: user?.displayName || user?.email?.split('@')[0] || "Teacher",
+          creatorEmail: user?.email || "",
           updatedAt: now,
           publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
-          createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+          createdAt: initialGame?.createdAt || now,
         })
       );
 
-      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-shark-attack-${Date.now()}`;
-      try {
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, 'mysteryBoxGames', initialGame.id), gameToSave);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-              savedId = docRef.id;
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-          savedId = docRef.id;
-        }
-      } catch (cloudErr) {
-        console.warn('Firestore save fallback to local storage:', cloudErr);
-      }
-      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
       onViewChange('games');
     } catch (e: any) {
       console.error('Error saving game', e);
-      alert("Failed to save game: " + (e?.message || String(e)));
       onViewChange('games');
     }
   };

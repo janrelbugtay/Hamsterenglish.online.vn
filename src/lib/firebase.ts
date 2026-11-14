@@ -24,12 +24,24 @@ if (typeof window !== 'undefined' && window.localStorage) {
       } catch {}
     });
 
-    // 2. Wrap Storage.prototype.setItem so QuotaExceededError evicts non-essential caches instead of crashing
+    // 2. Wrap Storage.prototype so QuotaExceededError evicts non-essential caches instead of crashing or losing writes
+    const nativeGetItem = Storage.prototype.getItem;
     const nativeSetItem = Storage.prototype.setItem;
+    const nativeRemoveItem = Storage.prototype.removeItem;
     const memoryFallback = new Map<string, string>();
+    Storage.prototype.getItem = function (key: string) {
+      const nativeVal = nativeGetItem.call(this, key);
+      if (nativeVal !== null) return nativeVal;
+      return memoryFallback.has(key) ? memoryFallback.get(key)! : null;
+    };
+    Storage.prototype.removeItem = function (key: string) {
+      memoryFallback.delete(key);
+      nativeRemoveItem.call(this, key);
+    };
     Storage.prototype.setItem = function (key: string, value: string) {
       try {
         nativeSetItem.call(this, key, value);
+        memoryFallback.delete(key);
       } catch (err: any) {
         if (
           err &&
@@ -39,31 +51,40 @@ if (typeof window !== 'undefined' && window.localStorage) {
             err.code === 1014)
         ) {
           try {
-            // Evict large transient cache entries to free space
+            // Evict large shared/transient caches first before touching user-saved games
             const evictPatterns = [
               'firestore_',
-              'hamster_cached_user_games',
+              'hamster_cached_admin_games',
+              'hamster_cached_public_games',
+              'hamster_cached_activities',
               'platform_cache_',
-              'squid_hamster_class_dollars_v13',
               'yogaClassicPoses_',
               'yogaCameraHandPoses_',
+              'squid_hamster_class_dollars_v13',
+              'hamster_cached_user_games',
             ];
-            const toEvict: string[] = [];
-            for (let i = 0; i < this.length; i++) {
-              const k = this.key(i);
-              if (k && k !== key && evictPatterns.some((p) => k.startsWith(p))) {
-                toEvict.push(k);
+            for (const pattern of evictPatterns) {
+              const toEvict: string[] = [];
+              for (let i = 0; i < this.length; i++) {
+                const k = this.key(i);
+                if (k && k !== key && k.startsWith(pattern)) {
+                  toEvict.push(k);
+                }
               }
-            }
-            toEvict.forEach((k) => {
+              toEvict.forEach((k) => {
+                try {
+                  nativeRemoveItem.call(this, k);
+                } catch {}
+              });
               try {
-                this.removeItem(k);
+                nativeSetItem.call(this, key, value);
+                memoryFallback.delete(key);
+                return;
               } catch {}
-            });
-            nativeSetItem.call(this, key, value);
+            }
+            memoryFallback.set(key, String(value));
             return;
           } catch {
-            // Store in memory fallback rather than throwing an unhandled exception
             memoryFallback.set(key, String(value));
             return;
           }

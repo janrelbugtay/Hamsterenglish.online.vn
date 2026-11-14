@@ -359,7 +359,56 @@ export function ClassRecord({
   const [rewardFormType, setRewardFormType] = useState<'award' | 'deduct'>('award');
   const [isSavingReward, setIsSavingReward] = useState(false);
 
-  // Sync custom rewards with Firestore for signed-in user
+  const withClassTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+    new Promise<T>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(fallback);
+        }
+      }, ms);
+      promise
+        .then((val) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(val);
+          }
+        })
+        .catch(() => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(fallback);
+          }
+        });
+    });
+
+  const pushClassDataToServer = (
+    uid: string,
+    payload: {
+      classes?: DojoClass[];
+      customRewards?: DollarReward[];
+      deletedClasses?: DojoClass[];
+      deletedStudents?: DeletedStudent[];
+      replaceEmpty?: boolean;
+      replaceCustomRewards?: boolean;
+    }
+  ) => {
+    if (!uid) return;
+    fetch('/api/class-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: uid,
+        ...payload,
+        updatedAt: Date.now(),
+      }),
+    }).catch(() => {});
+  };
+
+  // Sync custom rewards with server cache + Firestore for signed-in user
   useEffect(() => {
     if (!user || user.isAnonymous) {
       try {
@@ -372,6 +421,40 @@ export function ClassRecord({
       return;
     }
 
+    let cancelled = false;
+
+    // 1. Immediately hydrate from localStorage + /api/class-data
+    try {
+      const userSaved = localStorage.getItem(`squid_custom_rewards_${user.uid}`);
+      if (userSaved) {
+        const parsed = JSON.parse(userSaved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCustomRewards(parsed);
+        }
+      }
+    } catch {}
+
+    fetch(`/api/class-data?userId=${encodeURIComponent(user.uid)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const serverRewards: DollarReward[] = Array.isArray(data.customRewards) ? data.customRewards : [];
+        if (serverRewards.length > 0) {
+          setCustomRewards((prev) => {
+            const byId = new Map<string, DollarReward>();
+            [...serverRewards, ...prev].forEach((r) => {
+              if (r && r.id) byId.set(r.id, r);
+            });
+            const merged = Array.from(byId.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            try {
+              localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+        }
+      })
+      .catch(() => {});
+
     try {
       const colRef = collection(db, 'users', user.uid, 'customRewards');
       const unsubscribe = onSnapshot(colRef, (snap) => {
@@ -380,23 +463,33 @@ export function ClassRecord({
           list.push({ id: d.id, ...(d.data() as any) });
         });
         list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setCustomRewards(list);
-        try {
-          localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(list));
-        } catch (e) {}
+        if (list.length > 0) {
+          setCustomRewards(list);
+          try {
+            localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(list));
+          } catch (e) {}
+          pushClassDataToServer(user.uid, { customRewards: list });
+        }
       }, (err) => {
         console.warn('Custom rewards subscription error:', err?.message);
       });
 
-      return () => unsubscribe();
+      return () => {
+        cancelled = true;
+        unsubscribe();
+      };
     } catch (err) {
       console.warn('Error setting up custom rewards listener', err);
+      return () => {
+        cancelled = true;
+      };
     }
   }, [user]);
 
-  // Sync user's classes with Firestore in REAL-TIME for signed-in user
+  // Sync user's classes with server backup + Firestore in REAL-TIME for signed-in user
   useEffect(() => {
     if (!user || user.isAnonymous) return;
+    let cancelled = false;
     const userEmail = user.email?.toLowerCase().trim() || '';
     const isAdmin = userEmail === ADMIN_EMAIL;
     if (isAdmin) {
@@ -406,19 +499,45 @@ export function ClassRecord({
     const userDocRef = doc(db, 'userClassData', user.uid);
     const backupDocRef = doc(db, 'users', user.uid, 'classesData', 'current');
 
-    // STEP A: If this device has custom user classes in localStorage, immediately push them to Firestore!
-    // This ensures classes created on this device are instantly backed up to the cloud for all devices
+    // STEP A: If this device has custom user classes in localStorage, immediately push them to server & Firestore!
     const localUserClasses = getBestSavedClasses();
     const hasCustomLocal = localUserClasses.length > 0 && !isDefaultMockClasses(localUserClasses);
     if (hasCustomLocal) {
       const payload = { classes: localUserClasses, updatedAt: Date.now() };
+      pushClassDataToServer(user.uid, { classes: localUserClasses });
       setDoc(userDocRef, payload, { merge: true }).catch((err) => {
         console.warn('Initial push to cloud note:', err?.message);
       });
       setDoc(backupDocRef, payload, { merge: true }).catch(() => {});
     }
 
-    // STEP B: Real-time Firestore snapshot listener: whenever classes change on ANY device, update immediately!
+    // STEP B: Immediately fetch /api/class-data so classes load even when Firestore quota is exhausted!
+    fetch(`/api/class-data?userId=${encodeURIComponent(user.uid)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (Array.isArray(data.classes) && data.classes.length > 0 && !hasCustomLocal) {
+          const sortedServer = sortClassesByName(data.classes as DojoClass[]);
+          setClasses(sortedServer);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedServer));
+            localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sortedServer));
+            localStorage.setItem('squid_user_classes', JSON.stringify(sortedServer));
+          } catch {}
+          setActiveClassId((prev) =>
+            prev && sortedServer.some((c: any) => c.id === prev) ? prev : sortedServer[0].id
+          );
+        }
+        if (Array.isArray(data.deletedClasses) && data.deletedClasses.length > 0) {
+          setDeletedClasses((prev) => (prev.length > 0 ? prev : data.deletedClasses));
+        }
+        if (Array.isArray(data.deletedStudents) && data.deletedStudents.length > 0) {
+          setDeletedStudents((prev) => (prev.length > 0 ? prev : data.deletedStudents));
+        }
+      })
+      .catch(() => {});
+
+    // STEP C: Real-time Firestore snapshot listener: whenever classes change on ANY device, update immediately!
     const unsubscribe = onSnapshot(userDocRef, async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -432,9 +551,10 @@ export function ClassRecord({
             return;
           }
 
-          // Update local state and storage with latest cloud classes!
-          const sortedCloud = sortClassesByName(data.classes);
+          // Update local state, server backup, and storage with latest cloud classes!
+          const sortedCloud = sortClassesByName(data.classes as DojoClass[]);
           setClasses(sortedCloud);
+          pushClassDataToServer(user.uid, { classes: sortedCloud });
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedCloud));
             localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sortedCloud));
@@ -451,12 +571,13 @@ export function ClassRecord({
 
       // Fallback: check backup doc if primary is not found
       try {
-        const backupSnap = await getDoc(backupDocRef);
-        if (backupSnap.exists()) {
+        const backupSnap = await withClassTimeout(getDoc(backupDocRef), 2800, null as any);
+        if (backupSnap && backupSnap.exists()) {
           const bData = backupSnap.data();
           if (Array.isArray(bData?.classes) && bData.classes.length > 0) {
-            const sortedBackup = sortClassesByName(bData.classes);
+            const sortedBackup = sortClassesByName(bData.classes as DojoClass[]);
             setClasses(sortedBackup);
+            pushClassDataToServer(user.uid, { classes: sortedBackup });
             try {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedBackup));
               localStorage.setItem('squid_user_classes', JSON.stringify(sortedBackup));
@@ -476,7 +597,10 @@ export function ClassRecord({
       console.warn('Real-time class sync listener note:', err?.message);
     });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [user]);
 
   const handleSaveCustomReward = async (e?: React.FormEvent) => {
@@ -505,11 +629,16 @@ export function ClassRecord({
     };
 
     try {
-      await setDoc(doc(db, 'users', user.uid, 'customRewards', rewardId), newReward);
-
       const updated = [newReward, ...customRewards.filter(r => r.id !== rewardId)];
       setCustomRewards(updated);
-      localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(updated));
+      try {
+        localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(updated));
+      } catch {}
+      pushClassDataToServer(user.uid, { customRewards: updated, replaceCustomRewards: true });
+
+      setDoc(doc(db, 'users', user.uid, 'customRewards', rewardId), newReward).catch((err) => {
+        console.warn('Firestore custom reward sync note:', err?.message);
+      });
 
       setRecentTransaction({
         text: `Created reward "${newReward.label}" (${newReward.amount > 0 ? '+' : ''}$${newReward.amount})! ✨`,
@@ -538,10 +667,13 @@ export function ClassRecord({
     }
 
     try {
-      await deleteDoc(doc(db, 'users', user.uid, 'customRewards', rewardId));
       const updated = customRewards.filter(r => r.id !== rewardId);
       setCustomRewards(updated);
-      localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(updated));
+      try {
+        localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(updated));
+      } catch {}
+      pushClassDataToServer(user.uid, { customRewards: updated, replaceCustomRewards: true });
+      deleteDoc(doc(db, 'users', user.uid, 'customRewards', rewardId)).catch(() => {});
     } catch (err) {
       console.error('Error deleting custom reward:', err);
     }
@@ -687,7 +819,7 @@ export function ClassRecord({
     key: number;
   } | null>(null);
 
-  // Save changes to localStorage and Firestore
+  // Save changes to localStorage, server cache, and Firestore
   const saveClasses = (updated: DojoClass[]) => {
     const sorted = sortClassesByName(updated);
     setClasses(sorted);
@@ -700,11 +832,9 @@ export function ClassRecord({
     }
 
     if (user && !user.isAnonymous) {
+      pushClassDataToServer(user.uid, { classes: sorted, replaceEmpty: true });
       const payload = { classes: sorted, updatedAt: Date.now() };
       setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true })
-        .then(() => {
-          console.log('Class data successfully synced to Firestore!');
-        })
         .catch((err) => {
           console.warn('Class sync note:', err?.message);
         });
@@ -714,39 +844,49 @@ export function ClassRecord({
     }
   };
 
-  // Recover user's own inputted classes across Cloud and storage backups
+  // Recover user's own inputted classes across Server, Cloud, and storage backups
   const handleRecoverMyClasses = async () => {
-    // 1. Check Cloud Firestore account first!
+    // 1. Check Backend Server & Cloud Firestore account in parallel (timeout-protected)
     if (user && !user.isAnonymous) {
       try {
-        const userDocSnap = await getDoc(doc(db, 'userClassData', user.uid));
-        if (userDocSnap.exists()) {
-          const data = userDocSnap.data();
-          if (Array.isArray(data?.classes) && data.classes.length > 0) {
-            saveClasses(data.classes);
-            setActiveClassId(data.classes[0].id);
-            setRecentTransaction({
-              text: `Synced ${data.classes.length} classes from your Cloud account! ☁️✨`,
-              amount: 0,
-              time: Date.now()
-            });
-            return;
-          }
+        const [serverRes, userDocSnap, backupSnap] = await Promise.all([
+          fetch(`/api/class-data?userId=${encodeURIComponent(user.uid)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
+          withClassTimeout(getDoc(doc(db, 'userClassData', user.uid)), 2800, null as any),
+          withClassTimeout(getDoc(doc(db, 'users', user.uid, 'classesData', 'current')), 2800, null as any),
+        ]);
+
+        const cloudClasses =
+          (userDocSnap?.exists?.() && Array.isArray(userDocSnap.data()?.classes) && userDocSnap.data().classes.length > 0
+            ? userDocSnap.data().classes
+            : null) ||
+          (backupSnap?.exists?.() && Array.isArray(backupSnap.data()?.classes) && backupSnap.data().classes.length > 0
+            ? backupSnap.data().classes
+            : null);
+
+        const serverClasses =
+          serverRes && Array.isArray(serverRes.classes) && serverRes.classes.length > 0
+            ? serverRes.classes
+            : null;
+
+        if (serverRes && Array.isArray(serverRes.customRewards) && serverRes.customRewards.length > 0) {
+          setCustomRewards(serverRes.customRewards);
+          try {
+            localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(serverRes.customRewards));
+          } catch {}
         }
 
-        const backupSnap = await getDoc(doc(db, 'users', user.uid, 'classesData', 'current'));
-        if (backupSnap.exists()) {
-          const bData = backupSnap.data();
-          if (Array.isArray(bData?.classes) && bData.classes.length > 0) {
-            saveClasses(bData.classes);
-            setActiveClassId(bData.classes[0].id);
-            setRecentTransaction({
-              text: `Synced ${bData.classes.length} classes from Cloud backup! ☁️✨`,
-              amount: 0,
-              time: Date.now()
-            });
-            return;
-          }
+        const recoveredList = cloudClasses || serverClasses;
+        if (recoveredList && recoveredList.length > 0) {
+          saveClasses(recoveredList);
+          setActiveClassId(recoveredList[0].id);
+          setRecentTransaction({
+            text: `Synced ${recoveredList.length} classes from your Cloud account! ☁️✨`,
+            amount: 0,
+            time: Date.now()
+          });
+          return;
         }
       } catch (err: any) {
         console.warn('Cloud pull note:', err?.message);
@@ -805,12 +945,13 @@ export function ClassRecord({
       }
     } catch (e) {}
 
-    // 4. If current classes exist in state, force sync them to cloud now!
+    // 4. If current classes exist in state, force sync them to server & cloud now!
     if (classes.length > 0 && user && !user.isAnonymous) {
+      pushClassDataToServer(user.uid, { classes, customRewards, deletedClasses, deletedStudents });
       try {
         const payload = { classes, updatedAt: Date.now() };
-        await setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true });
-        await setDoc(doc(db, 'users', user.uid, 'classesData', 'current'), payload, { merge: true });
+        withClassTimeout(setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true }), 2500, undefined as any).catch(() => {});
+        withClassTimeout(setDoc(doc(db, 'users', user.uid, 'classesData', 'current'), payload, { merge: true }), 2500, undefined as any).catch(() => {});
         setRecentTransaction({
           text: `Uploaded ${classes.length} classes to your Cloud account! ☁️✨`,
           amount: 0,
@@ -847,6 +988,9 @@ export function ClassRecord({
     } catch (e) {
       console.error('Failed to save bin to localStorage', e);
     }
+    if (user && !user.isAnonymous) {
+      pushClassDataToServer(user.uid, { deletedClasses: updated });
+    }
   };
 
   const saveDeletedStudents = (updated: DeletedStudent[]) => {
@@ -855,6 +999,9 @@ export function ClassRecord({
       localStorage.setItem(BIN_STUDENTS_STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.error('Failed to save deleted students to localStorage', e);
+    }
+    if (user && !user.isAnonymous) {
+      pushClassDataToServer(user.uid, { deletedStudents: updated });
     }
   };
 

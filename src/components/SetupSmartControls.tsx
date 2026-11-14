@@ -18,7 +18,7 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  mergeAllFolders,
+  mergeUserFolders,
   fetchAllAvailableFolders,
   createUnifiedFolder,
   UnifiedFolderItem,
@@ -80,7 +80,7 @@ export function SetupCurriculumHeader({
 
   const { user } = useAuth();
   const [syncedFolders, setSyncedFolders] = useState<UnifiedFolderItem[]>(() =>
-    mergeAllFolders(folders)
+    mergeUserFolders(user?.uid, folders)
   );
   const [isAddingFolder, setIsAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -94,7 +94,7 @@ export function SetupCurriculumHeader({
     });
 
     const handleUpdated = () => {
-      setSyncedFolders(mergeAllFolders(folders));
+      setSyncedFolders(mergeUserFolders(user?.uid, folders));
     };
     window.addEventListener('hamster-folders-updated', handleUpdated);
     return () => {
@@ -104,8 +104,8 @@ export function SetupCurriculumHeader({
   }, [user?.uid, folders]);
 
   const allFolders = React.useMemo(() => {
-    return mergeAllFolders(folders, syncedFolders);
-  }, [folders, syncedFolders]);
+    return mergeUserFolders(user?.uid, folders, syncedFolders);
+  }, [user?.uid, folders, syncedFolders]);
 
   const handleCreateFolder = async () => {
     const clean = newFolderName.trim();
@@ -113,7 +113,7 @@ export function SetupCurriculumHeader({
     setNewFolderName('');
     setIsAddingFolder(false);
     const created = await createUnifiedFolder(db, user?.uid, clean);
-    setSyncedFolders((prev) => mergeAllFolders([created], prev, folders));
+    setSyncedFolders((prev) => mergeUserFolders(user?.uid, [created], prev, folders));
     setFolderId(created.id);
   };
 

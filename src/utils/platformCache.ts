@@ -1,4 +1,4 @@
-import { getSavedGames, saveGameRecord, deleteGameRecord } from '../lib/gameStore';
+import { getSavedGames, saveGameRecord, deleteGameRecord, mergeUserFolders } from '../lib/gameStore';
 import { SUPER_ADMIN_EMAIL } from './threatDetector';
 import { UserActivityEvent, logUserActivity } from './activityTracker';
 
@@ -1362,7 +1362,7 @@ export function saveAndSyncUserGame(
     safeWriteLocal(CACHE_KEY_USER_GAMES, cached);
   } catch {}
 
-  // 3. Save in `hamster_cached_admin_games_v2`
+  // 3. Update `hamster_cached_admin_games_v2` only if within safe storage size
   try {
     const adminCached = safeReadLocalArray(CACHE_KEY_ADMIN_GAMES);
     const idx = adminCached.findIndex((g: any) => g && String(g.id) === id);
@@ -1371,7 +1371,10 @@ export function saveAndSyncUserGame(
     } else {
       adminCached.unshift(normalizedGame);
     }
-    safeWriteLocal(CACHE_KEY_ADMIN_GAMES, adminCached);
+    const serialized = JSON.stringify(adminCached);
+    if (serialized.length < 1800000) {
+      localStorage.setItem(CACHE_KEY_ADMIN_GAMES, serialized);
+    }
   } catch {}
 
   // 4. Log activity event so it's also tracked in timeline & activity counts
@@ -1418,6 +1421,310 @@ export function saveAndSyncUserGame(
   }).catch(() => {});
 
   return normalizedGame;
+}
+
+export enum FirestoreOperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: FirestoreOperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+function logFirestoreError(error: unknown, operationType: FirestoreOperationType, path: string | null, user?: any) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: user?.uid ?? null,
+      email: user?.email ?? null,
+      emailVerified: user?.emailVerified ?? null,
+      isAnonymous: user?.isAnonymous ?? null,
+      tenantId: user?.tenantId ?? null,
+      providerInfo:
+        user?.providerData?.map((provider: any) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.warn('Firestore Sync Notice:', JSON.stringify(errInfo));
+}
+
+function withSaveTimeout<T>(promise: Promise<T>, ms: number): Promise<{ ok: boolean; value?: T; timedOut?: boolean; error?: any }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve({ ok: false, timedOut: true });
+      }
+    }, ms);
+    promise
+      .then((value) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve({ ok: true, value });
+        }
+      })
+      .catch((error) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve({ ok: false, timedOut: false, error });
+        }
+      });
+  });
+}
+
+/**
+ * Reliable, non-hanging game save across ALL creators:
+ * 1. Assigns ONE canonical ID (reusing existing owned ID or generating a Firestore doc ID synchronously).
+ * 2. Resolves folderName so folder metadata survives quota limits.
+ * 3. Persists immediately to localStorage AND awaits `/api/platform-cache` (max 3.5s) before navigation.
+ * 4. Syncs to Firestore `mysteryBoxGames` with a 2.5s timeout & 950KB payload guard (never blocks UI on 429 quota exhaustion).
+ */
+export async function persistUserGameToCloudAndCache(
+  db: any,
+  user: any,
+  gamePayload: any,
+  options?: {
+    existingGame?: any;
+    candidateId?: string | null;
+    skipActivityLog?: boolean;
+    timeoutMs?: number;
+  }
+): Promise<{
+  id: string;
+  savedGame: any;
+  isOwnExistingGame: boolean;
+  serverSynced: boolean;
+  cloudSynced: boolean;
+  cloudError?: string;
+}> {
+  const now = new Date().toISOString();
+  const existing = options?.existingGame;
+  const candidateId = options?.candidateId || existing?.id || null;
+  const isOwnExistingGame = Boolean(
+    user &&
+      candidateId &&
+      !isSyntheticOrSampleGame(candidateId) &&
+      !String(candidateId).startsWith('paintball-') &&
+      (!existing?.userId || existing.userId === user.uid || existing.userId === 'local-user' || existing.userId === 'teacher-studio-user')
+  );
+
+  const { collection, doc, setDoc, updateDoc } = await import('firebase/firestore');
+
+  let canonicalId = isOwnExistingGame && candidateId ? String(candidateId) : '';
+  if (!canonicalId) {
+    try {
+      canonicalId = db ? doc(collection(db, 'mysteryBoxGames')).id : `local-game-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    } catch {
+      canonicalId = `local-game-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    }
+  }
+
+  // Resolve folderName if folderId is present
+  let resolvedFolderName = gamePayload.folderName || '';
+  if (gamePayload.folderId && !resolvedFolderName) {
+    try {
+      const userFolders = mergeUserFolders(user?.uid);
+      const matchedFolder = userFolders.find((f) => String(f.id) === String(gamePayload.folderId));
+      if (matchedFolder?.name) {
+        resolvedFolderName = matchedFolder.name;
+      }
+    } catch {}
+  }
+
+  const uid = user?.uid || gamePayload.userId || 'local-user';
+  const email = user?.email || gamePayload.creatorEmail || '';
+  const name =
+    user?.displayName ||
+    gamePayload.creatorName ||
+    (email && email.includes('@') ? email.split('@')[0] : 'Teacher');
+
+  const cleanPayload = JSON.parse(
+    JSON.stringify({
+      ...gamePayload,
+      id: canonicalId,
+      name: gamePayload.name || gamePayload.title || gamePayload.topic || 'Custom Game',
+      title: gamePayload.title || gamePayload.name || gamePayload.topic || 'Custom Game',
+      topic: gamePayload.topic || gamePayload.name || gamePayload.title || '',
+      className: gamePayload.className || gamePayload.classLevel || '',
+      folderId: gamePayload.folderId || '',
+      ...(resolvedFolderName ? { folderName: resolvedFolderName } : {}),
+      gameType: gamePayload.gameType || 'custom-quiz',
+      customQuestions:
+        gamePayload.customQuestions ||
+        gamePayload.questions ||
+        gamePayload.customSentences ||
+        gamePayload.sentences ||
+        [],
+      userId: uid,
+      creatorName: name,
+      creatorEmail: email,
+      isPublic: Boolean(gamePayload.isPublic),
+      publishedAt: gamePayload.isPublic ? (gamePayload.publishedAt || existing?.publishedAt || now) : null,
+      createdAt: (isOwnExistingGame && (existing?.createdAt || gamePayload.createdAt)) || now,
+      updatedAt: now,
+      savedOnComputer: true,
+    })
+  );
+
+  // 1. Instant local storage save (single canonical ID)
+  try {
+    saveGameRecord(cleanPayload);
+  } catch {}
+  try {
+    const cached = safeReadLocalArray(CACHE_KEY_USER_GAMES);
+    const idx = cached.findIndex((g: any) => g && String(g.id) === canonicalId);
+    if (idx >= 0) {
+      cached[idx] = { ...cached[idx], ...cleanPayload };
+    } else {
+      cached.unshift(cleanPayload);
+    }
+    safeWriteLocal(CACHE_KEY_USER_GAMES, cached);
+  } catch {}
+
+  // 2. Log user activity
+  if (!options?.skipActivityLog && uid) {
+    const qCount = Array.isArray(cleanPayload.customQuestions)
+      ? cleanPayload.customQuestions.length
+      : Array.isArray(cleanPayload.cards)
+      ? cleanPayload.cards.length
+      : 0;
+    logUserActivity({
+      userId: uid,
+      userEmail: email || undefined,
+      userName: name || undefined,
+      userPhoto: user?.photoURL || null,
+      action: isOwnExistingGame ? 'edit_game' : 'create_game',
+      title: `${isOwnExistingGame ? 'Updated' : 'Created'} Game: "${cleanPayload.name}"`,
+      gameId: canonicalId,
+      gameTitle: cleanPayload.name,
+      gameType: cleanPayload.gameType,
+      questionCount: qCount,
+      details: `Saved ${cleanPayload.isPublic ? 'public' : 'private'} game with ${qCount} item${qCount === 1 ? '' : 's'}.`,
+    });
+  }
+
+  // 3. Await server `/api/platform-cache` persistence BEFORE navigation so My Games sees it immediately
+  let serverSynced = false;
+  try {
+    const serverRes = await withSaveTimeout(
+      fetch('/api/platform-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          games: [cleanPayload],
+          users:
+            uid && uid !== 'local-user'
+              ? [
+                  {
+                    id: uid,
+                    uid,
+                    email: email || 'Guest',
+                    displayName: name,
+                    photoURL: user?.photoURL || null,
+                    isAnonymous: Boolean(user?.isAnonymous),
+                    lastLoginAt: Date.now(),
+                  },
+                ]
+              : [],
+        }),
+      }),
+      3500
+    );
+    serverSynced = Boolean(serverRes.ok && serverRes.value?.ok);
+  } catch {
+    serverSynced = false;
+  }
+
+  // 4. Sync to Firestore with timeout & 1MB document size protection
+  let cloudSynced = false;
+  let cloudError: string | undefined;
+  if (user && db) {
+    const firestoreDocData = { ...cleanPayload };
+    delete firestoreDocData.id;
+    const approxBytes = JSON.stringify(firestoreDocData).length;
+    const timeoutMs = options?.timeoutMs ?? 2500;
+    const docPath = `mysteryBoxGames/${canonicalId}`;
+
+    if (approxBytes > 950000) {
+      cloudError = 'Game exceeds 1MB Firestore limit (saved safely on server & locally).';
+    } else {
+      const targetRef = doc(db, 'mysteryBoxGames', canonicalId);
+      if (isOwnExistingGame) {
+        const updateRes = await withSaveTimeout(updateDoc(targetRef, firestoreDocData), timeoutMs);
+        if (updateRes.ok) {
+          cloudSynced = true;
+        } else if (!updateRes.timedOut) {
+          const errCode = updateRes.error?.code;
+          if (errCode === 'not-found' || errCode === 'permission-denied') {
+            const setRes = await withSaveTimeout(
+              setDoc(targetRef, firestoreDocData, { merge: true }),
+              timeoutMs
+            );
+            if (setRes.ok) {
+              cloudSynced = true;
+            } else {
+              if (!setRes.timedOut && setRes.error?.code === 'permission-denied') {
+                logFirestoreError(setRes.error, FirestoreOperationType.WRITE, docPath, user);
+              }
+              cloudError = setRes.timedOut
+                ? 'Cloud sync timed out (saved on server & locally).'
+                : setRes.error?.message || 'Cloud sync unavailable';
+            }
+          } else {
+            cloudError = updateRes.error?.message || 'Cloud sync unavailable';
+          }
+        } else {
+          cloudError = 'Cloud sync timed out (saved on server & locally).';
+        }
+      } else {
+        const setRes = await withSaveTimeout(setDoc(targetRef, firestoreDocData), timeoutMs);
+        if (setRes.ok) {
+          cloudSynced = true;
+        } else {
+          if (!setRes.timedOut && setRes.error?.code === 'permission-denied') {
+            logFirestoreError(setRes.error, FirestoreOperationType.CREATE, docPath, user);
+          }
+          cloudError = setRes.timedOut
+            ? 'Cloud sync timed out (saved on server & locally).'
+            : setRes.error?.message || 'Cloud sync unavailable';
+        }
+      }
+    }
+  }
+
+  return {
+    id: canonicalId,
+    savedGame: cleanPayload,
+    isOwnExistingGame,
+    serverSynced,
+    cloudSynced,
+    cloudError,
+  };
 }
 
 /**

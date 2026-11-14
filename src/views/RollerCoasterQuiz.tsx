@@ -41,7 +41,7 @@ import {
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { saveAndSyncUserGame } from '../utils/platformCache';
+import { persistUserGameToCloudAndCache } from '../utils/platformCache';
 
 type GameScreen = 'editor' | 'setup' | 'study' | 'game' | 'results';
 
@@ -211,23 +211,13 @@ export function RollerCoasterQuiz({
     }
   }, [initialGame]);
 
+  const savingQuizRef = useRef(false);
   const saveQuiz = async (quiz: Quiz) => {
-    if (!user) {
-      setActiveQuiz(quiz);
-      setScreen('setup');
-      return;
-    }
-
+    if (savingQuizRef.current) return;
+    savingQuizRef.current = true;
     try {
       const isPublicBool = Boolean(quiz.isPublic);
       const now = new Date().toISOString();
-
-      const isOwnExistingGame = Boolean(
-        initialGame?.id &&
-          !String(initialGame.id).startsWith('sample-') &&
-          (!initialGame.userId || initialGame.userId === user.uid)
-      );
-
       const normalizedQuestions = normalizeToTwoOptions(quiz.questions);
 
       const gameToSave = JSON.parse(
@@ -239,42 +229,25 @@ export function RollerCoasterQuiz({
           className: quiz.classLevel || '',
           gameType: 'roller-coaster-quiz',
           customQuestions: normalizedQuestions,
-          userId: user.uid,
-          creatorName: user.displayName || user.email?.split('@')[0] || 'Teacher',
-          creatorEmail: user.email || '',
+          userId: user?.uid || 'local-user',
+          creatorName: user?.displayName || user?.email?.split('@')[0] || 'Teacher',
+          creatorEmail: user?.email || '',
           updatedAt: now,
           publishedAt: isPublicBool ? now : initialGame?.publishedAt || null,
-          createdAt: isOwnExistingGame && initialGame?.createdAt ? initialGame.createdAt : now,
+          createdAt: initialGame?.createdAt || now,
           isPublic: isPublicBool,
         })
       );
 
-      let savedId = isOwnExistingGame && initialGame?.id ? String(initialGame.id) : `local-rcq-${Date.now()}`;
-      try {
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, 'mysteryBoxGames', initialGame.id), gameToSave);
-            savedId = String(initialGame.id);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-              savedId = docRef.id;
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-          savedId = docRef.id;
-        }
-      } catch (cloudErr) {
-        console.warn('Saved Roller Coaster Quiz to local computer storage:', cloudErr);
-      }
-      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
       onViewChange('games');
     } catch (error: any) {
       console.error('Error saving game:', error);
       onViewChange('games');
+    } finally {
+      savingQuizRef.current = false;
     }
   };
 

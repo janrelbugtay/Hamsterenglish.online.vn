@@ -97,6 +97,11 @@ async function startServer() {
       }
       if (!parsed || typeof parsed !== "object") parsed = {};
       if (!Array.isArray(parsed.games)) parsed.games = [];
+      if (!Array.isArray(parsed.folders)) parsed.folders = [];
+      if (!Array.isArray(parsed.deletedFolderIds)) parsed.deletedFolderIds = [];
+      if (!parsed.classDataByUser || typeof parsed.classDataByUser !== "object") {
+        parsed.classDataByUser = {};
+      }
       if (!Array.isArray(parsed.users)) parsed.users = [];
       if (!Array.isArray(parsed.activities)) parsed.activities = [];
       if (!Array.isArray(parsed.homeworkAssignments)) parsed.homeworkAssignments = [];
@@ -270,6 +275,9 @@ async function startServer() {
     } catch (err) {
       return {
         games: [],
+        folders: [],
+        deletedFolderIds: [],
+        classDataByUser: {},
         users: [],
         activities: [],
         homeworkAssignments: [],
@@ -398,8 +406,15 @@ async function startServer() {
         incoming.games.forEach((g: any) => {
           if (isInvalidGameRecord(g)) return;
           const id = String(g.id);
-          const prev = gamesMap.get(id) || {};
-          const combined = { ...prev, ...g };
+          const prev = gamesMap.get(id);
+          if (prev) {
+            const prevTime = getTimeMs(prev.updatedAt || prev.createdAt);
+            const nextTime = getTimeMs(g.updatedAt || g.createdAt);
+            if (prevTime > 0 && nextTime > 0 && nextTime < prevTime) {
+              return;
+            }
+          }
+          const combined = { ...(prev || {}), ...g };
           const owner = combined.userId ? usersMap.get(String(combined.userId)) : null;
           if (owner) {
             combined.creatorEmail = combined.creatorEmail || owner.email || "";
@@ -433,9 +448,60 @@ async function startServer() {
         incoming.activities.forEach(addAct);
       }
 
+      const PRESET_FOLDER_IDS = new Set([
+        "folder-grammar",
+        "folder-vocab",
+        "folder-phonics",
+        "folder-speaking",
+        "folder-exam",
+        "folder-warmup",
+      ]);
+      const deletedFolderIds = new Set<string>([
+        ...(Array.isArray(existing.deletedFolderIds) ? existing.deletedFolderIds.map(String) : []),
+        ...(Array.isArray(incoming.deletedFolderIds) ? incoming.deletedFolderIds.map(String) : []),
+      ]);
+      const foldersMap = new Map<string, any>();
+      const upsertFolder = (f: any) => {
+        if (!f || !f.id || !f.name) return;
+        const id = String(f.id).trim();
+        const name = String(f.name).trim();
+        if (!id || !name || deletedFolderIds.has(id) || PRESET_FOLDER_IDS.has(id)) return;
+        const prev = foldersMap.get(id);
+        if (!prev) {
+          foldersMap.set(id, {
+            ...f,
+            id,
+            name,
+            parentId: f.parentId || null,
+          });
+          return;
+        }
+        // Real folder metadata always overrides inferred folder metadata
+        if (prev.inferred && !f.inferred) {
+          foldersMap.set(id, { ...prev, ...f, id, name, inferred: false });
+          return;
+        }
+        if (!prev.inferred && f.inferred) return;
+        const prevTime = getTimeMs(prev.updatedAt || prev.createdAt);
+        const nextTime = getTimeMs(f.updatedAt || f.createdAt);
+        if (nextTime >= prevTime) {
+          foldersMap.set(id, {
+            ...prev,
+            ...f,
+            id,
+            name,
+            parentId: f.parentId !== undefined ? (f.parentId || null) : (prev.parentId || null),
+          });
+        }
+      };
+      if (Array.isArray(existing.folders)) existing.folders.forEach(upsertFolder);
+      if (Array.isArray(incoming.folders)) incoming.folders.forEach(upsertFolder);
+
       const merged = {
         ...existing,
         games: Array.from(gamesMap.values()),
+        folders: Array.from(foldersMap.values()),
+        deletedFolderIds: Array.from(deletedFolderIds),
         users: Array.from(usersMap.values()).sort(
           (a: any, b: any) => getTimeMs(b.lastLoginAt) - getTimeMs(a.lastLoginAt)
         ),
@@ -988,6 +1054,111 @@ async function startServer() {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Failed to remove player" });
+    }
+  });
+
+  // ============================================================================
+  // SERVER-SIDE CLASS REWARDS & CLASSROOM DATA PERSISTENCE
+  // Persists per-user classes, recycle bin, and custom rewards across sessions & origins
+  // even when Firestore free-tier daily quota is exhausted.
+  // ============================================================================
+  app.get("/api/class-data", async (req, res) => {
+    try {
+      const userId = String(req.query.userId || "").trim();
+      if (!userId) {
+        return res.json({
+          classes: [],
+          customRewards: [],
+          deletedClasses: [],
+          deletedStudents: [],
+          updatedAt: 0,
+        });
+      }
+      const cache = await readPlatformCache();
+      const entry = cache.classDataByUser?.[userId] || {};
+      res.json({
+        classes: Array.isArray(entry.classes) ? entry.classes : [],
+        customRewards: Array.isArray(entry.customRewards) ? entry.customRewards : [],
+        deletedClasses: Array.isArray(entry.deletedClasses) ? entry.deletedClasses : [],
+        deletedStudents: Array.isArray(entry.deletedStudents) ? entry.deletedStudents : [],
+        updatedAt: Number(entry.updatedAt) || 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to load class data" });
+    }
+  });
+
+  app.post("/api/class-data", async (req, res) => {
+    try {
+      const {
+        userId,
+        classes,
+        customRewards,
+        deletedClasses,
+        deletedStudents,
+        updatedAt,
+        replaceEmpty,
+        replaceCustomRewards,
+      } = req.body || {};
+      const uid = String(userId || "").trim();
+      if (!uid) return res.status(400).json({ error: "userId is required" });
+
+      const cache = await readPlatformCache();
+      if (!cache.classDataByUser || typeof cache.classDataByUser !== "object") {
+        cache.classDataByUser = {};
+      }
+      const prev = cache.classDataByUser[uid] || {
+        classes: [],
+        customRewards: [],
+        deletedClasses: [],
+        deletedStudents: [],
+        updatedAt: 0,
+      };
+
+      const nextClasses = Array.isArray(classes)
+        ? classes.length > 0 || replaceEmpty
+          ? classes
+          : prev.classes || []
+        : prev.classes || [];
+
+      let nextCustomRewards = Array.isArray(prev.customRewards) ? prev.customRewards : [];
+      if (Array.isArray(customRewards)) {
+        if (replaceCustomRewards) {
+          nextCustomRewards = customRewards;
+        } else {
+          const map = new Map<string, any>();
+          nextCustomRewards.forEach((r: any) => {
+            if (r && r.id) map.set(String(r.id), r);
+          });
+          customRewards.forEach((r: any) => {
+            if (r && r.id) map.set(String(r.id), r);
+          });
+          nextCustomRewards = Array.from(map.values()).sort(
+            (a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)
+          );
+        }
+      }
+
+      const nextDeletedClasses = Array.isArray(deletedClasses)
+        ? deletedClasses
+        : prev.deletedClasses || [];
+      const nextDeletedStudents = Array.isArray(deletedStudents)
+        ? deletedStudents
+        : prev.deletedStudents || [];
+
+      const updatedEntry = {
+        classes: nextClasses,
+        customRewards: nextCustomRewards,
+        deletedClasses: nextDeletedClasses,
+        deletedStudents: nextDeletedStudents,
+        updatedAt: Math.max(Number(updatedAt) || 0, Date.now()),
+      };
+
+      cache.classDataByUser[uid] = updatedEntry;
+      await writePlatformCache(cache);
+      res.json({ success: true, ...updatedEntry });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to save class data" });
     }
   });
 

@@ -11,7 +11,7 @@ import { MediaPickerModal } from "../components/MediaPickerModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput } from "../components/SetupSmartControls";
 import { AnswerContentMode, formatOptionContent, parseOptionContent } from "../utils/mediaAndPresets";
 import { fetchAllAvailableFolders, mergeAllFolders } from "../lib/gameStore";
-import { saveAndSyncUserGame } from "../utils/platformCache";
+import { persistUserGameToCloudAndCache } from "../utils/platformCache";
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'study';
 
@@ -121,22 +121,14 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
     });
   }, [user]);
 
+  const savingGameRef = useRef(false);
   const saveGame = async (gameData: GameData) => {
-    if (!user) {
-      alert("You must be logged in to save games.");
-      return;
-    }
-
+    if (savingGameRef.current) return;
+    savingGameRef.current = true;
     try {
       const isMcq = gameData.mode === 'multiple-choice';
       const isPublicBool = Boolean(gameData.isPublic);
       const now = new Date().toISOString();
-
-      const isOwnExistingGame = Boolean(
-        initialGame?.id &&
-        !String(initialGame.id).startsWith('sample-') &&
-        (!initialGame.userId || initialGame.userId === user.uid)
-      );
 
       const gameToSave = JSON.parse(JSON.stringify({
         name: gameData.topic || gameData.title || "Bubble Island Game",
@@ -148,41 +140,24 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
         customSentences: isMcq ? [] : gameData.sentences,
         customQuestions: isMcq ? (gameData.questions || []) : [],
         mode: gameData.mode || "word",
-        userId: user.uid,
-        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-        creatorEmail: user.email || "",
+        userId: user?.uid || 'local-user',
+        creatorName: user?.displayName || user?.email?.split('@')[0] || "Teacher",
+        creatorEmail: user?.email || "",
         updatedAt: now,
         publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
-        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+        createdAt: initialGame?.createdAt || now,
         isPublic: isPublicBool,
       }));
 
-      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-bubble-sentence-${Date.now()}`;
-      try {
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-              savedId = docRef.id;
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          savedId = docRef.id;
-        }
-      } catch (cloudErr) {
-        console.warn("Firestore save fallback to local storage:", cloudErr);
-      }
-      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);
-      alert("Failed to save game: " + (error?.message || String(error)));
       onViewChange("games");
+    } finally {
+      savingGameRef.current = false;
     }
   };
 

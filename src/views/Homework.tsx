@@ -326,18 +326,50 @@ export function Homework({
     title: string;
   } | null>(null);
 
+  const withHwViewTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+    new Promise<T>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(fallback);
+        }
+      }, ms);
+      promise
+        .then((val) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(val);
+          }
+        })
+        .catch(() => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(fallback);
+          }
+        });
+    });
+
   // Load initial data (strictly scoped to the signed-in user; never shared publicly across users)
   const loadData = async () => {
     setLoading(true);
     try {
-      // Sync user's games into local cache if signed in (from server platform-cache + Firestore)
-      if (user?.uid) {
-        try {
-          const gamesMap = new Map<string, any>();
-          try {
-            const cacheRes = await fetch('/api/platform-cache');
-            if (cacheRes.ok) {
-              const cacheData = await cacheRes.json();
+      const syncGamesPromise = user?.uid
+        ? (async () => {
+            try {
+              const gamesMap = new Map<string, any>();
+              const [cacheData, cloudSnap] = await Promise.all([
+                fetch('/api/platform-cache')
+                  .then((r) => (r.ok ? r.json() : null))
+                  .catch(() => null),
+                withHwViewTimeout(
+                  getDocs(query(collection(db, 'mysteryBoxGames'), where('userId', '==', user.uid))),
+                  2800,
+                  null as any
+                ),
+              ]);
               if (Array.isArray(cacheData?.games)) {
                 cacheData.games.forEach((g: any) => {
                   if (g && g.id && g.userId === user.uid) {
@@ -345,32 +377,30 @@ export function Homework({
                   }
                 });
               }
+              if (cloudSnap && typeof cloudSnap.forEach === 'function') {
+                cloudSnap.forEach((d: any) => {
+                  gamesMap.set(d.id, { id: d.id, ...d.data() });
+                });
+              }
+              if (gamesMap.size > 0 && typeof window !== 'undefined') {
+                localStorage.setItem(
+                  'hamster_cached_user_games',
+                  JSON.stringify(Array.from(gamesMap.values()))
+                );
+              }
+            } catch {
+              // ignore offline
             }
-          } catch {}
+          })()
+        : Promise.resolve();
 
-          try {
-            const q = query(collection(db, 'mysteryBoxGames'), where('userId', '==', user.uid));
-            const snap = await getDocs(q);
-            snap.docs.forEach((d) => {
-              gamesMap.set(d.id, { id: d.id, ...d.data() });
-            });
-          } catch {}
-
-          if (gamesMap.size > 0 && typeof window !== 'undefined') {
-            localStorage.setItem(
-              'hamster_cached_user_games',
-              JSON.stringify(Array.from(gamesMap.values()))
-            );
-          }
-        } catch {
-          // ignore offline
-        }
-      }
-
+      // Run homework loading immediately in parallel — never block homework behind Firestore game queries
       const [allAssignments, trashedList] = await Promise.all([
         fetchAllHomeworkAssignments(user?.uid),
         fetchTrashedHomeworkAssignments(user?.uid),
+        syncGamesPromise,
       ]);
+
       const userPins = allAssignments.map((a) => a.pinCode).filter(Boolean);
       const allSubmissions = await fetchHomeworkSubmissions(user?.uid, undefined, userPins);
       setAssignments(allAssignments);
@@ -428,6 +458,9 @@ export function Homework({
   };
 
   useEffect(() => {
+    if (isTeacherAccount && !isUrlStudentLink) {
+      setActiveRole('teacher');
+    }
     loadData();
 
     const checkAndLaunchPin = () => {
@@ -1130,6 +1163,18 @@ export function Homework({
               </div>
             )}
 
+          {/* Loading Skeleton while loading assignments */}
+          {isTeacherAccount && activeRole === 'teacher' && !isUrlStudentLink && loading && assignments.length === 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="h-64 bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-100 dark:border-slate-700 animate-pulse"
+                />
+              ))}
+            </div>
+          )}
+
           {/* Community-Style Homework Icon Grid (Teacher View) */}
           {isTeacherAccount && activeRole === 'teacher' && !isUrlStudentLink && assignments.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1216,6 +1261,29 @@ export function Homework({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {isTeacherAccount && activeRole === 'teacher' && !isUrlStudentLink && !loading && assignments.length === 0 && (
+            <div className="rounded-3xl bg-white dark:bg-slate-800/90 border-2 border-dashed border-slate-200 dark:border-slate-700 p-10 text-center max-w-xl mx-auto">
+              <div className="w-14 h-14 rounded-2xl bg-purple-50 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 flex items-center justify-center mx-auto mb-3">
+                <BookOpen className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">No Homework Assigned Yet</h3>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 mb-5">
+                Pick one of your games or slide decks to generate a 6-digit PIN for your students.
+              </p>
+              <button
+                onClick={() => {
+                  setAvailableSlides(getSavedSlideDecksForHomework());
+                  setAvailableGames(getAllUserGamesForHomework());
+                  setShowGamePickerModal(true);
+                }}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs sm:text-sm rounded-2xl shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Create Homework
+              </button>
             </div>
           )}
         </div>

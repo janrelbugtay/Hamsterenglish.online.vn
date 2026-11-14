@@ -43,7 +43,7 @@ import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng, pa
 import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay, normalizeChaseQuestions } from "./CityPoseChase";
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import { FullscreenButton } from "../components/FullscreenButton";
-import { saveAndSyncUserGame } from "../utils/platformCache";
+import { persistUserGameToCloudAndCache } from "../utils/platformCache";
 
 export interface Question {
   id: number | string;
@@ -474,21 +474,13 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
     }
   }, [user]);
 
+  const savingQuizRef = useRef(false);
   const handleSaveQuiz = async (quiz: Quiz) => {
-    if (!user) {
-      alert("You must be logged in to save games.");
-      return;
-    }
-    
+    if (savingQuizRef.current) return;
+    savingQuizRef.current = true;
     try {
       const isPublicBool = Boolean(quiz.isPublic);
       const now = new Date().toISOString();
-
-      const isOwnExistingGame = Boolean(
-        initialGame?.id &&
-        !String(initialGame.id).startsWith('sample-') &&
-        (!initialGame.userId || initialGame.userId === user.uid)
-      );
 
       const gameToSave = JSON.parse(
         JSON.stringify({
@@ -499,42 +491,25 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
           className: quiz.classLevel || "",
           gameType: "yoga-quiz",
           customQuestions: quiz.questions,
-          userId: user.uid,
-          creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-          creatorEmail: user.email || "",
+          userId: user?.uid || 'local-user',
+          creatorName: user?.displayName || user?.email?.split('@')[0] || "Teacher",
+          creatorEmail: user?.email || "",
           updatedAt: now,
           publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
-          createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+          createdAt: initialGame?.createdAt || now,
           isPublic: isPublicBool,
         })
       );
 
-      let savedId = isOwnExistingGame && initialGame?.id ? String(initialGame.id) : `local-yoga-${Date.now()}`;
-      try {
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-            savedId = String(initialGame.id);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-              savedId = docRef.id;
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          savedId = docRef.id;
-        }
-      } catch (cloudErr) {
-        console.warn("Saved Yoga Quiz to local computer storage:", cloudErr);
-      }
-      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);
       onViewChange("games");
+    } finally {
+      savingQuizRef.current = false;
     }
   };
 

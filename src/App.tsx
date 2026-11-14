@@ -211,22 +211,61 @@ export default function App() {
         const backupDocRef = doc(db, 'users', user.uid, 'classesData', 'current');
 
         if (hasCustomLocal) {
-          // Device has classes: ensure cloud has them in sorted order
+          // Device has classes: ensure server & cloud have them in sorted order
           const sorted = sortClassesByName(localClasses);
           const payload = { classes: sorted, updatedAt: Date.now() };
-          await setDoc(userDocRef, payload, { merge: true });
-          await setDoc(backupDocRef, payload, { merge: true });
+          fetch('/api/class-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.uid, classes: sorted }),
+          }).catch(() => {});
+          setDoc(userDocRef, payload, { merge: true }).catch(() => {});
+          setDoc(backupDocRef, payload, { merge: true }).catch(() => {});
         } else {
-          // Device has no local classes: check if cloud has classes and cache them
-          const snap = await getDoc(userDocRef);
-          if (snap.exists()) {
-            const data = snap.data();
-            if (Array.isArray(data?.classes) && data.classes.length > 0) {
-              const sorted = sortClassesByName(data.classes);
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-              localStorage.removeItem('squid_hamster_class_dollars_v13');
-              localStorage.removeItem('squid_user_classes');
+          // Device has no local classes: check server backup & Firestore (timeout-protected)
+          const [serverRes, cloudSnap] = await Promise.all([
+            fetch(`/api/class-data?userId=${encodeURIComponent(user.uid)}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+            new Promise<any>((resolve) => {
+              const t = setTimeout(() => resolve(null), 2800);
+              getDoc(userDocRef)
+                .then((s) => {
+                  clearTimeout(t);
+                  resolve(s);
+                })
+                .catch(() => {
+                  clearTimeout(t);
+                  resolve(null);
+                });
+            }),
+          ]);
+
+          const cloudClasses =
+            cloudSnap && cloudSnap.exists && cloudSnap.exists() && Array.isArray(cloudSnap.data()?.classes)
+              ? cloudSnap.data().classes
+              : [];
+          const serverClasses =
+            serverRes && Array.isArray(serverRes.classes) ? serverRes.classes : [];
+          const bestClasses = cloudClasses.length > 0 ? cloudClasses : serverClasses;
+
+          if (bestClasses.length > 0) {
+            const sorted = sortClassesByName(bestClasses);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
+            localStorage.removeItem('squid_hamster_class_dollars_v13');
+            localStorage.removeItem('squid_user_classes');
+            if (cloudClasses.length > 0) {
+              fetch('/api/class-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.uid, classes: sorted }),
+              }).catch(() => {});
             }
+          }
+          if (serverRes && Array.isArray(serverRes.customRewards) && serverRes.customRewards.length > 0) {
+            try {
+              localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(serverRes.customRewards));
+            } catch {}
           }
         }
       } catch (err: any) {

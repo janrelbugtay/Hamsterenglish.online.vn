@@ -7,7 +7,7 @@ import { collection, addDoc, updateDoc, doc, getDocs, query, where } from 'fireb
 import { Plus, Folder } from 'lucide-react';
 import { fetchAllAvailableFolders, mergeAllFolders } from '../lib/gameStore';
 import { UnifiedGameSetup } from '../components/UnifiedGameSetup';
-import { saveAndSyncUserGame } from '../utils/platformCache';
+import { persistUserGameToCloudAndCache } from '../utils/platformCache';
 
 const GAME_DATA = [
   {
@@ -348,7 +348,8 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
   const handleApplyBulkPaste = (action: 'replace' | 'append') => {
     const parsed = parseFamilyFeudText(bulkText);
     if (parsed.length === 0) {
-      alert("Could not find any topics/answers. Please format correctly.");
+      setToastMsg("⚠️ Could not find any topics/answers. Please check formatting.");
+      setTimeout(() => setToastMsg(""), 3500);
       return;
     }
     if (action === 'replace') {
@@ -472,7 +473,8 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
     })).filter(r => r.question.trim() !== '' && r.answers.length > 0);
 
     if (validRounds.length === 0) {
-      alert("Please add at least one complete topic with answers.");
+      setToastMsg("⚠️ Please add at least one complete topic with answers.");
+      setTimeout(() => setToastMsg(""), 3500);
       return;
     }
 
@@ -506,11 +508,10 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
     }
   };
 
+  const savingQuizRef = useRef(false);
   const confirmSave = async (isPublicGame: boolean) => {
-    if (!user) {
-      alert("You must be logged in to save games.");
-      return;
-    }
+    if (savingQuizRef.current) return;
+    savingQuizRef.current = true;
 
     setShowPublishModal(false);
 
@@ -525,12 +526,6 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
       const isPublicBool = Boolean(isPublicGame);
       const now = new Date().toISOString();
 
-      const isOwnExistingGame = Boolean(
-        initialGame?.id &&
-        !String(initialGame.id).startsWith('sample-') &&
-        (!initialGame.userId || initialGame.userId === user.uid)
-      );
-
       const resolvedTopic = topic.trim() || rounds[0]?.question || "Family Feud";
       const resolvedName = topic.trim() || rounds[0]?.question || "Family Feud Game";
 
@@ -542,41 +537,24 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
         className: classLevel || "",
         gameType: "family-feud",
         customQuestions: validRounds,
-        userId: user.uid,
-        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-        creatorEmail: user.email || "",
+        userId: user?.uid || 'local-user',
+        creatorName: user?.displayName || user?.email?.split('@')[0] || "Teacher",
+        creatorEmail: user?.email || "",
         updatedAt: now,
         publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
-        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+        createdAt: initialGame?.createdAt || now,
         isPublic: isPublicBool,
       }));
 
-      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-family-feud-${Date.now()}`;
-      try {
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-              savedId = docRef.id;
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          savedId = docRef.id;
-        }
-      } catch (cloudErr) {
-        console.warn("Firestore save fallback to local storage:", cloudErr);
-      }
-      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
       onViewChange("games");
     } catch (error: any) {
       console.error("Error saving game:", error);
-      alert("Failed to save game: " + (error?.message || String(error)));
       onViewChange("games");
+    } finally {
+      savingQuizRef.current = false;
     }
   };
   const renderSetupScreen = () => (

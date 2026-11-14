@@ -1092,6 +1092,33 @@ export function formatDurationSeconds(sec: number): string {
   return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
+function withHomeworkTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(fallback);
+      }
+    }, ms);
+    promise
+      .then((val) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      })
+      .catch(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      });
+  });
+}
+
 // Fetch assignments owned ONLY by the given userId (reconciled across local cache, server store, and Firestore)
 export async function fetchAllHomeworkAssignments(
   userId?: string
@@ -1168,14 +1195,14 @@ export async function fetchAllHomeworkAssignments(
     }
   });
 
-  // 2. Also query Firestore when quota is available, strictly respecting deleted/trashed state
+  // 2. Also query Firestore with short timeout so quota retries never block server-cached homework
   try {
     const q = query(collection(db, 'homework_assignments'), where('userId', '==', userId));
-    const snap = await getDocs(q);
+    const snap = await withHomeworkTimeout(getDocs(q), 2800, null as any);
     const allCloudPins = new Set<string>();
 
-    if (!snap.empty) {
-      snap.forEach((docSnap) => {
+    if (snap && !snap.empty) {
+      snap.forEach((docSnap: any) => {
         const data = docSnap.data() as HomeworkAssignment;
         if (!data) return;
         const ownerUid = data.userId || data.createdByUid;
@@ -1227,22 +1254,22 @@ export async function fetchAllHomeworkAssignments(
           );
         }
       });
-    }
 
-    // Best-effort background push of active assignments not yet in Firestore
-    for (const activeItem of Array.from(activeByPin.values())) {
-      const pin = String(activeItem.pinCode || '');
-      if (pin && !activeItem.isDeleted && !allCloudPins.has(pin) && !deletedKeys.has(pin)) {
-        const cleanLoc = sanitizeForFirestore(
-          ensureAssignmentHasQuestions({
-            ...activeItem,
-            userId: activeItem.userId || userId,
-            createdByUid: activeItem.createdByUid || userId,
-          })
-        );
-        setDoc(doc(db, 'homework_assignments', cleanLoc.id), cleanLoc, { merge: true }).catch(() => {});
-        setDoc(doc(db, 'homework_assignments', cleanLoc.pinCode), cleanLoc, { merge: true }).catch(() => {});
-        setDoc(doc(db, 'homework_assignments', `hw_${cleanLoc.pinCode}`), cleanLoc, { merge: true }).catch(() => {});
+      // Best-effort background push of active assignments not yet in Firestore (only when cloud read succeeded)
+      for (const activeItem of Array.from(activeByPin.values())) {
+        const pin = String(activeItem.pinCode || '');
+        if (pin && !activeItem.isDeleted && !allCloudPins.has(pin) && !deletedKeys.has(pin)) {
+          const cleanLoc = sanitizeForFirestore(
+            ensureAssignmentHasQuestions({
+              ...activeItem,
+              userId: activeItem.userId || userId,
+              createdByUid: activeItem.createdByUid || userId,
+            })
+          );
+          setDoc(doc(db, 'homework_assignments', cleanLoc.id), cleanLoc, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'homework_assignments', cleanLoc.pinCode), cleanLoc, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'homework_assignments', `hw_${cleanLoc.pinCode}`), cleanLoc, { merge: true }).catch(() => {});
+        }
       }
     }
   } catch (e) {
@@ -1406,25 +1433,16 @@ export async function saveHomeworkAssignment(
     console.warn('Server homework save notice:', err);
   }
 
-  try {
-    // 1. Save with unique assignment ID
-    await setDoc(doc(db, 'homework_assignments', readyAssignment.id), readyAssignment, {
-      merge: true,
-    });
-    // 2. Write by PIN code and hw_<PIN> for instantaneous direct getDoc lookup across devices
-    if (readyAssignment.pinCode) {
-      await setDoc(doc(db, 'homework_assignments', readyAssignment.pinCode), readyAssignment, {
-        merge: true,
-      });
-      await setDoc(
-        doc(db, 'homework_assignments', `hw_${readyAssignment.pinCode}`),
-        readyAssignment,
-        { merge: true }
-      );
-    }
-  } catch (e) {
-    console.warn('Notice: assignment saved to server & local cache, firestore sync will retry', e);
-  }
+  // Fire-and-forget Firestore sync so quota delays never block creating/restoring homework
+  Promise.allSettled([
+    setDoc(doc(db, 'homework_assignments', readyAssignment.id), readyAssignment, { merge: true }),
+    ...(readyAssignment.pinCode
+      ? [
+          setDoc(doc(db, 'homework_assignments', readyAssignment.pinCode), readyAssignment, { merge: true }),
+          setDoc(doc(db, 'homework_assignments', `hw_${readyAssignment.pinCode}`), readyAssignment, { merge: true }),
+        ]
+      : []),
+  ]).catch(() => {});
 
   return readyAssignment;
 }
@@ -1637,9 +1655,10 @@ export async function fetchHomeworkSubmissions(
     }
   } catch (e) {}
 
-  // 2. Also query Firestore if available
+  // 2. Also query Firestore if available (timeout-protected)
   try {
     const collectSnap = (snap: any) => {
+      if (!snap || typeof snap.forEach !== 'function') return;
       snap.forEach((docSnap: any) => {
         const data = docSnap.data() as HomeworkSubmission;
         if (!data) return;
@@ -1658,18 +1677,18 @@ export async function fetchHomeworkSubmissions(
       collection(db, 'homework_submissions'),
       where('teacherUid', '==', userId)
     );
-    const snapTeacher = await getDocs(qTeacher);
-    collectSnap(snapTeacher);
-
     const validPins = (userPins || []).filter(Boolean).slice(0, 30);
-    if (validPins.length > 0) {
-      const qPins = query(
-        collection(db, 'homework_submissions'),
-        where('pinCode', 'in', validPins)
-      );
-      const snapPins = await getDocs(qPins);
-      collectSnap(snapPins);
-    }
+    const qPins =
+      validPins.length > 0
+        ? query(collection(db, 'homework_submissions'), where('pinCode', 'in', validPins))
+        : null;
+
+    const [snapTeacher, snapPins] = await Promise.all([
+      withHomeworkTimeout(getDocs(qTeacher), 2800, null as any),
+      qPins ? withHomeworkTimeout(getDocs(qPins), 2800, null as any) : Promise.resolve(null),
+    ]);
+    collectSnap(snapTeacher);
+    collectSnap(snapPins);
   } catch (e) {
     // Firestore quota or offline — use server + local submissions
   }
@@ -1776,14 +1795,16 @@ export async function fetchHomeworkLeaderboard(
       }
     } catch (e) {}
 
-    // 2. Also query Firestore if available
+    // 2. Also query Firestore if available (timeout-protected)
     try {
       const q = query(collection(db, 'homework_submissions'), where('pinCode', '==', cleanPin));
-      const snap = await getDocs(q);
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as HomeworkSubmission;
-        if (data) considerEntry({ ...data, id: docSnap.id });
-      });
+      const snap = await withHomeworkTimeout(getDocs(q), 2800, null as any);
+      if (snap && typeof snap.forEach === 'function') {
+        snap.forEach((docSnap: any) => {
+          const data = docSnap.data() as HomeworkSubmission;
+          if (data) considerEntry({ ...data, id: docSnap.id });
+        });
+      }
     } catch (e) {
       // Firestore quota or offline — server leaderboard already merged
     }
@@ -1863,20 +1884,22 @@ export async function fetchHomeworkAssignmentByPin(
     console.warn('Server homework PIN lookup notice:', e);
   }
 
-  // 2. Check Firestore direct document IDs: [clean, hw_<clean>, hw-<clean>]
+  // 2. Check Firestore direct document IDs: [clean, hw_<clean>, hw-<clean>] (timeout-protected)
   const candidateDocIds = [clean, `hw_${clean}`, `hw-${clean}`];
-  for (const docId of candidateDocIds) {
-    try {
-      const docRef = doc(db, 'homework_assignments', docId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
+  try {
+    const docResults = await Promise.all(
+      candidateDocIds.map((docId) =>
+        withHomeworkTimeout(getDoc(doc(db, 'homework_assignments', docId)), 2500, null as any)
+      )
+    );
+    for (const snap of docResults) {
+      if (snap && snap.exists && snap.exists()) {
         const data = snap.data() as HomeworkAssignment;
         if (isFakeYogaPresetAssignment(data)) continue;
         const ready = ensureAssignmentHasQuestions({
           ...data,
           id: data.id && String(data.id).startsWith('hw-') ? data.id : snap.id,
         });
-        // Cache on backend server so subsequent student lookups are instant
         fetch('/api/homework/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1884,16 +1907,16 @@ export async function fetchHomeworkAssignmentByPin(
         }).catch(() => {});
         return ready;
       }
-    } catch (e) {
-      // Firestore quota or offline
     }
+  } catch (e) {
+    // Firestore quota or offline
   }
 
   // 3. Query Firestore by pinCode field in case only the canonical hw-... doc exists
   try {
     const q = query(collection(db, 'homework_assignments'), where('pinCode', '==', clean));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
+    const snap = await withHomeworkTimeout(getDocs(q), 2500, null as any);
+    if (snap && !snap.empty) {
       for (const docSnap of snap.docs) {
         const data = docSnap.data() as HomeworkAssignment;
         if (data && !isFakeYogaPresetAssignment(data)) {

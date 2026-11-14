@@ -60,7 +60,7 @@ import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { saveAndSyncUserGame } from '../utils/platformCache';
+import { persistUserGameToCloudAndCache } from '../utils/platformCache';
 import {
   collection,
   query,
@@ -2066,67 +2066,45 @@ export default function HamsterPaintball({
     }
   }, [initialGame]);
 
+  const savingQuizRef = useRef(false);
   const saveQuiz = async (
     updatedQuiz: Quiz,
     afterSaveDestination: 'lobby' | 'games' = 'lobby'
   ) => {
     setActiveQuiz(updatedQuiz);
+    if (savingQuizRef.current) return;
+    savingQuizRef.current = true;
 
-    if (user) {
-      try {
-        const isPublicBool = Boolean(updatedQuiz.isPublic);
-        const now = new Date().toISOString();
+    try {
+      const isPublicBool = Boolean(updatedQuiz.isPublic);
+      const now = new Date().toISOString();
 
-        const isOwnExistingGame = Boolean(
-          initialGame?.id &&
-            !String(initialGame.id).startsWith('sample-') &&
-            !String(initialGame.id).startsWith('paintball-') &&
-            (!initialGame.userId || initialGame.userId === user.uid)
-        );
+      const gameToSave = JSON.parse(
+        JSON.stringify({
+          name: updatedQuiz.title || updatedQuiz.topic || 'Hamster Paintball Game',
+          title: updatedQuiz.title || updatedQuiz.topic || 'Hamster Paintball Game',
+          folderId: updatedQuiz.folderId || '',
+          topic: updatedQuiz.topic || '',
+          className: updatedQuiz.classLevel || '',
+          gameType: 'hamster-paintball',
+          customQuestions: updatedQuiz.questions,
+          userId: user?.uid || 'local-user',
+          creatorName: user?.displayName || user?.email?.split('@')[0] || 'Teacher',
+          creatorEmail: user?.email || '',
+          updatedAt: now,
+          publishedAt: isPublicBool ? now : initialGame?.publishedAt || null,
+          createdAt: initialGame?.createdAt || now,
+          isPublic: isPublicBool
+        })
+      );
 
-        const gameToSave = JSON.parse(
-          JSON.stringify({
-            name: updatedQuiz.title || updatedQuiz.topic || 'Hamster Paintball Game',
-            title: updatedQuiz.title || updatedQuiz.topic || 'Hamster Paintball Game',
-            folderId: updatedQuiz.folderId || '',
-            topic: updatedQuiz.topic || '',
-            className: updatedQuiz.classLevel || '',
-            gameType: 'hamster-paintball',
-            customQuestions: updatedQuiz.questions,
-            userId: user.uid,
-            creatorName: user.displayName || user.email?.split('@')[0] || 'Teacher',
-            creatorEmail: user.email || '',
-            updatedAt: now,
-            publishedAt: isPublicBool ? now : initialGame?.publishedAt || null,
-            createdAt: isOwnExistingGame && initialGame?.createdAt ? initialGame.createdAt : now,
-            isPublic: isPublicBool
-          })
-        );
-
-        let savedId = isOwnExistingGame ? String(initialGame.id) : `local-paintball-${Date.now()}`;
-        try {
-          if (isOwnExistingGame) {
-            try {
-              await updateDoc(doc(db, 'mysteryBoxGames', String(initialGame.id)), gameToSave);
-            } catch (err: any) {
-              if (err?.code === 'not-found') {
-                const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-                savedId = docRef.id;
-              } else {
-                throw err;
-              }
-            }
-          } else {
-            const docRef = await addDoc(collection(db, 'mysteryBoxGames'), gameToSave);
-            savedId = docRef.id;
-          }
-        } catch (cloudErr) {
-          console.warn('Could not save paintball quiz to mysteryBoxGames:', cloudErr);
-        }
-        saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
-      } catch (e) {
-        console.warn('Could not save paintball quiz:', e);
-      }
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
+    } catch (e) {
+      console.warn('Could not save paintball quiz:', e);
+    } finally {
+      savingQuizRef.current = false;
     }
 
     if (afterSaveDestination === 'games') {

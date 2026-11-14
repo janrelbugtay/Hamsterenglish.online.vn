@@ -3,8 +3,16 @@ import { createPortal } from 'react-dom';
 import { ViewState } from '../types';
 import { FullscreenButton } from '../components/FullscreenButton';
 import { MediaPickerModal } from '../components/MediaPickerModal';
-import { GameModeModal } from '../components/GameModeModal';
-import { parseOptionContent, isDirectMediaUrl, formatOptionContent } from '../utils/mediaAndPresets';
+import { SetupCurriculumHeader } from '../components/SetupSmartControls';
+import {
+  AnswerContentMode,
+  parseOptionContent,
+  isDirectMediaUrl,
+  formatOptionContent,
+  getInstantCartoonPng,
+  fetchRecommendedCartoonPng,
+  normalizeKeyword,
+} from '../utils/mediaAndPresets';
 import { fetchAllAvailableFolders, mergeAllFolders, createUnifiedFolder } from '../lib/gameStore';
 import {
   ArrowLeft,
@@ -23,25 +31,20 @@ import {
   Volume2,
   VolumeX,
   Maximize2,
-  Minimize2,
-  Pause,
-  Clock,
   ArrowLeftRight,
   Check,
-  Search,
   CheckCircle2,
   Layers,
   Image as ImageIcon,
   Palette,
   Undo2,
-  HelpCircle,
-  Folder,
+  RefreshCw,
+  ClipboardList,
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { saveGameRecord } from '../lib/gameStore';
-import { saveAndSyncUserGame } from '../utils/platformCache';
+import { persistUserGameToCloudAndCache } from '../utils/platformCache';
 
 /*************************************************************
  * 1. THEMES DEFINITION (5 ILLUSTRATED STAGE THEMES)
@@ -211,7 +214,7 @@ const THEMES: Record<string, FlashcardTheme> = {
     name: 'Space Odyssey',
     subtitle: 'Galactic Planets & Starfleet Rocket',
     badge: '🚀 Space Odyssey',
-    cardFont: "font-['Inter',sans-serif]",
+    cardFont: "font-['Plus_Jakarta_Sans',sans-serif]",
     previewBg: 'linear-gradient(135deg, #090d16 0%, #1e3a8a 55%, #38bdf8 100%)',
     deckCardBg: 'bg-gradient-to-b from-indigo-950 to-slate-900 border-sky-400 text-sky-400',
     emblemSvg: (
@@ -285,6 +288,172 @@ const BLANK_CARD = (idSuffix: string = ''): FlashcardItem => ({
   backMedia: '',
 });
 
+/**
+ * Smart Flashcard Side Input matching AR Games (SmartOptionInput / SmartQuestionInput):
+ * - Auto-recommends Cartoon PNGs/GIFs when Display Only Images or Both is active
+ * - Displays inline Media button on the right, or clickable attached thumbnail with Change / Delete popover
+ */
+function SmartFlashcardSideInput({
+  textValue,
+  mediaValue,
+  onChangeText,
+  onChangeMedia,
+  onOpenMediaPicker,
+  placeholder,
+  contentMode,
+  accentColor = 'blue',
+}: {
+  textValue: string;
+  mediaValue?: string;
+  onChangeText: (val: string) => void;
+  onChangeMedia: (val: string) => void;
+  onOpenMediaPicker: (initialQuery: string) => void;
+  placeholder: string;
+  contentMode: 'text' | 'photo' | 'both';
+  accentColor?: 'blue' | 'emerald' | 'indigo';
+}) {
+  const safeText = typeof textValue === 'string' ? textValue : '';
+  const isAutoPhotos = contentMode !== 'text';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [dismissedAutoUrl, setDismissedAutoUrl] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const onChangeMediaRef = useRef(onChangeMedia);
+  onChangeMediaRef.current = onChangeMedia;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [menuOpen]);
+
+  // Auto-recommend Cartoon PNG when typing and Display Only Images or Both is selected
+  useEffect(() => {
+    if (!isAutoPhotos) return;
+    const clean = normalizeKeyword(safeText);
+    if (!clean || clean.length < 2) return;
+    if (mediaValue && mediaValue.trim() && mediaValue !== '✨') return;
+
+    const instant = getInstantCartoonPng(clean);
+    if (instant && instant !== dismissedAutoUrl) {
+      onChangeMediaRef.current(instant);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const url = await fetchRecommendedCartoonPng(clean);
+      if (!cancelled && url && url !== dismissedAutoUrl) {
+        onChangeMediaRef.current(url);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [safeText, isAutoPhotos, mediaValue, dismissedAutoUrl]);
+
+  const cleanMedia = (mediaValue || '').trim();
+  const hasMedia = Boolean(cleanMedia && cleanMedia !== '✨');
+  const isUrl = isDirectMediaUrl(cleanMedia);
+
+  const focusRingClass =
+    accentColor === 'emerald'
+      ? 'focus-within:border-emerald-500'
+      : accentColor === 'indigo'
+      ? 'focus-within:border-indigo-500'
+      : 'focus-within:border-blue-500';
+
+  return (
+    <div
+      className={`flex-1 flex items-center gap-2 min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 transition-colors ${focusRingClass}`}
+    >
+      <input
+        type="text"
+        value={safeText.replace(/\n/g, ' ')}
+        onChange={(e) => {
+          setDismissedAutoUrl(null);
+          onChangeText(e.target.value);
+        }}
+        placeholder={
+          contentMode === 'photo'
+            ? 'Type word to generate image...'
+            : placeholder
+        }
+        className={`flex-1 min-w-0 bg-transparent outline-none py-1.5 ${
+          contentMode === 'photo'
+            ? 'text-xs text-slate-600 dark:text-slate-300 font-medium'
+            : 'text-sm text-slate-800 dark:text-white font-semibold'
+        }`}
+      />
+
+      {hasMedia ? (
+        <div ref={menuRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((prev) => !prev)}
+            className="w-11 h-11 rounded-xl border-2 border-purple-400/80 hover:border-purple-600 bg-white dark:bg-slate-800 p-0.5 flex items-center justify-center overflow-hidden shadow-xs cursor-pointer transition-all"
+            title="Click to Change or Delete media"
+          >
+            {isUrl ? (
+              <img
+                src={cleanMedia}
+                alt={safeText || 'Card Media'}
+                className="w-full h-full object-contain rounded-lg"
+              />
+            ) : (
+              <span className="text-xl leading-none select-none">{cleanMedia}</span>
+            )}
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-1.5 flex items-center gap-1.5 min-w-max">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenMediaPicker(normalizeKeyword(safeText) || safeText.trim() || '');
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <RefreshCw size={12} />
+                <span>Change</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  if (cleanMedia) setDismissedAutoUrl(cleanMedia);
+                  onChangeMedia('');
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Trash2 size={12} />
+                <span>Delete</span>
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onOpenMediaPicker(normalizeKeyword(safeText) || safeText.trim() || '')}
+          className="bg-purple-500/15 hover:bg-purple-600 text-purple-600 dark:text-purple-300 hover:text-white px-3 py-2 rounded-xl transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 text-xs sm:text-sm font-bold border border-purple-500/30 shadow-xs"
+          title="Add Photo or GIPHY GIF"
+        >
+          <ImageIcon size={16} />
+          <span>Media</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function FlashcardsMatch({
   onViewChange,
   initialGame,
@@ -315,12 +484,7 @@ export function FlashcardsMatch({
   const [dealFrontFirst, setDealFrontFirst] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
-  // Timer & Controls
-  const [timerSeconds, setTimerSeconds] = useState<number>(0);
-  const [isTimerPaused, setIsTimerPaused] = useState<boolean>(false);
-
   // Modals & UI Helpers
-  const [showModeModal, setShowModeModal] = useState<boolean>(false);
   const [showPlayThemeModal, setShowPlayThemeModal] = useState<boolean>(false);
   const [showPublishModal, setShowPublishModal] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -329,11 +493,9 @@ export function FlashcardsMatch({
   );
   const [shuffleBeforeDeal, setShuffleBeforeDeal] = useState<boolean>(true);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState<boolean>(false);
-  const [showHowToBulkModal, setShowHowToBulkModal] = useState<boolean>(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState<boolean>(false);
   const [showSpotlightModal, setShowSpotlightModal] = useState<boolean>(false);
   const [bulkText, setBulkText] = useState<string>('');
-  const [bulkReplace, setBulkReplace] = useState<boolean>(false);
   const [newFolderName, setNewFolderName] = useState<string>('');
   const [toastMsg, setToastMsg] = useState<string>('');
 
@@ -364,34 +526,74 @@ export function FlashcardsMatch({
         setClassLevel(initialGame.className || initialGame.classLevel);
       }
       if (initialGame.folderId) setFolderId(initialGame.folderId);
+
+      const resolvedSides: 1 | 2 =
+        initialGame.cardSides === 1 || initialGame.cardSides === 2
+          ? initialGame.cardSides
+          : cardSides;
       if (initialGame.cardSides === 1 || initialGame.cardSides === 2) {
         setCardSides(initialGame.cardSides);
       }
       if (initialGame.contentMode) setContentMode(initialGame.contentMode);
       if (initialGame.theme && THEMES[initialGame.theme]) setTheme(initialGame.theme);
 
+      let loadedCards: FlashcardItem[] = [];
       if (Array.isArray(initialGame.cards) && initialGame.cards.length > 0) {
-        setCards(initialGame.cards);
-      } else if (
-        Array.isArray(initialGame.customQuestions) &&
-        initialGame.customQuestions.length > 0
-      ) {
-        const converted: FlashcardItem[] = initialGame.customQuestions.map((q: any, i: number) => {
-          const parsedPrompt = parseOptionContent(q.text || '');
-          const opt0 = q.options?.[q.answerIndex || 0] || q.options?.[0] || '';
-          const parsedAns = parseOptionContent(opt0);
-          return {
-            id: q.id || `c_${Date.now()}_${i}`,
-            frontText: parsedPrompt.text || q.text || '',
-            frontMedia: parsedPrompt.imageUrl || q.image || '',
-            backText: parsedAns.text || opt0 || '',
-            backMedia: parsedAns.imageUrl || '',
-          };
-        });
-        setCards(converted);
+        loadedCards = initialGame.cards.map((c: any, i: number) => ({
+          id: c?.id || `c_${Date.now()}_${i}`,
+          frontText: typeof (c?.frontText ?? c?.front ?? c?.text) === 'string' ? (c.frontText ?? c.front ?? c.text) : '',
+          backText: typeof (c?.backText ?? c?.back ?? c?.answer) === 'string' ? (c.backText ?? c.back ?? c.answer) : '',
+          frontMedia: typeof (c?.frontMedia ?? c?.image) === 'string' ? (c.frontMedia ?? c.image) : '',
+          backMedia: typeof c?.backMedia === 'string' ? c.backMedia : '',
+        }));
+      } else {
+        const rawQuestions =
+          Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0
+            ? initialGame.customQuestions
+            : Array.isArray(initialGame.questions) && initialGame.questions.length > 0
+            ? initialGame.questions
+            : [];
+
+        if (rawQuestions.length > 0) {
+          loadedCards = rawQuestions.map((q: any, i: number) => {
+            const parsedPrompt = parseOptionContent(q.text || '');
+            const opt0 = q.options?.[q.answerIndex || 0] || q.options?.[0] || '';
+            const parsedAns = parseOptionContent(opt0);
+            return {
+              id: q.id || `c_${Date.now()}_${i}`,
+              frontText: parsedPrompt.text || q.text || '',
+              frontMedia: parsedPrompt.imageUrl || q.image || '',
+              backText: parsedAns.text || opt0 || '',
+              backMedia: parsedAns.imageUrl || '',
+            };
+          });
+        }
+      }
+
+      if (loadedCards.length > 0) {
+        setCards(loadedCards);
       }
 
       if (!initialGame.editMode) {
+        const sourceCards = loadedCards.length > 0 ? loadedCards : cards;
+        const validDeck = sourceCards.filter(
+          (c) =>
+            (c.frontText && c.frontText.trim()) ||
+            (c.backText && c.backText.trim()) ||
+            c.frontMedia ||
+            c.backMedia
+        );
+        const deckCopy = [...validDeck];
+        if (shuffleBeforeDeal) {
+          for (let i = deckCopy.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [deckCopy[i], deckCopy[j]] = [deckCopy[j], deckCopy[i]];
+          }
+        }
+        setUndealtDeck(deckCopy);
+        setDealtHistory([]);
+        setCurrentCard(null);
+        setIsCurrentFlipped(resolvedSides === 2 ? !dealFrontFirst : false);
         setScreen('play');
       }
     }
@@ -404,15 +606,6 @@ export function FlashcardsMatch({
       setFolders(loaded);
     });
   }, [user]);
-
-  // Play Timer effect
-  useEffect(() => {
-    if (screen !== 'play' || isTimerPaused) return;
-    const interval = setInterval(() => {
-      setTimerSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [screen, isTimerPaused]);
 
   // Web Audio Synth
   const playSoundFx = (type: 'deal' | 'flip' | 'undo' | 'shuffle') => {
@@ -551,8 +744,6 @@ export function FlashcardsMatch({
     setDealtHistory([]);
     setCurrentCard(null);
     setIsCurrentFlipped(cardSides === 2 ? !dealFrontFirst : false);
-    setTimerSeconds(0);
-    setIsTimerPaused(false);
     setShowPlayThemeModal(false);
     setScreen('play');
     playSoundFx('shuffle');
@@ -589,7 +780,17 @@ export function FlashcardsMatch({
   };
 
   const handleShuffle = () => {
-    const combined = [...dealtHistory, ...undealtDeck];
+    const existingCombined = [...dealtHistory, ...undealtDeck];
+    const combined =
+      existingCombined.length > 0
+        ? existingCombined
+        : cards.filter(
+            (c) =>
+              (c.frontText && c.frontText.trim()) ||
+              (c.backText && c.backText.trim()) ||
+              c.frontMedia ||
+              c.backMedia
+          );
     for (let i = combined.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [combined[i], combined[j]] = [combined[j], combined[i]];
@@ -597,7 +798,7 @@ export function FlashcardsMatch({
     setUndealtDeck(combined);
     setDealtHistory([]);
     setCurrentCard(null);
-    setIsCurrentFlipped(!dealFrontFirst);
+    setIsCurrentFlipped(cardSides === 2 ? !dealFrontFirst : false);
     playSoundFx('shuffle');
     showToast('Deck shuffled!');
   };
@@ -786,88 +987,67 @@ export function FlashcardsMatch({
       // Strip any possible undefined values so Firestore does not reject with "Unsupported field value: undefined"
       const cleanPayload = JSON.parse(JSON.stringify(rawPayload));
 
-      const candidateId = gameId || (initialGame?.id && !String(initialGame.id).startsWith('sample-') ? initialGame.id : null);
-      const isOwnExistingGame = Boolean(
-        user &&
-        candidateId &&
-        (!initialGame?.userId || initialGame.userId === user.uid)
-      );
+      const candidateId =
+        gameId ||
+        (initialGame?.id && !String(initialGame.id).startsWith('sample-') ? String(initialGame.id) : null);
 
-      // Always save to local game store as an instant reliable fallback
-      const localRecord = saveGameRecord({
-        ...cleanPayload,
-        id: candidateId || undefined,
+      const result = await persistUserGameToCloudAndCache(db, user, cleanPayload, {
+        existingGame: initialGame,
+        candidateId,
       });
 
-      let finalId = localRecord.id;
+      setGameId(result.id);
 
-      // If user is authenticated, sync to Firestore
       if (user) {
-        if (isOwnExistingGame && candidateId) {
-          try {
-            await updateDoc(doc(db, 'mysteryBoxGames', candidateId), cleanPayload);
-            finalId = candidateId;
-          } catch (updateErr: any) {
-            if (updateErr?.code === 'not-found' || updateErr?.code === 'permission-denied') {
-              cleanPayload.createdAt = now;
-              const docRef = await addDoc(collection(db, 'mysteryBoxGames'), cleanPayload);
-              finalId = docRef.id;
-              setGameId(docRef.id);
-            } else {
-              throw updateErr;
-            }
-          }
+        if (result.cloudSynced) {
+          showToast(isPublicBool ? '🚀 Published flashcards to Community!' : '🔒 Saved private flashcard deck!');
         } else {
-          cleanPayload.createdAt = now;
-          const docRef = await addDoc(collection(db, 'mysteryBoxGames'), cleanPayload);
-          finalId = docRef.id;
-          setGameId(docRef.id);
+          showToast(
+            isPublicBool
+              ? '🚀 Published flashcards & saved to server!'
+              : '💾 Saved flashcard deck to library!'
+          );
         }
-
-        // Sync final ID to local game store & server platform cache
-        if (finalId) {
-          saveGameRecord({ ...cleanPayload, id: finalId });
-          saveAndSyncUserGame({ ...cleanPayload, id: finalId }, user, { isUpdate: Boolean(isOwnExistingGame && candidateId) });
-        }
-
-        showToast(isPublicBool ? '🚀 Published flashcards to Community!' : '🔒 Saved private flashcard deck!');
       } else {
-        // Guest user saved locally
-        setGameId(localRecord.id);
-        saveAndSyncUserGame({ ...cleanPayload, id: localRecord.id }, null);
-        showToast('💾 Saved flashcard deck to local library! (Log in anytime to sync to Cloud)');
+        showToast('💾 Saved flashcard deck to local library!');
       }
+      setTimeout(() => onViewChange('home'), 450);
     } catch (err: any) {
-      console.error('Could not save flashcard deck to cloud:', err);
-      showToast('💾 Saved to local library! (Cloud sync issue: ' + (err?.message || 'Offline') + ')');
+      console.error('Could not save flashcard deck:', err);
+      showToast('⚠️ Save issue: ' + (err?.message || 'Please try again'));
     } finally {
       setIsSaving(false);
     }
   };
 
   // Bulk Paste Handler
-  const handleApplyBulkPaste = () => {
-    if (!bulkText.trim()) return;
-    const lines = bulkText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const parsed: FlashcardItem[] = lines.map((line, i) => {
+  const parseBulkCards = (raw: string): FlashcardItem[] => {
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    return lines.map((line, i) => {
       const parts = line.includes('|') ? line.split('|') : line.split('\t');
       return {
         id: `bulk_${Date.now()}_${i}`,
         frontText: (parts[0] || '').trim(),
         backText: (parts[1] || '').trim(),
-        frontMedia: (parts[2] || '✨').trim(),
+        frontMedia: (parts[2] || '').trim(),
         backMedia: (parts[3] || '').trim(),
       };
     });
+  };
 
-    if (bulkReplace) {
-      setCards(parsed);
+  const handleApplyBulkPaste = (mode: 'replace' | 'append') => {
+    if (!bulkText.trim()) return;
+    const parsed = parseBulkCards(bulkText);
+    if (parsed.length === 0) return;
+
+    if (mode === 'replace') {
+      setCards(parsed.slice(0, 50));
     } else {
       setCards((prev) => [...prev, ...parsed].slice(0, 50));
     }
     setShowBulkPasteModal(false);
     setBulkText('');
-    showToast(`✨ Imported ${parsed.length} flashcards!`);
+    showToast(`✨ ${mode === 'replace' ? 'Replaced with' : 'Added'} ${parsed.length} flashcards!`);
   };
 
   // Card list mutation helpers
@@ -932,13 +1112,18 @@ export function FlashcardsMatch({
     if (!media) return null;
     if (isDirectMediaUrl(media)) {
       return (
-        <div className="w-full h-full max-h-[440px] rounded-3xl overflow-hidden shadow-xl border-4 border-slate-100 bg-white flex items-center justify-center p-3">
-          <img src={media} alt="Card visual" className="w-full h-full object-contain rounded-2xl" />
+        <div className="w-full h-full max-h-[420px] flex items-center justify-center p-2">
+          <img
+            src={media}
+            alt="Card visual"
+            referrerPolicy="no-referrer"
+            className="w-full h-full max-h-[380px] object-contain drop-shadow-sm rounded-2xl"
+          />
         </div>
       );
     }
     return (
-      <div className="w-full h-full max-h-[440px] rounded-3xl bg-slate-100/75 border-2 border-slate-200/80 shadow-inner flex items-center justify-center p-6">
+      <div className="w-full h-full max-h-[420px] flex items-center justify-center p-4">
         <div className="text-[7rem] sm:text-[9.5rem] lg:text-[12rem] xl:text-[14rem] leading-none select-none drop-shadow-md">
           {media}
         </div>
@@ -947,14 +1132,15 @@ export function FlashcardsMatch({
   };
 
   const renderCardContentHTML = (text: string, media?: string) => {
-    const showText = contentMode === 'text' || contentMode === 'both';
-    const showPhoto = contentMode === 'photo' || contentMode === 'both';
-    const hasText = Boolean(showText && text && text.trim() !== '');
-    const hasMedia = Boolean(showPhoto && media && media.trim() !== '');
+    const safeText = typeof text === 'string' ? text : '';
+    const cleanMedia = (media || '').trim();
+    const hasMedia = Boolean(cleanMedia && cleanMedia !== '✨');
+    const showText = contentMode !== 'photo' || !hasMedia;
+    const hasText = Boolean(showText && safeText.trim() !== '');
     const themeObj = THEMES[theme] || THEMES.london;
 
     if (hasText && hasMedia) {
-      const len = text.trim().length;
+      const len = safeText.trim().length;
       let sizeClass = 'text-3xl sm:text-5xl lg:text-6xl xl:text-7xl';
       if (len > 55) sizeClass = 'text-xl sm:text-2xl lg:text-3xl';
       else if (len > 28) sizeClass = 'text-2xl sm:text-4xl lg:text-5xl';
@@ -963,10 +1149,10 @@ export function FlashcardsMatch({
         <div className="w-full h-full grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-8 items-center">
           <div className="md:col-span-7 h-full flex flex-col items-center md:items-start justify-center text-center md:text-left px-2 sm:px-6 overflow-y-auto">
             <div className={`${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight leading-[1.15] break-words w-full`}>
-              {text.split('\n').map((line, idx) => (
+              {safeText.split('\n').map((line, idx) => (
                 <React.Fragment key={idx}>
                   {line}
-                  {idx < text.split('\n').length - 1 && <br />}
+                  {idx < safeText.split('\n').length - 1 && <br />}
                 </React.Fragment>
               ))}
             </div>
@@ -987,7 +1173,7 @@ export function FlashcardsMatch({
     }
 
     if (hasText && !hasMedia) {
-      const len = text.trim().length;
+      const len = safeText.trim().length;
       let sizeClass = 'text-4xl sm:text-6xl lg:text-7xl xl:text-8xl';
       if (len > 60) sizeClass = 'text-2xl sm:text-4xl lg:text-5xl';
       else if (len > 30) sizeClass = 'text-3xl sm:text-5xl lg:text-6xl';
@@ -995,10 +1181,10 @@ export function FlashcardsMatch({
       return (
         <div className="w-full h-full flex items-center justify-center text-center px-4">
           <div className={`${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight leading-tight break-words max-w-full`}>
-            {text.split('\n').map((line, idx) => (
+            {safeText.split('\n').map((line, idx) => (
               <React.Fragment key={idx}>
                 {line}
-                {idx < text.split('\n').length - 1 && <br />}
+                {idx < safeText.split('\n').length - 1 && <br />}
               </React.Fragment>
             ))}
           </div>
@@ -1006,7 +1192,7 @@ export function FlashcardsMatch({
       );
     }
 
-    return <div className="text-slate-400 italic text-xl">(Empty Side)</div>;
+    return <div className="text-slate-400 font-medium text-lg">No content on this side</div>;
   };
 
   const themeObj = THEMES[theme] || THEMES.london;
@@ -1014,36 +1200,21 @@ export function FlashcardsMatch({
   return (
     <div
       id="flashcard-game-container"
-      className="w-full min-h-full flex-1 bg-slate-100 text-slate-800 flex flex-col font-['Inter',sans-serif] overflow-x-hidden relative rounded-xl select-none"
+      className="w-full min-h-full flex-1 bg-slate-100 text-slate-800 flex flex-col font-['Plus_Jakarta_Sans','DM_Sans',sans-serif] overflow-x-hidden relative rounded-xl select-none"
     >
       <style>{`
-        .perspective-1200 { perspective: 1400px; }
-        .preserve-3d { transform-style: preserve-3d; }
-        .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-        .rotate-y-180 { transform: rotateY(180deg); }
-        .card-flip-inner {
-          transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
-          transform-style: preserve-3d;
-        }
-        .card-flip-inner.is-flipped {
-          transform: rotateY(180deg);
-        }
-        @keyframes dealFlyIn {
+        @keyframes dealFadeSlide {
           0% {
             opacity: 0;
-            transform: translate3d(-340px, -30px, 120px) scale(0.72) rotateZ(-8deg) rotateY(-65deg);
-          }
-          65% {
-            opacity: 1;
-            transform: translate3d(14px, -6px, 30px) scale(1.03) rotateZ(1.5deg) rotateY(6deg);
+            transform: translate3d(-48px, 0, 0) scale(0.95);
           }
           100% {
             opacity: 1;
-            transform: translate3d(0, 0, 0) scale(1) rotateZ(0deg) rotateY(0deg);
+            transform: none;
           }
         }
-        .animate-deal {
-          animation: dealFlyIn 0.52s cubic-bezier(0.2, 0.9, 0.3, 1.05) forwards;
+        .animate-deal-stage {
+          animation: dealFadeSlide 0.34s cubic-bezier(0.22, 1, 0.36, 1);
         }
         @keyframes undoFlyBack {
           0% {
@@ -1098,231 +1269,165 @@ export function FlashcardsMatch({
         <div className="absolute inset-0 z-40 bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
           <div className="w-full min-h-full flex flex-col items-center py-8 px-4">
             <div className="w-full max-w-4xl glass-panel rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8">
-              {/* Top Header Card */}
-              <div className="bg-white dark:bg-slate-800/80 p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
-                <div className="flex justify-between items-center flex-wrap gap-4">
+              {/* Top Header Card — Clean AR-Games Setup Layout */}
+              <div className="bg-white dark:bg-slate-800/80 p-6 sm:p-8 flex flex-col gap-5 border-b-2 border-blue-500/50">
+                <div className="flex flex-wrap justify-between items-center gap-3">
                   <div className="flex items-center gap-3">
                     <button
+                      type="button"
                       onClick={() => onViewChange('home')}
-                      className="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer flex items-center gap-2"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-black text-sm transition-colors cursor-pointer border border-slate-300 dark:border-slate-600 whitespace-nowrap shrink-0"
                     >
                       <ArrowLeft size={18} />
-                      <span>Cancel</span>
+                      <span>Back</span>
                     </button>
-                    <div>
-                      <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">
-                        FLASHCARD SETUP
-                      </h2>
-                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide whitespace-nowrap">
+                      FLASHCARD SETUP
+                    </h2>
                   </div>
 
-                  <div className="flex gap-2.5 items-center flex-wrap">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     <button
-                      onClick={() => setShowModeModal(true)}
-                      className="px-4 py-2.5 rounded-xl text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 font-bold transition flex items-center gap-2 cursor-pointer text-sm"
-                    >
-                      <Shuffle size={16} />
-                      <span>Switch Mode</span>
-                    </button>
-                    <button
+                      type="button"
                       onClick={handleSaveClick}
                       disabled={isSaving}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm disabled:opacity-60"
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-lg shadow-blue-500/30 cursor-pointer text-sm sm:text-base disabled:opacity-60 whitespace-nowrap shrink-0"
                     >
                       <Save size={18} />
                       <span>{isSaving ? 'Saving...' : 'Save Quiz'}</span>
                     </button>
+                    <FullscreenButton
+                      targetId="flashcard-game-container"
+                      className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-600"
+                    />
+                  </div>
+                </div>
+
+                {/* Unified AR-Style Setup Header: Topic, Class Level, Folder + Generate Images / GIFs */}
+                <SetupCurriculumHeader
+                  topic={topic}
+                  setTopic={setTopic}
+                  classLevel={classLevel}
+                  setClassLevel={setClassLevel}
+                  folderId={folderId}
+                  setFolderId={setFolderId}
+                  folders={folders}
+                  contentMode={
+                    contentMode === 'photo'
+                      ? 'photos_gifs'
+                      : contentMode === 'both'
+                      ? 'both'
+                      : 'words'
+                  }
+                  setContentMode={(mode: AnswerContentMode) => {
+                    const mapped = mode === 'photos_gifs' ? 'photo' : mode === 'both' ? 'both' : 'text';
+                    setContentMode(mapped);
+                  }}
+                  autoPhotosEnabled={contentMode !== 'text'}
+                  onApplyModeToAll={async (mode: AnswerContentMode) => {
+                    const mapped = mode === 'photos_gifs' ? 'photo' : mode === 'both' ? 'both' : 'text';
+                    setContentMode(mapped);
+
+                    if (mapped === 'text') {
+                      setCards((prev) =>
+                        prev.map((c) => ({
+                          ...c,
+                          frontMedia: '',
+                          backMedia: '',
+                        }))
+                      );
+                      showToast('🔤 Switched all cards to Text Only!');
+                      return;
+                    }
+
+                    const updatedCards = await Promise.all(
+                      cards.map(async (c) => {
+                        let nextFrontMedia = c.frontMedia || '';
+                        let nextBackMedia = c.backMedia || '';
+
+                        if (
+                          c.frontText?.trim() &&
+                          (!nextFrontMedia || nextFrontMedia === '✨' || !isDirectMediaUrl(nextFrontMedia))
+                        ) {
+                          const foundFront =
+                            getInstantCartoonPng(c.frontText) ||
+                            (await fetchRecommendedCartoonPng(c.frontText));
+                          if (foundFront) nextFrontMedia = foundFront;
+                        }
+
+                        if (
+                          cardSides === 2 &&
+                          c.backText?.trim() &&
+                          (!nextBackMedia || nextBackMedia === '✨' || !isDirectMediaUrl(nextBackMedia))
+                        ) {
+                          const foundBack =
+                            getInstantCartoonPng(c.backText) ||
+                            (await fetchRecommendedCartoonPng(c.backText));
+                          if (foundBack) nextBackMedia = foundBack;
+                        }
+
+                        return {
+                          ...c,
+                          frontMedia: nextFrontMedia,
+                          backMedia: nextBackMedia,
+                        };
+                      })
+                    );
+
+                    setCards(updatedCards);
+                    showToast(
+                      mapped === 'photo'
+                        ? '🖼️ Switched all cards to Images Only!'
+                        : '✨ Switched all cards to Words + Images!'
+                    );
+                  }}
+                />
+
+                {/* Clean Single-Row Card Side Mode Selector */}
+                <div className="bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                      <ArrowLeftRight size={16} />
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                        Card Side Mode
+                      </span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">
+                        · {cardSides === 1 ? '1-Sided: Deals face-up' : '2-Sided: Flip Front & Back'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 w-full sm:w-auto bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 p-1 rounded-xl gap-1.5 shrink-0">
                     <button
-                      onClick={handlePlayButtonClick}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-bold transition-all shadow-lg shadow-emerald-500/30 active:scale-95 cursor-pointer text-sm"
+                      type="button"
+                      onClick={() => setCardSides(1)}
+                      className={`px-4 py-2 rounded-lg text-xs font-extrabold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        cardSides === 1
+                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
                     >
-                      <Play size={18} className="fill-current" />
-                      <span>Play Game</span>
+                      <Square size={13} />
+                      <span>1-Side</span>
                     </button>
-                  </div>
-                </div>
-
-                {/* Row 1: Topic, Class Level, Folder */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Topic */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1">
-                      Topic
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Animals, Feelings, Daily Routine..."
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-3.5 py-2.5 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-500 transition-colors"
-                    />
-                  </div>
-
-                  {/* Class Level */}
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between px-1">
-                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                        Class Level
-                      </label>
-                      <div className="flex gap-1">
-                        {['Starters', 'Grade 5', 'IELTS'].map((lvl) => (
-                          <button
-                            key={lvl}
-                            type="button"
-                            onClick={() => setClassLevel(lvl)}
-                            className="text-[11px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 hover:bg-indigo-50 hover:text-indigo-600 font-medium text-slate-600 dark:text-slate-300 transition cursor-pointer"
-                          >
-                            {lvl}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. Kindergarten, Grade 3, Starters..."
-                      value={classLevel}
-                      onChange={(e) => setClassLevel(e.target.value)}
-                      className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-3.5 py-2.5 rounded-xl focus:border-blue-500 placeholder-slate-400 dark:placeholder-slate-500 transition-colors"
-                    />
-                  </div>
-
-                  {/* Folder */}
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between px-1">
-                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                        Folder
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowNewFolderModal(true)}
-                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <FolderPlus size={12} />
-                        <span>+ New Folder</span>
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <select
-                        value={folderId}
-                        onChange={(e) => setFolderId(e.target.value)}
-                        className="w-full text-sm font-medium bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 outline-none text-slate-800 dark:text-white px-3.5 py-2.5 rounded-xl focus:border-blue-500 appearance-none cursor-pointer transition-colors pr-8"
-                      >
-                        <option value="">No Folder (Root Library)</option>
-                        {folders.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Row 2: Card Side Mode & Option Content Mode */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Card Side Mode */}
-                  <div className="bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                        <ArrowLeftRight size={15} />
-                      </div>
-                      <div>
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200 block">
-                          Card Side Mode
-                        </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {cardSides === 1 ? '1-Sided: Deals face-up' : '2-Sided: Flip Front & Back'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 bg-slate-200/75 dark:bg-slate-800 p-1 rounded-xl gap-1 w-full sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={() => setCardSides(1)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                          cardSides === 1
-                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                      >
-                        <Square size={13} />
-                        <span>1-Side</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCardSides(2)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                          cardSides === 2
-                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                      >
-                        <RotateCw size={13} />
-                        <span>Double-Side</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Option Content Mode */}
-                  <div className="bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                        <Layers size={15} />
-                      </div>
-                      <div>
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200 block">
-                          Option Content Mode
-                        </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {contentMode === 'text'
-                            ? 'Text Only'
-                            : contentMode === 'photo'
-                            ? 'Photos Only'
-                            : 'Word & Picture'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 bg-slate-200/75 dark:bg-slate-800 p-1 rounded-xl gap-1 w-full sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={() => setContentMode('text')}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                          contentMode === 'text'
-                            ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                      >
-                        <span>Text Only</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setContentMode('photo')}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                          contentMode === 'photo'
-                            ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                      >
-                        <span>Photos</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setContentMode('both')}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                          contentMode === 'both'
-                            ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                      >
-                        <Sparkles size={13} />
-                        <span>Word &amp; Pic</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCardSides(2)}
+                      className={`px-4 py-2 rounded-lg text-xs font-extrabold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        cardSides === 2
+                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <RotateCw size={13} />
+                      <span>Double-Side</span>
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* Cards / Questions List Area */}
+              {/* Cards List Area */}
               <div className="p-6 flex flex-col gap-6 bg-slate-100 dark:bg-slate-900/50">
                 {/* Action Bar */}
                 <div className="bg-blue-500/10 dark:bg-blue-950/30 border border-blue-500/20 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1334,7 +1439,7 @@ export function FlashcardsMatch({
                       <button
                         type="button"
                         onClick={swapAllSides}
-                        className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-sm transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                       >
                         <ArrowLeftRight size={14} className="text-indigo-600 dark:text-indigo-400" />
                         <span>Swap All Front/Back</span>
@@ -1343,17 +1448,10 @@ export function FlashcardsMatch({
                     <button
                       type="button"
                       onClick={() => setShowBulkPasteModal(true)}
-                      className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-blue-500/25 flex items-center gap-2 cursor-pointer"
+                      className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-blue-500/25 flex items-center gap-2 cursor-pointer whitespace-nowrap"
                     >
+                      <ClipboardList size={18} />
                       <span>Bulk Paste</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowHowToBulkModal(true)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-2 cursor-pointer border border-purple-400/30"
-                    >
-                      <Play size={13} className="fill-current" />
-                      <span>How to Bulk Paste</span>
                     </button>
                   </div>
                 </div>
@@ -1361,11 +1459,8 @@ export function FlashcardsMatch({
                 {/* Card Items */}
                 <div className="flex flex-col gap-4">
                   {cards.map((card, idx) => {
-                    const showTextInput = contentMode === 'text' || contentMode === 'both';
-                    const showMediaBtn = contentMode === 'photo' || contentMode === 'both';
-
                     if (cardSides === 1) {
-                      // 1-SIDED CARD LAYOUT
+                      // 1-SIDED CARD LAYOUT (AR-Style Inline Media)
                       return (
                         <div
                           key={card.id}
@@ -1389,69 +1484,32 @@ export function FlashcardsMatch({
                           </button>
 
                           <div className="flex gap-4 items-center">
-                            <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-500 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                            <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
                               {idx + 1}
                             </div>
 
-                            <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                              {showTextInput ? (
-                                <input
-                                  type="text"
-                                  value={card.frontText.replace(/\n/g, ' ')}
-                                  onChange={(e) => updateCard(idx, 'frontText', e.target.value)}
-                                  placeholder="Type card word, phrase, or question here..."
-                                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:border-blue-500 outline-none text-sm font-semibold transition"
-                                />
-                              ) : (
-                                <div className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                                  <ImageIcon size={16} className="text-purple-500" />
-                                  <span>Photo-Only Mode: Select an image on the right</span>
-                                </div>
-                              )}
-
-                              {showMediaBtn && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setActiveMediaTarget({
-                                      cardIndex: idx,
-                                      side: 'front',
-                                      query: card.frontText || '',
-                                    })
-                                  }
-                                  className="px-4 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-bold text-xs flex items-center justify-center gap-2 shrink-0 transition cursor-pointer"
-                                >
-                                  {card.frontMedia ? (
-                                    isDirectMediaUrl(card.frontMedia) ? (
-                                      <>
-                                        <img
-                                          src={card.frontMedia}
-                                          alt="Media"
-                                          className="w-6 h-6 rounded object-cover border border-purple-300"
-                                        />
-                                        <span>Change Pic</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className="text-lg leading-none">{card.frontMedia}</span>
-                                        <span>Media</span>
-                                      </>
-                                    )
-                                  ) : (
-                                    <>
-                                      <ImageIcon size={16} />
-                                      <span>Add Media</span>
-                                    </>
-                                  )}
-                                </button>
-                              )}
-                            </div>
+                            <SmartFlashcardSideInput
+                              textValue={card.frontText}
+                              mediaValue={card.frontMedia}
+                              onChangeText={(val) => updateCard(idx, 'frontText', val)}
+                              onChangeMedia={(val) => updateCard(idx, 'frontMedia', val)}
+                              onOpenMediaPicker={(initialQ) =>
+                                setActiveMediaTarget({
+                                  cardIndex: idx,
+                                  side: 'front',
+                                  query: initialQ,
+                                })
+                              }
+                              placeholder="Type card word, phrase, or question here..."
+                              contentMode={contentMode}
+                              accentColor="blue"
+                            />
                           </div>
                         </div>
                       );
                     }
 
-                    // 2-SIDED (DOUBLE-SIDED FLIP) CARD LAYOUT
+                    // 2-SIDED (DOUBLE-SIDED FLIP) CARD LAYOUT (AR-Style Inline Media)
                     return (
                       <div
                         key={card.id}
@@ -1476,10 +1534,10 @@ export function FlashcardsMatch({
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-500 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
+                            <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 border border-blue-500/30">
                               {idx + 1}
                             </div>
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                               2-Sided Flip Card
                             </span>
                           </div>
@@ -1498,125 +1556,55 @@ export function FlashcardsMatch({
                         {/* Two Columns: Front Side & Back Side */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                           {/* FRONT SIDE */}
-                          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                Front Side (Word / Prompt)
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {showTextInput ? (
-                                <input
-                                  type="text"
-                                  value={card.frontText.replace(/\n/g, ' ')}
-                                  onChange={(e) => updateCard(idx, 'frontText', e.target.value)}
-                                  placeholder="Front text (e.g. apple, happy, dog)..."
-                                  className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white focus:border-emerald-500 outline-none text-sm font-semibold transition"
-                                />
-                              ) : (
-                                <div className="flex-1 text-xs text-slate-400 italic px-2">
-                                  Photo-only front side
-                                </div>
-                              )}
-                              {showMediaBtn && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setActiveMediaTarget({
-                                      cardIndex: idx,
-                                      side: 'front',
-                                      query: card.frontText || '',
-                                    })
-                                  }
-                                  className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-bold text-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer"
-                                >
-                                  {card.frontMedia ? (
-                                    isDirectMediaUrl(card.frontMedia) ? (
-                                      <>
-                                        <img
-                                          src={card.frontMedia}
-                                          alt="Front pic"
-                                          className="w-6 h-6 rounded object-cover border border-purple-300"
-                                        />
-                                        <span>Pic</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className="text-base">{card.frontMedia}</span>
-                                        <span>Pic</span>
-                                      </>
-                                    )
-                                  ) : (
-                                    <>
-                                      <ImageIcon size={14} />
-                                      <span>Pic</span>
-                                    </>
-                                  )}
-                                </button>
-                              )}
-                            </div>
+                          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                              Front Side (Word / Prompt)
+                            </span>
+                            <SmartFlashcardSideInput
+                              textValue={card.frontText}
+                              mediaValue={card.frontMedia}
+                              onChangeText={(val) => updateCard(idx, 'frontText', val)}
+                              onChangeMedia={(val) => updateCard(idx, 'frontMedia', val)}
+                              onOpenMediaPicker={(initialQ) =>
+                                setActiveMediaTarget({
+                                  cardIndex: idx,
+                                  side: 'front',
+                                  query:
+                                    initialQ.trim() ||
+                                    normalizeKeyword(card.backText || '') ||
+                                    (card.backText || '').trim(),
+                                })
+                              }
+                              placeholder="Front text (e.g. apple, happy, dog)..."
+                              contentMode={contentMode}
+                              accentColor="emerald"
+                            />
                           </div>
 
                           {/* BACK SIDE */}
-                          <div className="p-3.5 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/60 flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                                Back Side (Answer / Meaning)
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {showTextInput ? (
-                                <input
-                                  type="text"
-                                  value={card.backText.replace(/\n/g, ' ')}
-                                  onChange={(e) => updateCard(idx, 'backText', e.target.value)}
-                                  placeholder="Back text (e.g. quả táo, vui vẻ)..."
-                                  className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white focus:border-indigo-500 outline-none text-sm font-semibold transition"
-                                />
-                              ) : (
-                                <div className="flex-1 text-xs text-indigo-400 italic px-2">
-                                  Photo-only back side
-                                </div>
-                              )}
-                              {showMediaBtn && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setActiveMediaTarget({
-                                      cardIndex: idx,
-                                      side: 'back',
-                                      query: card.backText || '',
-                                    })
-                                  }
-                                  className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-bold text-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer"
-                                >
-                                  {card.backMedia ? (
-                                    isDirectMediaUrl(card.backMedia) ? (
-                                      <>
-                                        <img
-                                          src={card.backMedia}
-                                          alt="Back pic"
-                                          className="w-6 h-6 rounded object-cover border border-purple-300"
-                                        />
-                                        <span>Pic</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className="text-base">{card.backMedia}</span>
-                                        <span>Pic</span>
-                                      </>
-                                    )
-                                  ) : (
-                                    <>
-                                      <ImageIcon size={14} />
-                                      <span>Pic</span>
-                                    </>
-                                  )}
-                                </button>
-                              )}
-                            </div>
+                          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800/70 border border-indigo-200 dark:border-indigo-900/60 flex flex-col gap-2">
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                              Back Side (Answer / Meaning)
+                            </span>
+                            <SmartFlashcardSideInput
+                              textValue={card.backText}
+                              mediaValue={card.backMedia}
+                              onChangeText={(val) => updateCard(idx, 'backText', val)}
+                              onChangeMedia={(val) => updateCard(idx, 'backMedia', val)}
+                              onOpenMediaPicker={(initialQ) =>
+                                setActiveMediaTarget({
+                                  cardIndex: idx,
+                                  side: 'back',
+                                  query:
+                                    initialQ.trim() ||
+                                    normalizeKeyword(card.frontText || '') ||
+                                    (card.frontText || '').trim(),
+                                })
+                              }
+                              placeholder="Back text (e.g. meaning or answer)..."
+                              contentMode={contentMode}
+                              accentColor="indigo"
+                            />
                           </div>
                         </div>
                       </div>
@@ -1637,7 +1625,7 @@ export function FlashcardsMatch({
                   className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-sm transition-all flex items-center justify-center gap-2 group cursor-pointer"
                 >
                   <Plus size={20} className="group-hover:scale-110 transition" />
-                  <span>+ Add Another Flashcard</span>
+                  <span>Add Another Flashcard</span>
                 </button>
               </div>
             </div>
@@ -1653,59 +1641,63 @@ export function FlashcardsMatch({
           {/* Dynamic Illustrated Background Stage */}
           {themeObj.stageSvg}
 
-          {/* TOP HUD BAR */}
-          <header className="relative z-20 px-4 sm:px-8 pt-4 pb-2 flex items-center justify-between gap-4">
-            {/* Left: Deck Title & Level */}
-            <div className="flex items-center gap-3 bg-slate-900/45 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-white shadow-lg">
-              <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center text-lg">
-                {themeObj.badge.split(' ')[0]}
-              </div>
-              <div>
-                <h2 className="font-bold text-sm sm:text-base leading-tight line-clamp-1">
-                  {topic}
+          {/* TOP HUD BAR (Back to Setup + Deck Title | Controls + Theme + Sound + Fullscreen) */}
+          <header className="relative z-20 px-4 sm:px-8 pt-4 pb-2 flex flex-wrap items-center justify-between gap-4">
+            {/* Left: Setup Button + Clean Unboxed Title */}
+            <div className="flex items-center gap-3.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setScreen('setup')}
+                title="Return to Setup (Esc)"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/85 text-white backdrop-blur-md border border-white/20 shadow-md transition-colors cursor-pointer text-xs sm:text-sm font-bold whitespace-nowrap shrink-0"
+              >
+                <ArrowLeft size={15} />
+                <span>Setup</span>
+              </button>
+
+              <div className="flex items-baseline gap-2 min-w-0 text-white drop-shadow-sm">
+                <h2 className="font-bold text-base sm:text-lg leading-tight truncate max-w-[200px] sm:max-w-[320px]">
+                  {topic || 'Flashcards'}
                 </h2>
-                <div className="flex items-center gap-2 text-[11px] text-white/80 font-medium">
-                  <span>{classLevel}</span>
-                  <span>•</span>
-                  <span className="text-amber-300 font-semibold">
-                    {cardSides === 2 ? '2-Sided Flip' : '1-Sided Direct'}
-                  </span>
-                </div>
+                {classLevel && (
+                  <>
+                    <span className="text-white/50 text-sm" aria-hidden="true">·</span>
+                    <span className="text-xs sm:text-sm text-white/80 font-medium truncate max-w-[140px]">
+                      {classLevel}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Center: Close / Back to Setup Button */}
-            <button
-              onClick={() => setScreen('setup')}
-              title="Return to Game Setup (Esc)"
-              className="group flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/55 hover:bg-rose-600/90 text-white backdrop-blur-md border border-white/25 shadow-lg transition duration-200 cursor-pointer"
-            >
-              <X size={16} />
-              <span className="text-xs font-bold tracking-wide hidden sm:inline">Edit Setup</span>
-            </button>
+            {/* Right: Progress Count, Front/Back Toggle, Theme, Audio & Fullscreen */}
+            <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap justify-end">
+              <span className="px-3 py-1.5 rounded-xl bg-slate-900/50 backdrop-blur-md border border-white/15 text-white text-xs sm:text-sm font-bold tabular-nums whitespace-nowrap">
+                {dealtHistory.length} / {dealtHistory.length + undealtDeck.length}
+              </span>
 
-            {/* Right: Progress Counter & Deal Direction Toggle */}
-            <div className="flex items-center gap-2.5">
               {cardSides === 2 && (
-                <div className="hidden md:flex items-center bg-slate-900/45 backdrop-blur-md p-1 rounded-xl border border-white/20 text-white text-xs">
+                <div className="hidden md:flex items-center bg-slate-900/55 backdrop-blur-md p-1 rounded-xl border border-white/20 text-white text-xs">
                   <button
+                    type="button"
                     onClick={() => {
                       setDealFrontFirst(true);
                       if (currentCard) setIsCurrentFlipped(false);
                     }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
-                      dealFrontFirst ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white'
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                      dealFrontFirst ? 'bg-white text-slate-900 shadow-xs' : 'text-white/75 hover:text-white'
                     }`}
                   >
                     Front First
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setDealFrontFirst(false);
                       if (currentCard) setIsCurrentFlipped(true);
                     }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
-                      !dealFrontFirst ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white'
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                      !dealFrontFirst ? 'bg-white text-slate-900 shadow-xs' : 'text-white/75 hover:text-white'
                     }`}
                   >
                     Back First
@@ -1713,55 +1705,57 @@ export function FlashcardsMatch({
                 </div>
               )}
 
-              <div className="bg-slate-900/45 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-white shadow-lg flex items-center gap-3">
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-white/70 font-bold">
-                    Dealt Cards
-                  </div>
-                  <div className="text-sm sm:text-base font-extrabold leading-none">
-                    <span>{dealtHistory.length}</span>{' '}
-                    <span className="text-white/50">/</span>{' '}
-                    <span>{dealtHistory.length + undealtDeck.length}</span>
-                  </div>
-                </div>
-                <div className="w-16 sm:w-24 h-2.5 bg-white/20 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300"
-                    style={{
-                      width: `${
-                        dealtHistory.length + undealtDeck.length > 0
-                          ? Math.round(
-                              (dealtHistory.length / (dealtHistory.length + undealtDeck.length)) * 100
-                            )
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
+              {/* Theme Switcher on Top */}
+              <div className="relative flex items-center bg-slate-900/60 hover:bg-slate-800/80 border border-white/20 rounded-xl px-2.5 py-1.5 backdrop-blur-md text-white transition-colors">
+                <Palette size={15} className="text-amber-300 shrink-0 mr-1.5 pointer-events-none" />
+                <select
+                  value={theme}
+                  onChange={(e) => setTheme(e.target.value as any)}
+                  title="Switch Stage Theme"
+                  aria-label="Stage Theme"
+                  className="bg-transparent text-white text-xs sm:text-sm font-bold outline-none cursor-pointer pr-1"
+                >
+                  <option value="london" className="text-slate-900">London Fog</option>
+                  <option value="cyber" className="text-slate-900">Cyber Neon</option>
+                  <option value="jungle" className="text-slate-900">Jungle Safari</option>
+                  <option value="space" className="text-slate-900">Space Odyssey</option>
+                  <option value="classroom" className="text-slate-900">Chalkboard</option>
+                </select>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                title={soundEnabled ? 'Mute Sound' : 'Enable Sound'}
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-900/60 hover:bg-slate-800/85 text-white border border-white/20 flex items-center justify-center transition cursor-pointer shrink-0"
+              >
+                {soundEnabled ? <Volume2 size={17} /> : <VolumeX size={17} className="text-rose-400" />}
+              </button>
+
+              <FullscreenButton
+                targetId="flashcard-game-container"
+                className="!w-9 !h-9 sm:!w-10 sm:!h-10 !rounded-xl bg-slate-900/60 hover:bg-slate-800/85 border-white/20"
+              />
             </div>
           </header>
 
-          {/* CENTER STAGE: LEFT 3D DECK STACK + RIGHT MASSIVE DEALT ACTIVE CARD */}
-          <div className="relative z-10 flex-1 w-full max-w-[1720px] mx-auto px-4 sm:px-8 lg:px-12 py-2 flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-10 min-h-0">
+          {/* CENTER STAGE: LEFT 3D DECK STACK + RIGHT ACTIVE CARD */}
+          <div className="relative z-10 flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-8 lg:px-12 py-2 flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-10 min-h-0">
             {/* LEFT COLUMN: 3D STACKED DECK */}
-            <div className="w-full lg:w-[28%] xl:w-[26%] flex flex-col items-center justify-center shrink-0">
+            <div className="w-full lg:w-[27%] xl:w-[25%] flex flex-col items-center justify-center shrink-0">
               <div
                 onClick={handleDealNext}
-                className="relative w-full max-w-[260px] sm:max-w-[320px] lg:max-w-[380px] aspect-[4/3] cursor-pointer group select-none"
+                className="relative w-full max-w-[240px] sm:max-w-[300px] lg:max-w-[340px] aspect-[4/3] cursor-pointer group select-none"
               >
-                {/* Empty Deck Placeholder */}
                 {undealtDeck.length === 0 ? (
-                  <div className="absolute inset-0 rounded-3xl border-4 border-dashed border-white/40 bg-slate-900/30 backdrop-blur-sm flex flex-col items-center justify-center text-white/80 p-6 text-center">
-                    <Layers size={48} className="text-white/60 mb-2" />
-                    <p className="font-bold text-base">All Cards Dealt!</p>
-                    <p className="text-xs text-white/70 mt-1">Click Shuffle to restart the deck</p>
+                  <div className="absolute inset-0 rounded-3xl border-2 border-dashed border-white/35 bg-slate-900/25 backdrop-blur-sm flex flex-col items-center justify-center text-white/85 p-6 text-center">
+                    <Layers size={42} className="text-white/60 mb-2" />
+                    <p className="font-bold text-sm sm:text-base">Deck Complete</p>
                   </div>
                 ) : (
-                  <div className="absolute inset-0 transition-transform duration-300 group-hover:-translate-y-1.5">
-                    {/* Bottom 3D depth block */}
+                  <div className="absolute inset-0 transition-transform duration-200 group-hover:-translate-y-1.5">
                     <div
-                      className="absolute inset-x-0 top-3 bottom-0 rounded-3xl bg-slate-500/90 border-2 border-slate-600/80 shadow-[0_24px_45px_rgba(0,0,0,0.55)]"
+                      className="absolute inset-x-0 top-3 bottom-0 rounded-3xl bg-slate-500/90 border-2 border-slate-600/80 shadow-[0_24px_45px_rgba(0,0,0,0.45)]"
                       style={{ transform: `translateY(${Math.min(undealtDeck.length, 6) * 7}px)` }}
                     />
                     {Array.from({ length: Math.min(undealtDeck.length, 6) })
@@ -1790,157 +1784,151 @@ export function FlashcardsMatch({
                 )}
               </div>
 
-              {/* Remaining counter pill under deck */}
-              <div className="mt-6 flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/20 text-white text-xs sm:text-sm font-bold shadow-md">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>
-                  {undealtDeck.length > 0
-                    ? `${undealtDeck.length} cards in deck — Click deck or Deal`
-                    : '0 cards left in deck'}
-                </span>
-              </div>
+              <p className="mt-5 text-white/85 text-xs sm:text-sm font-semibold tabular-nums drop-shadow-sm">
+                {undealtDeck.length > 0 ? `${undealtDeck.length} left` : '0 left'}
+              </p>
             </div>
 
-            {/* RIGHT COLUMN: MASSIVE ACTIVE DEALT CARD AREA FITTING SCREEN */}
-            <div className="w-full lg:w-[72%] xl:w-[74%] h-full flex flex-col items-center justify-center min-h-0">
-              <div className="relative w-full h-[52vh] sm:h-[62vh] lg:h-[72vh] max-h-[700px] min-h-[350px] perspective-1200">
-                {/* Waiting to Deal State */}
+            {/* RIGHT COLUMN: ACTIVE DEALT CARD */}
+            <div className="w-full lg:w-[73%] xl:w-[75%] h-full flex flex-col items-center justify-center min-h-0">
+              <div
+                className="relative w-full h-[54vh] sm:h-[64vh] lg:h-[72vh] max-h-[680px] min-h-[340px]"
+                style={{ perspective: '1600px' }}
+              >
                 {!currentCard ? (
                   <div
                     onClick={handleDealNext}
-                    className="absolute inset-0 rounded-[2rem] border-4 border-dashed border-white/45 bg-white/10 backdrop-blur-md flex flex-col items-center justify-center text-white p-8 text-center cursor-pointer hover:bg-white/15 transition shadow-2xl"
+                    className="absolute inset-0 rounded-[2rem] border-2 border-dashed border-white/40 bg-white/10 backdrop-blur-md flex flex-col items-center justify-center text-white p-8 text-center cursor-pointer hover:bg-white/15 transition shadow-2xl"
                   >
-                    <div className="w-20 h-20 rounded-3xl bg-white/20 flex items-center justify-center mb-4 animate-bounce text-4xl">
-                      👆
-                    </div>
+                    <Layers size={48} className="text-white/85 mb-4" />
                     <h3 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
-                      Ready to Deal!
+                      Ready to Deal
                     </h3>
-                    <p className="text-sm sm:text-base text-white/85 mt-2 max-w-md">
-                      Click the deck on the left or press{' '}
-                      <kbd className="px-2.5 py-1 bg-black/40 rounded-lg border border-white/30 font-mono">
-                        Space
-                      </kbd>{' '}
-                      or <strong>Deal</strong> to draw your first flashcard.
+                    <p className="text-sm sm:text-base text-white/80 mt-2">
+                      Click the deck or press Deal to draw a card
                     </p>
                   </div>
                 ) : (
-                  /* Active Dealt Card Wrapper with Flip */
-                  <div className="w-full h-full perspective-1200 animate-deal">
+                  <div
+                    key={currentCard.id}
+                    className="w-full h-full animate-deal-stage"
+                    style={{ perspective: '1600px' }}
+                  >
                     <div
                       onClick={() => (cardSides === 2 ? handleFlip() : handleDealNext())}
-                      className={`card-flip-inner relative w-full h-full rounded-[2rem] cursor-pointer ${
-                        cardSides === 2 && isCurrentFlipped ? 'is-flipped' : ''
-                      }`}
+                      className="relative w-full h-full rounded-[2rem] cursor-pointer"
+                      style={{
+                        transformStyle: 'preserve-3d',
+                        transition: 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
+                        transform: cardSides === 2 && isCurrentFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                      }}
                     >
-                      {/* FRONT FACE OF DEALT CARD */}
-                      <div className="backface-hidden absolute inset-0 rounded-[2rem] bg-gradient-to-b from-white via-slate-50 to-slate-100 border-[6px] border-white shadow-[0_30px_70px_-15px_rgba(0,0,0,0.65)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden">
-                        {/* Top Utility Bar */}
+                      {/* FRONT FACE */}
+                      <div
+                        aria-hidden={cardSides === 2 && isCurrentFlipped}
+                        className="absolute inset-0 rounded-[2rem] bg-gradient-to-b from-white via-slate-50 to-slate-100 border-[5px] border-white shadow-[0_28px_65px_-16px_rgba(0,0,0,0.55)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden"
+                        style={{
+                          backfaceVisibility: 'hidden',
+                          WebkitBackfaceVisibility: 'hidden',
+                          transform: 'rotateY(0deg)',
+                          pointerEvents: cardSides === 2 && isCurrentFlipped ? 'none' : 'auto',
+                        }}
+                      >
                         <div className="flex items-center justify-between gap-2 z-10 shrink-0">
-                          <span className="px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-slate-900/10 text-slate-700">
-                            {cardSides === 2 ? 'Front • Prompt' : 'Flashcard'}
+                          <span className="text-xs sm:text-sm font-bold text-slate-400 tracking-wide">
+                            {cardSides === 2 ? 'Front' : ''}
                           </span>
                           <div
                             className="flex items-center gap-2"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
+                              type="button"
                               onClick={() => speakCard('front')}
-                              title="Listen (Text-to-Speech)"
-                              className="w-11 h-11 rounded-2xl bg-slate-200/80 hover:bg-blue-600 hover:text-white text-slate-700 flex items-center justify-center transition shadow-sm cursor-pointer"
+                              title="Speak"
+                              className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-600 flex items-center justify-center transition cursor-pointer"
                             >
-                              <Volume2 size={20} />
+                              <Volume2 size={18} />
                             </button>
                             <button
+                              type="button"
                               onClick={() => setShowSpotlightModal(true)}
-                              title="Classroom Spotlight Zoom"
-                              className="w-11 h-11 rounded-2xl bg-slate-200/80 hover:bg-indigo-600 hover:text-white text-slate-700 flex items-center justify-center transition shadow-sm cursor-pointer"
+                              title="Zoom"
+                              className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-600 flex items-center justify-center transition cursor-pointer"
                             >
-                              <Maximize2 size={20} />
+                              <Maximize2 size={18} />
                             </button>
                           </div>
                         </div>
 
-                        {/* Card Center Content */}
-                        <div className="flex-1 min-h-0 w-full my-3 flex items-center justify-center overflow-hidden">
+                        <div className="flex-1 min-h-0 w-full my-2 flex items-center justify-center overflow-hidden">
                           {renderCardContentHTML(currentCard.frontText, currentCard.frontMedia)}
                         </div>
 
-                        {/* Card Bottom Footer */}
-                        <div className="flex items-center justify-between text-xs sm:text-sm text-slate-500 pt-3 border-t border-slate-200/90 z-10 shrink-0">
-                          <span className="font-extrabold text-slate-400">
-                            #{dealtHistory.length}
-                          </span>
-                          {cardSides === 2 && (
-                            <span className="font-bold text-indigo-600 flex items-center gap-1.5 animate-pulse">
-                              <RotateCw size={16} /> Click card or press Up/Down to Flip
-                            </span>
-                          )}
-                          <div
-                            className="flex items-center gap-1"
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                        <div className="flex items-center justify-end pt-2 z-10 shrink-0">
+                          <div onClick={(e) => e.stopPropagation()}>
                             <button
+                              type="button"
                               onClick={handleRequeueCurrent}
                               title="Put card back into deck to review again"
-                              className="px-3.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
                             >
-                              <RotateCw size={13} /> Again
+                              <RotateCw size={13} /> Review Again
                             </button>
                           </div>
                         </div>
                       </div>
 
-                      {/* BACK FACE OF DEALT CARD (FOR 2-SIDED MODE) */}
+                      {/* BACK FACE (2-SIDED MODE) */}
                       {cardSides === 2 && (
-                        <div className="backface-hidden rotate-y-180 absolute inset-0 rounded-[2rem] bg-gradient-to-b from-indigo-50 via-white to-blue-50 border-[6px] border-indigo-300 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.65)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden">
-                          {/* Top Bar */}
+                        <div
+                          aria-hidden={!isCurrentFlipped}
+                          className="absolute inset-0 rounded-[2rem] bg-gradient-to-b from-indigo-50 via-white to-slate-50 border-[5px] border-indigo-200 shadow-[0_28px_65px_-16px_rgba(0,0,0,0.55)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden"
+                          style={{
+                            backfaceVisibility: 'hidden',
+                            WebkitBackfaceVisibility: 'hidden',
+                            transform: 'rotateY(180deg)',
+                            pointerEvents: isCurrentFlipped ? 'auto' : 'none',
+                          }}
+                        >
                           <div className="flex items-center justify-between gap-2 z-10 shrink-0">
-                            <span className="px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-indigo-600 text-white shadow-sm">
-                              Back • Answer / Meaning
+                            <span className="text-xs sm:text-sm font-bold text-indigo-500 tracking-wide">
+                              Back
                             </span>
                             <div
                               className="flex items-center gap-2"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button
+                                type="button"
                                 onClick={() => speakCard('back')}
-                                title="Listen (Text-to-Speech)"
-                                className="w-11 h-11 rounded-2xl bg-indigo-100 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition shadow-sm cursor-pointer"
+                                title="Speak"
+                                className="w-10 h-10 rounded-xl bg-indigo-100/80 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition cursor-pointer"
                               >
-                                <Volume2 size={20} />
+                                <Volume2 size={18} />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => setShowSpotlightModal(true)}
-                                title="Classroom Spotlight Zoom"
-                                className="w-11 h-11 rounded-2xl bg-indigo-100 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition shadow-sm cursor-pointer"
+                                title="Zoom"
+                                className="w-10 h-10 rounded-xl bg-indigo-100/80 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition cursor-pointer"
                               >
-                                <Maximize2 size={20} />
+                                <Maximize2 size={18} />
                               </button>
                             </div>
                           </div>
 
-                          {/* Back Center Content */}
-                          <div className="flex-1 min-h-0 w-full my-3 flex items-center justify-center overflow-hidden">
+                          <div className="flex-1 min-h-0 w-full my-2 flex items-center justify-center overflow-hidden">
                             {renderCardContentHTML(currentCard.backText, currentCard.backMedia)}
                           </div>
 
-                          {/* Back Bottom Footer */}
-                          <div className="flex items-center justify-between text-xs sm:text-sm text-slate-500 pt-3 border-t border-indigo-100 z-10 shrink-0">
-                            <span className="font-extrabold text-indigo-400">
-                              #{dealtHistory.length}
-                            </span>
-                            <span className="font-bold text-indigo-600 flex items-center gap-1.5">
-                              <RotateCw size={16} /> Click card to Flip to Front
-                            </span>
-                            <div
-                              className="flex items-center gap-1"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                          <div className="flex items-center justify-end pt-2 z-10 shrink-0">
+                            <div onClick={(e) => e.stopPropagation()}>
                               <button
+                                type="button"
                                 onClick={handleRequeueCurrent}
                                 title="Put card back in deck to review later"
-                                className="px-3.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                                className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
                               >
                                 <RotateCw size={13} /> Review Again
                               </button>
@@ -1955,43 +1943,23 @@ export function FlashcardsMatch({
             </div>
           </div>
 
-          {/* BOTTOM CONTROL DOCK */}
-          <footer className="relative z-20 px-4 sm:px-8 pb-4 pt-2 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-t from-black/65 via-black/30 to-transparent">
-            {/* Left: Pause & Classroom Timer */}
-            <div className="flex items-center gap-2">
+          {/* CLEAN BOTTOM DEALER CONTROLS */}
+          <footer className="relative z-20 px-4 sm:px-8 pb-5 pt-2 flex items-center justify-center bg-gradient-to-t from-black/55 via-black/20 to-transparent">
+            <div className="flex items-center gap-2.5 sm:gap-3.5">
               <button
-                onClick={() => setIsTimerPaused(!isTimerPaused)}
-                title="Pause / Resume Timer"
-                className="w-11 h-11 rounded-full bg-white text-slate-900 hover:bg-slate-200 shadow-lg flex items-center justify-center transition transform active:scale-95 cursor-pointer"
-              >
-                {isTimerPaused ? (
-                  <Play size={18} className="fill-current text-emerald-600 ml-0.5" />
-                ) : (
-                  <Pause size={18} className="fill-current" />
-                )}
-              </button>
-              <div className="px-3 py-1.5 rounded-xl bg-slate-900/60 backdrop-blur-md border border-white/20 text-white text-xs font-mono font-bold tracking-wider">
-                <span>
-                  {String(Math.floor(timerSeconds / 60)).padStart(2, '0')}:
-                  {String(timerSeconds % 60).padStart(2, '0')}
-                </span>
-              </div>
-            </div>
-
-            {/* Center: Main Dealer Controls (Shuffle | Undo | Flip | Deal) */}
-            <div className="flex items-center gap-2 sm:gap-3 mx-auto">
-              <button
+                type="button"
                 onClick={handleShuffle}
-                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border-2 border-white/60 shadow-lg backdrop-blur-md transition transform active:scale-95 flex items-center gap-2 cursor-pointer"
+                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border border-white/35 shadow-lg backdrop-blur-md transition transform active:scale-95 flex items-center gap-2 cursor-pointer whitespace-nowrap"
               >
                 <Shuffle size={18} />
                 <span>Shuffle</span>
               </button>
 
               <button
+                type="button"
                 onClick={handleUndo}
                 disabled={dealtHistory.length === 0}
-                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border-2 border-white/60 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer"
+                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border border-white/35 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer whitespace-nowrap"
               >
                 <Undo2 size={18} />
                 <span>Undo</span>
@@ -1999,9 +1967,10 @@ export function FlashcardsMatch({
 
               {cardSides === 2 && (
                 <button
+                  type="button"
                   onClick={handleFlip}
                   disabled={!currentCard}
-                  className="px-5 sm:px-7 py-2.5 rounded-xl bg-indigo-600/85 hover:bg-indigo-500 text-white font-semibold text-sm sm:text-base border-2 border-indigo-200/80 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer"
+                  className="px-5 sm:px-7 py-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-semibold text-sm sm:text-base border border-indigo-200/60 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer whitespace-nowrap"
                 >
                   <RotateCw size={18} />
                   <span>Flip</span>
@@ -2009,39 +1978,14 @@ export function FlashcardsMatch({
               )}
 
               <button
+                type="button"
                 onClick={handleDealNext}
                 disabled={undealtDeck.length === 0}
-                className="px-6 sm:px-9 py-2.5 rounded-xl bg-slate-900/80 hover:bg-emerald-600 text-white font-bold text-sm sm:text-base border-2 border-white shadow-xl backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer"
+                className="px-6 sm:px-9 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm sm:text-base border border-emerald-200/60 shadow-xl transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer whitespace-nowrap"
               >
                 <span>Deal</span>
                 <Layers size={18} />
               </button>
-            </div>
-
-            {/* Right: Quick Theme Switcher, Audio Toggle, Fullscreen */}
-            <div className="flex items-center gap-2">
-              <select
-                value={theme}
-                onChange={(e) => setTheme(e.target.value as any)}
-                title="Switch Theme Instantly"
-                className="px-3 py-2 rounded-xl bg-slate-900/65 text-white text-xs font-bold border border-white/30 backdrop-blur-md outline-none cursor-pointer hidden sm:block"
-              >
-                <option value="london">🇬🇧 London Fog</option>
-                <option value="cyber">⚡ Cyber Neon</option>
-                <option value="jungle">🌴 Jungle Safari</option>
-                <option value="space">🚀 Space Odyssey</option>
-                <option value="classroom">🏫 Chalkboard</option>
-              </select>
-
-              <button
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                title="Toggle Sound Effects"
-                className="w-10 h-10 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-white border border-white/25 flex items-center justify-center transition cursor-pointer"
-              >
-                {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} className="text-rose-400" />}
-              </button>
-
-              <FullscreenButton targetId="flashcard-game-container" />
             </div>
           </footer>
         </div>
@@ -2068,24 +2012,33 @@ export function FlashcardsMatch({
       {/* MODAL 2: BULK PASTE MODAL                                 */}
       {/* ========================================================= */}
       {showBulkPasteModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <span>Bulk Paste Flashcards</span>
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => {
+            setShowBulkPasteModal(false);
+            setBulkText('');
+          }}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <ClipboardList size={20} />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                  Bulk Paste Flashcards
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Paste one card per line. Use{' '}
-                  <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono text-slate-800">
-                    |
-                  </code>{' '}
-                  or Tab to separate Front, Back, and Media URL.
-                </p>
               </div>
               <button
-                onClick={() => setShowBulkPasteModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                type="button"
+                onClick={() => {
+                  setShowBulkPasteModal(false);
+                  setBulkText('');
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -2095,82 +2048,33 @@ export function FlashcardsMatch({
               rows={8}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder="Miserable | Khổ sở, vô cùng buồn bã | 😭&#10;Ecstatic | Vô cùng hạnh phúc | 🤩&#10;Exhausted | Kiệt sức, mệt nhoài | 🥵"
-              className="w-full p-4 rounded-2xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none font-mono text-xs sm:text-sm text-slate-800"
+              placeholder={"apples\nbananas\noranges\ngrapes"}
+              className="w-full p-4 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 focus:border-blue-500 outline-none font-mono text-sm text-slate-800 dark:text-white"
             />
 
-            <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={bulkReplace}
-                  onChange={(e) => setBulkReplace(e.target.checked)}
-                  className="rounded text-blue-600 focus:ring-blue-500"
-                />
-                <span>Replace existing cards (unchecked = append to list)</span>
-              </label>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowBulkPasteModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApplyBulkPaste}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 cursor-pointer"
-                >
-                  Import Cards Now
-                </button>
+            {bulkText.trim() && (
+              <div className="text-xs font-bold text-slate-600 dark:text-slate-300 px-1">
+                Found <span className="text-blue-600 dark:text-blue-400">{parseBulkCards(bulkText).length}</span> cards.
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* ========================================================= */}
-      {/* MODAL 3: HOW TO BULK PASTE GUIDE                          */}
-      {/* ========================================================= */}
-      {showHowToBulkModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                <Sparkles size={20} className="text-purple-600" />
-                <span>How to Bulk Paste from Excel / Word / Notion</span>
-              </h3>
+            <div className="flex flex-col sm:flex-row gap-3 pt-1">
               <button
-                onClick={() => setShowHowToBulkModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                type="button"
+                onClick={() => handleApplyBulkPaste('replace')}
+                disabled={!bulkText.trim()}
+                className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <X size={16} />
+                Replace All
               </button>
-            </div>
-            <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                <p className="font-bold text-slate-800 mb-1">1. For Double-Sided (Flip) Cards:</p>
-                <code className="block bg-white p-2.5 rounded-xl border border-slate-200 font-mono text-xs text-indigo-700">
-                  Front Word | Back Meaning | Emoji or Image URL
-                </code>
-              </div>
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                <p className="font-bold text-slate-800 mb-1">2. Copy-Pasting from Spreadsheets:</p>
-                <p>
-                  Highlight 2 or 3 columns in Excel or Google Sheets and paste directly into the Bulk
-                  Paste box. Tabs are automatically detected!
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end">
               <button
-                onClick={() => {
-                  setShowHowToBulkModal(false);
-                  setShowBulkPasteModal(true);
-                }}
-                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold cursor-pointer"
+                type="button"
+                onClick={() => handleApplyBulkPaste('append')}
+                disabled={!bulkText.trim()}
+                className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                Try Bulk Paste Now
+                <Plus size={18} />
+                <span>Add</span>
               </button>
             </div>
           </div>
@@ -2433,31 +2337,6 @@ export function FlashcardsMatch({
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* MODAL 8: GAME MODE SWITCHER MODAL                         */}
-      {/* ========================================================= */}
-      <GameModeModal
-        isOpen={showModeModal}
-        gameData={{
-          id: gameId || initialGame?.id,
-          name: topic,
-          topic: topic,
-          className: classLevel,
-          classLevel: classLevel,
-          gameType: 'flashcards-match',
-          customQuestions: cards.map((c, i) => ({
-            id: c.id || i + 1,
-            text: c.frontText,
-            image: isDirectMediaUrl(c.frontMedia || '') ? c.frontMedia : undefined,
-            options: [c.backText || c.frontText, 'Sample Option'],
-            answerIndex: 0,
-          })),
-        }}
-        onClose={() => setShowModeModal(false)}
-        onSelectMode={(mode, adaptedData) => {
-          onViewChange(mode as ViewState, adaptedData);
-        }}
-      />
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { GameModeModal } from "../components/GameModeModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
-import { saveAndSyncUserGame } from "../utils/platformCache";
+import { persistUserGameToCloudAndCache } from "../utils/platformCache";
 import {
   SumoStadiumEnvironment,
   SumoCharacter,
@@ -241,21 +241,13 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     };
   });
 
+  const savingGameRef = useRef(false);
   const saveGame = async (gameData: GameData) => {
-    if (!user) {
-      alert("You must be logged in to save games.");
-      return;
-    }
-
+    if (savingGameRef.current) return;
+    savingGameRef.current = true;
     try {
       const isPublicBool = Boolean(gameData.isPublic);
       const now = new Date().toISOString();
-
-      const isOwnExistingGame = Boolean(
-        initialGame?.id &&
-        !String(initialGame.id).startsWith('sample-') &&
-        (!initialGame.userId || initialGame.userId === user.uid)
-      );
 
       const gameToSave = JSON.parse(JSON.stringify({
         name: gameData.topic || gameData.title || "Sumo Showdown",
@@ -265,41 +257,24 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
         className: gameData.classLevel || "",
         gameType: "sumo",
         customQuestions: gameData.questions,
-        userId: user.uid,
-        creatorName: user.displayName || user.email?.split('@')[0] || "Teacher",
-        creatorEmail: user.email || "",
+        userId: user?.uid || 'local-user',
+        creatorName: user?.displayName || user?.email?.split('@')[0] || "Teacher",
+        creatorEmail: user?.email || "",
         updatedAt: now,
         publishedAt: isPublicBool ? now : (initialGame?.publishedAt || null),
-        createdAt: (isOwnExistingGame && initialGame?.createdAt) ? initialGame.createdAt : now,
+        createdAt: initialGame?.createdAt || now,
         isPublic: isPublicBool,
       }));
 
-      let savedId = isOwnExistingGame ? String(initialGame.id) : `local-sumo-${Date.now()}`;
-      try {
-        if (isOwnExistingGame) {
-          try {
-            await updateDoc(doc(db, "mysteryBoxGames", initialGame.id), gameToSave);
-          } catch (err: any) {
-            if (err?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-              savedId = docRef.id;
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          const docRef = await addDoc(collection(db, "mysteryBoxGames"), gameToSave);
-          savedId = docRef.id;
-        }
-      } catch (cloudErr) {
-        console.warn("Firestore save fallback to local storage:", cloudErr);
-      }
-      saveAndSyncUserGame({ ...gameToSave, id: savedId }, user, { isUpdate: isOwnExistingGame });
+      await persistUserGameToCloudAndCache(db, user, gameToSave, {
+        existingGame: initialGame,
+      });
       onViewChange("games");
     } catch (e: any) {
       console.error("Error saving game", e);
-      alert("Failed to save game: " + (e?.message || String(e)));
       onViewChange("games");
+    } finally {
+      savingGameRef.current = false;
     }
   };
 
