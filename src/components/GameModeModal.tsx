@@ -601,13 +601,99 @@ export function GameModeModal({
       },
     ];
 
-    const finalQuestions = (normalizedQuestions.length > 0 ? normalizedQuestions : fallbackQuestions).slice(0, 30);
+    const finalQuestions: any[] = (normalizedQuestions.length > 0 ? normalizedQuestions : fallbackQuestions).slice(0, 30);
 
-    const flashcardPairs = finalQuestions.map((q: any, idx: number) => ({
-      id: q.id || idx + 1,
-      front: q.text,
-      back: q.options[q.answerIndex] || q.options[0] || 'Answer',
-    }));
+    const splitEmbeddedMedia = (rawVal: any): { text: string; media: string } => {
+      if (!rawVal || typeof rawVal !== 'string') return { text: '', media: '' };
+      const trimmed = rawVal.trim();
+      if (trimmed.includes('|||')) {
+        const parts = trimmed.split('|||').map((p) => p.trim()).filter(Boolean);
+        let textPart = '';
+        let mediaPart = '';
+        for (const p of parts) {
+          if (
+            p.startsWith('http://') ||
+            p.startsWith('https://') ||
+            p.startsWith('data:image') ||
+            p.startsWith('/assets/') ||
+            p.startsWith('/images/')
+          ) {
+            mediaPart = p;
+          } else if (!textPart) {
+            textPart = p;
+          }
+        }
+        return { text: textPart, media: mediaPart };
+      }
+      if (
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('data:image') ||
+        trimmed.startsWith('/assets/') ||
+        trimmed.startsWith('/images/')
+      ) {
+        return { text: '', media: trimmed };
+      }
+      return { text: trimmed, media: '' };
+    };
+
+    const existingCards = Array.isArray(gameData.cards) && gameData.cards.length > 0 ? gameData.cards : null;
+
+    const flashcardPairs = existingCards
+      ? existingCards.map((c: any, idx: number) => {
+          const q: any = finalQuestions[idx];
+          const parsedFront = splitEmbeddedMedia(c?.frontText ?? c?.front ?? c?.text ?? q?.text ?? '');
+          const rawAnsOpt = q ? (q.options?.[q.answerIndex] || q.options?.[0] || '') : '';
+          const parsedBack = splitEmbeddedMedia(c?.backText ?? c?.back ?? c?.answer ?? '');
+          const parsedQBack = splitEmbeddedMedia(rawAnsOpt);
+
+          const frontMedia = c?.frontMedia || c?.image || parsedFront.media || q?.image || '';
+          const backMedia =
+            c?.backMedia ||
+            parsedBack.media ||
+            parsedQBack.media ||
+            (q && Array.isArray(q.optionImages) ? q.optionImages[q.answerIndex] || q.optionImages[0] || '' : '');
+
+          const frontText = parsedFront.text;
+          let backText = parsedBack.text || (!backMedia ? parsedQBack.text : '');
+          if (backMedia && backText && frontText && backText.trim().toLowerCase() === frontText.trim().toLowerCase()) {
+            backText = '';
+          }
+
+          return {
+            ...c,
+            id: c?.id || q?.id || idx + 1,
+            front: frontText || frontMedia,
+            back: backText || backMedia || 'Answer',
+            frontText,
+            backText,
+            frontMedia,
+            backMedia,
+          };
+        })
+      : finalQuestions.map((q: any, idx: number) => {
+          const parsedFront = splitEmbeddedMedia(q.text || '');
+          const rawAnsOpt = q.options?.[q.answerIndex] || q.options?.[0] || '';
+          const parsedBack = splitEmbeddedMedia(rawAnsOpt);
+          const frontMedia = parsedFront.media || q.image || q.imageUrl || '';
+          const backMedia =
+            parsedBack.media ||
+            (Array.isArray(q.optionImages) ? q.optionImages[q.answerIndex] || q.optionImages[0] || '' : '');
+          const frontText = parsedFront.text || q.text || '';
+          let backText = parsedBack.text;
+          if (backMedia && backText && frontText && backText.trim().toLowerCase() === frontText.trim().toLowerCase()) {
+            backText = '';
+          }
+          return {
+            id: q.id || idx + 1,
+            front: frontText,
+            back: backText || backMedia || 'Answer',
+            frontText,
+            backText,
+            frontMedia,
+            backMedia,
+          };
+        });
 
     const adaptedGame = {
       ...gameData,

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { ViewState } from "./types";
 import { Navigation, Header } from "./components/Navigation";
 import { Footer } from "./components/Footer";
@@ -30,15 +30,28 @@ import { StudentRace } from "./views/StudentRace";
 import { LetterLock } from "./views/LetterLock";
 import { TicTacToe } from "./views/TicTacToe";
 import { Homework } from "./views/Homework";
-import { ClassRecord, getBestSavedClasses, isDefaultMockClasses, STORAGE_KEY, sortClassesByName } from "./views/ClassRecord";
+import { ClassRecord, isDefaultMockClasses, sortClassesByName } from "./views/ClassRecord";
 import { PhonemicMaster } from "./views/PhonemicMaster";
 import SquidGamePicker from "./views/SquidGamePicker";
 import { HamsterPaintball } from "./views/HamsterPaintball";
 import { SleepingHamster } from "./views/SleepingHamster";
 import { MySlides } from "./views/MySlides";
 import { useAuth } from "./contexts/AuthContext";
-import { doc, onSnapshot, getDoc, updateDoc, increment, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, getDoc, setDoc, updateDoc, increment } from "firebase/firestore";
 import { db } from "./lib/firebase";
+import {
+  validateFirestoreConnectionOnce,
+  readClassSnapshotFromIDB,
+  writeClassSnapshotToIDB,
+  scanAllLocalClassBackups,
+  saveClassesToLocalStorage,
+  getLocalIntentionalEmpty,
+  fetchClassSnapshotFromServer,
+  fetchClassSnapshotFromFirestore,
+  pushClassSnapshotToServerReliable,
+  syncClassSnapshotToFirestore,
+  pickBestClassSnapshot,
+} from "./lib/classPersistence";
 import { Loader2 } from "lucide-react";
 import { AuthSliderModal } from "./components/AuthSliderModal";
 import { GoogleAuthModal } from "./components/GoogleAuthModal";
@@ -199,73 +212,104 @@ export default function App() {
     prevUserRef.current = user;
   }, [user, isLockedHomeworkLink]);
 
-  // Proactive multi-device cloud sync on authentication
+  // Validate Firestore connectivity once at startup
+  useEffect(() => {
+    validateFirestoreConnectionOnce();
+  }, []);
+
+  // Proactive multi-layer class persistence & cloud sync on authentication
   useEffect(() => {
     if (!user || user.isAnonymous) return;
+    let cancelled = false;
 
     const syncClassesBackground = async () => {
       try {
-        const localClasses = getBestSavedClasses();
-        const hasCustomLocal = localClasses.length > 0 && !isDefaultMockClasses(localClasses);
-        const userDocRef = doc(db, 'userClassData', user.uid);
-        const backupDocRef = doc(db, 'users', user.uid, 'classesData', 'current');
-
-        if (hasCustomLocal) {
-          // Device has classes: ensure server & cloud have them in sorted order
-          const sorted = sortClassesByName(localClasses);
-          const payload = { classes: sorted, updatedAt: Date.now() };
-          fetch('/api/class-data', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: user.uid, classes: sorted }),
-          }).catch(() => {});
-          setDoc(userDocRef, payload, { merge: true }).catch(() => {});
-          setDoc(backupDocRef, payload, { merge: true }).catch(() => {});
-        } else {
-          // Device has no local classes: check server backup & Firestore (timeout-protected)
-          const [serverRes, cloudSnap] = await Promise.all([
-            fetch(`/api/class-data?userId=${encodeURIComponent(user.uid)}`)
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null),
-            new Promise<any>((resolve) => {
-              const t = setTimeout(() => resolve(null), 2800);
-              getDoc(userDocRef)
-                .then((s) => {
-                  clearTimeout(t);
-                  resolve(s);
-                })
-                .catch(() => {
-                  clearTimeout(t);
-                  resolve(null);
-                });
-            }),
-          ]);
-
-          const cloudClasses =
-            cloudSnap && cloudSnap.exists && cloudSnap.exists() && Array.isArray(cloudSnap.data()?.classes)
-              ? cloudSnap.data().classes
-              : [];
-          const serverClasses =
-            serverRes && Array.isArray(serverRes.classes) ? serverRes.classes : [];
-          const bestClasses = cloudClasses.length > 0 ? cloudClasses : serverClasses;
-
-          if (bestClasses.length > 0) {
-            const sorted = sortClassesByName(bestClasses);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-            localStorage.removeItem('squid_hamster_class_dollars_v13');
-            localStorage.removeItem('squid_user_classes');
-            if (cloudClasses.length > 0) {
-              fetch('/api/class-data', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.uid, classes: sorted }),
-              }).catch(() => {});
+        const localScan = scanAllLocalClassBackups(user.uid, isDefaultMockClasses);
+        const localIntentionalEmpty = getLocalIntentionalEmpty(user.uid);
+        const localSnapshot = localScan
+          ? {
+              userId: user.uid,
+              email: user.email || undefined,
+              classes: localScan.classes,
+              updatedAt: localScan.updatedAt || 0,
+              intentionalEmptyReset: false,
             }
+          : localIntentionalEmpty
+          ? {
+              userId: user.uid,
+              email: user.email || undefined,
+              classes: [],
+              updatedAt: 0,
+              intentionalEmptyReset: true,
+            }
+          : null;
+
+        const [idbSnap, serverSnap, cloudResult] = await Promise.all([
+          readClassSnapshotFromIDB(user.uid),
+          fetchClassSnapshotFromServer(user.uid, user.email),
+          fetchClassSnapshotFromFirestore(user.uid, 3200),
+        ]);
+
+        if (cancelled) return;
+
+        if (serverSnap?.customRewards && serverSnap.customRewards.length > 0) {
+          try {
+            localStorage.setItem(
+              `squid_custom_rewards_${user.uid}`,
+              JSON.stringify(serverSnap.customRewards)
+            );
+          } catch {}
+        }
+
+        const winner = pickBestClassSnapshot(
+          [
+            { source: 'firestore', snapshot: cloudResult.snapshot },
+            { source: 'server', snapshot: serverSnap },
+            { source: 'idb', snapshot: idbSnap },
+            { source: 'local', snapshot: localSnapshot },
+          ],
+          isDefaultMockClasses
+        );
+
+        if (!winner) return;
+
+        const sorted = sortClassesByName(winner.snapshot.classes || []);
+        const bestUpdatedAt = winner.snapshot.updatedAt || Date.now();
+        const isIntentionalEmpty = Boolean(
+          sorted.length === 0 && winner.snapshot.intentionalEmptyReset
+        );
+
+        if (sorted.length > 0 || isIntentionalEmpty) {
+          saveClassesToLocalStorage(sorted, user.uid, bestUpdatedAt, isIntentionalEmpty);
+          await writeClassSnapshotToIDB(user.uid, {
+            userId: user.uid,
+            email: user.email || undefined,
+            classes: sorted,
+            deletedClasses: winner.snapshot.deletedClasses,
+            deletedStudents: winner.snapshot.deletedStudents,
+            updatedAt: bestUpdatedAt,
+            intentionalEmptyReset: isIntentionalEmpty,
+          });
+
+          if (winner.source !== 'server') {
+            pushClassSnapshotToServerReliable(user.uid, {
+              email: user.email,
+              classes: sorted,
+              deletedClasses: winner.snapshot.deletedClasses,
+              deletedStudents: winner.snapshot.deletedStudents,
+              updatedAt: bestUpdatedAt,
+              intentionalEmptyReset: isIntentionalEmpty,
+            }).catch(() => {});
           }
-          if (serverRes && Array.isArray(serverRes.customRewards) && serverRes.customRewards.length > 0) {
-            try {
-              localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(serverRes.customRewards));
-            } catch {}
+
+          if (winner.source !== 'firestore' && !cloudResult.quotaExceeded) {
+            syncClassSnapshotToFirestore(user.uid, {
+              classes: sorted,
+              deletedClasses: winner.snapshot.deletedClasses,
+              deletedStudents: winner.snapshot.deletedStudents,
+              updatedAt: bestUpdatedAt,
+              intentionalEmptyReset: isIntentionalEmpty,
+            }).catch(() => {});
           }
         }
       } catch (err: any) {
@@ -274,6 +318,9 @@ export default function App() {
     };
 
     syncClassesBackground();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const viewHistoryRef = useRef<Array<{ view: ViewState; game: any }>>([]);
@@ -281,6 +328,21 @@ export default function App() {
   currentViewRef.current = currentView;
   const selectedGameRef = useRef<any>(selectedGame);
   selectedGameRef.current = selectedGame;
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  const scrollMainToTop = () => {
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTop = 0;
+      mainScrollRef.current.scrollLeft = 0;
+    }
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    } catch {}
+  };
+
+  useLayoutEffect(() => {
+    scrollMainToTop();
+  }, [currentView]);
 
   useEffect(() => {
     const checkUrlParams = (e?: PopStateEvent) => {
@@ -409,6 +471,8 @@ export default function App() {
     } else if (!data) {
       setSelectedGame(null);
     }
+    scrollMainToTop();
+    requestAnimationFrame(() => scrollMainToTop());
   };
 
   useEffect(() => {
@@ -708,6 +772,7 @@ export default function App() {
           </div>
         )}
         <main
+          ref={mainScrollRef}
           className={`flex-1 custom-scrollbar ${
             isAdminView
               ? "p-0 space-y-0 h-full flex flex-col overflow-hidden"

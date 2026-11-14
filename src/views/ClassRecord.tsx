@@ -1,17 +1,43 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Plus, Star, X, Check, Search, Trophy, Shuffle, Award, 
-  ChevronRight, Trash2, RotateCcw, Download, ArrowLeft, 
+  ChevronRight, Trash2, RotateCcw, Download, Upload, ArrowLeft, 
   DollarSign, Coins, TrendingUp, Sparkles, UserPlus, Filter,
   CreditCard, Wallet, Edit3, Users, Minus, UserCheck, UserX,
-  Cloud, LogIn, CheckCircle2, Bookmark, Gift, UserMinus
+  Cloud, LogIn, CheckCircle2, Bookmark, Gift, UserMinus,
+  Volume2, VolumeX, AlertCircle
 } from 'lucide-react';
 import { ViewState } from '../types';
-import { SquidHamsterSprite } from '../components/SquidHamsterSprite';
-import { GOOGLE_DRIVE_STUDENTS, OFFICIAL_CHARACTER_NUMBERS } from '../lib/studentCharacters';
+import { SquidHamsterSprite, LiveRewardDelta } from '../components/SquidHamsterSprite';
+import {
+  GOOGLE_DRIVE_STUDENTS,
+  OFFICIAL_CHARACTER_NUMBERS,
+  HAMSTER_GEAR_TIERS,
+  getUnlockedGearTiers,
+  getActiveHamsterGear,
+  getNextHamsterGear,
+  getNewlyUnlockedGear,
+} from '../lib/studentCharacters';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
-import { collection, doc, setDoc, deleteDoc, getDoc, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import {
+  readClassSnapshotFromIDB,
+  writeClassSnapshotToIDB,
+  scanAllLocalClassBackups,
+  saveClassesToLocalStorage,
+  getLocalClassUpdatedAt,
+  getLocalIntentionalEmpty,
+  fetchClassSnapshotFromServer,
+  fetchClassSnapshotFromFirestore,
+  pushClassSnapshotToServerReliable,
+  syncClassSnapshotToFirestore,
+  pickBestClassSnapshot,
+  isQuotaExceededError,
+  isPermissionDeniedError,
+  handleFirestoreError,
+  OperationType,
+} from '../lib/classPersistence';
 
 // Types
 export interface DojoStudent {
@@ -19,6 +45,8 @@ export interface DojoStudent {
   name: string;
   dollars: number;
   number: number; // 1 to 50
+  equippedGearId?: string | null;
+  avatarStyle?: 'cute' | 'classic';
 }
 
 export interface DeletedStudent extends DojoStudent {
@@ -219,36 +247,15 @@ export const sortClassesByName = <T extends { name?: string }>(list: T[]): T[] =
   });
 };
 
-// Scan localStorage versions to recover the user's actual inputted classes
-export const getBestSavedClasses = (): DojoClass[] => {
+// Scan localStorage versions (scoped & legacy) to recover the user's actual inputted classes
+export const getBestSavedClasses = (uid?: string | null): DojoClass[] => {
   if (typeof window === 'undefined') return [];
-  const keysToCheck = [
-    STORAGE_KEY,
-    'squid_hamster_class_dollars_v13',
-    'squid_user_classes',
-    'squid_hamster_class_dollars_v12',
-    'squid_hamster_class_dollars_v14',
-    'squid_hamster_class_dollars_v11',
-    'squid_hamster_class_dollars_v10',
-    'squid_hamster_class_dollars_v9',
-    'squid_hamster_class_dollars_v8',
-    'squid_hamster_class_dollars'
-  ];
 
-  // 1. First priority: Any storage key containing user-inputted custom classes!
-  for (const k of keysToCheck) {
-    try {
-      const raw = localStorage.getItem(k);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0 && !isDefaultMockClasses(parsed)) {
-          return sortClassesByName(parsed);
-        }
-      }
-    } catch (e) {}
+  const scanned = scanAllLocalClassBackups<DojoClass>(uid, isDefaultMockClasses);
+  if (scanned && Array.isArray(scanned.classes) && scanned.classes.length > 0) {
+    return sortClassesByName(scanned.classes);
   }
 
-  // 2. Second priority: Any classes saved in active storage key
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -262,11 +269,11 @@ export const getBestSavedClasses = (): DojoClass[] => {
   return [];
 };
 
-export const getSavedClasses = (): DojoClass[] => {
-  return getBestSavedClasses();
+export const getSavedClasses = (uid?: string | null): DojoClass[] => {
+  return getBestSavedClasses(uid);
 };
 
-// Audio Synthesizer for Cash Register / Coin Drop sounds
+// Audio Synthesizer for Cash Register, Sequential Group Combos, and Hat Unlock Fanfares
 let sharedAudioCtx: AudioContext | null = null;
 const getAudioContext = () => {
   if (!sharedAudioCtx && typeof window !== 'undefined') {
@@ -274,34 +281,46 @@ const getAudioContext = () => {
     if (AudioCtx) sharedAudioCtx = new AudioCtx();
   }
   if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume();
+    sharedAudioCtx.resume().catch(() => {});
   }
   return sharedAudioCtx;
 };
 
-const playCashSound = (isPositive = true) => {
+const playCashSound = (isPositive = true, muted = false) => {
+  if (muted) return;
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
     const now = ctx.currentTime;
 
     if (isPositive) {
-      // Energetic Arcade Cha-Ching / Rising Coin Chime
+      // Energetic Arcade Cha-Ching + Warm Golden Shimmer Overtone
       const notes = [1046.5, 1318.5, 1567.98, 2093.0]; // C6, E6, G6, C7
       notes.forEach((freq, idx) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = idx === 3 ? 'sine' : 'triangle';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
-        gain.gain.setValueAtTime(0.3, now + idx * 0.06);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.35);
+        osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+        gain.gain.setValueAtTime(0.28, now + idx * 0.055);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.36);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now + idx * 0.06);
-        osc.stop(now + idx * 0.06 + 0.35);
+        osc.start(now + idx * 0.055);
+        osc.stop(now + idx * 0.055 + 0.36);
       });
+      // Sparkle bell harmonic
+      const bell = ctx.createOscillator();
+      const bellGain = ctx.createGain();
+      bell.type = 'sine';
+      bell.frequency.setValueAtTime(2637.02, now + 0.18);
+      bellGain.gain.setValueAtTime(0.14, now + 0.18);
+      bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      bell.connect(bellGain);
+      bellGain.connect(ctx.destination);
+      bell.start(now + 0.18);
+      bell.stop(now + 0.55);
     } else {
-      // Descending Penalty / Deduction Buzzer (Two rapid warning thuds)
+      // Descending Penalty / Deduction Buzzer
       [
         { startFreq: 340, endFreq: 140, start: 0, dur: 0.18 },
         { startFreq: 260, endFreq: 90, start: 0.15, dur: 0.25 },
@@ -311,7 +330,7 @@ const playCashSound = (isPositive = true) => {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(tone.startFreq, now + tone.start);
         osc.frequency.exponentialRampToValueAtTime(tone.endFreq, now + tone.start + tone.dur);
-        gain.gain.setValueAtTime(0.28, now + tone.start);
+        gain.gain.setValueAtTime(0.25, now + tone.start);
         gain.gain.exponentialRampToValueAtTime(0.001, now + tone.start + tone.dur);
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -319,9 +338,133 @@ const playCashSound = (isPositive = true) => {
         osc.stop(now + tone.start + tone.dur);
       });
     }
-  } catch (e) {
-    // Audio context error ignore
-  }
+  } catch (e) {}
+};
+
+// Celebratory magical fanfare when a hamster unlocks a new Hat or Collectible Item!
+const playItemUnlockFanfare = (muted = false) => {
+  if (muted) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime + 0.08;
+    const fanfareNotes = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98];
+    fanfareNotes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = i >= 4 ? 'sine' : 'triangle';
+      const t = now + i * 0.065;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.24, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + (i === 5 ? 0.55 : 0.28));
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + (i === 5 ? 0.55 : 0.28));
+    });
+  } catch (e) {}
+};
+
+// Ascending combo chime played one-by-one as each student in a group/class glows!
+const COMBO_PENTATONIC_SCALE = [
+  523.25,  // C5
+  587.33,  // D5
+  659.25,  // E5
+  783.99,  // G5
+  880.0,   // A5
+  1046.5,  // C6
+  1174.66, // D6
+  1318.51, // E6
+  1567.98, // G6
+  1760.0,  // A6
+  2093.0,  // C7
+];
+
+const playComboStepSound = (
+  stepIndex: number,
+  isPositive: boolean,
+  unlockedNewItem: boolean,
+  isFinalInGroup: boolean,
+  muted = false
+) => {
+  if (muted) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    if (isPositive) {
+      const baseFreq = COMBO_PENTATONIC_SCALE[stepIndex % COMBO_PENTATONIC_SCALE.length];
+      // Primary crisp marimba/coin note
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.005, now + 0.24);
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.32);
+
+      // Octave shimmer
+      const shimmer = ctx.createOscillator();
+      const sGain = ctx.createGain();
+      shimmer.type = 'sine';
+      shimmer.frequency.setValueAtTime(baseFreq * 2, now + 0.03);
+      sGain.gain.setValueAtTime(unlockedNewItem ? 0.22 : 0.12, now + 0.03);
+      sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+      shimmer.connect(sGain);
+      sGain.connect(ctx.destination);
+      shimmer.start(now + 0.03);
+      shimmer.stop(now + 0.34);
+
+      if (unlockedNewItem) {
+        const spark = ctx.createOscillator();
+        const spGain = ctx.createGain();
+        spark.type = 'sine';
+        spark.frequency.setValueAtTime(baseFreq * 2.5, now + 0.08);
+        spGain.gain.setValueAtTime(0.18, now + 0.08);
+        spGain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+        spark.connect(spGain);
+        spGain.connect(ctx.destination);
+        spark.start(now + 0.08);
+        spark.stop(now + 0.42);
+      }
+
+      // Final group member triumphant completion chord
+      if (isFinalInGroup && stepIndex > 0) {
+        [1046.5, 1318.51, 1567.98, 2093.0].forEach((chordFreq, cIdx) => {
+          const cOsc = ctx.createOscillator();
+          const cGain = ctx.createGain();
+          cOsc.type = 'sine';
+          const startAt = now + 0.1 + cIdx * 0.03;
+          cOsc.frequency.setValueAtTime(chordFreq, startAt);
+          cGain.gain.setValueAtTime(0.15, startAt);
+          cGain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.48);
+          cOsc.connect(cGain);
+          cGain.connect(ctx.destination);
+          cOsc.start(startAt);
+          cOsc.stop(startAt + 0.48);
+        });
+      }
+    } else {
+      // Stepped descending deduction pulse
+      const dropFreq = Math.max(120, 340 - stepIndex * 22);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(dropFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(dropFreq * 0.55, now + 0.18);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (e) {}
 };
 
 export function ClassRecord({ 
@@ -359,31 +502,42 @@ export function ClassRecord({
   const [rewardFormType, setRewardFormType] = useState<'award' | 'deduct'>('award');
   const [isSavingReward, setIsSavingReward] = useState(false);
 
-  const withClassTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
-    new Promise<T>((resolve) => {
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          resolve(fallback);
-        }
-      }, ms);
-      promise
-        .then((val) => {
-          if (!settled) {
-            settled = true;
-            clearTimeout(timer);
-            resolve(val);
-          }
-        })
-        .catch(() => {
-          if (!settled) {
-            settled = true;
-            clearTimeout(timer);
-            resolve(fallback);
-          }
-        });
+  const [soundMuted, setSoundMuted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('squid_class_sound_muted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [cloudQuotaNotice, setCloudQuotaNotice] = useState<boolean>(false);
+  const backupFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const toggleSoundMuted = () => {
+    setSoundMuted((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('squid_class_sound_muted', String(next));
+      } catch {}
+      return next;
     });
+  };
+
+  const normalizeClassRoster = (list: DojoClass[]): DojoClass[] =>
+    sortClassesByName(
+      (list || []).map((cls: DojoClass) => ({
+        ...cls,
+        groups: Array.isArray(cls.groups) ? cls.groups : [],
+        students: (cls.students || []).map((st: any, idx: number) => ({
+          ...st,
+          dollars: Number(st.dollars) || 0,
+          number:
+            st.number && OFFICIAL_CHARACTER_NUMBERS.includes(st.number)
+              ? st.number
+              : OFFICIAL_CHARACTER_NUMBERS[idx % OFFICIAL_CHARACTER_NUMBERS.length],
+          avatarStyle: st.avatarStyle === 'classic' ? 'classic' : 'cute',
+        })),
+      }))
+    );
 
   const pushClassDataToServer = (
     uid: string,
@@ -392,19 +546,16 @@ export function ClassRecord({
       customRewards?: DollarReward[];
       deletedClasses?: DojoClass[];
       deletedStudents?: DeletedStudent[];
-      replaceEmpty?: boolean;
+      intentionalEmptyReset?: boolean;
       replaceCustomRewards?: boolean;
+      updatedAt?: number;
     }
   ) => {
     if (!uid) return;
-    fetch('/api/class-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: uid,
-        ...payload,
-        updatedAt: Date.now(),
-      }),
+    pushClassSnapshotToServerReliable(uid, {
+      email: user?.email,
+      ...payload,
+      updatedAt: payload.updatedAt || Date.now(),
     }).catch(() => {});
   };
 
@@ -486,122 +637,7 @@ export function ClassRecord({
     }
   }, [user]);
 
-  // Sync user's classes with server backup + Firestore in REAL-TIME for signed-in user
-  useEffect(() => {
-    if (!user || user.isAnonymous) return;
-    let cancelled = false;
-    const userEmail = user.email?.toLowerCase().trim() || '';
-    const isAdmin = userEmail === ADMIN_EMAIL;
-    if (isAdmin) {
-      try { localStorage.setItem('squid_is_admin', 'true'); } catch (e) {}
-    }
-
-    const userDocRef = doc(db, 'userClassData', user.uid);
-    const backupDocRef = doc(db, 'users', user.uid, 'classesData', 'current');
-
-    // STEP A: If this device has custom user classes in localStorage, immediately push them to server & Firestore!
-    const localUserClasses = getBestSavedClasses();
-    const hasCustomLocal = localUserClasses.length > 0 && !isDefaultMockClasses(localUserClasses);
-    if (hasCustomLocal) {
-      const payload = { classes: localUserClasses, updatedAt: Date.now() };
-      pushClassDataToServer(user.uid, { classes: localUserClasses });
-      setDoc(userDocRef, payload, { merge: true }).catch((err) => {
-        console.warn('Initial push to cloud note:', err?.message);
-      });
-      setDoc(backupDocRef, payload, { merge: true }).catch(() => {});
-    }
-
-    // STEP B: Immediately fetch /api/class-data so classes load even when Firestore quota is exhausted!
-    fetch(`/api/class-data?userId=${encodeURIComponent(user.uid)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        if (Array.isArray(data.classes) && data.classes.length > 0 && !hasCustomLocal) {
-          const sortedServer = sortClassesByName(data.classes as DojoClass[]);
-          setClasses(sortedServer);
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedServer));
-            localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sortedServer));
-            localStorage.setItem('squid_user_classes', JSON.stringify(sortedServer));
-          } catch {}
-          setActiveClassId((prev) =>
-            prev && sortedServer.some((c: any) => c.id === prev) ? prev : sortedServer[0].id
-          );
-        }
-        if (Array.isArray(data.deletedClasses) && data.deletedClasses.length > 0) {
-          setDeletedClasses((prev) => (prev.length > 0 ? prev : data.deletedClasses));
-        }
-        if (Array.isArray(data.deletedStudents) && data.deletedStudents.length > 0) {
-          setDeletedStudents((prev) => (prev.length > 0 ? prev : data.deletedStudents));
-        }
-      })
-      .catch(() => {});
-
-    // STEP C: Real-time Firestore snapshot listener: whenever classes change on ANY device, update immediately!
-    const unsubscribe = onSnapshot(userDocRef, async (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (Array.isArray(data?.classes) && data.classes.length > 0) {
-          const hasCustomCloud = !isDefaultMockClasses(data.classes);
-
-          // If local has custom classes, but cloud was somehow set to mock classes, re-push local custom classes!
-          if (hasCustomLocal && !hasCustomCloud) {
-            const payload = { classes: localUserClasses, updatedAt: Date.now() };
-            setDoc(userDocRef, payload, { merge: true }).catch(() => {});
-            return;
-          }
-
-          // Update local state, server backup, and storage with latest cloud classes!
-          const sortedCloud = sortClassesByName(data.classes as DojoClass[]);
-          setClasses(sortedCloud);
-          pushClassDataToServer(user.uid, { classes: sortedCloud });
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedCloud));
-            localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sortedCloud));
-            localStorage.setItem('squid_user_classes', JSON.stringify(sortedCloud));
-          } catch (e) {}
-
-          setActiveClassId((prev) => {
-            if (prev && sortedCloud.some((c: any) => c.id === prev)) return prev;
-            return sortedCloud[0].id;
-          });
-          return;
-        }
-      }
-
-      // Fallback: check backup doc if primary is not found
-      try {
-        const backupSnap = await withClassTimeout(getDoc(backupDocRef), 2800, null as any);
-        if (backupSnap && backupSnap.exists()) {
-          const bData = backupSnap.data();
-          if (Array.isArray(bData?.classes) && bData.classes.length > 0) {
-            const sortedBackup = sortClassesByName(bData.classes as DojoClass[]);
-            setClasses(sortedBackup);
-            pushClassDataToServer(user.uid, { classes: sortedBackup });
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedBackup));
-              localStorage.setItem('squid_user_classes', JSON.stringify(sortedBackup));
-            } catch (e) {}
-            setActiveClassId((prev) => (prev && sortedBackup.some((c: any) => c.id === prev) ? prev : sortedBackup[0].id));
-            setDoc(userDocRef, { ...bData, classes: sortedBackup, updatedAt: Date.now() }, { merge: true }).catch(() => {});
-            return;
-          }
-        }
-      } catch (e) {}
-
-      // If cloud is empty, but local has custom classes, push to cloud
-      if (hasCustomLocal) {
-        setDoc(userDocRef, { classes: localUserClasses, updatedAt: Date.now() }, { merge: true }).catch(() => {});
-      }
-    }, (err) => {
-      console.warn('Real-time class sync listener note:', err?.message);
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [user]);
+  // Class real-time & multi-layer sync is initialized below state declarations
 
   const handleSaveCustomReward = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -682,18 +718,9 @@ export function ClassRecord({
   // Load user's saved classes (recovering from any localStorage version) or start clean
   const [classes, setClasses] = useState<DojoClass[]>(() => {
     try {
-      const saved = getBestSavedClasses();
+      const saved = getBestSavedClasses(user?.uid);
       if (saved.length > 0) {
-        return sortClassesByName(saved.map((cls: DojoClass) => ({
-          ...cls,
-          groups: Array.isArray(cls.groups) ? cls.groups : [],
-          students: (cls.students || []).map((st: any, idx: number) => ({
-            ...st,
-            number: st.number && OFFICIAL_CHARACTER_NUMBERS.includes(st.number) 
-              ? st.number 
-              : OFFICIAL_CHARACTER_NUMBERS[idx % OFFICIAL_CHARACTER_NUMBERS.length]
-          }))
-        })));
+        return normalizeClassRoster(saved);
       }
     } catch (e) {
       console.error('Error loading classes', e);
@@ -703,7 +730,7 @@ export function ClassRecord({
 
   const [activeClassId, setActiveClassId] = useState<string>(() => {
     try {
-      const saved = getBestSavedClasses();
+      const saved = getBestSavedClasses(user?.uid);
       if (saved.length > 0) {
         return saved[0].id;
       }
@@ -812,160 +839,533 @@ export function ClassRecord({
     time: number;
   } | null>(null);
 
-  // Live effect on character when adding or deducting
-  const [liveEffect, setLiveEffect] = useState<{
-    studentId: string;
-    amount: number;
-    key: number;
-  } | null>(null);
+  // Multi-student glowing & sequential one-by-one group cascade states
+  const [activeEffectsByStudent, setActiveEffectsByStudent] = useState<Record<string, LiveRewardDelta>>({});
+  const [staggeredDollarOverrides, setStaggeredDollarOverrides] = useState<Record<string, number>>({});
+  const [activeCascadingGroupId, setActiveCascadingGroupId] = useState<string | null>(null);
+  const cascadeTimersRef = useRef<number[]>([]);
+  const effectClearTimersRef = useRef<Record<string, number>>({});
 
-  // Save changes to localStorage, server cache, and Firestore
-  const saveClasses = (updated: DojoClass[]) => {
-    const sorted = sortClassesByName(updated);
-    setClasses(sorted);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-      localStorage.setItem('squid_hamster_class_dollars_v13', JSON.stringify(sorted));
-      localStorage.setItem('squid_user_classes', JSON.stringify(sorted));
-    } catch (e) {
-      console.error('Failed to save classes to localStorage', e);
+  const classesRef = useRef<DojoClass[]>(classes);
+  classesRef.current = classes;
+  const lastLocalSaveTimeRef = useRef<number>(getLocalClassUpdatedAt(user?.uid));
+
+  const clearCascadeTimers = () => {
+    cascadeTimersRef.current.forEach((id) => window.clearTimeout(id));
+    cascadeTimersRef.current = [];
+    setStaggeredDollarOverrides({});
+    setActiveCascadingGroupId(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      cascadeTimersRef.current.forEach((id) => window.clearTimeout(id));
+      Object.values(effectClearTimersRef.current).forEach((id) => window.clearTimeout(id));
+    };
+  }, []);
+
+  const triggerStudentEffect = (studentId: string, delta: LiveRewardDelta, durationMs = 1950) => {
+    setActiveEffectsByStudent((prev) => ({
+      ...prev,
+      [studentId]: delta,
+    }));
+
+    if (effectClearTimersRef.current[studentId]) {
+      window.clearTimeout(effectClearTimersRef.current[studentId]);
+    }
+    effectClearTimersRef.current[studentId] = window.setTimeout(() => {
+      setActiveEffectsByStudent((prev) => {
+        if (prev[studentId]?.key !== delta.key) return prev;
+        const copy = { ...prev };
+        delete copy[studentId];
+        return copy;
+      });
+    }, durationMs);
+  };
+
+  // Hydrate from IndexedDB immediately (protects guests & users even if 5MB localStorage was full)
+  useEffect(() => {
+    let cancelled = false;
+    readClassSnapshotFromIDB(user?.uid).then((idbSnap) => {
+      if (cancelled || !idbSnap) return;
+      if (
+        classesRef.current.length === 0 &&
+        Array.isArray(idbSnap.classes) &&
+        idbSnap.classes.length > 0 &&
+        !getLocalIntentionalEmpty(user?.uid)
+      ) {
+        const normalized = normalizeClassRoster(idbSnap.classes as DojoClass[]);
+        setClasses(normalized);
+        lastLocalSaveTimeRef.current = Math.max(lastLocalSaveTimeRef.current, idbSnap.updatedAt || 0);
+        setActiveClassId((prev) =>
+          prev && normalized.some((c) => c.id === prev) ? prev : normalized[0]?.id || ''
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
+
+  // Bulletproof multi-layer reconciliation (LocalStorage + IndexedDB + Server + Firestore)
+  useEffect(() => {
+    if (!user || user.isAnonymous) return;
+    let cancelled = false;
+    const userEmail = user.email?.toLowerCase().trim() || '';
+    if (userEmail === ADMIN_EMAIL) {
+      try {
+        localStorage.setItem('squid_is_admin', 'true');
+      } catch {}
     }
 
-    if (user && !user.isAnonymous) {
-      pushClassDataToServer(user.uid, { classes: sorted, replaceEmpty: true });
-      const payload = { classes: sorted, updatedAt: Date.now() };
-      setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true })
-        .catch((err) => {
-          console.warn('Class sync note:', err?.message);
-        });
+    const reconcileAllSources = async () => {
+      const localScan = scanAllLocalClassBackups<DojoClass>(user.uid, isDefaultMockClasses);
+      const inMemory = classesRef.current;
+      const bestLocalClasses =
+        inMemory.length > 0 && !isDefaultMockClasses(inMemory)
+          ? inMemory
+          : localScan?.classes || [];
+      const localUpdatedAt = Math.max(
+        lastLocalSaveTimeRef.current,
+        localScan?.updatedAt || 0,
+        getLocalClassUpdatedAt(user.uid)
+      );
+      const localIntentionalEmpty = getLocalIntentionalEmpty(user.uid);
 
-      setDoc(doc(db, 'users', user.uid, 'classesData', 'current'), payload, { merge: true })
+      const localSnapshot =
+        bestLocalClasses.length > 0
+          ? {
+              userId: user.uid,
+              email: user.email || undefined,
+              classes: bestLocalClasses,
+              updatedAt: localUpdatedAt,
+              intentionalEmptyReset: false,
+            }
+          : localIntentionalEmpty
+          ? {
+              userId: user.uid,
+              email: user.email || undefined,
+              classes: [],
+              updatedAt: localUpdatedAt,
+              intentionalEmptyReset: true,
+            }
+          : null;
+
+      const [idbSnap, serverSnap, cloudResult] = await Promise.all([
+        readClassSnapshotFromIDB(user.uid),
+        fetchClassSnapshotFromServer(user.uid, user.email),
+        fetchClassSnapshotFromFirestore(user.uid, 3500),
+      ]);
+
+      if (cancelled) return;
+
+      if (cloudResult.quotaExceeded) {
+        setCloudQuotaNotice(true);
+      } else if (cloudResult.snapshot) {
+        setCloudQuotaNotice(false);
+      }
+
+      if (serverSnap?.deletedClasses && serverSnap.deletedClasses.length > 0) {
+        setDeletedClasses((prev) => (prev.length > 0 ? prev : serverSnap.deletedClasses!));
+      }
+      if (serverSnap?.deletedStudents && serverSnap.deletedStudents.length > 0) {
+        setDeletedStudents((prev) => (prev.length > 0 ? prev : serverSnap.deletedStudents!));
+      }
+
+      const winner = pickBestClassSnapshot<DojoClass>(
+        [
+          { source: 'firestore', snapshot: cloudResult.snapshot as any },
+          { source: 'server', snapshot: serverSnap as any },
+          { source: 'idb', snapshot: idbSnap as any },
+          { source: 'local', snapshot: localSnapshot },
+        ],
+        isDefaultMockClasses
+      );
+
+      if (!winner) return;
+
+      const normalized = normalizeClassRoster(winner.snapshot.classes || []);
+      const winningTime = winner.snapshot.updatedAt || Date.now();
+      const isIntentionalEmpty = Boolean(
+        normalized.length === 0 && winner.snapshot.intentionalEmptyReset
+      );
+
+      if (normalized.length > 0 || isIntentionalEmpty) {
+        lastLocalSaveTimeRef.current = winningTime;
+        setClasses(normalized);
+        saveClassesToLocalStorage(normalized, user.uid, winningTime, isIntentionalEmpty);
+        writeClassSnapshotToIDB(user.uid, {
+          userId: user.uid,
+          email: user.email || undefined,
+          classes: normalized,
+          updatedAt: winningTime,
+          intentionalEmptyReset: isIntentionalEmpty,
+        }).catch(() => {});
+
+        if (normalized.length > 0) {
+          setActiveClassId((prev) =>
+            prev && normalized.some((c) => c.id === prev) ? prev : normalized[0].id
+          );
+        }
+
+        if (winner.source !== 'server') {
+          pushClassSnapshotToServerReliable(user.uid, {
+            email: user.email,
+            classes: normalized,
+            updatedAt: winningTime,
+            intentionalEmptyReset: isIntentionalEmpty,
+          }).catch(() => {});
+        }
+
+        if (winner.source !== 'firestore' && !cloudResult.quotaExceeded) {
+          syncClassSnapshotToFirestore(user.uid, {
+            classes: normalized,
+            updatedAt: winningTime,
+            intentionalEmptyReset: isIntentionalEmpty,
+          }).catch(() => {});
+        }
+      }
+    };
+
+    reconcileAllSources();
+
+    // Real-time Firestore listener guarded by timestamp & non-empty protection
+    const userDocPath = `userClassData/${user.uid}`;
+    const userDocRef = doc(db, 'userClassData', user.uid);
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (snap) => {
+        if (cancelled || !snap.exists()) return;
+        const data = snap.data();
+        if (!data || !Array.isArray(data.classes)) return;
+
+        const remoteUpdatedAt = Number(data.updatedAt) || 0;
+        const remoteIntentionalEmpty = Boolean(data.intentionalEmptyReset);
+        const remoteClasses = data.classes as DojoClass[];
+
+        // Never allow an empty non-intentional snapshot or default mock list to wipe real classes
+        if (remoteClasses.length === 0 && !remoteIntentionalEmpty) {
+          if (classesRef.current.length > 0) {
+            syncClassSnapshotToFirestore(user.uid, {
+              classes: classesRef.current,
+              updatedAt: lastLocalSaveTimeRef.current || Date.now(),
+              intentionalEmptyReset: false,
+            }).catch(() => {});
+          }
+          return;
+        }
+
+        if (
+          remoteClasses.length > 0 &&
+          isDefaultMockClasses(remoteClasses) &&
+          classesRef.current.length > 0 &&
+          !isDefaultMockClasses(classesRef.current)
+        ) {
+          return;
+        }
+
+        // Only apply remote update if it is at least as new as our latest local save (or local is empty)
+        if (
+          classesRef.current.length > 0 &&
+          remoteUpdatedAt > 0 &&
+          remoteUpdatedAt + 500 < lastLocalSaveTimeRef.current
+        ) {
+          return;
+        }
+
+        const normalizedRemote = normalizeClassRoster(remoteClasses);
+        const effectiveTime = Math.max(remoteUpdatedAt, Date.now());
+        lastLocalSaveTimeRef.current = effectiveTime;
+        setCloudQuotaNotice(false);
+        setClasses(normalizedRemote);
+        saveClassesToLocalStorage(
+          normalizedRemote,
+          user.uid,
+          effectiveTime,
+          normalizedRemote.length === 0 && remoteIntentionalEmpty
+        );
+        writeClassSnapshotToIDB(user.uid, {
+          userId: user.uid,
+          email: user.email || undefined,
+          classes: normalizedRemote,
+          updatedAt: effectiveTime,
+          intentionalEmptyReset: normalizedRemote.length === 0 && remoteIntentionalEmpty,
+        }).catch(() => {});
+        pushClassSnapshotToServerReliable(user.uid, {
+          email: user.email,
+          classes: normalizedRemote,
+          updatedAt: effectiveTime,
+          intentionalEmptyReset: normalizedRemote.length === 0 && remoteIntentionalEmpty,
+        }).catch(() => {});
+
+        if (normalizedRemote.length > 0) {
+          setActiveClassId((prev) =>
+            prev && normalizedRemote.some((c) => c.id === prev) ? prev : normalizedRemote[0].id
+          );
+        }
+      },
+      (err) => {
+        if (isPermissionDeniedError(err)) {
+          try {
+            handleFirestoreError(err, OperationType.GET, userDocPath);
+          } catch {}
+        } else if (isQuotaExceededError(err)) {
+          setCloudQuotaNotice(true);
+        } else {
+          console.warn('Real-time class sync listener note:', err?.message);
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [user]);
+
+  // Save changes durably across State, LocalStorage, IndexedDB, Server Backup, and Cloud Firestore
+  const saveClasses = (
+    updated: DojoClass[],
+    options?: { intentionalEmptyReset?: boolean }
+  ) => {
+    const normalized = normalizeClassRoster(updated);
+    const now = Date.now();
+    const isIntentionalEmpty = Boolean(
+      normalized.length === 0 && options?.intentionalEmptyReset
+    );
+
+    lastLocalSaveTimeRef.current = now;
+    setClasses(normalized);
+
+    saveClassesToLocalStorage(normalized, user?.uid, now, isIntentionalEmpty);
+    writeClassSnapshotToIDB(user?.uid, {
+      userId: user?.uid,
+      email: user?.email || undefined,
+      classes: normalized,
+      deletedClasses,
+      deletedStudents,
+      updatedAt: now,
+      intentionalEmptyReset: isIntentionalEmpty,
+    }).catch(() => {});
+
+    if (user && !user.isAnonymous) {
+      pushClassSnapshotToServerReliable(user.uid, {
+        email: user.email,
+        classes: normalized,
+        updatedAt: now,
+        intentionalEmptyReset: isIntentionalEmpty,
+      }).catch(() => {});
+
+      syncClassSnapshotToFirestore(user.uid, {
+        classes: normalized,
+        updatedAt: now,
+        intentionalEmptyReset: isIntentionalEmpty,
+      })
+        .then((res) => {
+          if (res.quotaExceeded) setCloudQuotaNotice(true);
+        })
         .catch(() => {});
     }
   };
 
-  // Recover user's own inputted classes across Server, Cloud, and storage backups
+  // Recover user's own inputted classes across IndexedDB, Server, Cloud, localStorage, and Bin
   const handleRecoverMyClasses = async () => {
-    // 1. Check Backend Server & Cloud Firestore account in parallel (timeout-protected)
+    let sawQuotaExceeded = false;
+
+    const idbSnap = await readClassSnapshotFromIDB(user?.uid);
+    let serverSnap = null;
+    let cloudSnap = null;
+
     if (user && !user.isAnonymous) {
-      try {
-        const [serverRes, userDocSnap, backupSnap] = await Promise.all([
-          fetch(`/api/class-data?userId=${encodeURIComponent(user.uid)}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-          withClassTimeout(getDoc(doc(db, 'userClassData', user.uid)), 2800, null as any),
-          withClassTimeout(getDoc(doc(db, 'users', user.uid, 'classesData', 'current')), 2800, null as any),
-        ]);
+      const [srv, cld] = await Promise.all([
+        fetchClassSnapshotFromServer(user.uid, user.email),
+        fetchClassSnapshotFromFirestore(user.uid, 3500),
+      ]);
+      serverSnap = srv;
+      cloudSnap = cld.snapshot;
+      if (cld.quotaExceeded) {
+        sawQuotaExceeded = true;
+        setCloudQuotaNotice(true);
+      }
 
-        const cloudClasses =
-          (userDocSnap?.exists?.() && Array.isArray(userDocSnap.data()?.classes) && userDocSnap.data().classes.length > 0
-            ? userDocSnap.data().classes
-            : null) ||
-          (backupSnap?.exists?.() && Array.isArray(backupSnap.data()?.classes) && backupSnap.data().classes.length > 0
-            ? backupSnap.data().classes
-            : null);
-
-        const serverClasses =
-          serverRes && Array.isArray(serverRes.classes) && serverRes.classes.length > 0
-            ? serverRes.classes
-            : null;
-
-        if (serverRes && Array.isArray(serverRes.customRewards) && serverRes.customRewards.length > 0) {
-          setCustomRewards(serverRes.customRewards);
-          try {
-            localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(serverRes.customRewards));
-          } catch {}
-        }
-
-        const recoveredList = cloudClasses || serverClasses;
-        if (recoveredList && recoveredList.length > 0) {
-          saveClasses(recoveredList);
-          setActiveClassId(recoveredList[0].id);
-          setRecentTransaction({
-            text: `Synced ${recoveredList.length} classes from your Cloud account! ☁️✨`,
-            amount: 0,
-            time: Date.now()
-          });
-          return;
-        }
-      } catch (err: any) {
-        console.warn('Cloud pull note:', err?.message);
+      if (srv?.customRewards && srv.customRewards.length > 0) {
+        setCustomRewards(srv.customRewards);
+        try {
+          localStorage.setItem(
+            `squid_custom_rewards_${user.uid}`,
+            JSON.stringify(srv.customRewards)
+          );
+        } catch {}
       }
     }
 
-    // 2. Check localStorage versions
-    const keysToCheck = [
-      'squid_hamster_class_dollars_v14',
-      'squid_hamster_class_dollars_v13',
-      'squid_user_classes',
-      'squid_hamster_class_dollars_v12',
-      'squid_hamster_class_dollars_v11',
-      'squid_hamster_class_dollars_v10',
-      'squid_hamster_class_dollars_v9',
-      'squid_hamster_class_dollars_v8',
-      'squid_hamster_class_dollars'
-    ];
+    const localScan = scanAllLocalClassBackups<DojoClass>(user?.uid, isDefaultMockClasses);
 
-    for (const k of keysToCheck) {
-      try {
-        const raw = localStorage.getItem(k);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0 && !isDefaultMockClasses(parsed)) {
-            saveClasses(parsed);
-            if (parsed.length > 0) setActiveClassId(parsed[0].id);
-            setRecentTransaction({
-              text: `Restored ${parsed.length} of your inputted classes! ✨`,
-              amount: 0,
-              time: Date.now()
-            });
-            return;
-          }
-        }
-      } catch (e) {}
+    const best = pickBestClassSnapshot<DojoClass>(
+      [
+        { source: 'Cloud', snapshot: cloudSnap as any },
+        { source: 'Server Backup', snapshot: serverSnap as any },
+        { source: 'Device Vault (IndexedDB)', snapshot: idbSnap as any },
+        {
+          source: 'Browser Backup',
+          snapshot: localScan
+            ? { classes: localScan.classes, updatedAt: localScan.updatedAt || 0 }
+            : null,
+        },
+      ],
+      isDefaultMockClasses
+    );
+
+    if (best && best.snapshot.classes.length > 0) {
+      const restoredList = normalizeClassRoster(best.snapshot.classes);
+      saveClasses(restoredList);
+      setActiveClassId(restoredList[0].id);
+      setIsBinView(false);
+      setIsAllClassesView(false);
+      playCashSound(true, soundMuted);
+      setRecentTransaction({
+        text: `Recovered ${restoredList.length} ${restoredList.length === 1 ? 'class' : 'classes'} from ${best.source}! ✨`,
+        amount: 0,
+        time: Date.now(),
+      });
+      return;
     }
 
-    // 3. Check recycle bin
-    try {
-      const rawBin = localStorage.getItem(BIN_STORAGE_KEY);
-      if (rawBin) {
-        const parsedBin = JSON.parse(rawBin);
-        if (Array.isArray(parsedBin) && parsedBin.length > 0) {
-          const restored = [...classes, ...parsedBin];
-          saveClasses(restored);
-          setDeletedClasses([]);
-          localStorage.removeItem(BIN_STORAGE_KEY);
-          setRecentTransaction({
-            text: `Restored ${parsedBin.length} classes from Recycle Bin! ✨`,
-            amount: 0,
-            time: Date.now()
-          });
-          return;
-        }
-      }
-    } catch (e) {}
+    // Check recycle bin if active backups were empty
+    if (deletedClasses.length > 0) {
+      const restored = normalizeClassRoster([
+        ...classes,
+        ...deletedClasses.map((c) => {
+          const copy = { ...c };
+          delete copy.deletedAt;
+          return copy;
+        }),
+      ]);
+      saveClasses(restored);
+      saveDeletedClasses([]);
+      if (restored[0]) setActiveClassId(restored[0].id);
+      setIsBinView(false);
+      playCashSound(true, soundMuted);
+      setRecentTransaction({
+        text: `Restored ${deletedClasses.length} classes from Recycle Bin! ✨`,
+        amount: 0,
+        time: Date.now(),
+      });
+      return;
+    }
 
-    // 4. If current classes exist in state, force sync them to server & cloud now!
-    if (classes.length > 0 && user && !user.isAnonymous) {
-      pushClassDataToServer(user.uid, { classes, customRewards, deletedClasses, deletedStudents });
-      try {
-        const payload = { classes, updatedAt: Date.now() };
-        withClassTimeout(setDoc(doc(db, 'userClassData', user.uid), payload, { merge: true }), 2500, undefined as any).catch(() => {});
-        withClassTimeout(setDoc(doc(db, 'users', user.uid, 'classesData', 'current'), payload, { merge: true }), 2500, undefined as any).catch(() => {});
-        setRecentTransaction({
-          text: `Uploaded ${classes.length} classes to your Cloud account! ☁️✨`,
-          amount: 0,
-          time: Date.now()
-        });
-        return;
-      } catch (e) {}
+    // If classes already exist on screen, force-sync them to all backups right now
+    if (classes.length > 0) {
+      saveClasses(classes);
+      setRecentTransaction({
+        text: `Backed up ${classes.length} classes to Device & Server Vault! ☁️✨`,
+        amount: 0,
+        time: Date.now(),
+      });
+      return;
     }
 
     setRecentTransaction({
-      text: 'No other class backups found.',
+      text: sawQuotaExceeded
+        ? 'Cloud daily free read quota is temporarily full — any classes you add or import now save immediately to Server & Device!'
+        : 'No saved class backups found yet — add a class or import a backup file!',
       amount: 0,
-      time: Date.now()
+      time: Date.now(),
     });
+  };
+
+  // Export complete JSON backup file of all classes, groups, students, dollars & custom rewards
+  const handleExportBackupJSON = () => {
+    const payload = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      classes,
+      customRewards,
+      deletedClasses,
+      deletedStudents,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const dateTag = new Date().toISOString().slice(0, 10);
+    a.download = `Hamster_Class_Rewards_Backup_${dateTag}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setRecentTransaction({
+      text: `Downloaded backup file for ${classes.length} ${classes.length === 1 ? 'class' : 'classes'}! 💾`,
+      amount: 0,
+      time: Date.now(),
+    });
+  };
+
+  // Import JSON backup file to restore classes & rewards
+  const handleImportBackupJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || '{}'));
+        const importedClasses: DojoClass[] = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.classes)
+          ? parsed.classes
+          : [];
+
+        if (importedClasses.length === 0) {
+          setRecentTransaction({
+            text: 'Backup file did not contain any classes.',
+            amount: 0,
+            time: Date.now(),
+          });
+          return;
+        }
+
+        const byId = new Map<string, DojoClass>();
+        [...classes, ...importedClasses].forEach((c) => {
+          if (c && c.id && c.name) byId.set(c.id, c);
+        });
+        const merged = normalizeClassRoster(Array.from(byId.values()));
+        saveClasses(merged);
+        if (merged[0]) setActiveClassId(merged[0].id);
+        setIsBinView(false);
+        setIsAllClassesView(false);
+
+        if (Array.isArray(parsed?.customRewards) && parsed.customRewards.length > 0) {
+          const rMap = new Map<string, DollarReward>();
+          [...customRewards, ...parsed.customRewards].forEach((r: DollarReward) => {
+            if (r && r.id) rMap.set(r.id, r);
+          });
+          const mergedRewards = Array.from(rMap.values());
+          setCustomRewards(mergedRewards);
+          if (user && !user.isAnonymous) {
+            pushClassDataToServer(user.uid, {
+              customRewards: mergedRewards,
+              replaceCustomRewards: true,
+            });
+          }
+        }
+
+        playItemUnlockFanfare(soundMuted);
+        setRecentTransaction({
+          text: `Restored ${importedClasses.length} ${importedClasses.length === 1 ? 'class' : 'classes'} from backup file! 🎉`,
+          amount: 0,
+          time: Date.now(),
+        });
+      } catch {
+        setRecentTransaction({
+          text: 'Could not read that backup file. Please select a valid .json backup.',
+          amount: 0,
+          time: Date.now(),
+        });
+      }
+    };
+    reader.readAsText(file);
   };
 
   // Restore demo template classes (6A2, 7A1, 8B)
@@ -1008,7 +1408,7 @@ export function ClassRecord({
   // Move class to Bin
   const handleMoveClassToBin = (cls: DojoClass) => {
     const updatedClasses = classes.filter(c => c.id !== cls.id);
-    saveClasses(updatedClasses);
+    saveClasses(updatedClasses, { intentionalEmptyReset: updatedClasses.length === 0 });
 
     const updatedBin = [{ ...cls, deletedAt: Date.now() }, ...deletedClasses.filter(c => c.id !== cls.id)];
     saveDeletedClasses(updatedBin);
@@ -1160,7 +1560,9 @@ export function ClassRecord({
       id: st.id,
       name: st.name,
       dollars: st.dollars,
-      number: st.number
+      number: st.number,
+      equippedGearId: st.equippedGearId,
+      avatarStyle: st.avatarStyle,
     };
 
     const targetClassExists = classes.some(c => c.id === st.classId);
@@ -1246,103 +1648,204 @@ export function ClassRecord({
     return list;
   }, [activeClass, searchQuery, sortBy]);
 
-  // Award Dollars to Single Student
+  // Award Dollars to Single Student (with radiant glow, sound effect & milestone hat unlock!)
   const handleAwardStudent = (studentId: string, amount: number, reason: string) => {
-    playCashSound(amount > 0);
+    const targetStudent = activeClass.students.find((s) => s.id === studentId);
+    const prevDollars = targetStudent ? targetStudent.dollars : 0;
+    const nextDollars = prevDollars + amount;
+    const unlockedGear = amount > 0 ? getNewlyUnlockedGear(prevDollars, nextDollars) : null;
 
-    // Trigger live visual pop-up on character
-    setLiveEffect({
+    playCashSound(amount > 0, soundMuted);
+    if (unlockedGear) {
+      window.setTimeout(() => playItemUnlockFanfare(soundMuted), 95);
+    }
+
+    // Trigger radiant character glow + starburst + optional NEW HAT banner
+    triggerStudentEffect(
       studentId,
-      amount,
-      key: Date.now()
-    });
+      {
+        amount,
+        key: Date.now(),
+        unlockedGear,
+      },
+      unlockedGear ? 2600 : 1950
+    );
 
-    const updated = classes.map(c => {
+    const updated = classes.map((c) => {
       if (c.id !== activeClass.id) return c;
       return {
         ...c,
-        students: c.students.map(s => {
+        students: c.students.map((s) => {
           if (s.id === studentId) {
-            const newBal = s.dollars + amount;
-            return { ...s, dollars: newBal };
+            return {
+              ...s,
+              dollars: s.dollars + amount,
+              // Auto-show newly unlocked gear if user hadn't explicitly disabled hats
+              equippedGearId:
+                unlockedGear && s.equippedGearId && s.equippedGearId !== 'none'
+                  ? 'auto'
+                  : s.equippedGearId,
+            };
           }
           return s;
-        })
+        }),
       };
     });
 
-    const targetStudent = activeClass.students.find(s => s.id === studentId);
     if (targetStudent) {
+      const unlockSuffix = unlockedGear
+        ? ` • 🎉 Unlocked ${unlockedGear.badgeEmoji} ${unlockedGear.name}!`
+        : '';
       setRecentTransaction({
-        text: `${targetStudent.name} (${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`}) for "${reason}"`,
+        text: `${targetStudent.name} (${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`}) for "${reason}"${unlockSuffix}`,
         amount,
-        time: Date.now()
+        time: Date.now(),
       });
-      setTimeout(() => setRecentTransaction(null), 3000);
+      window.setTimeout(() => setRecentTransaction(null), unlockedGear ? 4200 : 3200);
     }
 
     saveClasses(updated);
 
     // Keep modal open and update balance live
-    setSelectedStudent(prev => {
+    setSelectedStudent((prev) => {
       if (!prev || prev.id !== studentId) return prev;
-      return { ...prev, dollars: prev.dollars + amount };
+      return {
+        ...prev,
+        dollars: prev.dollars + amount,
+        equippedGearId:
+          unlockedGear && prev.equippedGearId && prev.equippedGearId !== 'none'
+            ? 'auto'
+            : prev.equippedGearId,
+      };
     });
   };
 
   // Change Student Number (1 to 50)
   const handleChangeStudentNumber = (studentId: string, newNumber: number) => {
-    const updated = classes.map(c => {
+    const updated = classes.map((c) => {
       if (c.id !== activeClass.id) return c;
       return {
         ...c,
-        students: c.students.map(s => {
-          if (s.id === studentId) {
-            return { ...s, number: newNumber };
-          }
-          return s;
-        })
+        students: c.students.map((s) => (s.id === studentId ? { ...s, number: newNumber } : s)),
       };
     });
     saveClasses(updated);
-    if (selectedStudent && selectedStudent.id === studentId) {
-      setSelectedStudent({ ...selectedStudent, number: newNumber });
-    }
+    setSelectedStudent((prev) => (prev && prev.id === studentId ? { ...prev, number: newNumber } : prev));
     setShowNumberPicker(false);
   };
 
-  // Award or Deduct Dollars to Entire Class
-  const handleAwardClass = (amount: number, reason: string) => {
-    playCashSound(amount > 0);
-
-    const updated = classes.map(c => {
+  // Equip or toggle Student Hamster Hat / Collectible Gear
+  const handleChangeStudentGear = (studentId: string, gearId: string | null) => {
+    const updated = classes.map((c) => {
       if (c.id !== activeClass.id) return c;
       return {
         ...c,
-        students: c.students.map(s => ({
-          ...s,
-          dollars: s.dollars + amount
-        }))
+        students: c.students.map((s) =>
+          s.id === studentId ? { ...s, equippedGearId: gearId } : s
+        ),
+      };
+    });
+    saveClasses(updated);
+    setSelectedStudent((prev) =>
+      prev && prev.id === studentId ? { ...prev, equippedGearId: gearId } : prev
+    );
+    playCashSound(true, soundMuted);
+  };
+
+  // Switch between Cute Hamsters and Classic Tracksuit style
+  const handleChangeStudentAvatarStyle = (
+    studentId: string,
+    style: 'cute' | 'classic'
+  ) => {
+    const updated = classes.map((c) => {
+      if (c.id !== activeClass.id) return c;
+      return {
+        ...c,
+        students: c.students.map((s) =>
+          s.id === studentId ? { ...s, avatarStyle: style } : s
+        ),
+      };
+    });
+    saveClasses(updated);
+    setSelectedStudent((prev) =>
+      prev && prev.id === studentId ? { ...prev, avatarStyle: style } : prev
+    );
+  };
+
+  // Award or Deduct Dollars to Entire Class (with sequential classroom wave glow!)
+  const handleAwardClass = (amount: number, reason: string) => {
+    const rosterSnapshot = [...activeClass.students];
+
+    const updated = classes.map((c) => {
+      if (c.id !== activeClass.id) return c;
+      return {
+        ...c,
+        students: c.students.map((s) => {
+          const unlocked = amount > 0 ? getNewlyUnlockedGear(s.dollars, s.dollars + amount) : null;
+          return {
+            ...s,
+            dollars: s.dollars + amount,
+            equippedGearId:
+              unlocked && s.equippedGearId && s.equippedGearId !== 'none'
+                ? 'auto'
+                : s.equippedGearId,
+          };
+        }),
       };
     });
 
-    if (activeClass.students.length > 0) {
-      setLiveEffect({
-        studentId: activeClass.students[0].id,
-        amount,
-        key: Date.now()
+    // Save immediately so balances are 100% persisted even during the animation
+    saveClasses(updated);
+    setIsAwardingWholeClass(false);
+    clearCascadeTimers();
+
+    if (rosterSnapshot.length > 0) {
+      const initialOverrides: Record<string, number> = {};
+      rosterSnapshot.forEach((st) => {
+        initialOverrides[st.id] = st.dollars;
       });
+      setStaggeredDollarOverrides(initialOverrides);
+
+      const stepDelayMs = Math.max(55, Math.min(110, Math.floor(1600 / rosterSnapshot.length)));
+      rosterSnapshot.forEach((st, idx) => {
+        const tId = window.setTimeout(() => {
+          const unlockedGear =
+            amount > 0 ? getNewlyUnlockedGear(st.dollars, st.dollars + amount) : null;
+          setStaggeredDollarOverrides((prev) => {
+            const next = { ...prev };
+            delete next[st.id];
+            return next;
+          });
+          playComboStepSound(
+            idx,
+            amount > 0,
+            Boolean(unlockedGear),
+            idx === rosterSnapshot.length - 1,
+            soundMuted
+          );
+          triggerStudentEffect(
+            st.id,
+            {
+              amount,
+              key: Date.now() + idx,
+              unlockedGear,
+              comboStep: idx + 1,
+            },
+            2000
+          );
+        }, idx * stepDelayMs);
+        cascadeTimersRef.current.push(tId);
+      });
+    } else {
+      playCashSound(amount > 0, soundMuted);
     }
 
     setRecentTransaction({
       text: `Entire class ${amount >= 0 ? `awarded +$${amount}` : `deducted -$${Math.abs(amount)}`} each! (${reason})`,
       amount,
-      time: Date.now()
+      time: Date.now(),
     });
-    setTimeout(() => setRecentTransaction(null), 3500);
-
-    saveClasses(updated);
-    setIsAwardingWholeClass(false);
+    window.setTimeout(() => setRecentTransaction(null), 4000);
   };
 
   // Generate random groups helper
@@ -1550,47 +2053,106 @@ export function ClassRecord({
     });
   };
 
-  // Award or Deduct Group
+  // Award or Deduct Group — Sequential ONE-BY-ONE Character Glow & Ascending Chime Cascade!
   const handleAwardGroup = (groupId: string, amount: number, reason: string) => {
-    const grp = (activeClass.groups || []).find(g => g.id === groupId);
+    const grp = (activeClass.groups || []).find((g) => g.id === groupId);
     if (!grp) return;
 
-    playCashSound(amount > 0);
+    const groupStudentsSnapshot = activeClass.students.filter((s) =>
+      grp.studentIds.includes(s.id)
+    );
 
-    const updated = classes.map(c => {
+    const updated = classes.map((c) => {
       if (c.id !== activeClass.id) return c;
       return {
         ...c,
-        students: c.students.map(s => {
+        students: c.students.map((s) => {
           if (grp.studentIds.includes(s.id)) {
+            const unlocked =
+              amount > 0 ? getNewlyUnlockedGear(s.dollars, s.dollars + amount) : null;
             return {
               ...s,
-              dollars: s.dollars + amount
+              dollars: s.dollars + amount,
+              equippedGearId:
+                unlocked && s.equippedGearId && s.equippedGearId !== 'none'
+                  ? 'auto'
+                  : s.equippedGearId,
             };
           }
           return s;
-        })
+        }),
       };
     });
 
+    // Persist immediately at t=0 so data is 100% saved
     saveClasses(updated);
+    setGroupForAward(null);
+    clearCascadeTimers();
 
-    if (grp.studentIds.length > 0) {
-      setLiveEffect({
-        studentId: grp.studentIds[0],
-        amount,
-        key: Date.now()
+    if (groupStudentsSnapshot.length > 0) {
+      setActiveCascadingGroupId(groupId);
+      const initialOverrides: Record<string, number> = {};
+      groupStudentsSnapshot.forEach((st) => {
+        initialOverrides[st.id] = st.dollars;
       });
+      setStaggeredDollarOverrides(initialOverrides);
+
+      const stepMs = 235; // Crisp one-by-one spotlight rhythm!
+      groupStudentsSnapshot.forEach((st, idx) => {
+        const tId = window.setTimeout(() => {
+          const unlockedGear =
+            amount > 0 ? getNewlyUnlockedGear(st.dollars, st.dollars + amount) : null;
+
+          // Reveal updated dollar balance & newly unlocked hat right as this student's turn hits!
+          setStaggeredDollarOverrides((prev) => {
+            const next = { ...prev };
+            delete next[st.id];
+            return next;
+          });
+
+          playComboStepSound(
+            idx,
+            amount > 0,
+            Boolean(unlockedGear),
+            idx === groupStudentsSnapshot.length - 1,
+            soundMuted
+          );
+
+          triggerStudentEffect(
+            st.id,
+            {
+              amount,
+              key: Date.now() + idx,
+              unlockedGear,
+              comboStep: idx + 1,
+            },
+            unlockedGear ? 2600 : 2100
+          );
+        }, idx * stepMs);
+        cascadeTimersRef.current.push(tId);
+      });
+
+      const doneTimer = window.setTimeout(() => {
+        setActiveCascadingGroupId((prev) => (prev === groupId ? null : prev));
+      }, groupStudentsSnapshot.length * stepMs + 1600);
+      cascadeTimersRef.current.push(doneTimer);
+    } else {
+      playCashSound(amount > 0, soundMuted);
     }
 
-    setRecentTransaction({
-      text: `Team "${grp.name}" (${grp.studentIds.length} students) ${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`} each! (${reason})`,
-      amount,
-      time: Date.now()
-    });
-    setTimeout(() => setRecentTransaction(null), 3500);
+    const newlyUnlockedCount =
+      amount > 0
+        ? groupStudentsSnapshot.filter((st) =>
+            Boolean(getNewlyUnlockedGear(st.dollars, st.dollars + amount))
+          ).length
+        : 0;
 
-    setGroupForAward(null);
+    setRecentTransaction({
+      text: `Team "${grp.name}" (${groupStudentsSnapshot.length} students) ${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`} one by one! (${reason})${newlyUnlockedCount > 0 ? ` • 🎉 ${newlyUnlockedCount} new hat${newlyUnlockedCount === 1 ? '' : 's'} unlocked!` : ''}`,
+      amount,
+      time: Date.now(),
+    });
+    window.setTimeout(() => setRecentTransaction(null), 4500);
   };
 
   // Create new class
@@ -1702,6 +2264,13 @@ export function ClassRecord({
 
   return (
     <div className="flex h-full w-full bg-[#f8fafc] select-none overflow-hidden font-sans text-slate-900 rounded-3xl border border-slate-200/90 shadow-xl relative">
+      <input
+        ref={backupFileInputRef}
+        type="file"
+        accept=".json,application/json"
+        onChange={handleImportBackupJSON}
+        className="hidden"
+      />
       {/* ============================================================ */}
       {/* IMMERSIVE SIDEBAR: CLASSES ONLY (CLEAN & MINIMALIST) */}
       {/* ============================================================ */}
@@ -1790,6 +2359,28 @@ export function ClassRecord({
               Sync
             </span>
           </button>
+
+          {/* EXPORT / IMPORT BACKUP JSON ROW */}
+          <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+            <button
+              type="button"
+              onClick={handleExportBackupJSON}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl font-bold text-[11px] text-slate-600 bg-slate-50 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80 transition-colors cursor-pointer"
+              title="Download full Class & Rewards backup (.json)"
+            >
+              <Download size={12} />
+              <span>Backup</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => backupFileInputRef.current?.click()}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl font-bold text-[11px] text-slate-600 bg-slate-50 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80 transition-colors cursor-pointer"
+              title="Import Class & Rewards backup (.json)"
+            >
+              <Upload size={12} />
+              <span>Restore File</span>
+            </button>
+          </div>
 
           {/* LOAD DEMO CLASSES BUTTON (FOR ADMIN ONLY) */}
           {(user?.email?.toLowerCase().trim() === ADMIN_EMAIL || (typeof window !== 'undefined' && localStorage.getItem('squid_is_admin') === 'true')) && (
@@ -2187,32 +2778,51 @@ export function ClassRecord({
           <div className="flex-1 overflow-y-auto p-6 md:p-12 flex flex-col items-center justify-center">
             <div className="w-full max-w-lg text-center p-8 sm:p-10 bg-slate-50/80 rounded-3xl border-2 border-dashed border-slate-200 shadow-xs">
               <div className="w-20 h-20 rounded-3xl bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center mx-auto mb-5 text-4xl shadow-xs">
-                🏫
+                🐹
               </div>
               <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mb-2">No Classes Added Yet</h3>
               <p className="text-sm font-medium text-slate-500 mb-6 leading-relaxed">
-                Add your own classes to begin tracking classroom dollars, awarding points, and launching Squid mini-games with your students.
+                Add your classes to award classroom dollars, unlock cute hamster hats & accessories, and celebrate with glowing team rewards!
               </p>
+
+              {cloudQuotaNotice && (
+                <div className="mb-5 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-left flex items-start gap-2.5">
+                  <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs font-semibold text-amber-900 leading-relaxed">
+                    Cloud read quota is temporarily resting today — your Device IndexedDB & Server Vaults are active and will safely save every class you create or restore.
+                  </p>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
                 <button
                   type="button"
                   onClick={() => setShowNewClassModal(true)}
-                  className="flex-1 py-4 px-6 rounded-2xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:scale-102 active:scale-98"
+                  className="flex-1 w-full py-4 px-5 rounded-2xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:scale-102 active:scale-98"
                 >
                   <Plus size={20} className="stroke-[3]" />
                   <span>Add Your First Class</span>
                 </button>
-                {user && !user.isAnonymous && (
-                  <button
-                    type="button"
-                    onClick={handleRecoverMyClasses}
-                    className="py-4 px-6 rounded-2xl font-bold text-sm bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/90 shadow-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:scale-102 active:scale-98"
-                    title="Pull your classes from your Google cloud account"
-                  >
-                    <RotateCcw size={18} />
-                    <span>Sync from Cloud</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleRecoverMyClasses}
+                  className="w-full sm:w-auto py-4 px-5 rounded-2xl font-bold text-sm bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/90 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer hover:scale-102 active:scale-98"
+                  title="Scan Device IndexedDB, Server Backup, and Cloud Vaults"
+                >
+                  <RotateCcw size={18} />
+                  <span>Recover / Sync</span>
+                </button>
+              </div>
+
+              <div className="mt-3 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => backupFileInputRef.current?.click()}
+                  className="py-2 px-4 rounded-xl font-bold text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Upload size={14} />
+                  <span>Import Backup File (.json)</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2472,6 +3082,20 @@ export function ClassRecord({
                     </div>
                   </button>
 
+                  {/* Sound Effects Toggle */}
+                  <button
+                    type="button"
+                    onClick={toggleSoundMuted}
+                    className={`p-2.5 rounded-2xl font-bold text-xs transition-colors cursor-pointer border ${
+                      soundMuted
+                        ? 'bg-slate-100 text-slate-400 border-slate-200/60 hover:bg-slate-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                    }`}
+                    title={soundMuted ? 'Unmute Reward Sound Effects' : 'Mute Reward Sound Effects'}
+                  >
+                    {soundMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                  </button>
+
                   {/* Export CSV */}
                   <button
                     onClick={handleExportCSV}
@@ -2664,22 +3288,41 @@ export function ClassRecord({
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-7 sm:gap-8">
                     {activeClass.groups.map(group => {
                       const groupStudents = activeClass.students.filter(s => group.studentIds.includes(s.id));
-                      const groupTotalDollars = groupStudents.reduce((sum, s) => sum + s.dollars, 0);
+                      const groupTotalDollars = groupStudents.reduce(
+                        (sum, s) => sum + (staggeredDollarOverrides[s.id] ?? s.dollars),
+                        0
+                      );
+                      const isCascadingThisGroup = activeCascadingGroupId === group.id;
 
                       return (
                         <div
                           key={group.id}
-                          className="p-6 sm:p-7 rounded-3xl border-2 border-slate-200/90 bg-white hover:border-emerald-500 transition-all shadow-sm hover:shadow-xl flex flex-col justify-between"
+                          className={`p-6 sm:p-7 rounded-3xl border-2 transition-all flex flex-col justify-between ${
+                            isCascadingThisGroup
+                              ? 'border-amber-400 ring-4 ring-amber-300/40 bg-amber-50/20 shadow-xl'
+                              : 'border-slate-200/90 bg-white hover:border-emerald-500 shadow-sm hover:shadow-xl'
+                          }`}
                         >
                           <div>
                             {/* GROUP CARD HEADER (BIGGER) */}
                             <div className="flex items-start justify-between mb-4">
                               <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-black text-xl shadow-xs">
+                                <div className={`w-12 h-12 rounded-2xl text-white flex items-center justify-center font-black text-xl shadow-xs transition-transform ${
+                                  isCascadingThisGroup
+                                    ? 'bg-gradient-to-br from-amber-400 to-emerald-500 scale-110'
+                                    : 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                                }`}>
                                   👥
                                 </div>
                                 <div>
-                                  <h4 className="font-black text-xl sm:text-2xl text-slate-900 tracking-tight">{group.name}</h4>
+                                  <h4 className="font-black text-xl sm:text-2xl text-slate-900 tracking-tight flex items-center gap-2">
+                                    <span>{group.name}</span>
+                                    {isCascadingThisGroup && (
+                                      <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
+                                        Combo Glow ✨
+                                      </span>
+                                    )}
+                                  </h4>
                                   <p className="text-xs sm:text-sm font-semibold text-slate-400">
                                     {groupStudents.length} {groupStudents.length === 1 ? 'student' : 'students'}
                                   </p>
@@ -2687,7 +3330,9 @@ export function ClassRecord({
                               </div>
 
                               <div className="flex items-center gap-2">
-                                <span className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-black border ${
+                                <span className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-black border transition-transform ${
+                                  isCascadingThisGroup ? 'scale-110 ring-2 ring-amber-300' : ''
+                                } ${
                                   groupTotalDollars < 0 
                                     ? 'bg-rose-100 text-rose-800 border-rose-300' 
                                     : 'bg-emerald-100 text-emerald-800 border-emerald-300'
@@ -2713,29 +3358,42 @@ export function ClassRecord({
                               </div>
                             </div>
 
-                            {/* STUDENTS GRID IN GROUP (BIGGER SPRITES & CARDS) */}
+                            {/* STUDENTS GRID IN GROUP (BIGGER SPRITES & SEQUENTIAL GLOW) */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 my-5 py-4 border-y border-slate-100 min-h-[140px]">
-                              {groupStudents.map(student => (
-                                <div
-                                  key={student.id}
-                                  onClick={() => setSelectedStudent(student)}
-                                  className="flex flex-col items-center p-3 rounded-2xl hover:bg-emerald-50 hover:scale-105 hover:shadow-sm border border-slate-100 hover:border-emerald-200 transition-all cursor-pointer group text-center bg-slate-50/50"
-                                  title={`Click to award or deduct ${student.name}`}
-                                >
-                                  <div className="relative">
-                                    <SquidHamsterSprite 
-                                      number={student.number} 
-                                      dollars={student.dollars}
-                                      size={70} 
-                                      showBadge={true} 
-                                      liveDelta={liveEffect && liveEffect.studentId === student.id ? liveEffect : null}
-                                    />
+                              {groupStudents.map(student => {
+                                const studentLiveEffect = activeEffectsByStudent[student.id] || null;
+                                const displayedDollars = staggeredDollarOverrides[student.id] ?? student.dollars;
+
+                                return (
+                                  <div
+                                    key={student.id}
+                                    onClick={() => setSelectedStudent(student)}
+                                    className={`flex flex-col items-center p-3 rounded-2xl border transition-all cursor-pointer group text-center ${
+                                      studentLiveEffect
+                                        ? studentLiveEffect.amount >= 0
+                                          ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-300/70 scale-105 shadow-lg'
+                                          : 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-300/70 scale-105 shadow-md'
+                                        : 'bg-slate-50/50 border-slate-100 hover:bg-emerald-50 hover:scale-105 hover:shadow-sm hover:border-emerald-200'
+                                    }`}
+                                    title={`Click to award or deduct ${student.name}`}
+                                  >
+                                    <div className="relative">
+                                      <SquidHamsterSprite 
+                                        number={student.number} 
+                                        dollars={displayedDollars}
+                                        size={74} 
+                                        showBadge={true}
+                                        equippedGearId={student.equippedGearId}
+                                        avatarStyle={student.avatarStyle || 'cute'}
+                                        liveDelta={studentLiveEffect}
+                                      />
+                                    </div>
+                                    <span className="text-xs sm:text-sm font-black text-slate-900 text-center w-full px-1 mt-2 leading-snug break-words min-h-[2.5rem] flex items-center justify-center group-hover:text-emerald-700 transition-colors">
+                                      {student.name}
+                                    </span>
                                   </div>
-                                  <span className="text-xs sm:text-sm font-black text-slate-900 text-center w-full px-1 mt-2 leading-snug break-words min-h-[2.5rem] flex items-center justify-center group-hover:text-emerald-700 transition-colors">
-                                    {student.name}
-                                  </span>
-                                </div>
-                              ))}
+                                );
+                              })}
                               {groupStudents.length === 0 && (
                                 <div className="col-span-full py-8 text-center text-xs sm:text-sm text-slate-400 font-medium">
                                   No students in this group yet. Click Edit to add members.
@@ -2744,8 +3402,17 @@ export function ClassRecord({
                             </div>
                           </div>
 
-                          {/* GROUP ACTION BUTTONS: AWARD & DEDUCT (BIGGER) */}
-                          <div className="flex items-center gap-3 pt-3">
+                          {/* GROUP ACTION BUTTONS: QUICK +$1 CASCADE, AWARD & DEDUCT */}
+                          <div className="flex items-center gap-2.5 pt-3 flex-wrap sm:flex-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleAwardGroup(group.id, 1, 'Quick Team +$1')}
+                              className="py-3 px-3.5 rounded-2xl font-black text-xs sm:text-sm bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-white shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all hover:scale-104 active:scale-98 cursor-pointer shrink-0"
+                              title="Instantly give +$1 to each member with one-by-one glowing combo chimes!"
+                            >
+                              <Sparkles size={15} />
+                              <span>+$1 Each</span>
+                            </button>
                             <button
                               type="button"
                               onClick={() => {
@@ -2763,10 +3430,10 @@ export function ClassRecord({
                                 setGroupForAward(group);
                                 setGroupAwardMode('deduct');
                               }}
-                              className="flex-1 py-3 px-4 rounded-2xl font-black text-xs sm:text-sm bg-rose-50 hover:bg-rose-100 text-rose-700 border-2 border-rose-200 flex items-center justify-center gap-2 transition-all hover:scale-102 active:scale-98 cursor-pointer"
+                              className="py-3 px-3.5 rounded-2xl font-black text-xs sm:text-sm bg-rose-50 hover:bg-rose-100 text-rose-700 border-2 border-rose-200 flex items-center justify-center gap-1.5 transition-all hover:scale-102 active:scale-98 cursor-pointer"
                             >
                               <Minus size={16} className="stroke-[3]" />
-                              <span>Deduct Group</span>
+                              <span>Deduct</span>
                             </button>
                           </div>
                         </div>
@@ -2861,43 +3528,64 @@ export function ClassRecord({
                     </div>
                   )}
 
-                  {/* INDIVIDUAL SQUID GAME HAMSTER STUDENT CARDS - BORDERLESS & PROMINENT */}
-                  {displayedStudents.map(student => (
-                    <div
-                      key={student.id}
-                      onClick={() => setSelectedStudent(student)}
-                      className="flex flex-col items-center group cursor-pointer transition-transform duration-200 hover:-translate-y-2 relative"
-                    >
-                      {/* Quick delete student button on hover */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setStudentToDelete({ student, classId: activeClass.id, className: activeClass.name });
-                        }}
-                        className="absolute -top-1.5 -right-1.5 z-30 w-7 h-7 rounded-full bg-white/95 hover:bg-rose-50 text-slate-400 hover:text-rose-600 shadow-sm border border-slate-200/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110 cursor-pointer"
-                        title={`Delete ${student.name}`}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                  {/* INDIVIDUAL CUTE HAMSTER STUDENT CARDS - WITH HATS, GLOW & QUICK +$1 */}
+                  {displayedStudents.map(student => {
+                    const studentLiveEffect = activeEffectsByStudent[student.id] || null;
+                    const displayedDollars = staggeredDollarOverrides[student.id] ?? student.dollars;
 
-                      {/* Hamster Character Container - Borderless Floating Character */}
-                      <div className="flex items-center justify-center relative w-full aspect-square max-w-[150px] transition-transform duration-200 group-hover:scale-110 active:scale-95">
-                        <SquidHamsterSprite
-                          number={student.number}
-                          dollars={student.dollars}
-                          size={128}
-                          showBadge={true}
-                          liveDelta={liveEffect && liveEffect.studentId === student.id ? liveEffect : null}
-                        />
+                    return (
+                      <div
+                        key={student.id}
+                        onClick={() => setSelectedStudent(student)}
+                        className="flex flex-col items-center group cursor-pointer transition-transform duration-200 hover:-translate-y-2 relative pt-3"
+                      >
+                        {/* Quick +$1 reward button on hover */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAwardStudent(student.id, 1, 'Quick +$1 Star');
+                          }}
+                          className="absolute top-0 left-1 z-30 px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black shadow-md border border-emerald-300 opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95 cursor-pointer"
+                          title={`Give +$1 to ${student.name}`}
+                        >
+                          +$1 ✨
+                        </button>
+
+                        {/* Quick delete student button on hover */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setStudentToDelete({ student, classId: activeClass.id, className: activeClass.name });
+                          }}
+                          className="absolute top-0 right-1 z-30 w-7 h-7 rounded-full bg-white/95 hover:bg-rose-50 text-slate-400 hover:text-rose-600 shadow-sm border border-slate-200/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110 cursor-pointer"
+                          title={`Delete ${student.name}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+
+                        {/* Hamster Character Container - Borderless Floating Character */}
+                        <div className="flex items-center justify-center relative w-full aspect-square max-w-[155px] transition-transform duration-200 group-hover:scale-108 active:scale-95">
+                          <SquidHamsterSprite
+                            number={student.number}
+                            dollars={displayedDollars}
+                            size={128}
+                            showBadge={true}
+                            showGear={true}
+                            equippedGearId={student.equippedGearId}
+                            avatarStyle={student.avatarStyle || 'cute'}
+                            liveDelta={studentLiveEffect}
+                          />
+                        </div>
+                        
+                        {/* Complete Student Name across up to two lines without ellipsis */}
+                        <span className="mt-2 font-black text-xs sm:text-sm text-slate-900 group-hover:text-emerald-700 transition-colors text-center w-full max-w-[145px] px-1 leading-snug break-words min-h-[2.5rem] flex items-center justify-center">
+                          {student.name}
+                        </span>
                       </div>
-                      
-                      {/* Complete Student Name across up to two lines without ellipsis */}
-                      <span className="mt-2 font-black text-xs sm:text-sm text-slate-900 group-hover:text-emerald-700 transition-colors text-center w-full max-w-[145px] px-1 leading-snug break-words min-h-[2.5rem] flex items-center justify-center">
-                        {student.name}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {displayedStudents.length === 0 && (
@@ -2937,18 +3625,21 @@ export function ClassRecord({
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden flex flex-col max-h-[92vh]">
             
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-emerald-50/80 via-white to-slate-50">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-emerald-50/80 via-white to-amber-50/40">
               <div className="flex items-center gap-3.5 min-w-0">
                 <div 
-                  className="relative cursor-pointer hover:scale-105 transition-transform" 
+                  className="relative cursor-pointer hover:scale-105 transition-transform pt-2" 
                   onClick={() => setShowNumberPicker(!showNumberPicker)} 
-                  title="Click to change character"
+                  title="Click to change hamster character"
                 >
                   <SquidHamsterSprite 
-                    number={selectedStudent.number} 
-                    size={86} 
-                    showBadge={false} 
-                    liveDelta={liveEffect && liveEffect.studentId === selectedStudent.id ? liveEffect : null}
+                    number={selectedStudent.number}
+                    dollars={selectedStudent.dollars}
+                    size={88} 
+                    showBadge={false}
+                    equippedGearId={selectedStudent.equippedGearId}
+                    avatarStyle={selectedStudent.avatarStyle || 'cute'}
+                    liveDelta={activeEffectsByStudent[selectedStudent.id] || null}
                   />
                 </div>
 
@@ -2960,7 +3651,7 @@ export function ClassRecord({
                     <button
                       onClick={() => setShowNumberPicker(!showNumberPicker)}
                       className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 transition-colors flex items-center gap-1 cursor-pointer"
-                      title="Select character"
+                      title="Select hamster character"
                     >
                       <span>#{String(selectedStudent.number).padStart(3, '0')}</span>
                       <Edit3 size={11} />
@@ -2971,9 +3662,7 @@ export function ClassRecord({
                     <span className={`text-xl sm:text-2xl font-black tracking-tight transition-all duration-200 ${
                       selectedStudent.dollars < 0 ? 'text-rose-600 inline-block' : 'text-emerald-600 inline-block'
                     } ${
-                      liveEffect && liveEffect.studentId === selectedStudent.id 
-                        ? (liveEffect.amount >= 0 ? 'scale-120' : 'scale-120') 
-                        : ''
+                      activeEffectsByStudent[selectedStudent.id] ? 'scale-120' : ''
                     }`}>
                       {selectedStudent.dollars < 0 ? `-$${Math.abs(selectedStudent.dollars)}` : `$${selectedStudent.dollars}`}
                     </span>
@@ -3001,27 +3690,51 @@ export function ClassRecord({
               </div>
             </div>
 
-            {/* CHARACTER NUMBER PICKER (OFFICIAL CHARACTERS FROM EMBEDDED DRIVE PHOTOS) */}
+            {/* CHARACTER NUMBER & STYLE PICKER */}
             {showNumberPicker ? (
               <div className="p-5 overflow-y-auto max-h-80 border-b border-slate-100 bg-slate-50">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <div>
                     <span className="text-xs font-black text-slate-800 uppercase tracking-wider block">
-                      Select Character
+                      Select Hamster Character
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
-                      Numbered according to character photos (More to be added later)
+                      Choose cute storybook hamsters or classic tracksuit style
                     </span>
                   </div>
-                  <button 
-                    onClick={() => setShowNumberPicker(false)}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
-                  >
-                    Done
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleChangeStudentAvatarStyle(selectedStudent.id, 'cute')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black cursor-pointer transition-colors ${
+                        (selectedStudent.avatarStyle || 'cute') === 'cute'
+                          ? 'bg-amber-500 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      🐹 Cute Fluffy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleChangeStudentAvatarStyle(selectedStudent.id, 'classic')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black cursor-pointer transition-colors ${
+                        selectedStudent.avatarStyle === 'classic'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      🎽 Classic
+                    </button>
+                    <button 
+                      onClick={() => setShowNumberPicker(false)}
+                      className="ml-1 text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
 
-                {/* OFFICIAL EMBEDDED CHARACTERS */}
+                {/* CHARACTER ROSTER */}
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5 mb-2">
                   {GOOGLE_DRIVE_STUDENTS.map(char => (
                     <button
@@ -3033,7 +3746,12 @@ export function ClassRecord({
                           : 'border-slate-200 bg-white hover:border-emerald-400 hover:bg-slate-50'
                       }`}
                     >
-                      <SquidHamsterSprite number={char.id} size={62} showBadge={false} />
+                      <SquidHamsterSprite
+                        number={char.id}
+                        size={62}
+                        showBadge={false}
+                        avatarStyle={selectedStudent.avatarStyle || 'cute'}
+                      />
                       <span className="text-xs font-black text-slate-800 mt-1">#{char.tag}</span>
                       <span className="text-[10px] font-semibold text-slate-500 text-center leading-tight truncate max-w-[90px]">{char.title}</span>
                     </button>
@@ -3042,8 +3760,95 @@ export function ClassRecord({
               </div>
             ) : null}
 
-            {/* Modal Body: Dollar Reward Presets */}
+            {/* Modal Body: Hamster Wardrobe + Dollar Reward Presets */}
             <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              {/* HAMSTER HAT & ACCESSORY WARDROBE */}
+              {(() => {
+                const activeGear = getActiveHamsterGear(selectedStudent.dollars, selectedStudent.equippedGearId);
+                const nextGear = getNextHamsterGear(selectedStudent.dollars);
+                const unlockedIds = new Set(getUnlockedGearTiers(selectedStudent.dollars).map(g => g.id));
+                const currentEquipPref = selectedStudent.equippedGearId || 'auto';
+
+                return (
+                  <div className="bg-gradient-to-r from-amber-50/90 via-yellow-50/50 to-emerald-50/70 p-4 rounded-2xl border border-amber-200/80">
+                    <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{activeGear ? activeGear.badgeEmoji : '🐹'}</span>
+                        <div>
+                          <span className="text-xs font-black text-amber-950 uppercase tracking-wider block leading-tight">
+                            Hamster Hat & Item Wardrobe
+                          </span>
+                          <span className="text-[11px] font-semibold text-amber-800/80">
+                            {activeGear
+                              ? `Wearing: ${activeGear.name}`
+                              : 'Earn $1 to unlock the first cute hat!'}
+                          </span>
+                        </div>
+                      </div>
+                      {nextGear ? (
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-white/90 border border-amber-200 text-emerald-800">
+                          +${Math.max(1, nextGear.minDollars - Math.max(0, selectedStudent.dollars))} more → {nextGear.badgeEmoji} {nextGear.shortName} (${nextGear.minDollars})
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-amber-200/80 text-amber-950">
+                          All Hats Unlocked! 🏆
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                      <button
+                        type="button"
+                        onClick={() => handleChangeStudentGear(selectedStudent.id, 'auto')}
+                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black shrink-0 border transition-all cursor-pointer ${
+                          currentEquipPref === 'auto'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-400'
+                        }`}
+                      >
+                        ✨ Auto Best
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleChangeStudentGear(selectedStudent.id, 'none')}
+                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold shrink-0 border transition-all cursor-pointer ${
+                          currentEquipPref === 'none'
+                            ? 'bg-slate-800 text-white border-slate-800 shadow-2xs'
+                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+                        }`}
+                      >
+                        No Hat
+                      </button>
+                      {HAMSTER_GEAR_TIERS.map(tier => {
+                        const isUnlocked = unlockedIds.has(tier.id);
+                        const isEquipped = activeGear?.id === tier.id && currentEquipPref !== 'none';
+                        return (
+                          <button
+                            key={tier.id}
+                            type="button"
+                            disabled={!isUnlocked}
+                            onClick={() => isUnlocked && handleChangeStudentGear(selectedStudent.id, tier.id)}
+                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black shrink-0 border transition-all flex items-center gap-1 ${
+                              isUnlocked
+                                ? isEquipped && currentEquipPref === tier.id
+                                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs cursor-pointer'
+                                  : isEquipped
+                                    ? 'bg-amber-100 text-amber-950 border-amber-400 cursor-pointer'
+                                    : 'bg-white text-slate-800 border-amber-200 hover:bg-amber-50 cursor-pointer'
+                                : 'bg-slate-100/80 text-slate-400 border-slate-200/70 cursor-not-allowed opacity-75'
+                            }`}
+                            title={isUnlocked ? `Equip ${tier.name}` : `Unlocks at $${tier.minDollars}`}
+                          >
+                            <span>{isUnlocked ? tier.badgeEmoji : '🔒'}</span>
+                            <span>{tier.shortName}</span>
+                            <span className="text-[9px] opacity-80">${tier.minDollars}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               
               {/* MY CUSTOM CLASS REWARDS */}
               <div className="bg-gradient-to-r from-purple-50/80 via-indigo-50/50 to-purple-50/80 p-4 rounded-2xl border border-purple-200/80">
@@ -4378,11 +5183,14 @@ export function ClassRecord({
             <span className="text-xs font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full mb-4">
               Random Player Picked 🎯
             </span>
-            <div className="my-3">
+            <div className="my-3 pt-2">
               <SquidHamsterSprite 
                 number={randomStudentModal.number} 
                 size={150} 
                 dollars={randomStudentModal.dollars}
+                equippedGearId={randomStudentModal.equippedGearId}
+                avatarStyle={randomStudentModal.avatarStyle || 'cute'}
+                showGear={true}
               />
             </div>
             <h3 className="text-2xl font-black text-slate-900 mb-1">{randomStudentModal.name}</h3>

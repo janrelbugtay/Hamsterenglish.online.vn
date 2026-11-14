@@ -55,7 +55,9 @@ export function FullscreenButton({
       applyCssFullscreen(el, true);
       setIsFullscreen(true);
       try {
-        if (el.requestFullscreen) {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        } else if (el.requestFullscreen) {
           await el.requestFullscreen();
         }
       } catch {

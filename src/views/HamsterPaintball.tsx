@@ -61,6 +61,7 @@ import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { persistUserGameToCloudAndCache } from '../utils/platformCache';
+import { CUTE_HAMSTER_BREEDS } from '../lib/studentCharacters';
 import {
   collection,
   query,
@@ -542,6 +543,12 @@ function HamsterCharacterAvatar({
   const teamBandDarkHex = isRedTeam ? '#b91c1c' : isBlueTeam ? '#1d4ed8' : skin.badgeBg;
   const activePaintHex = hasTeamBand ? teamBandHex : skin.paintHex;
 
+  const skinIndex = Math.max(
+    0,
+    HAMSTER_SKINS.findIndex(s => s.id === skin.id)
+  );
+  const cuteBreed = CUTE_HAMSTER_BREEDS[skinIndex % CUTE_HAMSTER_BREEDS.length];
+
   return (
     <svg
       width={size}
@@ -550,6 +557,9 @@ function HamsterCharacterAvatar({
       className="overflow-visible select-none shrink-0 drop-shadow-[0_6px_12px_rgba(15,23,42,0.22)]"
     >
       <defs>
+        <clipPath id={`${uid}-portrait-clip`}>
+          <circle cx="58" cy="54" r="38" />
+        </clipPath>
         {/* Warm Plush 3D Fur Gradient (Vibrant, Never Muddy or Black!) */}
         <radialGradient id={`${uid}-fur`} cx="36%" cy="28%" r="72%">
           <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
@@ -845,28 +855,52 @@ function HamsterCharacterAvatar({
         <rect x="51" y="21.5" width="14" height="4.5" rx="2.2" fill={teamBandHex} />
       </g>
 
+      {/* Cute 2D Illustrated Hamster Portrait Overlay inside Head Frame */}
+      {cuteBreed?.imageUrl && (
+        <g clipPath={`url(#${uid}-portrait-clip)`}>
+          <circle cx="58" cy="54" r="38" fill={skin.bellyHex} />
+          <image
+            href={cuteBreed.imageUrl}
+            x="16"
+            y="12"
+            width="84"
+            height="84"
+            preserveAspectRatio="xMidYMid slice"
+          />
+          <circle
+            cx="58"
+            cy="54"
+            r="37"
+            fill="none"
+            stroke={teamBandHex}
+            strokeWidth="3.5"
+            opacity="0.9"
+          />
+        </g>
+      )}
+
       {/* Pro Paintball Visor & Expressive Glossy Eyes */}
-      <rect x="26" y="30" width="64" height="19.5" rx="9.8" fill="#1e293b" stroke="#ffffff" strokeWidth="2" />
-      <rect x="28.5" y="32" width="59" height="15.5" rx="7.8" fill={`url(#${uid}-visor)`} />
+      <rect x="26" y="28" width="64" height="16.5" rx="8.2" fill="#1e293b" stroke="#ffffff" strokeWidth="2" opacity="0.92" />
+      <rect x="28.5" y="30" width="59" height="12.5" rx="6.2" fill={`url(#${uid}-visor)`} opacity="0.88" />
       {/* Expressive Eyes with Triple Catchlights */}
-      <circle cx="44" cy="39.8" r="5.2" fill="#0f172a" />
-      <circle cx="42.2" cy="37.8" r="2.2" fill="#ffffff" />
-      <circle cx="45.8" cy="41.2" r="1.1" fill="#ffffff" opacity="0.9" />
-      <circle cx="72" cy="39.8" r="5.2" fill="#0f172a" />
-      <circle cx="70.2" cy="37.8" r="2.2" fill="#ffffff" />
-      <circle cx="73.8" cy="41.2" r="1.1" fill="#ffffff" opacity="0.9" />
+      <circle cx="44" cy="36.2" r="4.4" fill="#0f172a" />
+      <circle cx="42.4" cy="34.6" r="1.9" fill="#ffffff" />
+      <circle cx="45.6" cy="37.5" r="0.95" fill="#ffffff" opacity="0.9" />
+      <circle cx="72" cy="36.2" r="4.4" fill="#0f172a" />
+      <circle cx="70.4" cy="34.6" r="1.9" fill="#ffffff" />
+      <circle cx="73.6" cy="37.5" r="0.95" fill="#ffffff" opacity="0.9" />
       {/* Curved Lens Glint */}
       <path
-        d="M 33 34.5 Q 58 31.5 82 34.5"
+        d="M 33 32.2 Q 58 29.5 82 32.2"
         fill="none"
         stroke="#ffffff"
-        strokeWidth="2.6"
+        strokeWidth="2.4"
         strokeLinecap="round"
         opacity="0.88"
       />
 
       {/* Cute Pink Nose, Confident Smile & Buck Tooth */}
-      <ellipse cx="58" cy="51" rx="4.8" ry="3.4" fill="#f43f5e" />
+      <ellipse cx="58" cy="51" rx="4.2" ry="3.0" fill="#f43f5e" opacity={cuteBreed?.imageUrl ? 0 : 1} />
       <ellipse cx="56.5" cy="50" rx="1.8" ry="1.1" fill="#ffffff" opacity="0.85" />
       <path
         d="M 51.5 56 Q 58 61 64.5 56"
@@ -1927,11 +1961,7 @@ export default function HamsterPaintball({
         isJoiningStudent: true
       };
     }
-    const savedCode =
-      typeof window !== 'undefined' ? sessionStorage.getItem('hamster_pb_room_code') : null;
-    if (savedCode && /^[0-9A-Za-z]{4,6}$/.test(savedCode)) {
-      return { code: savedCode.toUpperCase(), isJoiningStudent: false };
-    }
+    // Always generate a fresh unique 6-digit room code for every new Host game session
     const generated = String(Math.floor(100000 + Math.random() * 900000));
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('hamster_pb_room_code', generated);
@@ -2059,6 +2089,11 @@ export default function HamsterPaintball({
     setTriviaDeckIndex(0);
 
     if (!initialGame.editMode && normalizedQs.length > 0) {
+      const freshCode = String(Math.floor(100000 + Math.random() * 900000));
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('hamster_pb_room_code', freshCode);
+      }
+      setRoomCode(freshCode);
       setRole('host');
       setScreen('lobby');
     } else {
@@ -2342,9 +2377,9 @@ export default function HamsterPaintball({
     }, 1850);
   };
 
-  // Collectible Health Cans & Defence Cans (Players pick up cans around the arena and LONG-PRESS to use them!)
-  const [healthCans, setHealthCans] = useState<number>(1);
-  const [shieldCans, setShieldCans] = useState<number>(1);
+  // Collectible Health Cans & Defence Cans (1 Health Can & 1 Defence Can spawn every 2 minutes!)
+  const [healthCans, setHealthCans] = useState<number>(0);
+  const [shieldCans, setShieldCans] = useState<number>(0);
   const [nearbyArenaCan, setNearbyArenaCan] = useState<{ id: string; type: 'health' | 'shield' } | null>(null);
   const [holdingCanType, setHoldingCanType] = useState<'health' | 'shield' | null>(null);
   const [canHoldProgress, setCanHoldProgress] = useState<number>(0); // 0 to 100
@@ -3106,7 +3141,7 @@ export default function HamsterPaintball({
             if (pu.active && pu.type === type && Math.hypot(gNow.x - pu.x, gNow.z - pu.z) < 2.8) {
               pu.active = false;
               pu.mesh.visible = false;
-              pu.respawnAt = performance.now() + 11000;
+              pu.respawnAt = performance.now() + 120000;
               consumedArenaCan = true;
               break;
             }
@@ -3529,6 +3564,8 @@ export default function HamsterPaintball({
     setHp(100);
     setShield(100);
     setAmmo(0);
+    setHealthCans(0);
+    setShieldCans(0);
     setScore(0);
     setKos(0);
     setKoStreak(0);
@@ -3544,7 +3581,8 @@ export default function HamsterPaintball({
     stateSnapRef.current.questionsAnswered = 0;
     stateSnapRef.current.questionsCorrect = 0;
     stateSnapRef.current.questionsWrong = 0;
-    setIsQuestionModalOpen(false);
+    // Open Question Modal automatically when match starts so players answer questions to earn paintballs
+    setIsQuestionModalOpen(true);
 
     const effectiveTeam: TeamId =
       activeMode === 'solo'
@@ -7378,19 +7416,11 @@ export default function HamsterPaintball({
     createLowSnakeShield(11.0, 16, 0.16, '#2563eb', '#38bdf8');
 
     // =========================================================
-    // 10 BALANCED 3D HEALTH CANS & DEFENCE CANS ACROSS THE COMPACT ARENA
+    // 1 HEALTH CAN & 1 DEFENCE CAN IN THE ARENA (RESPAWNS ONCE EVERY 2 MINUTES = 120,000ms)
     // =========================================================
     const powerupConfigs: Array<{ type: 'health' | 'shield'; x: number; z: number }> = [
-      { type: 'shield', x: -13, z: 0 },
-      { type: 'shield', x: 13, z: 0 },
-      { type: 'health', x: -24, z: -12 },
-      { type: 'health', x: 24, z: -12 },
-      { type: 'health', x: -24, z: 12 },
-      { type: 'health', x: 24, z: 12 },
-      { type: 'health', x: -5, z: -10 },
-      { type: 'shield', x: 5, z: -10 },
-      { type: 'shield', x: -5, z: 10 },
-      { type: 'health', x: 5, z: 10 }
+      { type: 'health', x: -13, z: 0 },
+      { type: 'shield', x: 13, z: 0 }
     ];
 
     const powerups: PowerupNode[] = powerupConfigs.map((cfg, idx) => {
@@ -8447,21 +8477,21 @@ export default function HamsterPaintball({
             closestCan = { id: pu.id, type: pu.type };
           }
           if (dist < 2.1) {
-            if (pu.type === 'health' && snapState.healthCans < 3) {
+            if (pu.type === 'health' && snapState.healthCans < 1) {
               pu.active = false;
               pu.mesh.visible = false;
-              pu.respawnAt = now + 11000;
+              pu.respawnAt = now + 120000;
               sfx.playCanPickup();
-              setHealthCans(c => Math.min(3, c + 1));
-              setPickupBannerText('🧪 COLLECTED HEALTH CAN (+45 HP)!');
+              setHealthCans(c => Math.min(1, c + 1));
+              setPickupBannerText('🧪 COLLECTED HEALTH CAN (+45 HP • RESPAWNS IN 2 MIN)!');
               setTimeout(() => setPickupBannerText(null), 2200);
-            } else if (pu.type === 'shield' && snapState.shieldCans < 3) {
+            } else if (pu.type === 'shield' && snapState.shieldCans < 1) {
               pu.active = false;
               pu.mesh.visible = false;
-              pu.respawnAt = now + 11000;
+              pu.respawnAt = now + 120000;
               sfx.playCanPickup();
-              setShieldCans(c => Math.min(3, c + 1));
-              setPickupBannerText('🛡️ COLLECTED DEFENCE CAN (+50 SHIELD)!');
+              setShieldCans(c => Math.min(1, c + 1));
+              setPickupBannerText('🛡️ COLLECTED DEFENCE CAN (+50 SHIELD • RESPAWNS IN 2 MIN)!');
               setTimeout(() => setPickupBannerText(null), 2200);
             }
           }
@@ -9163,9 +9193,12 @@ export default function HamsterPaintball({
         g.lastShotTime = now;
         sfx.playWrong();
         setPickupBannerText(
-          `🎯 OUT OF PAINTBALLS! CLICK THE "QUESTIONS" BUTTON BELOW TO EARN +${snap.ballsPerQuestion || 10} BALLS!`
+          `🎯 ANSWER QUESTIONS TO EARN +${snap.ballsPerQuestion || 10} PAINTBALLS!`
         );
         setTimeout(() => setPickupBannerText(null), 2400);
+        if (!snap.isAnyModalOpen) {
+          setIsQuestionModalOpen(true);
+        }
         return;
       }
       setAmmo(a => Math.max(0, a - 1));

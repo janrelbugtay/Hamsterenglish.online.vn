@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { collection, query, where, getDocs, onSnapshot, doc, getDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { ViewState } from "../types";
@@ -21,7 +21,8 @@ import {
   Trash2,
   ShieldAlert,
   CheckCircle2,
-  Layers
+  Layers,
+  EyeOff
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
@@ -33,6 +34,11 @@ import {
   setCachedPageVisits,
   syncWithServerPlatformCache,
   markGameDeleted,
+  unpublishCommunityGame,
+  getDeletedGameIds,
+  logFirestoreError,
+  FirestoreOperationType,
+  withSaveTimeout,
 } from "../utils/platformCache";
 
 const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg";
@@ -247,7 +253,18 @@ export function PublicDashboard({
   const [modeModalGame, setModeModalGame] = useState<any | null>(null);
   const [gameToDelete, setGameToDelete] = useState<any | null>(null);
   const [isDeletingGame, setIsDeletingGame] = useState(false);
+  const [gameToUnpublish, setGameToUnpublish] = useState<any | null>(null);
+  const [isUnpublishingGame, setIsUnpublishingGame] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const sessionRemovedIdsRef = useRef<Set<string>>(new Set());
+
+  const excludeRemovedGames = (list: any[]) => {
+    const deletedSet = getDeletedGameIds();
+    return list.filter((g) => {
+      const id = String(g?.id || '').trim();
+      return id && !deletedSet.has(id) && !sessionRemovedIdsRef.current.has(id);
+    });
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -270,16 +287,41 @@ export function PublicDashboard({
     setIsDeletingGame(true);
     try {
       if (targetId) {
-        markGameDeleted(targetId);
-        await deleteDoc(doc(db, "mysteryBoxGames", targetId)).catch((err) => {
-          console.warn("Firestore delete notice:", err);
-        });
+        sessionRemovedIdsRef.current.add(targetId);
+        setGames((prev) => prev.filter((g) => String(g.id) !== targetId));
+        await markGameDeleted(targetId);
+        const delRes = await withSaveTimeout(
+          deleteDoc(doc(db, "mysteryBoxGames", targetId)),
+          2500
+        );
+        if (!delRes.ok && !delRes.timedOut && delRes.error?.code === 'permission-denied') {
+          logFirestoreError(delRes.error, FirestoreOperationType.DELETE, `mysteryBoxGames/${targetId}`, user);
+        }
       }
-      setGames((prev) => prev.filter((g) => String(g.id) !== targetId));
       setGameToDelete(null);
       showToast(`Deleted "${targetTitle}" (published by ${targetCreator}) from Community`);
     } finally {
       setIsDeletingGame(false);
+    }
+  };
+
+  const handleConfirmAdminUnpublish = async () => {
+    if (!isAdmin || !gameToUnpublish) return;
+
+    const targetId = String(gameToUnpublish.id || "").trim();
+    const targetTitle = gameToUnpublish.topic || gameToUnpublish.name || gameToUnpublish.title || "Untitled Game";
+
+    setIsUnpublishingGame(true);
+    try {
+      if (targetId) {
+        sessionRemovedIdsRef.current.add(targetId);
+        setGames((prev) => prev.filter((g) => String(g.id) !== targetId));
+        await unpublishCommunityGame(db, user, gameToUnpublish);
+      }
+      setGameToUnpublish(null);
+      showToast(`Unpublished "${targetTitle}" — kept safely as Private in My Games`);
+    } finally {
+      setIsUnpublishingGame(false);
     }
   };
 
@@ -353,16 +395,28 @@ export function PublicDashboard({
       }
 
       const firestorePublic = Array.from(gamesMap.values());
-      const merged = mergePublicGames(firestorePublic, user);
+      const merged = excludeRemovedGames(mergePublicGames(firestorePublic, user));
       setGames(merged);
 
-      // Sync with server cache in background (excluding fallback comm-* games)
+      // Sync with server cache in background (excluding fallback comm-* games and session-removed IDs)
       const realPublicGames = merged.filter(
-        (g: any) => g && g.id && !String(g.id).startsWith('comm-') && !String(g.id).startsWith('sample-')
+        (g: any) =>
+          g &&
+          g.id &&
+          !String(g.id).startsWith('comm-') &&
+          !String(g.id).startsWith('sample-') &&
+          !sessionRemovedIdsRef.current.has(String(g.id))
       );
       syncWithServerPlatformCache({ games: realPublicGames }).then((serverData) => {
         if (serverData && Array.isArray(serverData.games) && serverData.games.length > 0) {
-          setGames((prev) => mergePublicGames([...prev, ...serverData.games], user));
+          const serverOnlyPublic = serverData.games.filter(
+            (g: any) => g && (g.isPublic === true || g.isPublic === 'true' || String(g.isPublic).toLowerCase() === 'true')
+          );
+          setGames((prev) =>
+            excludeRemovedGames(
+              mergePublicGames([...excludeRemovedGames(prev), ...serverOnlyPublic], user)
+            )
+          );
         }
         if (serverData && serverData.pageVisits) {
           setPageVisits(setCachedPageVisits(serverData.pageVisits));
@@ -370,7 +424,7 @@ export function PublicDashboard({
       });
     } catch (error) {
       console.warn("Using cached community games:", error);
-      setGames((prev) => mergePublicGames(prev, user));
+      setGames((prev) => excludeRemovedGames(mergePublicGames(prev, user)));
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -379,7 +433,7 @@ export function PublicDashboard({
 
   // Setup real-time listener for public games
   useEffect(() => {
-    setGames((prev) => mergePublicGames(prev, user));
+    setGames((prev) => excludeRemovedGames(mergePublicGames(prev, user)));
     fetchAllPublicGames();
 
     let unsubscribe: (() => void) | null = null;
@@ -393,11 +447,17 @@ export function PublicDashboard({
         snapshot.forEach((doc) => {
           snapGames.push({ id: doc.id, ...doc.data() });
         });
-        setGames((prev) => mergePublicGames([...prev, ...snapGames], user));
+        setGames((prev) =>
+          excludeRemovedGames(mergePublicGames([...excludeRemovedGames(prev), ...snapGames], user))
+        );
         setLoading(false);
       }, (err) => {
-        console.warn("Realtime listener notice:", err);
-        setGames((prev) => mergePublicGames(prev, user));
+        if ((err as any)?.code === 'permission-denied') {
+          logFirestoreError(err, FirestoreOperationType.LIST, 'mysteryBoxGames', user);
+        } else {
+          console.warn("Realtime listener notice:", err);
+        }
+        setGames((prev) => excludeRemovedGames(mergePublicGames(prev, user)));
         setLoading(false);
       });
     } catch (e) {
@@ -1035,6 +1095,7 @@ export function PublicDashboard({
             const creatorLabel = (game.creatorName || "Community Teacher").trim();
             const creatorInitial = creatorLabel.charAt(0).toUpperCase() || "T";
             const canAdminDeleteOtherGame = isAdmin && !isOwner;
+            const canAdminUnpublishOwnGame = isAdmin && isOwner;
 
             return (
               <div
@@ -1126,6 +1187,21 @@ export function PublicDashboard({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {canAdminUnpublishOwnGame && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setGameToUnpublish(game);
+                          }}
+                          title="Admin Only: Unpublish your game from Community (keeps it Private in My Games)"
+                          className="px-2.5 py-1.5 rounded-xl text-xs font-extrabold bg-amber-50 hover:bg-amber-600 text-amber-700 hover:text-white dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-600 dark:hover:text-white border border-amber-200 dark:border-amber-800/60 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                        >
+                          <EyeOff size={13} />
+                          <span>Unpublish</span>
+                        </button>
+                      )}
+
                       {canAdminDeleteOtherGame && (
                         <button
                           type="button"
@@ -1208,6 +1284,67 @@ export function PublicDashboard({
               >
                 <Trash2 size={15} />
                 <span>{isDeletingGame ? "Deleting..." : "Delete Game"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin-Only Community Unpublish Own Game Modal */}
+      {isAdmin && gameToUnpublish && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => !isUnpublishingGame && setGameToUnpublish(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-200 dark:border-amber-800/60">
+                <EyeOff size={22} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider mb-1 border border-amber-200/70 dark:border-amber-800/50">
+                  <ShieldAlert size={11} /> Admin Function Only
+                </div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white leading-snug">
+                  Unpublish From Community?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  This removes your game from the public Community Hub. It will stay safely saved as Private in your My Games library.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-900/70 rounded-2xl p-3.5 border border-slate-200/70 dark:border-slate-700/70 flex flex-col gap-1">
+              <div className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                {gameToUnpublish.topic || gameToUnpublish.name || gameToUnpublish.title || "Untitled Game"}
+              </div>
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <span>{getTemplateInfo(gameToUnpublish.gameType).title}</span>
+                <span>·</span>
+                <span>Will remain Private in My Games</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={isUnpublishingGame}
+                onClick={() => setGameToUnpublish(null)}
+                className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-slate-600 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUnpublishingGame}
+                onClick={handleConfirmAdminUnpublish}
+                className="px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-600/20 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              >
+                <EyeOff size={15} />
+                <span>{isUnpublishingGame ? "Unpublishing..." : "Unpublish Game"}</span>
               </button>
             </div>
           </div>

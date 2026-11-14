@@ -51,7 +51,7 @@ if (typeof window !== 'undefined' && window.localStorage) {
             err.code === 1014)
         ) {
           try {
-            // Evict large shared/transient caches first before touching user-saved games
+            // Evict large shared/transient caches first while protecting active user class rosters
             const evictPatterns = [
               'firestore_',
               'hamster_cached_admin_games',
@@ -60,14 +60,21 @@ if (typeof window !== 'undefined' && window.localStorage) {
               'platform_cache_',
               'yogaClassicPoses_',
               'yogaCameraHandPoses_',
-              'squid_hamster_class_dollars_v13',
               'hamster_cached_user_games',
+              'hamster_esl_saved_games_v1',
+              'squid_hamster_class_dollars_v13',
             ];
             for (const pattern of evictPatterns) {
               const toEvict: string[] = [];
               for (let i = 0; i < this.length; i++) {
                 const k = this.key(i);
-                if (k && k !== key && k.startsWith(pattern)) {
+                if (
+                  k &&
+                  k !== key &&
+                  !k.startsWith('squid_hamster_class_dollars_v14') &&
+                  !k.startsWith('squid_class_meta_v1_') &&
+                  k.startsWith(pattern)
+                ) {
                   toEvict.push(k);
                 }
               }

@@ -56,11 +56,92 @@
 }
 
 .animate-live-pop {
-  animation: livePopFloat 1.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: livePopFloat 1.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-character-bounce {
-  animation: characterBounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: characterBounce 0.62s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes characterGlowAura {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  58% {
+    opacity: 0.92;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.32);
+  }
+}
+
+@keyframes hatUnlockPop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -85%) scale(0.25) rotate(-18deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -44%) scale(1.25) rotate(6deg);
+  }
+  75% {
+    transform: translate(-50%, -52%) scale(0.94) rotate(-3deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes sparkleOrbit {
+  0% {
+    opacity: 0;
+    transform: rotate(0deg) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+    transform: rotate(45deg) scale(1.08);
+  }
+  80% {
+    opacity: 0.85;
+    transform: rotate(140deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(180deg) scale(0.75);
+  }
+}
+
+@keyframes gentleHatFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-2.5px);
+  }
+}
+
+.animate-character-glow {
+  animation: characterGlowAura 1.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-hat-unlock {
+  animation: hatUnlockPop 0.72s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-sparkle-orbit {
+  animation: sparkleOrbit 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-hat-float {
+  animation: gentleHatFloat 2.8s ease-in-out infinite;
 }
 
 body {

@@ -994,9 +994,9 @@ export function isSyntheticOrSampleGame(g: any): boolean {
   return false;
 }
 
-export function markGameDeleted(gameId: string): void {
+export function markGameDeleted(gameId: string): Promise<void> {
   const id = String(gameId || '').trim();
-  if (!id) return;
+  if (!id) return Promise.resolve();
   try {
     const deletedSet = getDeletedGameIds();
     deletedSet.add(id);
@@ -1017,11 +1017,14 @@ export function markGameDeleted(gameId: string): void {
     const pubGames = safeReadLocalArray(CACHE_KEY_PUBLIC_GAMES).filter((g: any) => g && String(g.id) !== id);
     safeWriteLocal(CACHE_KEY_PUBLIC_GAMES, pubGames);
   } catch {}
-  fetch('/api/platform-cache', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deletedGameIds: [id] }),
-  }).catch(() => {});
+  return withSaveTimeout(
+    fetch('/api/platform-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deletedGameIds: [id] }),
+    }),
+    3000
+  ).then(() => undefined).catch(() => undefined);
 }
 
 /**
@@ -1449,7 +1452,7 @@ interface FirestoreErrorInfo {
   };
 }
 
-function logFirestoreError(error: unknown, operationType: FirestoreOperationType, path: string | null, user?: any) {
+export function logFirestoreError(error: unknown, operationType: FirestoreOperationType, path: string | null, user?: any) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -1470,7 +1473,7 @@ function logFirestoreError(error: unknown, operationType: FirestoreOperationType
   console.warn('Firestore Sync Notice:', JSON.stringify(errInfo));
 }
 
-function withSaveTimeout<T>(promise: Promise<T>, ms: number): Promise<{ ok: boolean; value?: T; timedOut?: boolean; error?: any }> {
+export function withSaveTimeout<T>(promise: Promise<T>, ms: number): Promise<{ ok: boolean; value?: T; timedOut?: boolean; error?: any }> {
   return new Promise((resolve) => {
     let settled = false;
     const timer = setTimeout(() => {
@@ -1790,9 +1793,126 @@ export async function syncLocalComputerGamesForUser(currentUser: any, db?: any):
   return ownedLocalGames;
 }
 
+function isTruthyPublicFlag(val: any): boolean {
+  return val === true || val === 'true' || String(val).toLowerCase() === 'true';
+}
+
+function getGameTimestampMs(g: any): number {
+  const val = g?.updatedAt || g?.publishedAt || g?.createdAt;
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  if (val?.toMillis) return val.toMillis();
+  if (val?.seconds) return val.seconds * 1000;
+  if (typeof val === 'string') {
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * Unpublishes a Community Hub game (`isPublic: false, publishedAt: null`) while keeping it safely
+ * saved as Private in the owner's My Games library, server cache, and Firestore.
+ */
+export async function unpublishCommunityGame(
+  db: any,
+  user: any,
+  game: any
+): Promise<{ ok: boolean; cloudSynced: boolean; updatedGame: any }> {
+  const targetId = String(game?.id || '').trim();
+  const now = new Date().toISOString();
+  const updatedGame = JSON.parse(
+    JSON.stringify({
+      ...game,
+      id: targetId,
+      isPublic: false,
+      publishedAt: null,
+      updatedAt: now,
+    })
+  );
+
+  // 1. Update local caches immediately (keep in user/admin games as private, remove from public cache)
+  try {
+    saveGameRecord(updatedGame);
+  } catch {}
+  try {
+    const pubGames = safeReadLocalArray(CACHE_KEY_PUBLIC_GAMES).filter((g: any) => g && String(g.id) !== targetId);
+    safeWriteLocal(CACHE_KEY_PUBLIC_GAMES, pubGames);
+  } catch {}
+  try {
+    const userGames = safeReadLocalArray(CACHE_KEY_USER_GAMES);
+    const idx = userGames.findIndex((g: any) => g && String(g.id) === targetId);
+    if (idx >= 0) {
+      userGames[idx] = { ...userGames[idx], ...updatedGame };
+    } else {
+      userGames.unshift(updatedGame);
+    }
+    safeWriteLocal(CACHE_KEY_USER_GAMES, userGames);
+  } catch {}
+  try {
+    const adminGames = safeReadLocalArray(CACHE_KEY_ADMIN_GAMES);
+    const idx = adminGames.findIndex((g: any) => g && String(g.id) === targetId);
+    if (idx >= 0) {
+      adminGames[idx] = { ...adminGames[idx], ...updatedGame };
+      safeWriteLocal(CACHE_KEY_ADMIN_GAMES, adminGames);
+    }
+  } catch {}
+
+  // 2. Log activity
+  if (user?.uid) {
+    const title = updatedGame.topic || updatedGame.name || updatedGame.title || 'Custom Game';
+    logUserActivity({
+      userId: user.uid,
+      userEmail: user.email || undefined,
+      userName: user.displayName || undefined,
+      userPhoto: user.photoURL || null,
+      action: 'edit_game',
+      title: `Unpublished Game: "${title}"`,
+      gameId: targetId,
+      gameTitle: title,
+      gameType: updatedGame.gameType,
+      details: 'Moved game from Community Hub back to Private in My Games.',
+    });
+  }
+
+  // 3. Await server cache update so Community immediately excludes it across reloads/tabs
+  await withSaveTimeout(
+    fetch('/api/platform-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ games: [updatedGame] }),
+    }),
+    3500
+  ).catch(() => {});
+
+  // 4. Update Firestore with bounded timeout & structured error logging
+  let cloudSynced = false;
+  if (db && targetId && !isSyntheticOrSampleGame(targetId)) {
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const docPath = `mysteryBoxGames/${targetId}`;
+      const res = await withSaveTimeout(
+        updateDoc(doc(db, 'mysteryBoxGames', targetId), {
+          isPublic: false,
+          publishedAt: null,
+          updatedAt: now,
+        }),
+        2500
+      );
+      if (res.ok) {
+        cloudSynced = true;
+      } else if (!res.timedOut && res.error?.code === 'permission-denied') {
+        logFirestoreError(res.error, FirestoreOperationType.UPDATE, docPath, user);
+      }
+    } catch {}
+  }
+
+  return { ok: true, cloudSynced, updatedGame };
+}
+
 /**
  * Merges public games from Firestore, localStorage (`hamster_cached_public_games_v2`, `hamster_cached_user_games`),
- * and fallback community games so Community Hub never shows "0 games / No games found".
+ * and fallback community games so Community Hub never shows "0 games / No games found" and never leaks private/unpublished/deleted games.
  */
 export function mergePublicGames(firestoreGames: any[] = [], currentUser?: any): any[] {
   const deletedIds = getDeletedGameIds();
@@ -1805,7 +1925,7 @@ export function mergePublicGames(firestoreGames: any[] = [], currentUser?: any):
     return `${title}::${type}`;
   };
 
-  const addGame = (g: any, isFallback = false) => {
+  const upsertCandidate = (g: any, isFallback = false) => {
     if (!g) return;
     const id = String(g.id || '');
     if (!id || deletedIds.has(id)) return;
@@ -1814,45 +1934,63 @@ export function mergePublicGames(firestoreGames: any[] = [], currentUser?: any):
     if (isFallback && byTitleAndType.has(tk)) return;
 
     const existing = byId.get(id);
-    const merged = existing ? { ...existing, ...g } : { ...g };
-
-    if (currentUser?.uid && !merged.userId && isGameOwnedByUser(merged, currentUser)) {
-      merged.userId = currentUser.uid;
+    if (existing) {
+      const existingTime = getGameTimestampMs(existing);
+      const nextTime = getGameTimestampMs(g);
+      // Keep the newer record's publish status/metadata if timestamps differ
+      if (existingTime > 0 && nextTime > 0 && existingTime > nextTime) {
+        return;
+      }
+      const merged = nextTime > existingTime ? { ...existing, ...g } : { ...existing, ...g };
+      if (currentUser?.uid && !merged.userId && isGameOwnedByUser(merged, currentUser)) {
+        merged.userId = currentUser.uid;
+      }
+      byId.set(id, merged);
+    } else {
+      const merged = { ...g };
+      if (currentUser?.uid && !merged.userId && isGameOwnedByUser(merged, currentUser)) {
+        merged.userId = currentUser.uid;
+      }
+      byId.set(id, merged);
     }
-
-    byId.set(id, merged);
     if (tk !== '::') byTitleAndType.add(tk);
   };
 
-  // 1. Live Firestore public games (highest priority)
-  firestoreGames.forEach((g) => addGame(g, false));
-
-  // 2. Previously cached public games
+  // 1. Cached public games (baseline)
   const cachedPublic = safeReadLocalArray(CACHE_KEY_PUBLIC_GAMES);
-  cachedPublic.forEach((g) => addGame(g, false));
+  cachedPublic.forEach((g) => upsertCandidate(g, false));
 
-  // 3. User's own cached games from My Games (`hamster_cached_user_games`)
+  // 2. Incoming Firestore / server public games
+  firestoreGames.forEach((g) => upsertCandidate(g, false));
+
+  // 3. Local user games & admin cache (so newer unpublish/republish changes win over stale public snapshots)
   const userGames = getAllLocalUserGames(currentUser);
-  userGames.forEach((g) => {
-    const isPub =
-      g?.isPublic === true ||
-      g?.isPublic === 'true' ||
-      String(g?.isPublic).toLowerCase() === 'true';
-    if (isPub) {
-      addGame({ ...g, isPublic: true }, false);
+  userGames.forEach((g) => upsertCandidate(g, false));
+
+  const adminCached = safeReadLocalArray(CACHE_KEY_ADMIN_GAMES);
+  adminCached.forEach((g) => {
+    if (g && g.id && byId.has(String(g.id))) {
+      upsertCandidate(g, false);
     }
   });
 
+  // Strictly keep ONLY games whose latest resolved state is public
+  const realPublic = Array.from(byId.values()).filter((g) => isTruthyPublicFlag(g.isPublic));
+
   // 4. Fallback community games (only if no real public games exist yet)
-  if (byId.size === 0) {
-    FALLBACK_COMMUNITY_GAMES.forEach((g) => addGame(g, true));
+  if (realPublic.length === 0) {
+    FALLBACK_COMMUNITY_GAMES.forEach((g) => {
+      if (isTruthyPublicFlag(g.isPublic) && !deletedIds.has(String(g.id))) {
+        realPublic.push(g);
+      }
+    });
   }
 
-  const combined = Array.from(byId.values());
-  if (combined.length > 0) {
-    safeWriteLocal(CACHE_KEY_PUBLIC_GAMES, combined.filter((g) => !isSyntheticOrSampleGame(g)));
-  }
-  return combined;
+  safeWriteLocal(
+    CACHE_KEY_PUBLIC_GAMES,
+    realPublic.filter((g) => !isSyntheticOrSampleGame(g))
+  );
+  return realPublic;
 }
 
 /**
@@ -2276,9 +2414,49 @@ export async function syncWithServerPlatformCache(payload?: {
     const res = await fetch('/api/platform-cache');
     if (!res.ok) return null;
     const data = await res.json();
+
+    // Persist server-side deleted IDs locally so deleted games/users never reappear across sessions or devices
+    if (Array.isArray(data.deletedGameIds) && data.deletedGameIds.length > 0) {
+      const mergedDeleted = getDeletedGameIds();
+      let addedNewDeleted = false;
+      data.deletedGameIds.forEach((did: any) => {
+        const cleanId = String(did || '').trim();
+        if (cleanId && !mergedDeleted.has(cleanId)) {
+          mergedDeleted.add(cleanId);
+          addedNewDeleted = true;
+        }
+      });
+      safeWriteLocal(CACHE_KEY_DELETED_GAMES, Array.from(mergedDeleted));
+      if (addedNewDeleted) {
+        try {
+          safeWriteLocal(
+            CACHE_KEY_PUBLIC_GAMES,
+            safeReadLocalArray(CACHE_KEY_PUBLIC_GAMES).filter((g: any) => g && !mergedDeleted.has(String(g.id)))
+          );
+          safeWriteLocal(
+            CACHE_KEY_USER_GAMES,
+            safeReadLocalArray(CACHE_KEY_USER_GAMES).filter((g: any) => g && !mergedDeleted.has(String(g.id)))
+          );
+          safeWriteLocal(
+            CACHE_KEY_ADMIN_GAMES,
+            safeReadLocalArray(CACHE_KEY_ADMIN_GAMES).filter((g: any) => g && !mergedDeleted.has(String(g.id)))
+          );
+        } catch {}
+      }
+    }
+    if (Array.isArray(data.deletedUserIds) && data.deletedUserIds.length > 0) {
+      const mergedDeletedUsers = getDeletedUserIds();
+      data.deletedUserIds.forEach((duid: any) => {
+        const cleanUid = String(duid || '').trim();
+        if (cleanUid) mergedDeletedUsers.add(cleanUid);
+      });
+      safeWriteLocal(CACHE_KEY_DELETED_USERS, Array.from(mergedDeletedUsers));
+    }
+
+    const syncedDeletedIds = getDeletedGameIds();
     const cleanUsers = (data.users || []).filter((u: any) => !isLegacySyntheticUser(u));
     const cleanGames = (data.games || []).filter(
-      (g: any) => g && g.id && !isSyntheticOrSampleGame(g) && !deletedIds.has(String(g.id))
+      (g: any) => g && g.id && !isSyntheticOrSampleGame(g) && !syncedDeletedIds.has(String(g.id))
     );
     if (cleanGames.length > 0) {
       safeWriteLocal(CACHE_KEY_PUBLIC_GAMES, mergePublicGames(cleanGames));

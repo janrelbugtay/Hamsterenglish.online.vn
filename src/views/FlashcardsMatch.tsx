@@ -45,6 +45,7 @@ import { collection, query, where, getDocs, doc, addDoc, updateDoc } from 'fireb
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { persistUserGameToCloudAndCache } from '../utils/platformCache';
+import { CUTE_HAMSTER_BREEDS } from '../lib/studentCharacters';
 
 /*************************************************************
  * 1. THEMES DEFINITION (5 ILLUSTRATED STAGE THEMES)
@@ -55,7 +56,7 @@ export interface FlashcardTheme {
   subtitle: string;
   badge: string;
   cardFont: string;
-  previewBg: string;
+  previewBgClass: string;
   deckCardBg: string;
   emblemSvg: React.ReactNode;
   stageSvg: React.ReactNode;
@@ -68,10 +69,10 @@ const THEMES: Record<string, FlashcardTheme> = {
     subtitle: 'Big Ben, Red Bus & Crown',
     badge: '🇬🇧 London Fog',
     cardFont: "font-['Playfair_Display',Georgia,serif]",
-    previewBg: 'linear-gradient(135deg, #64748b 0%, #94a3b8 50%, #ef4444 100%)',
-    deckCardBg: 'bg-gradient-to-b from-slate-200 to-slate-300 border-slate-400 text-slate-600',
+    previewBgClass: 'bg-gradient-to-br from-slate-800 via-slate-600 to-rose-600',
+    deckCardBg: 'bg-gradient-to-b from-amber-50 via-white to-slate-100 border-amber-400 text-slate-700',
     emblemSvg: (
-      <svg viewBox="0 0 120 100" className="w-28 h-24 sm:w-36 sm:h-32 text-slate-500/75 fill-current drop-shadow">
+      <svg viewBox="0 0 120 100" className="w-24 h-20 sm:w-28 sm:h-24 text-amber-500 fill-current drop-shadow">
         <rect x="53" y="6" width="14" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="4" />
         <path d="M56 20 H64 V30 H56 Z" />
         <path d="M22 65 C18 42, 35 30, 58 34 C45 42, 42 54, 45 65 Z" opacity="0.85" />
@@ -85,48 +86,48 @@ const THEMES: Record<string, FlashcardTheme> = {
     ),
     stageSvg: (
       <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
-        <div className="absolute inset-0 bg-gradient-to-b from-[#6993c7] via-[#9ab5d6] to-[#cbd5e1]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] via-[#1e293b] to-[#334155]" />
         <svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" className="absolute inset-0 w-full h-full">
           <defs>
             <linearGradient id="fogGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.05" />
-              <stop offset="70%" stopColor="#e2e8f0" stopOpacity="0.45" />
-              <stop offset="100%" stopColor="#cbd5e1" stopOpacity="0.85" />
+              <stop offset="0%" stopColor="#0f172a" stopOpacity="0.15" />
+              <stop offset="70%" stopColor="#1e293b" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#334155" stopOpacity="0.65" />
             </linearGradient>
           </defs>
-          <g opacity="0.55" transform="translate(610, 60)">
-            <path d="M40 90 C40 30, 120 30, 120 90 Z" fill="#e2e8f0" />
-            <rect x="35" y="90" width="90" height="580" fill="#cbd5e1" />
-            <rect x="48" y="130" width="22" height="40" rx="11" fill="#94a3b8" />
-            <rect x="90" y="130" width="22" height="40" rx="11" fill="#94a3b8" />
+          <g opacity="0.45" transform="translate(610, 60)">
+            <path d="M40 90 C40 30, 120 30, 120 90 Z" fill="#64748b" />
+            <rect x="35" y="90" width="90" height="580" fill="#475569" />
+            <rect x="48" y="130" width="22" height="40" rx="11" fill="#fef08a" opacity="0.55" />
+            <rect x="90" y="130" width="22" height="40" rx="11" fill="#fef08a" opacity="0.55" />
             <rect x="48" y="210" width="22" height="40" rx="11" fill="#94a3b8" />
             <rect x="90" y="210" width="22" height="40" rx="11" fill="#94a3b8" />
           </g>
-          <g opacity="0.75" transform="translate(960, -20)">
-            <polygon points="90,0 45,120 135,120" fill="#94a3b8" />
-            <rect x="40" y="120" width="100" height="580" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="3" />
-            <rect x="30" y="160" width="120" height="110" fill="#e2e8f0" stroke="#64748b" strokeWidth="4" />
-            <circle cx="90" cy="215" r="38" fill="#f8fafc" stroke="#475569" strokeWidth="5" />
+          <g opacity="0.85" transform="translate(960, -20)">
+            <polygon points="90,0 45,120 135,120" fill="#64748b" />
+            <rect x="40" y="120" width="100" height="580" fill="#475569" stroke="#64748b" strokeWidth="3" />
+            <rect x="30" y="160" width="120" height="110" fill="#334155" stroke="#94a3b8" strokeWidth="4" />
+            <circle cx="90" cy="215" r="38" fill="#fef9c3" stroke="#eab308" strokeWidth="5" />
             <line x1="90" y1="215" x2="90" y2="190" stroke="#1e293b" strokeWidth="4" strokeLinecap="round" />
             <line x1="90" y1="215" x2="110" y2="225" stroke="#1e293b" strokeWidth="3" strokeLinecap="round" />
           </g>
-          <g opacity="0.65" transform="translate(45, 75)">
-            <path d="M20 75 C20 15, 290 15, 290 75 Z" fill="#b91c1c" />
-            <rect x="15" y="75" width="280" height="680" rx="8" fill="#dc2626" stroke="#991b1b" strokeWidth="6" />
-            <rect x="45" y="150" width="95" height="520" fill="#7dd3fc" opacity="0.45" />
-            <rect x="165" y="150" width="95" height="520" fill="#7dd3fc" opacity="0.45" />
+          <g opacity="0.55" transform="translate(45, 75)">
+            <path d="M20 75 C20 15, 290 15, 290 75 Z" fill="#991b1b" />
+            <rect x="15" y="75" width="280" height="680" rx="8" fill="#b91c1c" stroke="#7f1d1d" strokeWidth="6" />
+            <rect x="45" y="150" width="95" height="520" fill="#38bdf8" opacity="0.35" />
+            <rect x="165" y="150" width="95" height="520" fill="#38bdf8" opacity="0.35" />
           </g>
-          <g className="bus-bob" opacity="0.7" transform="translate(680, 460)">
+          <g className="bus-bob" opacity="0.75" transform="translate(680, 460)">
             <rect x="0" y="0" width="330" height="220" rx="18" fill="#dc2626" />
-            <rect x="15" y="20" width="65" height="55" rx="6" fill="#93c5fd" />
-            <rect x="92" y="20" width="65" height="55" rx="6" fill="#93c5fd" />
-            <rect x="170" y="20" width="65" height="55" rx="6" fill="#93c5fd" />
-            <rect x="248" y="20" width="65" height="55" rx="6" fill="#93c5fd" />
-            <rect x="10" y="95" width="310" height="16" fill="#fef08a" opacity="0.8" />
-            <rect x="90" y="125" width="145" height="65" rx="6" fill="#93c5fd" />
-            <circle cx="65" cy="220" r="28" fill="#1e293b" />
+            <rect x="15" y="20" width="65" height="55" rx="6" fill="#fef08a" opacity="0.85" />
+            <rect x="92" y="20" width="65" height="55" rx="6" fill="#fef08a" opacity="0.85" />
+            <rect x="170" y="20" width="65" height="55" rx="6" fill="#fef08a" opacity="0.85" />
+            <rect x="248" y="20" width="65" height="55" rx="6" fill="#fef08a" opacity="0.85" />
+            <rect x="10" y="95" width="310" height="16" fill="#fde047" opacity="0.9" />
+            <rect x="90" y="125" width="145" height="65" rx="6" fill="#bae6fd" />
+            <circle cx="65" cy="220" r="28" fill="#0f172a" />
             <circle cx="65" cy="220" r="14" fill="#64748b" />
-            <circle cx="265" cy="220" r="28" fill="#1e293b" />
+            <circle cx="265" cy="220" r="28" fill="#0f172a" />
             <circle cx="265" cy="220" r="14" fill="#64748b" />
           </g>
           <rect width="1440" height="800" fill="url(#fogGrad)" />
@@ -140,10 +141,10 @@ const THEMES: Record<string, FlashcardTheme> = {
     subtitle: 'Synthwave Grid & Neon Pulse',
     badge: '⚡ Cyber Neon',
     cardFont: "font-['Orbitron',sans-serif]",
-    previewBg: 'linear-gradient(135deg, #0f172a 0%, #4c1d95 55%, #ec4899 100%)',
+    previewBgClass: 'bg-gradient-to-br from-slate-900 via-purple-900 to-pink-500',
     deckCardBg: 'bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 border-cyan-400 text-cyan-400',
     emblemSvg: (
-      <svg viewBox="0 0 120 120" className="w-28 h-28 sm:w-36 sm:h-36 text-cyan-400 fill-none stroke-current drop-shadow-[0_0_12px_rgba(34,211,238,0.8)]" strokeWidth="4">
+      <svg viewBox="0 0 120 120" className="w-24 h-24 sm:w-28 sm:h-28 text-cyan-400 fill-none stroke-current drop-shadow-[0_0_12px_rgba(34,211,238,0.8)]" strokeWidth="4">
         <polygon points="60,8 106,34 106,86 60,112 14,86 14,34" />
         <polygon points="60,22 92,40 92,80 60,98 28,80 28,40" stroke="#f472b6" />
         <path d="M64 36 L44 64 H62 L56 86 L78 56 H60 Z" fill="currentColor" />
@@ -186,10 +187,10 @@ const THEMES: Record<string, FlashcardTheme> = {
     subtitle: 'Tropical Leaves & Explorer Compass',
     badge: '🌴 Jungle Safari',
     cardFont: "font-['Fredoka',sans-serif]",
-    previewBg: 'linear-gradient(135deg, #065f46 0%, #10b981 55%, #f59e0b 100%)',
+    previewBgClass: 'bg-gradient-to-br from-emerald-800 via-emerald-600 to-amber-500',
     deckCardBg: 'bg-gradient-to-b from-amber-100 to-amber-200 border-amber-700 text-amber-800',
     emblemSvg: (
-      <svg viewBox="0 0 120 120" className="w-28 h-28 sm:w-36 sm:h-36 text-amber-800/75 fill-current">
+      <svg viewBox="0 0 120 120" className="w-24 h-24 sm:w-28 sm:h-28 text-amber-800/75 fill-current">
         <circle cx="60" cy="60" r="46" fill="none" stroke="currentColor" strokeWidth="6" />
         <polygon points="60,18 70,50 102,60 70,70 60,102 50,70 18,60 50,50" />
         <circle cx="60" cy="60" r="8" fill="#fef3c7" />
@@ -215,10 +216,10 @@ const THEMES: Record<string, FlashcardTheme> = {
     subtitle: 'Galactic Planets & Starfleet Rocket',
     badge: '🚀 Space Odyssey',
     cardFont: "font-['Plus_Jakarta_Sans',sans-serif]",
-    previewBg: 'linear-gradient(135deg, #090d16 0%, #1e3a8a 55%, #38bdf8 100%)',
+    previewBgClass: 'bg-gradient-to-br from-slate-950 via-blue-900 to-sky-400',
     deckCardBg: 'bg-gradient-to-b from-indigo-950 to-slate-900 border-sky-400 text-sky-400',
     emblemSvg: (
-      <svg viewBox="0 0 120 120" className="w-28 h-28 sm:w-36 sm:h-36 text-sky-400 fill-current drop-shadow">
+      <svg viewBox="0 0 120 120" className="w-24 h-24 sm:w-28 sm:h-28 text-sky-400 fill-current drop-shadow">
         <path d="M60 14 C78 34, 82 62, 78 82 L94 96 L76 96 L60 88 L44 96 L26 96 L42 82 C38 62, 42 34, 60 14 Z" />
         <circle cx="60" cy="52" r="10" fill="#0f172a" />
       </svg>
@@ -253,10 +254,10 @@ const THEMES: Record<string, FlashcardTheme> = {
     subtitle: 'Warm Green Board & Gold Trophy',
     badge: '🏫 Chalkboard',
     cardFont: "font-['Fredoka',sans-serif]",
-    previewBg: 'linear-gradient(135deg, #14532d 0%, #166534 60%, #ca8a04 100%)',
+    previewBgClass: 'bg-gradient-to-br from-green-900 via-green-800 to-yellow-600',
     deckCardBg: 'bg-gradient-to-b from-amber-50 to-orange-100 border-amber-400 text-amber-600',
     emblemSvg: (
-      <svg viewBox="0 0 120 120" className="w-28 h-28 sm:w-36 sm:h-36 text-amber-500 fill-current drop-shadow">
+      <svg viewBox="0 0 120 120" className="w-24 h-24 sm:w-28 sm:h-28 text-amber-500 fill-current drop-shadow">
         <polygon points="60,15 73,44 105,48 81,70 87,102 60,86 33,102 39,70 15,48 47,44" />
       </svg>
     ),
@@ -483,6 +484,17 @@ export function FlashcardsMatch({
   const [isCurrentFlipped, setIsCurrentFlipped] = useState<boolean>(false);
   const [dealFrontFirst, setDealFrontFirst] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(false);
+  const [fontSizeStep, setFontSizeStep] = useState<number>(0); // -2 to +2 around smart auto-fit
+
+  // Cute Hamster Card Dealer on the Small Deck + Live Flip Animation State
+  const [dealerHamsterIdx, setDealerHamsterIdx] = useState<number>(0);
+  const [deckAnimState, setDeckAnimState] = useState<{
+    type: 'deal' | 'flip' | 'shuffle' | 'undo' | null;
+    key: number;
+    caption: string;
+  }>({ type: null, key: 0, caption: 'Tap deck or Flip!' });
+  const deckAnimTimeoutRef = useRef<number | null>(null);
 
   // Modals & UI Helpers
   const [showPlayThemeModal, setShowPlayThemeModal] = useState<boolean>(false);
@@ -506,8 +518,37 @@ export function FlashcardsMatch({
     query?: string;
   } | null>(null);
 
-  // Web Audio Synthesizer ref
+  // Web Audio Synthesizer ref & cached noise buffer for realistic paper flip sounds
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const noiseBufferRef = useRef<AudioBuffer | null>(null);
+
+  const triggerDeckHamsterAnimation = (
+    type: 'deal' | 'flip' | 'shuffle' | 'undo',
+    customCaption?: string
+  ) => {
+    if (deckAnimTimeoutRef.current) {
+      window.clearTimeout(deckAnimTimeoutRef.current);
+    }
+    const defaultCaptions: Record<'deal' | 'flip' | 'shuffle' | 'undo', string[]> = {
+      deal: ['Flip & Deal! 🎴', 'Here it comes! ✨', 'Fresh card! 🐾', 'Watch me deal! 🌟'],
+      flip: ['Hamster Flip! 🔄', 'Turn it over! ✨', 'Check the other side! 🐾', 'Whoosh flip! 🎯'],
+      shuffle: ['Riffle Shuffle! 🔀', 'Mixing cards! 🐾', 'Super shuffle! ✨'],
+      undo: ['Back to deck! ⏪', 'Rewinding card! 🐾'],
+    };
+    const pool = defaultCaptions[type];
+    const caption = customCaption || pool[Math.floor(Math.random() * pool.length)];
+    setDeckAnimState((prev) => ({
+      type,
+      key: prev.key + 1,
+      caption,
+    }));
+    deckAnimTimeoutRef.current = window.setTimeout(() => {
+      setDeckAnimState((prev) => ({
+        ...prev,
+        type: null,
+      }));
+    }, 680);
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -537,37 +578,121 @@ export function FlashcardsMatch({
       if (initialGame.contentMode) setContentMode(initialGame.contentMode);
       if (initialGame.theme && THEMES[initialGame.theme]) setTheme(initialGame.theme);
 
+      const rawQuestions =
+        Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0
+          ? initialGame.customQuestions
+          : Array.isArray(initialGame.questions) && initialGame.questions.length > 0
+          ? initialGame.questions
+          : [];
+
       let loadedCards: FlashcardItem[] = [];
       if (Array.isArray(initialGame.cards) && initialGame.cards.length > 0) {
-        loadedCards = initialGame.cards.map((c: any, i: number) => ({
-          id: c?.id || `c_${Date.now()}_${i}`,
-          frontText: typeof (c?.frontText ?? c?.front ?? c?.text) === 'string' ? (c.frontText ?? c.front ?? c.text) : '',
-          backText: typeof (c?.backText ?? c?.back ?? c?.answer) === 'string' ? (c.backText ?? c.back ?? c.answer) : '',
-          frontMedia: typeof (c?.frontMedia ?? c?.image) === 'string' ? (c.frontMedia ?? c.image) : '',
-          backMedia: typeof c?.backMedia === 'string' ? c.backMedia : '',
-        }));
-      } else {
-        const rawQuestions =
-          Array.isArray(initialGame.customQuestions) && initialGame.customQuestions.length > 0
-            ? initialGame.customQuestions
-            : Array.isArray(initialGame.questions) && initialGame.questions.length > 0
-            ? initialGame.questions
-            : [];
+        loadedCards = initialGame.cards.map((c: any, i: number) => {
+          const q = rawQuestions[i];
+          const rawFront =
+            typeof (c?.frontText ?? c?.front ?? c?.text) === 'string'
+              ? (c.frontText ?? c.front ?? c.text)
+              : '';
+          const rawBack =
+            typeof (c?.backText ?? c?.back ?? c?.answer) === 'string'
+              ? (c.backText ?? c.back ?? c.answer)
+              : '';
 
-        if (rawQuestions.length > 0) {
-          loadedCards = rawQuestions.map((q: any, i: number) => {
-            const parsedPrompt = parseOptionContent(q.text || '');
-            const opt0 = q.options?.[q.answerIndex || 0] || q.options?.[0] || '';
-            const parsedAns = parseOptionContent(opt0);
-            return {
-              id: q.id || `c_${Date.now()}_${i}`,
-              frontText: parsedPrompt.text || q.text || '',
-              frontMedia: parsedPrompt.imageUrl || q.image || '',
-              backText: parsedAns.text || opt0 || '',
-              backMedia: parsedAns.imageUrl || '',
-            };
-          });
-        }
+          const parsedFront = parseOptionContent(rawFront);
+          const parsedBack = parseOptionContent(rawBack);
+
+          const parsedQPrompt = parseOptionContent(q?.text || q?.question || '');
+          const qOpt0 = q ? (q.options?.[q.answerIndex || 0] || q.options?.[0] || '') : '';
+          const parsedQAns = parseOptionContent(qOpt0);
+
+          const frontMedia =
+            (typeof (c?.frontMedia ?? c?.image) === 'string' ? (c.frontMedia ?? c.image) : '') ||
+            parsedFront.imageUrl ||
+            parsedQPrompt.imageUrl ||
+            q?.image ||
+            '';
+
+          let backMedia =
+            (typeof c?.backMedia === 'string' ? c.backMedia : '') ||
+            parsedBack.imageUrl ||
+            parsedQAns.imageUrl ||
+            (Array.isArray(q?.optionImages) ? q.optionImages[q.answerIndex || 0] || q.optionImages[0] || '' : '') ||
+            '';
+
+          const frontText = parsedFront.text || parsedQPrompt.text || '';
+          let backText = parsedBack.text || (!backMedia ? parsedQAns.text : '');
+
+          if (
+            resolvedSides === 2 &&
+            !backMedia &&
+            frontText &&
+            (!backText || backText.trim().toLowerCase() === frontText.trim().toLowerCase())
+          ) {
+            const autoImg = getInstantCartoonPng(frontText);
+            if (autoImg) {
+              backMedia = autoImg;
+              backText = '';
+            }
+          } else if (
+            backMedia &&
+            backText &&
+            frontText &&
+            backText.trim().toLowerCase() === frontText.trim().toLowerCase()
+          ) {
+            backText = '';
+          }
+
+          return {
+            id: c?.id || q?.id || `c_${Date.now()}_${i}`,
+            frontText,
+            backText,
+            frontMedia,
+            backMedia,
+          };
+        });
+      } else if (rawQuestions.length > 0) {
+        loadedCards = rawQuestions.map((q: any, i: number) => {
+          const parsedPrompt = parseOptionContent(q.text || q.question || '');
+          const opt0 = q.options?.[q.answerIndex || 0] || q.options?.[0] || '';
+          const parsedAns = parseOptionContent(opt0);
+
+          const frontMedia = parsedPrompt.imageUrl || q.image || '';
+          let backMedia =
+            parsedAns.imageUrl ||
+            (Array.isArray(q.optionImages) ? q.optionImages[q.answerIndex || 0] || q.optionImages[0] || '' : '') ||
+            '';
+
+          const frontText = parsedPrompt.text || q.text || '';
+          let backText = parsedAns.text || (!backMedia ? opt0 : '');
+
+          if (
+            resolvedSides === 2 &&
+            !backMedia &&
+            frontText &&
+            (!backText || backText.trim().toLowerCase() === frontText.trim().toLowerCase())
+          ) {
+            const autoImg = getInstantCartoonPng(frontText);
+            if (autoImg) {
+              backMedia = autoImg;
+              backText = '';
+            }
+          } else if (
+            backMedia &&
+            backText &&
+            frontText &&
+            backText.trim().toLowerCase() === frontText.trim().toLowerCase()
+          ) {
+            backText = '';
+          }
+
+          return {
+            id: q.id || `c_${Date.now()}_${i}`,
+            frontText,
+            frontMedia,
+            backText,
+            backMedia,
+          };
+        });
       }
 
       if (loadedCards.length > 0) {
@@ -607,7 +732,7 @@ export function FlashcardsMatch({
     });
   }, [user]);
 
-  // Web Audio Synth
+  // Realistic Multi-Layered Card Flipping, Dealing & Shuffling Sound Engine
   const playSoundFx = (type: 'deal' | 'flip' | 'undo' | 'shuffle') => {
     if (!soundEnabled) return;
     try {
@@ -618,58 +743,143 @@ export function FlashcardsMatch({
       const ctx = audioCtxRef.current;
       if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume();
+
+      // Ensure white noise buffer for tactile paper-card flick & aerodynamic whoosh
+      if (!noiseBufferRef.current) {
+        const sr = ctx.sampleRate;
+        const buffer = ctx.createBuffer(1, Math.floor(sr * 0.35), sr);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        noiseBufferRef.current = buffer;
+      }
+
       const now = ctx.currentTime;
 
-      if (type === 'deal') {
-        const osc = ctx.createOscillator();
+      const triggerPaperBurst = (
+        startTime: number,
+        duration: number,
+        startFreq: number,
+        peakFreq: number,
+        endFreq: number,
+        q: number,
+        peakGain: number
+      ) => {
+        if (!noiseBufferRef.current) return;
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBufferRef.current;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.Q.setValueAtTime(q, startTime);
+        filter.frequency.setValueAtTime(startFreq, startTime);
+        filter.frequency.exponentialRampToValueAtTime(peakFreq, startTime + duration * 0.45);
+        filter.frequency.exponentialRampToValueAtTime(endFreq, startTime + duration);
+
         const gain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(240, now);
-        osc.frequency.exponentialRampToValueAtTime(580, now + 0.09);
-        osc.frequency.exponentialRampToValueAtTime(180, now + 0.18);
-        gain.gain.setValueAtTime(0.22, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
-        osc.connect(gain);
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(peakGain, startTime + duration * 0.22);
+        gain.gain.exponentialRampToValueAtTime(0.0008, startTime + duration);
+
+        src.connect(filter);
+        filter.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.19);
-      } else if (type === 'flip') {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(360, now);
-        osc.frequency.exponentialRampToValueAtTime(720, now + 0.11);
-        gain.gain.setValueAtTime(0.18, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.12);
+        src.start(startTime);
+        src.stop(startTime + duration + 0.01);
+      };
+
+      if (type === 'flip') {
+        // 1. Crisp card-edge thumb flick snap
+        const snapOsc = ctx.createOscillator();
+        const snapGain = ctx.createGain();
+        snapOsc.type = 'triangle';
+        snapOsc.frequency.setValueAtTime(1650, now);
+        snapOsc.frequency.exponentialRampToValueAtTime(340, now + 0.032);
+        snapGain.gain.setValueAtTime(0.24, now);
+        snapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+        snapOsc.connect(snapGain);
+        snapGain.connect(ctx.destination);
+        snapOsc.start(now);
+        snapOsc.stop(now + 0.036);
+
+        // 2. Aerodynamic paper card-flip whoosh
+        triggerPaperBurst(now + 0.01, 0.16, 480, 2600, 620, 2.2, 0.34);
+
+        // 3. Soft card settle tap on table
+        const landOsc = ctx.createOscillator();
+        const landGain = ctx.createGain();
+        landOsc.type = 'sine';
+        landOsc.frequency.setValueAtTime(210, now + 0.11);
+        landOsc.frequency.exponentialRampToValueAtTime(78, now + 0.19);
+        landGain.gain.setValueAtTime(0.18, now + 0.11);
+        landGain.gain.exponentialRampToValueAtTime(0.001, now + 0.195);
+        landOsc.connect(landGain);
+        landGain.connect(ctx.destination);
+        landOsc.start(now + 0.11);
+        landOsc.stop(now + 0.2);
+
+        // 4. Subtle cheerful flip harmonic
+        const chimeOsc = ctx.createOscillator();
+        const chimeGain = ctx.createGain();
+        chimeOsc.type = 'sine';
+        chimeOsc.frequency.setValueAtTime(587.33, now + 0.03);
+        chimeOsc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+        chimeGain.gain.setValueAtTime(0.09, now + 0.03);
+        chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+        chimeOsc.connect(chimeGain);
+        chimeGain.connect(ctx.destination);
+        chimeOsc.start(now + 0.03);
+        chimeOsc.stop(now + 0.165);
+      } else if (type === 'deal') {
+        // 1. Thumb peel & crisp card slide off deck
+        triggerPaperBurst(now, 0.19, 700, 3100, 820, 2.6, 0.36);
+
+        // 2. Card launch & stage landing pop
+        const dealOsc = ctx.createOscillator();
+        const dealGain = ctx.createGain();
+        dealOsc.type = 'triangle';
+        dealOsc.frequency.setValueAtTime(280, now);
+        dealOsc.frequency.exponentialRampToValueAtTime(690, now + 0.085);
+        dealOsc.frequency.exponentialRampToValueAtTime(195, now + 0.19);
+        dealGain.gain.setValueAtTime(0.24, now);
+        dealGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        dealOsc.connect(dealGain);
+        dealGain.connect(ctx.destination);
+        dealOsc.start(now);
+        dealOsc.stop(now + 0.205);
+
+        // 3. Soft landing tap
+        triggerPaperBurst(now + 0.12, 0.07, 1400, 900, 350, 3.0, 0.2);
       } else if (type === 'undo') {
+        // Reverse paper slide back into deck
+        triggerPaperBurst(now, 0.15, 2200, 1100, 420, 2.5, 0.28);
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(520, now);
-        osc.frequency.exponentialRampToValueAtTime(220, now + 0.14);
+        osc.frequency.setValueAtTime(540, now);
+        osc.frequency.exponentialRampToValueAtTime(230, now + 0.15);
         gain.gain.setValueAtTime(0.16, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(now);
-        osc.stop(now + 0.15);
+        osc.stop(now + 0.165);
       } else if (type === 'shuffle') {
-        for (let i = 0; i < 6; i++) {
-          const t = now + i * 0.055;
+        // 8-card rapid riffle shuffle cascade + deck tap
+        for (let i = 0; i < 8; i++) {
+          const t = now + i * 0.046;
+          triggerPaperBurst(t, 0.042, 900 + i * 140, 2600 + i * 120, 750, 3.2, 0.24);
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'triangle';
-          osc.frequency.setValueAtTime(300 + i * 65, t);
-          gain.gain.setValueAtTime(0.14, t);
-          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+          osc.frequency.setValueAtTime(320 + i * 58, t);
+          osc.frequency.exponentialRampToValueAtTime(180 + i * 30, t + 0.038);
+          gain.gain.setValueAtTime(0.13, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
           osc.connect(gain);
           gain.connect(ctx.destination);
           osc.start(t);
-          osc.stop(t + 0.045);
+          osc.stop(t + 0.042);
         }
       }
     } catch {}
@@ -747,6 +957,7 @@ export function FlashcardsMatch({
     setShowPlayThemeModal(false);
     setScreen('play');
     playSoundFx('shuffle');
+    triggerDeckHamsterAnimation('shuffle', 'Ready to deal! 🐾');
   };
 
   const handleDealNext = () => {
@@ -755,11 +966,26 @@ export function FlashcardsMatch({
       return;
     }
     const [next, ...rest] = undealtDeck;
+    const nextFlipped = cardSides === 2 ? !dealFrontFirst : false;
     setUndealtDeck(rest);
     setDealtHistory((prev) => [...prev, next]);
     setCurrentCard(next);
-    setIsCurrentFlipped(cardSides === 2 ? !dealFrontFirst : false);
+    setIsCurrentFlipped(nextFlipped);
     playSoundFx('deal');
+    triggerDeckHamsterAnimation('deal', `Dealt #${dealtHistory.length + 1}! 🎴`);
+    if (autoSpeak) {
+      setTimeout(() => {
+        const textToRead = nextFlipped ? next.backText : next.frontText;
+        if (textToRead && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(textToRead.replace(/\n/g, ' '));
+          const isVi = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(textToRead);
+          u.lang = isVi ? 'vi-VN' : 'en-US';
+          u.rate = 0.95;
+          window.speechSynthesis.speak(u);
+        }
+      }, 240);
+    }
   };
 
   const handleUndo = () => {
@@ -771,12 +997,31 @@ export function FlashcardsMatch({
     setCurrentCard(historyCopy[historyCopy.length - 1] || null);
     setIsCurrentFlipped(cardSides === 2 ? !dealFrontFirst : false);
     playSoundFx('undo');
+    triggerDeckHamsterAnimation('undo', 'Card returned! ⏪');
   };
 
   const handleFlip = () => {
     if (cardSides !== 2 || !currentCard) return;
-    setIsCurrentFlipped((prev) => !prev);
+    const nextSideFlipped = !isCurrentFlipped;
+    setIsCurrentFlipped(nextSideFlipped);
     playSoundFx('flip');
+    triggerDeckHamsterAnimation(
+      'flip',
+      nextSideFlipped ? 'Flipped to Back! 🔄' : 'Flipped to Front! ✨'
+    );
+    if (autoSpeak) {
+      setTimeout(() => {
+        const textToRead = nextSideFlipped ? currentCard.backText : currentCard.frontText;
+        if (textToRead && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(textToRead.replace(/\n/g, ' '));
+          const isVi = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(textToRead);
+          u.lang = isVi ? 'vi-VN' : 'en-US';
+          u.rate = 0.95;
+          window.speechSynthesis.speak(u);
+        }
+      }, 220);
+    }
   };
 
   const handleShuffle = () => {
@@ -800,6 +1045,7 @@ export function FlashcardsMatch({
     setCurrentCard(null);
     setIsCurrentFlipped(cardSides === 2 ? !dealFrontFirst : false);
     playSoundFx('shuffle');
+    triggerDeckHamsterAnimation('shuffle', 'Deck shuffled! 🔀');
     showToast('Deck shuffled!');
   };
 
@@ -814,6 +1060,7 @@ export function FlashcardsMatch({
     setUndealtDeck(deckCopy);
     setCurrentCard(historyCopy[historyCopy.length - 1] || null);
     playSoundFx('undo');
+    triggerDeckHamsterAnimation('undo', 'Saved for review! 🔁');
     showToast('Card placed back into deck for review!');
   };
 
@@ -888,27 +1135,29 @@ export function FlashcardsMatch({
       }));
 
       // Build questions for full multi-mode compatibility (Bubble Pop, Roller Coaster, Shark Attack, etc.)
-      const optMode = contentMode === 'photo' ? 'photos_gifs' : contentMode === 'text' ? 'words' : 'both';
+      const baseOptMode = contentMode === 'photo' ? 'photos_gifs' : contentMode === 'text' ? 'words' : 'both';
       const formattedQuestions = cleanCards.map((c, i) => {
         const id = c.id || `q_${i + 1}`;
         if (cardSides === 1) {
           // 1-Side Card
           const text = c.frontText || topic || 'Flashcard';
           const directImg = isDirectMediaUrl(c.frontMedia) ? c.frontMedia : null;
+          const effectiveMode = directImg ? (c.frontText ? 'both' : 'photos_gifs') : baseOptMode;
 
           const correctOpt = formatOptionContent(
             text,
             directImg,
-            optMode
+            effectiveMode
           );
 
           const otherCards = cleanCards.filter((_, idx) => idx !== i);
           const distractors = otherCards.slice(0, 3).map((oc) => {
             const ocImg = isDirectMediaUrl(oc.frontMedia) ? oc.frontMedia : null;
+            const ocMode = ocImg ? (oc.frontText ? 'both' : 'photos_gifs') : baseOptMode;
             return formatOptionContent(
               oc.frontText || 'Option',
               ocImg,
-              optMode
+              ocMode
             );
           });
 
@@ -921,6 +1170,7 @@ export function FlashcardsMatch({
             text,
             image: directImg || null,
             options: [correctOpt, ...distractors],
+            optionImages: [directImg || null, ...otherCards.slice(0, 3).map((oc) => (isDirectMediaUrl(oc.frontMedia) ? oc.frontMedia : null))],
             answerIndex: 0,
           };
         } else {
@@ -928,22 +1178,29 @@ export function FlashcardsMatch({
           const promptText = c.frontText || 'Question';
           const promptImg = isDirectMediaUrl(c.frontMedia) ? c.frontMedia : null;
 
-          const answerText = c.backText || promptText;
           const answerImg = isDirectMediaUrl(c.backMedia) ? c.backMedia : null;
+          const answerEmoji = !answerImg && c.backMedia ? c.backMedia.trim() : '';
+          const cleanBackText = (c.backText || '').trim() || answerEmoji;
+          const answerText = cleanBackText || (answerImg ? '' : promptText);
+          const effectiveAnsMode = answerImg ? (cleanBackText ? 'both' : 'photos_gifs') : baseOptMode;
+
           const correctOpt = formatOptionContent(
             answerText,
             answerImg,
-            optMode
+            effectiveAnsMode
           );
 
           const otherCards = cleanCards.filter((_, idx) => idx !== i);
           const distractors = otherCards.slice(0, 3).map((oc) => {
-            const ocAns = oc.backText || oc.frontText || 'Option';
             const ocImg = isDirectMediaUrl(oc.backMedia) ? oc.backMedia : null;
+            const ocEmoji = !ocImg && oc.backMedia ? oc.backMedia.trim() : '';
+            const ocCleanBack = (oc.backText || '').trim() || ocEmoji;
+            const ocAns = ocCleanBack || (ocImg ? '' : oc.frontText || 'Option');
+            const ocMode = ocImg ? (ocCleanBack ? 'both' : 'photos_gifs') : baseOptMode;
             return formatOptionContent(
               ocAns,
               ocImg,
-              optMode
+              ocMode
             );
           });
 
@@ -956,6 +1213,7 @@ export function FlashcardsMatch({
             text: promptText,
             image: promptImg || null,
             options: [correctOpt, ...distractors],
+            optionImages: [answerImg || null, ...otherCards.slice(0, 3).map((oc) => (isDirectMediaUrl(oc.backMedia) ? oc.backMedia : null))],
             answerIndex: 0,
           };
         }
@@ -1108,47 +1366,126 @@ export function FlashcardsMatch({
     showToast('Swapped Front & Back for all cards!');
   };
 
-  const renderCardMediaBox = (media?: string) => {
+  const getAdaptiveCardFontClasses = (rawText: string, hasMediaOnSide: boolean): string => {
+    const cleaned = rawText.trim();
+    const len = cleaned.length;
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const longestWord = words.reduce((max, w) => Math.max(max, w.length), 0);
+
+    // Scale tiers from 0 (smallest for paragraphs) to 7 (largest for 1 short word)
+    let tier = 4;
+
+    if (hasMediaOnSide) {
+      // Side has BOTH text and image/GIF
+      if (wordCount <= 1 && len <= 8) tier = 5;
+      else if (wordCount <= 2 && len <= 16 && longestWord <= 10) tier = 4;
+      else if (len <= 30) tier = 3;
+      else if (len <= 55) tier = 2;
+      else if (len <= 90) tier = 1;
+      else tier = 0;
+    } else {
+      // Side has ONLY text (1 word, 2+ words, or sentence)
+      if (wordCount === 1 && len <= 6) tier = 7;
+      else if (wordCount === 1 && len <= 11) tier = 6;
+      else if (wordCount <= 2 && len <= 15 && longestWord <= 10) tier = 6;
+      else if (wordCount <= 3 && len <= 22 && longestWord <= 12) tier = 5;
+      else if (len <= 36) tier = 4;
+      else if (len <= 60) tier = 3;
+      else if (len <= 95) tier = 2;
+      else if (len <= 140) tier = 1;
+      else tier = 0;
+    }
+
+    const adjustedTier = Math.max(0, Math.min(7, tier + fontSizeStep));
+
+    const tierClasses: Record<number, string> = {
+      0: 'text-xl sm:text-2xl lg:text-3xl xl:text-4xl leading-snug',
+      1: 'text-2xl sm:text-3xl lg:text-4xl xl:text-5xl leading-snug',
+      2: 'text-3xl sm:text-4xl lg:text-5xl xl:text-6xl leading-tight',
+      3: 'text-3xl sm:text-5xl lg:text-6xl xl:text-7xl leading-tight',
+      4: 'text-4xl sm:text-6xl lg:text-7xl xl:text-[5.25rem] leading-[1.12]',
+      5: 'text-5xl sm:text-6xl lg:text-7xl xl:text-[6.25rem] leading-[1.1]',
+      6: 'text-5xl sm:text-7xl lg:text-8xl xl:text-[7.5rem] leading-[1.06]',
+      7: 'text-6xl sm:text-8xl lg:text-[7.5rem] xl:text-[9.25rem] leading-none',
+    };
+
+    return tierClasses[adjustedTier] || tierClasses[4];
+  };
+
+  const renderCardMediaBox = (media?: string, isSoloMedia: boolean = false) => {
     if (!media) return null;
-    if (isDirectMediaUrl(media)) {
+    const trimmedMedia = media.trim();
+    const isUrl =
+      isDirectMediaUrl(trimmedMedia) ||
+      trimmedMedia.startsWith('/images/') ||
+      trimmedMedia.startsWith('blob:');
+    if (isUrl) {
+      if (isSoloMedia) {
+        return (
+          <div className="w-full h-full flex items-center justify-center p-1 sm:p-2 overflow-hidden">
+            <img
+              src={trimmedMedia}
+              alt="Card visual"
+              referrerPolicy="no-referrer"
+              className="w-full h-full max-w-full max-h-full object-contain drop-shadow-xl rounded-3xl"
+            />
+          </div>
+        );
+      }
       return (
-        <div className="w-full h-full max-h-[420px] flex items-center justify-center p-2">
+        <div className="w-full h-full flex items-center justify-center p-1 sm:p-2 overflow-hidden">
           <img
-            src={media}
+            src={trimmedMedia}
             alt="Card visual"
             referrerPolicy="no-referrer"
-            className="w-full h-full max-h-[380px] object-contain drop-shadow-sm rounded-2xl"
+            className="w-full h-full max-w-full max-h-[54vh] object-contain drop-shadow-lg rounded-3xl"
           />
         </div>
       );
     }
     return (
-      <div className="w-full h-full max-h-[420px] flex items-center justify-center p-4">
-        <div className="text-[7rem] sm:text-[9.5rem] lg:text-[12rem] xl:text-[14rem] leading-none select-none drop-shadow-md">
-          {media}
+      <div className="w-full h-full flex items-center justify-center p-2">
+        <div
+          className={`${
+            isSoloMedia
+              ? 'text-[10rem] sm:text-[14rem] lg:text-[18rem] xl:text-[21rem]'
+              : 'text-[7rem] sm:text-[10rem] lg:text-[13rem] xl:text-[15rem]'
+          } leading-none select-none drop-shadow-md`}
+        >
+          {trimmedMedia}
         </div>
       </div>
     );
   };
 
-  const renderCardContentHTML = (text: string, media?: string) => {
-    const safeText = typeof text === 'string' ? text : '';
-    const cleanMedia = (media || '').trim();
+  const renderCardContentHTML = (text: string, media?: string, side?: 'front' | 'back') => {
+    const rawText = typeof text === 'string' ? text : '';
+    const parsedFromText = parseOptionContent(rawText);
+    const cleanMedia = (media || parsedFromText.imageUrl || '').trim();
     const hasMedia = Boolean(cleanMedia && cleanMedia !== '✨');
+
+    let safeText = parsedFromText.imageUrl ? parsedFromText.text : rawText;
+    if (
+      side === 'back' &&
+      hasMedia &&
+      currentCard?.frontText &&
+      safeText.trim().toLowerCase() === currentCard.frontText.trim().toLowerCase()
+    ) {
+      safeText = '';
+    }
+
     const showText = contentMode !== 'photo' || !hasMedia;
     const hasText = Boolean(showText && safeText.trim() !== '');
     const themeObj = THEMES[theme] || THEMES.london;
 
     if (hasText && hasMedia) {
-      const len = safeText.trim().length;
-      let sizeClass = 'text-3xl sm:text-5xl lg:text-6xl xl:text-7xl';
-      if (len > 55) sizeClass = 'text-xl sm:text-2xl lg:text-3xl';
-      else if (len > 28) sizeClass = 'text-2xl sm:text-4xl lg:text-5xl';
+      const sizeClass = getAdaptiveCardFontClasses(safeText, true);
 
       return (
-        <div className="w-full h-full grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-8 items-center">
-          <div className="md:col-span-7 h-full flex flex-col items-center md:items-start justify-center text-center md:text-left px-2 sm:px-6 overflow-y-auto">
-            <div className={`${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight leading-[1.15] break-words w-full`}>
+        <div className="w-full h-full grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-center min-h-0">
+          <div className="md:col-span-6 h-full flex flex-col items-center justify-center text-center px-2 sm:px-6 overflow-y-auto min-h-0">
+            <div className={`${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight break-words [word-break:keep-all] [overflow-wrap:break-word] w-full`}>
               {safeText.split('\n').map((line, idx) => (
                 <React.Fragment key={idx}>
                   {line}
@@ -1157,8 +1494,8 @@ export function FlashcardsMatch({
               ))}
             </div>
           </div>
-          <div className="md:col-span-5 h-full flex items-center justify-center min-h-0">
-            {renderCardMediaBox(media)}
+          <div className="md:col-span-6 w-full h-full flex items-center justify-center min-h-0 overflow-hidden">
+            {renderCardMediaBox(cleanMedia, false)}
           </div>
         </div>
       );
@@ -1166,21 +1503,18 @@ export function FlashcardsMatch({
 
     if (hasMedia && !hasText) {
       return (
-        <div className="w-full h-full flex items-center justify-center p-4">
-          {renderCardMediaBox(media)}
+        <div className="w-full h-full flex items-center justify-center min-h-0 overflow-hidden">
+          {renderCardMediaBox(cleanMedia, true)}
         </div>
       );
     }
 
     if (hasText && !hasMedia) {
-      const len = safeText.trim().length;
-      let sizeClass = 'text-4xl sm:text-6xl lg:text-7xl xl:text-8xl';
-      if (len > 60) sizeClass = 'text-2xl sm:text-4xl lg:text-5xl';
-      else if (len > 30) sizeClass = 'text-3xl sm:text-5xl lg:text-6xl';
+      const sizeClass = getAdaptiveCardFontClasses(safeText, false);
 
       return (
-        <div className="w-full h-full flex items-center justify-center text-center px-4">
-          <div className={`${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight leading-tight break-words max-w-full`}>
+        <div className="w-full h-full flex items-center justify-center text-center px-4 sm:px-8 overflow-y-auto min-h-0">
+          <div className={`${themeObj.cardFont} ${sizeClass} font-extrabold text-slate-900 tracking-tight break-words [word-break:keep-all] [overflow-wrap:break-word] max-w-full`}>
             {safeText.split('\n').map((line, idx) => (
               <React.Fragment key={idx}>
                 {line}
@@ -1206,37 +1540,97 @@ export function FlashcardsMatch({
         @keyframes dealFadeSlide {
           0% {
             opacity: 0;
-            transform: translate3d(-48px, 0, 0) scale(0.95);
+            transform: perspective(1800px) translate3d(-140px, 24px, -80px) rotateY(-65deg) rotateZ(-6deg) scale(0.82);
+          }
+          60% {
+            opacity: 1;
+            transform: perspective(1800px) translate3d(10px, -6px, 30px) rotateY(6deg) rotateZ(0.8deg) scale(1.02);
           }
           100% {
             opacity: 1;
-            transform: none;
+            transform: perspective(1800px) translate3d(0, 0, 0) rotateY(0deg) rotateZ(0deg) scale(1);
           }
         }
         .animate-deal-stage {
-          animation: dealFadeSlide 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+          animation: dealFadeSlide 0.52s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        @keyframes undoFlyBack {
+        @keyframes hamsterDealerIdle {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-6px) rotate(2deg); }
+        }
+        .animate-hamster-dealer-idle {
+          animation: hamsterDealerIdle 2.6s ease-in-out infinite;
+        }
+        @keyframes hamsterDealerFlipHop {
+          0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+          28% { transform: translate(14px, -22px) scale(1.16) rotate(14deg); }
+          62% { transform: translate(6px, -10px) scale(1.08) rotate(-8deg); }
+          100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+        }
+        .animate-hamster-dealer-hop {
+          animation: hamsterDealerFlipHop 0.56s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @keyframes hamsterPawFlick {
+          0% { transform: translate(0, 0) rotate(-18deg) scale(1); }
+          35% { transform: translate(26px, -34px) rotate(42deg) scale(1.25); }
+          70% { transform: translate(10px, -14px) rotate(12deg) scale(1.1); }
+          100% { transform: translate(0, 0) rotate(-18deg) scale(1); }
+        }
+        .animate-hamster-paw-flick {
+          animation: hamsterPawFlick 0.54s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @keyframes smallDeckCardFlip3D {
+          0% {
+            transform: perspective(1000px) translate3d(0, 0, 0) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1);
+          }
+          35% {
+            transform: perspective(1000px) translate3d(18px, -42px, 70px) rotateX(16deg) rotateY(95deg) rotateZ(8deg) scale(1.12);
+          }
+          70% {
+            transform: perspective(1000px) translate3d(6px, -16px, 35px) rotateX(-8deg) rotateY(210deg) rotateZ(-4deg) scale(1.05);
+          }
+          100% {
+            transform: perspective(1000px) translate3d(0, 0, 0) rotateX(0deg) rotateY(360deg) rotateZ(0deg) scale(1);
+          }
+        }
+        .animate-small-deck-flip {
+          animation: smallDeckCardFlip3D 0.62s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @keyframes smallCardDealLaunch {
           0% {
             opacity: 1;
-            transform: translate3d(0, 0, 0) scale(1);
+            transform: perspective(1000px) translate3d(0, 0, 0) rotateY(0deg) rotateZ(0deg) scale(0.95);
+          }
+          45% {
+            opacity: 1;
+            transform: perspective(1000px) translate3d(140px, -54px, 90px) rotateY(180deg) rotateZ(14deg) scale(1.14);
           }
           100% {
             opacity: 0;
-            transform: translate3d(-320px, -20px, 80px) scale(0.7) rotateZ(-10deg);
+            transform: perspective(1000px) translate3d(340px, -12px, 140px) rotateY(360deg) rotateZ(20deg) scale(1.25);
           }
         }
-        .animate-undo {
-          animation: undoFlyBack 0.36s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        .animate-small-card-launch {
+          animation: smallCardDealLaunch 0.54s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+        @keyframes bigCardFlipPopFront {
+          0% { transform: perspective(1800px) translateZ(0px) rotateY(180deg) scale(1); }
+          45% { transform: perspective(1800px) translateZ(75px) translateY(-10px) rotateY(90deg) rotateZ(-1.5deg) scale(1.035); }
+          100% { transform: perspective(1800px) translateZ(0px) rotateY(0deg) scale(1); }
+        }
+        @keyframes bigCardFlipPopBack {
+          0% { transform: perspective(1800px) translateZ(0px) rotateY(0deg) scale(1); }
+          45% { transform: perspective(1800px) translateZ(75px) translateY(-10px) rotateY(90deg) rotateZ(1.5deg) scale(1.035); }
+          100% { transform: perspective(1800px) translateZ(0px) rotateY(180deg) scale(1); }
         }
         @keyframes shuffleRiffleLeft {
           0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          25% { transform: translate(-36px, -18px) rotate(-9deg); }
-          50% { transform: translate(22px, 10px) rotate(6deg); }
-          75% { transform: translate(-15px, 6px) rotate(-4deg); }
+          25% { transform: translate(-22px, -14px) rotate(-9deg); }
+          50% { transform: translate(18px, 8px) rotate(7deg); }
+          75% { transform: translate(-12px, 5px) rotate(-5deg); }
         }
         .animate-shuffle {
-          animation: shuffleRiffleLeft 0.55s ease-in-out;
+          animation: shuffleRiffleLeft 0.58s ease-in-out;
         }
         @keyframes floatSlow {
           0%, 100% { transform: translateY(0px); }
@@ -1251,6 +1645,31 @@ export function FlashcardsMatch({
         }
         .bus-bob {
           animation: busDrive 8s ease-in-out infinite;
+        }
+        .fc-perspective-stage {
+          perspective: 1800px;
+        }
+        .fc-flip-container {
+          transform-style: preserve-3d;
+          transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .fc-flipped-true {
+          transform: rotateY(180deg);
+          animation: bigCardFlipPopBack 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .fc-flipped-false {
+          transform: rotateY(0deg);
+          animation: bigCardFlipPopFront 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .fc-card-face-front {
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform: rotateY(0deg);
+        }
+        .fc-card-face-back {
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform: rotateY(180deg);
         }
       `}</style>
 
@@ -1287,6 +1706,14 @@ export function FlashcardsMatch({
                   </div>
 
                   <div className="flex items-center gap-2.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleStartPlay(shuffleBeforeDeal)}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-lg shadow-emerald-500/30 cursor-pointer text-sm sm:text-base whitespace-nowrap shrink-0"
+                    >
+                      <Play size={18} className="fill-current" />
+                      <span>Play Deck</span>
+                    </button>
                     <button
                       type="button"
                       onClick={handleSaveClick}
@@ -1637,32 +2064,32 @@ export function FlashcardsMatch({
       {/* VIEW 2: FULL-SCREEN PLAY / CARD DEALER VIEW               */}
       {/* ========================================================= */}
       {screen === 'play' && (
-        <div className="fixed inset-0 z-40 flex flex-col justify-between overflow-hidden select-none">
+        <div className="absolute inset-0 z-40 flex flex-col justify-between overflow-hidden select-none">
           {/* Dynamic Illustrated Background Stage */}
           {themeObj.stageSvg}
 
           {/* TOP HUD BAR (Back to Setup + Deck Title | Controls + Theme + Sound + Fullscreen) */}
           <header className="relative z-20 px-4 sm:px-8 pt-4 pb-2 flex flex-wrap items-center justify-between gap-4">
-            {/* Left: Setup Button + Clean Unboxed Title */}
-            <div className="flex items-center gap-3.5 min-w-0">
+            {/* Left: Setup Button + High-Contrast Glass Title Pill */}
+            <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
                 onClick={() => setScreen('setup')}
                 title="Return to Setup (Esc)"
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/85 text-white backdrop-blur-md border border-white/20 shadow-md transition-colors cursor-pointer text-xs sm:text-sm font-bold whitespace-nowrap shrink-0"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900/75 hover:bg-slate-800 text-white backdrop-blur-md border border-white/25 shadow-lg transition-colors cursor-pointer text-xs sm:text-sm font-bold whitespace-nowrap shrink-0"
               >
                 <ArrowLeft size={15} />
                 <span>Setup</span>
               </button>
 
-              <div className="flex items-baseline gap-2 min-w-0 text-white drop-shadow-sm">
-                <h2 className="font-bold text-base sm:text-lg leading-tight truncate max-w-[200px] sm:max-w-[320px]">
+              <div className="flex items-center gap-2 min-w-0 px-3.5 py-1.5 rounded-xl bg-slate-900/65 backdrop-blur-md border border-white/20 text-white shadow-md">
+                <h2 className="font-extrabold text-sm sm:text-base leading-tight truncate max-w-[180px] sm:max-w-[300px]">
                   {topic || 'Flashcards'}
                 </h2>
                 {classLevel && (
                   <>
-                    <span className="text-white/50 text-sm" aria-hidden="true">·</span>
-                    <span className="text-xs sm:text-sm text-white/80 font-medium truncate max-w-[140px]">
+                    <span className="text-white/50 text-xs" aria-hidden="true">•</span>
+                    <span className="text-xs text-amber-300 font-bold truncate max-w-[130px]">
                       {classLevel}
                     </span>
                   </>
@@ -1670,22 +2097,26 @@ export function FlashcardsMatch({
               </div>
             </div>
 
-            {/* Right: Progress Count, Front/Back Toggle, Theme, Audio & Fullscreen */}
+            {/* Right: Progress Count, Front/Back Toggle, Auto-Speak, Theme, Audio & Fullscreen */}
             <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap justify-end">
-              <span className="px-3 py-1.5 rounded-xl bg-slate-900/50 backdrop-blur-md border border-white/15 text-white text-xs sm:text-sm font-bold tabular-nums whitespace-nowrap">
-                {dealtHistory.length} / {dealtHistory.length + undealtDeck.length}
+              <span className="px-3.5 py-1.5 rounded-xl bg-slate-900/75 backdrop-blur-md border border-white/25 text-white text-xs sm:text-sm font-extrabold tabular-nums whitespace-nowrap shadow-md">
+                Card {dealtHistory.length} / {dealtHistory.length + undealtDeck.length}
               </span>
 
               {cardSides === 2 && (
-                <div className="hidden md:flex items-center bg-slate-900/55 backdrop-blur-md p-1 rounded-xl border border-white/20 text-white text-xs">
+                <div className="hidden md:flex items-center bg-slate-900/75 backdrop-blur-md p-1 rounded-xl border border-white/25 text-white text-xs shadow-md">
                   <button
                     type="button"
                     onClick={() => {
                       setDealFrontFirst(true);
-                      if (currentCard) setIsCurrentFlipped(false);
+                      if (currentCard) {
+                        setIsCurrentFlipped(false);
+                        playSoundFx('flip');
+                        triggerDeckHamsterAnimation('flip', 'Front First! ✨');
+                      }
                     }}
                     className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
-                      dealFrontFirst ? 'bg-white text-slate-900 shadow-xs' : 'text-white/75 hover:text-white'
+                      dealFrontFirst ? 'bg-white text-slate-900 shadow-xs' : 'text-white/80 hover:text-white'
                     }`}
                   >
                     Front First
@@ -1694,10 +2125,14 @@ export function FlashcardsMatch({
                     type="button"
                     onClick={() => {
                       setDealFrontFirst(false);
-                      if (currentCard) setIsCurrentFlipped(true);
+                      if (currentCard) {
+                        setIsCurrentFlipped(true);
+                        playSoundFx('flip');
+                        triggerDeckHamsterAnimation('flip', 'Back First! 🔄');
+                      }
                     }}
                     className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
-                      !dealFrontFirst ? 'bg-white text-slate-900 shadow-xs' : 'text-white/75 hover:text-white'
+                      !dealFrontFirst ? 'bg-white text-slate-900 shadow-xs' : 'text-white/80 hover:text-white'
                     }`}
                   >
                     Back First
@@ -1705,8 +2140,27 @@ export function FlashcardsMatch({
                 </div>
               )}
 
+              {/* Auto-Read Voice Toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !autoSpeak;
+                  setAutoSpeak(next);
+                  showToast(next ? '🔊 Auto-Speak ON when flipping/dealing' : '🔇 Auto-Speak OFF');
+                }}
+                title="Automatically read card aloud when dealt or flipped"
+                className={`px-3 py-1.5 rounded-xl border text-xs font-extrabold backdrop-blur-md transition cursor-pointer flex items-center gap-1.5 shadow-md ${
+                  autoSpeak
+                    ? 'bg-emerald-600/90 border-emerald-300 text-white'
+                    : 'bg-slate-900/70 hover:bg-slate-800/85 border-white/25 text-white/85'
+                }`}
+              >
+                <Sparkles size={13} className={autoSpeak ? 'text-amber-200' : 'text-slate-300'} />
+                <span className="hidden sm:inline">Auto Voice</span>
+              </button>
+
               {/* Theme Switcher on Top */}
-              <div className="relative flex items-center bg-slate-900/60 hover:bg-slate-800/80 border border-white/20 rounded-xl px-2.5 py-1.5 backdrop-blur-md text-white transition-colors">
+              <div className="relative flex items-center bg-slate-900/75 hover:bg-slate-800/90 border border-white/25 rounded-xl px-2.5 py-1.5 backdrop-blur-md text-white transition-colors shadow-md">
                 <Palette size={15} className="text-amber-300 shrink-0 mr-1.5 pointer-events-none" />
                 <select
                   value={theme}
@@ -1725,155 +2179,295 @@ export function FlashcardsMatch({
 
               <button
                 type="button"
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                title={soundEnabled ? 'Mute Sound' : 'Enable Sound'}
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-900/60 hover:bg-slate-800/85 text-white border border-white/20 flex items-center justify-center transition cursor-pointer shrink-0"
+                onClick={() => {
+                  const nextSound = !soundEnabled;
+                  setSoundEnabled(nextSound);
+                }}
+                title={soundEnabled ? 'Mute Card Flip Sound Effects' : 'Enable Card Flip Sound Effects'}
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-900/75 hover:bg-slate-800/90 text-white border border-white/25 flex items-center justify-center transition cursor-pointer shrink-0 shadow-md"
               >
-                {soundEnabled ? <Volume2 size={17} /> : <VolumeX size={17} className="text-rose-400" />}
+                {soundEnabled ? <Volume2 size={17} className="text-amber-300" /> : <VolumeX size={17} className="text-rose-400" />}
               </button>
 
               <FullscreenButton
                 targetId="flashcard-game-container"
-                className="!w-9 !h-9 sm:!w-10 sm:!h-10 !rounded-xl bg-slate-900/60 hover:bg-slate-800/85 border-white/20"
+                showLabel
+                className="!px-3.5 !py-2 !rounded-xl bg-slate-900/80 hover:bg-slate-800 border-white/25 shadow-md"
               />
             </div>
           </header>
 
-          {/* CENTER STAGE: LEFT 3D DECK STACK + RIGHT ACTIVE CARD */}
-          <div className="relative z-10 flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-8 lg:px-12 py-2 flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-10 min-h-0">
-            {/* LEFT COLUMN: 3D STACKED DECK */}
-            <div className="w-full lg:w-[27%] xl:w-[25%] flex flex-col items-center justify-center shrink-0">
-              <div
-                onClick={handleDealNext}
-                className="relative w-full max-w-[240px] sm:max-w-[300px] lg:max-w-[340px] aspect-[4/3] cursor-pointer group select-none"
-              >
-                {undealtDeck.length === 0 ? (
-                  <div className="absolute inset-0 rounded-3xl border-2 border-dashed border-white/35 bg-slate-900/25 backdrop-blur-sm flex flex-col items-center justify-center text-white/85 p-6 text-center">
-                    <Layers size={42} className="text-white/60 mb-2" />
-                    <p className="font-bold text-sm sm:text-base">Deck Complete</p>
-                  </div>
-                ) : (
-                  <div className="absolute inset-0 transition-transform duration-200 group-hover:-translate-y-1.5">
-                    <div
-                      className="absolute inset-x-0 top-3 bottom-0 rounded-3xl bg-slate-500/90 border-2 border-slate-600/80 shadow-[0_24px_45px_rgba(0,0,0,0.45)]"
-                      style={{ transform: `translateY(${Math.min(undealtDeck.length, 6) * 7}px)` }}
-                    />
-                    {Array.from({ length: Math.min(undealtDeck.length, 6) })
-                      .map((_, i) => i)
-                      .reverse()
-                      .map((i) => {
-                        const offsetY = i * 5;
-                        const isTop = i === 0;
-                        return (
-                          <div
-                            key={i}
-                            className={`absolute inset-0 rounded-3xl ${themeObj.deckCardBg} border-4 shadow-md flex items-center justify-center p-4 transition-all`}
-                            style={{ transform: `translateY(${offsetY}px)` }}
-                          >
-                            <div className="w-full h-full rounded-2xl border-2 border-current/30 flex flex-col items-center justify-center relative">
-                              <span className="absolute top-2 left-2 w-2.5 h-2.5 border-t-2 border-l-2 border-current/50" />
-                              <span className="absolute top-2 right-2 w-2.5 h-2.5 border-t-2 border-r-2 border-current/50" />
-                              <span className="absolute bottom-2 left-2 w-2.5 h-2.5 border-b-2 border-l-2 border-current/50" />
-                              <span className="absolute bottom-2 right-2 w-2.5 h-2.5 border-b-2 border-r-2 border-current/50" />
-                              {isTop && themeObj.emblemSvg}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
-              </div>
+          {/* CENTER STAGE: LEFT 3D SMALL DECK WITH BIG HAMSTER DEALER AT BOTTOM-LEFT + LARGE ACTIVE CARD */}
+          <div className="relative z-10 flex-1 w-full max-w-[1880px] mx-auto px-3 sm:px-6 lg:px-10 py-1 flex flex-col lg:flex-row items-center justify-center gap-5 lg:gap-8 min-h-0">
+            {/* LEFT COLUMN: SMALL 3D STACKED DECK WITH BIG CUTE HAMSTER DEALER AT BOTTOM-LEFT */}
+            <div className="w-full lg:w-[21%] xl:w-[20%] flex flex-col items-center justify-center shrink-0">
+              {(() => {
+                const activeHamster =
+                  CUTE_HAMSTER_BREEDS[dealerHamsterIdx % CUTE_HAMSTER_BREEDS.length] ||
+                  CUTE_HAMSTER_BREEDS[0];
+                const isAnimating = Boolean(deckAnimState.type);
+                const stackDepth = Math.min(undealtDeck.length, 5);
+                const stackOffsetClasses = [
+                  'translate-y-0',
+                  'translate-y-1.5',
+                  'translate-y-3',
+                  'translate-y-4.5',
+                  'translate-y-6',
+                ];
 
-              <p className="mt-5 text-white/85 text-xs sm:text-sm font-semibold tabular-nums drop-shadow-sm">
-                {undealtDeck.length > 0 ? `${undealtDeck.length} left` : '0 left'}
-              </p>
+                return (
+                  <div className="w-full max-w-[230px] sm:max-w-[265px] lg:max-w-[290px] flex flex-col items-center">
+                    {/* SMALL 3D STACKED DECK CARD + BIG HAMSTER DEALER ANCHORED AT BOTTOM-LEFT */}
+                    <div
+                      onClick={handleDealNext}
+                      className={`relative w-full aspect-[4/3] cursor-pointer group select-none ${
+                        deckAnimState.type === 'shuffle' ? 'animate-shuffle' : ''
+                      }`}
+                    >
+                      {undealtDeck.length === 0 ? (
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShuffle();
+                          }}
+                          className="absolute inset-0 rounded-3xl border-2 border-dashed border-amber-300/70 bg-slate-900/65 hover:bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center text-white p-6 text-center shadow-2xl transition"
+                        >
+                          <Shuffle size={38} className="text-amber-300 mb-2 animate-pulse" />
+                          <p className="font-extrabold text-sm sm:text-base">Deck Complete!</p>
+                          <p className="text-xs text-amber-200/90 mt-1">Click to Shuffle &amp; Deal Again</p>
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0 transition-transform duration-200 group-hover:-translate-y-1.5">
+                          {/* Deep 3D Base Shadow */}
+                          <div className="absolute inset-x-1 top-5 -bottom-3 rounded-3xl bg-slate-950/65 border-2 border-white/15 shadow-[0_26px_50px_rgba(0,0,0,0.65)]" />
+
+                          {/* Stacked Cards in Deck */}
+                          {Array.from({ length: stackDepth })
+                            .map((_, i) => i)
+                            .reverse()
+                            .map((i) => {
+                              const isTop = i === 0;
+                              const offsetClass = stackOffsetClasses[i] || 'translate-y-6';
+                              return (
+                                <div
+                                  key={`stack-${i}-${isTop ? deckAnimState.key : 'base'}`}
+                                  className={`absolute inset-0 rounded-3xl ${themeObj.deckCardBg} border-4 shadow-xl flex items-center justify-center p-4 transition-all ${offsetClass} ${
+                                    isTop && (deckAnimState.type === 'flip' || deckAnimState.type === 'deal')
+                                      ? 'animate-small-deck-flip ring-4 ring-amber-300/90'
+                                      : ''
+                                  }`}
+                                >
+                                  <div className="w-full h-full rounded-2xl border-2 border-current/30 flex flex-col items-center justify-center relative overflow-hidden">
+                                    <span className="absolute top-2.5 left-2.5 w-3 h-3 border-t-2 border-l-2 border-current/50" />
+                                    <span className="absolute top-2.5 right-2.5 w-3 h-3 border-t-2 border-r-2 border-current/50" />
+                                    <span className="absolute bottom-2.5 left-2.5 w-3 h-3 border-b-2 border-l-2 border-current/50" />
+                                    <span className="absolute bottom-2.5 right-2.5 w-3 h-3 border-b-2 border-r-2 border-current/50" />
+                                    {isTop && (
+                                      <div className="scale-110 transition-transform duration-300 group-hover:scale-125">
+                                        {themeObj.emblemSvg}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                          {/* Flying 3D Card Animation Launching from Small Deck to Big Stage on Deal */}
+                          {deckAnimState.type === 'deal' && (
+                            <div
+                              key={`launch-${deckAnimState.key}`}
+                              className={`absolute inset-0 rounded-3xl ${themeObj.deckCardBg} border-4 border-amber-300 shadow-2xl flex items-center justify-center p-4 pointer-events-none z-40 animate-small-card-launch`}
+                            >
+                              <div className="w-full h-full rounded-2xl border-2 border-current/40 flex flex-col items-center justify-center">
+                                {themeObj.emblemSvg}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* BIG CUTE HAMSTER DEALER AT THE BOTTOM-LEFT OF THE SMALL CARD */}
+                      <div
+                        key={`hamster-${deckAnimState.key}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (cardSides === 2 && currentCard) {
+                            handleFlip();
+                          } else {
+                            handleDealNext();
+                          }
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDealerHamsterIdx((prev) => (prev + 1) % CUTE_HAMSTER_BREEDS.length);
+                          playSoundFx('flip');
+                          triggerDeckHamsterAnimation('flip');
+                        }}
+                        title="Click Dealer Hamster to Flip / Deal! (Right-click to switch hamster)"
+                        className={`absolute -bottom-7 -left-5 sm:-bottom-8 sm:-left-6 z-30 cursor-pointer group/hamster flex items-center justify-center ${
+                          isAnimating ? 'animate-hamster-dealer-hop' : 'animate-hamster-dealer-idle'
+                        }`}
+                      >
+                        {/* Golden Glow Aura When Flipping/Dealing */}
+                        <div
+                          className={`absolute -inset-2.5 rounded-full blur-md transition-opacity duration-300 ${
+                            isAnimating
+                              ? 'bg-amber-400/85 opacity-100 scale-110'
+                              : 'bg-amber-300/30 opacity-70 group-hover/hamster:opacity-100'
+                          }`}
+                        />
+
+                        {/* Big Cute Hamster Portrait at Bottom-Left of Deck */}
+                        <div className="relative w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full border-4 border-amber-300 bg-gradient-to-b from-amber-50 to-orange-100 shadow-[0_14px_30px_rgba(0,0,0,0.55)] overflow-hidden flex items-center justify-center transition-transform group-hover/hamster:scale-105">
+                          <img
+                            src={activeHamster.imageUrl}
+                            alt={activeHamster.name}
+                            className="w-full h-full object-cover scale-110"
+                          />
+                        </div>
+
+                        {/* Animated Right Paw Flicking & Flipping the Deck Card */}
+                        <div
+                          className={`absolute -right-3 top-2 w-9 h-7 sm:w-10 sm:h-8 rounded-full bg-amber-200 border-2 border-amber-700/70 shadow-lg flex items-center justify-center ${
+                            isAnimating ? 'animate-hamster-paw-flick' : '-rotate-12 group-hover/hamster:rotate-12 transition-transform'
+                          }`}
+                        >
+                          <RotateCw size={14} className="text-amber-700" />
+                        </div>
+
+                        {/* Clean Dealer Tag at Bottom-Left of Hamster */}
+                        <div className="absolute -bottom-2 left-2 px-2.5 py-0.5 rounded-full bg-slate-900/90 text-amber-300 text-[10px] font-black uppercase tracking-wider border border-amber-300/50 shadow-md">
+                          Dealer
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Minimal Remaining Deck Count */}
+                    <div className="mt-8 flex items-center justify-center">
+                      <span className="px-4 py-1 rounded-full bg-slate-900/80 border border-white/20 text-white text-xs sm:text-sm font-extrabold tabular-nums shadow-md backdrop-blur-md">
+                        {undealtDeck.length} left
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
-            {/* RIGHT COLUMN: ACTIVE DEALT CARD */}
-            <div className="w-full lg:w-[73%] xl:w-[75%] h-full flex flex-col items-center justify-center min-h-0">
-              <div
-                className="relative w-full h-[54vh] sm:h-[64vh] lg:h-[72vh] max-h-[680px] min-h-[340px]"
-                style={{ perspective: '1600px' }}
-              >
+            {/* RIGHT COLUMN: MUCH LARGER ACTIVE DEALT CARD */}
+            <div className="w-full lg:w-[79%] xl:w-[80%] h-full flex flex-col items-center justify-center min-h-0">
+              <div className="relative w-full h-[64vh] sm:h-[74vh] lg:h-[81vh] max-h-[860px] min-h-[400px] fc-perspective-stage">
                 {!currentCard ? (
                   <div
                     onClick={handleDealNext}
-                    className="absolute inset-0 rounded-[2rem] border-2 border-dashed border-white/40 bg-white/10 backdrop-blur-md flex flex-col items-center justify-center text-white p-8 text-center cursor-pointer hover:bg-white/15 transition shadow-2xl"
+                    className="absolute inset-0 rounded-[2.25rem] border-2 border-dashed border-white/50 bg-slate-900/45 hover:bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center text-white p-8 text-center cursor-pointer transition shadow-2xl group"
                   >
-                    <Layers size={48} className="text-white/85 mb-4" />
-                    <h3 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
+                    <div className="w-24 h-24 rounded-3xl bg-amber-400/20 border-2 border-amber-300/60 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                      <Layers size={48} className="text-amber-300" />
+                    </div>
+                    <h3 className="text-3xl sm:text-5xl font-extrabold tracking-tight">
                       Ready to Deal
                     </h3>
-                    <p className="text-sm sm:text-base text-white/80 mt-2">
-                      Click the deck or press Deal to draw a card
+                    <p className="text-base sm:text-lg text-white/85 mt-3 max-w-md">
+                      Click the deck on the left or press <span className="text-amber-300 font-bold">Deal</span> to flip out your first card!
                     </p>
                   </div>
                 ) : (
                   <div
                     key={currentCard.id}
-                    className="w-full h-full animate-deal-stage"
-                    style={{ perspective: '1600px' }}
+                    className="w-full h-full animate-deal-stage fc-perspective-stage"
                   >
                     <div
                       onClick={() => (cardSides === 2 ? handleFlip() : handleDealNext())}
-                      className="relative w-full h-full rounded-[2rem] cursor-pointer"
-                      style={{
-                        transformStyle: 'preserve-3d',
-                        transition: 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
-                        transform: cardSides === 2 && isCurrentFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                      }}
+                      className={`relative w-full h-full rounded-[2.25rem] cursor-pointer fc-flip-container ${
+                        cardSides === 2 && isCurrentFlipped ? 'fc-flipped-true' : 'fc-flipped-false'
+                      }`}
                     >
                       {/* FRONT FACE */}
                       <div
                         aria-hidden={cardSides === 2 && isCurrentFlipped}
-                        className="absolute inset-0 rounded-[2rem] bg-gradient-to-b from-white via-slate-50 to-slate-100 border-[5px] border-white shadow-[0_28px_65px_-16px_rgba(0,0,0,0.55)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden"
-                        style={{
-                          backfaceVisibility: 'hidden',
-                          WebkitBackfaceVisibility: 'hidden',
-                          transform: 'rotateY(0deg)',
-                          pointerEvents: cardSides === 2 && isCurrentFlipped ? 'none' : 'auto',
-                        }}
+                        className={`absolute inset-0 rounded-[2.25rem] bg-gradient-to-b from-white via-slate-50 to-slate-100 border-[6px] border-white shadow-[0_32px_75px_-16px_rgba(0,0,0,0.7)] flex flex-col justify-between p-5 sm:p-7 lg:p-9 overflow-hidden fc-card-face-front transition-opacity duration-200 ${
+                          cardSides === 2 && isCurrentFlipped
+                            ? 'opacity-0 invisible pointer-events-none'
+                            : 'opacity-100 visible pointer-events-auto'
+                        }`}
                       >
                         <div className="flex items-center justify-between gap-2 z-10 shrink-0">
-                          <span className="text-xs sm:text-sm font-bold text-slate-400 tracking-wide">
-                            {cardSides === 2 ? 'Front' : ''}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {cardSides === 2 ? (
+                              <span className="px-3.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs sm:text-sm font-extrabold uppercase tracking-wider shadow-2xs">
+                                Front
+                              </span>
+                            ) : (
+                              <span className="px-3.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-xs sm:text-sm font-extrabold uppercase tracking-wider">
+                                Card #{dealtHistory.length}
+                              </span>
+                            )}
+                          </div>
                           <div
                             className="flex items-center gap-2"
                             onClick={(e) => e.stopPropagation()}
                           >
+                            {/* Font Size Adjuster Pill (A- / Auto / A+) */}
+                            <div className="inline-flex items-center bg-slate-100 border border-slate-200 rounded-xl p-0.5 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => setFontSizeStep((prev) => Math.max(-2, prev - 1))}
+                                disabled={fontSizeStep <= -2}
+                                title="Decrease Font Size"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-black text-slate-700 hover:bg-white hover:text-slate-900 disabled:opacity-35 transition cursor-pointer"
+                              >
+                                A-
+                              </button>
+                              {fontSizeStep !== 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setFontSizeStep(0)}
+                                  title="Reset to Smart Auto-Fit Font Size"
+                                  className="px-2 py-1 rounded-lg text-[11px] font-bold text-blue-600 hover:bg-white transition cursor-pointer"
+                                >
+                                  Auto
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setFontSizeStep((prev) => Math.min(2, prev + 1))}
+                                disabled={fontSizeStep >= 2}
+                                title="Increase Font Size"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-black text-slate-700 hover:bg-white hover:text-slate-900 disabled:opacity-35 transition cursor-pointer"
+                              >
+                                A+
+                              </button>
+                            </div>
+
                             <button
                               type="button"
                               onClick={() => speakCard('front')}
-                              title="Speak"
-                              className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-600 flex items-center justify-center transition cursor-pointer"
+                              title="Speak Card Aloud"
+                              className="w-11 h-11 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 border border-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
                             >
-                              <Volume2 size={18} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShowSpotlightModal(true)}
-                              title="Zoom"
-                              className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-600 flex items-center justify-center transition cursor-pointer"
-                            >
-                              <Maximize2 size={18} />
+                              <Volume2 size={20} />
                             </button>
                           </div>
                         </div>
 
-                        <div className="flex-1 min-h-0 w-full my-2 flex items-center justify-center overflow-hidden">
-                          {renderCardContentHTML(currentCard.frontText, currentCard.frontMedia)}
+                        <div className="flex-1 min-h-0 w-full my-1.5 flex items-center justify-center overflow-hidden">
+                          {renderCardContentHTML(currentCard.frontText, currentCard.frontMedia, 'front')}
                         </div>
 
-                        <div className="flex items-center justify-end pt-2 z-10 shrink-0">
+                        <div className="flex items-center justify-between pt-2.5 z-10 shrink-0 border-t border-slate-200/70">
+                          <span className="text-xs sm:text-sm font-bold text-slate-400 tabular-nums">
+                            #{dealtHistory.length} / {dealtHistory.length + undealtDeck.length}
+                          </span>
+
                           <div onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
                               onClick={handleRequeueCurrent}
                               title="Put card back into deck to review again"
-                              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                              className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition cursor-pointer"
                             >
-                              <RotateCw size={13} /> Review Again
+                              <RotateCw size={14} /> Review Again
                             </button>
                           </div>
                         </div>
@@ -1883,54 +2477,80 @@ export function FlashcardsMatch({
                       {cardSides === 2 && (
                         <div
                           aria-hidden={!isCurrentFlipped}
-                          className="absolute inset-0 rounded-[2rem] bg-gradient-to-b from-indigo-50 via-white to-slate-50 border-[5px] border-indigo-200 shadow-[0_28px_65px_-16px_rgba(0,0,0,0.55)] flex flex-col justify-between p-5 sm:p-8 lg:p-10 overflow-hidden"
-                          style={{
-                            backfaceVisibility: 'hidden',
-                            WebkitBackfaceVisibility: 'hidden',
-                            transform: 'rotateY(180deg)',
-                            pointerEvents: isCurrentFlipped ? 'auto' : 'none',
-                          }}
+                          className={`absolute inset-0 rounded-[2.25rem] bg-gradient-to-b from-indigo-50 via-white to-slate-50 border-[6px] border-indigo-300 shadow-[0_32px_75px_-16px_rgba(0,0,0,0.7)] flex flex-col justify-between p-5 sm:p-7 lg:p-9 overflow-hidden fc-card-face-back transition-opacity duration-200 ${
+                            isCurrentFlipped
+                              ? 'opacity-100 visible pointer-events-auto'
+                              : 'opacity-0 invisible pointer-events-none'
+                          }`}
                         >
                           <div className="flex items-center justify-between gap-2 z-10 shrink-0">
-                            <span className="text-xs sm:text-sm font-bold text-indigo-500 tracking-wide">
-                              Back
+                            <span className="px-3.5 py-1 rounded-full bg-indigo-600 text-white text-xs sm:text-sm font-extrabold uppercase tracking-wider shadow-xs">
+                              Back • Answer
                             </span>
                             <div
                               className="flex items-center gap-2"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              {/* Font Size Adjuster Pill (A- / Auto / A+) */}
+                              <div className="inline-flex items-center bg-indigo-100/80 border border-indigo-200 rounded-xl p-0.5 shadow-2xs">
+                                <button
+                                  type="button"
+                                  onClick={() => setFontSizeStep((prev) => Math.max(-2, prev - 1))}
+                                  disabled={fontSizeStep <= -2}
+                                  title="Decrease Font Size"
+                                  className="px-2.5 py-1.5 rounded-lg text-xs font-black text-indigo-700 hover:bg-white hover:text-indigo-900 disabled:opacity-35 transition cursor-pointer"
+                                >
+                                  A-
+                                </button>
+                                {fontSizeStep !== 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setFontSizeStep(0)}
+                                    title="Reset to Smart Auto-Fit Font Size"
+                                    className="px-2 py-1 rounded-lg text-[11px] font-bold text-indigo-600 hover:bg-white transition cursor-pointer"
+                                  >
+                                    Auto
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setFontSizeStep((prev) => Math.min(2, prev + 1))}
+                                  disabled={fontSizeStep >= 2}
+                                  title="Increase Font Size"
+                                  className="px-2.5 py-1.5 rounded-lg text-xs font-black text-indigo-700 hover:bg-white hover:text-indigo-900 disabled:opacity-35 transition cursor-pointer"
+                                >
+                                  A+
+                                </button>
+                              </div>
+
                               <button
                                 type="button"
                                 onClick={() => speakCard('back')}
-                                title="Speak"
-                                className="w-10 h-10 rounded-xl bg-indigo-100/80 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition cursor-pointer"
+                                title="Speak Answer Aloud"
+                                className="w-11 h-11 rounded-xl bg-indigo-100/80 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition cursor-pointer"
                               >
-                                <Volume2 size={18} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setShowSpotlightModal(true)}
-                                title="Zoom"
-                                className="w-10 h-10 rounded-xl bg-indigo-100/80 hover:bg-indigo-600 hover:text-white text-indigo-700 flex items-center justify-center transition cursor-pointer"
-                              >
-                                <Maximize2 size={18} />
+                                <Volume2 size={20} />
                               </button>
                             </div>
                           </div>
 
-                          <div className="flex-1 min-h-0 w-full my-2 flex items-center justify-center overflow-hidden">
-                            {renderCardContentHTML(currentCard.backText, currentCard.backMedia)}
+                          <div className="flex-1 min-h-0 w-full my-1.5 flex items-center justify-center overflow-hidden">
+                            {renderCardContentHTML(currentCard.backText, currentCard.backMedia, 'back')}
                           </div>
 
-                          <div className="flex items-center justify-end pt-2 z-10 shrink-0">
+                          <div className="flex items-center justify-between pt-2.5 z-10 shrink-0 border-t border-indigo-100">
+                            <span className="text-xs sm:text-sm font-bold text-indigo-400 tabular-nums">
+                              #{dealtHistory.length} / {dealtHistory.length + undealtDeck.length}
+                            </span>
+
                             <div onClick={(e) => e.stopPropagation()}>
                               <button
                                 type="button"
                                 onClick={handleRequeueCurrent}
                                 title="Put card back in deck to review later"
-                                className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                                className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition cursor-pointer"
                               >
-                                <RotateCw size={13} /> Review Again
+                                <RotateCw size={14} /> Review Again
                               </button>
                             </div>
                           </div>
@@ -1944,12 +2564,12 @@ export function FlashcardsMatch({
           </div>
 
           {/* CLEAN BOTTOM DEALER CONTROLS */}
-          <footer className="relative z-20 px-4 sm:px-8 pb-5 pt-2 flex items-center justify-center bg-gradient-to-t from-black/55 via-black/20 to-transparent">
+          <footer className="relative z-20 px-4 sm:px-8 pb-5 pt-2 flex items-center justify-center bg-gradient-to-t from-black/60 via-black/25 to-transparent">
             <div className="flex items-center gap-2.5 sm:gap-3.5">
               <button
                 type="button"
                 onClick={handleShuffle}
-                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border border-white/35 shadow-lg backdrop-blur-md transition transform active:scale-95 flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-white font-semibold text-sm sm:text-base border border-white/35 shadow-lg backdrop-blur-md transition transform active:scale-95 flex items-center gap-2 cursor-pointer whitespace-nowrap"
               >
                 <Shuffle size={18} />
                 <span>Shuffle</span>
@@ -1959,7 +2579,7 @@ export function FlashcardsMatch({
                 type="button"
                 onClick={handleUndo}
                 disabled={dealtHistory.length === 0}
-                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-white font-semibold text-sm sm:text-base border border-white/35 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                className="px-5 sm:px-7 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-white font-semibold text-sm sm:text-base border border-white/35 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer whitespace-nowrap"
               >
                 <Undo2 size={18} />
                 <span>Undo</span>
@@ -1970,7 +2590,7 @@ export function FlashcardsMatch({
                   type="button"
                   onClick={handleFlip}
                   disabled={!currentCard}
-                  className="px-5 sm:px-7 py-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-semibold text-sm sm:text-base border border-indigo-200/60 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                  className="px-5 sm:px-7 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm sm:text-base border border-indigo-300/70 shadow-lg backdrop-blur-md transition transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 cursor-pointer whitespace-nowrap"
                 >
                   <RotateCw size={18} />
                   <span>Flip</span>
@@ -2201,8 +2821,7 @@ export function FlashcardsMatch({
                     }`}
                   >
                     <div
-                      className="h-20 w-full rounded-xl mb-3 flex items-center justify-center relative overflow-hidden shadow-inner"
-                      style={{ background: t.previewBg }}
+                      className={`h-20 w-full rounded-xl mb-3 flex items-center justify-center relative overflow-hidden shadow-inner ${t.previewBgClass}`}
                     >
                       <div className="scale-[0.5] opacity-90 text-white">{t.emblemSvg}</div>
                       {isSelected && (

@@ -410,7 +410,7 @@ async function startServer() {
           if (prev) {
             const prevTime = getTimeMs(prev.updatedAt || prev.createdAt);
             const nextTime = getTimeMs(g.updatedAt || g.createdAt);
-            if (prevTime > 0 && nextTime > 0 && nextTime < prevTime) {
+            if (prevTime > 0 && nextTime < prevTime) {
               return;
             }
           }
@@ -1060,28 +1060,118 @@ async function startServer() {
   // ============================================================================
   // SERVER-SIDE CLASS REWARDS & CLASSROOM DATA PERSISTENCE
   // Persists per-user classes, recycle bin, and custom rewards across sessions & origins
-  // even when Firestore free-tier daily quota is exhausted.
+  // in BOTH .platform-cache.json AND dedicated .class-rewards-backup.json so classes
+  // never disappear even when Firestore free-tier daily quota is exhausted.
   // ============================================================================
+  const CLASS_BACKUP_FILE = path.resolve("./.class-rewards-backup.json");
+  let classBackupMemory: Record<string, any> | null = null;
+  let classBackupWriteQueue: Promise<void> = Promise.resolve();
+
+  async function readClassBackupStore(): Promise<Record<string, any>> {
+    if (classBackupMemory) return classBackupMemory;
+    try {
+      const fs = await import("fs/promises");
+      const raw = await fs.readFile(CLASS_BACKUP_FILE, "utf-8").catch(() => "{}");
+      const parsed = JSON.parse(raw || "{}");
+      classBackupMemory = parsed && typeof parsed === "object" ? parsed : {};
+      return classBackupMemory!;
+    } catch {
+      classBackupMemory = {};
+      return classBackupMemory;
+    }
+  }
+
+  async function writeClassBackupStore(store: Record<string, any>): Promise<void> {
+    classBackupMemory = store;
+    classBackupWriteQueue = classBackupWriteQueue.then(async () => {
+      try {
+        const fs = await import("fs/promises");
+        const tmpFile = `${CLASS_BACKUP_FILE}.tmp`;
+        await fs.writeFile(tmpFile, JSON.stringify(store, null, 2), "utf-8");
+        await fs.rename(tmpFile, CLASS_BACKUP_FILE);
+      } catch (e) {
+        console.error("Failed to write class backup store:", e);
+      }
+    });
+    return classBackupWriteQueue;
+  }
+
+  function findBestServerClassEntry(
+    cacheMap: Record<string, any>,
+    backupMap: Record<string, any>,
+    userId: string,
+    email?: string
+  ): any {
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const candidates: any[] = [];
+
+    if (userId && backupMap[userId]) candidates.push(backupMap[userId]);
+    if (userId && cacheMap[userId]) candidates.push(cacheMap[userId]);
+
+    if (cleanEmail) {
+      for (const map of [backupMap, cacheMap]) {
+        for (const val of Object.values(map)) {
+          if (val && String(val.email || "").trim().toLowerCase() === cleanEmail) {
+            candidates.push(val);
+          }
+        }
+      }
+    }
+
+    if (candidates.length === 0) return {};
+
+    const nonEmpty = candidates.filter((c) => Array.isArray(c.classes) && c.classes.length > 0);
+    if (nonEmpty.length > 0) {
+      nonEmpty.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+      const bestNonEmpty = nonEmpty[0];
+      const newestAny = [...candidates].sort(
+        (a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)
+      )[0];
+      if (
+        newestAny &&
+        newestAny.intentionalEmptyReset &&
+        (Number(newestAny.updatedAt) || 0) > (Number(bestNonEmpty.updatedAt) || 0)
+      ) {
+        return newestAny;
+      }
+      return bestNonEmpty;
+    }
+
+    candidates.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+    return candidates[0] || {};
+  }
+
   app.get("/api/class-data", async (req, res) => {
     try {
       const userId = String(req.query.userId || "").trim();
-      if (!userId) {
+      const email = String(req.query.email || "").trim().toLowerCase();
+      if (!userId && !email) {
         return res.json({
           classes: [],
           customRewards: [],
           deletedClasses: [],
           deletedStudents: [],
           updatedAt: 0,
+          intentionalEmptyReset: false,
         });
       }
-      const cache = await readPlatformCache();
-      const entry = cache.classDataByUser?.[userId] || {};
+      const [cache, backupStore] = await Promise.all([
+        readPlatformCache(),
+        readClassBackupStore(),
+      ]);
+      const entry = findBestServerClassEntry(
+        cache.classDataByUser || {},
+        backupStore,
+        userId,
+        email
+      );
       res.json({
         classes: Array.isArray(entry.classes) ? entry.classes : [],
         customRewards: Array.isArray(entry.customRewards) ? entry.customRewards : [],
         deletedClasses: Array.isArray(entry.deletedClasses) ? entry.deletedClasses : [],
         deletedStudents: Array.isArray(entry.deletedStudents) ? entry.deletedStudents : [],
         updatedAt: Number(entry.updatedAt) || 0,
+        intentionalEmptyReset: Boolean(entry.intentionalEmptyReset),
       });
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Failed to load class data" });
@@ -1092,34 +1182,49 @@ async function startServer() {
     try {
       const {
         userId,
+        email,
         classes,
         customRewards,
         deletedClasses,
         deletedStudents,
         updatedAt,
         replaceEmpty,
+        intentionalEmptyReset,
         replaceCustomRewards,
       } = req.body || {};
       const uid = String(userId || "").trim();
       if (!uid) return res.status(400).json({ error: "userId is required" });
 
-      const cache = await readPlatformCache();
+      const cleanEmail = String(email || "").trim().toLowerCase();
+      const [cache, backupStore] = await Promise.all([
+        readPlatformCache(),
+        readClassBackupStore(),
+      ]);
       if (!cache.classDataByUser || typeof cache.classDataByUser !== "object") {
         cache.classDataByUser = {};
       }
-      const prev = cache.classDataByUser[uid] || {
-        classes: [],
-        customRewards: [],
-        deletedClasses: [],
-        deletedStudents: [],
-        updatedAt: 0,
-      };
 
-      const nextClasses = Array.isArray(classes)
-        ? classes.length > 0 || replaceEmpty
-          ? classes
-          : prev.classes || []
-        : prev.classes || [];
+      const prev = findBestServerClassEntry(cache.classDataByUser, backupStore, uid, cleanEmail);
+      const prevClasses = Array.isArray(prev.classes) ? prev.classes : [];
+      const prevUpdatedAt = Number(prev.updatedAt) || 0;
+      const incomingUpdatedAt = Number(updatedAt) || Date.now();
+      const allowEmpty = Boolean(intentionalEmptyReset || replaceEmpty);
+
+      let nextClasses = prevClasses;
+      let nextIntentionalEmpty = Boolean(prev.intentionalEmptyReset);
+
+      if (Array.isArray(classes)) {
+        if (classes.length > 0) {
+          // Accept non-empty classes if newer or if server had none
+          if (prevClasses.length === 0 || incomingUpdatedAt >= prevUpdatedAt - 2000) {
+            nextClasses = classes;
+            nextIntentionalEmpty = false;
+          }
+        } else if (allowEmpty && incomingUpdatedAt >= prevUpdatedAt) {
+          nextClasses = [];
+          nextIntentionalEmpty = true;
+        }
+      }
 
       let nextCustomRewards = Array.isArray(prev.customRewards) ? prev.customRewards : [];
       if (Array.isArray(customRewards)) {
@@ -1147,15 +1252,19 @@ async function startServer() {
         : prev.deletedStudents || [];
 
       const updatedEntry = {
+        userId: uid,
+        email: cleanEmail || prev.email || undefined,
         classes: nextClasses,
         customRewards: nextCustomRewards,
         deletedClasses: nextDeletedClasses,
         deletedStudents: nextDeletedStudents,
-        updatedAt: Math.max(Number(updatedAt) || 0, Date.now()),
+        updatedAt: Math.max(incomingUpdatedAt, prevUpdatedAt, Date.now()),
+        intentionalEmptyReset: nextIntentionalEmpty,
       };
 
       cache.classDataByUser[uid] = updatedEntry;
-      await writePlatformCache(cache);
+      backupStore[uid] = updatedEntry;
+      await Promise.all([writePlatformCache(cache), writeClassBackupStore(backupStore)]);
       res.json({ success: true, ...updatedEntry });
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Failed to save class data" });
