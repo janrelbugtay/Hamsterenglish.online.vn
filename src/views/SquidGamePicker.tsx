@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import gsap from 'gsap';
 import {
     Users, Play, Check, MousePointerClick, Skull, UserRound, VolumeX,
@@ -1193,7 +1194,7 @@ class ThreeManager {
     onStateChange: any = null; 
     uniformTextures: any = {}; 
     faceTextures: any = {}; 
-    baseLightIntensity = 0.8;
+    baseLightIntensity = 1.0;
     ambientLight: any = null;
     dirLight: any = null;
     spotLight: any = null;
@@ -1217,6 +1218,10 @@ class ThreeManager {
     dollEyes: THREE.Mesh[] = [];
     dollEyeBeams: THREE.Object3D[] = [];
     dollStatusRing: THREE.Mesh | null = null;
+    redLightPylonBeacons: THREE.Mesh[] = [];
+    redLightFinishGlowMat: THREE.MeshBasicMaterial | null = null;
+    redLightScanLine: THREE.Mesh | null = null;
+    isSoftwareGl: boolean = false;
     itPlayerName: string = '';
     tagRoundCount: number = 0;
     lastCaughtPlayer: string | null = null;
@@ -1431,16 +1436,20 @@ class ThreeManager {
                 if (parts?.armL) parts.armL.rotation.set(-Math.PI * 0.65, 0, 0.2);
                 if (parts?.armR) parts.armR.rotation.set(-Math.PI * 0.65, 0, -0.2);
             } else if (!char.userData.isSafe) {
-                // Standing freeze in dramatic mid-run pose facing doll
+                // Standing freeze in dramatic mid-run pose facing doll (smoothly settle onto ground)
                 char.rotation.set(0, Math.PI, 0);
-                char.position.y = 1.0;
+                if (Math.abs(char.position.y - 1.0) > 0.01) {
+                    gsap.to(char.position, { y: 1.0, duration: 0.12, ease: "power1.out" });
+                } else {
+                    char.position.y = 1.0;
+                }
             }
         });
     }
 
     setTagTimer(seconds: number) {
         if (this.gameType === 'redlight') {
-            this.tagTimer = seconds >= 45 ? 60 : 30;
+            this.tagTimer = Math.max(30, Math.min(120, Math.round(seconds)));
         } else {
             this.tagTimer = Math.max(5, Math.min(60, seconds));
         }
@@ -2060,15 +2069,46 @@ class ThreeManager {
         this.camera.position.set(0, Math.max(20, this.currentDoorRadius * 1.2), Math.max(35, this.currentDoorRadius * 1.8));
         this.camera.lookAt(0, 0, 0);
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.isSoftwareGl = (() => {
+            try {
+                const gl = document.createElement('canvas').getContext('webgl2');
+                if (!gl) return true;
+                const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
+                const gpu = String(gl.getParameter(param));
+                gl.getExtension('WEBGL_lose_context')?.loseContext();
+                return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+            } catch {
+                return false;
+            }
+        })();
+
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: !this.isSoftwareGl,
+            alpha: true,
+            powerPreference: 'high-performance'
+        });
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 0.98;
+        this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
         this.renderer.setSize(width, height);
-        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.enabled = !this.isSoftwareGl;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(this.renderer.domElement);
+
+        const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+        this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+        this.scene.environmentIntensity = 0.32;
+        pmremGenerator.dispose();
 
         this.setupLights();
         this.setupEnvironment();
         this.setupInteraction();
+
+        if (!this.isSoftwareGl) {
+            this.renderer.compile(this.scene, this.camera);
+        }
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
         if (typeof ResizeObserver !== 'undefined') {
@@ -2085,16 +2125,16 @@ class ThreeManager {
 
     setupLights() {
         if(!this.scene) return;
-        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.38);
         this.scene.add(this.ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0xfde68a, 0.65);
+        const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0xc29b6e, 0.45);
         hemiLight.position.set(0, 50, 0);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xfffbeb, this.baseLightIntensity);
-        this.dirLight.position.set(22, 45, 28);
-        this.dirLight.castShadow = true;
+        this.dirLight = new THREE.DirectionalLight(0xfffcf0, 1.05);
+        this.dirLight.position.set(22, 46, 28);
+        this.dirLight.castShadow = !this.isSoftwareGl;
         this.dirLight.shadow.mapSize.width = 2048;
         this.dirLight.shadow.mapSize.height = 2048;
         this.dirLight.shadow.camera.near = 0.5;
@@ -2103,10 +2143,12 @@ class ThreeManager {
         this.dirLight.shadow.camera.right = 45;
         this.dirLight.shadow.camera.top = 45;
         this.dirLight.shadow.camera.bottom = -45;
+        this.dirLight.shadow.bias = -0.0005;
+        this.dirLight.shadow.normalBias = 0.02;
         this.scene.add(this.dirLight);
 
-        // Front-camera fill light so the backs of contestants' green tracksuits & white numbers pop crisply
-        const frontFillLight = new THREE.DirectionalLight(0xffffff, 0.55);
+        // Balanced front-camera fill light so doll face & contestants' tracksuits have crisp form without dark shadows or glare
+        const frontFillLight = new THREE.DirectionalLight(0xeef6ff, 0.32);
         frontFillLight.position.set(-12, 26, 52);
         this.scene.add(frontFillLight);
         
@@ -2556,45 +2598,83 @@ class ThreeManager {
 
     createRedLightEnvironment(): THREE.Group {
         const group = new THREE.Group();
+        const maxAniso = this.renderer?.capabilities?.getMaxAnisotropy?.() || 8;
+        this.redLightPylonBeacons = [];
 
-        // 1. Procedural Sunlit Golden Sand Court Texture with Yard Lines
+        // 1. High-Res Procedural Sunlit Golden Sand Court Texture with Yard Lines & Chalk Stencils
         const sandCanvas = document.createElement('canvas');
-        sandCanvas.width = 512;
-        sandCanvas.height = 512;
+        sandCanvas.width = 1024;
+        sandCanvas.height = 1024;
         const sCtx = sandCanvas.getContext('2d');
         if (sCtx) {
-            const sandGrad = sCtx.createLinearGradient(0, 0, 0, 512);
-            sandGrad.addColorStop(0, '#f3dfb9');
-            sandGrad.addColorStop(0.5, '#ecd2a4');
-            sandGrad.addColorStop(1, '#e4c590');
+            const sandGrad = sCtx.createLinearGradient(0, 0, 0, 1024);
+            sandGrad.addColorStop(0, '#d4ac6e');
+            sandGrad.addColorStop(0.5, '#c79a58');
+            sandGrad.addColorStop(1, '#b98947');
             sCtx.fillStyle = sandGrad;
-            sCtx.fillRect(0, 0, 512, 512);
+            sCtx.fillRect(0, 0, 1024, 1024);
 
-            // Subtle organic sand speckles & ripples
-            for (let i = 0; i < 2200; i++) {
-                const x = (i * 73) % 512;
-                const y = (i * 137) % 512;
-                sCtx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(161,118,64,0.12)';
-                sCtx.fillRect(x, y, 2, 2);
+            // Wind-swept sand ripple bands
+            for (let y = 0; y < 1024; y += 14) {
+                sCtx.fillStyle = y % 28 === 0 ? 'rgba(255,245,220,0.06)' : 'rgba(120,82,36,0.06)';
+                sCtx.fillRect(0, y, 1024, 6);
             }
-            // Faint chalk distance lines across court
-            sCtx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-            sCtx.lineWidth = 2;
-            for (let y = 64; y < 512; y += 64) {
+
+            // Natural sand pebbles & grain speckles
+            for (let i = 0; i < 6500; i++) {
+                const x = (i * 139 + (i % 17) * 31) % 1024;
+                const y = (i * 251 + (i % 23) * 19) % 1024;
+                sCtx.fillStyle = i % 3 === 0 ? 'rgba(255,244,214,0.18)' : 'rgba(110,72,28,0.18)';
+                sCtx.fillRect(x, y, 2.5, 2.5);
+            }
+
+            // Crisp chalk court yard lines & subtle lane dividers
+            sCtx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+            sCtx.lineWidth = 3;
+            for (let y = 128; y < 1024; y += 128) {
                 sCtx.beginPath();
-                sCtx.moveTo(24, y);
-                sCtx.lineTo(488, y);
+                sCtx.moveTo(48, y);
+                sCtx.lineTo(976, y);
                 sCtx.stroke();
             }
+
+            // Faint vertical sprint lane guide dashes
+            sCtx.setLineDash([14, 18]);
+            sCtx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+            sCtx.lineWidth = 2;
+            [256, 512, 768].forEach(lx => {
+                sCtx.beginPath();
+                sCtx.moveTo(lx, 120);
+                sCtx.lineTo(lx, 904);
+                sCtx.stroke();
+            });
+            sCtx.setLineDash([]);
+
+            // Iconic Squid Game geometric chalk watermark at center court
+            sCtx.strokeStyle = 'rgba(255, 255, 255, 0.20)';
+            sCtx.lineWidth = 10;
+            sCtx.beginPath();
+            sCtx.arc(512, 330, 56, 0, Math.PI * 2);
+            sCtx.stroke();
+            sCtx.beginPath();
+            sCtx.moveTo(512, 445);
+            sCtx.lineTo(448, 560);
+            sCtx.lineTo(576, 560);
+            sCtx.closePath();
+            sCtx.stroke();
+            sCtx.strokeRect(458, 608, 108, 108);
         }
         const sandTex = new THREE.CanvasTexture(sandCanvas);
         sandTex.colorSpace = THREE.SRGBColorSpace;
+        sandTex.anisotropy = maxAniso;
 
         const groundGeo = new THREE.BoxGeometry(68, 2, 96);
         const groundMat = new THREE.MeshStandardMaterial({
             color: 0xffffff,
             map: sandTex,
-            roughness: 0.92
+            roughness: 0.92,
+            metalness: 0.0,
+            envMapIntensity: 0.14
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.position.y = -1.0;
@@ -2602,15 +2682,20 @@ class ThreeManager {
         group.add(ground);
 
         // Waiting zone behind red line (rich terracotta-tinted warm sand)
-        const waitingMat = new THREE.MeshStandardMaterial({ color: 0xdec092, roughness: 0.95 });
+        const waitingMat = new THREE.MeshStandardMaterial({ color: 0xba8f56, roughness: 0.94, envMapIntensity: 0.12 });
         const waitingZone = new THREE.Mesh(new THREE.BoxGeometry(67.8, 0.05, 14), waitingMat);
-        waitingZone.position.set(0, 0.02, 33);
+        waitingZone.position.set(0, 0.025, 33);
         waitingZone.receiveShadow = true;
         group.add(waitingZone);
 
-        // 2. Red Starting Line at Z = +26 with glowing white sidelines
-        const startLineGeo = new THREE.BoxGeometry(58, 0.14, 1.1);
-        const startLineMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+        // 2. Red Starting Line at Z = +26 with crisp white trim & glowing white sidelines
+        const startLineGeo = new THREE.BoxGeometry(58, 0.14, 1.15);
+        const startLineMat = new THREE.MeshStandardMaterial({
+            color: 0xf43f5e,
+            emissive: 0xbe123c,
+            emissiveIntensity: 0.35,
+            roughness: 0.4
+        });
         const startLine = new THREE.Mesh(startLineGeo, startLineMat);
         startLine.position.set(0, 0.06, 26);
         group.add(startLine);
@@ -2618,109 +2703,205 @@ class ThreeManager {
         // Left & Right White Court Sidelines
         [-28.8, 28.8].forEach(sx => {
             const sideLine = new THREE.Mesh(
-                new THREE.BoxGeometry(0.35, 0.08, 45),
+                new THREE.BoxGeometry(0.4, 0.08, 45),
                 new THREE.MeshBasicMaterial({ color: 0xffffff })
             );
             sideLine.position.set(sx, 0.04, 4);
             group.add(sideLine);
         });
 
-        // 3. Bright Yellow Finish Line at Z = -18 (Crossing line for safety)
+        // 3. Bright Yellow Finish Line at Z = -18 + Black/Yellow Hazard Chevron Tape
         const finishLineGeo = new THREE.BoxGeometry(58, 0.18, 2.2);
-        const finishLineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+        const finishLineMat = new THREE.MeshStandardMaterial({
+            color: 0xfacc15,
+            emissive: 0xca8a04,
+            emissiveIntensity: 0.35,
+            roughness: 0.35
+        });
         const finishLine = new THREE.Mesh(finishLineGeo, finishLineMat);
         finishLine.position.set(0, 0.08, -18);
         group.add(finishLine);
 
-        // Hazard striped border in front of yellow finish line
-        const finishStripeGeo = new THREE.BoxGeometry(58, 0.13, 0.65);
-        const finishStripeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-        const finishStripe = new THREE.Mesh(finishStripeGeo, finishStripeMat);
-        finishStripe.position.set(0, 0.07, -16.8);
+        // Procedural diagonal hazard stripe texture in front of finish line
+        const hazardCanvas = document.createElement('canvas');
+        hazardCanvas.width = 512;
+        hazardCanvas.height = 64;
+        const hCtx = hazardCanvas.getContext('2d');
+        if (hCtx) {
+            hCtx.fillStyle = '#0f172a';
+            hCtx.fillRect(0, 0, 512, 64);
+            hCtx.fillStyle = '#facc15';
+            for (let x = -64; x < 576; x += 36) {
+                hCtx.beginPath();
+                hCtx.moveTo(x, 64);
+                hCtx.lineTo(x + 18, 64);
+                hCtx.lineTo(x + 42, 0);
+                hCtx.lineTo(x + 24, 0);
+                hCtx.closePath();
+                hCtx.fill();
+            }
+        }
+        const hazardTex = new THREE.CanvasTexture(hazardCanvas);
+        hazardTex.colorSpace = THREE.SRGBColorSpace;
+        hazardTex.wrapS = THREE.RepeatWrapping;
+        hazardTex.repeat.set(8, 1);
+        hazardTex.anisotropy = maxAniso;
+
+        const finishStripe = new THREE.Mesh(
+            new THREE.BoxGeometry(58, 0.12, 0.72),
+            new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.5 })
+        );
+        finishStripe.position.set(0, 0.07, -16.6);
         group.add(finishStripe);
 
-        // Yellow finish line boundary posts on left & right with glowing beacons
+        // Multi-part Sensor Camera & Beacon Pylons on Left & Right of Finish Line
         [-28.5, 28.5].forEach(posX => {
-            const postBase = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.75, 0.9, 0.6, 16),
-                new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 })
-            );
-            postBase.position.set(posX, 0.3, -18);
+            const pylonGroup = new THREE.Group();
+            pylonGroup.position.set(posX, 0, -18);
 
-            const postGeo = new THREE.CylinderGeometry(0.38, 0.48, 5.2, 16);
-            const postMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
-            const post = new THREE.Mesh(postGeo, postMat);
-            post.position.set(posX, 2.7, -18);
-            
-            const topperGeo = new THREE.SphereGeometry(0.7, 16, 16);
-            const topperMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
-            const topper = new THREE.Mesh(topperGeo, topperMat);
-            topper.position.set(posX, 5.5, -18);
-            group.add(postBase, post, topper);
+            const basePlinth = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.95, 1.15, 0.75, 20),
+                new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.45 })
+            );
+            basePlinth.position.y = 0.38;
+            basePlinth.castShadow = true;
+
+            const column = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.42, 0.52, 5.4, 20),
+                new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, metalness: 0.15 })
+            );
+            column.position.y = 3.1;
+            column.castShadow = true;
+
+            const collar = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.62, 0.62, 0.45, 20),
+                new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.25, metalness: 0.75 })
+            );
+            collar.position.y = 5.65;
+
+            // Sensor camera head pointing inward toward finish line
+            const sensorHead = new THREE.Mesh(
+                new THREE.BoxGeometry(1.1, 0.7, 0.9),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.6 })
+            );
+            sensorHead.position.set(posX < 0 ? 0.35 : -0.35, 5.1, 0);
+
+            const lens = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.22, 0.22, 0.25, 16),
+                new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+            );
+            lens.rotation.z = Math.PI / 2;
+            lens.position.set(posX < 0 ? 0.88 : -0.88, 5.1, 0);
+
+            const beaconMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+            const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.68, 20, 20), beaconMat);
+            beacon.position.y = 6.35;
+            this.redLightPylonBeacons.push(beacon);
+
+            pylonGroup.add(basePlinth, column, collar, sensorHead, lens, beacon);
+            group.add(pylonGroup);
         });
 
-        // Glowing finish illumination plane
-        const finishGlowGeo = new THREE.PlaneGeometry(59, 4.2);
-        const finishGlowMat = new THREE.MeshBasicMaterial({
+        // Glowing finish illumination plane + sweeping laser scan line across court
+        const finishGlowGeo = new THREE.PlaneGeometry(59, 4.4);
+        this.redLightFinishGlowMat = new THREE.MeshBasicMaterial({
             color: 0xfef08a,
             transparent: true,
-            opacity: 0.42,
-            side: THREE.DoubleSide
+            opacity: 0.38,
+            side: THREE.DoubleSide,
+            depthWrite: false
         });
-        const finishGlow = new THREE.Mesh(finishGlowGeo, finishGlowMat);
+        const finishGlow = new THREE.Mesh(finishGlowGeo, this.redLightFinishGlowMat);
         finishGlow.rotation.x = -Math.PI / 2;
         finishGlow.position.set(0, 0.04, -18);
         group.add(finishGlow);
 
-        // Lush Green Safe Zone Turf behind finish line (Z = -19 to -26.5)
-        const safeZoneMat = new THREE.MeshStandardMaterial({ color: 0x86efac, roughness: 0.85 });
-        const safeZone = new THREE.Mesh(new THREE.BoxGeometry(67.8, 0.06, 8.5), safeZoneMat);
-        safeZone.position.set(0, 0.03, -22.5);
+        const scanLineGeo = new THREE.PlaneGeometry(57.5, 1.2);
+        const scanLineMat = new THREE.MeshBasicMaterial({
+            color: 0xff2a4b,
+            transparent: true,
+            opacity: 0.52,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        this.redLightScanLine = new THREE.Mesh(scanLineGeo, scanLineMat);
+        this.redLightScanLine.rotation.x = -Math.PI / 2;
+        this.redLightScanLine.position.set(0, 0.14, 0);
+        this.redLightScanLine.visible = false;
+        group.add(this.redLightScanLine);
+
+        // Lush Mowed Green Safe Zone Turf behind finish line (Z = -19 to -27.2)
+        const turfCanvas = document.createElement('canvas');
+        turfCanvas.width = 512;
+        turfCanvas.height = 256;
+        const tCtx = turfCanvas.getContext('2d');
+        if (tCtx) {
+            for (let i = 0; i < 16; i++) {
+                tCtx.fillStyle = i % 2 === 0 ? '#22c55e' : '#16a34a';
+                tCtx.fillRect(i * 32, 0, 32, 256);
+            }
+            // Crisp white painted SAFE ZONE markings on left/right wings
+            tCtx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+            tCtx.font = '900 32px "Arial Black", sans-serif';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+            tCtx.fillText('SAFE ZONE', 120, 145);
+            tCtx.fillText('SAFE ZONE', 392, 145);
+        }
+        const turfTex = new THREE.CanvasTexture(turfCanvas);
+        turfTex.colorSpace = THREE.SRGBColorSpace;
+        turfTex.anisotropy = maxAniso;
+
+        const safeZoneMat = new THREE.MeshStandardMaterial({ map: turfTex, roughness: 0.9, envMapIntensity: 0.12 });
+        const safeZone = new THREE.Mesh(new THREE.BoxGeometry(67.8, 0.08, 9.2), safeZoneMat);
+        safeZone.position.set(0, 0.04, -22.8);
         safeZone.receiveShadow = true;
         group.add(safeZone);
 
-        // 4. Painted Sky & Rolling Green Meadow Mural Walls (Iconic Squid Game Set Design)
+        // 4. Painted Sky, Distant Mountains & Rolling Green Meadow Mural Walls (Iconic Squid Game Set Design)
         const wallCanvas = document.createElement('canvas');
         wallCanvas.width = 1024;
         wallCanvas.height = 512;
         const wCtx = wallCanvas.getContext('2d');
         if (wCtx) {
-            // Sky blue gradient
-            const skyGrad = wCtx.createLinearGradient(0, 0, 0, 410);
+            const skyGrad = wCtx.createLinearGradient(0, 0, 0, 420);
             skyGrad.addColorStop(0, '#0284c7');
-            skyGrad.addColorStop(0.55, '#38bdf8');
+            skyGrad.addColorStop(0.45, '#38bdf8');
+            skyGrad.addColorStop(0.85, '#7dd3fc');
             skyGrad.addColorStop(1, '#bae6fd');
             wCtx.fillStyle = skyGrad;
             wCtx.fillRect(0, 0, 1024, 512);
 
-            // Soft painted distant clouds on wall mural
-            wCtx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-            [160, 480, 820].forEach((cx, idx) => {
-                const cy = 150 + (idx % 2) * 45;
+            // Soft painted sunlit clouds on wall mural
+            wCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            [140, 460, 820].forEach((cx, idx) => {
+                const cy = 140 + (idx % 2) * 40;
                 wCtx.beginPath();
-                wCtx.arc(cx, cy, 42, 0, Math.PI * 2);
-                wCtx.arc(cx + 36, cy - 12, 52, 0, Math.PI * 2);
-                wCtx.arc(cx + 76, cy + 4, 38, 0, Math.PI * 2);
+                wCtx.arc(cx, cy, 44, 0, Math.PI * 2);
+                wCtx.arc(cx + 38, cy - 14, 54, 0, Math.PI * 2);
+                wCtx.arc(cx + 80, cy + 4, 40, 0, Math.PI * 2);
                 wCtx.fill();
             });
 
-            // Painted rolling green hills along bottom of stadium walls
-            wCtx.fillStyle = '#4ade80';
+            // Distant pastel green hills
+            wCtx.fillStyle = '#22c55e';
             wCtx.beginPath();
-            wCtx.moveTo(0, 430);
-            wCtx.quadraticCurveTo(180, 355, 360, 415);
-            wCtx.quadraticCurveTo(540, 465, 720, 375);
-            wCtx.quadraticCurveTo(880, 315, 1024, 410);
+            wCtx.moveTo(0, 415);
+            wCtx.quadraticCurveTo(180, 325, 380, 390);
+            wCtx.quadraticCurveTo(600, 440, 800, 345);
+            wCtx.quadraticCurveTo(920, 300, 1024, 385);
             wCtx.lineTo(1024, 512);
             wCtx.lineTo(0, 512);
             wCtx.closePath();
             wCtx.fill();
 
-            wCtx.fillStyle = '#22c55e';
+            // Foreground rolling emerald meadows
+            wCtx.fillStyle = '#15803d';
             wCtx.beginPath();
-            wCtx.moveTo(0, 460);
-            wCtx.quadraticCurveTo(260, 395, 520, 455);
-            wCtx.quadraticCurveTo(780, 505, 1024, 435);
+            wCtx.moveTo(0, 455);
+            wCtx.quadraticCurveTo(260, 385, 520, 445);
+            wCtx.quadraticCurveTo(780, 495, 1024, 425);
             wCtx.lineTo(1024, 512);
             wCtx.lineTo(0, 512);
             wCtx.closePath();
@@ -2728,11 +2909,13 @@ class ThreeManager {
         }
         const wallMuralTex = new THREE.CanvasTexture(wallCanvas);
         wallMuralTex.colorSpace = THREE.SRGBColorSpace;
+        wallMuralTex.anisotropy = maxAniso;
 
         const wallMat = new THREE.MeshStandardMaterial({
             color: 0xffffff,
             map: wallMuralTex,
-            roughness: 0.75
+            roughness: 0.88,
+            envMapIntensity: 0.14
         });
         const backWall = new THREE.Mesh(new THREE.BoxGeometry(70, 36, 2), wallMat);
         backWall.position.set(0, 17, -47);
@@ -2746,48 +2929,80 @@ class ThreeManager {
         rightWall.position.set(34, 17, 0);
         group.add(rightWall);
 
-        // Top Concrete Wall Coping Ledges & Guard Observation Railings
-        const copingMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.6 });
-        const backCoping = new THREE.Mesh(new THREE.BoxGeometry(71, 1.2, 3.2), copingMat);
+        // Architectural Concrete Wall Pilasters & Top Stadium Coping / Floodlights
+        const pilasterMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.7 });
+        [-24, 24].forEach(px => {
+            const backPilaster = new THREE.Mesh(new THREE.BoxGeometry(1.6, 36, 1.8), pilasterMat);
+            backPilaster.position.set(px, 17, -45.6);
+            group.add(backPilaster);
+        });
+        [-30, -10, 10, 30].forEach(pz => {
+            [-32.8, 32.8].forEach(sx => {
+                const sidePilaster = new THREE.Mesh(new THREE.BoxGeometry(1.4, 36, 1.8), pilasterMat);
+                sidePilaster.position.set(sx, 17, pz);
+                group.add(sidePilaster);
+            });
+        });
+
+        // Top Concrete Wall Coping Ledges & Floodlight Fixtures
+        const copingMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.55 });
+        const backCoping = new THREE.Mesh(new THREE.BoxGeometry(71, 1.4, 3.4), copingMat);
         backCoping.position.set(0, 35.4, -47);
-        const leftCoping = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.2, 97), copingMat);
+        const leftCoping = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.4, 97), copingMat);
         leftCoping.position.set(-34, 35.4, 0);
-        const rightCoping = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.2, 97), copingMat);
+        const rightCoping = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.4, 97), copingMat);
         rightCoping.position.set(34, 35.4, 0);
         group.add(backCoping, leftCoping, rightCoping);
+
+        // Stadium Overhead Floodlight Banks on Left & Right Wall Tops
+        const floodFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.7 });
+        const floodBulbMat = new THREE.MeshBasicMaterial({ color: 0xfffbeb });
+        [-18, 8].forEach(fz => {
+            [-32.4, 32.4].forEach(fx => {
+                const rack = new THREE.Group();
+                rack.position.set(fx, 36.6, fz);
+                rack.rotation.z = fx < 0 ? -0.35 : 0.35;
+                const housing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 4.4), floodFrameMat);
+                const bulbs = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 1.2), floodBulbMat);
+                bulbs.rotation.y = fx < 0 ? Math.PI / 2 : -Math.PI / 2;
+                bulbs.position.x = fx < 0 ? 0.47 : -0.47;
+                rack.add(housing, bulbs);
+                group.add(rack);
+            });
+        });
 
         // Iconic Front Man / VIP Observation Booth Window high on the Back Wall
         const boothGroup = new THREE.Group();
         boothGroup.position.set(0, 31.2, -45.7);
         const boothFrame = new THREE.Mesh(
-            new THREE.BoxGeometry(16, 4.6, 0.8),
-            new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 })
+            new THREE.BoxGeometry(17, 4.8, 1.0),
+            new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.28, metalness: 0.65 })
         );
         const boothGlass = new THREE.Mesh(
-            new THREE.PlaneGeometry(14.8, 3.6),
+            new THREE.PlaneGeometry(15.6, 3.6),
             new THREE.MeshBasicMaterial({ color: 0x020617 })
         );
-        boothGlass.position.z = 0.42;
+        boothGlass.position.z = 0.52;
         boothGroup.add(boothFrame, boothGlass);
 
         // Glowing Squid Game ○ △ □ Neon Emblems on Observation Booth
         const neonMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e, side: THREE.DoubleSide });
-        const neonCircle = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 24), neonMat);
-        neonCircle.position.set(-3.4, 0, 0.45);
-        const neonTriangle = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.0, 3), neonMat);
+        const neonCircle = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.96, 28), neonMat);
+        neonCircle.position.set(-3.6, 0, 0.55);
+        const neonTriangle = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.02, 3), neonMat);
         neonTriangle.rotation.z = Math.PI / 2;
-        neonTriangle.position.set(0, -0.1, 0.45);
-        const neonSquare = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.0, 4), neonMat);
+        neonTriangle.position.set(0, -0.1, 0.55);
+        const neonSquare = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.02, 4), neonMat);
         neonSquare.rotation.z = Math.PI / 4;
-        neonSquare.position.set(3.4, 0, 0.45);
+        neonSquare.position.set(3.6, 0, 0.55);
         boothGroup.add(neonCircle, neonTriangle, neonSquare);
         group.add(boothGroup);
 
-        // Pure White Multi-Puff 3D Clouds in Relief on Walls (unshaded bright white so never grey)
-        const cloudWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const cloudShadeMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
+        // Sculpted White Multi-Puff 3D Clouds in Relief on Walls (soft shaded matte so they never glare white)
+        const cloudWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.9, envMapIntensity: 0.15 });
+        const cloudShadeMat = new THREE.MeshStandardMaterial({ color: 0xdbeafe, roughness: 0.92, envMapIntensity: 0.15 });
         const cloudPositions = [
-            { x: -21, y: 24.5, z: -45.4, rot: 0, scale: 1.05 },
+            { x: -21, y: 24.5, z: -45.4, rot: 0, scale: 1.08 },
             { x: 21, y: 23.5, z: -45.4, rot: 0, scale: 1.0 },
             { x: -32.6, y: 24.5, z: -22, rot: Math.PI / 2, scale: 1.1 },
             { x: -32.6, y: 21.5, z: 4, rot: Math.PI / 2, scale: 0.95 },
@@ -2798,13 +3013,16 @@ class ThreeManager {
         ];
         cloudPositions.forEach(cp => {
             const cg = new THREE.Group();
-            const base = new THREE.Mesh(new THREE.BoxGeometry(7.2, 2.2, 0.9), cloudShadeMat);
-            base.position.set(0, -0.3, 0);
-            const mainPuff = new THREE.Mesh(new THREE.BoxGeometry(6.8, 2.4, 1.1), cloudWhiteMat);
-            const topPuff = new THREE.Mesh(new THREE.BoxGeometry(4.4, 2.0, 1.2), cloudWhiteMat);
-            topPuff.position.set(-0.4, 1.6, 0.05);
-            const sidePuff = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 1.15), cloudWhiteMat);
-            sidePuff.position.set(1.6, 1.1, 0.05);
+            const base = new THREE.Mesh(new THREE.BoxGeometry(7.2, 2.0, 0.9), cloudShadeMat);
+            base.position.set(0, -0.35, 0);
+            const mainPuff = new THREE.Mesh(new THREE.SphereGeometry(1.9, 14, 12), cloudWhiteMat);
+            mainPuff.scale.set(1.9, 0.85, 0.55);
+            const topPuff = new THREE.Mesh(new THREE.SphereGeometry(1.6, 14, 12), cloudWhiteMat);
+            topPuff.scale.set(1.3, 1.0, 0.55);
+            topPuff.position.set(-0.6, 1.15, 0.05);
+            const sidePuff = new THREE.Mesh(new THREE.SphereGeometry(1.3, 14, 12), cloudWhiteMat);
+            sidePuff.scale.set(1.25, 0.9, 0.55);
+            sidePuff.position.set(1.85, 0.65, 0.05);
             cg.add(base, mainPuff, topPuff, sidePuff);
             cg.position.set(cp.x, cp.y, cp.z);
             cg.rotation.y = cp.rot;
@@ -2812,34 +3030,57 @@ class ThreeManager {
             group.add(cg);
         });
 
-        // 5. Iconic Gnarled Tree behind Doll at (0, 0, -34.5)
+        // 5. Iconic Organic Gnarled Tree with Exposed Roots & Sculpted Leaf Canopies behind Doll at (0, 0, -34.5)
         const treeGroup = new THREE.Group();
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
-        const trunkBase = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 4.4, 5, 12), trunkMat);
-        trunkBase.position.set(0, 2.5, 0);
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.8, 18, 12), trunkMat);
-        trunk.position.set(0, 11, 0);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x713f12, roughness: 0.92 });
+        const trunkBase = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 4.6, 5.5, 14), trunkMat);
+        trunkBase.position.set(0, 2.75, 0);
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.7, 17, 14), trunkMat);
+        trunk.position.set(0, 11.5, 0);
         trunk.castShadow = true;
         treeGroup.add(trunkBase, trunk);
 
-        // Spreading tree branches
-        [-1, 1].forEach(side => {
-            const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.2, 8, 8), trunkMat);
-            branch.position.set(side * 3.2, 17.5, 0);
-            branch.rotation.z = -side * 0.65;
+        // Exposed surface roots gripping the safe zone ground
+        [0.4, 1.8, 3.5, 4.9].forEach(ang => {
+            const root = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 1.1, 4.2, 8), trunkMat);
+            root.position.set(Math.cos(ang) * 3.4, 0.6, Math.sin(ang) * 3.4);
+            root.rotation.z = -Math.cos(ang) * 1.15;
+            root.rotation.x = Math.sin(ang) * 1.15;
+            treeGroup.add(root);
+        });
+
+        // Spreading organic tree branches
+        [
+            { x: -3.8, y: 17.2, z: 0.4, rz: 0.72, rx: 0.1 },
+            { x: 3.8, y: 17.6, z: 0.4, rz: -0.72, rx: -0.1 },
+            { x: -2.0, y: 18.8, z: -2.4, rz: 0.35, rx: -0.55 },
+            { x: 2.2, y: 19.0, z: 2.2, rz: -0.35, rx: 0.55 }
+        ].forEach(br => {
+            const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.15, 8.5, 10), trunkMat);
+            branch.position.set(br.x, br.y, br.z);
+            branch.rotation.z = br.rz;
+            branch.rotation.x = br.rx;
             treeGroup.add(branch);
         });
 
-        // Multi-tiered lush foliage clusters
+        // Multi-tiered rounded organic foliage clusters (deep saturated forest greens)
         const foliageClusters = [
-            { x: 0, y: 22.5, z: 0, rx: 16, ry: 8.5, rz: 12, color: 0x15803d },
-            { x: -5.5, y: 20.5, z: 0.5, rx: 9, ry: 6.5, rz: 9, color: 0x166534 },
-            { x: 5.5, y: 20.8, z: 0.5, rx: 9, ry: 6.5, rz: 9, color: 0x16a34a },
-            { x: 0, y: 27.2, z: -0.5, rx: 11.5, ry: 6.5, rz: 9.5, color: 0x22c55e }
+            { x: 0, y: 21.8, z: 0, sx: 8.2, sy: 4.3, sz: 6.4, color: 0x14532d },
+            { x: -6.0, y: 19.8, z: 0.6, sx: 5.2, sy: 3.6, sz: 4.5, color: 0x166534 },
+            { x: 6.0, y: 20.1, z: 0.6, sx: 5.2, sy: 3.6, sz: 4.5, color: 0x15803d },
+            { x: -3.0, y: 24.0, z: -1.6, sx: 4.8, sy: 3.3, sz: 4.2, color: 0x16a34a },
+            { x: 3.2, y: 24.2, z: 1.4, sx: 4.8, sy: 3.3, sz: 4.2, color: 0x15803d },
+            { x: 0, y: 25.5, z: -0.3, sx: 5.6, sy: 3.2, sz: 4.8, color: 0x22c55e }
         ];
         foliageClusters.forEach(fc => {
-            const fMat = new THREE.MeshStandardMaterial({ color: fc.color, roughness: 0.8 });
-            const fMesh = new THREE.Mesh(new THREE.BoxGeometry(fc.rx, fc.ry, fc.rz), fMat);
+            const fMat = new THREE.MeshStandardMaterial({
+                color: fc.color,
+                roughness: 0.88,
+                flatShading: true,
+                envMapIntensity: 0.1
+            });
+            const fMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), fMat);
+            fMesh.scale.set(fc.sx, fc.sy, fc.sz);
             fMesh.position.set(fc.x, fc.y, fc.z);
             fMesh.castShadow = true;
             treeGroup.add(fMesh);
@@ -2847,175 +3088,550 @@ class ThreeManager {
         treeGroup.position.set(0, 0, -34.5);
         group.add(treeGroup);
 
-        // 6. Giant Young-hee Robotic Doll at (0, 0, -28)
+        // 6. Iconic Young-hee Robotic Doll at (0, 0, -28) matching reference sculpture
         const dollGroup = new THREE.Group();
         dollGroup.position.set(0, 0, -28);
 
-        // Tiered Stage Pedestal with Glowing Status Ring
-        const pedestalOuterMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
-        const pedestalBase = new THREE.Mesh(new THREE.CylinderGeometry(4.9, 5.4, 0.8, 36), pedestalOuterMat);
-        pedestalBase.position.y = 0.4;
-        const pedestalTop = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 4.5, 0.9, 36), new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5 }));
-        pedestalTop.position.y = 1.1;
-        dollGroup.add(pedestalBase, pedestalTop);
+        // Flat Sandy Tan Rectangular Base Platform (matches reference sculpture) + subtle ground status border
+        const tanBaseMat = new THREE.MeshStandardMaterial({ color: 0xc9af82, roughness: 0.9, envMapIntensity: 0.1 });
+        const tanBase = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.72, 5.4), tanBaseMat);
+        tanBase.position.y = 0.36;
+        tanBase.receiveShadow = true;
+        tanBase.castShadow = true;
+        dollGroup.add(tanBase);
 
-        const statusRingGeo = new THREE.TorusGeometry(4.65, 0.16, 12, 48);
-        statusRingGeo.rotateX(Math.PI / 2);
-        const statusRingMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+        const statusRingGeo = new THREE.RingGeometry(4.5, 4.9, 48);
+        statusRingGeo.rotateX(-Math.PI / 2);
+        const statusRingMat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide });
         this.dollStatusRing = new THREE.Mesh(statusRingGeo, statusRingMat);
-        this.dollStatusRing.position.y = 0.82;
+        this.dollStatusRing.position.y = 0.08;
         dollGroup.add(this.dollStatusRing);
 
-        // Legs, White Knee-High Socks with Red Stripes & Mary Jane Shoes
-        const skinMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.55 });
-        const sockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
-        const sockStripeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-        const shoeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.25 });
+        // Materials tuned to match the creamy ivory-bisque sculpture skin, vibrant orange dress, and sleek jet-black hair
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xede2bd, roughness: 0.58, envMapIntensity: 0.16 });
+        const sockMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f5, roughness: 0.72, envMapIntensity: 0.14 });
+        const shoeMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.45, envMapIntensity: 0.18 });
+        const dressMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.56, envMapIntensity: 0.16 });
+        const shirtMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.54, envMapIntensity: 0.16 });
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x131316, roughness: 0.42, metalness: 0.08, envMapIntensity: 0.24, side: THREE.DoubleSide });
+        const purpleTieMat = new THREE.MeshStandardMaterial({ color: 0x6b21a8, roughness: 0.32, metalness: 0.42, envMapIntensity: 0.28 });
 
-        [-1.25, 1.25].forEach(lx => {
-            // Upper bare knee/leg
-            const upperLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.58, 1.8, 16), skinMat);
-            upperLeg.position.set(lx, 4.8, 0);
-            // Knee-high white sock
-            const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.55, 2.6, 16), sockMat);
-            sock.position.set(lx, 2.8, 0);
+        // Legs, Clean White Knee-High Socks (no stripes) & Matte Black Mary Jane Flats
+        [-1.18, 1.18].forEach(lx => {
+            const upperLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.56, 2.2, 20), skinMat);
+            upperLeg.position.set(lx, 4.95, 0);
+            upperLeg.castShadow = true;
+
+            const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.59, 0.48, 3.15, 20), sockMat);
+            sock.position.set(lx, 2.58, 0);
             sock.castShadow = true;
-            // Red sport stripe on sock top
-            const sockStripe = new THREE.Mesh(new THREE.CylinderGeometry(0.61, 0.61, 0.22, 16), sockStripeMat);
-            sockStripe.position.set(lx, 3.85, 0);
-            // Mary Jane shoe + strap
-            const shoe = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.95, 2.25), shoeMat);
-            shoe.position.set(lx, 1.65, 0.35);
-            shoe.castShadow = true;
-            dollGroup.add(upperLeg, sock, sockStripe, shoe);
+
+            const sockCuff = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.075, 10, 24), sockMat);
+            sockCuff.rotation.x = Math.PI / 2;
+            sockCuff.position.set(lx, 4.12, 0);
+
+            // Black Mary Jane flat shoe with strap over white sock
+            const shoeSole = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.36, 1.85), shoeMat);
+            shoeSole.position.set(lx, 0.9, 0.25);
+            const shoeToe = new THREE.Mesh(new THREE.SphereGeometry(0.68, 18, 14), shoeMat);
+            shoeToe.scale.set(1.0, 0.62, 1.2);
+            shoeToe.position.set(lx, 1.02, 0.72);
+            const shoeHeel = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.58, 0.62, 18), shoeMat);
+            shoeHeel.position.set(lx, 1.03, -0.18);
+            const shoeStrap = new THREE.Mesh(new THREE.TorusGeometry(0.53, 0.09, 8, 20, Math.PI), shoeMat);
+            shoeStrap.position.set(lx, 1.18, 0.18);
+            shoeSole.castShadow = true;
+
+            dollGroup.add(upperLeg, sock, sockCuff, shoeSole, shoeToe, shoeHeel, shoeStrap);
         });
 
-        // Sculpted Orange Pinafore Dress with Straps & Yellow Collared Blouse
-        const dressMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.65 });
-        const dress = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 3.65, 6.4, 24), dressMat);
-        dress.position.y = 8.2;
-        dress.castShadow = true;
-        dollGroup.add(dress);
+        // Vibrant Orange Pleated A-Line Jumper Skirt (with crisp vertical pleat ridges around skirt)
+        const skirtGroup = new THREE.Group();
+        const skirtCone = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 3.45, 5.05, 32), dressMat);
+        skirtCone.position.y = 7.45;
+        skirtCone.castShadow = true;
+        skirtGroup.add(skirtCone);
 
-        // Yellow collared shirt
-        const shirtMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
-        const shirt = new THREE.Mesh(new THREE.CylinderGeometry(2.05, 2.0, 2.6, 24), shirtMat);
-        shirt.position.y = 11.2;
-        shirt.castShadow = true;
-        dollGroup.add(shirt);
+        const numPleats = 16;
+        for (let p = 0; p < numPleats; p++) {
+            const ang = (Math.PI * 2 / numPleats) * p;
+            const pleat = new THREE.Mesh(new THREE.BoxGeometry(0.32, 5.0, 0.28), dressMat);
+            const midR = 2.55;
+            pleat.position.set(Math.sin(ang) * midR, 7.45, Math.cos(ang) * midR);
+            pleat.rotation.y = ang;
+            pleat.rotation.x = -0.32;
+            skirtGroup.add(pleat);
+        }
+        dollGroup.add(skirtGroup);
 
-        // Overall straps & yellow buttons on front and back
-        [-0.95, 0.95].forEach(sx => {
-            const strap = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.5, 2.5), dressMat);
-            strap.position.set(sx, 11.25, 0);
-            const button = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.15, 12), shirtMat);
-            button.rotation.x = Math.PI / 2;
-            button.position.set(sx, 10.6, 1.98);
-            dollGroup.add(strap, button);
+        // Fitted Orange Dress Bodice & Straps (over Yellow Shirt)
+        const bodice = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.76, 1.9, 24), dressMat);
+        bodice.position.y = 10.75;
+        bodice.castShadow = true;
+        dollGroup.add(bodice);
+
+        // Canary Yellow Shirt Chest (visible above bib neckline & back) + Rounded Peter Pan Collar
+        const upperShirt = new THREE.Mesh(new THREE.CylinderGeometry(1.48, 1.64, 1.4, 24), shirtMat);
+        upperShirt.position.y = 11.95;
+        upperShirt.castShadow = true;
+        dollGroup.add(upperShirt);
+
+        // Orange shoulder straps arching over the yellow shirt
+        [-0.86, 0.86].forEach(sx => {
+            const strap = new THREE.Mesh(new THREE.BoxGeometry(0.48, 1.95, 2.32), dressMat);
+            strap.position.set(sx, 11.82, 0);
+            dollGroup.add(strap);
+        });
+
+        // Two flat rounded Peter Pan collar petals at base of neck
+        [-0.52, 0.52].forEach(cx => {
+            const collarPetal = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.68, 0.14, 18), shirtMat);
+            collarPetal.scale.set(1.0, 1.0, 0.72);
+            collarPetal.position.set(cx, 12.66, 0.42);
+            collarPetal.rotation.x = 0.25;
+            collarPetal.rotation.z = cx < 0 ? 0.14 : -0.14;
+            dollGroup.add(collarPetal);
         });
 
         // Neck
-        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.95, 1.2, 16), skinMat);
-        neck.position.y = 12.6;
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.84, 1.05, 20), skinMat);
+        neck.position.y = 13.05;
         dollGroup.add(neck);
 
-        // Puffed Yellow Short Sleeves & Sculpted Arms
-        [-2.75, 2.75].forEach(ax => {
-            const puffSleeve = new THREE.Mesh(new THREE.SphereGeometry(0.95, 16, 16), shirtMat);
-            puffSleeve.position.set(ax * 0.9, 11.5, 0);
-            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.45, 4.4, 16), skinMat);
-            arm.position.set(ax, 9.1, 0);
-            arm.castShadow = true;
-            const hand = new THREE.Mesh(new THREE.SphereGeometry(0.52, 12, 12), skinMat);
-            hand.position.set(ax, 6.8, 0);
-            dollGroup.add(puffSleeve, arm, hand);
+        // Flared Short Yellow Sleeves & Robotic Jointed Arms with Splayed Open Hands
+        [-1, 1].forEach(side => {
+            const armRig = new THREE.Group();
+            armRig.position.set(side * 1.75, 12.15, 0);
+            armRig.rotation.z = side * 0.28; // Outward A-frame posture matching reference
+
+            // Flared short sleeve (open cone rather than round ball)
+            const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.96, 1.85, 20), shirtMat);
+            sleeve.position.y = -0.68;
+            sleeve.castShadow = true;
+            armRig.add(sleeve);
+
+            // Upper arm
+            const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.42, 1.85, 16), skinMat);
+            upperArm.position.y = -2.2;
+            upperArm.castShadow = true;
+            armRig.add(upperArm);
+
+            // Signature visible robotic ball-joint elbow notch
+            const elbowJoint = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 14), skinMat);
+            elbowJoint.position.y = -3.2;
+            const elbowSlot = new THREE.Mesh(
+                new THREE.BoxGeometry(0.26, 0.56, 0.78),
+                new THREE.MeshStandardMaterial({ color: 0xb09e75, roughness: 0.7 })
+            );
+            elbowSlot.position.y = -3.2;
+            armRig.add(elbowJoint, elbowSlot);
+
+            // Lower arm angled slightly outward
+            const forearmGroup = new THREE.Group();
+            forearmGroup.position.y = -3.25;
+            forearmGroup.rotation.z = side * 0.08;
+
+            const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.34, 2.15, 16), skinMat);
+            forearm.position.y = -1.1;
+            forearm.castShadow = true;
+            forearmGroup.add(forearm);
+
+            // Splayed hand + thumb + 4 fingers pointing outward/downward
+            const palm = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.72, 0.28), skinMat);
+            palm.position.set(side * 0.06, -2.42, 0.04);
+            forearmGroup.add(palm);
+
+            const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.42, 6, 8), skinMat);
+            thumb.position.set(-side * 0.35, -2.5, 0.14);
+            thumb.rotation.z = -side * 0.58;
+            forearmGroup.add(thumb);
+
+            [-0.22, -0.07, 0.08, 0.22].forEach((fo, fi) => {
+                const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.072, fi === 1 || fi === 2 ? 0.55 : 0.44, 6, 8), skinMat);
+                finger.position.set(side * 0.1 + fo, -2.96, 0.04);
+                finger.rotation.z = fo * 0.65;
+                forearmGroup.add(finger);
+            });
+
+            armRig.add(forearmGroup);
+            dollGroup.add(armRig);
         });
 
-        // Rotating Head Group
+        // High-Res 2:1 Isotropic Young-hee Face Texture matching the reference doll photo
+        const faceCanvas = document.createElement('canvas');
+        faceCanvas.width = 1024;
+        faceCanvas.height = 512;
+        const fCtx = faceCanvas.getContext('2d');
+        if (fCtx) {
+            // Creamy warm ivory-bisque base tone matching reference sculpture
+            fCtx.fillStyle = '#ede2bd';
+            fCtx.fillRect(0, 0, 1024, 512);
+
+            // Subtle dimensional shading across forehead, jawline & cheeks
+            const faceGlow = fCtx.createRadialGradient(512, 252, 24, 512, 268, 215);
+            faceGlow.addColorStop(0, 'rgba(255, 250, 232, 0.34)');
+            faceGlow.addColorStop(0.65, 'rgba(235, 222, 180, 0.10)');
+            faceGlow.addColorStop(1, 'rgba(182, 162, 120, 0.22)');
+            fCtx.fillStyle = faceGlow;
+            fCtx.fillRect(0, 0, 1024, 512);
+
+            // Soft airbrushed coral-peach blush low & wide on the plump cheeks
+            [434, 590].forEach(bx => {
+                const blushGrad = fCtx.createRadialGradient(bx, 304, 4, bx, 304, 44);
+                blushGrad.addColorStop(0, 'rgba(219, 114, 88, 0.36)');
+                blushGrad.addColorStop(0.55, 'rgba(219, 114, 88, 0.16)');
+                blushGrad.addColorStop(1, 'rgba(219, 114, 88, 0)');
+                fCtx.fillStyle = blushGrad;
+                fCtx.beginPath();
+                fCtx.arc(bx, 304, 44, 0, Math.PI * 2);
+                fCtx.fill();
+            });
+
+            // Subtle sculpted chin contour
+            const chinGrad = fCtx.createRadialGradient(512, 355, 4, 512, 355, 34);
+            chinGrad.addColorStop(0, 'rgba(164, 144, 104, 0.22)');
+            chinGrad.addColorStop(1, 'rgba(164, 144, 104, 0)');
+            fCtx.fillStyle = chinGrad;
+            fCtx.beginPath();
+            fCtx.arc(512, 355, 34, 0, Math.PI * 2);
+            fCtx.fill();
+
+            // Exact Young-hee Almond Eyes, Soft Recessed Eyelids & Delicate Faint Taupe Eyebrows
+            [460, 564].forEach((ex, idx) => {
+                const ey = 248;
+                const isLeft = idx === 0;
+                const inX = isLeft ? ex + 24 : ex - 24;
+                const outX = isLeft ? ex - 25 : ex + 25;
+
+                // Soft eyelid crease shading above eye
+                const lidGrad = fCtx.createRadialGradient(ex, ey - 10, 4, ex, ey - 10, 32);
+                lidGrad.addColorStop(0, 'rgba(148, 126, 92, 0.30)');
+                lidGrad.addColorStop(1, 'rgba(148, 126, 92, 0)');
+                fCtx.fillStyle = lidGrad;
+                fCtx.beginPath();
+                fCtx.ellipse(ex, ey - 8, 30, 16, 0, 0, Math.PI * 2);
+                fCtx.fill();
+
+                // Clean off-white almond sclera
+                fCtx.fillStyle = '#f5f4ef';
+                fCtx.beginPath();
+                fCtx.moveTo(inX, ey + 2);
+                fCtx.quadraticCurveTo(ex, ey - 15, outX, ey);
+                fCtx.quadraticCurveTo(ex, ey + 13, inX, ey + 2);
+                fCtx.closePath();
+                fCtx.fill();
+
+                // Large calm dark iris tucked slightly beneath upper eyelid (matches deadpan doll stare)
+                fCtx.save();
+                fCtx.clip();
+
+                // Subtle upper lid shadow cast across top of sclera
+                const topShade = fCtx.createLinearGradient(0, ey - 13, 0, ey + 2);
+                topShade.addColorStop(0, 'rgba(30, 24, 20, 0.24)');
+                topShade.addColorStop(1, 'rgba(30, 24, 20, 0)');
+                fCtx.fillStyle = topShade;
+                fCtx.fillRect(ex - 30, ey - 16, 60, 22);
+
+                fCtx.fillStyle = '#1b161b';
+                fCtx.beginPath();
+                fCtx.arc(ex, ey - 1, 12.2, 0, Math.PI * 2);
+                fCtx.fill();
+
+                fCtx.fillStyle = '#09090b';
+                fCtx.beginPath();
+                fCtx.arc(ex, ey - 1, 6.2, 0, Math.PI * 2);
+                fCtx.fill();
+
+                // Subtle crisp eye catchlight
+                fCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                fCtx.beginPath();
+                fCtx.arc(ex - 3.8, ey - 4.2, 2.2, 0, Math.PI * 2);
+                fCtx.fill();
+                fCtx.restore();
+
+                // Crisp upper lash line
+                fCtx.strokeStyle = '#181615';
+                fCtx.lineWidth = 3.2;
+                fCtx.lineCap = 'round';
+                fCtx.beginPath();
+                fCtx.moveTo(inX, ey + 2);
+                fCtx.quadraticCurveTo(ex, ey - 15.5, outX, ey);
+                fCtx.stroke();
+
+                // Very subtle lower lid rim
+                fCtx.strokeStyle = 'rgba(110, 90, 68, 0.42)';
+                fCtx.lineWidth = 1.4;
+                fCtx.beginPath();
+                fCtx.moveTo(inX + (isLeft ? -3 : 3), ey + 4);
+                fCtx.quadraticCurveTo(ex, ey + 12.5, outX + (isLeft ? 3 : -3), ey + 2.5);
+                fCtx.stroke();
+
+                // Delicate, thin light-taupe arched eyebrows matching the reference photo
+                fCtx.strokeStyle = 'rgba(166, 134, 98, 0.78)';
+                fCtx.lineWidth = 2.2;
+                fCtx.beginPath();
+                const browMidOffset = isLeft ? -2 : 2;
+                fCtx.moveTo(ex - 24, ey - 25);
+                fCtx.quadraticCurveTo(ex + browMidOffset, ey - 31, ex + 24, ey - 25);
+                fCtx.stroke();
+            });
+
+            // Subtle soft nose bridge highlight & delicate nostril shadow (reinforcing 3D sculpted nose)
+            const bridgeGlow = fCtx.createLinearGradient(512, 245, 512, 286);
+            bridgeGlow.addColorStop(0, 'rgba(255, 250, 232, 0.24)');
+            bridgeGlow.addColorStop(1, 'rgba(255, 250, 232, 0.05)');
+            fCtx.fillStyle = bridgeGlow;
+            fCtx.beginPath();
+            fCtx.ellipse(512, 266, 6, 18, 0, 0, Math.PI * 2);
+            fCtx.fill();
+
+            fCtx.fillStyle = 'rgba(155, 132, 96, 0.28)';
+            fCtx.beginPath();
+            fCtx.ellipse(503, 287, 4.2, 2.4, -0.18, 0, Math.PI * 2);
+            fCtx.ellipse(521, 287, 4.2, 2.4, 0.18, 0, Math.PI * 2);
+            fCtx.fill();
+
+            // Iconic plump ruby cupid's-bow doll lips
+            fCtx.fillStyle = '#c41e1e';
+            fCtx.beginPath();
+            fCtx.moveTo(489, 318);
+            fCtx.quadraticCurveTo(502, 309, 512, 314.5);
+            fCtx.quadraticCurveTo(522, 309, 535, 318);
+            fCtx.quadraticCurveTo(526, 329, 512, 329.5);
+            fCtx.quadraticCurveTo(498, 329, 489, 318);
+            fCtx.closePath();
+            fCtx.fill();
+
+            // Subtle lower-lip plump highlight
+            fCtx.fillStyle = 'rgba(255, 210, 210, 0.34)';
+            fCtx.beginPath();
+            fCtx.ellipse(512, 324, 9, 2.6, 0, 0, Math.PI * 2);
+            fCtx.fill();
+
+            // Crisp dark lip parting line
+            fCtx.strokeStyle = '#680c0c';
+            fCtx.lineWidth = 1.8;
+            fCtx.lineCap = 'round';
+            fCtx.beginPath();
+            fCtx.moveTo(490, 318);
+            fCtx.quadraticCurveTo(503, 320.5, 512, 319.5);
+            fCtx.quadraticCurveTo(521, 320.5, 534, 318);
+            fCtx.stroke();
+        }
+        const youngHeeFaceTex = new THREE.CanvasTexture(faceCanvas);
+        youngHeeFaceTex.colorSpace = THREE.SRGBColorSpace;
+        youngHeeFaceTex.anisotropy = maxAniso;
+
+        // Helper that sculpts any unit sphere direction (nx, ny, nz) into Young-hee's real chubby-cheeked porcelain head & seamless nose
+        const sculptHeadPoint = (nx: number, ny: number, nz: number, radius: number) => {
+            const cheekWidthFactor = 1.0 + 0.068 * Math.exp(-Math.pow((ny + 0.28) / 0.36, 2));
+            let x = nx * radius * 1.01 * cheekWidthFactor;
+            let y = ny * radius * 1.04;
+            let z = nz * radius * 0.95;
+
+            if (nz > 0.05) {
+                const fMask = Math.min(1, (nz - 0.05) / 0.35);
+                // Chubby lower cheeks
+                const cheekL = Math.exp(-Math.pow((nx + 0.44) / 0.27, 2) - Math.pow((ny + 0.27) / 0.24, 2));
+                const cheekR = Math.exp(-Math.pow((nx - 0.44) / 0.27, 2) - Math.pow((ny + 0.27) / 0.24, 2));
+                const cheek = cheekL + cheekR;
+                z += 0.16 * cheek * fMask;
+                x += (cheekR - cheekL) * 0.10 * fMask;
+
+                // Subtle recessed eye sockets beneath gentle brow
+                const eyeSock = Math.exp(-Math.pow((Math.abs(nx) - 0.31) / 0.15, 2) - Math.pow((ny - 0.04) / 0.10, 2));
+                z -= 0.075 * eyeSock * fMask;
+
+                const browRidge = Math.exp(-Math.pow(nx / 0.42, 2) - Math.pow((ny - 0.20) / 0.085, 2));
+                z += 0.042 * browRidge * fMask;
+
+                // Seamless sculpted nose bridge, soft rounded tip & subtle nostril wings
+                const noseBridge = Math.exp(-Math.pow(nx / 0.078, 2)) * Math.exp(-Math.pow((ny + 0.03) / 0.14, 2));
+                const noseTip = Math.exp(-Math.pow(nx / 0.092, 2) - Math.pow((ny + 0.145) / 0.082, 2));
+                const nostrilAla = Math.exp(-Math.pow((Math.abs(nx) - 0.10) / 0.052, 2) - Math.pow((ny + 0.175) / 0.048, 2));
+                z += (0.11 * noseBridge + 0.185 * noseTip + 0.058 * nostrilAla) * fMask;
+
+                // Subtle pouty mouth pad & soft chin
+                const mouthPad = Math.exp(-Math.pow(nx / 0.16, 2) - Math.pow((ny + 0.37) / 0.078, 2));
+                const chinPad = Math.exp(-Math.pow(nx / 0.22, 2) - Math.pow((ny + 0.60) / 0.125, 2));
+                z += (0.068 * mouthPad + 0.052 * chinPad) * fMask;
+            }
+            return { x, y, z };
+        };
+
+        // Rotating Sculpted Head Group
         const headGroup = new THREE.Group();
-        headGroup.position.y = 14.3;
+        headGroup.position.y = 15.25;
 
-        const headBox = new THREE.Mesh(new THREE.BoxGeometry(4.1, 4.1, 3.7), skinMat);
-        headBox.castShadow = true;
-        headGroup.add(headBox);
+        const headMat = new THREE.MeshStandardMaterial({
+            map: youngHeeFaceTex,
+            roughness: 0.56,
+            envMapIntensity: 0.16
+        });
+        // High-density sphere sculpted seamlessly into Young-hee's exact facial proportions
+        const headGeo = new THREE.SphereGeometry(2.08, 72, 54, -Math.PI / 2, Math.PI * 2);
+        const hPos = headGeo.attributes.position;
+        for (let vi = 0; vi < hPos.count; vi++) {
+            const vx = hPos.getX(vi);
+            const vy = hPos.getY(vi);
+            const vz = hPos.getZ(vi);
+            const len = Math.hypot(vx, vy, vz) || 2.08;
+            const sculpted = sculptHeadPoint(vx / len, vy / len, vz / len, 2.08);
+            hPos.setXYZ(vi, sculpted.x, sculpted.y, sculpted.z);
+        }
+        hPos.needsUpdate = true;
+        headGeo.computeVertexNormals();
 
-        // Hair, Fringe Bangs & Pigtails with Red Ribbons
-        const hairMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.45 });
-        const hairTop = new THREE.Mesh(new THREE.BoxGeometry(4.35, 1.45, 4.0), hairMat);
-        hairTop.position.y = 1.75;
-        const hairBack = new THREE.Mesh(new THREE.BoxGeometry(4.35, 4.15, 1.3), hairMat);
-        hairBack.position.set(0, 0, -1.45);
-        // Front bangs with center part
-        const bangsL = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.95, 0.35), hairMat);
-        bangsL.position.set(-1.05, 1.35, 1.8);
-        const bangsR = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.95, 0.35), hairMat);
-        bangsR.position.set(1.05, 1.35, 1.8);
-        headGroup.add(hairTop, hairBack, bangsL, bangsR);
+        const headSphere = new THREE.Mesh(headGeo, headMat);
+        headSphere.castShadow = true;
+        headGroup.add(headSphere);
 
-        // Two pigtails with red hair clips
-        [-2.65, 2.65].forEach(px => {
-            const bun = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 16), hairMat);
-            bun.scale.set(0.9, 1.25, 0.9);
-            bun.position.set(px, 0.1, -0.3);
-            const clipMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
-            const clip = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.85, 1.55), clipMat);
-            clip.position.set(px * 0.82, 0.85, -0.3);
-            headGroup.add(bun, clip);
+        // Subtle ears tucked behind the side hair/jaw
+        [-2.02, 2.02].forEach(ex => {
+            const ear = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 12), skinMat);
+            ear.scale.set(0.48, 1.08, 0.7);
+            ear.position.set(ex, -0.18, -0.18);
+            headGroup.add(ear);
         });
 
-        // Eyebrows
-        [-0.95, 0.95].forEach(bx => {
-            const brow = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 0.12), hairMat);
-            brow.position.set(bx, 0.88, 1.86);
-            headGroup.add(brow);
+        // Custom Molded Hair Cap + Curved Blunt Bangs + Temple Side Sweeps (single seamless shell hugging head contour)
+        const hairSegU = 96;
+        const hairSegV = 36;
+        const hairPositions: number[] = [];
+        const hairIndices: number[] = [];
+        const hairBottomTheta = (frontAngle: number) => {
+            // Smooth piecewise cosine curve matching reference doll's curved bangs, temple drop, and nape
+            const pts: Array<[number, number]> = [
+                [0.0, 1.00],       // High smooth arch center forehead
+                [0.52, 1.13],      // Gentle curve above outer brows
+                [0.90, 1.46],      // Smooth sweep down temples in front of ears
+                [1.36, 1.84],      // Wrapping behind ears
+                [Math.PI, 2.40]    // Full back hair down to nape
+            ];
+            for (let k = 0; k < pts.length - 1; k++) {
+                const [a0, t0] = pts[k];
+                const [a1, t1] = pts[k + 1];
+                if (frontAngle <= a1) {
+                    const f = (frontAngle - a0) / Math.max(0.0001, a1 - a0);
+                    const smoothF = 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, f)));
+                    return t0 + (t1 - t0) * smoothF;
+                }
+            }
+            return 2.40;
+        };
+
+        for (let j = 0; j <= hairSegV; j++) {
+            const v = j / hairSegV;
+            for (let i = 0; i <= hairSegU; i++) {
+                const u = i / hairSegU;
+                const phi = -Math.PI / 2 + u * Math.PI * 2;
+                const frontAngle = Math.abs(Math.atan2(-Math.cos(phi), Math.sin(phi)));
+                const thetaMax = hairBottomTheta(frontAngle);
+                const theta = v * thetaMax;
+
+                const nx = -Math.cos(phi) * Math.sin(theta);
+                const ny = Math.cos(theta);
+                const nz = Math.sin(phi) * Math.sin(theta);
+
+                // Subtle vertical molded hair grooves on bangs + gentle tapered rim hugging forehead
+                const bangGroove = nz > 0.15
+                    ? 0.013 * Math.cos(frontAngle * 24) * Math.sin(v * Math.PI)
+                    : 0;
+                const edgeTaper = v > 0.88 ? 1.0 - ((v - 0.88) / 0.12) * 0.55 : 1.0;
+                const offsetR = 2.08 + 0.088 * edgeTaper + bangGroove;
+                const pt = sculptHeadPoint(nx, ny, nz, offsetR);
+                hairPositions.push(pt.x, pt.y, pt.z);
+            }
+        }
+        const hairStride = hairSegU + 1;
+        for (let j = 0; j < hairSegV; j++) {
+            for (let i = 0; i < hairSegU; i++) {
+                const a = j * hairStride + i;
+                const b = j * hairStride + (i + 1);
+                const c = (j + 1) * hairStride + i;
+                const d = (j + 1) * hairStride + (i + 1);
+                hairIndices.push(a, c, d, a, d, b);
+            }
+        }
+        const hairGeo = new THREE.BufferGeometry();
+        hairGeo.setAttribute('position', new THREE.Float32BufferAttribute(hairPositions, 3));
+        hairGeo.setIndex(hairIndices);
+        hairGeo.computeVertexNormals();
+        const hairCapMesh = new THREE.Mesh(hairGeo, hairMat);
+        hairCapMesh.castShadow = true;
+        headGroup.add(hairCapMesh);
+
+        // Iconic metallic-purple double-loop hair clip on right side of bangs (matching reference photo!)
+        const clipGroup = new THREE.Group();
+        clipGroup.position.set(0.76, 1.48, 1.42);
+        clipGroup.rotation.set(-0.62, 0.42, -0.18);
+        const loop1 = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.038, 10, 20), purpleTieMat);
+        loop1.scale.set(1.25, 0.78, 1.0);
+        loop1.position.x = -0.11;
+        const loop2 = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.036, 10, 20), purpleTieMat);
+        loop2.scale.set(1.18, 0.75, 1.0);
+        loop2.position.set(0.11, -0.02, 0.01);
+        clipGroup.add(loop1, loop2);
+        headGroup.add(clipGroup);
+
+        // Two LOW jaw-level short flared wavy pigtails peeking out behind the chubby cheeks (matching reference!)
+        [-1, 1].forEach(side => {
+            const pigtailGroup = new THREE.Group();
+            pigtailGroup.position.set(side * 1.72, -1.25, -0.34);
+            pigtailGroup.rotation.z = side * 0.68;
+            pigtailGroup.rotation.x = -0.12;
+
+            // Purple beaded hair band
+            for (let b = 0; b < 5; b++) {
+                const ang = (Math.PI * 2 / 5) * b;
+                const bead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), purpleTieMat);
+                bead.position.set(Math.cos(ang) * 0.25, 0.05, Math.sin(ang) * 0.25);
+                pigtailGroup.add(bead);
+            }
+
+            // Sculpted flared 3-lobe curled hair tuft matching the scalloped black curls in the photo
+            const centerLobe = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 14), hairMat);
+            centerLobe.scale.set(1.0, 1.25, 0.78);
+            centerLobe.position.set(0, -0.48, 0);
+            const outerLobe = new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 12), hairMat);
+            outerLobe.scale.set(0.95, 1.15, 0.72);
+            outerLobe.position.set(side * 0.34, -0.58, 0.08);
+            const innerLobe = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 12), hairMat);
+            innerLobe.scale.set(0.92, 1.1, 0.72);
+            innerLobe.position.set(-side * 0.3, -0.54, -0.05);
+            centerLobe.castShadow = true;
+            pigtailGroup.add(centerLobe, outerLobe, innerLobe);
+            headGroup.add(pigtailGroup);
         });
 
-        // Rosy Cheeks
-        const cheekMat = new THREE.MeshBasicMaterial({ color: 0xfb7185 });
-        [-1.35, 1.35].forEach(cx => {
-            const cheek = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20), cheekMat);
-            cheek.position.set(cx, -0.42, 1.87);
-            headGroup.add(cheek);
-        });
-
-        // Sculpted Nose & Red Lips
-        const nose = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.45, 0.35), skinMat);
-        nose.position.set(0, -0.12, 1.92);
-        const mouth = new THREE.Mesh(
-            new THREE.BoxGeometry(1.15, 0.34, 0.12),
-            new THREE.MeshBasicMaterial({ color: 0xe11d48 })
-        );
-        mouth.position.set(0, -0.95, 1.86);
-        headGroup.add(nose, mouth);
-
-        // Doll Eyes: White Sclera + Pupil/Iris (Turns Glowing Red on Red Light)
+        // Subtle Translucent Red Light Iris Glow (visible ONLY on Red Light scan so natural eyes stay crisp & faithful)
         this.dollEyes = [];
-        const scleraMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        [-0.95, 0.95].forEach(ex => {
-            const sclera = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.64, 0.12), scleraMat);
-            sclera.position.set(ex, 0.32, 1.84);
-            headGroup.add(sclera);
-
-            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-            const eye = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.56, 0.16), eyeMat);
-            eye.position.set(ex, 0.32, 1.87);
+        [-0.62, 0.62].forEach(ex => {
+            const eyeMat = new THREE.MeshBasicMaterial({
+                color: 0xff2222,
+                transparent: true,
+                opacity: 0.72,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const eye = new THREE.Mesh(new THREE.SphereGeometry(0.115, 14, 14), eyeMat);
+            eye.scale.set(1, 1, 0.35);
+            eye.position.set(ex, 0.095, 1.84);
+            eye.visible = false;
             headGroup.add(eye);
             this.dollEyes.push(eye);
         });
 
         // =========================================================================
-        // FIXED EYE LASER BEAMS:
-        // Narrow origin (0.05) anchored directly inside each eye (ex, 0.32, 1.90)
-        // and angled downward (Math.PI / 2 + 0.48 = 117.5°) so the laser light cones
-        // shine straight from her eyes DOWN onto the contestants on the field!
+        // EYE LASER BEAMS:
+        // Narrow origin anchored at each eye (ex, 0.08, 1.95) angled downward onto field
         // =========================================================================
         this.dollEyeBeams = [];
-        [-0.95, 0.95].forEach(ex => {
+        [-0.62, 0.62].forEach(ex => {
             const beamGroup = new THREE.Group();
-            beamGroup.position.set(ex, 0.32, 1.90);
+            beamGroup.position.set(ex, 0.08, 1.95);
 
-            // 1) Glowing red eye lens flare right on the pupil
-            const flareGeo = new THREE.SphereGeometry(0.32, 16, 16);
+            const flareGeo = new THREE.SphereGeometry(0.28, 16, 16);
             const flareMat = new THREE.MeshBasicMaterial({
                 color: 0xff2222,
                 transparent: true,
@@ -3024,13 +3640,9 @@ class ThreeManager {
             const eyeFlare = new THREE.Mesh(flareGeo, flareMat);
             beamGroup.add(eyeFlare);
 
-            // 2) Outer volumetric laser scan cone:
-            // radiusTop = 2.4 (wide cone hitting players on ground), radiusBottom = 0.05 (pinpoint at eye)
-            const beamLength = 30;
-            const outerConeGeo = new THREE.CylinderGeometry(2.4, 0.05, beamLength, 24, 1, true);
-            // Translate +Y by beamLength/2 so local (0,0,0) is the narrow 0.05 tip at the eye!
+            const beamLength = 32;
+            const outerConeGeo = new THREE.CylinderGeometry(2.6, 0.05, beamLength, 24, 1, true);
             outerConeGeo.translate(0, beamLength / 2, 0);
-            // Rotate around X by 117.5° (Math.PI/2 + 0.48) so +Y points FORWARD (+Z) and DOWNWARD (-Y) onto the players!
             outerConeGeo.rotateX(Math.PI / 2 + 0.48);
 
             const outerConeMat = new THREE.MeshBasicMaterial({
@@ -3044,15 +3656,14 @@ class ThreeManager {
             const outerCone = new THREE.Mesh(outerConeGeo, outerConeMat);
             beamGroup.add(outerCone);
 
-            // 3) Bright inner laser core beam shining down the center of the cone
-            const innerCoreGeo = new THREE.CylinderGeometry(0.26, 0.025, beamLength, 16, 1, true);
+            const innerCoreGeo = new THREE.CylinderGeometry(0.28, 0.025, beamLength, 16, 1, true);
             innerCoreGeo.translate(0, beamLength / 2, 0);
             innerCoreGeo.rotateX(Math.PI / 2 + 0.48);
 
             const innerCoreMat = new THREE.MeshBasicMaterial({
                 color: 0xff8080,
                 transparent: true,
-                opacity: 0.82,
+                opacity: 0.85,
                 side: THREE.DoubleSide,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending
@@ -3073,22 +3684,22 @@ class ThreeManager {
 
         // 7. Stationary Pink Soldier Guards watching the court
         const guardFinL = this.createGuard('circle', 0, 0);
-        guardFinL.position.set(-23, 1, -18);
+        guardFinL.position.set(-23.5, 1, -18);
         guardFinL.lookAt(0, 1, -18);
         group.add(guardFinL);
 
         const guardFinR = this.createGuard('triangle', 0, 0);
-        guardFinR.position.set(23, 1, -18);
+        guardFinR.position.set(23.5, 1, -18);
         guardFinR.lookAt(0, 1, -18);
         group.add(guardFinR);
 
         const guardStartL = this.createGuard('square', 0, 0);
-        guardStartL.position.set(-23, 1, 26);
+        guardStartL.position.set(-23.5, 1, 26);
         guardStartL.lookAt(0, 1, 26);
         group.add(guardStartL);
 
         const guardStartR = this.createGuard('circle', 0, 0);
-        guardStartR.position.set(23, 1, 26);
+        guardStartR.position.set(23.5, 1, 26);
         guardStartR.lookAt(0, 1, 26);
         group.add(guardStartR);
 
@@ -3183,26 +3794,26 @@ class ThreeManager {
             this.doors = [];
 
             if (this.scene) {
-                this.scene.background = new THREE.Color('#38bdf8'); // bright sunny sky
-                this.scene.fog = new THREE.FogExp2('#38bdf8', 0.005);
+                this.scene.background = new THREE.Color('#38bdf8');
+                this.scene.fog = new THREE.FogExp2('#7dd3fc', 0.0022);
             }
             if (this.dirLight) {
-                this.dirLight.intensity = 1.15;
+                this.dirLight.intensity = 1.05;
             }
             if (this.ambientLight) {
-                this.ambientLight.intensity = 0.85;
+                this.ambientLight.intensity = 0.38;
             }
             this.updateCameraFraming(false);
         } else {
             if (this.scene) {
                 this.scene.background = new THREE.Color('#87CEEB');
-                this.scene.fog = new THREE.FogExp2('#87CEEB', 0.015);
+                this.scene.fog = new THREE.FogExp2('#87CEEB', 0.012);
             }
             if (this.dirLight) {
                 this.dirLight.intensity = this.baseLightIntensity;
             }
             if (this.ambientLight) {
-                this.ambientLight.intensity = 0.7;
+                this.ambientLight.intensity = 0.38;
             }
             this.updateCameraFraming(false);
         }
@@ -5435,9 +6046,7 @@ class ThreeManager {
         }
         if (this.dollEyes) {
             this.dollEyes.forEach(e => {
-                if ((e.material as any)?.color) {
-                    (e.material as any).color.setHex(0x0f172a);
-                }
+                e.visible = false;
             });
         }
         if (this.dollEyeBeams) {
@@ -5499,11 +6108,28 @@ class ThreeManager {
             }
         };
 
-        let roundSecondsLeft = Math.max(5, Math.min(120, Math.round(this.tagTimer || 30)));
+        let roundSecondsLeft = Math.max(30, Math.min(120, Math.round(this.tagTimer || 30)));
         this.tagTimer = roundSecondsLeft;
         const totalDuration = roundSecondsLeft;
-        const effectiveRunSeconds = Math.max(4.0, totalDuration * 0.56);
+        const effectiveRunSeconds = Math.max(8.0, totalDuration * 0.56);
         const baseCourtSpeed = 45.0 / effectiveRunSeconds;
+
+        const setArenaBeaconColor = (hex: number) => {
+            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
+                (this.dollStatusRing.material as any).color.setHex(hex);
+            }
+            this.redLightPylonBeacons.forEach(b => {
+                if ((b.material as any)?.color) {
+                    (b.material as any).color.setHex(hex);
+                }
+            });
+            if (this.redLightFinishGlowMat) {
+                this.redLightFinishGlowMat.color.setHex(hex === 0xef4444 ? 0xfca5a5 : 0xfef08a);
+                this.redLightFinishGlowMat.opacity = hex === 0xef4444 ? 0.52 : 0.36;
+            }
+        };
+        setArenaBeaconColor(0x10b981);
+        if (this.redLightScanLine) this.redLightScanLine.visible = false;
 
         this.onStateChange({ 
             chaseSecondsLeft: roundSecondsLeft,
@@ -5511,8 +6137,8 @@ class ThreeManager {
             racingCount: activeParticipants.length
         });
 
-        // Helper to move a player who crossed Z <= -18 into the Left/Right Safe Wings
-        const markRunnerSafeInWing = (name: string, char: any) => {
+        // Helper to move a player who crossed Z <= -18 smoothly into the lush green Safe Zone (ZERO jumping!)
+        const markRunnerSafeInWing = (name: string, char: any, alreadyInSafeZone: boolean = false) => {
             if (!char || char.userData.isSafe || !char.userData.isAlive) return;
             char.userData.isSafe = true;
             char.userData.isMoving = false;
@@ -5520,38 +6146,38 @@ class ThreeManager {
             safePlayers.add(name);
             const safeOrdinal = safePlayers.size;
 
-            const wingSide = char.position.x < -1
-                ? -1
-                : char.position.x > 1
-                ? 1
-                : (safeOrdinal % 2 === 0 ? -1 : 1);
-            const wingIdx = Math.floor((safeOrdinal - 1) / 2);
-            const wingCol = wingIdx % 5;
-            const wingRow = Math.floor(wingIdx / 5);
-            const safeWingX = wingSide * (11.8 + wingCol * 3.1 + (cryptoRandom() - 0.5) * 0.6);
-            const safeWingZ = -20.2 - (wingRow % 3) * 1.7 - cryptoRandom() * 0.6;
+            const safeRow = Math.floor((safeOrdinal - 1) / 10);
+            const laneOffset = ((safeOrdinal % 5) - 2) * 1.15;
+            const targetSafeX = Math.max(-24.5, Math.min(24.5, char.position.x + laneOffset * 0.45));
+            const targetSafeZ = -20.4 - (safeRow % 3) * 1.7 - cryptoRandom() * 0.6;
 
-            gsap.to(char.position, {
-                x: safeWingX,
-                z: safeWingZ,
-                duration: 0.55,
+            gsap.killTweensOf(char.position);
+            gsap.killTweensOf(char.rotation);
+            char.position.y = 1.0;
+
+            if (!alreadyInSafeZone) {
+                gsap.to(char.position, {
+                    x: targetSafeX,
+                    z: targetSafeZ,
+                    duration: 0.72,
+                    ease: "power1.out"
+                });
+            }
+
+            // Smoothly settle legs & turn to watch the remaining runners without any hop/snap
+            const parts = char.userData.parts;
+            if (parts?.legLGroup) gsap.to(parts.legLGroup.rotation, { x: 0, duration: 0.25 });
+            if (parts?.legRGroup) gsap.to(parts.legRGroup.rotation, { x: 0, duration: 0.25 });
+            if (parts?.armL) gsap.to(parts.armL.rotation, { z: 0.65, x: -2.2, duration: 0.4, ease: "power2.out" });
+            if (parts?.armR) gsap.to(parts.armR.rotation, { z: -0.65, x: -2.2, duration: 0.4, ease: "power2.out" });
+            gsap.to(char.rotation, {
+                x: 0,
+                y: 0,
+                z: 0,
+                duration: 0.42,
+                delay: alreadyInSafeZone ? 0 : 0.35,
                 ease: "power2.out"
             });
-
-            gsap.to(char.position, {
-                y: 1.45,
-                duration: 0.22,
-                yoyo: true,
-                repeat: 1,
-                ease: "power2.out",
-                onComplete: () => {
-                    if (char.position) char.position.y = 1.0;
-                    char.rotation.set(0, 0, 0);
-                }
-            });
-            const parts = char.userData.parts;
-            if (parts?.armL) gsap.to(parts.armL.rotation, { z: 1.6, x: -0.4, duration: 0.35 });
-            if (parts?.armR) gsap.to(parts.armR.rotation, { z: -1.6, x: -0.4, duration: 0.35 });
 
             globalAudio?.play('win', 950);
 
@@ -5684,9 +6310,7 @@ class ThreeManager {
             }
             if (this.dollEyes) {
                 this.dollEyes.forEach(e => {
-                    if ((e.material as any)?.color) {
-                        (e.material as any).color.setHex(0x0f172a);
-                    }
+                    e.visible = false;
                 });
             }
             if (this.dollEyeBeams) {
@@ -5696,9 +6320,8 @@ class ThreeManager {
                     b.rotation.set(0, 0, 0);
                 });
             }
-            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
-                (this.dollStatusRing.material as any).color.setHex(0x10b981);
-            }
+            setArenaBeaconColor(0x10b981);
+            if (this.redLightScanLine) this.redLightScanLine.visible = false;
 
             updateDynamicRedLightCamera(false);
 
@@ -5817,23 +6440,23 @@ class ThreeManager {
                     } else {
                         let speed = (char.userData.baseStepSpeed || baseCourtSpeed) * (char.userData.cycleTempo || 1.0) * (char.userData.sprintBoost || 1.0);
 
-                        // Dynamic pacing relative to remaining match timer so players don't finish way too early or get stuck at the line
-                        const distToFinish = Math.max(0.5, char.position.z - (-18.2));
-                        const remainingRunTime = Math.max(1.8, roundSecondsLeft * 0.56);
+                        // Dynamic pacing relative to remaining match timer so players cross naturally across the match duration
+                        const distToFinish = Math.max(0.2, char.position.z - (-18.4));
+                        const remainingRunTime = Math.max(1.2, roundSecondsLeft * 0.54);
                         const idealRemainingSpeed = distToFinish / remainingRunTime;
 
                         if (isTrailingTarget && eliminationsRemaining > 0) {
-                            // Trailing runner(s) who will be caught short of the line pace slightly behind the safe threshold
-                            const distToShortSpot = Math.max(0.2, char.position.z - (-14.5));
-                            speed = Math.min(speed * 0.86, distToShortSpot / Math.max(2.2, remainingRunTime));
-                            if (char.position.z <= -14.8 && !char.userData.isFallen) {
+                            // Trailing runner(s) who will be caught short pace smoothly toward z = -15.0 (no snapping backward at end)
+                            const distToShortSpot = Math.max(0.1, char.position.z - (-15.0));
+                            speed = Math.min(speed * 0.85, distToShortSpot / Math.max(2.0, remainingRunTime));
+                            if (char.position.z <= -15.2 && !char.userData.isFallen) {
                                 this.triggerPlayerTrip(char, false);
                             }
                         } else {
-                            // Blend runner's natural tempo with remaining-time pacing so frontrunners cross near the end of the match
-                            speed = speed * 0.55 + idealRemainingSpeed * 0.45 * (0.94 + (rIdx % 3) * 0.08);
-                            if (roundSecondsLeft <= Math.max(5, totalDuration * 0.18)) {
-                                speed *= 1.25;
+                            // Blend natural stride speed with remaining-time pacing so safe runners cross smoothly before buzzer
+                            speed = speed * 0.45 + idealRemainingSpeed * 0.55 * (0.94 + (rIdx % 3) * 0.07);
+                            if (roundSecondsLeft <= Math.max(4, totalDuration * 0.18)) {
+                                speed *= 1.3;
                             }
                         }
 
@@ -5851,10 +6474,10 @@ class ThreeManager {
                         if (char.userData.parts?.legRGroup) char.userData.parts.legRGroup.rotation.x = -Math.sin(animTime) * 0.75;
                         if (char.userData.parts?.armL && !char.userData.isCustomArmAnim) char.userData.parts.armL.rotation.x = -Math.sin(animTime) * 0.65;
                         if (char.userData.parts?.armR && !char.userData.isCustomArmAnim) char.userData.parts.armR.rotation.x = Math.sin(animTime) * 0.65;
-                        char.position.y = 1.0 + Math.abs(Math.sin(animTime * 1.2)) * 0.12;
+                        char.position.y = 1.0 + Math.abs(Math.sin(animTime * 1.2)) * 0.07;
                     }
 
-                    // 4) Finish line crossing: any runner who reaches Z <= -18.0 (while more than `eliminationsRemaining` are on court) crosses cleanly into the Safe Wings!
+                    // 4) Finish line crossing: any runner who reaches Z <= -18.0 crosses smoothly into the green Safe Zone!
                     const stillOnCourtCount = activeParticipants.length - safePlayers.size - dynamicallyEliminated.size;
                     if (char.position.z <= -18.0 && stillOnCourtCount > eliminationsRemaining) {
                         markRunnerSafeInWing(name, char);
@@ -5883,9 +6506,7 @@ class ThreeManager {
             if (this.dollHead) {
                 gsap.to(this.dollHead.rotation, { y: 0, duration: 0.75, ease: "power2.inOut" });
             }
-            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
-                (this.dollStatusRing.material as any).color.setHex(0xf59e0b);
-            }
+            setArenaBeaconColor(0xf59e0b);
 
             this.freezeAllContestants();
 
@@ -5896,11 +6517,20 @@ class ThreeManager {
             this.currentRedLightPhase = 'RED_LIGHT';
             updateDynamicRedLightCamera(true);
 
-            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
-                (this.dollStatusRing.material as any).color.setHex(0xef4444);
+            setArenaBeaconColor(0xef4444);
+            if (this.redLightScanLine) {
+                this.redLightScanLine.visible = true;
+                this.redLightScanLine.position.z = -17;
+                gsap.killTweensOf(this.redLightScanLine.position);
+                gsap.to(this.redLightScanLine.position, {
+                    z: 25,
+                    duration: 1.45,
+                    ease: "sine.inOut"
+                });
             }
             if (this.dollEyes) {
                 this.dollEyes.forEach(e => {
+                    e.visible = true;
                     if ((e.material as any)?.color) {
                         (e.material as any).color.setHex(0xff1e1e);
                     }
@@ -5933,7 +6563,6 @@ class ThreeManager {
             this.freezeAllContestants();
 
             // SURPRISE MID-ROUND RED LIGHT CATCH:
-            // If scheduled for this cycle and eliminations are still needed, a random runner gets bumped/slips during RED LIGHT and is blasted!
             const eliminationsStillNeeded = totalToEliminate - dynamicallyEliminated.size;
             const currentOnCourt = activeParticipants.filter(n => {
                 const c = this.characters[n];
@@ -5954,7 +6583,6 @@ class ThreeManager {
                         : selectUnpredictableTargets(currentOnCourt, 1)[0];
                     const midChar = midVictim ? this.characters[midVictim] : null;
                     if (midVictim && midChar) {
-                        // Victim visibly wobbles/slips forward during Red Light!
                         gsap.to(midChar.position, { z: midChar.position.z - 0.85, duration: 0.22 });
                         gsap.to(midChar.rotation, { z: 0.28, duration: 0.15, yoyo: true, repeat: 1 });
                         await waitInterruptible(240);
@@ -5968,6 +6596,10 @@ class ThreeManager {
 
             if (this.isRedLightCancelled || roundSecondsLeft <= 0) break;
 
+            if (this.redLightScanLine) {
+                this.redLightScanLine.visible = false;
+                gsap.killTweensOf(this.redLightScanLine.position);
+            }
             if (this.dollEyeBeams) {
                 this.dollEyeBeams.forEach(b => {
                     b.visible = false;
@@ -5977,14 +6609,10 @@ class ThreeManager {
             }
             if (this.dollEyes) {
                 this.dollEyes.forEach(e => {
-                    if ((e.material as any)?.color) {
-                        (e.material as any).color.setHex(0x0f172a);
-                    }
+                    e.visible = false;
                 });
             }
-            if (this.dollStatusRing && (this.dollStatusRing.material as any)?.color) {
-                (this.dollStatusRing.material as any).color.setHex(0xf59e0b);
-            }
+            setArenaBeaconColor(0xf59e0b);
 
             // 4. Smoothly turn doll's head back to the tree (0.75s) before starting the music again
             if (this.dollHead) {
@@ -5993,7 +6621,6 @@ class ThreeManager {
             updateDynamicRedLightCamera(false);
             await waitInterruptible(750);
 
-            // Check if all safe players have crossed the yellow line (leaving only the target count on court):
             const remainingOnCourt = activeParticipants.filter(n => {
                 const c = this.characters[n];
                 return c && c.userData.isAlive && !c.userData.isSafe;
@@ -6008,11 +6635,15 @@ class ThreeManager {
             clearInterval(this.activeRedLightInterval);
             this.activeRedLightInterval = null;
         }
+        if (this.redLightScanLine) {
+            this.redLightScanLine.visible = false;
+            gsap.killTweensOf(this.redLightScanLine.position);
+        }
 
         stopSquidGameYouTubeAudio();
 
         // ==========================================================
-        // 5. PHOTO-FINISH CLIMAX & DYNAMIC UNPREDICTABLE ELIMINATION
+        // 5. SMOOTH FINISH & NATURAL ELIMINATION (ZERO SUDDEN JUMPING)
         // ==========================================================
         const remainingOnCourtAtEnd = activeParticipants.filter(n => {
             const c = this.characters[n];
@@ -6020,7 +6651,6 @@ class ThreeManager {
         });
         const stillNeededCount = Math.max(0, totalToEliminate - dynamicallyEliminated.size);
 
-        // Pick the final victim(s) right now from the runners still on the court, prioritizing designated target(s) in picker mode!
         let endVictims: string[] = [];
         if (stillNeededCount > 0 && remainingOnCourtAtEnd.length > 0) {
             if (isPicker) {
@@ -6040,26 +6670,46 @@ class ThreeManager {
         }
         const endVictimSet = new Set(endVictims);
 
-        // All non-victim runners in the final pack make a thrilling last-millisecond dive/scramble across the yellow line into the Safe Wings!
-        remainingOnCourtAtEnd.forEach(name => {
+        // Smoothly walk/stride any remaining non-victim runners across the yellow line into the Safe Zone on foot (no teleport/jump!)
+        const finalCrossPromises: Promise<void>[] = [];
+        remainingOnCourtAtEnd.forEach((name, idx) => {
+            const char = this.characters[name];
+            if (!char) return;
             if (!endVictimSet.has(name)) {
-                const char = this.characters[name];
-                if (char) {
-                    markRunnerSafeInWing(name, char);
-                }
+                char.userData.isMoving = true;
+                char.userData.isFallen = false;
+                char.userData.fallState = 'upright';
+                char.position.y = 1.0;
+                char.rotation.set(0, Math.PI, 0);
+                const destZ = -20.5 - (idx % 3) * 1.4;
+                const distToCross = Math.max(0.5, char.position.z - destZ);
+                const runTime = Math.min(0.95, Math.max(0.35, distToCross / Math.max(6, baseCourtSpeed * 2.2)));
+                finalCrossPromises.push(new Promise<void>(resolve => {
+                    gsap.to(char.position, {
+                        z: destZ,
+                        duration: runTime,
+                        ease: "power1.out",
+                        onComplete: () => {
+                            markRunnerSafeInWing(name, char, true);
+                            resolve();
+                        }
+                    });
+                }));
             } else {
-                // Victim gets tripped/stranded inches short of the yellow line!
-                const vChar = this.characters[name];
-                if (vChar) {
-                    vChar.position.z = Math.max(-17.4, vChar.position.z);
-                    if (!vChar.userData.isFallen) {
-                        this.triggerPlayerTrip(vChar, false);
-                    }
+                // Victim stops/stumbles naturally right where they are caught (zero position snapping!)
+                char.userData.isMoving = false;
+                if (!char.userData.isFallen) {
+                    this.triggerPlayerTrip(char, false);
                 }
             }
         });
 
+        if (finalCrossPromises.length > 0) {
+            await Promise.all(finalCrossPromises);
+        }
+
         this.currentRedLightPhase = 'ELIMINATING';
+        setArenaBeaconColor(0xef4444);
         this.onStateChange({
             chaseSecondsLeft: 0,
             phase: 'ELIMINATING',
@@ -6070,8 +6720,8 @@ class ThreeManager {
         });
 
         if (this.redLightCamTargetPos && this.redLightCamTargetLook) {
-            this.redLightCamTargetPos.set(0, 9.5, 4.5);
-            this.redLightCamTargetLook.set(0, 4.8, -21.5);
+            this.redLightCamTargetPos.set(0, 10.5, 6.5);
+            this.redLightCamTargetLook.set(0, 4.5, -20.0);
         }
 
         globalAudio.play('alarm', 260);
@@ -6082,6 +6732,7 @@ class ThreeManager {
         }
         if (this.dollEyes) {
             this.dollEyes.forEach(e => {
+                e.visible = true;
                 if ((e.material as any)?.color) {
                     (e.material as any).color.setHex(0xff0000);
                 }
@@ -6102,9 +6753,7 @@ class ThreeManager {
         }
         if (this.dollEyes) {
             this.dollEyes.forEach(e => {
-                if ((e.material as any)?.color) {
-                    (e.material as any).color.setHex(0x0f172a);
-                }
+                e.visible = false;
             });
         }
 
@@ -6599,9 +7248,9 @@ class ThreeManager {
             await this.executeEliminationSequence(roundData.eliminated, 'lockout');
         }
 
-        gsap.to(this.ambientLight, { intensity: 0.7, duration: 1 });
+        gsap.to(this.ambientLight, { intensity: 0.38, duration: 1 });
         gsap.to(this.dirLight, { intensity: this.baseLightIntensity, duration: 1 });
-        if(this.scene) gsap.to(this.scene.fog, { density: 0.015, duration: 1 });
+        if(this.scene) gsap.to(this.scene.fog, { density: 0.012, duration: 1 });
         gsap.to(this.alarmLight, { intensity: 0, duration: 1 });
 
         // All doors that players entered glow safe green!
@@ -6671,14 +7320,14 @@ class ThreeManager {
         this.onStateChange({ phase: 'WINNER', msg: winnerMsg, isMusicPlaying: false });
         
         if (this.gameType === 'tag' || this.gameType === 'redlight') {
-            gsap.to(this.spotLight, { intensity: 6, duration: 2 });
-            gsap.to(this.ambientLight, { intensity: 0.6, duration: 2 });
-            gsap.to(this.dirLight, { intensity: 0.8, duration: 2 });
+            gsap.to(this.spotLight, { intensity: 4, duration: 2 });
+            gsap.to(this.ambientLight, { intensity: 0.38, duration: 2 });
+            gsap.to(this.dirLight, { intensity: 1.05, duration: 2 });
             if(this.scene) this.scene.background = new THREE.Color('#38bdf8');
         } else {
             gsap.to(this.spotLight, { intensity: 10, duration: 2 });
-            gsap.to(this.ambientLight, { intensity: 0.1, duration: 2 });
-            gsap.to(this.dirLight, { intensity: 0.1, duration: 2 });
+            gsap.to(this.ambientLight, { intensity: 0.14, duration: 2 });
+            gsap.to(this.dirLight, { intensity: 0.16, duration: 2 });
             if(this.scene) this.scene.background = new THREE.Color('#0f172a'); 
         } 
 
@@ -6704,7 +7353,13 @@ class ThreeManager {
             this.spotLight.target.position.set(centerX, 0, centerZ);
             this.spotLight.target.updateMatrixWorld();
 
-            if(this.camera) {
+            if (this.gameType === 'redlight' && this.redLightCamTargetPos && this.redLightCamTargetLook) {
+                this.redLightCamTargetPos.set(centerX, 7.5, Math.min(20, centerZ + 14));
+                this.redLightCamTargetLook.set(centerX, 1.5, centerZ);
+            } else if (this.gameType === 'tag' && this.tagCamTargetPos && this.tagCamTargetLook) {
+                this.tagCamTargetPos.set(centerX, 7.5, centerZ + 13);
+                this.tagCamTargetLook.set(centerX, 1.5, centerZ);
+            } else if(this.camera) {
                 gsap.to(this.camera.position, {
                     x: centerX, y: 6, z: centerZ + 12, duration: 3, ease: "power2.out"
                 });
@@ -6722,7 +7377,13 @@ class ThreeManager {
             const worldPos = new THREE.Vector3();
             char.getWorldPosition(worldPos);
 
-            if(this.camera) {
+            if (this.gameType === 'redlight' && this.redLightCamTargetPos && this.redLightCamTargetLook) {
+                this.redLightCamTargetPos.set(worldPos.x, worldPos.y + 3.5, worldPos.z + 11);
+                this.redLightCamTargetLook.set(worldPos.x, worldPos.y + 1.8, worldPos.z);
+            } else if (this.gameType === 'tag' && this.tagCamTargetPos && this.tagCamTargetLook) {
+                this.tagCamTargetPos.set(worldPos.x, worldPos.y + 3.5, worldPos.z + 11);
+                this.tagCamTargetLook.set(worldPos.x, worldPos.y + 1.8, worldPos.z);
+            } else if(this.camera) {
                 gsap.to(this.camera.position, {
                     x: worldPos.x, y: worldPos.y + 3, z: worldPos.z + 10, duration: 3, ease: "power2.out"
                 });
@@ -6736,8 +7397,10 @@ class ThreeManager {
 
             globalAudio.play('win');
 
-            gsap.to(char.position, { y: 4, yoyo: true, repeat: -1, duration: 0.5, ease: "power1.inOut" });
-            gsap.to(char.rotation, { y: Math.PI * 2, repeat: -1, duration: 2, ease: "linear" });
+            if (this.gameType !== 'redlight') {
+                gsap.to(char.position, { y: 4, yoyo: true, repeat: -1, duration: 0.5, ease: "power1.inOut" });
+                gsap.to(char.rotation, { y: Math.PI * 2, repeat: -1, duration: 2, ease: "linear" });
+            }
             gsap.to([char.userData.parts.armL.rotation, char.userData.parts.armR.rotation], { x: Math.PI, duration: 0.5 });
         }
     }
@@ -7480,7 +8143,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             setGameMode('picker');
         }
         if (activeGame === 'redlight') {
-            threeManagerRef.current?.setTagTimer(Math.max(5, redLightDuration));
+            threeManagerRef.current?.setTagTimer(Math.max(30, Math.min(120, redLightDuration)));
         } else if (activeGame === 'tag') {
             threeManagerRef.current?.setTagTimer(tagTimer);
         }
@@ -7703,13 +8366,13 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         tm.lastCaughtPlayer = null;
         tm.tagRoundCount = 0;
         tm.mingleSpinCount = 0;
-        tm.setTagTimer(activeGame === 'redlight' ? Math.max(5, redLightDuration) : tagTimer);
+        tm.setTagTimer(activeGame === 'redlight' ? Math.max(30, Math.min(120, redLightDuration)) : tagTimer);
         
         // Spawn players before starting sequence in proper game type
         tm.setGameType(activeGame);
         tm.spawnPlayers(roster);
-        if(tm.ambientLight) tm.ambientLight.intensity = (activeGame === 'tag' || activeGame === 'redlight') ? 0.6 : 0.7;
-        if(tm.dirLight) tm.dirLight.intensity = (activeGame === 'tag' || activeGame === 'redlight') ? 0.8 : tm.baseLightIntensity;
+        if(tm.ambientLight) tm.ambientLight.intensity = 0.38;
+        if(tm.dirLight) tm.dirLight.intensity = (activeGame === 'tag' || activeGame === 'redlight') ? 1.05 : tm.baseLightIntensity;
         if(tm.spotLight) tm.spotLight.intensity = 0;
         if(tm.scene) tm.scene.background = new THREE.Color((activeGame === 'tag' || activeGame === 'redlight') ? '#38bdf8' : '#87CEEB'); 
 
@@ -7826,7 +8489,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                     </p>
                 </div>
                 
-                <div className="bg-slate-800/80 rounded-2xl p-3 sm:p-4 mb-3 sm:mb-4 border border-slate-700 overflow-y-auto max-h-[46vh]">
+                <div className="bg-slate-800/80 rounded-2xl p-3 sm:p-4 mb-3 sm:mb-4 border border-slate-700 overflow-y-auto max-h-[58vh]">
                     <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50 mb-2">
                         <div className="flex justify-between items-center">
                             <span className="text-slate-300 font-bold text-xs uppercase tracking-wider">
@@ -7856,29 +8519,31 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     Match Duration:
                                 </span>
                                 <span className="text-amber-400 font-bold text-sm sm:text-base bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">
-                                    {redLightDuration < 60
-                                        ? `${redLightDuration}s`
-                                        : redLightDuration % 60 === 0
-                                        ? `${Math.floor(redLightDuration / 60)}m (${redLightDuration}s)`
-                                        : `${Math.floor(redLightDuration / 60)}m ${redLightDuration % 60}s`}
+                                    {(() => {
+                                        const dur = Math.max(30, Math.min(120, redLightDuration));
+                                        return dur < 60
+                                            ? `${dur}s`
+                                            : dur % 60 === 0
+                                            ? `${Math.floor(dur / 60)}m (${dur}s)`
+                                            : `${Math.floor(dur / 60)}m ${dur % 60}s`;
+                                    })()}
                                 </span>
                             </div>
                             <input
                                 type="range"
-                                min="0"
+                                min="30"
                                 max="120"
                                 step="5"
-                                value={redLightDuration}
+                                value={Math.max(30, Math.min(120, redLightDuration))}
                                 onChange={(e) => {
                                     const rawVal = parseInt(e.target.value, 10);
-                                    const clampedVal = Number.isNaN(rawVal) ? 30 : Math.max(0, Math.min(120, rawVal));
+                                    const clampedVal = Number.isNaN(rawVal) ? 30 : Math.max(30, Math.min(120, rawVal));
                                     setRedLightDuration(clampedVal);
-                                    threeManagerRef.current?.setTagTimer(Math.max(5, clampedVal));
+                                    threeManagerRef.current?.setTagTimer(clampedVal);
                                 }}
                                 className="w-full mt-1.5 accent-amber-500 cursor-pointer"
                             />
-                            <div className="flex justify-between text-[10px] text-slate-500 font-bold px-1 mt-0.5">
-                                <span>0s</span>
+                            <div className="flex justify-between text-[10px] text-slate-400 font-bold px-1 mt-0.5">
                                 <span>30s</span>
                                 <span>1m</span>
                                 <span>1m 30s</span>
@@ -7983,7 +8648,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         </div>
                     )}
                     {activeGame === 'redlight' && (gameState.phase === 'GREEN_LIGHT' || gameState.phase === 'TURNING' || gameState.phase === 'RED_LIGHT') && (
-                        <div className={`bg-slate-900/90 backdrop-blur text-white px-3 sm:px-5 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 flex items-center gap-2.5 transition-all duration-300 ${
+                        <div className={`bg-slate-900/95 text-white px-3 sm:px-5 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 flex items-center gap-2.5 transition-all duration-300 ${
                             gameState.phase === 'GREEN_LIGHT'
                                 ? 'border-emerald-500/80 shadow-[0_0_22px_rgba(16,185,129,0.4)]'
                                 : gameState.phase === 'TURNING'
@@ -7992,9 +8657,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         }`}>
                             <span className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full shrink-0 ${
                                 gameState.phase === 'GREEN_LIGHT'
-                                    ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse'
+                                    ? 'bg-emerald-400 shadow-[0_0_12px_#34d399]'
                                     : gameState.phase === 'TURNING'
-                                    ? 'bg-amber-400 shadow-[0_0_12px_#fbbf24] animate-ping'
+                                    ? 'bg-amber-400 shadow-[0_0_12px_#fbbf24]'
                                     : 'bg-rose-500 shadow-[0_0_14px_#f43f5e]'
                             }`} />
                             <div className="text-left">
