@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { Settings, Play, Plus, Trash2, Edit2, Volume2, VolumeX, AlertCircle, CheckCircle2, XCircle, RotateCcw, Trophy, Users, MonitorUp, Smartphone, QrCode, LogOut, Crown, Zap, Clock, ArrowLeft } from 'lucide-react';
 import { ViewState } from '../types';
-import { db } from '../lib/firebase';
+import { db, safeFirestoreWrite, isFirestoreQuotaError, markFirestoreQuotaExhausted } from '../lib/firebase';
 import { doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, orderBy, deleteDoc } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
 import { UnifiedGameSetup } from '../components/UnifiedGameSetup';
@@ -82,10 +82,11 @@ const NetworkManager = {
                         if (NetworkManager.messageCallback) {
                             NetworkManager.messageCallback({ type: 'PLAYER_ACTION', action: data.action });
                         }
-                        deleteDoc(change.doc.ref).catch(() => {});
+                        safeFirestoreWrite(() => deleteDoc(change.doc.ref));
                     }
                 });
             }, (err) => {
+                if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
                 console.warn("TicTacToe action listener notice:", err?.message || err);
             });
         } else {
@@ -95,6 +96,7 @@ const NetworkManager = {
                     NetworkManager.messageCallback({ type: 'STATE_UPDATE', state: docSnap.data().state });
                 }
             }, (err) => {
+                if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
                 console.warn("TicTacToe state listener notice:", err?.message || err);
             });
         }
@@ -105,19 +107,19 @@ const NetworkManager = {
         
         const now = Date.now();
         const timeSinceLast = now - (NetworkManager.lastBroadcastTime || 0);
-        const THROTTLE_MS = 200; // max 5 updates per second
+        const THROTTLE_MS = 500; // max 2 updates per second
 
         if (timeSinceLast >= THROTTLE_MS) {
             NetworkManager.lastBroadcastTime = now;
             const roomRef = doc(db, 'ttt_rooms', NetworkManager.roomId);
-            setDoc(roomRef, { state, updatedAt: now }).catch(() => {});
+            safeFirestoreWrite(() => setDoc(roomRef, { state, updatedAt: now }));
         } else {
             NetworkManager.pendingState = state;
             if (!NetworkManager.broadcastTimeout) {
                 NetworkManager.broadcastTimeout = setTimeout(() => {
                     NetworkManager.lastBroadcastTime = Date.now();
                     const roomRef = doc(db, 'ttt_rooms', NetworkManager.roomId!);
-                    setDoc(roomRef, { state: NetworkManager.pendingState, updatedAt: Date.now() }).catch(() => {});
+                    safeFirestoreWrite(() => setDoc(roomRef, { state: NetworkManager.pendingState, updatedAt: Date.now() }));
                     NetworkManager.broadcastTimeout = null;
                 }, THROTTLE_MS - timeSinceLast);
             }
@@ -127,7 +129,7 @@ const NetworkManager = {
     sendActionToHost: (action: any) => {
         if (NetworkManager.isHost || !NetworkManager.roomId) return;
         const actionsRef = collection(db, 'ttt_rooms', NetworkManager.roomId, 'actions');
-        addDoc(actionsRef, { action, timestamp: Date.now() }).catch(() => {});
+        safeFirestoreWrite(() => addDoc(actionsRef, { action, timestamp: Date.now() }));
     },
     // Listeners
     onMessage: (callback: (data: any) => void) => {

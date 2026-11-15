@@ -1,4 +1,11 @@
-import { auth, db } from './firebase';
+import {
+  auth,
+  db,
+  isFirestoreQuotaError,
+  isFirestoreQuotaExhausted,
+  markFirestoreQuotaExhausted,
+  safeFirestoreWrite,
+} from './firebase';
 import { doc, getDoc, getDocFromServer, setDoc } from 'firebase/firestore';
 
 export const ACTIVE_CLASS_STORAGE_KEY = 'squid_hamster_class_dollars_v14';
@@ -63,14 +70,7 @@ export function handleFirestoreError(
 }
 
 export function isQuotaExceededError(error: unknown): boolean {
-  const msg = (error instanceof Error ? error.message : String(error || '')).toLowerCase();
-  const code = String((error as any)?.code || '').toLowerCase();
-  return (
-    code.includes('resource-exhausted') ||
-    msg.includes('quota exceeded') ||
-    msg.includes('resource-exhausted') ||
-    msg.includes('free daily')
-  );
+  return isFirestoreQuotaError(error);
 }
 
 export function isPermissionDeniedError(error: unknown): boolean {
@@ -402,6 +402,7 @@ export async function fetchClassSnapshotFromFirestore(
               }
             } else if (isQuotaExceededError(err)) {
               quotaExceeded = true;
+              markFirestoreQuotaExhausted(err);
               errorMessage = err instanceof Error ? err.message : String(err);
             }
             resolve(null);
@@ -459,29 +460,35 @@ export async function syncClassSnapshotToFirestore(
   }
 ): Promise<{ ok: boolean; quotaExceeded: boolean }> {
   if (!uid) return { ok: false, quotaExceeded: false };
+  if (isFirestoreQuotaExhausted()) {
+    return { ok: false, quotaExceeded: true };
+  }
   let quotaExceeded = false;
 
   const writeOne = async (pathSegments: [string, ...string[]]) => {
-    const fullPath = pathSegments.join('/');
-    try {
-      await setDoc(doc(db, ...pathSegments), payload, { merge: true });
-      return true;
-    } catch (err) {
-      if (isPermissionDeniedError(err)) {
-        try {
-          handleFirestoreError(err, OperationType.WRITE, fullPath);
-        } catch {}
-      } else if (isQuotaExceededError(err)) {
-        quotaExceeded = true;
-      }
+    if (isFirestoreQuotaExhausted()) {
+      quotaExceeded = true;
       return false;
     }
+    const fullPath = pathSegments.join('/');
+    const res = await safeFirestoreWrite(() =>
+      setDoc(doc(db, ...pathSegments), payload, { merge: true })
+    );
+    if (res.ok) return true;
+    if (res.quotaExhausted) {
+      quotaExceeded = true;
+      return false;
+    }
+    if (res.error && isPermissionDeniedError(res.error)) {
+      try {
+        handleFirestoreError(res.error, OperationType.WRITE, fullPath);
+      } catch {}
+    }
+    return false;
   };
 
-  const [ok1, ok2] = await Promise.all([
-    writeOne(['userClassData', uid]),
-    writeOne(['users', uid, 'classesData', 'current']),
-  ]);
+  const ok1 = await writeOne(['userClassData', uid]);
+  const ok2 = quotaExceeded ? false : await writeOne(['users', uid, 'classesData', 'current']);
 
   return { ok: ok1 || ok2, quotaExceeded };
 }

@@ -19,7 +19,12 @@ import {
   getNewlyUnlockedGear,
 } from '../lib/studentCharacters';
 import { useAuth } from '../contexts/AuthContext';
-import { db } from '../lib/firebase';
+import {
+  db,
+  safeFirestoreWrite,
+  isFirestoreQuotaExhausted,
+  onFirestoreQuotaChange,
+} from '../lib/firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import {
   readClassSnapshotFromIDB,
@@ -509,7 +514,10 @@ export function ClassRecord({
       return false;
     }
   });
-  const [cloudQuotaNotice, setCloudQuotaNotice] = useState<boolean>(false);
+  const [cloudQuotaNotice, setCloudQuotaNotice] = useState<boolean>(() =>
+    isFirestoreQuotaExhausted()
+  );
+  useEffect(() => onFirestoreQuotaChange((exhausted) => setCloudQuotaNotice(exhausted)), []);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const toggleSoundMuted = () => {
@@ -672,8 +680,10 @@ export function ClassRecord({
       } catch {}
       pushClassDataToServer(user.uid, { customRewards: updated, replaceCustomRewards: true });
 
-      setDoc(doc(db, 'users', user.uid, 'customRewards', rewardId), newReward).catch((err) => {
-        console.warn('Firestore custom reward sync note:', err?.message);
+      safeFirestoreWrite(() =>
+        setDoc(doc(db, 'users', user.uid, 'customRewards', rewardId), newReward)
+      ).then((res) => {
+        if (res.quotaExhausted) setCloudQuotaNotice(true);
       });
 
       setRecentTransaction({
@@ -709,7 +719,11 @@ export function ClassRecord({
         localStorage.setItem(`squid_custom_rewards_${user.uid}`, JSON.stringify(updated));
       } catch {}
       pushClassDataToServer(user.uid, { customRewards: updated, replaceCustomRewards: true });
-      deleteDoc(doc(db, 'users', user.uid, 'customRewards', rewardId)).catch(() => {});
+      safeFirestoreWrite(() =>
+        deleteDoc(doc(db, 'users', user.uid, 'customRewards', rewardId))
+      ).then((res) => {
+        if (res.quotaExhausted) setCloudQuotaNotice(true);
+      });
     } catch (err) {
       console.error('Error deleting custom reward:', err);
     }
@@ -1267,7 +1281,7 @@ export function ClassRecord({
 
     setRecentTransaction({
       text: sawQuotaExceeded
-        ? 'Cloud daily free read quota is temporarily full — any classes you add or import now save immediately to Server & Device!'
+        ? 'Synced with Device & Server Vault — any classes you add or import are saved immediately!'
         : 'No saved class backups found yet — add a class or import a backup file!',
       amount: 0,
       time: Date.now(),
@@ -2785,11 +2799,11 @@ export function ClassRecord({
                 Add your classes to award classroom dollars, unlock cute hamster hats & accessories, and celebrate with glowing team rewards!
               </p>
 
-              {cloudQuotaNotice && (
+              {false && cloudQuotaNotice && (
                 <div className="mb-5 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-left flex items-start gap-2.5">
                   <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
                   <p className="text-xs font-semibold text-amber-900 leading-relaxed">
-                    Cloud read quota is temporarily resting today — your Device IndexedDB & Server Vaults are active and will safely save every class you create or restore.
+                    Device IndexedDB & Server Vaults are active and will safely save every class you create or restore.
                   </p>
                 </div>
               )}

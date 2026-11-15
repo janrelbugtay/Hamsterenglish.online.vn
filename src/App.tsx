@@ -37,8 +37,8 @@ import { HamsterPaintball } from "./views/HamsterPaintball";
 import { SleepingHamster } from "./views/SleepingHamster";
 import { MySlides } from "./views/MySlides";
 import { useAuth } from "./contexts/AuthContext";
-import { doc, onSnapshot, getDoc, setDoc, updateDoc, increment } from "firebase/firestore";
-import { db } from "./lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db, isFirestoreQuotaExhausted, ensureServerQuotaChecked } from "./lib/firebase";
 import {
   validateFirestoreConnectionOnce,
   readClassSnapshotFromIDB,
@@ -302,14 +302,24 @@ export default function App() {
             }).catch(() => {});
           }
 
-          if (winner.source !== 'firestore' && !cloudResult.quotaExceeded) {
-            syncClassSnapshotToFirestore(user.uid, {
-              classes: sorted,
-              deletedClasses: winner.snapshot.deletedClasses,
-              deletedStudents: winner.snapshot.deletedStudents,
-              updatedAt: bestUpdatedAt,
-              intentionalEmptyReset: isIntentionalEmpty,
-            }).catch(() => {});
+          const cloudUpdatedAt = cloudResult.snapshot?.updatedAt || 0;
+          const needsCloudBackfill =
+            winner.source !== 'firestore' &&
+            !cloudResult.quotaExceeded &&
+            !isFirestoreQuotaExhausted() &&
+            (!cloudResult.snapshot || bestUpdatedAt > cloudUpdatedAt + 5000);
+
+          if (needsCloudBackfill) {
+            const quotaHit = await ensureServerQuotaChecked();
+            if (!quotaHit) {
+              syncClassSnapshotToFirestore(user.uid, {
+                classes: sorted,
+                deletedClasses: winner.snapshot.deletedClasses,
+                deletedStudents: winner.snapshot.deletedStudents,
+                updatedAt: bestUpdatedAt,
+                intentionalEmptyReset: isIntentionalEmpty,
+              }).catch(() => {});
+            }
           }
         }
       } catch (err: any) {
@@ -478,18 +488,18 @@ export default function App() {
   useEffect(() => {
     const trackVisit = async () => {
       if (!sessionStorage.getItem("visit_tracked")) {
+        sessionStorage.setItem("visit_tracked", "true");
         try {
-          const ref = doc(db, 'settings', 'general');
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            await updateDoc(ref, { pageVisits: increment(1) });
-          } else {
-            await setDoc(ref, { pageVisits: 1 });
+          const resp = await fetch("/api/platform-cache/visit", { method: "POST" });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data?.pageVisits) {
+              try {
+                localStorage.setItem("hamster_cached_page_visits_v1", String(data.pageVisits));
+              } catch {}
+            }
           }
-          sessionStorage.setItem("visit_tracked", "true");
-        } catch (e: any) {
-          console.warn("Notice tracking visit:", e?.message || e);
-        }
+        } catch {}
       }
     };
     trackVisit();

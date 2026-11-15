@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { collection, query, where, getDocs, onSnapshot, doc, getDoc, deleteDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, safeFirestoreWrite } from "../lib/firebase";
 import { ViewState } from "../types";
 import { GameThumbnail } from "../components/GameThumbnail";
 import { 
@@ -291,11 +291,12 @@ export function PublicDashboard({
         setGames((prev) => prev.filter((g) => String(g.id) !== targetId));
         await markGameDeleted(targetId);
         const delRes = await withSaveTimeout(
-          deleteDoc(doc(db, "mysteryBoxGames", targetId)),
+          safeFirestoreWrite(() => deleteDoc(doc(db, "mysteryBoxGames", targetId))),
           2500
         );
-        if (!delRes.ok && !delRes.timedOut && delRes.error?.code === 'permission-denied') {
-          logFirestoreError(delRes.error, FirestoreOperationType.DELETE, `mysteryBoxGames/${targetId}`, user);
+        const writeErr: any = delRes.error || delRes.value?.error;
+        if (!delRes.timedOut && writeErr?.code === 'permission-denied') {
+          logFirestoreError(writeErr, FirestoreOperationType.DELETE, `mysteryBoxGames/${targetId}`, user);
         }
       }
       setGameToDelete(null);

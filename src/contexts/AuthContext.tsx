@@ -13,7 +13,7 @@ import {
   signInWithCredential 
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, googleProvider, facebookProvider } from '../lib/firebase';
+import { auth, db, googleProvider, facebookProvider, safeFirestoreWrite } from '../lib/firebase';
 import { logUserActivity } from '../utils/activityTracker';
 import { syncLocalComputerGamesForUser } from '../utils/platformCache';
 
@@ -52,32 +52,44 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Sync any privately saved local games on the user's computer to platform cache & cloud
         syncLocalComputerGamesForUser(currentUser, db).catch(() => {});
 
-        // Sync user profile in background without blocking rendering
+        // Sync user profile in background at most once every 8 hours per device to avoid unnecessary Firestore writes on every page reload
         if (!currentUser.isAnonymous) {
-          const userRef = doc(db, 'users', currentUser.uid);
-          setDoc(
-            userRef,
-            {
-              uid: currentUser.uid,
-              email: currentUser.email || 'User',
-              displayName: currentUser.displayName || 'User',
-              photoURL: currentUser.photoURL || null,
-              isAnonymous: false,
-              lastLoginAt: serverTimestamp(),
-            },
-            { merge: true }
-          ).then(() => {
-            logUserActivity({
-              userId: currentUser.uid,
-              userEmail: currentUser.email || undefined,
-              userName: currentUser.displayName || undefined,
-              userPhoto: currentUser.photoURL || null,
-              action: 'login',
-              title: 'Signed in to account'
+          const syncKey = `hamster_last_auth_cloud_sync_${currentUser.uid}`;
+          let lastSynced = 0;
+          try {
+            lastSynced = Number(localStorage.getItem(syncKey) || '0');
+          } catch {}
+          if (Date.now() - lastSynced > 8 * 60 * 60 * 1000) {
+            const userRef = doc(db, 'users', currentUser.uid);
+            safeFirestoreWrite(() =>
+              setDoc(
+                userRef,
+                {
+                  uid: currentUser.uid,
+                  email: currentUser.email || 'User',
+                  displayName: currentUser.displayName || 'User',
+                  photoURL: currentUser.photoURL || null,
+                  isAnonymous: false,
+                  lastLoginAt: serverTimestamp(),
+                },
+                { merge: true }
+              )
+            ).then((res) => {
+              if (res.ok) {
+                try {
+                  localStorage.setItem(syncKey, String(Date.now()));
+                } catch {}
+                logUserActivity({
+                  userId: currentUser.uid,
+                  userEmail: currentUser.email || undefined,
+                  userName: currentUser.displayName || undefined,
+                  userPhoto: currentUser.photoURL || null,
+                  action: 'login',
+                  title: 'Signed in to account'
+                });
+              }
             });
-          }).catch((err) => {
-            console.warn('Background user profile sync notice:', err?.message);
-          });
+          }
         }
       }
     });
@@ -293,19 +305,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } catch (pErr) {
           console.warn('Update profile notice:', pErr);
         }
-        try {
-          const userRef = doc(db, 'users', userCredential.user.uid);
-          await setDoc(userRef, {
+        const userRef = doc(db, 'users', userCredential.user.uid);
+        await safeFirestoreWrite(() =>
+          setDoc(userRef, {
             uid: userCredential.user.uid,
             email: userCredential.user.email || email.trim(),
             displayName,
             photoURL: null,
             isAnonymous: false,
             lastLoginAt: serverTimestamp(),
-          }, { merge: true });
-        } catch (dbErr) {
-          console.warn('Firestore profile write notice:', dbErr);
-        }
+          }, { merge: true })
+        );
         setUser(userCredential.user);
       }
       return userCredential.user;
@@ -339,14 +349,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         try {
           await updateProfile(currentUser, { displayName });
           const userRef = doc(db, 'users', currentUser.uid);
-          await setDoc(userRef, {
-            uid: currentUser.uid,
-            displayName,
-            isAnonymous: true,
-            email: 'Guest',
-            photoURL: null,
-            lastLoginAt: serverTimestamp(),
-          }, { merge: true });
+          await safeFirestoreWrite(() =>
+            setDoc(userRef, {
+              uid: currentUser.uid,
+              displayName,
+              isAnonymous: true,
+              email: 'Guest',
+              photoURL: null,
+              lastLoginAt: serverTimestamp(),
+            }, { merge: true })
+          );
         } catch (e) {
           console.warn('Guest profile write notice:', e);
         }

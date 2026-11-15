@@ -25,7 +25,7 @@ import {
   Camera,
   Users,
 } from 'lucide-react';
-import { db } from '../lib/firebase';
+import { db, safeFirestoreWrite, isFirestoreQuotaExhausted } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, deleteDoc, writeBatch, addDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { GameCategoryId, ViewState } from '../types';
@@ -577,7 +577,7 @@ export const GamesLibrary = ({
   const confirmDelete = async (gameId: string) => {
     try {
       markGameDeleted(gameId);
-      deleteDoc(doc(db, "mysteryBoxGames", gameId)).catch(() => {});
+      safeFirestoreWrite(() => deleteDoc(doc(db, "mysteryBoxGames", gameId)));
       setGames(prev => prev.filter(g => g.id !== gameId));
       setGameToDelete(null);
       setToastMsg("Game deleted.");
@@ -593,24 +593,26 @@ export const GamesLibrary = ({
       const parentId = folderToDeleteObj?.parentId || null;
 
       markFolderDeleted(folderId, user?.uid);
-      deleteDoc(doc(db, "gameFolders", folderId)).catch(() => {});
+      safeFirestoreWrite(() => deleteDoc(doc(db, "gameFolders", folderId)));
 
-      try {
-        const batch = writeBatch(db);
-        const gamesToUpdate = games.filter(g => g.folderId === folderId);
-        gamesToUpdate.forEach(game => {
-          const gameRef = doc(db, "mysteryBoxGames", game.id);
-          batch.update(gameRef, { folderId: parentId });
-        });
+      if (!isFirestoreQuotaExhausted()) {
+        try {
+          const batch = writeBatch(db);
+          const gamesToUpdate = games.filter(g => g.folderId === folderId);
+          gamesToUpdate.forEach(game => {
+            const gameRef = doc(db, "mysteryBoxGames", game.id);
+            batch.update(gameRef, { folderId: parentId });
+          });
 
-        const foldersToUpdate = folders.filter(f => f.parentId === folderId);
-        foldersToUpdate.forEach(f => {
-          const folderRef = doc(db, "gameFolders", f.id);
-          batch.update(folderRef, { parentId });
-        });
+          const foldersToUpdate = folders.filter(f => f.parentId === folderId);
+          foldersToUpdate.forEach(f => {
+            const folderRef = doc(db, "gameFolders", f.id);
+            batch.update(folderRef, { parentId });
+          });
 
-        batch.commit().catch(() => {});
-      } catch (e) {}
+          safeFirestoreWrite(() => batch.commit());
+        } catch (e) {}
+      }
 
       const nextFolders = folders
         .map(f => f.parentId === folderId ? { ...f, parentId, updatedAt: new Date().toISOString() } : f)
@@ -661,7 +663,9 @@ export const GamesLibrary = ({
     const trimmed = renameFolderInput.trim();
     const updatedAt = new Date().toISOString();
     try {
-      updateDoc(doc(db, "gameFolders", folderToRename.id), { name: trimmed, updatedAt }).catch(() => {});
+      safeFirestoreWrite(() =>
+        updateDoc(doc(db, "gameFolders", folderToRename.id), { name: trimmed, updatedAt })
+      );
       const updated = folders.map(f =>
         f.id === folderToRename.id ? { ...f, name: trimmed, inferred: false, updatedAt } : f
       );
@@ -681,7 +685,9 @@ export const GamesLibrary = ({
     if (!targetGameId) return;
     try {
       const normalizedFolderId = folderId || '';
-      updateDoc(doc(db, "mysteryBoxGames", targetGameId), { folderId: normalizedFolderId }).catch(() => {});
+      safeFirestoreWrite(() =>
+        updateDoc(doc(db, "mysteryBoxGames", targetGameId), { folderId: normalizedFolderId })
+      );
       const nextGames = games.map(g => g.id === targetGameId ? { ...g, folderId: normalizedFolderId } : g);
       setGames(nextGames);
       persistUserGames(nextGames);
@@ -706,7 +712,9 @@ export const GamesLibrary = ({
 
     try {
       const updatedAt = new Date().toISOString();
-      updateDoc(doc(db, "gameFolders", dragFolderId), { parentId: targetFolderId, updatedAt }).catch(() => {});
+      safeFirestoreWrite(() =>
+        updateDoc(doc(db, "gameFolders", dragFolderId), { parentId: targetFolderId, updatedAt })
+      );
       const updated = folders.map(f =>
         f.id === dragFolderId ? { ...f, parentId: targetFolderId, inferred: false, updatedAt } : f
       );
@@ -740,7 +748,7 @@ export const GamesLibrary = ({
         updateData.createdAt = now;
       }
 
-      updateDoc(gameRef, updateData).catch(() => {});
+      safeFirestoreWrite(() => updateDoc(gameRef, updateData));
       const nextGames = games.map(g => g.id === game.id ? { ...g, ...updateData } : g);
       setGames(nextGames);
       persistUserGames(nextGames);

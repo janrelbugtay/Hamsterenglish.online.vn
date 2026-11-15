@@ -29,7 +29,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { ViewState } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { db } from '../lib/firebase';
+import { db, safeFirestoreWrite } from '../lib/firebase';
 import { doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
 import { 
   CAMBRIDGE_COURSES, 
@@ -298,16 +298,18 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState, dat
 
   const saveDeckToCloud = (deck: SlideDeck) => {
     if (!isAdmin || !user) return;
-    setDoc(
-      doc(db, 'mySlides', deck.id),
-      {
-        ...deck,
-        userId: user.uid,
-        authorName: user.displayName || 'Admin',
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    ).catch(() => {});
+    safeFirestoreWrite(() =>
+      setDoc(
+        doc(db, 'mySlides', deck.id),
+        {
+          ...deck,
+          userId: user.uid,
+          authorName: user.displayName || 'Admin',
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      )
+    );
   };
 
   const triggerToast = (msg: string) => {
@@ -538,7 +540,7 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState, dat
       } catch (err) {}
       return updated;
     });
-    deleteDoc(doc(db, 'mySlides', id)).catch(() => {});
+    safeFirestoreWrite(() => deleteDoc(doc(db, 'mySlides', id)));
     triggerToast('Slide deck erased.');
   };
 

@@ -4,8 +4,14 @@ import {
   getFirestore,
   initializeFirestore,
   memoryLocalCache,
+  setLogLevel,
   Firestore
 } from 'firebase/firestore';
+
+// Silence internal Firestore WebChannel stream console.error spam on daily quota backoff
+try {
+  setLogLevel('silent');
+} catch {}
 
 // Protect browser localStorage from QuotaExceededError which can crash Firestore's AsyncQueue
 if (typeof window !== 'undefined' && window.localStorage) {
@@ -138,6 +144,208 @@ googleProvider.setCustomParameters({
 
 const facebookProvider = new FacebookAuthProvider();
 
+const FIRESTORE_QUOTA_KEY = 'hamster_firestore_quota_exhausted_v2';
+const FIRESTORE_QUOTA_TTL_MS = 2 * 60 * 1000;
+let firestoreQuotaExhausted = false;
+let firestoreQuotaTrippedAt = 0;
+let firestoreQuotaTrippedDay = '';
+let firestoreQuotaLogged = false;
+let serverQuotaCheckPromise: Promise<boolean> | null = null;
+const firestoreQuotaListeners = new Set<(exhausted: boolean) => void>();
+
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage?.removeItem('hamster_firestore_quota_exhausted_v1');
+    window.sessionStorage?.removeItem('hamster_firestore_quota_exhausted_v1');
+  } catch {}
+}
+
+function getPacificDayKey(nowMs: number = Date.now()): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(nowMs));
+  } catch {
+    return new Date(nowMs).toISOString().slice(0, 10);
+  }
+}
+
+export function isFirestoreQuotaError(error: unknown): boolean {
+  if (!error) return false;
+  const code = String((error as any)?.code || '').toLowerCase();
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    code.includes('resource-exhausted') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('quota limit exceeded') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('free daily write units') ||
+    msg.includes('free daily')
+  );
+}
+
+function readPersistedQuotaFlag(now: number, todayPt: string): number | null {
+  if (typeof window === 'undefined') return null;
+  const storages: Storage[] = [];
+  try {
+    if (window.sessionStorage) storages.push(window.sessionStorage);
+  } catch {}
+  try {
+    if (window.localStorage) storages.push(window.localStorage);
+  } catch {}
+
+  for (const store of storages) {
+    try {
+      const raw = store.getItem(FIRESTORE_QUOTA_KEY);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (
+        parsed &&
+        (parsed.ptDay === todayPt || parsed.day === todayPt) &&
+        typeof parsed.at === 'number' &&
+        now - parsed.at < FIRESTORE_QUOTA_TTL_MS
+      ) {
+        return parsed.at;
+      }
+      store.removeItem(FIRESTORE_QUOTA_KEY);
+    } catch {}
+  }
+  return null;
+}
+
+export function isFirestoreQuotaExhausted(): boolean {
+  const now = Date.now();
+  const todayPt = getPacificDayKey(now);
+
+  if (firestoreQuotaExhausted) {
+    if (firestoreQuotaTrippedDay !== todayPt || now - firestoreQuotaTrippedAt > FIRESTORE_QUOTA_TTL_MS) {
+      firestoreQuotaExhausted = false;
+      firestoreQuotaTrippedAt = 0;
+      firestoreQuotaTrippedDay = '';
+      firestoreQuotaLogged = false;
+    } else {
+      return true;
+    }
+  }
+
+  const persistedAt = readPersistedQuotaFlag(now, todayPt);
+  if (persistedAt !== null) {
+    firestoreQuotaExhausted = true;
+    firestoreQuotaTrippedAt = persistedAt;
+    firestoreQuotaTrippedDay = todayPt;
+    return true;
+  }
+
+  return false;
+}
+
+export async function ensureServerQuotaChecked(): Promise<boolean> {
+  if (isFirestoreQuotaExhausted()) return true;
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
+  if (serverQuotaCheckPromise) return serverQuotaCheckPromise;
+
+  serverQuotaCheckPromise = (async () => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 450);
+      const resp = await fetch('/api/firestore-quota-status', {
+        method: 'GET',
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      if (data && data.exhausted) {
+        const at = typeof data.exhaustedAt === 'number' ? data.exhaustedAt : Date.now();
+        const todayPt = getPacificDayKey(at);
+        firestoreQuotaExhausted = true;
+        firestoreQuotaTrippedAt = at;
+        firestoreQuotaTrippedDay = todayPt;
+        const serialized = JSON.stringify({ at, day: todayPt, ptDay: todayPt });
+        try { window.sessionStorage?.setItem(FIRESTORE_QUOTA_KEY, serialized); } catch {}
+        try { window.localStorage?.setItem(FIRESTORE_QUOTA_KEY, serialized); } catch {}
+        return true;
+      }
+    } catch {}
+    return false;
+  })();
+
+  return serverQuotaCheckPromise;
+}
+
+// Kick off lightweight cross-tab server quota check immediately on module load
+if (typeof window !== 'undefined') {
+  ensureServerQuotaChecked().catch(() => {});
+}
+
+export function markFirestoreQuotaExhausted(error?: unknown): void {
+  const now = Date.now();
+  const todayPt = getPacificDayKey(now);
+  const wasExhausted = firestoreQuotaExhausted;
+  firestoreQuotaExhausted = true;
+  firestoreQuotaTrippedAt = now;
+  firestoreQuotaTrippedDay = todayPt;
+
+  const serialized = JSON.stringify({ at: now, day: todayPt, ptDay: todayPt });
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage?.setItem(FIRESTORE_QUOTA_KEY, serialized);
+    } catch {}
+    try {
+      window.localStorage?.setItem(FIRESTORE_QUOTA_KEY, serialized);
+    } catch {}
+    try {
+      fetch('/api/firestore-quota-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exhausted: true }),
+      }).catch(() => {});
+    } catch {}
+  }
+
+  if (!firestoreQuotaLogged) {
+    firestoreQuotaLogged = true;
+    const detail = error instanceof Error ? error.message : error ? String(error) : '';
+    console.warn(
+      'Firestore database daily quota limit reached — pausing cloud writes temporarily and using server/local sync instead.',
+      detail
+    );
+  }
+
+  if (!wasExhausted) {
+    firestoreQuotaListeners.forEach((cb) => {
+      try {
+        cb(true);
+      } catch {}
+    });
+  }
+}
+
+export function onFirestoreQuotaChange(listener: (exhausted: boolean) => void): () => void {
+  firestoreQuotaListeners.add(listener);
+  return () => {
+    firestoreQuotaListeners.delete(listener);
+  };
+}
+
+export async function safeFirestoreWrite<T = void>(
+  op: () => Promise<T>
+): Promise<{ ok: boolean; result?: T; quotaExhausted: boolean; error?: unknown }> {
+  if (await ensureServerQuotaChecked()) {
+    return { ok: false, quotaExhausted: true };
+  }
+  try {
+    const result = await op();
+    return { ok: true, result, quotaExhausted: false };
+  } catch (err) {
+    if (isFirestoreQuotaError(err)) {
+      markFirestoreQuotaExhausted(err);
+      return { ok: false, quotaExhausted: true, error: err };
+    }
+    return { ok: false, quotaExhausted: false, error: err };
+  }
+}
+
 export { auth, db, googleProvider, facebookProvider };
-
-

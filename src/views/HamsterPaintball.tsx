@@ -58,15 +58,21 @@ import {
 } from '../utils/mediaAndPresets';
 import { MediaPickerModal } from '../components/MediaPickerModal';
 import { BulkPasteVideoModal } from '../components/BulkPasteVideoModal';
-import { db } from '../lib/firebase';
+import {
+  db,
+  safeFirestoreWrite,
+  isFirestoreQuotaExhausted,
+  isFirestoreQuotaError,
+  markFirestoreQuotaExhausted
+} from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { persistUserGameToCloudAndCache } from '../utils/platformCache';
-import paintballHamsterSunny from '../assets/images/paintball_hamster_sunny_1794724050174.jpg';
-import paintballHamsterPip from '../assets/images/paintball_hamster_pip_1794724050455.jpg';
-import paintballHamsterPearl from '../assets/images/paintball_hamster_pearl_1794724051028.jpg';
-import paintballHamsterMocha from '../assets/images/paintball_hamster_mocha_1794724051425.jpg';
-import paintballHamsterCaramel from '../assets/images/paintball_hamster_caramel_1794724052600.jpg';
-import paintballHamsterPudding from '../assets/images/paintball_hamster_pudding_1794724052726.jpg';
+import paintballHamsterSunny from '../assets/images/paintball_cute_sunny_1794755096936.jpg';
+import paintballHamsterPip from '../assets/images/paintball_cute_pip_1794755097002.jpg';
+import paintballHamsterPearl from '../assets/images/paintball_cute_pearl_1794755097117.jpg';
+import paintballHamsterMocha from '../assets/images/paintball_cute_mocha_1794755095467.jpg';
+import paintballHamsterCaramel from '../assets/images/paintball_cute_caramel_1794755095782.jpg';
+import paintballHamsterPudding from '../assets/images/paintball_cute_pudding_1794755097364.jpg';
 import {
   collection,
   query,
@@ -565,19 +571,19 @@ function getTeamBaseCenter(
   _count?: number
 ): { x: number; z: number; rotY: number; halfW: number; halfD: number } {
   if (mode === 'solo' || team === 'solo') {
-    return { x: 0, z: 0, rotY: 0, halfW: 32, halfD: 26 };
+    return { x: 0, z: 0, rotY: 0, halfW: 50, halfD: 40 };
   }
   // Strict color-to-base mapping: Red = Left, Blue = Right, Green = Bottom, Gold = Top
   switch (team) {
     case 'blue':
-      return { x: TEAM_SPAWN_X, z: 0, rotY: -Math.PI / 2, halfW: 4.3, halfD: 8.5 };
+      return { x: TEAM_SPAWN_X, z: 0, rotY: -Math.PI / 2, halfW: 5.2, halfD: 9.8 };
     case 'green':
-      return { x: 0, z: TEAM_SPAWN_Z, rotY: Math.PI, halfW: 8.5, halfD: 4.3 };
+      return { x: 0, z: TEAM_SPAWN_Z, rotY: Math.PI, halfW: 9.8, halfD: 5.2 };
     case 'gold':
-      return { x: 0, z: -TEAM_SPAWN_Z, rotY: 0, halfW: 8.5, halfD: 4.3 };
+      return { x: 0, z: -TEAM_SPAWN_Z, rotY: 0, halfW: 9.8, halfD: 5.2 };
     case 'red':
     default:
-      return { x: -TEAM_SPAWN_X, z: 0, rotY: Math.PI / 2, halfW: 4.3, halfD: 8.5 };
+      return { x: -TEAM_SPAWN_X, z: 0, rotY: Math.PI / 2, halfW: 5.2, halfD: 9.8 };
   }
 }
 
@@ -590,11 +596,11 @@ function HamsterCharacterAvatar({
   size?: number;
   team?: TeamId;
 }) {
-  const ringClass = TEAM_CONFIG[team]?.ringClass || TEAM_CONFIG.solo.ringClass;
+  void team;
 
   return (
     <div
-      className={`relative rounded-full overflow-hidden bg-slate-100 border-2 ${ringClass} shadow-xs shrink-0 select-none flex items-center justify-center`}
+      className="relative overflow-hidden bg-transparent shrink-0 select-none flex items-center justify-center"
       style={{ width: size, height: size }}
     >
       <img
@@ -602,7 +608,7 @@ function HamsterCharacterAvatar({
         alt={skin.name}
         draggable={false}
         referrerPolicy="no-referrer"
-        className="w-full h-full object-cover object-center"
+        className="w-full h-full object-contain object-center"
       />
     </div>
   );
@@ -1450,44 +1456,64 @@ class PaintballAudioEngine {
 const sfx = new PaintballAudioEngine();
 
 // =============================================================
-// COMPACT ARENA CONSTANTS & MULTIPLAYER DATA INTERFACES
+// EXPANDED CHAMPIONSHIP ARENA CONSTANTS & MULTIPLAYER DATA INTERFACES
 // =============================================================
-const ARENA_HALF_W = 38;
-const ARENA_HALF_D = 32;
-const TEAM_SPAWN_X = 31.0;
-const TEAM_SPAWN_Z = 25.0;
+const ARENA_HALF_W = 58;
+const ARENA_HALF_D = 48;
+const TEAM_SPAWN_X = 48.0;
+const TEAM_SPAWN_Z = 39.0;
 const HAMSTER_HERO_SCALE = 1.18;
 
 const SOLO_SAFE_OBSTACLE_HINTS: Array<{ x: number; z: number; r: number }> = [
-  { x: 0, z: 0, r: 3.6 },
-  { x: -20.2, z: 0, r: 4.8 },
-  { x: 20.2, z: 0, r: 4.8 },
-  { x: 0, z: 16.0, r: 4.8 },
-  { x: 0, z: -16.0, r: 4.8 },
-  { x: -22.0, z: -9.2, r: 3.5 },
-  { x: -22.0, z: 9.2, r: 3.5 },
-  { x: 22.0, z: -9.2, r: 3.5 },
-  { x: 22.0, z: 9.2, r: 3.5 },
-  { x: -9.2, z: 17.2, r: 3.5 },
-  { x: 9.2, z: 17.2, r: 3.5 },
-  { x: -9.2, z: -17.2, r: 3.5 },
-  { x: 9.2, z: -17.2, r: 3.5 },
-  { x: -9.6, z: -7.8, r: 3.4 },
-  { x: 9.6, z: -7.8, r: 3.4 },
-  { x: -9.6, z: 7.8, r: 3.4 },
-  { x: 9.6, z: 7.8, r: 3.4 },
-  { x: -12.2, z: 0, r: 3.5 },
-  { x: 12.2, z: 0, r: 3.5 },
-  { x: 0, z: -9.2, r: 3.5 },
-  { x: 0, z: 9.2, r: 3.5 },
-  { x: -27.5, z: -19.5, r: 3.4 },
-  { x: 27.5, z: -19.5, r: 3.4 },
-  { x: -27.5, z: 19.5, r: 3.4 },
-  { x: 27.5, z: 19.5, r: 3.4 },
-  { x: -17.5, z: -24.0, r: 3.4 },
-  { x: 17.5, z: -24.0, r: 3.4 },
-  { x: -17.5, z: 24.0, r: 3.4 },
-  { x: 17.5, z: 24.0, r: 3.4 }
+  { x: 0, z: 0, r: 4.0 },
+  { x: -22.5, z: 0, r: 3.4 },
+  { x: 22.5, z: 0, r: 3.4 },
+  { x: 0, z: -16.5, r: 3.4 },
+  { x: 0, z: 16.5, r: 3.4 },
+  { x: -35.0, z: 0, r: 5.2 },
+  { x: 35.0, z: 0, r: 5.2 },
+  { x: 0, z: 27.5, r: 5.2 },
+  { x: 0, z: -27.5, r: 5.2 },
+  { x: -37.0, z: -13.5, r: 3.6 },
+  { x: -37.0, z: 13.5, r: 3.6 },
+  { x: 37.0, z: -13.5, r: 3.6 },
+  { x: 37.0, z: 13.5, r: 3.6 },
+  { x: -13.5, z: 29.0, r: 3.6 },
+  { x: 13.5, z: 29.0, r: 3.6 },
+  { x: -13.5, z: -29.0, r: 3.6 },
+  { x: 13.5, z: -29.0, r: 3.6 },
+  { x: -11.2, z: -9.2, r: 3.4 },
+  { x: 11.2, z: -9.2, r: 3.4 },
+  { x: -11.2, z: 9.2, r: 3.4 },
+  { x: 11.2, z: 9.2, r: 3.4 },
+  { x: -11.8, z: 0, r: 3.5 },
+  { x: 11.8, z: 0, r: 3.5 },
+  { x: 0, z: -8.8, r: 3.5 },
+  { x: 0, z: 8.8, r: 3.5 },
+  { x: -22.5, z: -14.5, r: 3.4 },
+  { x: 22.5, z: -14.5, r: 3.4 },
+  { x: -22.5, z: 14.5, r: 3.4 },
+  { x: 22.5, z: 14.5, r: 3.4 },
+  { x: -24.0, z: -28.0, r: 3.5 },
+  { x: 24.0, z: -28.0, r: 3.5 },
+  { x: -24.0, z: 28.0, r: 3.5 },
+  { x: 24.0, z: 28.0, r: 3.5 },
+  { x: -32.0, z: -21.5, r: 3.4 },
+  { x: 32.0, z: -21.5, r: 3.4 },
+  { x: -32.0, z: 21.5, r: 3.4 },
+  { x: 32.0, z: 21.5, r: 3.4 },
+  { x: -44.0, z: -33.0, r: 3.4 },
+  { x: 44.0, z: -33.0, r: 3.4 },
+  { x: -44.0, z: 33.0, r: 3.4 },
+  { x: 44.0, z: 33.0, r: 3.4 },
+  { x: -43.0, z: -21.0, r: 3.4 },
+  { x: 43.0, z: -21.0, r: 3.4 },
+  { x: -43.0, z: 21.0, r: 3.4 },
+  { x: 43.0, z: 21.0, r: 3.4 },
+  { x: -16.5, z: -36.5, r: 3.4 },
+  { x: 16.5, z: -36.5, r: 3.4 },
+  { x: -16.5, z: 36.5, r: 3.4 },
+  { x: 16.5, z: 36.5, r: 3.4 }
 ];
 
 const shortestAngleDelta = (fromRad: number, toRad: number): number => {
@@ -1506,11 +1532,15 @@ interface CombatNetEvent {
   x?: number;
   z?: number;
   angle?: number;
+  vy?: number;
+  hSpeed?: number;
   paintColor?: number;
   targetId?: string;
   damage?: number;
   attackerId?: string;
   attackerName?: string;
+  attackerX?: number;
+  attackerZ?: number;
   victimName?: string;
   ts: number;
 }
@@ -1550,6 +1580,8 @@ interface PlayerNetworkState {
     x: number;
     z: number;
     angle: number;
+    vy?: number;
+    hSpeed?: number;
     paintColor: number;
   };
   lastHit?: {
@@ -1558,6 +1590,8 @@ interface PlayerNetworkState {
     damage: number;
     attackerName: string;
     attackerId: string;
+    attackerX?: number;
+    attackerZ?: number;
   };
   lastKo?: {
     koId: string;
@@ -1929,44 +1963,48 @@ export default function HamsterPaintball({
 
     if (mode === 'solo') {
       const sectorCoords: Array<[number, number]> = [
-        [-31, -24],
-        [31, 24],
-        [-31, 24],
-        [31, -24],
-        [-14, -14],
-        [14, 14],
-        [-14, 14],
-        [14, -14],
-        [-31, 0],
-        [31, 0],
-        [0, 25],
-        [0, -25],
-        [-22, -14],
-        [22, 14],
-        [-22, 14],
-        [22, -14],
-        [-5.5, -4.5],
-        [5.5, 4.5],
-        [-5.5, 4.5],
-        [5.5, -4.5]
+        [-48, -37],
+        [48, 37],
+        [-48, 37],
+        [48, -37],
+        [-30, -25],
+        [30, 25],
+        [-30, 25],
+        [30, -25],
+        [-48, 0],
+        [48, 0],
+        [0, 39],
+        [0, -39],
+        [-35, -7],
+        [35, 7],
+        [-35, 7],
+        [35, -7],
+        [-16, -20],
+        [16, 20],
+        [-16, 20],
+        [16, -20],
+        [-6.5, -5.0],
+        [6.5, 5.0],
+        [-6.5, 5.0],
+        [6.5, -5.0]
       ];
 
-      let chosenX = -31;
-      let chosenZ = -24;
+      let chosenX = -48;
+      let chosenZ = -37;
       let foundClear = false;
       for (let attempt = 0; attempt < 36; attempt++) {
         let cx: number;
         let cz: number;
         if (typeof slotIndex === 'number' && attempt < 6) {
           const [sxBase, szBase] = sectorCoords[(slotIndex + attempt * 5) % sectorCoords.length];
-          cx = sxBase + (Math.random() - 0.5) * 3.8;
-          cz = szBase + (Math.random() - 0.5) * 3.4;
+          cx = sxBase + (Math.random() - 0.5) * 4.5;
+          cz = szBase + (Math.random() - 0.5) * 4.0;
         } else {
-          cx = (Math.random() - 0.5) * 64;
-          cz = (Math.random() - 0.5) * 52;
+          cx = (Math.random() - 0.5) * 100;
+          cz = (Math.random() - 0.5) * 80;
         }
-        cx = Number(THREE.MathUtils.clamp(cx, -33.5, 33.5).toFixed(2));
-        cz = Number(THREE.MathUtils.clamp(cz, -27.0, 27.0).toFixed(2));
+        cx = Number(THREE.MathUtils.clamp(cx, -52.5, 52.5).toFixed(2));
+        cz = Number(THREE.MathUtils.clamp(cz, -42.5, 42.5).toFixed(2));
         if (isClearOfObstacles(cx, cz, 2.0) && (attempt > 20 || isClearOfPlayers(cx, cz, 5.5))) {
           chosenX = cx;
           chosenZ = cz;
@@ -1975,8 +2013,8 @@ export default function HamsterPaintball({
         }
       }
       if (!foundClear) {
-        chosenX = -31;
-        chosenZ = -24;
+        chosenX = -48;
+        chosenZ = -37;
       }
       const rotY = Number(Math.atan2(-chosenX, -chosenZ).toFixed(3));
       return { x: chosenX, z: chosenZ, rotY };
@@ -1998,21 +2036,21 @@ export default function HamsterPaintball({
 
     const col = effectiveSlot % 4;
     const row = Math.floor(effectiveSlot / 4) % 2;
-    let jitterX = isSideBase ? (row - 0.5) * 2.2 : (col - 1.5) * 3.6;
-    let jitterZ = isSideBase ? (col - 1.5) * 3.6 : (row - 0.5) * 2.2;
+    let jitterX = isSideBase ? (row - 0.5) * 2.6 : (col - 1.5) * 4.2;
+    let jitterZ = isSideBase ? (col - 1.5) * 4.2 : (row - 0.5) * 2.6;
 
-    let spawnX = Number(THREE.MathUtils.clamp(base.x + jitterX, -34.2, 34.2).toFixed(2));
-    let spawnZ = Number(THREE.MathUtils.clamp(base.z + jitterZ, -28.0, 28.0).toFixed(2));
+    let spawnX = Number(THREE.MathUtils.clamp(base.x + jitterX, -53.5, 53.5).toFixed(2));
+    let spawnZ = Number(THREE.MathUtils.clamp(base.z + jitterZ, -43.5, 43.5).toFixed(2));
 
     if (!isClearOfObstacles(spawnX, spawnZ, 1.45) || !isClearOfPlayers(spawnX, spawnZ, 2.4)) {
       for (let attempt = 1; attempt <= 8; attempt++) {
         const altSlot = (effectiveSlot + attempt) % 8;
         const altCol = altSlot % 4;
         const altRow = Math.floor(altSlot / 4) % 2;
-        const ajx = isSideBase ? (altRow - 0.5) * 2.2 : (altCol - 1.5) * 3.6;
-        const ajz = isSideBase ? (altCol - 1.5) * 3.6 : (altRow - 0.5) * 2.2;
-        const candX = Number(THREE.MathUtils.clamp(base.x + ajx, -34.2, 34.2).toFixed(2));
-        const candZ = Number(THREE.MathUtils.clamp(base.z + ajz, -28.0, 28.0).toFixed(2));
+        const ajx = isSideBase ? (altRow - 0.5) * 2.6 : (altCol - 1.5) * 4.2;
+        const ajz = isSideBase ? (altCol - 1.5) * 4.2 : (altRow - 0.5) * 2.6;
+        const candX = Number(THREE.MathUtils.clamp(base.x + ajx, -53.5, 53.5).toFixed(2));
+        const candZ = Number(THREE.MathUtils.clamp(base.z + ajz, -43.5, 43.5).toFixed(2));
         if (isClearOfObstacles(candX, candZ, 1.45) && isClearOfPlayers(candX, candZ, 2.2)) {
           spawnX = candX;
           spawnZ = candZ;
@@ -2053,11 +2091,29 @@ export default function HamsterPaintball({
   const [questionsWrong, setQuestionsWrong] = useState<number>(0);
   const [koBannerText, setKoBannerText] = useState<string | null>(null);
   const [pickupBannerText, setPickupBannerText] = useState<string | null>(null);
+  const koBannerTimerRef = useRef<number | null>(null);
+  const pickupBannerTimerRef = useRef<number | null>(null);
+  const showKoBanner = (msg: string, durationMs: number = 2600) => {
+    setKoBannerText(msg);
+    if (koBannerTimerRef.current) window.clearTimeout(koBannerTimerRef.current);
+    koBannerTimerRef.current = window.setTimeout(() => {
+      setKoBannerText(null);
+      koBannerTimerRef.current = null;
+    }, durationMs);
+  };
+  const showPickupBanner = (msg: string, durationMs: number = 2200) => {
+    setPickupBannerText(msg);
+    if (pickupBannerTimerRef.current) window.clearTimeout(pickupBannerTimerRef.current);
+    pickupBannerTimerRef.current = window.setTimeout(() => {
+      setPickupBannerText(null);
+      pickupBannerTimerRef.current = null;
+    }, durationMs);
+  };
   const [scorePopups, setScorePopups] = useState<
     Array<{ id: string; points: number; label: string; color: string }>
   >([]);
 
-  // Arcade Combat Feel: Reticle Hit Marker, 3D-Projected Floating Damage Numbers, Incoming Damage Vignette & Kill-Streak Callouts
+  // Arcade Combat Feel: Reticle Hit Marker, 3D-Projected Floating Damage Numbers, Incoming Damage Vignette + Directional Arc, Kill-Streak Callouts & Tactical Mini-Radar
   const [hitMarkerFlash, setHitMarkerFlash] = useState<{
     id: string;
     xPct: number;
@@ -2075,6 +2131,33 @@ export default function HamsterPaintball({
     }>
   >([]);
   const [damageVignetteColor, setDamageVignetteColor] = useState<string | null>(null);
+  const damageVignetteTimerRef = useRef<number | null>(null);
+  const [damageArcDeg, setDamageArcDeg] = useState<number | null>(null);
+  const damageArcTimerRef = useRef<number | null>(null);
+  const flashDamageVignette = (color: string, arcDeg: number | null = null) => {
+    setDamageVignetteColor(color);
+    if (damageVignetteTimerRef.current) window.clearTimeout(damageVignetteTimerRef.current);
+    damageVignetteTimerRef.current = window.setTimeout(() => {
+      setDamageVignetteColor(null);
+      damageVignetteTimerRef.current = null;
+    }, 420);
+    if (typeof arcDeg === 'number' && Number.isFinite(arcDeg)) {
+      setDamageArcDeg(arcDeg);
+      if (damageArcTimerRef.current) window.clearTimeout(damageArcTimerRef.current);
+      damageArcTimerRef.current = window.setTimeout(() => {
+        setDamageArcDeg(null);
+        damageArcTimerRef.current = null;
+      }, 720);
+    }
+  };
+  const [radarSnapshot, setRadarSnapshot] = useState<{
+    meX: number;
+    meZ: number;
+    headingDeg: number;
+    cans: Array<{ type: 'health' | 'shield'; x: number; z: number }>;
+    teammates: Array<{ id: string; x: number; z: number; colorHex: string }>;
+    pings: Array<{ x: number; z: number; colorHex: string }>;
+  } | null>(null);
   const [killStreakCallout, setKillStreakCallout] = useState<{
     id: string;
     streak: number;
@@ -2084,12 +2167,15 @@ export default function HamsterPaintball({
   } | null>(null);
   const [isEnemyTargeted, setIsEnemyTargeted] = useState<boolean>(false);
   const isEnemyTargetedRef = useRef<boolean>(false);
+  const _projVecRef = useRef<THREE.Vector3 | null>(null);
+  const _muzzleWorldVecRef = useRef<THREE.Vector3 | null>(null);
 
   // Project 3D world coordinate to 2D screen percentage for floating damage numbers & hit markers
   const projectWorldToScreenPct = (worldX: number, worldY: number, worldZ: number) => {
     const cam = gameRef.current?.camera;
     if (!cam) return { xPct: 50, yPct: 46 };
-    const vec = new THREE.Vector3(worldX, worldY, worldZ);
+    if (!_projVecRef.current) _projVecRef.current = new THREE.Vector3();
+    const vec = _projVecRef.current.set(worldX, worldY, worldZ);
     vec.project(cam);
     const xPct = Math.max(12, Math.min(88, (vec.x * 0.5 + 0.5) * 100));
     const yPct = Math.max(15, Math.min(82, (-vec.y * 0.5 + 0.5) * 100));
@@ -2239,10 +2325,10 @@ export default function HamsterPaintball({
     'close' | 'balanced' | 'tactical'
   >(() => {
     if (initialSetup.current.isJoiningStudent) {
-      return initialSetup.current.initialCam;
+      return initialSetup.current.initialCam || 'balanced';
     }
     if (typeof window === 'undefined') return 'balanced';
-    const saved = localStorage.getItem('pb_camera_view_preset');
+    const saved = localStorage.getItem('pb_camera_view_preset_v2');
     if (saved === 'close' || saved === 'balanced' || saved === 'tactical') {
       return saved;
     }
@@ -2372,7 +2458,7 @@ export default function HamsterPaintball({
 
   useEffect(() => {
     if (typeof window !== 'undefined' && role === 'host') {
-      localStorage.setItem('pb_camera_view_preset', cameraViewPreset);
+      localStorage.setItem('pb_camera_view_preset_v2', cameraViewPreset);
     }
   }, [cameraViewPreset, role]);
 
@@ -2617,6 +2703,12 @@ export default function HamsterPaintball({
         lastLocalRecvAt?: number;
       }
     >;
+    radarPings: Array<{
+      x: number;
+      z: number;
+      colorHex: string;
+      expiresAt: number;
+    }>;
     teacherJanNpc?: THREE.Group;
     waterMesh?: THREE.Mesh;
     aimReticle?: THREE.Group;
@@ -2962,12 +3054,12 @@ export default function HamsterPaintball({
 
     if (!hasCanInBelt && !hasNearbyCan) {
       sfx.playWrong();
-      setPickupBannerText(
+      showPickupBanner(
         type === 'health'
           ? '🧪 NO HEALTH CANS! COLLECT A GREEN CAN IN THE ARENA!'
-          : '🛡️ NO DEFENCE CANS! COLLECT A BLUE CAN IN THE ARENA!'
+          : '🛡️ NO DEFENCE CANS! COLLECT A BLUE CAN IN THE ARENA!',
+        1800
       );
-      setTimeout(() => setPickupBannerText(null), 1800);
       return;
     }
 
@@ -2997,8 +3089,8 @@ export default function HamsterPaintball({
       if (g) {
         const sparkColor = type === 'health' ? 0x4ade80 : 0x38bdf8;
         const pMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.11, 8, 8),
-          new THREE.MeshBasicMaterial({ color: sparkColor })
+          sharedSplatSphereGeom,
+          getBasicColorMaterial(sparkColor)
         );
         const ang = Math.random() * Math.PI * 2;
         pMesh.position.set(
@@ -3056,9 +3148,9 @@ export default function HamsterPaintball({
           setHp(h => Math.min(100, h + 45));
           if (stateSnapRef.current.matchStatus === 'playing') {
             awardPoints(10, '🧪 HEALTH CAN BONUS', '#4ade80');
-            setPickupBannerText('🧪 HEALTH CAN USED! +45 HP & +10 PTS!');
+            showPickupBanner('🧪 HEALTH CAN USED! +45 HP & +10 PTS!', 2200);
           } else {
-            setPickupBannerText('🧪 HEALTH CAN USED! +45 HP RESTORED!');
+            showPickupBanner('🧪 HEALTH CAN USED! +45 HP RESTORED!', 2200);
           }
         } else {
           if (!consumedArenaCan) {
@@ -3067,12 +3159,11 @@ export default function HamsterPaintball({
           setShield(s => Math.min(100, s + 50));
           if (stateSnapRef.current.matchStatus === 'playing') {
             awardPoints(10, '🛡️ DEFENCE CAN BONUS', '#38bdf8');
-            setPickupBannerText('🛡️ DEFENCE CAN USED! +50 SHIELD & +10 PTS!');
+            showPickupBanner('🛡️ DEFENCE CAN USED! +50 SHIELD & +10 PTS!', 2200);
           } else {
-            setPickupBannerText('🛡️ DEFENCE CAN USED! +50 SHIELD CHARGED!');
+            showPickupBanner('🛡️ DEFENCE CAN USED! +50 SHIELD CHARGED!', 2200);
           }
         }
-        setTimeout(() => setPickupBannerText(null), 2200);
       }
     }, 45);
   };
@@ -3082,6 +3173,10 @@ export default function HamsterPaintball({
       if (canHoldIntervalRef.current) {
         window.clearInterval(canHoldIntervalRef.current);
       }
+      if (koBannerTimerRef.current) window.clearTimeout(koBannerTimerRef.current);
+      if (pickupBannerTimerRef.current) window.clearTimeout(pickupBannerTimerRef.current);
+      if (damageVignetteTimerRef.current) window.clearTimeout(damageVignetteTimerRef.current);
+      if (damageArcTimerRef.current) window.clearTimeout(damageArcTimerRef.current);
     };
   }, []);
 
@@ -3138,7 +3233,9 @@ export default function HamsterPaintball({
             if (roomCode) {
               const endPatch = { matchStatus: 'results', endedAt: getServerNow() };
               syncPaintballRoomApi(roomCode, endPatch);
-              setDoc(getRoomDocRef(roomCode), endPatch, { merge: true }).catch(() => {});
+              safeFirestoreWrite(() =>
+                setDoc(getRoomDocRef(roomCode), endPatch, { merge: true })
+              );
             }
           }
           return 0;
@@ -3569,15 +3666,20 @@ export default function HamsterPaintball({
     }
 
     if (roomCode) {
-      syncPaintballPlayerApi(roomCode, startPayload);
-      setDoc(
-        getPlayerDocRef(roomCode, clientIdRef.current),
-        stripUndefinedFields({
-          ...startPayload,
-          lastSeen: serverTimestamp()
-        }),
-        { merge: true }
-      ).catch(() => {});
+      syncPaintballPlayerApi(roomCode, startPayload).then(apiRes => {
+        if (!apiRes) {
+          safeFirestoreWrite(() =>
+            setDoc(
+              getPlayerDocRef(roomCode, clientIdRef.current),
+              stripUndefinedFields({
+                ...startPayload,
+                lastSeen: serverTimestamp()
+              }),
+              { merge: true }
+            )
+          );
+        }
+      });
     }
 
     const teamLabel = (TEAM_CONFIG[effectiveTeam]?.label || 'ARENA').toUpperCase();
@@ -3629,9 +3731,16 @@ export default function HamsterPaintball({
       updatedAt: nowServer
     };
     syncPaintballRoomApi(cleanCode, roomConfigPayload);
-    setDoc(getRoomDocRef(cleanCode), stripUndefinedFields(roomConfigPayload), {
-      merge: true
-    }).catch(() => {});
+    if (isFirestoreQuotaExhausted()) return;
+    const fsPublishDelayMs = hostStatus === 'playing' || hostStatus === 'results' ? 150 : 1200;
+    const fsTimer = window.setTimeout(() => {
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(cleanCode), stripUndefinedFields(roomConfigPayload), {
+          merge: true
+        })
+      );
+    }, fsPublishDelayMs);
+    return () => window.clearTimeout(fsTimer);
   }, [
     roomCode,
     role,
@@ -3859,7 +3968,9 @@ export default function HamsterPaintball({
           hasJoinedRoomRef.current = false;
           mergedPlayersMapRef.current.delete(playerId);
           deletePaintballPlayerApi(cleanCode, clientIdRef.current);
-          deleteDoc(getPlayerDocRef(cleanCode, clientIdRef.current)).catch(() => {});
+          safeFirestoreWrite(() =>
+            deleteDoc(getPlayerDocRef(cleanCode, clientIdRef.current))
+          );
           setScreen('join');
           return;
         }
@@ -3868,7 +3979,10 @@ export default function HamsterPaintball({
           mergedPlayersMapRef.current.delete(playerId);
           if (gameRef.current?.remotePlayers.has(playerId)) {
             const rem = gameRef.current.remotePlayers.get(playerId);
-            if (rem) gameRef.current.scene.remove(rem.mesh);
+            if (rem) {
+              gameRef.current.scene.remove(rem.mesh);
+              disposeObject3D(rem.mesh);
+            }
             gameRef.current.remotePlayers.delete(playerId);
           }
           return;
@@ -4105,10 +4219,10 @@ export default function HamsterPaintball({
                   gameRef.current.localHamster.position.set(sp.x, 0, sp.z);
                   gameRef.current.localHamster.rotation.y = sp.rotY;
                 }
-                setPickupBannerText(
-                  `👑 HOST MOVED YOU TO ${TEAM_CONFIG[nextT]?.label.toUpperCase() || String(nextT).toUpperCase()} SPAWN!`
+                showPickupBanner(
+                  `👑 HOST MOVED YOU TO ${TEAM_CONFIG[nextT]?.label.toUpperCase() || String(nextT).toUpperCase()} SPAWN!`,
+                  2400
                 );
-                setTimeout(() => setPickupBannerText(null), 2400);
               }
             }
           }
@@ -4135,7 +4249,9 @@ export default function HamsterPaintball({
                 data.lastShot.x,
                 data.lastShot.z,
                 data.lastShot.angle,
-                data.lastShot.paintColor
+                data.lastShot.paintColor,
+                data.lastShot.vy,
+                data.lastShot.hSpeed
               );
             }
 
@@ -4149,7 +4265,9 @@ export default function HamsterPaintball({
               applyIncomingDamage(
                 data.lastHit.damage,
                 data.lastHit.attackerName,
-                data.lastHit.attackerId
+                data.lastHit.attackerId,
+                data.lastHit.attackerX,
+                data.lastHit.attackerZ
               );
             }
 
@@ -4184,6 +4302,7 @@ export default function HamsterPaintball({
         gameRef.current.remotePlayers.forEach((val, key) => {
           if (!mergedPlayersMapRef.current.has(key)) {
             gameRef.current?.scene.remove(val.mesh);
+            disposeObject3D(val.mesh);
             gameRef.current?.remotePlayers.delete(key);
           }
         });
@@ -4235,20 +4354,26 @@ export default function HamsterPaintball({
     const runImmediateRoomPull = (targetCode: string) => {
       const targetClean = normalizeCode(targetCode);
       if (!targetClean) return;
-      getDoc(getRoomDocRef(targetClean))
-        .then(rSnap => {
-          if (rSnap.exists()) processRoomData(rSnap.data());
-        })
-        .catch(() => {});
-      getDocs(getPlayersColRef(targetClean))
-        .then(pSnap => {
-          const fsList = pSnap.docs.map(d => ({
-            ...(d.data() as Record<string, any>),
-            id: (d.data() as any).id || d.id.replace(/^player_/, '')
-          }));
-          if (fsList.length > 0) processPlayersList(fsList);
-        })
-        .catch(() => {});
+      if (!isFirestoreQuotaExhausted()) {
+        getDoc(getRoomDocRef(targetClean))
+          .then(rSnap => {
+            if (rSnap.exists()) processRoomData(rSnap.data());
+          })
+          .catch(err => {
+            if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+          });
+        getDocs(getPlayersColRef(targetClean))
+          .then(pSnap => {
+            const fsList = pSnap.docs.map(d => ({
+              ...(d.data() as Record<string, any>),
+              id: (d.data() as any).id || d.id.replace(/^player_/, '')
+            }));
+            if (fsList.length > 0) processPlayersList(fsList);
+          })
+          .catch(err => {
+            if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+          });
+      }
       fetchPaintballRoomApi(targetClean).then(apiData => {
         if (apiData?.room) processRoomData(apiData.room);
         if (Array.isArray(apiData?.players)) processPlayersList(apiData.players);
@@ -4264,7 +4389,9 @@ export default function HamsterPaintball({
         if (!snap.exists()) return;
         processRoomData(snap.data());
       },
-      () => {}
+      err => {
+        if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+      }
     );
 
     // BroadcastChannel for zero-latency local cross-tab multiplayer
@@ -4291,11 +4418,19 @@ export default function HamsterPaintball({
             msg.x,
             msg.z,
             msg.angle,
-            msg.paintColor
+            msg.paintColor,
+            msg.vy,
+            msg.hSpeed
           );
         } else if (msg.type === 'hit_player') {
           if (msg.targetId === clientIdRef.current && stateSnapRef.current.role === 'player') {
-            applyIncomingDamage(msg.damage, msg.attackerName, msg.attackerId);
+            applyIncomingDamage(
+              msg.damage,
+              msg.attackerName,
+              msg.attackerId,
+              msg.attackerX,
+              msg.attackerZ
+            );
           }
         } else if (msg.type === 'award_ko') {
           if (msg.attackerId === clientIdRef.current) {
@@ -4436,19 +4571,27 @@ export default function HamsterPaintball({
           processPlayersList(list);
         }
       },
-      () => {}
+      err => {
+        if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+      }
     );
 
     // High-Responsiveness 140ms (~7Hz) Cross-Device Sync Loop with Timeout Guard (Zero Network Queue Lag!)
     let pollTickCount = 0;
     let isSyncInFlight = false;
+    let lastApiHealthyAt = 0;
     const syncInterval = setInterval(async () => {
       pollTickCount++;
       const g = gameRef.current;
       const snapState = stateSnapRef.current;
+      const localNowForApi = Date.now();
+      const apiHealthy = localNowForApi - lastApiHealthyAt < 4000;
 
-      // Every 12 ticks (~1.7s), refresh Firestore players & room doc as resilient multi-domain bridge
-      if (pollTickCount % 12 === 0) {
+      // Fallback Firestore polling ONLY when API is unavailable or very low-frequency (~10s), never spamming quota
+      if (
+        !isFirestoreQuotaExhausted() &&
+        ((!apiHealthy && pollTickCount % 20 === 0) || (apiHealthy && pollTickCount % 75 === 0))
+      ) {
         getDocs(playersCol)
           .then(snap => {
             const fsList = snap.docs.map(d => ({
@@ -4459,13 +4602,17 @@ export default function HamsterPaintball({
               processPlayersList(fsList);
             }
           })
-          .catch(() => {});
-        if (snapState.role === 'player' && pollTickCount % 16 === 0) {
+          .catch(err => {
+            if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+          });
+        if (snapState.role === 'player' && pollTickCount % 30 === 0) {
           getDoc(roomDocRef)
             .then(rSnap => {
               if (rSnap.exists()) processRoomData(rSnap.data());
             })
-            .catch(() => {});
+            .catch(err => {
+              if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+            });
         }
       }
 
@@ -4487,12 +4634,17 @@ export default function HamsterPaintball({
                 : {})
             };
             const resData = await syncPaintballRoomApi(cleanCode, liveTimerPatch);
-            if (resData?.room) processRoomData(resData.room);
+            if (resData?.room) {
+              lastApiHealthyAt = Date.now();
+              processRoomData(resData.room);
+            }
             if (Array.isArray(resData?.players)) processPlayersList(resData.players);
-            setDoc(roomDocRef, liveTimerPatch, { merge: true }).catch(() => {});
           } else {
             const data = await fetchPaintballRoomApi(cleanCode);
-            if (data?.room) processRoomData(data.room);
+            if (data?.room) {
+              if (!data.room.isUninitialized) lastApiHealthyAt = Date.now();
+              processRoomData(data.room);
+            }
             if (Array.isArray(data?.players)) processPlayersList(data.players);
           }
           return;
@@ -4502,13 +4654,20 @@ export default function HamsterPaintball({
         if (snapState.screen === 'join') {
           if (pollTickCount % 3 === 0) {
             const data = await fetchPaintballRoomApi(cleanCode);
-            if (data?.room) processRoomData(data.room);
+            if (data?.room) {
+              if (!data.room.isUninitialized) lastApiHealthyAt = Date.now();
+              processRoomData(data.room);
+            }
             if (Array.isArray(data?.players)) processPlayersList(data.players);
-            getDoc(roomDocRef)
-              .then(rSnap => {
-                if (rSnap.exists()) processRoomData(rSnap.data());
-              })
-              .catch(() => {});
+            if ((!data?.room || data.room.isUninitialized) && !isFirestoreQuotaExhausted()) {
+              getDoc(roomDocRef)
+                .then(rSnap => {
+                  if (rSnap.exists()) processRoomData(rSnap.data());
+                })
+                .catch(err => {
+                  if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+                });
+            }
           }
           return;
         }
@@ -4576,29 +4735,34 @@ export default function HamsterPaintball({
 
         const apiRes = await syncPaintballPlayerApi(cleanCode, payload);
         if (apiRes) {
+          lastApiHealthyAt = Date.now();
           if (apiRes.room) processRoomData(apiRes.room);
           if (Array.isArray(apiRes.players)) processPlayersList(apiRes.players);
         }
 
-        // Real-time Firestore multi-domain sync (~280ms when moving/rotating/acting, or 1.4s idle heartbeat)
-        const stateSig = `${curX}|${curY}|${curZ}|${curRotY}|${snapState.playerStance}|${snapState.hp}|${snapState.shield}|${snapState.score}|${snapState.kos}|${snapState.myTeam}`;
-        const localMs = Date.now();
-        const hasStateChanged = stateSig !== lastFirestoreSentSigRef.current;
-        if (
-          (hasStateChanged && localMs - lastFirestoreSentAtRef.current >= 260) ||
-          localMs - lastFirestoreSentAtRef.current >= 1400
-        ) {
-          lastFirestoreSentSigRef.current = stateSig;
-          lastFirestoreSentAtRef.current = localMs;
-          const playerRef = getPlayerDocRef(cleanCode, clientIdRef.current);
-          setDoc(
-            playerRef,
-            stripUndefinedFields({
-              ...payload,
-              lastSeen: serverTimestamp()
-            }),
-            { merge: true }
-          ).catch(() => {});
+        // Firestore fallback ONLY when Express Server API is unreachable, throttled to >= 4s (never burn daily write quota!)
+        if (!apiRes && !isFirestoreQuotaExhausted()) {
+          const stateSig = `${curX}|${curY}|${curZ}|${curRotY}|${snapState.playerStance}|${snapState.hp}|${snapState.shield}|${snapState.score}|${snapState.kos}|${snapState.myTeam}`;
+          const localMs = Date.now();
+          const hasStateChanged = stateSig !== lastFirestoreSentSigRef.current;
+          if (
+            (hasStateChanged && localMs - lastFirestoreSentAtRef.current >= 4000) ||
+            localMs - lastFirestoreSentAtRef.current >= 8000
+          ) {
+            lastFirestoreSentSigRef.current = stateSig;
+            lastFirestoreSentAtRef.current = localMs;
+            const playerRef = getPlayerDocRef(cleanCode, clientIdRef.current);
+            safeFirestoreWrite(() =>
+              setDoc(
+                playerRef,
+                stripUndefinedFields({
+                  ...payload,
+                  lastSeen: serverTimestamp()
+                }),
+                { merge: true }
+              )
+            );
+          }
         }
       } finally {
         isSyncInFlight = false;
@@ -4617,7 +4781,13 @@ export default function HamsterPaintball({
   }, [roomCode, role]);
 
   // Apply incoming paintball damage to local student player (Respects 10-Second Respawn Immunity!)
-  const applyIncomingDamage = (damage: number, attackerName: string, attackerId: string) => {
+  const applyIncomingDamage = (
+    damage: number,
+    attackerName: string,
+    attackerId: string,
+    attackerX?: number,
+    attackerZ?: number
+  ) => {
     const nowServer = getServerNow();
     if (nowServer < stateSnapRef.current.immuneUntil) {
       return;
@@ -4628,10 +4798,33 @@ export default function HamsterPaintball({
     }
     lastDamageAppliedAtRef.current = localMs;
 
+    let hitBearingDeg: number | null = null;
+    const gCurr = gameRef.current;
+    if (gCurr) {
+      const attackerEntry = gCurr.remotePlayers.get(attackerId);
+      const ax = typeof attackerX === 'number' ? attackerX : attackerEntry?.mesh?.position?.x;
+      const az = typeof attackerZ === 'number' ? attackerZ : attackerEntry?.mesh?.position?.z;
+      if (typeof ax === 'number' && typeof az === 'number') {
+        const toX = ax - gCurr.x;
+        const toZ = az - gCurr.z;
+        if (toX * toX + toZ * toZ > 0.04) {
+          const fwdX = Math.sin(gCurr.camYaw);
+          const fwdZ = Math.cos(gCurr.camYaw);
+          const rightX = -Math.cos(gCurr.camYaw);
+          const rightZ = Math.sin(gCurr.camYaw);
+          const fwdDot = toX * fwdX + toZ * fwdZ;
+          const rightDot = toX * rightX + toZ * rightZ;
+          hitBearingDeg = (Math.atan2(rightDot, fwdDot) * 180) / Math.PI;
+        }
+      }
+    }
+
     sfx.playSplat();
     const isShieldAbsorb = stateSnapRef.current.shield > 0;
-    setDamageVignetteColor(isShieldAbsorb ? 'rgba(34, 211, 238, 0.42)' : 'rgba(244, 63, 94, 0.48)');
-    setTimeout(() => setDamageVignetteColor(null), 420);
+    flashDamageVignette(
+      isShieldAbsorb ? 'rgba(34, 211, 238, 0.42)' : 'rgba(244, 63, 94, 0.48)',
+      hitBearingDeg
+    );
 
     setShield(prevShield => {
       if (prevShield >= damage) {
@@ -4708,12 +4901,14 @@ export default function HamsterPaintball({
             stateSnapRef.current.matchMode === 'teams'
               ? `${(TEAM_CONFIG[stateSnapRef.current.myTeam]?.label || 'TEAM').toUpperCase()} SPAWN`
               : 'THE ARENA';
-          setKoBannerText(
-            `💥 SPLATTERED BY ${attackerName.toUpperCase()}! RESPAWNED AT ${spawnSide} WITH 10s BULLET IMMUNITY!`
+          showKoBanner(
+            `💥 SPLATTERED BY ${attackerName.toUpperCase()}! RESPAWNED AT ${spawnSide} WITH 10s BULLET IMMUNITY!`,
+            3200
           );
-          setTimeout(() => setKoBannerText(null), 3200);
-          setPickupBannerText('🛡️ 10-SECOND RESPAWN IMMUNITY ACTIVE — GLOWING FORCEFIELD PROTECTS YOU!');
-          setTimeout(() => setPickupBannerText(null), 4200);
+          showPickupBanner(
+            '🛡️ 10-SECOND RESPAWN IMMUNITY ACTIVE — GLOWING FORCEFIELD PROTECTS YOU!',
+            4200
+          );
 
           const koId = `ko-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
           const koObj = {
@@ -4773,33 +4968,33 @@ export default function HamsterPaintball({
                 recentEvents: recentCombatEventsRef.current
               },
               { latestEvent: koEvent }
-            );
-            setDoc(
-              getPlayerDocRef(roomCode, clientIdRef.current),
-              stripUndefinedFields({
-                x: sp.x,
-                z: sp.z,
-                vx: 0,
-                vz: 0,
-                rotY: sp.rotY,
-                hp: 100,
-                shield: 100,
-                immuneUntil: newImmuneUntil,
-                immuneRemainingMs: RESPAWN_IMMUNITY_MS,
-                seq: koSeq,
-                matchEpoch: lastStartedAtRef.current,
-                lastStartedAt: lastStartedAtRef.current,
-                lastKo: koObj,
-                recentEvents: recentCombatEventsRef.current,
-                updatedAt: koServerTs
-              }),
-              { merge: true }
-            ).catch(() => {});
-            setDoc(
-              getRoomDocRef(roomCode),
-              { latestEvent: koEvent },
-              { merge: true }
-            ).catch(() => {});
+            ).then(apiRes => {
+              if (!apiRes) {
+                safeFirestoreWrite(() =>
+                  setDoc(
+                    getPlayerDocRef(roomCode, clientIdRef.current),
+                    stripUndefinedFields({
+                      x: sp.x,
+                      z: sp.z,
+                      vx: 0,
+                      vz: 0,
+                      rotY: sp.rotY,
+                      hp: 100,
+                      shield: 100,
+                      immuneUntil: newImmuneUntil,
+                      immuneRemainingMs: RESPAWN_IMMUNITY_MS,
+                      seq: koSeq,
+                      matchEpoch: lastStartedAtRef.current,
+                      lastStartedAt: lastStartedAtRef.current,
+                      lastKo: koObj,
+                      recentEvents: recentCombatEventsRef.current,
+                      updatedAt: koServerTs
+                    }),
+                    { merge: true }
+                  )
+                );
+              }
+            });
           }
 
           return 100;
@@ -4873,6 +5068,7 @@ export default function HamsterPaintball({
         entry.data.skinIdx !== rState.skinIdx
       ) {
         g.scene.remove(entry.mesh);
+        disposeObject3D(entry.mesh);
         const mesh = buildHighDefHamster(rState.skinIdx, label, false, rState.team);
         mesh.position.set(rState.x, 0, rState.z);
         mesh.rotation.y = rState.rotY;
@@ -4914,53 +5110,11 @@ export default function HamsterPaintball({
     return skin.paintColor;
   };
 
-  // Build a High-Visibility 3D Paintball Projectile with Aerodynamic Streak Tail
-  const createPaintballProjectileMesh = (paintColor: number): THREE.Group => {
-    const projGroup = new THREE.Group();
-
-    const coreBall = new THREE.Mesh(
-      new THREE.SphereGeometry(0.29, 16, 16),
-      new THREE.MeshPhysicalMaterial({
-        color: paintColor,
-        emissive: paintColor,
-        emissiveIntensity: 0.48,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.04,
-        roughness: 0.06,
-        metalness: 0.1
-      })
-    );
-    coreBall.castShadow = true;
-    projGroup.add(coreBall);
-
-    // Bright Team-Colored Outer Energy Halo around the Paintball
-    const glowShell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.38, 12, 12),
-      new THREE.MeshBasicMaterial({
-        color: paintColor,
-        transparent: true,
-        opacity: 0.38
-      })
-    );
-    projGroup.add(glowShell);
-
-    // Aerodynamic Paint Streak Tail Behind the Ball
-    const streakTail = new THREE.Mesh(
-      new THREE.ConeGeometry(0.22, 1.35, 12),
-      new THREE.MeshBasicMaterial({
-        color: paintColor,
-        transparent: true,
-        opacity: 0.78
-      })
-    );
-    streakTail.rotation.x = -Math.PI / 2;
-    streakTail.position.z = -0.7;
-    projGroup.add(streakTail);
-
-    return projGroup;
-  };
-
-  // Pre-allocated shared particle geometries & materials to eliminate per-frame GC stalls / lag
+  // Pre-allocated shared particle, projectile & splat geometries + cached material pools (zero per-shot / per-splat GPU leak!)
+  const sharedProjCoreGeom = React.useMemo(() => new THREE.SphereGeometry(0.29, 14, 14), []);
+  const sharedProjHaloGeom = React.useMemo(() => new THREE.SphereGeometry(0.38, 10, 10), []);
+  const sharedProjTailGeom = React.useMemo(() => new THREE.ConeGeometry(0.22, 1.35, 10), []);
+  const sharedSplatDiscGeom = React.useMemo(() => new THREE.CircleGeometry(1.0, 16), []);
   const sharedTrailSphereGeom = React.useMemo(() => new THREE.SphereGeometry(0.065, 6, 6), []);
   const sharedSplatSphereGeom = React.useMemo(() => new THREE.SphereGeometry(0.11, 8, 8), []);
   const sharedMuzzleGasGeom = React.useMemo(() => new THREE.SphereGeometry(0.12, 8, 8), []);
@@ -4974,11 +5128,166 @@ export default function HamsterPaintball({
       }),
     []
   );
-
   const sharedShockwaveRingGeom = React.useMemo(
     () => new THREE.RingGeometry(0.62, 1.0, 28),
     []
   );
+
+  const basicColorMatCacheRef = useRef<Map<number, THREE.MeshBasicMaterial>>(new Map());
+  const splatPhysMatCacheRef = useRef<Map<number, THREE.MeshPhysicalMaterial>>(new Map());
+  const projCoreMatCacheRef = useRef<Map<number, THREE.MeshPhysicalMaterial>>(new Map());
+  const projHaloMatCacheRef = useRef<Map<number, THREE.MeshBasicMaterial>>(new Map());
+  const projTailMatCacheRef = useRef<Map<number, THREE.MeshBasicMaterial>>(new Map());
+
+  const getBasicColorMaterial = (colorHex: number): THREE.MeshBasicMaterial => {
+    let mat = basicColorMatCacheRef.current.get(colorHex);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({ color: colorHex });
+      basicColorMatCacheRef.current.set(colorHex, mat);
+    }
+    return mat;
+  };
+
+  const getSplatPhysicalMaterial = (colorHex: number): THREE.MeshPhysicalMaterial => {
+    let mat = splatPhysMatCacheRef.current.get(colorHex);
+    if (!mat) {
+      mat = new THREE.MeshPhysicalMaterial({
+        color: colorHex,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.04,
+        roughness: 0.08,
+        metalness: 0.1,
+        polygonOffset: true,
+        polygonOffsetFactor: -2
+      });
+      splatPhysMatCacheRef.current.set(colorHex, mat);
+    }
+    return mat;
+  };
+
+  const drawRoundedRect = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number
+  ) => {
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(x, y, w, h, r);
+      return;
+    }
+    const radius = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  };
+
+  const disposeObject3D = (root: THREE.Object3D | undefined | null) => {
+    if (!root) return;
+    const protectedGeoms = new Set<THREE.BufferGeometry>([
+      sharedProjCoreGeom,
+      sharedProjHaloGeom,
+      sharedProjTailGeom,
+      sharedSplatDiscGeom,
+      sharedTrailSphereGeom,
+      sharedSplatSphereGeom,
+      sharedMuzzleGasGeom,
+      sharedMuzzleDropGeom,
+      sharedShockwaveRingGeom
+    ]);
+    const protectedMats = new Set<THREE.Material>([sharedMuzzleGasMat]);
+    basicColorMatCacheRef.current.forEach(m => protectedMats.add(m));
+    splatPhysMatCacheRef.current.forEach(m => protectedMats.add(m));
+    projCoreMatCacheRef.current.forEach(m => protectedMats.add(m));
+    projHaloMatCacheRef.current.forEach(m => protectedMats.add(m));
+    projTailMatCacheRef.current.forEach(m => protectedMats.add(m));
+    const protectedTexs = new Set<THREE.Texture>();
+    furTextureCacheRef.current.forEach(t => protectedTexs.add(t));
+
+    root.traverse(obj => {
+      const anyObj = obj as any;
+      if (anyObj.geometry && !protectedGeoms.has(anyObj.geometry)) {
+        anyObj.geometry.dispose?.();
+      }
+      const mats: THREE.Material[] = Array.isArray(anyObj.material)
+        ? anyObj.material
+        : anyObj.material
+        ? [anyObj.material]
+        : [];
+      for (const m of mats) {
+        if (!m || protectedMats.has(m)) continue;
+        const mapTex = (m as any).map as THREE.Texture | undefined;
+        if (mapTex && !protectedTexs.has(mapTex)) {
+          mapTex.dispose?.();
+        }
+        const bumpTex = (m as any).bumpMap as THREE.Texture | undefined;
+        if (bumpTex && !protectedTexs.has(bumpTex)) {
+          bumpTex.dispose?.();
+        }
+        m.dispose?.();
+      }
+    });
+  };
+
+  // Build a High-Visibility 3D Paintball Projectile with Pooled Geometries & Cached Color Materials
+  const createPaintballProjectileMesh = (paintColor: number): THREE.Group => {
+    const projGroup = new THREE.Group();
+
+    let coreMat = projCoreMatCacheRef.current.get(paintColor);
+    if (!coreMat) {
+      coreMat = new THREE.MeshPhysicalMaterial({
+        color: paintColor,
+        emissive: paintColor,
+        emissiveIntensity: 0.48,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.04,
+        roughness: 0.06,
+        metalness: 0.1
+      });
+      projCoreMatCacheRef.current.set(paintColor, coreMat);
+    }
+    const coreBall = new THREE.Mesh(sharedProjCoreGeom, coreMat);
+    coreBall.castShadow = true;
+    projGroup.add(coreBall);
+
+    // Bright Team-Colored Outer Energy Halo around the Paintball
+    let haloMat = projHaloMatCacheRef.current.get(paintColor);
+    if (!haloMat) {
+      haloMat = new THREE.MeshBasicMaterial({
+        color: paintColor,
+        transparent: true,
+        opacity: 0.38
+      });
+      projHaloMatCacheRef.current.set(paintColor, haloMat);
+    }
+    const glowShell = new THREE.Mesh(sharedProjHaloGeom, haloMat);
+    projGroup.add(glowShell);
+
+    // Aerodynamic Paint Streak Tail Behind the Ball
+    let tailMat = projTailMatCacheRef.current.get(paintColor);
+    if (!tailMat) {
+      tailMat = new THREE.MeshBasicMaterial({
+        color: paintColor,
+        transparent: true,
+        opacity: 0.78
+      });
+      projTailMatCacheRef.current.set(paintColor, tailMat);
+    }
+    const streakTail = new THREE.Mesh(sharedProjTailGeom, tailMat);
+    streakTail.rotation.x = -Math.PI / 2;
+    streakTail.position.z = -0.7;
+    projGroup.add(streakTail);
+
+    return projGroup;
+  };
 
   // Spawn Expanding 3D Shockwave Ring VFX (for Muzzle Blasts, Paint Impacts, Shield Breaks & KOs)
   const spawnShockwaveRing = (
@@ -5047,11 +5356,7 @@ export default function HamsterPaintball({
       shotAngle
     );
 
-    const paintMistMat = new THREE.MeshBasicMaterial({
-      color: paintColor,
-      transparent: true,
-      opacity: 0.95
-    });
+    const paintMistMat = getBasicColorMaterial(paintColor);
 
     for (let i = 0; i < 7; i++) {
       if (particles.length >= 150) break;
@@ -5084,12 +5389,15 @@ export default function HamsterPaintball({
     startX: number,
     startZ: number,
     angle: number,
-    paintColor: number
+    paintColor: number,
+    shotVy?: number,
+    shotHSpeed?: number
   ) => {
     const g = gameRef.current;
     if (!g) return;
 
-    const muzzlePos = new THREE.Vector3(
+    if (!_muzzleWorldVecRef.current) _muzzleWorldVecRef.current = new THREE.Vector3();
+    const muzzlePos = _muzzleWorldVecRef.current.set(
       startX + Math.sin(angle) * (1.65 * HAMSTER_HERO_SCALE),
       1.32 * HAMSTER_HERO_SCALE,
       startZ + Math.cos(angle) * (1.65 * HAMSTER_HERO_SCALE)
@@ -5102,7 +5410,7 @@ export default function HamsterPaintball({
         ? ownerTeam
         : shooterEntry?.data?.team || 'solo';
 
-    // Enforce: Red Team fires Red Paint (0xef4444) and Blue Team fires Blue Paint (0x2563eb)!
+    // Enforce: Active squad fires its exact squad paint color
     const resolvedPaintColor = resolveTeamPaintColor(
       effectiveTeam,
       paintColor,
@@ -5125,6 +5433,33 @@ export default function HamsterPaintball({
       }
     }
 
+    // Record brief 1.8s gunshot ping for Tactical Mini-Radar
+    const myNorm = normalizeTeamForMatch(
+      stateSnapRef.current.myTeam,
+      stateSnapRef.current.matchMode,
+      stateSnapRef.current.teamCount
+    );
+    const shooterNorm = normalizeTeamForMatch(
+      effectiveTeam,
+      stateSnapRef.current.matchMode,
+      stateSnapRef.current.teamCount
+    );
+    const isEnemyShot =
+      stateSnapRef.current.matchMode === 'solo' || shooterNorm !== myNorm;
+    if (isEnemyShot) {
+      g.radarPings.push({
+        x: startX,
+        z: startZ,
+        colorHex:
+          TEAM_CONFIG[effectiveTeam]?.colorHex ||
+          `#${resolvedPaintColor.toString(16).padStart(6, '0')}`,
+        expiresAt: performance.now() + 1800
+      });
+      if (g.radarPings.length > 16) {
+        g.radarPings = g.radarPings.slice(-16);
+      }
+    }
+
     const ball = createPaintballProjectileMesh(resolvedPaintColor);
     ball.position.copy(muzzlePos);
     ball.rotation.y = angle;
@@ -5132,15 +5467,24 @@ export default function HamsterPaintball({
 
     spawnGunMuzzleBlastEffect(g.scene, g.particles, muzzlePos, angle, resolvedPaintColor);
 
+    const netHSpeed =
+      typeof shotHSpeed === 'number' && Number.isFinite(shotHSpeed)
+        ? THREE.MathUtils.clamp(shotHSpeed, 30, 80)
+        : 58;
+    const netVy =
+      typeof shotVy === 'number' && Number.isFinite(shotVy)
+        ? THREE.MathUtils.clamp(shotVy, -22, 22)
+        : 1.15;
+
     g.projectiles.push({
       ownerId,
       ownerName,
       ownerTeam: effectiveTeam,
       mesh: ball,
-      vx: Math.sin(angle) * 40,
-      vy: 1.65,
-      vz: Math.cos(angle) * 40,
-      gravity: 9.2,
+      vx: Math.sin(angle) * netHSpeed,
+      vy: netVy,
+      vz: Math.cos(angle) * netHSpeed,
+      gravity: 1.85,
       damage: 28,
       color: resolvedPaintColor
     });
@@ -5171,7 +5515,9 @@ export default function HamsterPaintball({
           ev.x,
           ev.z,
           typeof ev.angle === 'number' ? ev.angle : 0,
-          typeof ev.paintColor === 'number' ? ev.paintColor : 0xef4444
+          typeof ev.paintColor === 'number' ? ev.paintColor : 0xef4444,
+          ev.vy,
+          ev.hSpeed
         );
       } else if (
         ev.type === 'hit' &&
@@ -5181,7 +5527,9 @@ export default function HamsterPaintball({
         applyIncomingDamage(
           typeof ev.damage === 'number' ? ev.damage : 28,
           ev.attackerName || ev.ownerName || 'Opponent',
-          ev.attackerId || ev.ownerId
+          ev.attackerId || ev.ownerId,
+          ev.attackerX,
+          ev.attackerZ
         );
       } else if (ev.type === 'ko' && ev.attackerId === clientIdRef.current) {
         const nextKoStreak = stateSnapRef.current.koStreak + 1;
@@ -5202,13 +5550,13 @@ export default function HamsterPaintball({
             : '💥 SPLAT KO!',
           '#f43f5e'
         );
-        setKoBannerText(
+        showKoBanner(
           `SPLATTERED ${(ev.victimName || 'OPPONENT').toUpperCase()}! (+${totalKoPts} PTS${
             nextKoStreak >= 2 ? ` • ${nextKoStreak}x STREAK!` : ''
-          })`
+          })`,
+          2600
         );
         sfx.playKO();
-        setTimeout(() => setKoBannerText(null), 2600);
       }
     }
   };
@@ -5278,7 +5626,7 @@ export default function HamsterPaintball({
     // Bright clean arcade plate shell with crisp border
     ctx.fillStyle = isHostReferee ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)';
     ctx.beginPath();
-    ctx.roundRect(14, 12, 484, isHostReferee ? 98 : 144, 34);
+    drawRoundedRect(ctx, 14, 12, 484, isHostReferee ? 98 : 144, 34);
     ctx.fill();
 
     ctx.lineWidth = isImmune ? 10 : 8;
@@ -5298,7 +5646,7 @@ export default function HamsterPaintball({
     if (isTeamBadge) {
       ctx.fillStyle = isImmune ? '#eab308' : teamTheme.colorHex;
       ctx.beginPath();
-      ctx.roundRect(28, 26, isImmune ? 156 : 124, 54, 24);
+      drawRoundedRect(ctx, 28, 26, isImmune ? 156 : 124, 54, 24);
       ctx.fill();
 
       ctx.font = '900 21px "Poppins", "Inter", system-ui, sans-serif';
@@ -5344,24 +5692,24 @@ export default function HamsterPaintball({
     // Shield track & fill
     ctx.fillStyle = '#e2e8f0';
     ctx.beginPath();
-    ctx.roundRect(barX, 92, barW, 16, 8);
+    drawRoundedRect(ctx, barX, 92, barW, 16, 8);
     ctx.fill();
     if (clampedShield > 0) {
       ctx.fillStyle = isImmune ? '#eab308' : '#0ea5e9';
       ctx.beginPath();
-      ctx.roundRect(barX, 92, Math.max(14, (barW * clampedShield) / 100), 16, 8);
+      drawRoundedRect(ctx, barX, 92, Math.max(14, (barW * clampedShield) / 100), 16, 8);
       ctx.fill();
     }
 
     // HP track & fill
     ctx.fillStyle = '#e2e8f0';
     ctx.beginPath();
-    ctx.roundRect(barX, 116, barW, 22, 11);
+    drawRoundedRect(ctx, barX, 116, barW, 22, 11);
     ctx.fill();
     if (clampedHp > 0) {
       ctx.fillStyle = isImmune ? '#facc15' : clampedHp > 35 ? '#10b981' : '#f43f5e';
       ctx.beginPath();
-      ctx.roundRect(barX, 116, Math.max(18, (barW * clampedHp) / 100), 22, 11);
+      drawRoundedRect(ctx, barX, 116, Math.max(18, (barW * clampedHp) / 100), 22, 11);
       ctx.fill();
     }
   }
@@ -6405,7 +6753,7 @@ export default function HamsterPaintball({
     const bctx = bc.getContext('2d')!;
     bctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
     bctx.beginPath();
-    bctx.roundRect(8, 6, 240, 52, 26);
+    drawRoundedRect(bctx, 8, 6, 240, 52, 26);
     bctx.fill();
     bctx.lineWidth = 4;
     bctx.strokeStyle = primaryHex;
@@ -6649,27 +6997,21 @@ export default function HamsterPaintball({
       splatGroup.position.set(x, 0.03, z);
       splatGroup.rotation.y = Math.random() * Math.PI * 2;
 
-      const splatMat = new THREE.MeshPhysicalMaterial({
-        color: colorHex,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.04,
-        roughness: 0.08,
-        metalness: 0.1,
-        polygonOffset: true,
-        polygonOffsetFactor: -2
-      });
+      const splatMat = getSplatPhysicalMaterial(colorHex);
 
       const mainRadius = 0.72 + Math.random() * 0.35;
-      const centerDisc = new THREE.Mesh(new THREE.CircleGeometry(mainRadius, 18), splatMat);
+      const centerDisc = new THREE.Mesh(sharedSplatDiscGeom, splatMat);
       centerDisc.rotation.x = -Math.PI / 2;
+      centerDisc.scale.setScalar(mainRadius);
       splatGroup.add(centerDisc);
 
       for (let d = 0; d < 4; d++) {
         const ang = (d / 4) * Math.PI * 2 + Math.random() * 0.4;
         const dist = mainRadius * (0.85 + Math.random() * 0.6);
         const dropR = mainRadius * (0.18 + Math.random() * 0.2);
-        const drop = new THREE.Mesh(new THREE.CircleGeometry(dropR, 10), splatMat);
+        const drop = new THREE.Mesh(sharedSplatDiscGeom, splatMat);
         drop.rotation.x = -Math.PI / 2;
+        drop.scale.setScalar(dropR);
         drop.position.set(Math.cos(ang) * dist, 0.005, Math.sin(ang) * dist);
         splatGroup.add(drop);
       }
@@ -6678,7 +7020,10 @@ export default function HamsterPaintball({
       splatDecals.push(splatGroup);
       if (splatDecals.length > 65) {
         const oldest = splatDecals.shift();
-        if (oldest) scene.remove(oldest);
+        if (oldest) {
+          scene.remove(oldest);
+          disposeObject3D(oldest);
+        }
       }
     }
 
@@ -6693,11 +7038,7 @@ export default function HamsterPaintball({
       true
     );
 
-    const partMat = new THREE.MeshPhysicalMaterial({
-      color: colorHex,
-      clearcoat: 1.0,
-      roughness: 0.1
-    });
+    const partMat = getSplatPhysicalMaterial(colorHex);
     for (let i = 0; i < 10; i++) {
       if (particles.length >= 150) break;
       const pMesh = new THREE.Mesh(sharedSplatSphereGeom, partMat);
@@ -6724,7 +7065,7 @@ export default function HamsterPaintball({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x7dd3fc);
-    scene.fog = new THREE.FogExp2(0xbae6fd, 0.005);
+    scene.fog = new THREE.FogExp2(0xbae6fd, 0.0032);
 
     const initW = container.clientWidth || window.innerWidth;
     const initH = container.clientHeight || window.innerHeight;
@@ -6733,9 +7074,9 @@ export default function HamsterPaintball({
       48,
       initW / Math.max(1, initH),
       0.1,
-      400
+      500
     );
-    camera.position.set(0, 32, 32);
+    camera.position.set(0, 38, 42);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -6760,9 +7101,29 @@ export default function HamsterPaintball({
     container.appendChild(renderer.domElement);
 
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+    const envTarget = pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
+    scene.environment = envTarget.texture;
     (scene as any).environmentIntensity = 0.44;
     pmremGenerator.dispose();
+
+    let isContextLost = false;
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      isContextLost = true;
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+    const handleContextRestored = () => {
+      isContextLost = false;
+      lastTime = performance.now();
+      if (!animFrameRef.current) {
+        animFrameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
+    renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored);
 
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
@@ -6773,13 +7134,13 @@ export default function HamsterPaintball({
     scene.add(hemiLight);
 
     const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.32);
-    sunLight.position.set(34, 68, 28);
+    sunLight.position.set(48, 86, 40);
     sunLight.castShadow = initialQualityCfg.shadowsEnabled;
     sunLight.shadow.mapSize.width = initialQualityCfg.shadowMapSize;
     sunLight.shadow.mapSize.height = initialQualityCfg.shadowMapSize;
     sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 180;
-    const d = 48;
+    sunLight.shadow.camera.far = 240;
+    const d = 72;
     sunLight.shadow.camera.left = -d;
     sunLight.shadow.camera.right = d;
     sunLight.shadow.camera.top = d;
@@ -6789,28 +7150,27 @@ export default function HamsterPaintball({
 
     // Outer Park Meadow Backdrop so the horizon is bright, lush, and natural
     const outerMeadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(340, 340),
+      new THREE.PlaneGeometry(460, 460),
       new THREE.MeshStandardMaterial({ color: 0x45942b, roughness: 0.9, metalness: 0.02 })
     );
     outerMeadow.rotation.x = -Math.PI / 2;
     outerMeadow.position.y = -0.04;
     scene.add(outerMeadow);
 
-    // Compact Championship Speedball Turf (150m x 150m canvas, 76m x 64m playable field: x = ±38, z = ±32)
-    // Red Squad Spawn at (0, -24) and Blue Squad Spawn at (0, +24) for immediate sightlines & fast action!
+    // Expanded Championship Speedball Turf (240m x 240m canvas, 116m x 96m playable field: x = ±58, z = ±48)
     const createProArenaTurfTexture = () => {
       const c = document.createElement('canvas');
       c.width = 2048;
       c.height = 2048;
       const ctx = c.getContext('2d')!;
 
-      const planeSpan = 150;
+      const planeSpan = 240;
       const toPxX = (wx: number) => (wx / planeSpan + 0.5) * 2048;
       const toPxY = (wz: number) => (wz / planeSpan + 0.5) * 2048;
       const toPxLen = (wLen: number) => (wLen / planeSpan) * 2048;
 
       // 1. Alternating Bright Mowed Championship Turf Stripes
-      const stripeCount = 20;
+      const stripeCount = 28;
       const stripeW = c.width / stripeCount;
       for (let i = 0; i < stripeCount; i++) {
         ctx.fillStyle = i % 2 === 0 ? '#50a730' : '#61bd3d';
@@ -6818,7 +7178,7 @@ export default function HamsterPaintball({
       }
 
       // Cross-hatch subtle grass blade texture
-      for (let i = 0; i < 16000; i++) {
+      for (let i = 0; i < 20000; i++) {
         const gx = Math.random() * c.width;
         const gy = Math.random() * c.height;
         ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(15,40,10,0.07)';
@@ -6834,51 +7194,55 @@ export default function HamsterPaintball({
 
       // 2. Stadium Outer Track Apron around the Playable Field
       ctx.strokeStyle = 'rgba(30, 41, 59, 0.38)';
-      ctx.lineWidth = toPxLen(3.2);
+      ctx.lineWidth = toPxLen(3.6);
       ctx.strokeRect(
-        fieldLeft - toPxLen(1.8),
-        fieldTop - toPxLen(1.8),
-        fieldW + toPxLen(3.6),
-        fieldH + toPxLen(3.6)
+        fieldLeft - toPxLen(2.0),
+        fieldTop - toPxLen(2.0),
+        fieldW + toPxLen(4.0),
+        fieldH + toPxLen(4.0)
       );
 
       // 3. Clean 3-Lane Speedball Sightline Markings (Center + Left/Right Wing Corridors)
       ctx.fillStyle = 'rgba(254, 249, 195, 0.24)';
-      ctx.fillRect(toPxX(-2.2), toPxY(-TEAM_SPAWN_Z), toPxLen(4.4), toPxLen(TEAM_SPAWN_Z * 2));
-      ctx.fillRect(fieldLeft + toPxLen(3), toPxY(-2.0), fieldW - toPxLen(6), toPxLen(4.0));
+      ctx.fillRect(toPxX(-2.4), toPxY(-TEAM_SPAWN_Z), toPxLen(4.8), toPxLen(TEAM_SPAWN_Z * 2));
+      ctx.fillRect(fieldLeft + toPxLen(3), toPxY(-2.2), fieldW - toPxLen(6), toPxLen(4.4));
 
       ctx.save();
-      ctx.strokeStyle = 'rgba(254, 249, 195, 0.3)';
+      ctx.strokeStyle = 'rgba(254, 249, 195, 0.32)';
       ctx.lineWidth = toPxLen(2.8);
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(toPxX(0), toPxY(-20));
-      ctx.lineTo(toPxX(-24), toPxY(0));
-      ctx.lineTo(toPxX(0), toPxY(20));
-      ctx.lineTo(toPxX(24), toPxY(0));
+      ctx.moveTo(toPxX(0), toPxY(-31));
+      ctx.lineTo(toPxX(-38), toPxY(0));
+      ctx.lineTo(toPxX(0), toPxY(31));
+      ctx.lineTo(toPxX(38), toPxY(0));
       ctx.closePath();
       ctx.stroke();
       ctx.restore();
 
-      // 4. Crisp White Stadium Boundary Lines (x = ±38, z = ±32)
+      // 4. Crisp White Stadium Boundary Lines (x = ±58, z = ±48)
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.96)';
       ctx.lineWidth = 10;
       ctx.strokeRect(fieldLeft, fieldTop, fieldW, fieldH);
 
-      // Quarter-Field Tactical Lines (z = -13 and z = +13)
+      // Quarter-Field & Wing Tactical Lines (z = ±21 and x = ±26)
       ctx.save();
       ctx.setLineDash([20, 18]);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.56)';
       ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(fieldLeft, toPxY(-13));
-      ctx.lineTo(fieldRight, toPxY(-13));
-      ctx.moveTo(fieldLeft, toPxY(13));
-      ctx.lineTo(fieldRight, toPxY(13));
+      ctx.moveTo(fieldLeft, toPxY(-21));
+      ctx.lineTo(fieldRight, toPxY(-21));
+      ctx.moveTo(fieldLeft, toPxY(21));
+      ctx.lineTo(fieldRight, toPxY(21));
+      ctx.moveTo(toPxX(-26), fieldTop);
+      ctx.lineTo(toPxX(-26), fieldBottom);
+      ctx.moveTo(toPxX(26), fieldTop);
+      ctx.lineTo(toPxX(26), fieldBottom);
       ctx.stroke();
       ctx.restore();
 
-      // 50-Yard Horizontal Midfield Line (Separating North Red Half & South Blue Half)
+      // 50-Yard Horizontal Midfield Line
       ctx.save();
       ctx.setLineDash([30, 16]);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.96)';
@@ -6889,10 +7253,10 @@ export default function HamsterPaintball({
       ctx.stroke();
       ctx.restore();
 
-      // Center Championship Circle (Unobstructed Open Center!)
+      // Center Championship Circle + Wing Hub Circles
       ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
       ctx.beginPath();
-      ctx.arc(toPxX(0), toPxY(0), toPxLen(8.5), 0, Math.PI * 2);
+      ctx.arc(toPxX(0), toPxY(0), toPxLen(10.2), 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(250, 204, 21, 0.95)';
       ctx.lineWidth = 9;
@@ -6901,10 +7265,23 @@ export default function HamsterPaintball({
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.88)';
       ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.arc(toPxX(0), toPxY(0), toPxLen(5.4), 0, Math.PI * 2);
+      ctx.arc(toPxX(0), toPxY(0), toPxLen(6.6), 0, Math.PI * 2);
       ctx.stroke();
 
-      // 5. Cross-Arena Midfield Line & Clean Center Turf (Spawn pads are rendered dynamically as 3D meshes!)
+      [
+        [-22.5, 0],
+        [22.5, 0],
+        [0, -16.5],
+        [0, 16.5]
+      ].forEach(([hx, hz]) => {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(toPxX(hx), toPxY(hz), toPxLen(4.8), 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // 5. Cross-Arena Midfield Line & Clean Center Turf
       ctx.save();
       ctx.setLineDash([30, 16]);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
@@ -6926,7 +7303,7 @@ export default function HamsterPaintball({
       roughness: 0.82,
       metalness: 0.04
     });
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), groundMat);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
@@ -6947,8 +7324,8 @@ export default function HamsterPaintball({
       spawnGroup.position.set(x, 0, z);
       spawnGroup.rotation.y = baseRotY;
 
-      const halfW = 8.5;
-      const halfD = 4.3;
+      const halfW = 9.8;
+      const halfD = 5.2;
 
       const padMat = new THREE.MeshBasicMaterial({
         color: teamColorHex,
@@ -7149,7 +7526,7 @@ export default function HamsterPaintball({
 
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
-      ctx.roundRect(146, 196, 220, 96, 18);
+      drawRoundedRect(ctx, 146, 196, 220, 96, 18);
       ctx.fill();
       ctx.lineWidth = 6;
       ctx.strokeStyle = '#ffffff';
@@ -7335,55 +7712,84 @@ export default function HamsterPaintball({
     };
 
     // =========================================================
-    // TACTICAL ANTI-SPAWN-CAMP & SIGHTLINE-BLOCKING SPEEDBALL ARENA
+    // EXPANDED CHAMPIONSHIP SPEEDBALL ARENA (116m x 96m MULTI-ZONE FIELD)
     // 1. Wide Shield Fortresses + Flanks directly in front of Left, Right, Bottom & Top spawns
-    // 2. Center X-Tower + Multi-Ring Diagonal Hides so teams cannot see spawned players directly!
+    // 2. Center X-Tower + 4 Wing X-Bunkers + Multi-Ring Diagonal Hides + Deep Corner Castles
     // =========================================================
     // 1. Direct Front-of-Spawn Fortress Shield Walls (Blocking all direct cross-map spawn views)
-    createWideSpawnFortress(-20.2, 0, Math.PI / 2, '#e11d48', '#ffffff', 'FORTRESS');
-    createWideSpawnFortress(20.2, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'FORTRESS');
-    createWideSpawnFortress(0, 16.0, 0, '#10b981', '#ffffff', 'FORTRESS');
-    createWideSpawnFortress(0, -16.0, 0, '#d97706', '#fef08a', 'FORTRESS');
+    createWideSpawnFortress(-35.0, 0, Math.PI / 2, '#e11d48', '#ffffff', 'FORTRESS');
+    createWideSpawnFortress(35.0, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'FORTRESS');
+    createWideSpawnFortress(0, 27.5, 0, '#10b981', '#ffffff', 'FORTRESS');
+    createWideSpawnFortress(0, -27.5, 0, '#d97706', '#fef08a', 'FORTRESS');
 
     // 2. Spawn Flank Fortress Shields (Cover left & right exit lanes directly in front of every spawn)
-    createLowSnakeShield(-22.0, -9.2, Math.PI / 2 + 0.32, '#e11d48', '#facc15');
-    createLowSnakeShield(-22.0, 9.2, Math.PI / 2 - 0.32, '#e11d48', '#ffffff');
-    createLowSnakeShield(22.0, -9.2, Math.PI / 2 - 0.32, '#2563eb', '#facc15');
-    createLowSnakeShield(22.0, 9.2, Math.PI / 2 + 0.32, '#2563eb', '#38bdf8');
-    createLowSnakeShield(-9.2, 17.2, -0.32, '#10b981', '#ffffff');
-    createLowSnakeShield(9.2, 17.2, 0.32, '#10b981', '#facc15');
-    createLowSnakeShield(-9.2, -17.2, 0.32, '#f59e0b', '#0f172a');
-    createLowSnakeShield(9.2, -17.2, -0.32, '#f59e0b', '#ffffff');
+    createLowSnakeShield(-37.0, -13.5, Math.PI / 2 + 0.32, '#e11d48', '#facc15');
+    createLowSnakeShield(-37.0, 13.5, Math.PI / 2 - 0.32, '#e11d48', '#ffffff');
+    createLowSnakeShield(37.0, -13.5, Math.PI / 2 - 0.32, '#2563eb', '#facc15');
+    createLowSnakeShield(37.0, 13.5, Math.PI / 2 + 0.32, '#2563eb', '#38bdf8');
+    createLowSnakeShield(-13.5, 29.0, -0.32, '#10b981', '#ffffff');
+    createLowSnakeShield(13.5, 29.0, 0.32, '#10b981', '#facc15');
+    createLowSnakeShield(-13.5, -29.0, 0.32, '#f59e0b', '#0f172a');
+    createLowSnakeShield(13.5, -29.0, -0.32, '#f59e0b', '#ffffff');
 
-    // 3. Center Sightline Breaker + Secondary Ring Cover
-    createCenterXBunker(0, 0, 1.08);
-    createLowSnakeShield(-12.2, 0, Math.PI / 2, '#0ea5e9', '#ffffff');
-    createLowSnakeShield(12.2, 0, Math.PI / 2, '#f43f5e', '#facc15');
-    createLowSnakeShield(0, -9.2, 0, '#f59e0b', '#0f172a');
-    createLowSnakeShield(0, 9.2, 0, '#10b981', '#0f172a');
+    // 3. Center Sightline Breaker + 4 Wing X-Bunker Hubs + Inner Ring Cover
+    createCenterXBunker(0, 0, 1.14);
+    createCenterXBunker(-22.5, 0, 0.94);
+    createCenterXBunker(22.5, 0, 0.94);
+    createCenterXBunker(0, -16.5, 0.92);
+    createCenterXBunker(0, 16.5, 0.92);
 
-    // 4. Four Inner Diagonal Tall Cans (Block diagonal mid-map sniper angles)
-    createCan(-9.6, -7.8, '#eab308', '#0f172a', '#fef08a');
-    createCan(9.6, -7.8, '#0ea5e9', '#0f172a', '#bae6fd');
-    createCan(-9.6, 7.8, '#10b981', '#0f172a', '#a7f3d0');
-    createCan(9.6, 7.8, '#f43f5e', '#0f172a', '#fecdd3');
+    createLowSnakeShield(-11.8, 0, Math.PI / 2, '#0ea5e9', '#ffffff');
+    createLowSnakeShield(11.8, 0, Math.PI / 2, '#f43f5e', '#facc15');
+    createLowSnakeShield(0, -8.8, 0, '#f59e0b', '#0f172a');
+    createLowSnakeShield(0, 8.8, 0, '#10b981', '#0f172a');
 
-    // 5. Outer Corner & Back-Wing Cover Hides (Rich cover for Solo everywhere & flanking plays)
-    createCan(-27.5, -19.5, '#e11d48', '#0f172a', '#fecdd3');
-    createCan(27.5, -19.5, '#2563eb', '#0f172a', '#bfdbfe');
-    createCan(-27.5, 19.5, '#10b981', '#0f172a', '#a7f3d0');
-    createCan(27.5, 19.5, '#f59e0b', '#0f172a', '#fef08a');
-    createDorito(-17.5, -24.0, '#0284c7', '#facc15', '#ffffff', 0.2);
-    createDorito(17.5, -24.0, '#f43f5e', '#facc15', '#ffffff', -0.2);
-    createDorito(-17.5, 24.0, '#10b981', '#facc15', '#ffffff', -0.2);
-    createDorito(17.5, 24.0, '#d97706', '#38bdf8', '#ffffff', 0.2);
+    // 4. Inner Diagonal Tall Cans & Mid-Quadrant Tactical Doritos
+    createCan(-11.2, -9.2, '#eab308', '#0f172a', '#fef08a');
+    createCan(11.2, -9.2, '#0ea5e9', '#0f172a', '#bae6fd');
+    createCan(-11.2, 9.2, '#10b981', '#0f172a', '#a7f3d0');
+    createCan(11.2, 9.2, '#f43f5e', '#0f172a', '#fecdd3');
+
+    createDorito(-22.5, -14.5, '#0284c7', '#facc15', '#ffffff', 0.35);
+    createDorito(22.5, -14.5, '#f43f5e', '#facc15', '#ffffff', -0.35);
+    createDorito(-22.5, 14.5, '#10b981', '#facc15', '#ffffff', -0.35);
+    createDorito(22.5, 14.5, '#d97706', '#38bdf8', '#ffffff', 0.35);
+
+    // 5. Mid-Wing Snake Beams & Outer Wing Pro Cans (Expanded 116m x 96m Flanking Lanes)
+    createLowSnakeShield(-24.0, -28.0, 0.18, '#0284c7', '#facc15');
+    createLowSnakeShield(24.0, -28.0, -0.18, '#e11d48', '#ffffff');
+    createLowSnakeShield(-24.0, 28.0, -0.18, '#10b981', '#facc15');
+    createLowSnakeShield(24.0, 28.0, 0.18, '#d97706', '#ffffff');
+
+    createCan(-32.0, -21.5, '#e11d48', '#0f172a', '#fecdd3');
+    createCan(32.0, -21.5, '#2563eb', '#0f172a', '#bfdbfe');
+    createCan(-32.0, 21.5, '#10b981', '#0f172a', '#a7f3d0');
+    createCan(32.0, 21.5, '#f59e0b', '#0f172a', '#fef08a');
+
+    // 6. Deep Corner Pro Cans & Perimeter Wing Doritos
+    createCan(-44.0, -33.0, '#eab308', '#0f172a', '#fef08a');
+    createCan(44.0, -33.0, '#0ea5e9', '#0f172a', '#bae6fd');
+    createCan(-44.0, 33.0, '#10b981', '#0f172a', '#a7f3d0');
+    createCan(44.0, 33.0, '#f43f5e', '#0f172a', '#fecdd3');
+
+    createDorito(-43.0, -21.0, '#e11d48', '#facc15', '#ffffff', 0.45);
+    createDorito(43.0, -21.0, '#2563eb', '#facc15', '#ffffff', -0.45);
+    createDorito(-43.0, 21.0, '#10b981', '#facc15', '#ffffff', -0.45);
+    createDorito(43.0, 21.0, '#d97706', '#38bdf8', '#ffffff', 0.45);
+
+    createDorito(-16.5, -36.5, '#0284c7', '#facc15', '#ffffff', 0.2);
+    createDorito(16.5, -36.5, '#f43f5e', '#facc15', '#ffffff', -0.2);
+    createDorito(-16.5, 36.5, '#10b981', '#facc15', '#ffffff', -0.2);
+    createDorito(16.5, 36.5, '#d97706', '#38bdf8', '#ffffff', 0.2);
 
     // =========================================================
-    // 1 HEALTH CAN & 1 DEFENCE CAN IN THE ARENA (RESPAWNS ONCE EVERY 2 MINUTES = 120,000ms)
+    // 4 COLLECTIBLE HEALTH & DEFENCE CANS ACROSS THE EXPANDED ARENA (RESPAWNS EVERY 2 MINUTES = 120,000ms)
     // =========================================================
     const powerupConfigs: Array<{ type: 'health' | 'shield'; x: number; z: number }> = [
-      { type: 'health', x: -6.2, z: 0 },
-      { type: 'shield', x: 6.2, z: 0 }
+      { type: 'health', x: -6.4, z: 0 },
+      { type: 'shield', x: 6.4, z: 0 },
+      { type: 'health', x: 0, z: -22.5 },
+      { type: 'shield', x: 0, z: 22.5 }
     ];
 
     const powerups: PowerupNode[] = powerupConfigs.map((cfg, idx) => {
@@ -7402,7 +7808,7 @@ export default function HamsterPaintball({
     });
 
     // =========================================================
-    // COMPOSITE MULTI-PART STADIUM FLOODLIGHT & BANNER TOWERS (Outside ±40 x ±34 Perimeter)
+    // COMPOSITE MULTI-PART STADIUM FLOODLIGHT & BANNER TOWERS (Outside ±60 x ±50 Perimeter)
     // =========================================================
     const buildStadiumFloodlightTower = (px: number, pz: number, accentHex: number) => {
       const tg = new THREE.Group();
@@ -7431,31 +7837,31 @@ export default function HamsterPaintball({
       tg.add(base);
 
       [-0.36, 0.36].forEach(ox => {
-        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 11.0, 12), steelMat);
-        col.position.set(ox, 6.0, 0);
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 12.5, 12), steelMat);
+        col.position.set(ox, 6.75, 0);
         col.castShadow = true;
         tg.add(col);
       });
 
-      for (let h = 2.5; h <= 10.2; h += 2.0) {
+      for (let h = 2.5; h <= 11.5; h += 2.2) {
         const brace = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.14, 0.16), steelMat);
         brace.position.set(0, h, 0);
         tg.add(brace);
       }
 
-      const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.6, 1.25), bannerMat);
-      pennant.position.set(0, 6.8, px < 0 ? 0.75 : -0.75);
+      const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.8, 1.35), bannerMat);
+      pennant.position.set(0, 7.4, px < 0 ? 0.75 : -0.75);
       tg.add(pennant);
 
       const hoodGroup = new THREE.Group();
-      hoodGroup.position.set(0, 11.6, 0);
+      hoodGroup.position.set(0, 13.1, 0);
       hoodGroup.lookAt(0, 0, 0);
 
-      const hoodBox = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.15, 0.5), pedestalMat);
+      const hoodBox = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.2, 0.5), pedestalMat);
       hoodGroup.add(hoodBox);
 
       const ledPanel = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.15, 0.85),
+        new THREE.PlaneGeometry(2.35, 0.9),
         new THREE.MeshBasicMaterial({ color: 0xfef9c3, side: THREE.DoubleSide })
       );
       ledPanel.position.z = 0.27;
@@ -7467,20 +7873,22 @@ export default function HamsterPaintball({
 
     const bannerColors = [0xf43f5e, 0x38bdf8, 0x10b981, 0xfacc15];
     [
-      [-43, -36.5],
-      [0, -36.5],
-      [43, -36.5],
-      [-43, 36.5],
-      [0, 36.5],
-      [43, 36.5],
-      [-43, 0],
-      [43, 0]
+      [-63.5, -53.0],
+      [-22.0, -53.0],
+      [22.0, -53.0],
+      [63.5, -53.0],
+      [-63.5, 53.0],
+      [-22.0, 53.0],
+      [22.0, 53.0],
+      [63.5, 53.0],
+      [-63.5, 0],
+      [63.5, 0]
     ].forEach(([px, pz], idx) => {
       buildStadiumFloodlightTower(px, pz, bannerColors[idx % bannerColors.length]);
     });
 
     // =========================================================
-    // NATURAL OUTER PARK FOREST TREES AROUND STADIUM
+    // NATURAL OUTER PARK FOREST TREES AROUND EXPANDED STADIUM
     // =========================================================
     const createTree = (x: number, z: number, scale = 1) => {
       const tg = new THREE.Group();
@@ -7514,18 +7922,20 @@ export default function HamsterPaintball({
     };
 
     [
-      [-50, -43, 1.3],
-      [50, -43, 1.3],
-      [-50, 43, 1.25],
-      [50, 43, 1.3],
-      [-24, -44, 1.18],
-      [24, -44, 1.18],
-      [-24, 44, 1.18],
-      [24, 44, 1.2],
-      [-52, -16, 1.2],
-      [52, -16, 1.2],
-      [-52, 16, 1.2],
-      [52, 16, 1.2]
+      [-72, -62, 1.38],
+      [72, -62, 1.38],
+      [-72, 62, 1.35],
+      [72, 62, 1.38],
+      [-38, -64, 1.25],
+      [0, -64, 1.3],
+      [38, -64, 1.25],
+      [-38, 64, 1.25],
+      [0, 64, 1.3],
+      [38, 64, 1.25],
+      [-74, -26, 1.28],
+      [74, -26, 1.28],
+      [-74, 26, 1.28],
+      [74, 26, 1.28]
     ].forEach(([tx, tz, sc]) => createTree(tx, tz, sc));
 
     // =========================================================
@@ -7676,8 +8086,16 @@ export default function HamsterPaintball({
       particles: [],
       shockwaves: [],
       remotePlayers: new Map(),
+      radarPings: [],
       broadcastChannel: broadcastChannelRef.current || undefined
     };
+
+    // Pre-compile scene shaders once on hardware GPU to avoid first-frame stutter
+    if (!isSoftwareGl) {
+      try {
+        renderer.compile(scene, camera);
+      } catch {}
+    }
 
     // Re-populate any already-connected remote players into the freshly created scene
     stateSnapRef.current.roomPlayers.forEach(rp => {
@@ -7776,6 +8194,22 @@ export default function HamsterPaintball({
 
       if (k === 'v' && !e.repeat && snap.role === 'host' && !snap.isAnyModalOpen) {
         cycleCameraViewPreset();
+        return;
+      }
+
+      if (
+        (k === 'arrowleft' || k === 'arrowright') &&
+        !e.repeat &&
+        snap.role === 'host' &&
+        snap.screen === 'game' &&
+        !snap.isAnyModalOpen &&
+        snap.roomPlayers.length > 0
+      ) {
+        e.preventDefault();
+        setHostCameraMode('track_one');
+        setHostFollowIndex(
+          prev => (prev + (k === 'arrowright' ? 1 : -1) + snap.roomPlayers.length) % snap.roomPlayers.length
+        );
         return;
       }
 
@@ -8198,6 +8632,7 @@ export default function HamsterPaintball({
     // MAIN 60FPS ANIMATION LOOP (PUBG TPS AIM + ADS 2X SCOPE + JUMP / CROUCH / CRAWL)
     // =========================================================
     let lastTime = performance.now();
+    let lastRadarSyncAt = 0;
     // Pre-allocated math objects for zero-GC 60fps raycasting
     const _aimRaycaster = new THREE.Raycaster();
     const _aimReticleNdc = new THREE.Vector2(0, 0.08);
@@ -8207,8 +8642,32 @@ export default function HamsterPaintball({
     const getStanceHitHeight = (st?: 'stand' | 'crouch' | 'crawl') =>
       st === 'crawl' ? 1.42 : st === 'crouch' ? 2.35 : 3.45;
 
+    // Software-WebGL GPU fence pacing so SwiftShader / llvmpipe never blocks the main thread
+    const gl2 = gl as WebGL2RenderingContext;
+    const afterDraw = (tick: (now: number) => void) => {
+      if (!isSoftwareGl) {
+        animFrameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const fence = typeof gl2.fenceSync === 'function' ? gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0) : null;
+      const start = performance.now();
+      const poll = () => {
+        if (isContextLost) return;
+        const done =
+          !fence ||
+          gl2.clientWaitSync(fence, 0, 0) !== gl2.TIMEOUT_EXPIRED;
+        if (done && performance.now() - start >= 80) {
+          if (fence) gl2.deleteSync(fence);
+          animFrameRef.current = requestAnimationFrame(tick);
+        } else {
+          window.setTimeout(poll, 16);
+        }
+      };
+      window.setTimeout(poll, 16);
+    };
+
     const animate = (now: number) => {
-      animFrameRef.current = requestAnimationFrame(animate);
+      if (isContextLost) return;
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
@@ -8348,15 +8807,15 @@ export default function HamsterPaintball({
               rp.mesh.userData.nameSprite.visible = true;
             }
           });
-          // Host Overview Camera across the compact 76m x 64m speedball park
+          // Host Overview Camera across the expanded 116m x 96m speedball park
           if (isMoving) {
-            g.hostCamX = Math.max(-30, Math.min(30, g.hostCamX + rawX * 26 * dt));
-            g.hostCamZ = Math.max(-24, Math.min(24, g.hostCamZ + rawZ * 26 * dt));
+            g.hostCamX = Math.max(-46, Math.min(46, g.hostCamX + rawX * 32 * dt));
+            g.hostCamZ = Math.max(-36, Math.min(36, g.hostCamZ + rawZ * 32 * dt));
           }
           const camAspect = camera.aspect || 1.5;
-          const portraitZoomOut = camAspect < 1.0 ? Math.min(10, (1.0 - camAspect) * 18) : 0;
-          const targetY = 28 + portraitZoomOut;
-          const targetZ = g.hostCamZ + 25 + portraitZoomOut * 0.7;
+          const portraitZoomOut = camAspect < 1.0 ? Math.min(12, (1.0 - camAspect) * 20) : 0;
+          const targetY = 36 + portraitZoomOut;
+          const targetZ = g.hostCamZ + 33 + portraitZoomOut * 0.75;
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
@@ -8384,9 +8843,9 @@ export default function HamsterPaintball({
           }
         }
 
-        // Stance & ADS Movement Speeds (Stand: 15.6, Crouch: 10.8, Prone Crawl: 6.2)
+        // Stance & ADS Movement Speeds (Stand: 16.4, Crouch: 11.2, Prone Crawl: 6.5)
         const baseSpeed =
-          activeStance === 'crawl' ? 6.2 : activeStance === 'crouch' ? 10.8 : 15.6;
+          activeStance === 'crawl' ? 6.5 : activeStance === 'crouch' ? 11.2 : 16.4;
         const speed = snapState.isAdsScoped ? baseSpeed * 0.78 : baseSpeed;
 
         const forwardInput = -rawZ;
@@ -8453,16 +8912,14 @@ export default function HamsterPaintball({
               pu.respawnAt = now + 120000;
               sfx.playCanPickup();
               setHealthCans(c => Math.min(1, c + 1));
-              setPickupBannerText('🧪 COLLECTED HEALTH CAN (+45 HP • RESPAWNS IN 2 MIN)!');
-              setTimeout(() => setPickupBannerText(null), 2200);
+              showPickupBanner('🧪 COLLECTED HEALTH CAN (+45 HP • RESPAWNS IN 2 MIN)!', 2200);
             } else if (pu.type === 'shield' && snapState.shieldCans < 1) {
               pu.active = false;
               pu.mesh.visible = false;
               pu.respawnAt = now + 120000;
               sfx.playCanPickup();
               setShieldCans(c => Math.min(1, c + 1));
-              setPickupBannerText('🛡️ COLLECTED DEFENCE CAN (+50 SHIELD • RESPAWNS IN 2 MIN)!');
-              setTimeout(() => setPickupBannerText(null), 2200);
+              showPickupBanner('🛡️ COLLECTED DEFENCE CAN (+50 SHIELD • RESPAWNS IN 2 MIN)!', 2200);
             }
           }
         });
@@ -8479,10 +8936,10 @@ export default function HamsterPaintball({
 
         const presetCfg =
           snapState.cameraViewPreset === 'close'
-            ? { dist: 5.4, height: 2.45, shoulder: 1.38, lookDist: 26, lookRight: 1.12 }
+            ? { dist: 5.4, height: 2.45, shoulder: 1.38, lookDist: 28, lookRight: 1.12 }
             : snapState.cameraViewPreset === 'tactical'
-            ? { dist: 13.8, height: 7.4, shoulder: 0.52, lookDist: 24, lookRight: 0.42 }
-            : { dist: 7.9, height: 3.25, shoulder: 1.24, lookDist: 26, lookRight: 0.98 };
+            ? { dist: 14.5, height: 7.8, shoulder: 0.52, lookDist: 28, lookRight: 0.42 }
+            : { dist: 8.6, height: 3.55, shoulder: 1.18, lookDist: 30, lookRight: 0.92 };
 
         g.crouchLerp = THREE.MathUtils.damp(g.crouchLerp, activeStance === 'crouch' ? 1 : 0, 12, dt);
         g.crawlLerp = THREE.MathUtils.damp(g.crawlLerp, activeStance === 'crawl' ? 1 : 0, 12, dt);
@@ -8754,19 +9211,29 @@ export default function HamsterPaintball({
         }
       }
 
-      // Update Projectiles & Collisions (Orient bullet + tail streak along flight vector!)
+      // Update Projectiles & Swept-Segment Collisions (Zero Tunneling + Pooled Materials!)
       for (let i = g.projectiles.length - 1; i >= 0; i--) {
         const p = g.projectiles[i];
+        const prevX = p.mesh.position.x;
+        const prevY = p.mesh.position.y;
+        const prevZ = p.mesh.position.z;
+
         p.vy -= p.gravity * dt;
-        p.mesh.position.x += p.vx * dt;
-        p.mesh.position.y += p.vy * dt;
-        p.mesh.position.z += p.vz * dt;
+        const nextX = prevX + p.vx * dt;
+        const nextY = prevY + p.vy * dt;
+        const nextZ = prevZ + p.vz * dt;
+        p.mesh.position.set(nextX, nextY, nextZ);
         p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
+
+        const segDx = nextX - prevX;
+        const segDy = nextY - prevY;
+        const segDz = nextZ - prevZ;
+        const segHorizSq = segDx * segDx + segDz * segDz;
 
         if (Math.random() < 0.35 && g.particles.length < 120) {
           const trailDrop = new THREE.Mesh(
             sharedTrailSphereGeom,
-            new THREE.MeshBasicMaterial({ color: p.color })
+            getBasicColorMaterial(p.color)
           );
           trailDrop.position.copy(p.mesh.position);
           scene.add(trailDrop);
@@ -8782,11 +9249,18 @@ export default function HamsterPaintball({
 
         let hit = false;
 
-        // Obstacle / Bunker Collisions
+        // Swept Obstacle / Bunker Collisions
         for (const obs of g.obstacles) {
+          const tObs =
+            segHorizSq > 0.0001
+              ? Math.max(0, Math.min(1, ((obs.x - prevX) * segDx + (obs.z - prevZ) * segDz) / segHorizSq))
+              : 1;
+          const closestX = prevX + segDx * tObs;
+          const closestY = prevY + segDy * tObs;
+          const closestZ = prevZ + segDz * tObs;
           if (
-            p.mesh.position.y <= obs.h &&
-            Math.hypot(p.mesh.position.x - obs.x, p.mesh.position.z - obs.z) < obs.r + 0.25
+            closestY <= obs.h &&
+            Math.hypot(closestX - obs.x, closestZ - obs.z) < obs.r + 0.25
           ) {
             hit = true;
             sfx.playSplat();
@@ -8794,16 +9268,16 @@ export default function HamsterPaintball({
               scene,
               g.splatDecals,
               g.particles,
-              p.mesh.position.x,
-              p.mesh.position.y,
-              p.mesh.position.z,
+              closestX,
+              Math.max(0.08, closestY),
+              closestZ,
               p.color
             );
             break;
           }
         }
 
-        // Check Hits on Remote Players (Stance- & Jump-Aware 3D Hitbox!)
+        // Check Swept Hits on Remote Players (Stance- & Jump-Aware 3D Hitbox!)
         if (!hit && p.ownerId === clientIdRef.current) {
           g.remotePlayers.forEach(entry => {
             if (hit) return;
@@ -8824,10 +9298,17 @@ export default function HamsterPaintball({
             const ry = entry.mesh.position.y || 0;
             const rz = entry.mesh.position.z;
             const hitMaxH = getStanceHitHeight(entry.data.stance);
+            const tHit =
+              segHorizSq > 0.0001
+                ? Math.max(0, Math.min(1, ((rx - prevX) * segDx + (rz - prevZ) * segDz) / segHorizSq))
+                : 1;
+            const hitX = prevX + segDx * tHit;
+            const hitY = prevY + segDy * tHit;
+            const hitZ = prevZ + segDz * tHit;
             if (
-              p.mesh.position.y >= ry - 0.2 &&
-              p.mesh.position.y <= ry + hitMaxH &&
-              Math.hypot(p.mesh.position.x - rx, p.mesh.position.z - rz) < 1.98
+              hitY >= ry - 0.2 &&
+              hitY <= ry + hitMaxH &&
+              Math.hypot(hitX - rx, hitZ - rz) < 1.98
             ) {
               hit = true;
               if (
@@ -8839,10 +9320,10 @@ export default function HamsterPaintball({
                   1,
                   Math.ceil((entry.data.immuneUntil - serverNowMs) / 1000)
                 );
-                setPickupBannerText(
-                  `🛡️ ${entry.data.name.toUpperCase()} HAS RESPAWN IMMUNITY (${remSec}s LEFT)!`
+                showPickupBanner(
+                  `🛡️ ${entry.data.name.toUpperCase()} HAS RESPAWN IMMUNITY (${remSec}s LEFT)!`,
+                  1500
                 );
-                setTimeout(() => setPickupBannerText(null), 1500);
                 return;
               }
               sfx.playSplat();
@@ -8867,6 +9348,8 @@ export default function HamsterPaintball({
               setHitsLanded(h => h + 1);
               awardPoints(hitPts, `🎯 PAINT HIT!`, '#38bdf8');
               const hitId = `hit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              const attackerX = Number(g.x.toFixed(2));
+              const attackerZ = Number(g.z.toFixed(2));
               queueCombatEvent({
                 id: hitId,
                 type: 'hit',
@@ -8875,6 +9358,8 @@ export default function HamsterPaintball({
                 targetId: entry.data.id,
                 attackerId: clientIdRef.current,
                 attackerName: snapState.playerName || 'Student',
+                attackerX,
+                attackerZ,
                 damage: p.damage,
                 ts: serverNowMs
               });
@@ -8886,6 +9371,8 @@ export default function HamsterPaintball({
                     targetId: entry.data.id,
                     attackerId: clientIdRef.current,
                     attackerName: snapState.playerName,
+                    attackerX,
+                    attackerZ,
                     damage: p.damage
                   });
                 } catch {}
@@ -8896,6 +9383,8 @@ export default function HamsterPaintball({
                   targetId: entry.data.id,
                   attackerId: clientIdRef.current,
                   attackerName: snapState.playerName,
+                  attackerX,
+                  attackerZ,
                   damage: p.damage
                 };
                 lastNetActionRef.current.lastHit = lastHitObj;
@@ -8904,20 +9393,12 @@ export default function HamsterPaintball({
                   lastHit: lastHitObj,
                   recentEvents: recentCombatEventsRef.current
                 });
-                setDoc(
-                  getPlayerDocRef(roomCode, clientIdRef.current),
-                  {
-                    lastHit: lastHitObj,
-                    recentEvents: recentCombatEventsRef.current
-                  },
-                  { merge: true }
-                ).catch(() => {});
               }
             }
           });
         }
 
-        // Check Hits on Local Student Player (Stance- & Jump-Aware 3D Hitbox!)
+        // Check Swept Hits on Local Student Player (Stance- & Jump-Aware 3D Hitbox!)
         if (
           !hit &&
           p.ownerId !== clientIdRef.current &&
@@ -8936,11 +9417,18 @@ export default function HamsterPaintball({
           );
           const isFriendly = snapState.matchMode === 'teams' && shooterNormTeam === myNormTeam;
           const localHitMaxH = getStanceHitHeight(snapState.playerStance);
+          const tLocal =
+            segHorizSq > 0.0001
+              ? Math.max(0, Math.min(1, ((g.x - prevX) * segDx + (g.z - prevZ) * segDz) / segHorizSq))
+              : 1;
+          const localHitX = prevX + segDx * tLocal;
+          const localHitY = prevY + segDy * tLocal;
+          const localHitZ = prevZ + segDz * tLocal;
           if (
             !isFriendly &&
-            p.mesh.position.y >= g.y - 0.2 &&
-            p.mesh.position.y <= g.y + localHitMaxH &&
-            Math.hypot(p.mesh.position.x - g.x, p.mesh.position.z - g.z) < 1.9
+            localHitY >= g.y - 0.2 &&
+            localHitY <= g.y + localHitMaxH &&
+            Math.hypot(localHitX - g.x, localHitZ - g.z) < 1.9
           ) {
             hit = true;
             if (serverNowMs < snapState.immuneUntil) {
@@ -8961,21 +9449,21 @@ export default function HamsterPaintball({
         }
 
         // Ground Turf Impact
-        if (!hit && p.mesh.position.y <= 0.12) {
+        if (!hit && nextY <= 0.12) {
           hit = true;
           sfx.playSplat();
           spawnPaintSplatEffect(
             scene,
             g.splatDecals,
             g.particles,
-            p.mesh.position.x,
+            nextX,
             0.05,
-            p.mesh.position.z,
+            nextZ,
             p.color
           );
         }
 
-        if (hit || p.mesh.position.y < -1) {
+        if (hit || nextY < -1) {
           scene.remove(p.mesh);
           g.projectiles.splice(i, 1);
         }
@@ -9098,7 +9586,48 @@ export default function HamsterPaintball({
         );
       });
 
+      // Throttled 120ms Tactical Mini-Radar Snapshot for Student Players (Active Cans, Teammates & Recent Shot Pings)
+      if (snapState.role === 'player' && snapState.screen === 'game' && now - lastRadarSyncAt >= 120) {
+        lastRadarSyncAt = now;
+        g.radarPings = g.radarPings.filter(ping => ping.expiresAt > now);
+        const myNormTeam = normalizeTeamForMatch(
+          snapState.myTeam,
+          snapState.matchMode,
+          snapState.teamCount
+        );
+        const teammates: Array<{ id: string; x: number; z: number; colorHex: string }> = [];
+        if (snapState.matchMode === 'teams') {
+          g.remotePlayers.forEach((entry, pid) => {
+            const eNorm = normalizeTeamForMatch(
+              entry.data.team,
+              snapState.matchMode,
+              snapState.teamCount
+            );
+            if (eNorm === myNormTeam) {
+              teammates.push({
+                id: pid,
+                x: entry.mesh.position.x,
+                z: entry.mesh.position.z,
+                colorHex: TEAM_CONFIG[eNorm]?.colorHex || '#38bdf8'
+              });
+            }
+          });
+        }
+        const activeCans = g.powerups
+          .filter(pu => pu.active)
+          .map(pu => ({ type: pu.type, x: pu.x, z: pu.z }));
+        setRadarSnapshot({
+          meX: g.x,
+          meZ: g.z,
+          headingDeg: 180 - (g.camYaw * 180) / Math.PI,
+          cans: activeCans,
+          teammates,
+          pings: g.radarPings.map(p => ({ x: p.x, z: p.z, colorHex: p.colorHex }))
+        });
+      }
+
       renderer.render(scene, camera);
+      afterDraw(animate);
     };
 
     animFrameRef.current = requestAnimationFrame(animate);
@@ -9119,9 +9648,50 @@ export default function HamsterPaintball({
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
       window.visualViewport?.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
+      renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
       if (resizeObserver) resizeObserver.disconnect();
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+
+      // Full Three.js GPU Resource & Cache Disposal
+      if (gameRef.current) {
+        gameRef.current.shockwaves.forEach(sw => sw.mat.dispose());
+        gameRef.current.shockwaves = [];
+        gameRef.current.projectiles = [];
+        gameRef.current.particles = [];
+        gameRef.current.splatDecals = [];
+        gameRef.current.remotePlayers.clear();
+      }
+      disposeObject3D(scene);
+      envTarget.dispose();
+      furTextureCacheRef.current.forEach(t => t.dispose());
+      furTextureCacheRef.current.clear();
+      basicColorMatCacheRef.current.forEach(m => m.dispose());
+      basicColorMatCacheRef.current.clear();
+      splatPhysMatCacheRef.current.forEach(m => m.dispose());
+      splatPhysMatCacheRef.current.clear();
+      projCoreMatCacheRef.current.forEach(m => m.dispose());
+      projCoreMatCacheRef.current.clear();
+      projHaloMatCacheRef.current.forEach(m => m.dispose());
+      projHaloMatCacheRef.current.clear();
+      projTailMatCacheRef.current.forEach(m => m.dispose());
+      projTailMatCacheRef.current.clear();
+      sharedProjCoreGeom.dispose();
+      sharedProjHaloGeom.dispose();
+      sharedProjTailGeom.dispose();
+      sharedSplatDiscGeom.dispose();
+      sharedTrailSphereGeom.dispose();
+      sharedSplatSphereGeom.dispose();
+      sharedMuzzleGasGeom.dispose();
+      sharedMuzzleDropGeom.dispose();
+      sharedMuzzleGasMat.dispose();
+      sharedShockwaveRingGeom.dispose();
+      renderer.renderLists?.dispose();
       renderer.dispose();
+      gameRef.current = null;
     };
   }, []);
 
@@ -9139,6 +9709,7 @@ export default function HamsterPaintball({
       ? `[${activeTeam.toUpperCase()}] ${playerName || 'Student'}`
       : playerName || 'Student';
     g.scene.remove(g.localHamster);
+    disposeObject3D(g.localHamster);
     const updatedHamster = buildHighDefHamster(
       selectedSkinIdx,
       localLabel,
@@ -9192,10 +9763,10 @@ export default function HamsterPaintball({
         }
         g.lastShotTime = now;
         sfx.playWrong();
-        setPickupBannerText(
-          `🎯 NO AMMO — CLICK THE QUESTION BOX BELOW FOR +${snap.ballsPerQuestion || 10} PAINTBALLS!`
+        showPickupBanner(
+          `🎯 NO AMMO — CLICK THE QUESTION BOX BELOW FOR +${snap.ballsPerQuestion || 10} PAINTBALLS!`,
+          2600
         );
-        setTimeout(() => setPickupBannerText(null), 2600);
         return;
       }
       setAmmo(a => Math.max(0, a - 1));
@@ -9235,7 +9806,8 @@ export default function HamsterPaintball({
     const gunPitch = -Math.atan2(targetY - (g.y + stanceGunBaseY), Math.max(3.5, aimDist));
 
     // 2. Compute Exact 3D World Position of the Gun Barrel Tip (`muzzleTip`) BEFORE applying kickback!
-    const muzzleWorldPos = new THREE.Vector3(
+    if (!_muzzleWorldVecRef.current) _muzzleWorldVecRef.current = new THREE.Vector3();
+    const muzzleWorldPos = _muzzleWorldVecRef.current.set(
       g.x + Math.sin(bodyAngle) * 1.65,
       g.y + stanceGunBaseY,
       g.z + Math.cos(bodyAngle) * 1.65
@@ -9310,6 +9882,8 @@ export default function HamsterPaintball({
           x: g.x,
           z: g.z,
           angle: shotAngle,
+          vy: Number(computedVy.toFixed(2)),
+          hSpeed,
           paintColor: teamPaint
         });
       } catch {}
@@ -9322,6 +9896,8 @@ export default function HamsterPaintball({
         x: Number(g.x.toFixed(2)),
         z: Number(g.z.toFixed(2)),
         angle: Number(shotAngle.toFixed(2)),
+        vy: Number(computedVy.toFixed(2)),
+        hSpeed,
         paintColor: teamPaint
       };
       lastNetActionRef.current.lastShot = lastShotObj;
@@ -9334,6 +9910,8 @@ export default function HamsterPaintball({
         x: lastShotObj.x,
         z: lastShotObj.z,
         angle: lastShotObj.angle,
+        vy: lastShotObj.vy,
+        hSpeed,
         paintColor: teamPaint,
         ts: getServerNow()
       });
@@ -9342,14 +9920,6 @@ export default function HamsterPaintball({
         lastShot: lastShotObj,
         recentEvents: recentCombatEventsRef.current
       });
-      setDoc(
-        getPlayerDocRef(roomCode, clientIdRef.current),
-        {
-          lastShot: lastShotObj,
-          recentEvents: recentCombatEventsRef.current
-        },
-        { merge: true }
-      ).catch(() => {});
     }
   };
 
@@ -9382,7 +9952,9 @@ export default function HamsterPaintball({
         updatedAt: getServerNow()
       };
       syncPaintballRoomApi(cleanCode, patch);
-      setDoc(getRoomDocRef(cleanCode), patch, { merge: true }).catch(() => {});
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(cleanCode), patch, { merge: true })
+      );
     }
   };
 
@@ -9415,7 +9987,9 @@ export default function HamsterPaintball({
         updatedAt: getServerNow()
       };
       syncPaintballRoomApi(cleanCode, patch);
-      setDoc(getRoomDocRef(cleanCode), patch, { merge: true }).catch(() => {});
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(cleanCode), patch, { merge: true })
+      );
     }
   };
 
@@ -9455,7 +10029,6 @@ export default function HamsterPaintball({
           updatedAt: nowTs
         };
         playerPatches.push({ id: p.id, ...updatePatch });
-        setDoc(getPlayerDocRef(roomCode, p.id), updatePatch, { merge: true }).catch(() => {});
         const nextP: PlayerNetworkState = {
           ...p,
           ...updatePatch
@@ -9481,7 +10054,9 @@ export default function HamsterPaintball({
         updatedAt: nowTs
       };
       syncPaintballRoomApi(cleanCode, immediatePatch, playerPatches);
-      setDoc(getRoomDocRef(cleanCode), immediatePatch, { merge: true }).catch(() => {});
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(cleanCode), immediatePatch, { merge: true })
+      );
     }
 
     if (gameRef.current?.broadcastChannel) {
@@ -9505,9 +10080,11 @@ export default function HamsterPaintball({
     const shuffled = [...roomPlayers].sort(() => Math.random() - 0.5);
     const nowTs = getServerNow();
     const playerPatches: Array<Record<string, any>> = [];
+    const teamAssignments: Record<string, { team: TeamId; x: number; z: number; rotY: number }> = {};
     for (let i = 0; i < shuffled.length; i++) {
       const assigned = teamCycle[i % teamCycle.length];
       const sp = getTeamSpawnPosition(assigned, 'teams', Math.floor(i / teamCycle.length), teamCount);
+      teamAssignments[shuffled[i].id] = { team: assigned, x: sp.x, z: sp.z, rotY: sp.rotY };
       const updatePatch = {
         team: assigned,
         x: sp.x,
@@ -9517,11 +10094,12 @@ export default function HamsterPaintball({
         updatedAt: nowTs
       };
       playerPatches.push({ id: shuffled[i].id, ...updatePatch });
-      const pRef = getPlayerDocRef(roomCode, shuffled[i].id);
-      setDoc(pRef, updatePatch, { merge: true }).catch(() => {});
     }
     if (playerPatches.length > 0 && roomCode) {
-      syncPaintballRoomApi(roomCode, { updatedAt: nowTs }, playerPatches);
+      syncPaintballRoomApi(roomCode, { teamAssignments, updatedAt: nowTs }, playerPatches);
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(roomCode), { teamAssignments, updatedAt: nowTs }, { merge: true })
+      );
     }
     pushLiveEvent(`🔀 Host balanced players evenly across ${teamCycle.length} squads!`, '#38bdf8');
   };
@@ -9549,9 +10127,12 @@ export default function HamsterPaintball({
       roomCode,
       { id: player.id, ...updatePatch },
       { isHostAction: true }
-    );
-    const pRef = getPlayerDocRef(roomCode, player.id);
-    setDoc(pRef, updatePatch, { merge: true }).catch(() => {});
+    ).then(apiRes => {
+      if (!apiRes) {
+        const pRef = getPlayerDocRef(roomCode, player.id);
+        safeFirestoreWrite(() => setDoc(pRef, updatePatch, { merge: true }));
+      }
+    });
     pushLiveEvent(
       `⇄ Host moved ${player.name} to ${TEAM_CONFIG[nextTeam].label}!`,
       TEAM_CONFIG[nextTeam].colorHex
@@ -9569,17 +10150,16 @@ export default function HamsterPaintball({
     setTimeout(() => {
       deletePaintballPlayerApi(roomCode, player.id);
     }, 600);
-    const pRef = getPlayerDocRef(roomCode, player.id);
-    // Mark kicked so the student's client immediately returns to Join screen, then delete doc
-    setDoc(pRef, { kicked: true, updatedAt: Date.now() }, { merge: true })
-      .then(() => {
+    if (!isFirestoreQuotaExhausted()) {
+      const pRef = getPlayerDocRef(roomCode, player.id);
+      safeFirestoreWrite(() =>
+        setDoc(pRef, { kicked: true, updatedAt: Date.now() }, { merge: true })
+      ).then(() => {
         setTimeout(() => {
-          deleteDoc(pRef).catch(() => {});
+          safeFirestoreWrite(() => deleteDoc(pRef));
         }, 600);
-      })
-      .catch(() => {
-        deleteDoc(pRef).catch(() => {});
       });
+    }
 
     if (gameRef.current?.broadcastChannel) {
       try {
@@ -9595,7 +10175,10 @@ export default function HamsterPaintball({
     setRoomPlayers(prev => prev.filter(p => p.id !== player.id));
     if (gameRef.current?.remotePlayers.has(player.id)) {
       const entry = gameRef.current.remotePlayers.get(player.id);
-      if (entry) gameRef.current.scene.remove(entry.mesh);
+      if (entry) {
+        gameRef.current.scene.remove(entry.mesh);
+        disposeObject3D(entry.mesh);
+      }
       gameRef.current.remotePlayers.delete(player.id);
     }
     pushLiveEvent(`🗑️ Host removed ${player.name} from the lobby.`, '#f43f5e');
@@ -9678,11 +10261,6 @@ export default function HamsterPaintball({
           updatedAt: startTs
         };
         playerResetPatches.push({ id: p.id, ...playerResetPatch });
-        setDoc(
-          getPlayerDocRef(roomCode, p.id),
-          playerResetPatch,
-          { merge: true }
-        ).catch(() => {});
       }
       upsertRemotePlayer(nextP);
       return nextP;
@@ -9748,11 +10326,13 @@ export default function HamsterPaintball({
         latestEvent: startEv
       };
       syncPaintballRoomApi(roomCode, startRoomPayload, playerResetPatches);
-      setDoc(
-        getRoomDocRef(roomCode),
-        stripUndefinedFields(startRoomPayload),
-        { merge: true }
-      ).catch(() => {});
+      safeFirestoreWrite(() =>
+        setDoc(
+          getRoomDocRef(roomCode),
+          stripUndefinedFields(startRoomPayload),
+          { merge: true }
+        )
+      );
     }
   };
 
@@ -9780,11 +10360,6 @@ export default function HamsterPaintball({
         updatedAt: getServerNow()
       };
       syncPaintballRoomApi(roomCode, patch);
-      setDoc(
-        getRoomDocRef(roomCode),
-        patch,
-        { merge: true }
-      ).catch(() => {});
     }
   };
 
@@ -9810,11 +10385,9 @@ export default function HamsterPaintball({
           isTimerPaused
         };
         syncPaintballRoomApi(roomCode, timerPatch);
-        setDoc(
-          getRoomDocRef(roomCode),
-          timerPatch,
-          { merge: true }
-        ).catch(() => {});
+        safeFirestoreWrite(() =>
+          setDoc(getRoomDocRef(roomCode), timerPatch, { merge: true })
+        );
       }
       return next;
     });
@@ -9842,11 +10415,9 @@ export default function HamsterPaintball({
           isTimerPaused: nextPaused
         };
         syncPaintballRoomApi(roomCode, timerPatch);
-        setDoc(
-          getRoomDocRef(roomCode),
-          timerPatch,
-          { merge: true }
-        ).catch(() => {});
+        safeFirestoreWrite(() =>
+          setDoc(getRoomDocRef(roomCode), timerPatch, { merge: true })
+        );
       }
       pushLiveEvent(
         nextPaused ? '⏸️ Host paused the Match Timer.' : '▶️ Host resumed the Match Timer!',
@@ -9878,11 +10449,9 @@ export default function HamsterPaintball({
     if (roomCode) {
       const endPatch = { matchStatus: 'results', endedAt: getServerNow() };
       syncPaintballRoomApi(roomCode, endPatch);
-      setDoc(
-        getRoomDocRef(roomCode),
-        endPatch,
-        { merge: true }
-      ).catch(() => {});
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(roomCode), endPatch, { merge: true })
+      );
     }
   };
 
@@ -9935,8 +10504,9 @@ export default function HamsterPaintball({
         const evText = `🎯 ${playerName} answered correctly in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${earnedBalls} Balls • ${nextStreak}x Streak)!`;
         pushLiveEvent(evText, '#a3e635');
         if (roomCode) {
-          setDoc(
-            getRoomDocRef(roomCode),
+          syncPaintballPlayerApi(
+            roomCode,
+            { id: clientIdRef.current },
             {
               latestEvent: {
                 id: `ans-${Date.now()}`,
@@ -9944,9 +10514,8 @@ export default function HamsterPaintball({
                 color: '#a3e635',
                 timestamp: Date.now()
               }
-            },
-            { merge: true }
-          ).catch(() => {});
+            }
+          );
         }
       } else {
         setTriviaFeedback(
@@ -10260,7 +10829,9 @@ export default function HamsterPaintball({
             if (role === 'player' && roomCode) {
               hasJoinedRoomRef.current = false;
               deletePaintballPlayerApi(roomCode, clientIdRef.current);
-              deleteDoc(getPlayerDocRef(roomCode, clientIdRef.current)).catch(() => {});
+              safeFirestoreWrite(() =>
+                deleteDoc(getPlayerDocRef(roomCode, clientIdRef.current))
+              );
             }
             onViewChange('games');
           }}
@@ -10640,7 +11211,7 @@ export default function HamsterPaintball({
               <div className="flex items-center gap-3.5 min-w-0">
                 <HamsterCharacterAvatar
                   skin={selectedHeroSkin}
-                  size={64}
+                  size={74}
                   team={matchMode === 'teams' ? resolvedMyTeam : 'solo'}
                 />
                 <div className="min-w-0">
@@ -10665,8 +11236,8 @@ export default function HamsterPaintball({
                 const isSelected = idx === selectedSkinIdx;
                 const activeClasses =
                   matchMode === 'teams'
-                    ? `${myTeamTheme.borderClass} bg-slate-50 ring-2 ring-slate-900/10`
-                    : 'border-slate-900 bg-slate-50 ring-2 ring-slate-900/15';
+                    ? `${myTeamTheme.borderClass} bg-white ring-2 ring-slate-900/10`
+                    : 'border-slate-900 bg-white ring-2 ring-slate-900/15';
                 const checkBgClass =
                   matchMode === 'teams' ? myTeamTheme.solidBgClass : 'bg-slate-900';
                 return (
@@ -10680,7 +11251,7 @@ export default function HamsterPaintball({
                     className={`py-2.5 px-2 rounded-xl border flex flex-col items-center justify-center transition cursor-pointer relative ${
                       isSelected
                         ? activeClasses
-                        : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
+                        : 'border-slate-200 bg-white hover:bg-slate-50/60 hover:border-slate-300'
                     }`}
                   >
                     {isSelected && (
@@ -10692,7 +11263,7 @@ export default function HamsterPaintball({
                     )}
                     <HamsterCharacterAvatar
                       skin={skin}
-                      size={62}
+                      size={72}
                       team={matchMode === 'teams' ? resolvedMyTeam : 'solo'}
                     />
                     <span className="mt-1.5 font-semibold text-xs text-slate-900 leading-tight text-center truncate w-full">
@@ -10854,15 +11425,20 @@ export default function HamsterPaintball({
                     updatedAt: getServerNow()
                   };
 
-                  syncPaintballPlayerApi(cleanCode, initialPayload);
-                  setDoc(
-                    getPlayerDocRef(cleanCode, clientIdRef.current),
-                    stripUndefinedFields({
-                      ...initialPayload,
-                      lastSeen: serverTimestamp()
-                    }),
-                    { merge: true }
-                  ).catch(() => {});
+                  syncPaintballPlayerApi(cleanCode, initialPayload).then(apiRes => {
+                    if (!apiRes) {
+                      safeFirestoreWrite(() =>
+                        setDoc(
+                          getPlayerDocRef(cleanCode, clientIdRef.current),
+                          stripUndefinedFields({
+                            ...initialPayload,
+                            lastSeen: serverTimestamp()
+                          }),
+                          { merge: true }
+                        )
+                      );
+                    }
+                  });
                 }
 
                 handleForceResyncRoom(cleanCode);
@@ -11378,7 +11954,7 @@ export default function HamsterPaintball({
          ------------------------------------------------------------- */}
       {screen === 'game' && (
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between px-2.5 sm:px-4 pt-12 sm:pt-14 pb-2.5 sm:pb-4 overflow-hidden">
-          {/* SCREEN-EDGE INCOMING DAMAGE PAINT VIGNETTE */}
+          {/* SCREEN-EDGE INCOMING DAMAGE PAINT VIGNETTE & DIRECTIONAL HIT INDICATOR */}
           {damageVignetteColor && (
             <div
               className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-200"
@@ -11386,6 +11962,16 @@ export default function HamsterPaintball({
                 background: `radial-gradient(circle, transparent 54%, ${damageVignetteColor} 100%)`
               }}
             />
+          )}
+          {damageArcDeg !== null && role === 'player' && (
+            <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
+              <div
+                className="relative w-52 h-52 sm:w-64 sm:h-64"
+                style={{ transform: `rotate(${damageArcDeg}deg)` }}
+              >
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-3 rounded-full bg-rose-500 shadow-[0_0_16px_rgba(244,63,94,0.9)] border border-white/80" />
+              </div>
+            </div>
           )}
 
           {/* RETICLE HIT-MARKER FLASH (✕) */}
@@ -11729,8 +12315,72 @@ export default function HamsterPaintball({
               )}
             </div>
 
-            {/* TOP-RIGHT HOST ACTIONS */}
+            {/* TOP-RIGHT: STUDENT TACTICAL MINI-RADAR OR HOST ACTIONS */}
             <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+              {role === 'player' && radarSnapshot && (
+                <div
+                  className="pointer-events-none relative w-24 h-20 sm:w-32 sm:h-24 rounded-xl bg-slate-900/90 border border-slate-700 shadow-md overflow-hidden"
+                  title="Tactical Arena Radar"
+                >
+                  {/* Subtle arena center line & ring */}
+                  <div className="absolute inset-y-1.5 left-1/2 w-px bg-white/10" />
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full border border-white/10" />
+                  {/* Active Health & Defence Cans */}
+                  {radarSnapshot.cans.map((c, idx) => (
+                    <span
+                      key={`can-${idx}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-xs border border-slate-950 ${
+                        c.type === 'health' ? 'bg-emerald-400' : 'bg-sky-400'
+                      }`}
+                      style={{
+                        left: `${Math.max(8, Math.min(92, ((c.x + ARENA_HALF_W) / (ARENA_HALF_W * 2)) * 100))}%`,
+                        top: `${Math.max(10, Math.min(90, ((c.z + ARENA_HALF_D) / (ARENA_HALF_D * 2)) * 100))}%`
+                      }}
+                    />
+                  ))}
+                  {/* Teammates */}
+                  {radarSnapshot.teammates.map(tm => (
+                    <span
+                      key={tm.id}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-white"
+                      style={{
+                        backgroundColor: tm.colorHex,
+                        left: `${Math.max(6, Math.min(94, ((tm.x + ARENA_HALF_W) / (ARENA_HALF_W * 2)) * 100))}%`,
+                        top: `${Math.max(8, Math.min(92, ((tm.z + ARENA_HALF_D) / (ARENA_HALF_D * 2)) * 100))}%`
+                      }}
+                    />
+                  ))}
+                  {/* Recent Enemy Gunshot Pings */}
+                  {radarSnapshot.pings.map((pg, idx) => (
+                    <span
+                      key={`ping-${idx}`}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border border-white/90 opacity-90"
+                      style={{
+                        backgroundColor: pg.colorHex,
+                        left: `${Math.max(6, Math.min(94, ((pg.x + ARENA_HALF_W) / (ARENA_HALF_W * 2)) * 100))}%`,
+                        top: `${Math.max(8, Math.min(92, ((pg.z + ARENA_HALF_D) / (ARENA_HALF_D * 2)) * 100))}%`
+                      }}
+                    />
+                  ))}
+                  {/* Local Player Directional Marker */}
+                  <div
+                    className="absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{
+                      left: `${Math.max(6, Math.min(94, ((radarSnapshot.meX + ARENA_HALF_W) / (ARENA_HALF_W * 2)) * 100))}%`,
+                      top: `${Math.max(8, Math.min(92, ((radarSnapshot.meZ + ARENA_HALF_D) / (ARENA_HALF_D * 2)) * 100))}%`,
+                      transform: `translate(-50%, -50%) rotate(${radarSnapshot.headingDeg}deg)`
+                    }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" className="drop-shadow-xs">
+                      <polygon points="5,0 9,9 5,7 1,9" fill="#facc15" stroke="#0f172a" strokeWidth="1" />
+                    </svg>
+                  </div>
+                  <div className="absolute bottom-0.5 right-1 text-[8px] font-bold tracking-wider text-slate-400 uppercase">
+                    RADAR
+                  </div>
+                </div>
+              )}
+
               {role === 'host' && (
                 <>
                   <button
@@ -12309,6 +12959,21 @@ export default function HamsterPaintball({
                         ))}
                       </div>
                       <div className="flex items-center gap-1">
+                        {roomPlayers.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHostCameraMode('track_one');
+                              setHostFollowIndex(
+                                prev => (prev - 1 + roomPlayers.length) % roomPlayers.length
+                              );
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer transition"
+                            title="Previous Player (Left Arrow)"
+                          >
+                            ◀
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setHostCameraMode('track_one')}
@@ -12320,6 +12985,19 @@ export default function HamsterPaintball({
                         >
                           Focus
                         </button>
+                        {roomPlayers.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHostCameraMode('track_one');
+                              setHostFollowIndex(prev => (prev + 1) % roomPlayers.length);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer transition"
+                            title="Next Player (Right Arrow)"
+                          >
+                            ▶
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setHostCameraMode('auto_track')}
@@ -12460,7 +13138,7 @@ export default function HamsterPaintball({
                               ? 'grid-cols-2 max-w-md'
                               : rankedTeams.length === 3
                               ? 'grid-cols-1 sm:grid-cols-3 max-w-2xl'
-                              : 'grid-cols-2 sm:grid-cols-3 max-w-2xl'
+                              : 'grid-cols-2 sm:grid-cols-4 max-w-3xl'
                           }`}
                         >
                           {rankedTeams.map(tId => {
@@ -12699,7 +13377,9 @@ export default function HamsterPaintball({
                       if (roomCode) {
                         const lobbyPatch = { matchStatus: 'lobby', updatedAt: getServerNow() };
                         syncPaintballRoomApi(roomCode, lobbyPatch);
-                        setDoc(getRoomDocRef(roomCode), lobbyPatch, { merge: true }).catch(() => {});
+                        safeFirestoreWrite(() =>
+                          setDoc(getRoomDocRef(roomCode), lobbyPatch, { merge: true })
+                        );
                       }
                     } else {
                       setScreen('game');

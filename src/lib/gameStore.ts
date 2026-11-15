@@ -466,19 +466,24 @@ export async function createUnifiedFolder(
 
   if (db && userId) {
     try {
-      const { collection, addDoc } = await import('firebase/firestore');
-      const docRef = await withTimeoutPromise(
-        addDoc(collection(db, 'gameFolders'), {
-          name: cleanName,
-          parentId: parentId || null,
-          userId,
-          createdAt,
-        }),
-        3000,
-        null as any
-      );
-      if (docRef?.id) {
-        folderId = docRef.id;
+      const { isFirestoreQuotaExhausted, safeFirestoreWrite } = await import('./firebase');
+      if (!isFirestoreQuotaExhausted()) {
+        const { collection, addDoc } = await import('firebase/firestore');
+        const writeRes = await withTimeoutPromise(
+          safeFirestoreWrite(() =>
+            addDoc(collection(db, 'gameFolders'), {
+              name: cleanName,
+              parentId: parentId || null,
+              userId,
+              createdAt,
+            })
+          ),
+          3000,
+          { ok: false, quotaExhausted: false } as any
+        );
+        if (writeRes?.ok && writeRes?.result?.id) {
+          folderId = writeRes.result.id;
+        }
       }
     } catch {}
   }

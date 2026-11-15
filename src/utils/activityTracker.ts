@@ -1,5 +1,5 @@
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, safeFirestoreWrite } from '../lib/firebase';
 
 export type ActivityAction = 
   | 'login'
@@ -57,11 +57,13 @@ export async function logUserActivity(event: Omit<UserActivityEvent, 'timestamp'
     } catch {}
 
     const col = collection(db, 'userActivities');
-    await addDoc(col, {
-      ...event,
-      timestamp: event.timestamp || serverTimestamp(),
-      createdAtIso: new Date().toISOString()
-    });
+    await safeFirestoreWrite(() =>
+      addDoc(col, {
+        ...event,
+        timestamp: event.timestamp || serverTimestamp(),
+        createdAtIso: new Date().toISOString()
+      })
+    );
   } catch (err) {
     // Non-blocking warning
     console.warn('Activity logging notice:', err);

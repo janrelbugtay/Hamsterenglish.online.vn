@@ -1,5 +1,5 @@
 import { collection, doc, getDocs, setDoc, deleteDoc, query, where, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, safeFirestoreWrite, isFirestoreQuotaExhausted } from '../lib/firebase';
 import { STARTERS_MONSTER_ART_DECK, STARTERS_MONSTER_ART_DECK_ID } from '../components/StartersMonsterArtStudio';
 
 export const PRODUCTION_BASE_URL = 'https://hamsterenglish.online';
@@ -1014,11 +1014,9 @@ export async function deleteHomeworkSubmission(
     body: JSON.stringify({ submissionId }),
   }).catch(() => {});
 
-  try {
-    await deleteDoc(doc(db, 'homework_submissions', submissionId));
-  } catch (e) {
-    console.warn('Notice: submission deleted locally', e);
-  }
+  await safeFirestoreWrite(() =>
+    deleteDoc(doc(db, 'homework_submissions', submissionId))
+  );
 }
 
 // Remove a player (student) completely from a homework leaderboard (deletes all attempts by that player on that homework PIN)
@@ -1054,27 +1052,31 @@ export async function removePlayerFromHomework(
     }),
   }).catch(() => {});
 
-  try {
-    const deletePromises: Promise<void>[] = [];
-    if (submission.id) {
-      deletePromises.push(deleteDoc(doc(db, 'homework_submissions', submission.id)));
-    }
-    if (targetPin) {
-      const q = query(collection(db, 'homework_submissions'), where('pinCode', '==', targetPin));
-      const snap = await getDocs(q);
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as HomeworkSubmission;
-        if (
-          docSnap.id === submission.id ||
-          (data?.studentName && data.studentName.trim().toLowerCase() === targetStudent)
-        ) {
-          deletePromises.push(deleteDoc(doc(db, 'homework_submissions', docSnap.id)));
-        }
-      });
-    }
-    await Promise.allSettled(deletePromises);
-  } catch (e) {
-    console.warn('Notice: player removed locally', e);
+  if (!isFirestoreQuotaExhausted()) {
+    try {
+      const deletePromises: Promise<any>[] = [];
+      if (submission.id) {
+        deletePromises.push(
+          safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_submissions', submission.id)))
+        );
+      }
+      if (targetPin) {
+        const q = query(collection(db, 'homework_submissions'), where('pinCode', '==', targetPin));
+        const snap = await getDocs(q);
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as HomeworkSubmission;
+          if (
+            docSnap.id === submission.id ||
+            (data?.studentName && data.studentName.trim().toLowerCase() === targetStudent)
+          ) {
+            deletePromises.push(
+              safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_submissions', docSnap.id)))
+            );
+          }
+        });
+      }
+      await Promise.allSettled(deletePromises);
+    } catch (e) {}
   }
 }
 
@@ -1209,7 +1211,7 @@ export async function fetchAllHomeworkAssignments(
         if (ownerUid && ownerUid !== userId) return;
 
         if (isFakeYogaPresetAssignment(data)) {
-          deleteDoc(doc(db, 'homework_assignments', docSnap.id)).catch(() => {});
+          safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', docSnap.id)));
           return;
         }
 
@@ -1255,20 +1257,30 @@ export async function fetchAllHomeworkAssignments(
         }
       });
 
-      // Best-effort background push of active assignments not yet in Firestore (only when cloud read succeeded)
-      for (const activeItem of Array.from(activeByPin.values())) {
-        const pin = String(activeItem.pinCode || '');
-        if (pin && !activeItem.isDeleted && !allCloudPins.has(pin) && !deletedKeys.has(pin)) {
-          const cleanLoc = sanitizeForFirestore(
-            ensureAssignmentHasQuestions({
-              ...activeItem,
-              userId: activeItem.userId || userId,
-              createdByUid: activeItem.createdByUid || userId,
-            })
-          );
-          setDoc(doc(db, 'homework_assignments', cleanLoc.id), cleanLoc, { merge: true }).catch(() => {});
-          setDoc(doc(db, 'homework_assignments', cleanLoc.pinCode), cleanLoc, { merge: true }).catch(() => {});
-          setDoc(doc(db, 'homework_assignments', `hw_${cleanLoc.pinCode}`), cleanLoc, { merge: true }).catch(() => {});
+      // Best-effort background push of active assignments not yet in Firestore (only when cloud read succeeded & quota available)
+      if (!isFirestoreQuotaExhausted()) {
+        for (const activeItem of Array.from(activeByPin.values())) {
+          if (isFirestoreQuotaExhausted()) break;
+          const pin = String(activeItem.pinCode || '');
+          if (pin && !activeItem.isDeleted && !allCloudPins.has(pin) && !deletedKeys.has(pin)) {
+            const cleanLoc = sanitizeForFirestore(
+              ensureAssignmentHasQuestions({
+                ...activeItem,
+                userId: activeItem.userId || userId,
+                createdByUid: activeItem.createdByUid || userId,
+              })
+            );
+            const r1 = await safeFirestoreWrite(() =>
+              setDoc(doc(db, 'homework_assignments', cleanLoc.id), cleanLoc, { merge: true })
+            );
+            if (r1.quotaExhausted) break;
+            safeFirestoreWrite(() =>
+              setDoc(doc(db, 'homework_assignments', cleanLoc.pinCode), cleanLoc, { merge: true })
+            );
+            safeFirestoreWrite(() =>
+              setDoc(doc(db, 'homework_assignments', `hw_${cleanLoc.pinCode}`), cleanLoc, { merge: true })
+            );
+          }
         }
       }
     }
@@ -1434,15 +1446,23 @@ export async function saveHomeworkAssignment(
   }
 
   // Fire-and-forget Firestore sync so quota delays never block creating/restoring homework
-  Promise.allSettled([
-    setDoc(doc(db, 'homework_assignments', readyAssignment.id), readyAssignment, { merge: true }),
-    ...(readyAssignment.pinCode
-      ? [
-          setDoc(doc(db, 'homework_assignments', readyAssignment.pinCode), readyAssignment, { merge: true }),
-          setDoc(doc(db, 'homework_assignments', `hw_${readyAssignment.pinCode}`), readyAssignment, { merge: true }),
-        ]
-      : []),
-  ]).catch(() => {});
+  if (!isFirestoreQuotaExhausted()) {
+    Promise.allSettled([
+      safeFirestoreWrite(() =>
+        setDoc(doc(db, 'homework_assignments', readyAssignment.id), readyAssignment, { merge: true })
+      ),
+      ...(readyAssignment.pinCode
+        ? [
+            safeFirestoreWrite(() =>
+              setDoc(doc(db, 'homework_assignments', readyAssignment.pinCode), readyAssignment, { merge: true })
+            ),
+            safeFirestoreWrite(() =>
+              setDoc(doc(db, 'homework_assignments', `hw_${readyAssignment.pinCode}`), readyAssignment, { merge: true })
+            ),
+          ]
+        : []),
+    ]).catch(() => {});
+  }
 
   return readyAssignment;
 }
@@ -1510,24 +1530,24 @@ export async function deleteHomeworkAssignment(
     console.warn('Server homework delete notice:', err);
   }
 
-  try {
+  if (!isFirestoreQuotaExhausted()) {
     if (target) {
       const cleanTrash = sanitizeForFirestore({
         ...target,
         isDeleted: true,
         deletedAt: Date.now(),
       });
-      await setDoc(doc(db, 'homework_assignments', targetId), cleanTrash, { merge: true });
+      await safeFirestoreWrite(() =>
+        setDoc(doc(db, 'homework_assignments', targetId), cleanTrash, { merge: true })
+      );
     }
     if (targetPin) {
       await Promise.allSettled([
-        deleteDoc(doc(db, 'homework_assignments', targetPin)),
-        deleteDoc(doc(db, 'homework_assignments', `hw_${targetPin}`)),
-        deleteDoc(doc(db, 'homework_assignments', `hw-${targetPin}`)),
+        safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', targetPin))),
+        safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', `hw_${targetPin}`))),
+        safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', `hw-${targetPin}`))),
       ]);
     }
-  } catch (e) {
-    console.warn('Notice: assignment moved to trash locally & on server', e);
   }
 }
 
@@ -1613,18 +1633,16 @@ export async function permanentlyDeleteHomeworkAssignment(
     console.warn('Server permanent delete notice:', err);
   }
 
-  try {
-    const deletePromises: Promise<void>[] = [
-      deleteDoc(doc(db, 'homework_assignments', assignmentId)),
+  if (!isFirestoreQuotaExhausted()) {
+    const deletePromises: Promise<any>[] = [
+      safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', assignmentId))),
     ];
     if (pinCode) {
-      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', pinCode)));
-      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw_${pinCode}`)));
-      deletePromises.push(deleteDoc(doc(db, 'homework_assignments', `hw-${pinCode}`)));
+      deletePromises.push(safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', pinCode))));
+      deletePromises.push(safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', `hw_${pinCode}`))));
+      deletePromises.push(safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_assignments', `hw-${pinCode}`))));
     }
     await Promise.allSettled(deletePromises);
-  } catch (e) {
-    console.warn('Notice: assignment permanently deleted from trash', e);
   }
 }
 
@@ -1666,7 +1684,7 @@ export async function fetchHomeworkSubmissions(
           data.assignmentTitle === 'Yoga Vocabulary' &&
           data.questionBreakdown?.[0]?.questionText?.includes('Tree Pose')
         ) {
-          deleteDoc(doc(db, 'homework_submissions', docSnap.id)).catch(() => {});
+          safeFirestoreWrite(() => deleteDoc(doc(db, 'homework_submissions', docSnap.id)));
           return;
         }
         byId.set(docSnap.id, { ...data, id: docSnap.id });
@@ -1734,13 +1752,11 @@ export async function recordHomeworkSubmission(
     console.warn('Server homework submission notice:', err);
   }
 
-  try {
-    await setDoc(doc(db, 'homework_submissions', cleanSubmission.id), cleanSubmission, {
+  await safeFirestoreWrite(() =>
+    setDoc(doc(db, 'homework_submissions', cleanSubmission.id), cleanSubmission, {
       merge: true,
-    });
-  } catch (e) {
-    console.warn('Notice: submission saved to server & locally, firestore sync will retry', e);
-  }
+    })
+  );
 
   return cleanSubmission;
 }

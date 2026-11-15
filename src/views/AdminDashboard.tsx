@@ -8,7 +8,7 @@ import {
   Flame, ExternalLink, ChevronRight, Info, Lock
 } from 'lucide-react';
 import { collection, onSnapshot, getDocs, deleteDoc, doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from '../lib/firebase';
+import { db, safeFirestoreWrite } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { examineUserThreat, categorizeThreats, SUPER_ADMIN_EMAIL, ThreatReport } from '../utils/threatDetector';
 import { UserActivityModal } from '../components/UserActivityModal';
@@ -670,7 +670,7 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
     setIsDeleting(true);
     try {
       markUserDeleted(uid);
-      await deleteDoc(doc(db, 'users', uid)).catch(() => {});
+      await safeFirestoreWrite(() => deleteDoc(doc(db, 'users', uid)));
       try {
         const cached = JSON.parse(localStorage.getItem('hamster_cached_admin_users_v2') || '[]');
         localStorage.setItem(
@@ -708,7 +708,7 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
           continue; // Protected
         }
         markUserDeleted(uid);
-        await deleteDoc(doc(db, 'users', uid)).catch(() => {});
+        await safeFirestoreWrite(() => deleteDoc(doc(db, 'users', uid)));
         deletedIds.push(uid);
         deletedCount++;
       }
@@ -1577,14 +1577,16 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       if (currentUser) {
         try {
           const userRef = doc(db, 'users', currentUser.uid);
-          await setDoc(userRef, {
-            uid: currentUser.uid,
-            email: currentUser.email || 'Guest',
-            displayName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
-            photoURL: currentUser.photoURL || null,
-            isAnonymous: currentUser.isAnonymous,
-            lastLoginAt: serverTimestamp(),
-          }, { merge: true });
+          await safeFirestoreWrite(() =>
+            setDoc(userRef, {
+              uid: currentUser.uid,
+              email: currentUser.email || 'Guest',
+              displayName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
+              photoURL: currentUser.photoURL || null,
+              isAnonymous: currentUser.isAnonymous,
+              lastLoginAt: serverTimestamp(),
+            }, { merge: true })
+          );
         } catch (profileErr: any) {
           console.warn("Notice updating admin profile in sync:", profileErr?.message || profileErr);
         }
@@ -1847,9 +1849,11 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
         window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: updated }));
       } catch (e) {}
 
-      await setDoc(doc(db, 'settings', 'general'), { 
-        publishedGamesV2: updated
-      }, { merge: true });
+      await safeFirestoreWrite(() =>
+        setDoc(doc(db, 'settings', 'general'), { 
+          publishedGamesV2: updated
+        }, { merge: true })
+      );
     } catch (error) {
       console.error('Error toggling game status', error);
     }
@@ -1881,10 +1885,12 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
         window.dispatchEvent(new CustomEvent('publishedGamesChanged', { detail: updated }));
       } catch (e) {}
 
-      await setDoc(
-        doc(db, 'settings', 'general'),
-        { publishedGamesV2: updated },
-        { merge: true }
+      await safeFirestoreWrite(() =>
+        setDoc(
+          doc(db, 'settings', 'general'),
+          { publishedGamesV2: updated },
+          { merge: true }
+        )
       );
       setSyncMessage(publishState ? 'All 16 Studio apps published!' : 'All Studio apps hidden from non-admins.');
       setTimeout(() => setSyncMessage(null), 4000);

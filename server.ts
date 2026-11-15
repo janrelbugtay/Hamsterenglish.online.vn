@@ -305,6 +305,69 @@ async function startServer() {
     return writeQueue;
   }
 
+  // Shared cross-tab Firestore quota circuit-breaker
+  const QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
+  const getPacificDayKey = () => {
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Los_Angeles",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+    } catch {
+      return new Date().toISOString().slice(0, 10);
+    }
+  };
+  let firestoreQuotaState: { exhaustedAt: number; ptDay: string } | null = null;
+
+  app.get("/api/firestore-quota-status", (_req, res) => {
+    const now = Date.now();
+    const todayPt = getPacificDayKey();
+    if (
+      firestoreQuotaState &&
+      firestoreQuotaState.ptDay === todayPt &&
+      now - firestoreQuotaState.exhaustedAt < QUOTA_COOLDOWN_MS
+    ) {
+      return res.json({
+        exhausted: true,
+        exhaustedAt: firestoreQuotaState.exhaustedAt,
+        ptDay: firestoreQuotaState.ptDay,
+      });
+    }
+    firestoreQuotaState = null;
+    return res.json({ exhausted: false, ptDay: todayPt });
+  });
+
+  app.post("/api/firestore-quota-status", (req, res) => {
+    const exhausted = req.body?.exhausted !== false;
+    const todayPt = getPacificDayKey();
+    if (exhausted) {
+      firestoreQuotaState = { exhaustedAt: Date.now(), ptDay: todayPt };
+    } else {
+      firestoreQuotaState = null;
+    }
+    return res.json({
+      exhausted: Boolean(firestoreQuotaState),
+      ptDay: todayPt,
+    });
+  });
+
+  app.post("/api/platform-cache/visit", async (_req, res) => {
+    try {
+      const existing = await readPlatformCache();
+      const nextVisits = Math.max(Number(existing.pageVisits) || 558, 558) + 1;
+      await writePlatformCache({
+        ...existing,
+        pageVisits: nextVisits,
+        updatedAt: Date.now(),
+      });
+      res.json({ success: true, pageVisits: nextVisits });
+    } catch (err: any) {
+      res.json({ success: false, pageVisits: 558 });
+    }
+  });
+
   app.get("/api/platform-cache", async (_req, res) => {
     try {
       const data = await readPlatformCache();

@@ -1,4 +1,10 @@
 import { getSavedGames, saveGameRecord, deleteGameRecord, mergeUserFolders } from '../lib/gameStore';
+import {
+  isFirestoreQuotaError,
+  isFirestoreQuotaExhausted,
+  markFirestoreQuotaExhausted,
+  safeFirestoreWrite,
+} from '../lib/firebase';
 import { SUPER_ADMIN_EMAIL } from './threatDetector';
 import { UserActivityEvent, logUserActivity } from './activityTracker';
 
@@ -1667,54 +1673,67 @@ export async function persistUserGameToCloudAndCache(
   let cloudSynced = false;
   let cloudError: string | undefined;
   if (user && db) {
-    const firestoreDocData = { ...cleanPayload };
-    delete firestoreDocData.id;
-    const approxBytes = JSON.stringify(firestoreDocData).length;
-    const timeoutMs = options?.timeoutMs ?? 2500;
-    const docPath = `mysteryBoxGames/${canonicalId}`;
-
-    if (approxBytes > 950000) {
-      cloudError = 'Game exceeds 1MB Firestore limit (saved safely on server & locally).';
+    if (isFirestoreQuotaExhausted()) {
+      cloudError = 'Cloud write quota reached today (saved on server & locally).';
     } else {
-      const targetRef = doc(db, 'mysteryBoxGames', canonicalId);
-      if (isOwnExistingGame) {
-        const updateRes = await withSaveTimeout(updateDoc(targetRef, firestoreDocData), timeoutMs);
-        if (updateRes.ok) {
-          cloudSynced = true;
-        } else if (!updateRes.timedOut) {
-          const errCode = updateRes.error?.code;
-          if (errCode === 'not-found' || errCode === 'permission-denied') {
-            const setRes = await withSaveTimeout(
-              setDoc(targetRef, firestoreDocData, { merge: true }),
-              timeoutMs
-            );
-            if (setRes.ok) {
-              cloudSynced = true;
+      const firestoreDocData = { ...cleanPayload };
+      delete firestoreDocData.id;
+      const approxBytes = JSON.stringify(firestoreDocData).length;
+      const timeoutMs = options?.timeoutMs ?? 2500;
+      const docPath = `mysteryBoxGames/${canonicalId}`;
+
+      if (approxBytes > 950000) {
+        cloudError = 'Game exceeds 1MB Firestore limit (saved safely on server & locally).';
+      } else {
+        const targetRef = doc(db, 'mysteryBoxGames', canonicalId);
+        if (isOwnExistingGame) {
+          const updateRes = await withSaveTimeout(updateDoc(targetRef, firestoreDocData), timeoutMs);
+          if (updateRes.ok) {
+            cloudSynced = true;
+          } else if (!updateRes.timedOut) {
+            if (isFirestoreQuotaError(updateRes.error)) {
+              markFirestoreQuotaExhausted(updateRes.error);
+              cloudError = 'Cloud write quota reached today (saved on server & locally).';
             } else {
-              if (!setRes.timedOut && setRes.error?.code === 'permission-denied') {
-                logFirestoreError(setRes.error, FirestoreOperationType.WRITE, docPath, user);
+              const errCode = updateRes.error?.code;
+              if (errCode === 'not-found' || errCode === 'permission-denied') {
+                const setRes = await withSaveTimeout(
+                  setDoc(targetRef, firestoreDocData, { merge: true }),
+                  timeoutMs
+                );
+                if (setRes.ok) {
+                  cloudSynced = true;
+                } else {
+                  if (!setRes.timedOut && isFirestoreQuotaError(setRes.error)) {
+                    markFirestoreQuotaExhausted(setRes.error);
+                  } else if (!setRes.timedOut && setRes.error?.code === 'permission-denied') {
+                    logFirestoreError(setRes.error, FirestoreOperationType.WRITE, docPath, user);
+                  }
+                  cloudError = setRes.timedOut
+                    ? 'Cloud sync timed out (saved on server & locally).'
+                    : setRes.error?.message || 'Cloud sync unavailable';
+                }
+              } else {
+                cloudError = updateRes.error?.message || 'Cloud sync unavailable';
               }
-              cloudError = setRes.timedOut
-                ? 'Cloud sync timed out (saved on server & locally).'
-                : setRes.error?.message || 'Cloud sync unavailable';
             }
           } else {
-            cloudError = updateRes.error?.message || 'Cloud sync unavailable';
+            cloudError = 'Cloud sync timed out (saved on server & locally).';
           }
         } else {
-          cloudError = 'Cloud sync timed out (saved on server & locally).';
-        }
-      } else {
-        const setRes = await withSaveTimeout(setDoc(targetRef, firestoreDocData), timeoutMs);
-        if (setRes.ok) {
-          cloudSynced = true;
-        } else {
-          if (!setRes.timedOut && setRes.error?.code === 'permission-denied') {
-            logFirestoreError(setRes.error, FirestoreOperationType.CREATE, docPath, user);
+          const setRes = await withSaveTimeout(setDoc(targetRef, firestoreDocData), timeoutMs);
+          if (setRes.ok) {
+            cloudSynced = true;
+          } else {
+            if (!setRes.timedOut && isFirestoreQuotaError(setRes.error)) {
+              markFirestoreQuotaExhausted(setRes.error);
+            } else if (!setRes.timedOut && setRes.error?.code === 'permission-denied') {
+              logFirestoreError(setRes.error, FirestoreOperationType.CREATE, docPath, user);
+            }
+            cloudError = setRes.timedOut
+              ? 'Cloud sync timed out (saved on server & locally).'
+              : setRes.error?.message || 'Cloud sync unavailable';
           }
-          cloudError = setRes.timedOut
-            ? 'Cloud sync timed out (saved on server & locally).'
-            : setRes.error?.message || 'Cloud sync unavailable';
         }
       }
     }
@@ -1763,12 +1782,22 @@ export async function syncLocalComputerGamesForUser(currentUser: any, db?: any):
       }),
     }).catch(() => {});
 
-    // Also sync local-only games to Firestore `mysteryBoxGames` if db is provided
-    if (db) {
+    // Also sync local-only games to Firestore `mysteryBoxGames` only if not already synced at this updatedAt
+    if (db && !isFirestoreQuotaExhausted()) {
       try {
+        const syncedKey = `hamster_cloud_synced_local_${currentUser.uid}`;
+        let syncedMap: Record<string, number> = {};
+        try {
+          syncedMap = JSON.parse(localStorage.getItem(syncedKey) || '{}') || {};
+        } catch {}
+
         const { doc, setDoc } = await import('firebase/firestore');
+        let changedMap = false;
         for (const g of ownedLocalGames) {
+          if (isFirestoreQuotaExhausted()) break;
           const gid = String(g.id || '');
+          const gTs = Number(g.updatedAt || g.createdAt || 1);
+          if (syncedMap[gid] && syncedMap[gid] >= gTs) continue;
           if (gid && !isSyntheticOrSampleGame(gid) && isLocalOnlyGameId(gid)) {
             const cleanPayload = JSON.parse(
               JSON.stringify({
@@ -1783,8 +1812,20 @@ export async function syncLocalComputerGamesForUser(currentUser: any, db?: any):
                 savedOnComputer: true,
               })
             );
-            await setDoc(doc(db, 'mysteryBoxGames', gid), cleanPayload, { merge: true }).catch(() => {});
+            const res = await safeFirestoreWrite(() =>
+              setDoc(doc(db, 'mysteryBoxGames', gid), cleanPayload, { merge: true })
+            );
+            if (res.quotaExhausted) break;
+            if (res.ok) {
+              syncedMap[gid] = gTs;
+              changedMap = true;
+            }
           }
+        }
+        if (changedMap) {
+          try {
+            localStorage.setItem(syncedKey, JSON.stringify(syncedMap));
+          } catch {}
         }
       } catch {}
     }
@@ -1887,22 +1928,27 @@ export async function unpublishCommunityGame(
 
   // 4. Update Firestore with bounded timeout & structured error logging
   let cloudSynced = false;
-  if (db && targetId && !isSyntheticOrSampleGame(targetId)) {
+  if (db && targetId && !isSyntheticOrSampleGame(targetId) && !isFirestoreQuotaExhausted()) {
     try {
       const { doc, updateDoc } = await import('firebase/firestore');
       const docPath = `mysteryBoxGames/${targetId}`;
       const res = await withSaveTimeout(
-        updateDoc(doc(db, 'mysteryBoxGames', targetId), {
-          isPublic: false,
-          publishedAt: null,
-          updatedAt: now,
-        }),
+        safeFirestoreWrite(() =>
+          updateDoc(doc(db, 'mysteryBoxGames', targetId), {
+            isPublic: false,
+            publishedAt: null,
+            updatedAt: now,
+          })
+        ),
         2500
       );
-      if (res.ok) {
+      if (res.ok && res.value?.ok) {
         cloudSynced = true;
-      } else if (!res.timedOut && res.error?.code === 'permission-denied') {
-        logFirestoreError(res.error, FirestoreOperationType.UPDATE, docPath, user);
+      } else {
+        const writeErr: any = res.error || res.value?.error;
+        if (!res.timedOut && writeErr?.code === 'permission-denied') {
+          logFirestoreError(writeErr, FirestoreOperationType.UPDATE, docPath, user);
+        }
       }
     } catch {}
   }
