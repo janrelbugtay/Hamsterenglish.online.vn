@@ -5113,7 +5113,7 @@ class ThreeManager {
         requestAnimationFrame(evasionLoop);
 
         // Determine how many players IT must catch this round
-        const catchCount = Math.max(1, Math.min(others.length - 1, (roundData.eliminated || []).filter((n: string) => n !== itName).length || 1));
+        const catchCount = Math.max(1, Math.min(others.length, (roundData.eliminated || []).filter((n: string) => n !== itName).length || 1));
         const caughtList: string[] = [];
 
         const totalDuration = this.tagTimer || 15;
@@ -5462,7 +5462,7 @@ class ThreeManager {
         const isPicker = (roundData.pattern !== 'survival' && Array.isArray(roundData.eliminated));
         const activeParticipants = cryptoShuffle<string>([...roundData.activePlayers]);
         const totalToEliminate = isPicker
-            ? Math.min(activeParticipants.length - 1, Math.max(1, (roundData.eliminated || []).length))
+            ? Math.min(activeParticipants.length, Math.max(1, (roundData.eliminated || []).length))
             : (activeParticipants.length > 6 ? 2 : 1);
 
         const safePlayers = new Set<string>();
@@ -5499,10 +5499,11 @@ class ThreeManager {
             }
         };
 
-        let roundSecondsLeft = (this.tagTimer >= 45 || this.tagTimer === 60) ? 60 : 30;
+        let roundSecondsLeft = Math.max(5, Math.min(120, Math.round(this.tagTimer || 30)));
         this.tagTimer = roundSecondsLeft;
         const totalDuration = roundSecondsLeft;
-        const isThirtySec = (totalDuration === 30);
+        const effectiveRunSeconds = Math.max(4.0, totalDuration * 0.56);
+        const baseCourtSpeed = 45.0 / effectiveRunSeconds;
 
         this.onStateChange({ 
             chaseSecondsLeft: roundSecondsLeft,
@@ -5513,9 +5514,6 @@ class ThreeManager {
         // Helper to move a player who crossed Z <= -18 into the Left/Right Safe Wings
         const markRunnerSafeInWing = (name: string, char: any) => {
             if (!char || char.userData.isSafe || !char.userData.isAlive) return;
-            if (isPicker && targetVictims.has(name)) {
-                return; // Designated picker target must stay on court to be eliminated by the doll
-            }
             char.userData.isSafe = true;
             char.userData.isMoving = false;
             char.userData.isFallen = false;
@@ -5638,17 +5636,16 @@ class ThreeManager {
                 char.userData.runTimeSeed = cryptoRandom() * 10;
                 char.userData.crawlTime = 0;
                 char.userData.tripCooldownUntil = 0;
-                char.userData.baseStepSpeed = isThirtySec
-                    ? (2.65 + cryptoRandom() * 0.55)
-                    : (1.42 + cryptoRandom() * 0.34);
-                char.userData.cycleTempo = 0.88 + cryptoRandom() * 0.32;
+                char.userData.baseStepSpeed = baseCourtSpeed * (0.86 + cryptoRandom() * 0.28);
+                char.userData.cycleTempo = 0.88 + cryptoRandom() * 0.30;
                 char.userData.weaveTargetX = char.position.x + (cryptoRandom() - 0.5) * 4.5;
             }
         });
 
         // Decide cryptographically whether one surprise elimination will happen during a mid-game RED LIGHT scan!
         const willHaveMidRoundCatch = totalToEliminate >= 2 || (totalToEliminate === 1 && cryptoRandom() < 0.48);
-        const targetMidRoundCycle = isThirtySec ? 2 : (2 + Math.floor(cryptoRandom() * 2));
+        const estimatedTotalCycles = Math.max(1, Math.round(totalDuration / 8.0));
+        const targetMidRoundCycle = Math.max(1, Math.min(estimatedTotalCycles - 1, Math.ceil(estimatedTotalCycles * 0.55)));
 
         if (this.activeRedLightInterval) clearInterval(this.activeRedLightInterval);
         this.activeRedLightInterval = setInterval(() => {
@@ -5752,7 +5749,11 @@ class ThreeManager {
                 const currentFallenCount = currentlyRacing.filter(n => this.characters[n]?.userData?.isFallen).length;
                 const eliminationsRemaining = Math.max(0, totalToEliminate - dynamicallyEliminated.size);
                 // Keep a thrilling photo-finish pack of (eliminationsRemaining + 3..5 decoys) near the finish line so nobody stands out!
-                const minPhotoFinishPack = eliminationsRemaining + Math.min(4, Math.max(2, Math.floor(activeParticipants.length * 0.25)));
+                // Sort current runners by Z descending (furthest back on the court first)
+                const sortedByFarthestBack = [...currentlyRacing].sort(
+                    (a, b) => (this.characters[b]?.position.z || 0) - (this.characters[a]?.position.z || 0)
+                );
+                const trailingStragglerSet = new Set(sortedByFarthestBack.slice(0, eliminationsRemaining));
 
                 // Shuffle iteration order each tick so collision checks have zero index bias
                 const tickOrder = cryptoShuffle(currentlyRacing);
@@ -5760,6 +5761,8 @@ class ThreeManager {
                 tickOrder.forEach((name, rIdx) => {
                     const char = this.characters[name];
                     if (!char || !char.userData.isAlive || char.userData.isSafe) return;
+
+                    const isTrailingTarget = trailingStragglerSet.has(name);
 
                     // 1) Check player-to-player collisions, shoves, and domino trips!
                     if (!char.userData.isFallen && currentFallenCount < maxConcurrentFalls && char.position.z < 24.5 && char.position.z > -16.8) {
@@ -5793,16 +5796,16 @@ class ThreeManager {
                         char.position.z < 22.0 &&
                         char.position.z > -16.2 &&
                         Date.now() > (char.userData.tripCooldownUntil || 0) &&
-                        cryptoRandom() < 0.0085
+                        cryptoRandom() < (isTrailingTarget ? 0.015 : 0.0075)
                     ) {
                         char.userData.tripCooldownUntil = Date.now() + 3000;
                         this.triggerPlayerTrip(char, false);
                     }
 
-                    // 3) Advance fallen/crawling or upright runner
+                    // 3) Advance fallen/crawling or upright runner paced smoothly to totalDuration
                     if (char.userData.isFallen) {
                         char.userData.crawlTime = (char.userData.crawlTime || 0) + dt;
-                        const crawlSpeed = isThirtySec ? 2.15 : 1.35;
+                        const crawlSpeed = baseCourtSpeed * 0.42;
                         char.position.z -= crawlSpeed * dt;
 
                         if (
@@ -5812,24 +5815,37 @@ class ThreeManager {
                             this.smoothRecoverFromCrawl(char);
                         }
                     } else {
-                        let speed = (char.userData.baseStepSpeed || 2.6) * (char.userData.cycleTempo || 1.0) * (char.userData.sprintBoost || 1.0);
+                        let speed = (char.userData.baseStepSpeed || baseCourtSpeed) * (char.userData.cycleTempo || 1.0) * (char.userData.sprintBoost || 1.0);
+
+                        // Dynamic pacing relative to remaining match timer so players don't finish way too early or get stuck at the line
+                        const distToFinish = Math.max(0.5, char.position.z - (-18.2));
+                        const remainingRunTime = Math.max(1.8, roundSecondsLeft * 0.56);
+                        const idealRemainingSpeed = distToFinish / remainingRunTime;
+
+                        if (isTrailingTarget && eliminationsRemaining > 0) {
+                            // Trailing runner(s) who will be caught short of the line pace slightly behind the safe threshold
+                            const distToShortSpot = Math.max(0.2, char.position.z - (-14.5));
+                            speed = Math.min(speed * 0.86, distToShortSpot / Math.max(2.2, remainingRunTime));
+                            if (char.position.z <= -14.8 && !char.userData.isFallen) {
+                                this.triggerPlayerTrip(char, false);
+                            }
+                        } else {
+                            // Blend runner's natural tempo with remaining-time pacing so frontrunners cross near the end of the match
+                            speed = speed * 0.55 + idealRemainingSpeed * 0.45 * (0.94 + (rIdx % 3) * 0.08);
+                            if (roundSecondsLeft <= Math.max(5, totalDuration * 0.18)) {
+                                speed *= 1.25;
+                            }
+                        }
 
                         // Natural lateral weaving so runners cross paths and bump each other
                         if (typeof char.userData.weaveTargetX === 'number') {
                             char.position.x += (char.userData.weaveTargetX - char.position.x) * 0.022;
                         }
 
-                        // Surge in the final seconds so the pack reaches the yellow line for a photo-finish!
-                        if (roundSecondsLeft <= (isThirtySec ? 10 : 16)) {
-                            speed *= 1.32;
-                        }
-                        if (roundSecondsLeft <= 5) {
-                            speed = Math.max(speed, isThirtySec ? 5.0 : 3.8);
-                        }
-
                         char.position.z -= speed * dt;
 
-                        const animTime = Date.now() * 0.015 + (char.userData.runTimeSeed || rIdx);
+                        const animSpeedScale = Math.max(0.65, Math.min(1.45, speed / Math.max(0.8, baseCourtSpeed)));
+                        const animTime = Date.now() * 0.014 * animSpeedScale + (char.userData.runTimeSeed || rIdx);
                         char.rotation.set(0, Math.PI, 0);
                         if (char.userData.parts?.legLGroup) char.userData.parts.legLGroup.rotation.x = Math.sin(animTime) * 0.75;
                         if (char.userData.parts?.legRGroup) char.userData.parts.legRGroup.rotation.x = -Math.sin(animTime) * 0.75;
@@ -5838,21 +5854,9 @@ class ThreeManager {
                         char.position.y = 1.0 + Math.abs(Math.sin(animTime * 1.2)) * 0.12;
                     }
 
-                    // 4) Finish line & Photo-Finish Pack management:
-                    // Early frontrunners can cross Z <= -18 freely ONLY while more than `minPhotoFinishPack` runners remain on the court.
-                    // Once down to the final `minPhotoFinishPack` runners, they jostle, trip, and battle right at the yellow line (Z = -16.4 to -17.6)
-                    // until the final climax so nobody knows which runner in the pack will be eliminated!
+                    // 4) Finish line crossing: any runner who reaches Z <= -18.0 (while more than `eliminationsRemaining` are on court) crosses cleanly into the Safe Wings!
                     const stillOnCourtCount = activeParticipants.length - safePlayers.size - dynamicallyEliminated.size;
-                    if (isPicker && targetVictims.has(name) && char.position.z <= -16.2) {
-                        // Designated victim in picker mode battles right at the yellow finish line
-                        char.position.z = Math.max(-17.45 - cryptoRandom() * 0.25, char.position.z);
-                    } else if (char.position.z <= -16.3 && stillOnCourtCount <= minPhotoFinishPack && eliminationsRemaining > 0) {
-                        // Trigger dramatic finish-line trip/scramble in the final pack!
-                        if (!char.userData.isFallen && cryptoRandom() < 0.18) {
-                            this.triggerPlayerTrip(char, false);
-                        }
-                        char.position.z = Math.max(-17.45 - cryptoRandom() * 0.25, char.position.z);
-                    } else if (char.position.z <= -18.0) {
+                    if (char.position.z <= -18.0 && stillOnCourtCount > eliminationsRemaining) {
                         markRunnerSafeInWing(name, char);
                     }
                 });
@@ -5989,14 +5993,14 @@ class ThreeManager {
             updateDynamicRedLightCamera(false);
             await waitInterruptible(750);
 
-            // Check if everyone on the court has reached the photo-finish zone near the yellow line:
+            // Check if all safe players have crossed the yellow line (leaving only the target count on court):
             const remainingOnCourt = activeParticipants.filter(n => {
                 const c = this.characters[n];
                 return c && c.userData.isAlive && !c.userData.isSafe;
             });
-            const allNearFinish = remainingOnCourt.length > 0 && remainingOnCourt.every(n => this.characters[n].position.z <= -15.2);
-            if ((remainingOnCourt.length === 0 || allNearFinish) && roundSecondsLeft > 3) {
-                roundSecondsLeft = 3;
+            const neededEnd = Math.max(0, totalToEliminate - dynamicallyEliminated.size);
+            if (remainingOnCourt.length <= neededEnd) {
+                break;
             }
         }
 
@@ -6213,8 +6217,8 @@ class ThreeManager {
 
         // Dynamically re-roll Mingle eliminations & door groups at the moment the doors open for 100% unpredictability
         const aliveForDoors = Object.keys(this.characters).filter(name => this.characters[name]?.userData?.isAlive);
-        const targetElimCount = Math.min(roundData.eliminated?.length || 1, Math.max(0, aliveForDoors.length - 1));
-        if (targetElimCount > 0 && aliveForDoors.length > 1) {
+        const targetElimCount = Math.min(roundData.eliminated?.length || 1, aliveForDoors.length);
+        if (targetElimCount > 0 && aliveForDoors.length >= 1) {
             const freshEliminated = selectUnpredictableTargets(aliveForDoors, targetElimCount);
             const freshSurvivors = cryptoShuffle(aliveForDoors.filter(p => !freshEliminated.includes(p)));
             roundData.eliminated = freshEliminated;
@@ -7467,24 +7471,26 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     const [gameMode, setGameMode] = useState('picker');
     const [pickCount, setPickCount] = useState(1);
     const [tagTimer, setTagTimer] = useState<number>(15);
+    const [redLightDuration, setRedLightDuration] = useState<number>(30);
     const [contestantCount, setContestantCount] = useState<number>(() => Math.min(20, Math.max(5, getSavedRoster().length)));
     
-    // Mingle game is strictly picker mode - never survival
+    // All 3 games (Mingle, Tag, Red Light) use picker mode
     useEffect(() => {
-        if (activeGame === 'mingle' && gameMode !== 'picker') {
+        if (gameMode !== 'picker') {
             setGameMode('picker');
         }
         if (activeGame === 'redlight') {
-            if (gameMode === 'survival') {
-                setGameMode('camera');
-            }
-            setTagTimer(prev => {
-                const chosen = prev === 60 ? 60 : 30;
-                threeManagerRef.current?.setTagTimer(chosen);
-                return chosen;
-            });
+            threeManagerRef.current?.setTagTimer(Math.max(5, redLightDuration));
+        } else if (activeGame === 'tag') {
+            threeManagerRef.current?.setTagTimer(tagTimer);
         }
-    }, [activeGame, gameMode]);
+    }, [activeGame, gameMode, redLightDuration, tagTimer]);
+
+    // Auto-adjust target count whenever the roster size changes
+    useEffect(() => {
+        const maxTargets = Math.max(1, students.length);
+        setPickCount(prev => Math.min(Math.max(1, prev), maxTargets));
+    }, [students.length]);
 
     const threeManagerRef = useRef<ThreeManager | null>(null);
     const isFirstMountRef = useRef(true);
@@ -7674,11 +7680,15 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
 
     const startGameWith = async (roster: string[]) => {
         stopAnnounce();
-        const currentMode = activeGame === 'mingle' ? 'picker' : gameMode;
-        if(roster.length < (currentMode === 'picker' ? pickCount + 1 : 2)) {
-            alert(`Need at least ${currentMode === 'picker' ? pickCount + 1 : 2} players for this mode!`);
+        const currentMode = (activeGame === 'mingle' || activeGame === 'tag') ? 'picker' : gameMode;
+        if (roster.length < 1) {
+            alert('Please add at least 1 player to the roster!');
             setView('home');
             return;
+        }
+        const effectivePickCount = Math.min(pickCount, Math.max(1, roster.length));
+        if (effectivePickCount !== pickCount) {
+            setPickCount(effectivePickCount);
         }
         if (globalAudio) globalAudio.resume(); 
         setView('game');
@@ -7693,7 +7703,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         tm.lastCaughtPlayer = null;
         tm.tagRoundCount = 0;
         tm.mingleSpinCount = 0;
-        tm.setTagTimer(tagTimer);
+        tm.setTagTimer(activeGame === 'redlight' ? Math.max(5, redLightDuration) : tagTimer);
         
         // Spawn players before starting sequence in proper game type
         tm.setGameType(activeGame);
@@ -7703,7 +7713,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         if(tm.spotLight) tm.spotLight.intensity = 0;
         if(tm.scene) tm.scene.background = new THREE.Color((activeGame === 'tag' || activeGame === 'redlight') ? '#38bdf8' : '#87CEEB'); 
 
-        const engine = GameEngine.generateGameSequence(roster, currentMode, pickCount);
+        const engine = GameEngine.generateGameSequence(roster, currentMode, effectivePickCount);
         
         for (let i = 0; i < engine.rounds.length; i++) {
             const round = engine.rounds[i];
@@ -7742,10 +7752,6 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     };
 
     const startGame = async () => {
-        if (activeGame === 'redlight' && gameMode === 'camera') {
-            setView('camera_redlight');
-            return;
-        }
         const rosterToUse = cryptoShuffle(students);
         return startGameWith(rosterToUse);
     };
@@ -7821,70 +7827,28 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 </div>
                 
                 <div className="bg-slate-800/80 rounded-2xl p-3 sm:p-4 mb-3 sm:mb-4 border border-slate-700 overflow-y-auto max-h-[46vh]">
-                    {(activeGame === 'tag' || activeGame === 'redlight') && (
-                        <div className="flex gap-3 justify-center mb-3">
-                            <Button 
-                                variant={gameMode === 'picker' ? 'primary' : 'secondary'} 
-                                onClick={() => setGameMode('picker')} 
-                                active={gameMode === 'picker'}
-                                className="flex-1 text-xs sm:text-sm py-2"
-                            >
-                                <MousePointerClick className="w-4 h-4" /> {activeGame === 'redlight' ? 'Doll Picker' : 'Tag Picker'}
-                            </Button>
-                            <Button 
-                                variant={(activeGame === 'redlight' ? gameMode === 'camera' : gameMode === 'survival') ? 'success' : 'secondary'} 
-                                onClick={() => setGameMode(activeGame === 'redlight' ? 'camera' : 'survival')} 
-                                active={activeGame === 'redlight' ? gameMode === 'camera' : gameMode === 'survival'}
-                                className="flex-1 text-xs sm:text-sm py-2"
-                            >
-                                {activeGame === 'redlight' ? <Camera className="w-4 h-4" /> : <Tag className="w-4 h-4" />} {activeGame === 'redlight' ? 'Camera Mode' : 'Tag Survival'}
-                            </Button>
+                    <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50 mb-2">
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-bold text-xs uppercase tracking-wider">
+                                Targets:
+                            </span>
+                            <span className="text-rose-500 font-bold text-lg bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">{Math.min(pickCount, Math.max(1, students.length))}</span>
                         </div>
-                    )}
-                    
-                    {(activeGame === 'mingle' || gameMode === 'picker' || (activeGame === 'redlight' && gameMode === 'camera')) && (
-                        <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50 mb-2">
-                            <div className="flex justify-between items-center">
-                                <span className="text-slate-300 font-bold text-xs uppercase tracking-wider">
-                                    {gameMode === 'camera' ? 'Students to Pick:' : 'Targets:'}
-                                </span>
-                                <span className="text-rose-500 font-bold text-lg bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">{pickCount}</span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min="1" 
-                                max={Math.min(10, Math.max(1, students.length))} 
-                                value={pickCount} 
-                                onChange={(e) => setPickCount(parseInt(e.target.value))}
-                                className="w-full mt-1.5 accent-rose-600 cursor-pointer"
-                            />
-                            <div className="flex justify-between text-[10px] text-slate-500 font-bold px-1 mt-0.5">
-                                <span>1</span>
-                                <span>{Math.min(10, Math.max(1, students.length))}</span>
-                            </div>
+                        <input 
+                            type="range" 
+                            min="1" 
+                            max={Math.max(1, students.length)} 
+                            value={Math.min(pickCount, Math.max(1, students.length))} 
+                            onChange={(e) => setPickCount(parseInt(e.target.value))}
+                            className="w-full mt-1.5 accent-rose-600 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-500 font-bold px-1 mt-0.5">
+                            <span>1</span>
+                            <span>{Math.max(1, students.length)}</span>
                         </div>
-                    )}
+                    </div>
 
-                    {activeGame === 'redlight' && gameMode === 'camera' ? (
-                        <div className="flex flex-col gap-2 bg-slate-900 p-3.5 rounded-xl border border-rose-500/30 bg-gradient-to-br from-slate-900 to-rose-950/20">
-                            <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
-                                <Camera className="w-4 h-4" />
-                                <span>Classroom Live Camera Setup</span>
-                            </div>
-                            <p className="text-xs text-slate-300 leading-relaxed">
-                                The doll faces away while singing the Korean chant. When she turns around on <strong className="text-red-400">RED LIGHT</strong>, your webcam detects student movement and the doll locks onto players who move!
-                            </p>
-                            <div className="flex items-center justify-between pt-1 text-[11px]">
-                                <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
-                                    <Users className="w-3.5 h-3.5" />
-                                    {students.length} students enrolled
-                                </span>
-                                <span className="text-rose-400 font-semibold bg-rose-950/60 px-2 py-0.5 rounded border border-rose-500/30">
-                                    Pick {pickCount} {pickCount === 1 ? 'Student' : 'Students'}
-                                </span>
-                            </div>
-                        </div>
-                    ) : activeGame === 'redlight' ? (
+                    {activeGame === 'redlight' ? (
                         <div className="flex flex-col gap-2 bg-slate-900 p-3 sm:p-3.5 rounded-xl border border-slate-700/50">
                             <div className="flex justify-between items-center">
                                 <span className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
@@ -7892,40 +7856,33 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     Match Duration:
                                 </span>
                                 <span className="text-amber-400 font-bold text-sm sm:text-base bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">
-                                    {tagTimer === 60 ? '1 Minute (60s)' : '30 Seconds'}
+                                    {redLightDuration < 60
+                                        ? `${redLightDuration}s`
+                                        : redLightDuration % 60 === 0
+                                        ? `${Math.floor(redLightDuration / 60)}m (${redLightDuration}s)`
+                                        : `${Math.floor(redLightDuration / 60)}m ${redLightDuration % 60}s`}
                                 </span>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 mt-1.5">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTagTimer(30);
-                                        threeManagerRef.current?.setTagTimer(30);
-                                    }}
-                                    className={`py-2 px-3 rounded-xl font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
-                                        tagTimer === 30 
-                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.01]' 
-                                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
-                                    }`}
-                                >
-                                    <span className="text-xs sm:text-sm font-black">⚡ 30 Seconds</span>
-                                    <span className={`text-[10px] ${tagTimer === 30 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Fast Match</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTagTimer(60);
-                                        threeManagerRef.current?.setTagTimer(60);
-                                    }}
-                                    className={`py-2 px-3 rounded-xl font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
-                                        tagTimer === 60 
-                                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20 scale-[1.01]' 
-                                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
-                                    }`}
-                                >
-                                    <span className="text-xs sm:text-sm font-black">⏱️ 1 Minute (60s)</span>
-                                    <span className={`text-[10px] ${tagTimer === 60 ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>Standard Match</span>
-                                </button>
+                            <input
+                                type="range"
+                                min="0"
+                                max="120"
+                                step="5"
+                                value={redLightDuration}
+                                onChange={(e) => {
+                                    const rawVal = parseInt(e.target.value, 10);
+                                    const clampedVal = Number.isNaN(rawVal) ? 30 : Math.max(0, Math.min(120, rawVal));
+                                    setRedLightDuration(clampedVal);
+                                    threeManagerRef.current?.setTagTimer(Math.max(5, clampedVal));
+                                }}
+                                className="w-full mt-1.5 accent-amber-500 cursor-pointer"
+                            />
+                            <div className="flex justify-between text-[10px] text-slate-500 font-bold px-1 mt-0.5">
+                                <span>0s</span>
+                                <span>30s</span>
+                                <span>1m</span>
+                                <span>1m 30s</span>
+                                <span>2m</span>
                             </div>
                         </div>
                     ) : activeGame === 'tag' ? (
@@ -7959,24 +7916,13 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             </div>
                         </div>
                     ) : null}
-                    {activeGame === 'tag' && gameMode === 'survival' && (
-                        <div className="text-emerald-400 text-xs font-bold tracking-wider pt-2 text-center">
-                            MULTIPLE ROUNDS • ONE SOLE SURVIVOR
-                        </div>
-                    )}
                 </div>
 
                 <div className="flex flex-col gap-2.5 items-center relative z-10 shrink-0 w-full mt-1">
                     <Button size="md" onClick={startGame} className="w-full py-3 sm:py-3.5 text-base sm:text-lg font-black tracking-wide shadow-lg shadow-rose-600/30">
-                        {activeGame === 'redlight' && gameMode === 'camera' ? (
-                            <span className="flex items-center gap-2 justify-center">
-                                <Camera className="w-5 h-5" /> START CAMERA MODE
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-2 justify-center">
-                                <Play className="w-5 h-5 fill-current" /> START GAME
-                            </span>
-                        )}
+                        <span className="flex items-center gap-2 justify-center">
+                            <Play className="w-5 h-5 fill-current" /> START GAME
+                        </span>
                     </Button>
                     <Button variant="secondary" onClick={() => setView('students')} className="w-full py-2 sm:py-2.5 text-xs sm:text-sm">
                         <UserRound className="w-4 h-4" /> MANAGE ROSTER ({students.length})
@@ -8458,6 +8404,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 <button 
                                     onClick={() => {
                                         setActiveGame('tag');
+                                        setGameMode('picker');
                                         setView('home');
                                         if (threeManagerRef.current) {
                                             threeManagerRef.current.setGameType('tag');
@@ -8490,9 +8437,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             
                             <div className="p-6 border-t border-slate-800 text-xs text-slate-600 text-center uppercase tracking-widest font-bold flex flex-col gap-1">
                                 <span>Version 3.0</span>
-                                <span className={activeGame === 'mingle' || gameMode === 'picker' ? 'text-rose-500' : 'text-emerald-500'}>
+                                <span className={activeGame === 'mingle' || activeGame === 'tag' || gameMode === 'picker' ? 'text-rose-500' : 'text-emerald-500'}>
                                     {activeGame === 'tag' 
-                                        ? `Tag • ${gameMode === 'picker' ? 'Picker Active' : 'Survival Active'}` 
+                                        ? 'Tag • Picker Active' 
                                         : activeGame === 'redlight'
                                         ? `Red Light • ${gameMode === 'picker' ? 'Picker Active' : 'Camera Mode Active'}`
                                         : 'Mingle • Picker Active'}
@@ -8546,6 +8493,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                         <button 
                                             onClick={() => {
                                                 setActiveGame('tag');
+                                                setGameMode('picker');
                                                 setView('home');
                                                 setShowMobileDrawer(false);
                                                 if (threeManagerRef.current) {
