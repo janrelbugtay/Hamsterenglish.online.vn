@@ -3734,10 +3734,12 @@ export default function HamsterPaintball({
         if (
           !data?.isUninitialized &&
           typeof data?.configuredDurationSec === 'number' &&
-          stateSnapRef.current.matchStatus === 'lobby'
+          (stateSnapRef.current.matchStatus === 'lobby' || stateSnapRef.current.screen === 'join')
         ) {
           setConfiguredDurationSec(data.configuredDurationSec);
-          setMatchSeconds(data.configuredDurationSec);
+          if (stateSnapRef.current.matchStatus === 'lobby') {
+            setMatchSeconds(data.configuredDurationSec);
+          }
         }
         if (typeof data?.isTimerPaused === 'boolean' && !data?.isUninitialized) {
           setIsTimerPaused(data.isTimerPaused);
@@ -3745,7 +3747,7 @@ export default function HamsterPaintball({
         const nowServer = getServerNow();
         if (
           data?.matchStatus === 'playing' &&
-          stateSnapRef.current.matchStatus === 'playing' &&
+          (stateSnapRef.current.matchStatus === 'playing' || stateSnapRef.current.screen === 'join') &&
           typeof data?.timerSyncSeconds === 'number' &&
           data?.timerSyncedAt
         ) {
@@ -3756,7 +3758,7 @@ export default function HamsterPaintball({
           setMatchSeconds(prev => (Math.abs(prev - nextSec) >= 1 ? nextSec : prev));
         } else if (
           data?.matchStatus === 'playing' &&
-          stateSnapRef.current.matchStatus === 'playing' &&
+          (stateSnapRef.current.matchStatus === 'playing' || stateSnapRef.current.screen === 'join') &&
           typeof data?.startedAt === 'number' &&
           data.startedAt > 1000 &&
           typeof data?.configuredDurationSec === 'number' &&
@@ -3780,23 +3782,35 @@ export default function HamsterPaintball({
               : lastStartedAtRef.current || nowServer;
           const isAlreadyEndedEpoch =
             matchEndedEpochRef.current > 1000 && incomingEpoch <= matchEndedEpochRef.current;
-          const isNewMatchStart =
-            !isAlreadyEndedEpoch &&
-            (stateSnapRef.current.matchStatus === 'lobby' ||
-              (incomingEpoch > 1000 && incomingEpoch > lastStartedAtRef.current));
-          if (isNewMatchStart) {
-            const myAssigned = data.teamAssignments?.[clientIdRef.current] as
-              | { team: TeamId; x: number; z: number; rotY: number }
-              | undefined;
-            triggerStudentMatchStart(
-              data.configuredDurationSec || 180,
-              data.matchMode || stateSnapRef.current.matchMode,
-              incomingEpoch,
-              Boolean(data.isTimerPaused),
-              typeof data.ballsPerQuestion === 'number' ? data.ballsPerQuestion : undefined,
-              typeof data.teamCount === 'number' ? data.teamCount : undefined,
-              myAssigned
-            );
+
+          if (stateSnapRef.current.screen === 'join') {
+            // Keep late-joining students on the Join customizer until they click "Join Match"
+            if (!isAlreadyEndedEpoch) {
+              lastStartedAtRef.current = incomingEpoch;
+              if (stateSnapRef.current.matchStatus !== 'playing') {
+                setMatchStatus('playing');
+                stateSnapRef.current.matchStatus = 'playing';
+              }
+            }
+          } else {
+            const isNewMatchStart =
+              !isAlreadyEndedEpoch &&
+              (stateSnapRef.current.matchStatus === 'lobby' ||
+                (incomingEpoch > 1000 && incomingEpoch > lastStartedAtRef.current));
+            if (isNewMatchStart) {
+              const myAssigned = data.teamAssignments?.[clientIdRef.current] as
+                | { team: TeamId; x: number; z: number; rotY: number }
+                | undefined;
+              triggerStudentMatchStart(
+                data.configuredDurationSec || 180,
+                data.matchMode || stateSnapRef.current.matchMode,
+                incomingEpoch,
+                Boolean(data.isTimerPaused),
+                typeof data.ballsPerQuestion === 'number' ? data.ballsPerQuestion : undefined,
+                typeof data.teamCount === 'number' ? data.teamCount : undefined,
+                myAssigned
+              );
+            }
           }
         } else if (data?.matchStatus === 'results') {
           matchEndedEpochRef.current = Math.max(
@@ -10777,6 +10791,16 @@ export default function HamsterPaintball({
                     ? playerName.trim()
                     : `Hamster${Math.floor(10 + Math.random() * 89)}`;
                 const joinTeam = normalizeTeamForMatch(myTeam, matchMode, teamCount);
+                const isAlreadyPlaying = stateSnapRef.current.matchStatus === 'playing';
+
+                // Synchronously prime stateSnapRef so triggerStudentMatchStart keeps exact chosen nickname & squad
+                stateSnapRef.current.role = 'player';
+                stateSnapRef.current.playerName = cleanName;
+                stateSnapRef.current.myTeam = joinTeam;
+                stateSnapRef.current.selectedSkinIdx = selectedSkinIdx;
+                stateSnapRef.current.matchMode = matchMode;
+                stateSnapRef.current.teamCount = teamCount;
+
                 setRoomCode(cleanCode);
                 setPlayerName(cleanName);
                 setMyTeam(joinTeam);
@@ -10785,19 +10809,7 @@ export default function HamsterPaintball({
                 hasJoinedRoomRef.current = true;
                 sfx.playCorrect();
 
-                const g = gameRef.current;
-                const sp = getTeamSpawnPosition(joinTeam, matchMode, undefined, teamCount);
-                if (g) {
-                  g.x = sp.x;
-                  g.z = sp.z;
-                  g.rotY = sp.rotY;
-                  g.camYaw = sp.rotY;
-                  g.camPitch = 0.22;
-                }
-
-                const isAlreadyPlaying = stateSnapRef.current.matchStatus === 'playing';
                 if (isAlreadyPlaying) {
-                  setScreen('game');
                   triggerStudentMatchStart(
                     configuredDurationSec || 180,
                     matchMode,
@@ -10807,42 +10819,51 @@ export default function HamsterPaintball({
                     teamCount
                   );
                 } else {
+                  const g = gameRef.current;
+                  const sp = getTeamSpawnPosition(joinTeam, matchMode, undefined, teamCount);
+                  if (g) {
+                    g.x = sp.x;
+                    g.z = sp.z;
+                    g.rotY = sp.rotY;
+                    g.camYaw = sp.rotY;
+                    g.camPitch = 0.22;
+                  }
                   setMatchStatus('lobby');
                   setScreen('game');
+
+                  const initialPayload: PlayerNetworkState = {
+                    id: clientIdRef.current,
+                    name: cleanName,
+                    role: 'player',
+                    team: joinTeam,
+                    skinIdx: selectedSkinIdx,
+                    x: sp.x,
+                    z: sp.z,
+                    vx: 0,
+                    vz: 0,
+                    rotY: sp.rotY,
+                    hp: 100,
+                    shield: 100,
+                    score,
+                    kos,
+                    questionsAnswered,
+                    seq: nextPlayerSeq(),
+                    lastStartedAt: lastStartedAtRef.current,
+                    matchEpoch: lastStartedAtRef.current,
+                    kicked: false,
+                    updatedAt: getServerNow()
+                  };
+
+                  syncPaintballPlayerApi(cleanCode, initialPayload);
+                  setDoc(
+                    getPlayerDocRef(cleanCode, clientIdRef.current),
+                    stripUndefinedFields({
+                      ...initialPayload,
+                      lastSeen: serverTimestamp()
+                    }),
+                    { merge: true }
+                  ).catch(() => {});
                 }
-
-                const initialPayload: PlayerNetworkState = {
-                  id: clientIdRef.current,
-                  name: cleanName,
-                  role: 'player',
-                  team: joinTeam,
-                  skinIdx: selectedSkinIdx,
-                  x: sp.x,
-                  z: sp.z,
-                  vx: 0,
-                  vz: 0,
-                  rotY: sp.rotY,
-                  hp: 100,
-                  shield: 100,
-                  score: isAlreadyPlaying ? 0 : score,
-                  kos: isAlreadyPlaying ? 0 : kos,
-                  questionsAnswered: isAlreadyPlaying ? 0 : questionsAnswered,
-                  seq: nextPlayerSeq(),
-                  lastStartedAt: lastStartedAtRef.current,
-                  matchEpoch: lastStartedAtRef.current,
-                  kicked: false,
-                  updatedAt: getServerNow()
-                };
-
-                syncPaintballPlayerApi(cleanCode, initialPayload);
-                setDoc(
-                  getPlayerDocRef(cleanCode, clientIdRef.current),
-                  stripUndefinedFields({
-                    ...initialPayload,
-                    lastSeen: serverTimestamp()
-                  }),
-                  { merge: true }
-                ).catch(() => {});
 
                 handleForceResyncRoom(cleanCode);
               }}
@@ -10905,6 +10926,16 @@ export default function HamsterPaintball({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {matchStatus === 'playing' && (
+                      <button
+                        type="button"
+                        onClick={() => setScreen('game')}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-semibold text-xs flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
+                      >
+                        <Play size={11} fill="currentColor" />
+                        <span>Resume Match</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setScreen('editor')}
@@ -11262,83 +11293,83 @@ export default function HamsterPaintball({
               </div>
             </>
           )}
+        </div>
+      )}
 
-          {/* Enlarged QR Modal */}
-          {isQrModalOpen && (
-            <div className="pointer-events-auto absolute inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
-              <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 flex flex-col items-center text-center relative">
+      {/* Enlarged QR & Room Code Modal (Available in Host Lobby & Live Game for Late Joiners) */}
+      {role === 'host' && isQrModalOpen && (
+        <div className="pointer-events-auto absolute inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
+          <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 flex flex-col items-center text-center relative">
+            <button
+              type="button"
+              onClick={() => setIsQrModalOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+            <div className="text-xs font-medium text-slate-500 mb-0.5">{liveDisplayHost}</div>
+            <h3 className="font-['Poppins',sans-serif] font-bold text-2xl text-slate-900 tabular-nums">
+              <span className="font-mono tracking-wider">{roomCode}</span>
+            </h3>
+
+            {!isCurrentOriginHamsterEnglish && (
+              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg mt-3">
                 <button
                   type="button"
-                  onClick={() => setIsQrModalOpen(false)}
-                  className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                  onClick={() => setJoinDomainMode('current')}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    joinDomainMode === 'current'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <X size={16} />
+                  Current URL
                 </button>
-                <div className="text-xs font-medium text-slate-500 mb-0.5">{liveDisplayHost}</div>
-                <h3 className="font-['Poppins',sans-serif] font-bold text-2xl text-slate-900 tabular-nums">
-                  <span className="font-mono tracking-wider">{roomCode}</span>
-                </h3>
-
-                {!isCurrentOriginHamsterEnglish && (
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg mt-3">
-                    <button
-                      type="button"
-                      onClick={() => setJoinDomainMode('current')}
-                      className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                        joinDomainMode === 'current'
-                          ? 'bg-white text-slate-900 shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Current URL
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setJoinDomainMode('hamsterenglish')}
-                      className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                        joinDomainMode === 'hamsterenglish'
-                          ? 'bg-white text-slate-900 shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      hamsterenglish.online
-                    </button>
-                  </div>
-                )}
-
-                <div className="my-4 p-3.5 bg-white rounded-xl border border-slate-200">
-                  <QRCodeSVG
-                    value={liveJoinUrl}
-                    size={240}
-                    level="H"
-                    includeMargin={true}
-                    bgColor="#ffffff"
-                    fgColor="#0f172a"
-                  />
-                </div>
-                <p className="text-xs font-medium text-slate-400 break-all px-2 mb-4">
-                  {liveJoinUrl}
-                </p>
-                <div className="flex gap-2 w-full">
-                  <button
-                    type="button"
-                    onClick={handleCopyJoinLink}
-                    className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    <Copy size={14} />
-                    <span>{copiedType === 'link' ? 'Copied' : 'Copy Link'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsQrModalOpen(false)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-xl cursor-pointer whitespace-nowrap"
-                  >
-                    Close
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setJoinDomainMode('hamsterenglish')}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    joinDomainMode === 'hamsterenglish'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  hamsterenglish.online
+                </button>
               </div>
+            )}
+
+            <div className="my-4 p-3.5 bg-white rounded-xl border border-slate-200">
+              <QRCodeSVG
+                value={liveJoinUrl}
+                size={240}
+                level="H"
+                includeMargin={true}
+                bgColor="#ffffff"
+                fgColor="#0f172a"
+              />
             </div>
-          )}
+            <p className="text-xs font-medium text-slate-400 break-all px-2 mb-4">
+              {liveJoinUrl}
+            </p>
+            <div className="flex gap-2 w-full">
+              <button
+                type="button"
+                onClick={handleCopyJoinLink}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+              >
+                <Copy size={14} />
+                <span>{copiedType === 'link' ? 'Copied' : 'Copy Link'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsQrModalOpen(false)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-xl cursor-pointer whitespace-nowrap"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -11507,8 +11538,38 @@ export default function HamsterPaintball({
                 </div>
               </div>
             ) : (
-              /* HOST TOP-LEFT STATUS */
-              <div className="pointer-events-auto shrink-0 bg-white/95 rounded-xl p-2 sm:p-2.5 w-40 sm:w-60 border border-slate-200 shadow-sm flex flex-col gap-0.5">
+              /* HOST TOP-LEFT STATUS & LATE-JOIN ROOM NUMBER */
+              <div className="pointer-events-auto shrink-0 bg-white/95 rounded-xl p-2 sm:p-2.5 w-44 sm:w-64 border border-slate-200 shadow-sm flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleCopyRoomCode}
+                    className="flex items-center gap-1.5 min-w-0 cursor-pointer group text-left"
+                    title="Copy Room Number for Late Joiners"
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">
+                      Room
+                    </span>
+                    <span className="font-mono tabular-nums font-extrabold text-sm sm:text-base tracking-widest text-slate-900 group-hover:text-emerald-700 transition leading-none">
+                      {roomCode}
+                    </span>
+                    {copiedType === 'code' ? (
+                      <Check size={12} className="text-emerald-600 shrink-0" />
+                    ) : (
+                      <Copy size={11} className="text-slate-400 group-hover:text-slate-600 shrink-0" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsQrModalOpen(true)}
+                    className="px-1.5 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                    title="Show QR Code & Room Number"
+                  >
+                    <QrCode size={11} />
+                    <span>QR</span>
+                  </button>
+                </div>
+
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Video size={13} className="text-sky-600 shrink-0" />

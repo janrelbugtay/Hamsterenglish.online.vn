@@ -2186,15 +2186,21 @@ Return exactly a JSON array of 4 objects.`;
       entry.room.matchStatus === "playing" ? entry.room.matchEpoch || 0 : 0
     );
 
-    // Block pre-match lobby heartbeats (`incomingEpoch < activeEpoch`) and brief out-of-order HTTP packets (<1.5s)
-    // without ever freezing a player when a new match epoch begins or a client reconnects!
+    const hasExistingPlayer = Boolean(existing && existing.id);
+
+    // Block pre-match lobby heartbeats (`incomingEpoch < activeEpoch`) for already-synced players
+    // and brief out-of-order HTTP packets (<1.5s), while always allowing brand-new late-game joiners!
     const isOlderMatchEpoch =
-      !isHostAction && activeEpoch > 1000 && incomingEpoch < activeEpoch;
+      !isHostAction &&
+      hasExistingPlayer &&
+      activeEpoch > 1000 &&
+      incomingEpoch < activeEpoch;
     const isNewerMatchEpoch = incomingEpoch > existingPlayerEpoch && incomingEpoch > 1000;
     const sameMatchSession = !isNewerMatchEpoch && incomingEpoch === existingPlayerEpoch;
     const recentExistingMs = now - (existing.updatedAt || 0);
     const isStaleSeqPacket =
       !isHostAction &&
+      hasExistingPlayer &&
       sameMatchSession &&
       recentExistingMs < 1500 &&
       ((incomingSeq > 0 &&
@@ -2227,7 +2233,7 @@ Return exactly a JSON array of 4 objects.`;
     const resolvedEpoch =
       isHostAction && playerData.matchStartResetAt
         ? playerData.matchStartResetAt
-        : Math.max(incomingEpoch, existingPlayerEpoch);
+        : Math.max(incomingEpoch, existingPlayerEpoch, activeEpoch);
 
     const mergedPlayer: Record<string, any> = isStaleStudentPacket
       ? {
