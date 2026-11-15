@@ -186,7 +186,7 @@ function FeaturedGamesSection({
     {
       id: "hamster-pop-quiz",
       title: "Video Quiz",
-      description: "Turn any video into a sunny ESL adventure with interactive video quizzes!",
+      description: "Interactive video checkpoints and live pop-up quizzes.",
       difficulty: "Medium",
       players: "1 Player",
       time: "10-15 mins",
@@ -194,7 +194,7 @@ function FeaturedGamesSection({
       grade: "All",
       imageUrl: "/images/video-quiz-card-v3.jpg?v=3",
       isAI: true,
-      color: "from-sky-400 to-yellow-400",
+      color: "from-amber-400 via-pink-500 to-purple-600",
       icon: "🎬",
       category: "classroom-tools",
     },

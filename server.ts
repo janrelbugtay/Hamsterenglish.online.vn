@@ -1,18 +1,35 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, GenerateVideosOperation } from "@google/genai";
 import multer from "multer";
 
-const getAiClient = () => new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY || "missing-api-key",
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+const getResolvedGeminiKey = () => {
+  const raw = (process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim();
+  if (
+    !raw ||
+    raw === "missing-api-key" ||
+    raw === "MY_GEMINI_API_KEY" ||
+    raw === "YOUR_API_KEY" ||
+    raw.includes("YOUR_")
+  ) {
+    return "";
   }
-});
-const ai = getAiClient();
+  return raw;
+};
+
+const hasValidGeminiKey = () => Boolean(getResolvedGeminiKey());
+
+const getAiClient = () =>
+  new GoogleGenAI({
+    apiKey: getResolvedGeminiKey(),
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -1334,41 +1351,163 @@ async function startServer() {
     }
   });
 
-  // Emoji Generation Endpoint (gemini-3.1-flash)
+  const buildFallbackVideoQuizQuestions = (
+    topicRaw: string,
+    levelRaw: string,
+    typesRaw: string[]
+  ) => {
+    const topic = (topicRaw || "English Video Lesson").trim();
+    const level = levelRaw || "A2 Movers";
+    const types =
+      Array.isArray(typesRaw) && typesRaw.length > 0
+        ? typesRaw
+        : ["Multiple Choice"];
+    const timings = [15, 34, 56, 78, 96, 114];
+
+    return timings.map((timeTrigger, index) => {
+      const qType = types[index % types.length];
+      if (qType === "Vocabulary Meaning") {
+        const words = topic
+          .split(/\s+/)
+          .filter((w) => w.replace(/[^a-zA-Z]/g, "").length > 2);
+        const focusWord = (
+          words[words.length - 1] || "DISCOVERY"
+        )
+          .replace(/[^a-zA-Z]/g, "")
+          .toUpperCase();
+        return {
+          id: index + 1,
+          timeTrigger,
+          type: "Vocabulary Meaning",
+          xp: 150,
+          word: focusWord,
+          pronunciation: `/${focusWord.toLowerCase()}/`,
+          question: `What does "${focusWord}" mean in this context?`,
+          options: [
+            {
+              text: `An important concept connected to ${topic.toLowerCase()}.`,
+              isCorrect: true,
+            },
+            {
+              text: `Something completely opposite to the scene.`,
+              isCorrect: false,
+            },
+            { text: `A type of musical instrument.`, isCorrect: false },
+            { text: `A measurement of distance.`, isCorrect: false },
+          ],
+          explanation: `"${focusWord}" is a key ${level} vocabulary term for ${topic}.`,
+        };
+      }
+      if (qType === "Grammar Choice") {
+        return {
+          id: index + 1,
+          timeTrigger,
+          type: "Grammar Choice",
+          xp: 100,
+          question: `Which sentence uses correct ${level} grammar?`,
+          options: [
+            {
+              text: `They are watching a video about ${topic.toLowerCase()}.`,
+              isCorrect: true,
+            },
+            {
+              text: `They is watching a video about ${topic.toLowerCase()}.`,
+              isCorrect: false,
+            },
+            {
+              text: `They watches a video about ${topic.toLowerCase()}.`,
+              isCorrect: false,
+            },
+            {
+              text: `They watching a video about ${topic.toLowerCase()}.`,
+              isCorrect: false,
+            },
+          ],
+          explanation: `Use "are + verb-ing" with plural subjects in the present continuous tense.`,
+        };
+      }
+      if (qType === "True or False") {
+        return {
+          id: index + 1,
+          timeTrigger,
+          type: "True or False",
+          xp: 100,
+          question: `True or False: This part of the video focuses on ${topic}.`,
+          options: [
+            { text: "True", isCorrect: true },
+            { text: "False", isCorrect: false },
+          ],
+          explanation: `The scene directly connects to ${topic}.`,
+        };
+      }
+      return {
+        id: index + 1,
+        timeTrigger,
+        type: "Multiple Choice",
+        xp: 100,
+        question: `What is the main focus of this scene about ${topic}?`,
+        options: [
+          {
+            text: `Key details and actions related to ${topic.toLowerCase()}.`,
+            isCorrect: true,
+          },
+          {
+            text: `An unrelated topic not shown in the clip.`,
+            isCorrect: false,
+          },
+          { text: `A silent title card with no action.`, isCorrect: false },
+          { text: `The ending credits of the video.`, isCorrect: false },
+        ],
+        explanation: `This segment highlights core details about ${topic}.`,
+      };
+    });
+  };
+
+  // Emoji Generation Endpoint (gemini-3.1-flash-lite)
   app.post("/api/generate-emoji", async (req, res) => {
     try {
       const { prompt } = req.body;
       if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+      if (!hasValidGeminiKey()) {
+        return res.json({ emoji: "✨" });
+      }
 
+      const ai = getAiClient();
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
+        model: "gemini-3.1-flash-lite",
         contents: `You are an emoji generator. Reply with EXACTLY ONE emoji that best represents the following text, and nothing else. Text: "${prompt}"`,
       });
-      
-      const emoji = response.text?.trim();
+
+      const emoji = response.text?.trim() || "✨";
       res.json({ emoji });
     } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
+      res.json({ emoji: "✨" });
     }
   });
 
-  // Image Generation Endpoint (gemini-3-pro-image-preview)
+  // Image Generation Endpoint (gemini-3.1-flash-lite-image)
   app.post("/api/generate-image", async (req, res) => {
     try {
-      const { prompt, size } = req.body;
+      const { prompt } = req.body;
       if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+      if (!hasValidGeminiKey()) {
+        return res.status(400).json({
+          error:
+            "Please configure a valid GEMINI_API_KEY in the Settings > Secrets panel.",
+        });
+      }
 
+      const ai = getAiClient();
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-image',
+        model: "gemini-3.1-flash-lite-image",
         contents: { parts: [{ text: prompt }] },
         config: {
           imageConfig: {
-            aspectRatio: "1:1"
-          }
+            aspectRatio: "1:1",
+          },
         },
       });
-      
+
       let imageUrl = null;
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
@@ -1376,15 +1515,18 @@ async function startServer() {
           break;
         }
       }
-      
+
       if (imageUrl) {
         res.json({ imageUrl });
       } else {
         res.status(500).json({ error: "Failed to generate image" });
       }
     } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({
+        error:
+          err?.message ||
+          "Image generation failed. Please check your API key in Settings > Secrets.",
+      });
     }
   });
 
@@ -1398,7 +1540,6 @@ async function startServer() {
       await fs.writeFile(path.join(targetDir, "50_cute_hamsters_squid_game.png"), req.file.buffer);
       res.json({ success: true, url: "/images/50_cute_hamsters_squid_game.png" });
     } catch (err: any) {
-      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1415,35 +1556,38 @@ async function startServer() {
       await fs.writeFile(path.join(targetDir, fileName), req.file.buffer);
       res.json({ success: true, url: `/images/${fileName}` });
     } catch (err: any) {
-      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
 
-  // Video Generation Start Endpoint (veo-3.1-fast-generate-preview)
+  // Video Generation Start Endpoint
   app.post("/api/generate-video", upload.single("image"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Image is required" });
+      if (!hasValidGeminiKey()) {
+        return res.status(400).json({
+          error:
+            "Please configure a valid GEMINI_API_KEY in the Settings > Secrets panel.",
+        });
+      }
       const aspectRatio = req.body.aspectRatio || "16:9";
 
-      // Note: Model requested by user is veo-3.1-fast-generate-preview, 
-      // but according to the docs we can just pass the string.
+      const ai = getAiClient();
       const operation = await ai.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
+        model: "veo-3.1-fast-generate-preview",
         image: {
-          imageBytes: req.file.buffer.toString('base64'),
+          imageBytes: req.file.buffer.toString("base64"),
           mimeType: req.file.mimetype,
         },
         config: {
           numberOfVideos: 1,
-          resolution: '720p',
-          aspectRatio: aspectRatio
-        }
+          resolution: "720p",
+          aspectRatio: aspectRatio,
+        },
       });
 
       res.json({ operationName: operation.name });
     } catch (err: any) {
-      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1453,14 +1597,17 @@ async function startServer() {
     try {
       const { operationName } = req.body;
       if (!operationName) return res.status(400).json({ error: "Operation name required" });
+      if (!hasValidGeminiKey()) {
+        return res.status(400).json({ error: "Missing valid GEMINI_API_KEY" });
+      }
 
+      const ai = getAiClient();
       const op = new GenerateVideosOperation();
       op.name = operationName;
       const updated = await ai.operations.getVideosOperation({ operation: op });
-      
+
       res.json({ done: updated.done });
     } catch (err: any) {
-      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1470,69 +1617,95 @@ async function startServer() {
     try {
       const operationName = req.query.operationName as string;
       if (!operationName) return res.status(400).json({ error: "Operation name required" });
+      if (!hasValidGeminiKey()) {
+        return res.status(400).json({ error: "Missing valid GEMINI_API_KEY" });
+      }
 
+      const ai = getAiClient();
       const op = new GenerateVideosOperation();
       op.name = operationName;
       const updated = await ai.operations.getVideosOperation({ operation: op });
-      
+
       const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
       if (!uri) return res.status(404).json({ error: "Video not ready or not found" });
 
       const videoRes = await fetch(uri, {
-        headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY! },
+        headers: { "x-goog-api-key": getResolvedGeminiKey() },
       });
-      
-      res.setHeader('Content-Type', 'video/mp4');
+
+      res.setHeader("Content-Type", "video/mp4");
       if (videoRes.body) {
-        // We use Node's readable web streams
-        const nodeStream = require('stream').Readable.fromWeb(videoRes.body);
+        const nodeStream = require("stream").Readable.fromWeb(videoRes.body);
         nodeStream.pipe(res);
       } else {
         res.status(500).json({ error: "Empty response body from video URL" });
       }
     } catch (err: any) {
-      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
 
-  // Image Analysis Endpoint (gemini-3.1-pro-preview)
+  // Image Analysis Endpoint (gemini-4-hydrogen)
   app.post("/api/analyze-image", upload.single("image"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Image is required" });
+      if (!hasValidGeminiKey()) {
+        return res.status(400).json({
+          error:
+            "Please configure a valid GEMINI_API_KEY in the Settings > Secrets panel.",
+        });
+      }
 
+      const ai = getAiClient();
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: "gemini-4-hydrogen",
         contents: {
           parts: [
             {
               inlineData: {
-                data: req.file.buffer.toString('base64'),
+                data: req.file.buffer.toString("base64"),
                 mimeType: req.file.mimetype,
-              }
+              },
             },
             {
-              text: "Analyze this image and describe what you see in detail. If it contains text, summarize it. If it contains objects or characters, identify them."
-            }
-          ]
-        }
+              text: "Analyze this image and describe what you see in detail. If it contains text, summarize it. If it contains objects or characters, identify them.",
+            },
+          ],
+        },
       });
 
       res.json({ text: response.text });
     } catch (err: any) {
-      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
 
   // Mystery Box Questions Generation Endpoint
   app.post("/api/generate-mystery-box-questions", async (req, res) => {
+    const { topic, level, type, count } = req.body || {};
+    if (!topic || !level || !type) {
+      return res.status(400).json({ error: "Topic, level, and type are required" });
+    }
+    const targetCount = Math.min(30, Math.max(5, count || 30));
+
+    const buildMysteryFallback = () =>
+      Array.from({ length: targetCount }, (_, i) => ({
+        type: "mcq",
+        question: `Question ${i + 1}: Which statement best relates to ${topic} (${level})?`,
+        options: [
+          `A key fact or vocabulary item about ${topic}`,
+          `An unrelated idea`,
+          `An opposite meaning`,
+          `None of the above`,
+        ],
+        correctOptionIndex: 0,
+      }));
+
+    if (!hasValidGeminiKey()) {
+      return res.json({ questions: buildMysteryFallback() });
+    }
+
     try {
-      const { topic, level, type, count } = req.body;
-      if (!topic || !level || !type) return res.status(400).json({ error: "Topic, level, and type are required" });
-
-      const targetCount = Math.min(30, Math.max(5, count || 30));
-
       const prompt = `Generate exactly ${targetCount} questions for an ESL game about "${topic}". The English proficiency level is Cambridge ${level}. 
       The question type should be ${type === 'mcq' ? 'Multiple Choice' : type === 'fib' ? 'Fill in the Blanks' : 'a mix of Multiple Choice and Fill in the Blanks'}.
 
@@ -1543,7 +1716,7 @@ async function startServer() {
         "type": "mcq",
         "question": "The question text?",
         "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-        "correctOptionIndex": 0 // index of the correct option (0-3)
+        "correctOptionIndex": 0
       }
       
       If the type is Fill in the Blanks (fib), use this format:
@@ -1556,121 +1729,80 @@ async function startServer() {
       Ensure the English is natural, accurate, and perfectly matches the Cambridge ${level} level. 
       The JSON array MUST have exactly ${targetCount} objects.`;
 
+      const ai = getAiClient();
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: "gemini-4-hydrogen",
         contents: prompt,
         config: {
-          responseMimeType: "application/json"
-        }
+          responseMimeType: "application/json",
+        },
       });
-      
-      let text = response.text?.trim() || "";
+
+      const text = response.text?.trim() || "[]";
       let questions = JSON.parse(text);
-      
-      // Ensure exactly targetCount questions and limit to 30
-      if (Array.isArray(questions)) {
+
+      if (Array.isArray(questions) && questions.length > 0) {
         if (questions.length > targetCount) {
           questions = questions.slice(0, targetCount);
-        } else while (questions.length < targetCount && questions.length < 30) {
-          questions.push({...questions[questions.length - 1]});
+        } else {
+          while (questions.length < targetCount && questions.length < 30) {
+            questions.push({ ...questions[questions.length - 1] });
+          }
         }
+        return res.json({ questions: questions.slice(0, 30) });
       }
-
-      res.json({ questions: questions.slice(0, 30) });
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
+      return res.json({ questions: buildMysteryFallback() });
+    } catch {
+      return res.json({ questions: buildMysteryFallback() });
     }
   });
 
-  
   app.post("/api/generate-hamster-questions", async (req, res) => {
-    try {
-      const { topic, level, types, freq, videoUrl } = req.body;
-      if (!topic || !level || !types) return res.status(400).json({ error: "Missing parameters" });
+    const { topic, level, types, freq, videoUrl } = req.body || {};
+    if (!topic || !level || !types) {
+      return res.status(400).json({ error: "Missing parameters" });
+    }
 
+    if (!hasValidGeminiKey()) {
+      return res.json({
+        questions: buildFallbackVideoQuizQuestions(topic, level, types),
+      });
+    }
+
+    try {
       const prompt = `You are an expert ESL teacher creating an interactive pop quiz for a video.
 Topic: "${topic}"
 Proficiency Level: Cambridge ${level}
 Video URL: ${videoUrl || "Unknown"}
-Requested Question Types: ${types.join(', ')}
-Frequency: ${freq}
+Requested Question Types: ${Array.isArray(types) ? types.join(", ") : "Multiple Choice"}
+Frequency: ${freq || "Smart Timing"}
 
-Generate exactly 4 engaging quiz questions based on the topic "${topic}". 
-Make the questions relevant to a hypothetical video about this topic.
-Spread the timeTrigger (in seconds) out reasonably between 10 and 120 seconds. 
+Generate engaging quiz questions based on the topic "${topic}".
+Spread the timeTrigger (in seconds) out reasonably between 12 and 95 seconds.
+Respond ONLY with a valid JSON array of 6 question objects.
+Format each object with: id, timeTrigger, type, xp, question, options (array of { text, isCorrect }), and explanation.`;
 
-Respond ONLY with a valid JSON array of exactly 4 objects. Do not wrap in markdown tags.
-Format each object like this based on its type:
-
-For 'Multiple Choice':
-{
-  "id": 1,
-  "timeTrigger": 15,
-  "type": "Multiple Choice",
-  "xp": 100,
-  "question": "Question text here?",
-  "options": [
-    { "text": "Correct Option", "isCorrect": true },
-    { "text": "Wrong Option 1", "isCorrect": false },
-    { "text": "Wrong Option 2", "isCorrect": false },
-    { "text": "Wrong Option 3", "isCorrect": false }
-  ],
-  "explanation": "Brief explanation of why it is correct."
-}
-
-For 'Vocabulary Meaning':
-{
-  "id": 2,
-  "timeTrigger": 30,
-  "type": "Vocabulary Meaning",
-  "xp": 150,
-  "word": "VOCABWORD",
-  "pronunciation": "/vocab/",
-  "question": "What does 'VOCABWORD' mean here?",
-  "options": [
-    { "text": "Correct meaning", "isCorrect": true },
-    { "text": "Wrong meaning 1", "isCorrect": false },
-    { "text": "Wrong meaning 2", "isCorrect": false },
-    { "text": "Wrong meaning 3", "isCorrect": false }
-  ],
-  "explanation": "Brief explanation."
-}
-
-For 'Grammar Choice':
-{
-  "id": 3,
-  "timeTrigger": 45,
-  "type": "Grammar Choice",
-  "xp": 100,
-  "question": "Which sentence is grammatically correct?",
-  "options": [
-    { "text": "Correct sentence", "isCorrect": true },
-    { "text": "Wrong sentence 1", "isCorrect": false },
-    { "text": "Wrong sentence 2", "isCorrect": false },
-    { "text": "Wrong sentence 3", "isCorrect": false }
-  ],
-  "explanation": "Brief explanation."
-}
-
-Ensure the array contains a mix of the requested types: ${types.join(', ')}.
-Return exactly a JSON array of 4 objects.`;
-
+      const ai = getAiClient();
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: "gemini-4-hydrogen",
         contents: prompt,
         config: {
-          responseMimeType: "application/json"
-        }
+          responseMimeType: "application/json",
+        },
       });
-      
-      let text = response.text?.trim() || "";
-      let questions = JSON.parse(text);
 
-      res.json({ questions });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
+      const text = response.text?.trim() || "[]";
+      const questions = JSON.parse(text);
+      if (Array.isArray(questions) && questions.length > 0) {
+        return res.json({ questions });
+      }
+      return res.json({
+        questions: buildFallbackVideoQuizQuestions(topic, level, types),
+      });
+    } catch {
+      return res.json({
+        questions: buildFallbackVideoQuizQuestions(topic, level, types),
+      });
     }
   });
 

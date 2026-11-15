@@ -1,166 +1,268 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactPlayer from 'react-player';
 const Player: any = ReactPlayer;
 import {
-  Play, Video, Trophy, Settings, BarChart, BookOpen, Flame,
-  CheckCircle, XCircle, Star, Sparkles, ChevronRight, Volume2,
-  AlertCircle, Users, LayoutDashboard, PlusCircle, Clock, Check,
-  Circle, CheckSquare, Loader2, Folder, Tag, MousePointer2,
-  Sun, Cloud, ArrowRight, Image as ImageIcon, ArrowLeft
+  Play, Pause, Video, Settings,
+  CheckCircle, XCircle, Sparkles, Volume2, VolumeX,
+  Plus, Trash2, Check, Loader2, Folder, FolderPlus,
+  ArrowRight, ArrowLeft, RotateCcw, SkipForward, SkipBack,
+  Edit3, Zap, Upload, Globe, Lock, Award, AlertCircle, FileVideo, X,
+  BarChart3, Clock, Target, Flame, Trophy, Eye, HelpCircle
 } from 'lucide-react';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
+import {
+  mergeUserFolders,
+  fetchAllAvailableFolders,
+  createUnifiedFolder,
+  UnifiedFolderItem,
+} from "../lib/gameStore";
 
 const customStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
-  .font-fredoka { font-family: 'Fredoka', sans-serif; }
-  .font-nunito { font-family: 'Nunito', sans-serif; }
+  .vq-display { font-family: 'Outfit', sans-serif; }
+  .vq-body { font-family: 'Plus Jakarta Sans', sans-serif; }
+  .vq-mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
 
-  @keyframes popIn {
-    0% { transform: scale(0.8); opacity: 0; }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); opacity: 1; }
+  @keyframes vqPopIn {
+    0% { transform: scale(0.96) translateY(8px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
   }
-  @keyframes float {
-    0%, 100% { transform: translateY(0) rotate(0deg); }
-    50% { transform: translateY(-15px) rotate(5deg); }
-  }
-  @keyframes slideUpFade {
-    0% { transform: translateY(30px); opacity: 0; }
+  @keyframes vqFadeUp {
+    0% { transform: translateY(12px); opacity: 0; }
     100% { transform: translateY(0); opacity: 1; }
   }
-  @keyframes confettiFall {
+  @keyframes vqConfetti {
     0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-    100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-  }
-  @keyframes spinSlow {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    100% { transform: translateY(100vh) rotate(540deg); opacity: 0; }
   }
 
-  .sunny-panel {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-radius: 2rem;
-    box-shadow: 0 10px 40px rgba(14, 165, 233, 0.15);
-    border: 2px solid rgba(255, 255, 255, 1);
-  }
-  
-  .sunny-input {
-    background: rgba(240, 249, 255, 0.8);
-    border-radius: 1.5rem;
-    transition: all 0.2s ease;
-    border: 2px solid rgba(186, 230, 253, 0.5);
-  }
-  .sunny-input:focus {
-    border-color: #38bdf8;
-    background: #ffffff;
-    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.2);
-    outline: none;
-  }
+  .animate-vq-pop { animation: vqPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  .animate-vq-fade { animation: vqFadeUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
-  .animate-pop-in { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-  .animate-float { animation: float 5s ease-in-out infinite; }
-  .animate-slide-up { animation: slideUpFade 0.5s ease-out forwards; }
-  
-  .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-  .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); border-radius: 10px; }
-  .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.4); border-radius: 10px; }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(56, 189, 248, 0.7); }
+  .vq-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+  .vq-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); border-radius: 8px; }
+  .vq-scrollbar::-webkit-scrollbar-thumb { background: rgba(245, 158, 11, 0.35); border-radius: 8px; }
+  .vq-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(245, 158, 11, 0.6); }
 `;
 
+const CEFR_LEVELS = ['Pre-A1', 'A1 Starters', 'A2 Movers', 'B1 Preliminary', 'B2 First', 'C1 Advanced'];
+const QUESTION_TYPES = ['Multiple Choice', 'True or False', 'Vocabulary Meaning', 'Grammar Choice'];
+const QUIZ_COUNTS = [
+  { count: 3, label: '3 Checkpoints', freq: 'Every 5 Minutes' },
+  { count: 4, label: '4 Checkpoints', freq: 'Smart Timing' },
+  { count: 6, label: '6 Checkpoints', freq: 'Every 2 Minutes' },
+];
+
+export interface QuizAnswerRecord {
+  isCorrect: boolean;
+  selectedIndex: number;
+  responseTimeSec: number;
+  earnedXp: number;
+}
+
+// Synthesized Web Audio FX
+class VideoQuizAudio {
+  private ctx: AudioContext | null = null;
+  public muted: boolean = false;
+
+  private getContext(): AudioContext | null {
+    if (this.muted || typeof window === 'undefined') return null;
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    return this.ctx;
+  }
+
+  playPop() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.11);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  playCorrect() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, idx) => {
+      const now = ctx.currentTime + idx * 0.06;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.24);
+    });
+  }
+
+  playWrong() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.linearRampToValueAtTime(155, now + 0.22);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.26);
+  }
+
+  playFanfare() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+    notes.forEach((freq, idx) => {
+      const now = ctx.currentTime + idx * 0.08;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.34);
+    });
+  }
+}
+
+const vqAudio = new VideoQuizAudio();
+
+const formatSeconds = (sec: number) => {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}:${rem < 10 ? '0' : ''}${rem}`;
+};
+
+const isDirectVideoSource = (url: string) => {
+  if (!url) return false;
+  if (url.startsWith('blob:') || url.startsWith('data:video/')) return true;
+  return /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url);
+};
+
+const getMasteryGrade = (accuracy: number, answeredCount: number) => {
+  if (answeredCount === 0) return { grade: '—', label: 'Ready to Play', color: 'text-slate-400', bg: 'bg-white/5 border-white/10' };
+  if (accuracy >= 95) return { grade: 'S', label: 'Mastery Star', color: 'text-amber-300', bg: 'bg-amber-400/15 border-amber-400/40' };
+  if (accuracy >= 85) return { grade: 'A+', label: 'Excellent', color: 'text-emerald-300', bg: 'bg-emerald-400/15 border-emerald-400/40' };
+  if (accuracy >= 75) return { grade: 'A', label: 'Great Job', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' };
+  if (accuracy >= 60) return { grade: 'B', label: 'Good Effort', color: 'text-sky-300', bg: 'bg-sky-400/15 border-sky-400/30' };
+  return { grade: 'C', label: 'Keep Practicing', color: 'text-rose-300', bg: 'bg-rose-500/15 border-rose-500/30' };
+};
+
 const generateDynamicQuestions = (config: any) => {
-  const topic = config?.topic || "Nature";
+  const topic = (config?.topic || "English Video Lesson").trim();
   const level = config?.level || "A2 Movers";
-  const types = config?.selectedTypes || ['Multiple Choice'];
-  const freq = config?.frequency || 'Every 2 Minutes';
+  const types = Array.isArray(config?.selectedTypes) && config.selectedTypes.length > 0
+    ? config.selectedTypes
+    : ['Multiple Choice'];
+  const count = config?.count || 4;
 
-  const activeTypes = types.length > 0 ? types : ['Multiple Choice'];
+  const baseTimings = count === 3 ? [15, 40, 70] : count === 6 ? [12, 26, 42, 58, 74, 90] : [14, 34, 56, 78];
 
-  let timings = [10, 25, 45, 65, 85];
-  if (freq === 'Every 2 Minutes') timings = [15, 75]; 
-  if (freq === 'Every 5 Minutes') timings = [50]; 
-
-  return timings.slice(0, 4).map((time, index) => {
-    const qType = activeTypes[index % activeTypes.length];
-    
-    let questionObj: any = {
+  return baseTimings.map((time, index) => {
+    const qType = types[index % types.length];
+    const questionObj: any = {
       id: index + 1,
       timeTrigger: time,
       type: qType,
-      xp: 100
+      xp: 100,
     };
 
     if (qType === 'Multiple Choice') {
-      questionObj.question = `Look at the video! What is the main idea about ${topic} here?`;
+      questionObj.question = `What is the main focus of this scene about ${topic}?`;
       questionObj.options = [
-        { text: `It explains important things about ${topic.toLowerCase()}.`, isCorrect: true },
-        { text: `It is completely unrelated.`, isCorrect: false },
-        { text: `The hamsters are sleeping.`, isCorrect: false },
-        { text: `We are talking about winter snow.`, isCorrect: false }
+        { text: `Key details and actions related to ${topic.toLowerCase()}.`, isCorrect: true },
+        { text: `An unrelated topic not shown in the clip.`, isCorrect: false },
+        { text: `A silent title card with no action.`, isCorrect: false },
+        { text: `The ending credits of the video.`, isCorrect: false },
       ];
-      questionObj.explanation = `The video is clearly demonstrating concepts of ${topic}.`;
-      
+      questionObj.explanation = `This segment highlights core details about ${topic}.`;
     } else if (qType === 'Vocabulary Meaning') {
-      const words = topic.split(' ').filter((w: string) => w.length > 2);
-      const focusWord = words.length > 0 ? words[words.length - 1].toUpperCase() : 'SUNFLOWER';
+      const words = topic.split(/\s+/).filter((w: string) => w.replace(/[^a-zA-Z]/g, '').length > 2);
+      const focusWord = (words[words.length - 1] || 'DISCOVERY').replace(/[^a-zA-Z]/g, '').toUpperCase();
       questionObj.word = focusWord;
-      questionObj.pronunciation = `/${focusWord.toLowerCase().slice(0,4)}/`;
-      questionObj.question = `What does '${focusWord}' mean in this video?`;
+      questionObj.pronunciation = `/${focusWord.toLowerCase()}/`;
+      questionObj.question = `What does "${focusWord}" mean in this context?`;
       questionObj.options = [
-        { text: `A key word relating to ${topic}.`, isCorrect: true },
-        { text: `A type of cold weather.`, isCorrect: false },
-        { text: `Something you drink.`, isCorrect: false },
-        { text: `A dark place.`, isCorrect: false }
+        { text: `An important concept connected to ${topic.toLowerCase()}.`, isCorrect: true },
+        { text: `Something completely opposite to the scene.`, isCorrect: false },
+        { text: `A type of musical instrument.`, isCorrect: false },
+        { text: `A measurement of distance.`, isCorrect: false },
       ];
-      questionObj.explanation = `'${focusWord}' is a key ${level} vocabulary word used in this context.`;
+      questionObj.explanation = `"${focusWord}" is a key ${level} vocabulary term for ${topic}.`;
       questionObj.xp = 150;
-
     } else if (qType === 'Grammar Choice') {
-      questionObj.question = `Which sentence is correct for ${level} English?`;
+      questionObj.question = `Which sentence uses correct ${level} grammar?`;
       questionObj.options = [
-        { text: `The hamsters are studying ${topic.toLowerCase()}.`, isCorrect: true },
-        { text: `The hamsters is studying ${topic.toLowerCase()}.`, isCorrect: false },
-        { text: `The hamsters studies ${topic.toLowerCase()}.`, isCorrect: false },
-        { text: `The hamsters studying ${topic.toLowerCase()}.`, isCorrect: false }
+        { text: `They are watching a video about ${topic.toLowerCase()}.`, isCorrect: true },
+        { text: `They is watching a video about ${topic.toLowerCase()}.`, isCorrect: false },
+        { text: `They watches a video about ${topic.toLowerCase()}.`, isCorrect: false },
+        { text: `They watching a video about ${topic.toLowerCase()}.`, isCorrect: false },
       ];
-      questionObj.explanation = `We use 'are' with plural subjects in the Present Continuous tense.`;
-
-    } else { 
+      questionObj.explanation = `Use "are + verb-ing" with plural subjects in the present continuous tense.`;
+    } else {
       questionObj.type = 'True or False';
-      questionObj.question = `True or False: This part of the video is about ${topic}.`;
+      questionObj.question = `True or False: This part of the video focuses on ${topic}.`;
       questionObj.options = [
         { text: `True`, isCorrect: true },
-        { text: `False`, isCorrect: false }
+        { text: `False`, isCorrect: false },
       ];
-      questionObj.explanation = `The context strongly relates to ${topic}.`;
+      questionObj.explanation = `The scene directly connects to ${topic}.`;
     }
-    
+
     return questionObj;
   });
 };
-
-const CEFR_LEVELS = ['Pre-A1', 'A1 Starters', 'A2 Movers', 'A2 Key', 'B1 Preliminary', 'B2 First', 'C1 Advanced'];
-const QUESTION_TYPES = ['Multiple Choice', 'True or False', 'Vocabulary Meaning', 'Grammar Choice', 'Listen & Type', 'Put in Order'];
 
 export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (view: ViewState) => void; initialGame?: any; }) {
   const { user } = useAuth();
   const [savedGameRecord, setSavedGameRecord] = useState<any>(initialGame || null);
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false);
+  const [isMuted, setIsMuted] = useState(false);
 
-  const buildQuestionsFromInitialGame = (game: any) => {
+  // When a saved game is opened to play (not via explicit edit icon) or after saving in session, lock into clean Play Mode
+  const [isLockedPlayMode, setIsLockedPlayMode] = useState<boolean>(
+    Boolean(initialGame && !initialGame.editMode)
+  );
+
+  const buildQuestionsFromInitialGame = useCallback((game: any) => {
     const raw = game?.customQuestions || game?.questions || [];
     if (!Array.isArray(raw) || raw.length === 0) return null;
     const total = raw.length;
     return raw.map((q: any, idx: number) => {
       const text = q.text || q.question || `Question ${idx + 1}`;
-      const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['Yes', 'No'];
+      const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['True', 'False'];
       const foundCorrect = opts.findIndex((o: any) => typeof o === 'object' && Boolean(o?.isCorrect));
       const ansIdx = typeof q.answerIndex === 'number' ? q.answerIndex : (foundCorrect >= 0 ? foundCorrect : 0);
       return {
@@ -173,72 +275,168 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
           text: typeof o === 'string' ? o : o?.text || `Option ${oIdx + 1}`,
           isCorrect: oIdx === ansIdx,
         })),
-        explanation: q.explanation || `Correct Answer: ${typeof opts[ansIdx] === 'string' ? opts[ansIdx] : opts[ansIdx]?.text || ''}`,
+        explanation: q.explanation || `Correct answer: ${typeof opts[ansIdx] === 'string' ? opts[ansIdx] : opts[ansIdx]?.text || ''}`,
         ...(q.word ? { word: q.word } : {}),
         ...(q.pronunciation ? { pronunciation: q.pronunciation } : {}),
       };
     });
-  };
+  }, []);
 
   const initialMappedQuestions = buildQuestionsFromInitialGame(initialGame);
-  const [currentView, setCurrentView] = useState(initialMappedQuestions ? 'player' : 'home');
+  const hasInitialVideo = Boolean(initialGame?.videoUrl);
+  const [currentView, setCurrentView] = useState<'setup' | 'player'>(
+    initialMappedQuestions && hasInitialVideo ? 'player' : 'setup'
+  );
   const [questions, setQuestions] = useState<any[]>(initialMappedQuestions || []);
   const [lessonConfig, setLessonConfig] = useState<any>(
     initialGame
       ? {
-          topic: initialGame.topic || initialGame.name || initialGame.title || 'Custom Quiz',
-          level: initialGame.classLevel || initialGame.className || 'All Levels',
+          topic: initialGame.topic || initialGame.name || initialGame.title || '',
+          level: initialGame.classLevel || initialGame.className || 'A2 Movers',
+          className: initialGame.className || '',
+          folderId: initialGame.folderId || '',
           folder: initialGame.folderName || '',
+          isPublic: initialGame.isPublic ?? true,
         }
-      : null
+      : {
+          topic: '',
+          level: 'A2 Movers',
+          className: '',
+          folderId: '',
+          folder: '',
+          isPublic: true,
+        }
   );
-  const [videoUrl, setVideoUrl] = useState(initialGame?.videoUrl || '');
-  
+
+  const [videoUrl, setVideoUrl] = useState<string>(initialGame?.videoUrl || '');
+  const [localVideoName, setLocalVideoName] = useState<string>('');
+  const localBlobUrlRef = useRef<string | null>(null);
+
   const [xp, setXp] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
   const [wordsLearned, setWordsLearned] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [setupError, setSetupError] = useState('');
+
+  useEffect(() => {
+    return () => {
+      if (localBlobUrlRef.current) {
+        URL.revokeObjectURL(localBlobUrlRef.current);
+        localBlobUrlRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setSavedGameRecord(initialGame || null);
+    setIsLockedPlayMode(Boolean(initialGame && !initialGame.editMode));
     if (initialGame?.videoUrl) {
       setVideoUrl(initialGame.videoUrl);
+      setLocalVideoName('');
     }
     const mapped = buildQuestionsFromInitialGame(initialGame);
     if (mapped) {
       setQuestions(mapped);
       setLessonConfig({
-        topic: initialGame.topic || initialGame.name || initialGame.title || 'Custom Quiz',
-        level: initialGame.classLevel || initialGame.className || 'All Levels',
+        topic: initialGame.topic || initialGame.name || initialGame.title || 'Video Quiz',
+        level: initialGame.classLevel || initialGame.className || 'A2 Movers',
+        className: initialGame.className || '',
+        folderId: initialGame.folderId || '',
         folder: initialGame.folderName || '',
+        isPublic: initialGame.isPublic ?? true,
       });
-      setCurrentView('player');
+      if (initialGame?.videoUrl) {
+        setCurrentView('player');
+      }
     }
-  }, [initialGame]);
+  }, [initialGame, buildQuestionsFromInitialGame]);
 
-  const handleSaveVideoQuiz = async (): Promise<{ ok: boolean; message: string }> => {
+  const handleSelectLocalVideoFile = (file: File) => {
+    if (localBlobUrlRef.current) {
+      URL.revokeObjectURL(localBlobUrlRef.current);
+      localBlobUrlRef.current = null;
+    }
+    const blobUrl = URL.createObjectURL(file);
+    localBlobUrlRef.current = blobUrl;
+    setVideoUrl(blobUrl);
+    setLocalVideoName(file.name);
+    setSetupError('');
+
+    const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
+    if (cleanFileName && !lessonConfig?.topic) {
+      setLessonConfig((prev: any) => ({ ...prev, topic: cleanFileName }));
+    }
+  };
+
+  const handleClearVideoSource = () => {
+    if (localBlobUrlRef.current) {
+      URL.revokeObjectURL(localBlobUrlRef.current);
+      localBlobUrlRef.current = null;
+    }
+    setVideoUrl('');
+    setLocalVideoName('');
+  };
+
+  const toggleMute = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    vqAudio.muted = next;
+  };
+
+  const normalizeVideoUrl = (rawUrl: string) => {
+    let finalUrl = (rawUrl || '').trim();
+    if (!finalUrl) return '';
+    if (finalUrl.startsWith('blob:') || finalUrl.startsWith('data:')) return finalUrl;
+    if (!/^https?:\/\//i.test(finalUrl)) {
+      finalUrl = 'https://' + finalUrl;
+    }
+    if (finalUrl.includes('youtube.com/shorts/')) {
+      finalUrl = finalUrl.replace('youtube.com/shorts/', 'youtube.com/watch?v=');
+    }
+    return finalUrl;
+  };
+
+  const handleSaveVideoQuiz = async (saveOverrides?: {
+    title?: string;
+    className?: string;
+    folderId?: string;
+    folderName?: string;
+    isPublic?: boolean;
+    videoUrlOverride?: string;
+  }): Promise<{ ok: boolean; message: string }> => {
     if (savingRef.current) return { ok: false, message: 'Already saving...' };
     savingRef.current = true;
     setIsSaving(true);
     try {
       const existing = savedGameRecord || initialGame;
       const resolvedTitle =
-        lessonConfig?.topic ||
+        saveOverrides?.title?.trim() ||
+        lessonConfig?.topic?.trim() ||
         existing?.topic ||
         existing?.name ||
         existing?.title ||
         'Video Quiz';
       const resolvedClass =
-        lessonConfig?.level ||
-        lessonConfig?.className ||
-        existing?.classLevel ||
-        existing?.className ||
-        '';
+        saveOverrides?.className !== undefined
+          ? saveOverrides.className.trim()
+          : lessonConfig?.className ||
+            lessonConfig?.level ||
+            existing?.classLevel ||
+            existing?.className ||
+            '';
 
-      let resolvedFolderId = existing?.folderId || '';
-      let resolvedFolderName = lessonConfig?.folder || existing?.folderName || '';
+      let resolvedFolderId =
+        saveOverrides?.folderId !== undefined
+          ? saveOverrides.folderId
+          : lessonConfig?.folderId || existing?.folderId || '';
+      let resolvedFolderName =
+        saveOverrides?.folderName !== undefined
+          ? saveOverrides.folderName
+          : lessonConfig?.folder || existing?.folderName || '';
+
       if (!resolvedFolderId && resolvedFolderName && user?.uid) {
         try {
-          const { mergeUserFolders } = await import('../lib/gameStore');
           const userFolders = mergeUserFolders(user.uid);
           const match = userFolders.find(
             (f) => f.name.toLowerCase().trim() === String(resolvedFolderName).toLowerCase().trim()
@@ -249,6 +447,18 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
           }
         } catch {}
       }
+
+      const resolvedIsPublic =
+        saveOverrides?.isPublic !== undefined
+          ? saveOverrides.isPublic
+          : lessonConfig?.isPublic !== undefined
+          ? Boolean(lessonConfig.isPublic)
+          : existing?.isPublic !== undefined
+          ? Boolean(existing.isPublic)
+          : true;
+
+      const rawTargetUrl = saveOverrides?.videoUrlOverride || videoUrl || existing?.videoUrl || '';
+      const persistedVideoUrl = rawTargetUrl.startsWith('blob:') ? '' : normalizeVideoUrl(rawTargetUrl);
 
       const normalizedQuestions = (questions || []).map((q: any, idx: number) => {
         const rawOpts = Array.isArray(q.options) ? q.options : [];
@@ -274,6 +484,20 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
         };
       });
 
+      const updatedConfig = {
+        ...lessonConfig,
+        topic: resolvedTitle,
+        className: resolvedClass,
+        folderId: resolvedFolderId,
+        folder: resolvedFolderName,
+        isPublic: resolvedIsPublic,
+      };
+      setLessonConfig(updatedConfig);
+      if (saveOverrides?.videoUrlOverride && !saveOverrides.videoUrlOverride.startsWith('blob:')) {
+        setVideoUrl(persistedVideoUrl);
+        setLocalVideoName('');
+      }
+
       const gameToSave = {
         name: resolvedTitle,
         title: resolvedTitle,
@@ -283,131 +507,254 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
         folderId: resolvedFolderId,
         ...(resolvedFolderName ? { folderName: resolvedFolderName } : {}),
         gameType: 'hamster-pop-quiz',
-        videoUrl: videoUrl || existing?.videoUrl || '',
-        lessonConfig: lessonConfig || existing?.lessonConfig || null,
+        videoUrl: persistedVideoUrl,
+        lessonConfig: updatedConfig,
         customQuestions: normalizedQuestions,
-        isPublic: Boolean(existing?.isPublic),
+        isPublic: resolvedIsPublic,
       };
 
       const result = await persistUserGameToCloudAndCache(db, user, gameToSave, {
         existingGame: existing,
       });
       setSavedGameRecord(result.savedGame);
+      // Once saved, enter clean Play Mode without Edit Questions or Checkpoint lists
+      setIsLockedPlayMode(true);
       return {
         ok: true,
         message: result.cloudSynced
-          ? 'Quiz saved to My Games & Cloud! 🌻'
-          : 'Quiz saved to My Games! 🌻',
+          ? 'Saved to My Games & Cloud'
+          : 'Saved to My Games',
       };
     } catch (err) {
       console.error('Error saving Video Quiz:', err);
-      return { ok: false, message: 'Failed to save quiz. Please try again.' };
+      return { ok: false, message: 'Failed to save quiz.' };
     } finally {
       savingRef.current = false;
       setIsSaving(false);
     }
   };
 
-  const navigateTo = (view: string) => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setCurrentView(view);
-  };
-
-  const [isGenerating, setIsGenerating] = useState(false);
   const handleStartLesson = async (config: any) => {
+    const cleanUrl = normalizeVideoUrl(config.videoUrl || videoUrl);
+    if (!cleanUrl) {
+      setSetupError('Please paste a video URL or upload a local video file first.');
+      return;
+    }
+    setSetupError('');
+    setVideoUrl(cleanUrl);
     setLessonConfig(config);
+    setIsLockedPlayMode(false);
     setIsGenerating(true);
-    
+
     try {
       const res = await fetch('/api/generate-hamster-questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: config.topic,
-          level: config.level,
+          topic: config.topic || 'Video Lesson',
+          level: config.level || 'A2 Movers',
           types: config.selectedTypes,
           freq: config.frequency,
-          videoUrl: videoUrl
-        })
+          videoUrl: cleanUrl.startsWith('blob:') ? localVideoName : cleanUrl,
+        }),
       });
       const data = await res.json();
-      if (data.questions) {
-        setQuestions(data.questions);
+      if (Array.isArray(data.questions) && data.questions.length > 0) {
+        const desiredCount = config.count || 4;
+        const base = data.questions;
+        const finalQs =
+          base.length >= desiredCount
+            ? base.slice(0, desiredCount)
+            : [...base, ...generateDynamicQuestions(config).slice(base.length, desiredCount)].map((q, i) => ({
+                ...q,
+                id: i + 1,
+              }));
+        setQuestions(finalQs);
       } else {
         setQuestions(generateDynamicQuestions(config));
       }
     } catch (e) {
       console.error(e);
       setQuestions(generateDynamicQuestions(config));
+    } finally {
+      setIsGenerating(false);
+      setCurrentView('player');
     }
-    setIsGenerating(false);
-    navigateTo('player');
   };
 
-  const floatingItems = ['☀️', '☁️', '🌻', '🦋', '🐹', '🌼', '☁️', '✨'];
-
   return (
-    <div id="game-container" className="w-full min-h-full flex-1 text-slate-800 font-nunito overflow-y-auto overflow-x-hidden bg-gradient-to-br from-sky-300 via-cyan-200 to-yellow-100 relative selection:bg-yellow-400 selection:text-slate-900 rounded-none sm:rounded-[2rem] border-0 sm:border-4 md:border-8 border-white/40 shadow-2xl">
-
-      <div className="absolute top-4 left-4 z-[60] flex items-center gap-2">
-        <button 
-          onClick={() => onViewChange("games")}
-          className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border text-slate-600 hover:text-slate-900 bg-white/50 hover:bg-white border-white/50 shadow-sm"
-        >
-          <ArrowLeft size={20} className="sm:w-6 sm:h-6" />
-        </button>
-        <FullscreenButton targetId="game-container" />
-      </div>
-
-      <div className="absolute top-4 right-4 z-[60] flex items-center gap-2 sm:gap-4">
-        <div className="flex items-center gap-1.5 sm:gap-2 bg-yellow-400/90 backdrop-blur-md px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-yellow-300 shadow-md">
-          <Star className="text-white w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" />
-          <span className="font-bold text-xs sm:text-sm text-yellow-900">{xp} XP</span>
-        </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 bg-orange-400/90 backdrop-blur-md px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-orange-300 shadow-md">
-          <Flame className="text-white w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" />
-          <span className="font-bold text-xs sm:text-sm text-orange-900">{streak}</span>
-        </div>
-      </div>
-
+    <div
+      id="game-container"
+      className="w-full min-h-full flex-1 text-slate-100 vq-body overflow-y-auto overflow-x-hidden bg-[#0B0914] relative selection:bg-amber-400 selection:text-slate-950 flex flex-col"
+      style={{
+        backgroundImage:
+          'radial-gradient(circle at 18% 12%, rgba(245, 158, 11, 0.11), transparent 38%), radial-gradient(circle at 82% 18%, rgba(236, 72, 153, 0.11), transparent 42%), radial-gradient(circle at 50% 90%, rgba(139, 92, 246, 0.13), transparent 50%)',
+      }}
+    >
       <style>{customStyles}</style>
 
-      {/* Global Sunny Floating Elements */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-60 z-0">
-        {[...Array(15)].map((_, i) => (
-          <div key={i} 
-               className="absolute animate-float text-4xl drop-shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
-               style={{
-                 left: Math.random() * 100 + 'vw',
-                 top: Math.random() * 100 + 'vh',
-                 animationDelay: Math.random() * 5 + 's',
-                 animationDuration: (Math.random() * 4 + 5) + 's',
-                 transform: `scale(${Math.random() * 0.7 + 0.5})`
-               }}
+      {/* Top Navigation Bar */}
+      <header className="sticky top-0 z-40 w-full bg-[#0E0B1A]/95 border-b border-white/10 px-3 sm:px-5 h-14 flex items-center justify-between gap-3 shrink-0">
+        {/* Zone 1: Back + Fullscreen + Brand */}
+        <div className="flex items-center gap-2.5 shrink-0 min-w-0">
+          <button
+            onClick={() => onViewChange("games")}
+            title="Back to Games"
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
           >
-            {floatingItems[i % floatingItems.length]}
+            <ArrowLeft size={17} />
+          </button>
+          <FullscreenButton targetId="game-container" />
+          <div className="flex items-center gap-2 text-left ml-0.5 min-w-0">
+            <img
+              src="/images/video-quiz-card-v3.jpg?v=3"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = '/assets/aistudio/image_3b5337e9.png';
+              }}
+              alt="Video Quiz"
+              referrerPolicy="no-referrer"
+              className="w-8 h-8 rounded-lg object-cover border border-amber-400/40 shadow-sm shrink-0"
+            />
+            <span className="vq-display text-base sm:text-lg font-extrabold tracking-tight text-white truncate">
+              Video <span className="text-amber-400">Quiz</span>
+            </span>
+            {currentView === 'player' && (lessonConfig?.topic || localVideoName) && (
+              <>
+                <span aria-hidden="true" className="text-white/20 hidden md:inline">·</span>
+                <span className="hidden md:inline text-xs font-bold text-slate-300 truncate max-w-[260px]">
+                  {lessonConfig?.topic || localVideoName}
+                </span>
+                {lessonConfig?.level && (
+                  <span className="hidden lg:inline px-2 py-0.5 rounded-md bg-amber-400/15 text-amber-300 text-[11px] font-bold whitespace-nowrap">
+                    {lessonConfig.level}
+                  </span>
+                )}
+              </>
+            )}
           </div>
-        ))}
-      </div>
+        </div>
 
-      
+        {/* Zone 2: Mode Switcher (Only visible when creating/editing an unsaved quiz) */}
+        {!isLockedPlayMode && (
+          <div className="hidden sm:flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10">
+            <button
+              onClick={() => setCurrentView('setup')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                currentView === 'setup'
+                  ? 'bg-amber-400 text-slate-950 shadow-xs'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Setup
+            </button>
+            <button
+              onClick={() => {
+                if (!videoUrl.trim()) {
+                  setSetupError('Please paste a video URL or upload a local video file first.');
+                  setCurrentView('setup');
+                  return;
+                }
+                if (questions.length === 0) {
+                  setQuestions(generateDynamicQuestions(lessonConfig));
+                }
+                setCurrentView('player');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                currentView === 'player'
+                  ? 'bg-amber-400 text-slate-950 shadow-xs'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Player {questions.length > 0 ? `(${questions.length})` : ''}
+            </button>
+          </div>
+        )}
 
-      <main className="container mx-auto px-4 py-8 relative z-10">
-        {currentView === 'home' && <HomeView navigateTo={navigateTo} />}
-        {currentView === 'create' && <CreateView navigateTo={navigateTo} videoUrl={videoUrl} setVideoUrl={setVideoUrl} />}
-        {currentView === 'loading' && <LoadingAnalysisView navigateTo={navigateTo} />}
-        {currentView === 'config' && <ConfigView onStartLesson={handleStartLesson} isGenerating={isGenerating} />}
-        {currentView === 'player' && (
-          <PlayerView 
+        {/* Zone 3: Live Score & Audio Action */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-slate-300 vq-mono">
+            <span className="text-amber-400 font-extrabold">{xp} XP</span>
+            <span aria-hidden="true" className="text-white/20">·</span>
+            <span className="text-rose-400 font-extrabold flex items-center gap-1">
+              <Flame size={13} className="text-rose-400" />
+              {streak}
+            </span>
+          </div>
+          <button
+            onClick={toggleMute}
+            title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
+          >
+            {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+          </button>
+        </div>
+      </header>
+
+      {/* Main Workspace — Full-Screen in Player View */}
+      <main
+        className={`flex-1 w-full mx-auto flex flex-col ${
+          currentView === 'player'
+            ? 'max-w-[1920px] px-2 sm:px-4 py-2'
+            : 'max-w-[1280px] px-4 sm:px-6 py-6'
+        }`}
+      >
+        {currentView === 'setup' ? (
+          <SetupStudioView
+            videoUrl={videoUrl}
+            setVideoUrl={(val: string) => {
+              setVideoUrl(val);
+              if (setupError) setSetupError('');
+            }}
+            localVideoName={localVideoName}
+            onSelectLocalFile={handleSelectLocalVideoFile}
+            onClearVideo={handleClearVideoSource}
+            initialConfig={lessonConfig}
+            setupError={setupError}
+            setSetupError={setSetupError}
+            onStartLesson={handleStartLesson}
+            onOpenManual={(cfg: any) => {
+              const cleanUrl = normalizeVideoUrl(cfg.videoUrl || videoUrl);
+              if (!cleanUrl) {
+                setSetupError('Please paste a video URL or upload a local video file first.');
+                return;
+              }
+              setSetupError('');
+              setVideoUrl(cleanUrl);
+              setLessonConfig(cfg);
+              setIsLockedPlayMode(false);
+              if (questions.length === 0) {
+                setQuestions(generateDynamicQuestions(cfg));
+              }
+              setCurrentView('player');
+            }}
+            isGenerating={isGenerating}
+          />
+        ) : (
+          <PlayerView
+            user={user}
             config={lessonConfig}
             questions={questions}
             setQuestions={setQuestions}
-            xp={xp} setXp={setXp} 
-            streak={streak} setStreak={setStreak}
-            wordsLearned={wordsLearned} setWordsLearned={setWordsLearned}
+            xp={xp}
+            setXp={setXp}
+            streak={streak}
+            setStreak={(valOrFn: any) => {
+              setStreak((prev) => {
+                const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+                if (next > bestStreak) setBestStreak(next);
+                return next;
+              });
+            }}
+            bestStreak={bestStreak}
+            wordsLearned={wordsLearned}
+            setWordsLearned={setWordsLearned}
             videoUrl={videoUrl}
+            localVideoName={localVideoName}
             onSaveQuiz={handleSaveVideoQuiz}
             isSaving={isSaving}
+            isPlayOnlyMode={isLockedPlayMode}
+            initialOpenEditor={Boolean(initialGame?.editMode && !isLockedPlayMode)}
+            onBackToSetup={() => setCurrentView('setup')}
           />
         )}
       </main>
@@ -415,603 +762,1355 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
   );
 }
 
-function Navbar({ navigateTo, xp, streak, onViewChange }: any) {
-  return (
-    <nav className="sticky top-0 w-full bg-white/70 backdrop-blur-md z-40 border-b border-sky-100 shadow-sm rounded-xl">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={() => onViewChange("games")} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
-            <ArrowLeft size={24} />
-          </button>
-          <div 
-            className="flex items-center gap-2 cursor-pointer group"
-            onClick={() => navigateTo('home')}
-          >
-            <span className="text-3xl group-hover:scale-110 transition-transform drop-shadow-sm">🎬</span>
-            <h1 className="text-2xl font-black font-fredoka bg-gradient-to-r from-sky-400 to-sky-600 bg-clip-text text-transparent">
-              Video <span className="text-yellow-400">Quiz</span>
-            </h1>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-yellow-100/50 px-4 py-2 rounded-full border border-yellow-200">
-            <Star className="text-yellow-500" fill="currentColor" size={18} />
-            <span className="font-bold text-yellow-700">{xp} XP</span>
-          </div>
-          <div className="flex items-center gap-2 bg-orange-100/50 px-4 py-2 rounded-full border border-orange-200">
-            <Flame className="text-orange-500" fill="currentColor" size={18} />
-            <span className="font-bold text-orange-700">{streak}</span>
-          </div>
-        </div>
-      </div>
-    </nav>
+function SetupStudioView({
+  videoUrl,
+  setVideoUrl,
+  localVideoName,
+  onSelectLocalFile,
+  onClearVideo,
+  initialConfig,
+  setupError,
+  setSetupError,
+  onStartLesson,
+  onOpenManual,
+  isGenerating,
+}: any) {
+  const isBlobUrl = Boolean(videoUrl && videoUrl.startsWith('blob:'));
+  const [urlInput, setUrlInput] = useState(isBlobUrl ? '' : videoUrl || '');
+  const [topic, setTopic] = useState(initialConfig?.topic || '');
+  const [level, setLevel] = useState(initialConfig?.level || 'A2 Movers');
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(
+    initialConfig?.selectedTypes || ['Multiple Choice', 'Vocabulary Meaning', 'Grammar Choice']
   );
-}
+  const [quizCount, setQuizCount] = useState<number>(4);
 
-function HomeView({ navigateTo }: any) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] text-center animate-slide-up">
-      <div className="bg-white/80 p-6 rounded-full shadow-lg mb-8 animate-float">
-        <span className="text-6xl">🌻</span>
-      </div>
-      <h2 className="text-5xl md:text-7xl font-black font-fredoka text-slate-800 mb-6 drop-shadow-sm">
-        Turn Any Video Into A<br/>
-        <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-yellow-400">
-          Sunny ESL Adventure!
-        </span>
-      </h2>
-      <p className="text-xl text-slate-600 font-medium mb-10 max-w-2xl">
-        Paste a video link. Our hamsters will automatically generate interactive questions, vocabulary, and grammar pop quizzes!
-      </p>
-      <button 
-        onClick={() => navigateTo('create')}
-        className="bg-sky-400 hover:bg-sky-500 text-white text-xl font-black px-10 py-5 rounded-full shadow-[0_8px_0_#0369a1] hover:shadow-[0_4px_0_#0369a1] hover:translate-y-1 transition-all flex items-center gap-3"
-      >
-        <Play fill="currentColor" /> Start Exploring Now
-      </button>
-    </div>
-  );
-}
-
-function CreateView({ navigateTo, videoUrl, setVideoUrl }: any) {
-
-  const handleSubmit = (e: any) => {
-    e.preventDefault();
-    if (videoUrl) {
-      let finalUrl = videoUrl.trim();
-      if (!/^https?:\/\//i.test(finalUrl)) {
-        finalUrl = 'https://' + finalUrl;
-      }
-      if (finalUrl.includes('youtube.com/shorts/')) {
-        finalUrl = finalUrl.replace('youtube.com/shorts/', 'youtube.com/watch?v=');
-      }
-      setVideoUrl(finalUrl);
-      navigateTo('loading');
-    }
-  };
-
-  return (
-    <div className="max-w-3xl mx-auto mt-20 animate-slide-up">
-      <div className="sunny-panel p-10 text-center">
-        <h2 className="text-3xl font-black font-fredoka text-sky-500 mb-4 flex items-center justify-center gap-3">
-          <Video /> Paste a Video Link
-        </h2>
-        <p className="text-slate-500 mb-8 font-medium">Ready to start? Drop any learning video URL below.</p>
-        
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          <input 
-            type="text" 
-            placeholder="e.g., https://youtube.com/watch?v=..." 
-            className="w-full text-lg p-5 rounded-2xl sunny-input font-medium text-slate-700"
-            value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
-            required
-          />
-          <button 
-            type="submit"
-            className="bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-lg font-black px-8 py-4 rounded-2xl shadow-[0_6px_0_#ca8a04] hover:shadow-[0_3px_0_#ca8a04] hover:translate-y-1 transition-all flex items-center justify-center gap-2"
-          >
-            <Sparkles /> Analyze Video
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function LoadingAnalysisView({ navigateTo }: any) {
-  const [step, setStep] = useState(0);
-  const steps = [
-    { text: "Hamsters are scanning the video...", icon: "🔍" },
-    { text: "Sniffing out the context & topics...", icon: "🐹" },
-    { text: "Gathering vocabulary seeds...", icon: "🌻" },
-    { text: "Running on the grammar wheel...", icon: "⚙️" },
-    { text: "Building your sunny adventure!", icon: "☀️" }
-  ];
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const urlInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setStep(prev => {
-        if (prev >= steps.length - 1) {
-          clearInterval(timer);
-          setTimeout(() => navigateTo('config'), 800);
-          return prev;
+    if (!videoUrl) {
+      setUrlInput('');
+    } else if (!videoUrl.startsWith('blob:')) {
+      setUrlInput(videoUrl);
+    }
+  }, [videoUrl]);
+
+  useEffect(() => {
+    if (initialConfig?.topic && !topic) {
+      setTopic(initialConfig.topic);
+    }
+  }, [initialConfig?.topic]);
+
+  // Auto-detect YouTube title via oEmbed when user pastes a YouTube link
+  useEffect(() => {
+    const trimmed = (urlInput || '').trim();
+    if (!trimmed.includes('youtube.com') && !trimmed.includes('youtu.be')) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+        const res = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(normalized)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.title) {
+          setTopic((prev: string) => prev.trim() || String(data.title).slice(0, 65));
         }
-        return prev + 1;
-      });
-    }, 1200);
-    return () => clearInterval(timer);
-  }, [navigateTo]);
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] animate-slide-up">
-      <div className="sunny-panel p-12 w-full max-w-xl">
-        <div className="flex justify-center mb-8">
-          <div className="relative">
-            <div className="w-24 h-24 rounded-full border-8 border-sky-100 flex items-center justify-center text-5xl bg-white shadow-inner">
-              🐹
-            </div>
-            <svg className="absolute inset-0 w-full h-full animate-[spinSlow_3s_linear_infinite]" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="46" fill="none" stroke="#38bdf8" strokeWidth="8" strokeDasharray="70 200" strokeLinecap="round" />
-            </svg>
-          </div>
-        </div>
-        
-        <h2 className="text-2xl font-black font-fredoka text-sky-600 text-center mb-8">Hamster Analysis in Progress</h2>
-        
-        <div className="space-y-4">
-          {steps.map((s, idx) => (
-            <div key={idx} className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-500 ${idx <= step ? 'bg-sky-50 opacity-100' : 'opacity-30'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${idx < step ? 'bg-green-400 text-white' : idx === step ? 'bg-yellow-400 animate-pulse text-white' : 'bg-slate-200'}`}>
-                {idx < step ? <Check size={16} strokeWidth={3}/> : <Circle size={10} fill="currentColor"/>}
-              </div>
-              <span className="text-xl">{s.icon}</span>
-              <span className={`font-bold ${idx <= step ? 'text-slate-700' : 'text-slate-400'}`}>{s.text}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ConfigView({ onStartLesson, isGenerating }: any) {
-  const [level, setLevel] = useState('A2 Movers');
-  const [selectedTypes, setSelectedTypes] = useState(['Multiple Choice', 'Vocabulary Meaning', 'Grammar Choice']);
-  const [frequency, setFrequency] = useState('Smart Hamster Timing ✨');
-  
-  const [topic, setTopic] = useState('Nature and Animals');
-  const [className, setClassName] = useState('Grade 4 Blue');
-  const [folder, setFolder] = useState('My ESL Lessons');
+      } catch {}
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [urlInput]);
 
   const toggleType = (type: string) => {
-    setSelectedTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
+    setSelectedTypes((prev) =>
+      prev.includes(type)
+        ? prev.length > 1
+          ? prev.filter((t) => t !== type)
+          : prev
+        : [...prev, type]
+    );
+  };
+
+  const activeVideoSource = isBlobUrl ? videoUrl : urlInput.trim();
+
+  const buildPayload = () => {
+    const matchedFreq = QUIZ_COUNTS.find((c) => c.count === quizCount)?.freq || 'Smart Timing';
+    const fallbackTopic = localVideoName
+      ? localVideoName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ')
+      : 'Video Lesson';
+    return {
+      ...initialConfig,
+      videoUrl: activeVideoSource,
+      topic: topic.trim() || fallbackTopic,
+      level,
+      selectedTypes,
+      count: quizCount,
+      frequency: matchedFreq,
+    };
   };
 
   return (
-    <div className="max-w-6xl mx-auto animate-slide-up">
-      <div className="text-center mb-10">
-        <h2 className="text-4xl font-black font-fredoka text-sky-500 flex justify-center items-center gap-3">
-          🌻 Quiz Settings
-        </h2>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-8 mb-10">
-        {/* Left Column */}
-        <div className="space-y-8">
-          
-          <div className="sunny-panel p-8">
-            <h3 className="font-black text-yellow-500 text-xl mb-6 flex items-center gap-2">
-              <Trophy size={24} /> English Level Target
-            </h3>
-            <div className="flex flex-wrap gap-3">
-              {CEFR_LEVELS.map(l => (
-                <button 
-                  key={l}
-                  onClick={() => setLevel(l)}
-                  className={`px-5 py-2.5 rounded-full font-bold transition-all border-2 ${level === l ? 'bg-cyan-400 border-cyan-400 text-white shadow-md scale-105' : 'bg-white border-sky-100 text-slate-500 hover:border-cyan-300'}`}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
+    <div className="flex-1 flex flex-col justify-center max-w-5xl mx-auto w-full animate-vq-fade">
+      <div className="bg-[#161229] border border-white/10 rounded-3xl p-5 sm:p-8 shadow-2xl">
+        {/* Compact Header */}
+        <div className="flex flex-col sm:flex-row items-center gap-5 pb-6 border-b border-white/10">
+          <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 border-2 border-amber-400/50 shadow-lg bg-[#0B0914]">
+            <img
+              src="/images/video-quiz-card-v3.jpg?v=3"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = '/assets/aistudio/image_3b5337e9.png';
+              }}
+              alt="Video Quiz Mascot"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover"
+            />
           </div>
 
-          <div className="sunny-panel p-8">
-            <h3 className="font-black text-cyan-400 text-xl mb-6 flex items-center gap-2">
-              <Clock size={24} /> Quiz Frequency
-            </h3>
-            <div className="space-y-3">
-              {['Smart Hamster Timing ✨', 'Every 2 Minutes', 'Every 5 Minutes'].map(f => (
-                <div 
-                  key={f}
-                  onClick={() => setFrequency(f)}
-                  className={`p-4 rounded-2xl border-2 cursor-pointer flex items-center gap-4 transition-all ${frequency === f ? 'border-cyan-400 bg-cyan-50' : 'border-sky-100 bg-white hover:border-cyan-200'}`}
-                >
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${frequency === f ? 'border-cyan-400' : 'border-slate-300'}`}>
-                    {frequency === f && <div className="w-3 h-3 rounded-full bg-cyan-400" />}
-                  </div>
-                  <span className={`font-bold ${frequency === f ? 'text-cyan-700' : 'text-slate-600'}`}>{f}</span>
-                </div>
-              ))}
-            </div>
+          <div className="flex-1 text-center sm:text-left">
+            <h1 className="vq-display text-2xl sm:text-4xl font-black text-white tracking-tight mb-1">
+              Interactive <span className="text-amber-400">Video Quiz</span>
+            </h1>
+            <p className="text-sm text-slate-400 max-w-xl">
+              Paste a YouTube or video URL, or upload a video file from your computer to create live checkpoint questions below the video.
+            </p>
           </div>
-
         </div>
 
-        {/* Right Column */}
-        <div className="space-y-8">
-          
-          <div className="sunny-panel p-8">
-            <h3 className="font-black text-green-400 text-xl mb-6 flex items-center gap-2">
-              <CheckSquare size={24} /> Question Types
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              {QUESTION_TYPES.map(type => (
-                <div 
-                  key={type}
-                  onClick={() => toggleType(type)}
-                  className={`p-5 rounded-2xl border-2 cursor-pointer flex flex-col gap-3 transition-all ${selectedTypes.includes(type) ? 'border-cyan-400 bg-cyan-50' : 'border-sky-100 bg-white hover:border-cyan-200'}`}
-                >
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center ${selectedTypes.includes(type) ? 'bg-cyan-400 text-white' : 'bg-slate-200'}`}>
-                    {selectedTypes.includes(type) && <Check size={16} strokeWidth={3} />}
+        {/* Main Setup Form Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6">
+          {/* Left Column: Video Source (URL or Local File) & Topic */}
+          <div className="lg:col-span-7 space-y-5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-slate-300">
+                  Video Source (URL or Local File)
+                </label>
+                {activeVideoSource && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUrlInput('');
+                      onClearVideo();
+                    }}
+                    className="text-xs font-semibold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <X size={13} /> Clear Video
+                  </button>
+                )}
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/ogg,video/quicktime,video/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onSelectLocalFile(file);
+                  }
+                  e.target.value = '';
+                }}
+              />
+
+              {isBlobUrl ? (
+                <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40 text-white">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-400/20 text-emerald-300 flex items-center justify-center shrink-0">
+                      <FileVideo size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold text-emerald-300 truncate">
+                        {localVideoName || 'Uploaded Video File'}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Local video ready for playback
+                      </div>
+                    </div>
                   </div>
-                  <span className="font-bold text-slate-700">{type}</span>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-bold text-white shrink-0 cursor-pointer whitespace-nowrap"
+                  >
+                    Change File
+                  </button>
                 </div>
-              ))}
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <div className="relative flex-1 flex items-center">
+                    <Video size={17} className="absolute left-3.5 text-amber-400 pointer-events-none" />
+                    <input
+                      ref={urlInputRef}
+                      type="text"
+                      placeholder="Paste YouTube or MP4 video URL..."
+                      value={urlInput}
+                      onChange={(e) => {
+                        setUrlInput(e.target.value);
+                        setVideoUrl(e.target.value);
+                        if (setupError) setSetupError('');
+                      }}
+                      className={`w-full pl-10 pr-4 py-3.5 rounded-xl bg-[#0E0B1A] border focus:outline-none text-sm font-medium text-white placeholder:text-slate-500 transition-colors ${
+                        setupError
+                          ? 'border-rose-500 focus:border-rose-400'
+                          : 'border-white/15 focus:border-amber-400'
+                      }`}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Upload size={15} className="text-amber-400" />
+                    Upload Video
+                  </button>
+                </div>
+              )}
+
+              {setupError && (
+                <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{setupError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-2">
+                  Quiz Title / Topic
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Ocean Wildlife & Habitats"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white placeholder:text-slate-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-2">
+                  Checkpoints
+                </label>
+                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[#0E0B1A] border border-white/15">
+                  {QUIZ_COUNTS.map((item) => (
+                    <button
+                      key={item.count}
+                      type="button"
+                      onClick={() => setQuizCount(item.count)}
+                      className={`py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                        quizCount === item.count
+                          ? 'bg-amber-400 text-slate-950'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {item.count} Qs
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Level Selector */}
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-2">
+                English Level
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {CEFR_LEVELS.map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => setLevel(l)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors whitespace-nowrap cursor-pointer border ${
+                      level === l
+                        ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-xs'
+                        : 'bg-[#0E0B1A] text-slate-300 border-white/10 hover:border-white/25'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="sunny-panel p-8">
-            <h3 className="font-black text-sky-400 text-xl mb-6 flex items-center gap-2">
-              <Folder size={24} /> Lesson Details
-            </h3>
-            <div className="space-y-4">
-               <div>
-                 <label className="block text-sm font-bold text-slate-500 mb-2">Video Topic / Subject</label>
-                 <input type="text" value={topic} onChange={e=>setTopic(e.target.value)} className="w-full p-4 rounded-xl sunny-input font-bold text-slate-700" />
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-500 mb-2">Target Class</label>
-                    <input type="text" value={className} onChange={e=>setClassName(e.target.value)} className="w-full p-4 rounded-xl sunny-input font-bold text-slate-700" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-500 mb-2">Save to Folder</label>
-                    <input type="text" value={folder} onChange={e=>setFolder(e.target.value)} className="w-full p-4 rounded-xl sunny-input font-bold text-slate-700" />
-                  </div>
-               </div>
+          {/* Right Column: Question Types & Launch Actions */}
+          <div className="lg:col-span-5 flex flex-col justify-between space-y-5">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-2">
+                Question Formats
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                {QUESTION_TYPES.map((type) => {
+                  const active = selectedTypes.includes(type);
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => toggleType(type)}
+                      className={`p-3.5 rounded-xl border text-left transition-colors flex items-center gap-2.5 cursor-pointer ${
+                        active
+                          ? 'bg-pink-500/15 border-pink-400/60 text-white'
+                          : 'bg-[#0E0B1A] border-white/10 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                          active ? 'bg-pink-500 text-white' : 'bg-white/10'
+                        }`}
+                      >
+                        {active && <Check size={12} strokeWidth={3} />}
+                      </div>
+                      <span className="text-xs font-bold truncate">{type}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Source Readiness Card */}
+            <div className="bg-[#0E0B1A] border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-200 truncate">
+                  {activeVideoSource
+                    ? isBlobUrl
+                      ? `File: ${localVideoName}`
+                      : 'Video Link Ready'
+                    : 'No Video Selected Yet'}
+                </div>
+                <div className="text-[11px] text-slate-400 truncate">
+                  {activeVideoSource
+                    ? `${quizCount} checkpoints · ${level}`
+                    : 'Paste a URL or upload an MP4 file to begin'}
+                </div>
+              </div>
+              <span
+                className={`text-xs font-extrabold px-2.5 py-1 rounded-lg shrink-0 ${
+                  activeVideoSource
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'bg-white/5 text-slate-400'
+                }`}
+              >
+                {activeVideoSource ? 'Ready' : 'Waiting'}
+              </span>
+            </div>
+
+            {/* Launch Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isGenerating}
+                onClick={() => {
+                  if (!activeVideoSource) {
+                    setSetupError('Please paste a video URL or upload a local video file first.');
+                    urlInputRef.current?.focus();
+                    return;
+                  }
+                  onStartLesson(buildPayload());
+                }}
+                className="flex-1 py-3.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition-colors cursor-pointer whitespace-nowrap"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={18} />
+                    Generate & Play
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={isGenerating}
+                onClick={() => {
+                  if (!activeVideoSource) {
+                    setSetupError('Please paste a video URL or upload a local video file first.');
+                    urlInputRef.current?.focus();
+                    return;
+                  }
+                  onOpenManual(buildPayload());
+                }}
+                className="py-3.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-1.5 border border-white/10 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Edit3 size={15} />
+                Open Editor
+              </button>
             </div>
           </div>
-
         </div>
-      </div>
-
-      <div className="flex justify-center mb-20">
-        <button 
-          onClick={() => onStartLesson({ level, selectedTypes, frequency, topic, className, folder })}
-          disabled={isGenerating}
-          className="bg-yellow-400 hover:bg-yellow-500 disabled:opacity-50 text-yellow-900 text-2xl font-black px-12 py-5 rounded-full shadow-[0_8px_0_#ca8a04] hover:shadow-[0_4px_0_#ca8a04] hover:translate-y-1 transition-all flex items-center gap-3"
-        >
-          {isGenerating ? (
-            <><Loader2 className="animate-spin" size={28} /> GENERATING...</>
-          ) : (
-            <><Play fill="currentColor" /> START LESSON NOW</>
-          )}
-        </button>
       </div>
     </div>
   );
 }
 
-function PlayerView({ config, questions, setQuestions, xp, setXp, streak, setStreak, wordsLearned, setWordsLearned, videoUrl, onSaveQuiz, isSaving }: any) {
+function PlayerView({
+  user,
+  config,
+  questions,
+  setQuestions,
+  xp,
+  setXp,
+  streak,
+  setStreak,
+  bestStreak,
+  wordsLearned,
+  setWordsLearned,
+  videoUrl,
+  localVideoName,
+  onSaveQuiz,
+  isSaving,
+  isPlayOnlyMode,
+  initialOpenEditor,
+  onBackToSetup,
+}: any) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0); 
+  const [progress, setProgress] = useState(0);
   const [activeQuiz, setActiveQuiz] = useState<any>(null);
-  const [quizHistory, setQuizHistory] = useState<any[]>([]);
+  const [reviewingQuiz, setReviewingQuiz] = useState<any>(null);
+  const [isReplayingClip, setIsReplayingClip] = useState(false);
+  const [resultsMap, setResultsMap] = useState<Record<number, QuizAnswerRecord>>({});
   const [showConfetti, setShowConfetti] = useState(false);
-  
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(Boolean(initialOpenEditor));
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
   const videoRef = useRef<any>(null);
+  const nativeVideoRef = useRef<HTMLVideoElement | null>(null);
+  const questionDockRef = useRef<HTMLDivElement | null>(null);
   const [videoDuration, setVideoDuration] = useState(120);
   const [currentTime, setCurrentTime] = useState(0);
 
-  // Playback is controlled by the playing prop in ReactPlayer
+  const useNativeVideo = isDirectVideoSource(videoUrl);
 
-  const handleTimeUpdate = (e: any) => {
-    const currentSeconds = e?.currentTarget?.currentTime || e?.target?.currentTime || 0;
-    setCurrentTime(currentSeconds);
-    const duration = videoDuration || 120;
-    
-    const currentProgress = (currentSeconds / duration) * 100;
-    setProgress(currentProgress);
+  // Sync play/pause with native video element when using direct/blob video
+  useEffect(() => {
+    if (!useNativeVideo || !nativeVideoRef.current) return;
+    if (isPlaying && (!activeQuiz || isReplayingClip)) {
+      nativeVideoRef.current.play().catch(() => {
+        setIsPlaying(false);
+      });
+    } else {
+      nativeVideoRef.current.pause();
+    }
+  }, [isPlaying, activeQuiz, isReplayingClip, useNativeVideo, videoUrl]);
 
-    const triggeredQuiz = questions.find((q: any) => 
-      !quizHistory.includes(q.id) && 
-      Math.abs(q.timeTrigger - currentSeconds) < 0.5 
-    );
+  const sortedQuestions = [...questions].sort((a, b) => a.timeTrigger - b.timeTrigger);
+  const answeredRecords = Object.values(resultsMap);
+  const answeredIds = Object.keys(resultsMap).map(Number);
+  const correctCount = answeredRecords.filter((r) => r.isCorrect).length;
+  const missedCount = answeredRecords.filter((r) => !r.isCorrect).length;
+  const accuracyPct = answeredIds.length > 0 ? Math.round((correctCount / answeredIds.length) * 100) : 0;
+  const avgResponseTimeSec =
+    answeredRecords.length > 0
+      ? Number(
+          (
+            answeredRecords.reduce((acc, r) => acc + (r.responseTimeSec || 0), 0) /
+            answeredRecords.length
+          ).toFixed(1)
+        )
+      : 0;
+  const fastestResponseSec =
+    answeredRecords.length > 0
+      ? Math.min(...answeredRecords.map((r) => r.responseTimeSec || 99))
+      : 0;
 
-    if (triggeredQuiz && isPlaying && !activeQuiz) {
-      setIsPlaying(false); 
-      setActiveQuiz(triggeredQuiz);
-      if (videoRef.current) {
-        if (typeof videoRef.current.seekTo === 'function') {
-          videoRef.current.seekTo(triggeredQuiz.timeTrigger, 'seconds');
-        } else {
-          videoRef.current.currentTime = triggeredQuiz.timeTrigger;
-        }
+  const seekVideoTo = (seconds: number) => {
+    const clamped = Math.max(0, Math.min(videoDuration || 120, seconds));
+    setCurrentTime(clamped);
+    setProgress((clamped / (videoDuration || 120)) * 100);
+    if (useNativeVideo && nativeVideoRef.current) {
+      nativeVideoRef.current.currentTime = clamped;
+    } else if (videoRef.current) {
+      if (typeof videoRef.current.seekTo === 'function') {
+        videoRef.current.seekTo(clamped, 'seconds');
+      } else if ('currentTime' in videoRef.current) {
+        videoRef.current.currentTime = clamped;
       }
     }
   };
 
-  const handleQuizComplete = (result: any) => {
+  const triggerQuizNow = (quiz: any) => {
+    setIsReplayingClip(false);
+    setIsPlaying(false);
+    setReviewingQuiz(null);
+    seekVideoTo(quiz.timeTrigger);
+    setActiveQuiz(quiz);
+    vqAudio.playPop();
+  };
+
+  const handleReplayQuestionScene = () => {
+    if (!activeQuiz) return;
+    const startClipSec = Math.max(0, activeQuiz.timeTrigger - 5);
+    seekVideoTo(startClipSec);
+    setIsReplayingClip(true);
+    setIsPlaying(true);
+  };
+
+  const evaluateTimeTrigger = (currentSeconds: number) => {
+    setCurrentTime(currentSeconds);
+    const duration = videoDuration || 120;
+    setProgress((currentSeconds / duration) * 100);
+
+    // If replaying the 5-second scene for the active question below, pause again when reaching its checkpoint
+    if (isReplayingClip && activeQuiz) {
+      if (currentSeconds >= activeQuiz.timeTrigger) {
+        setIsReplayingClip(false);
+        setIsPlaying(false);
+        seekVideoTo(activeQuiz.timeTrigger);
+      }
+      return;
+    }
+
+    const triggeredQuiz = questions.find(
+      (q: any) =>
+        resultsMap[q.id] === undefined &&
+        Math.abs(q.timeTrigger - currentSeconds) < 0.65
+    );
+
+    if (triggeredQuiz && isPlaying && !activeQuiz) {
+      triggerQuizNow(triggeredQuiz);
+    }
+  };
+
+  const handleTimeUpdate = (e: any) => {
+    const currentSeconds = e?.currentTarget?.currentTime || e?.target?.currentTime || 0;
+    evaluateTimeTrigger(currentSeconds);
+  };
+
+  const handleQuizComplete = (result: {
+    isCorrect: boolean;
+    selectedIndex: number;
+    responseTimeSec: number;
+  }) => {
+    if (!activeQuiz) return;
+    const earnedXp = result.isCorrect ? (activeQuiz.xp || 100) + streak * 10 : 0;
+
     if (result.isCorrect) {
-      setXp((prev: number) => prev + activeQuiz.xp + (streak * 10)); 
+      setXp((prev: number) => prev + earnedXp);
       setStreak((prev: number) => prev + 1);
       setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 3000);
-      if (activeQuiz.type === 'Vocabulary Meaning') setWordsLearned((prev: number) => prev + 1);
+      setTimeout(() => setShowConfetti(false), 2600);
+      if (activeQuiz.type === 'Vocabulary Meaning') {
+        setWordsLearned((prev: number) => prev + 1);
+      }
     } else {
       setStreak(0);
     }
-    
-    setQuizHistory([...quizHistory, activeQuiz.id]);
+
+    const updatedResults: Record<number, QuizAnswerRecord> = {
+      ...resultsMap,
+      [activeQuiz.id]: {
+        isCorrect: result.isCorrect,
+        selectedIndex: result.selectedIndex,
+        responseTimeSec: result.responseTimeSec,
+        earnedXp,
+      },
+    };
+    setResultsMap(updatedResults);
     setActiveQuiz(null);
-    setTimeout(() => { setIsPlaying(true); }, 500);
+    setIsReplayingClip(false);
+
+    const allAnswered = sortedQuestions.every((q: any) => updatedResults[q.id] !== undefined);
+    if (allAnswered && sortedQuestions.length > 0) {
+      setIsPlaying(false);
+      vqAudio.playFanfare();
+      setTimeout(() => {
+        setShowSummaryModal(true);
+      }, 350);
+    } else {
+      setTimeout(() => {
+        setIsPlaying(true);
+      }, 250);
+    }
   };
 
-  const togglePlayPause = () => {
-    if (!activeQuiz) setIsPlaying(!isPlaying);
+  const handleResetQuiz = () => {
+    setResultsMap({});
+    setActiveQuiz(null);
+    setReviewingQuiz(null);
+    setIsReplayingClip(false);
+    setShowSummaryModal(false);
+    setXp(0);
+    setStreak(0);
+    setWordsLearned(0);
+    seekVideoTo(0);
+    setIsPlaying(false);
   };
+
+  const handleAddQuestionAtCurrentTime = () => {
+    const nextId = questions.reduce((max: number, q: any) => Math.max(max, q.id || 0), 0) + 1;
+    const triggerSec = Math.max(2, Math.round(currentTime || 10));
+    const newQ = {
+      id: nextId,
+      timeTrigger: triggerSec,
+      type: 'Multiple Choice',
+      xp: 100,
+      question: `What happens at ${formatSeconds(triggerSec)}?`,
+      options: [
+        { text: 'Correct answer', isCorrect: true },
+        { text: 'Option B', isCorrect: false },
+        { text: 'Option C', isCorrect: false },
+        { text: 'Option D', isCorrect: false },
+      ],
+      explanation: 'Key detail from this moment in the video.',
+    };
+    const updated = [...questions, newQ].sort((a, b) => a.timeTrigger - b.timeTrigger);
+    setQuestions(updated);
+    setShowEditModal(true);
+  };
+
+  const nextUnanswered = sortedQuestions.find((q: any) => resultsMap[q.id] === undefined);
+  const mastery = getMasteryGrade(accuracyPct, answeredIds.length);
+
+  // Compute Category Analytics Breakdown
+  const categoryStats = QUESTION_TYPES.map((type) => {
+    const typeQuestions = sortedQuestions.filter((q) => q.type === type);
+    if (typeQuestions.length === 0) return null;
+    const answeredOfType = typeQuestions.filter((q) => resultsMap[q.id] !== undefined);
+    const correctOfType = answeredOfType.filter((q) => resultsMap[q.id]?.isCorrect);
+    const pct =
+      answeredOfType.length > 0
+        ? Math.round((correctOfType.length / answeredOfType.length) * 100)
+        : null;
+    return {
+      type,
+      total: typeQuestions.length,
+      answered: answeredOfType.length,
+      correct: correctOfType.length,
+      pct,
+    };
+  }).filter(Boolean) as Array<{
+    type: string;
+    total: number;
+    answered: number;
+    correct: number;
+    pct: number | null;
+  }>;
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 pb-10">
-      
+    <div className="flex-1 w-full flex flex-col gap-3 pb-4 animate-vq-fade">
       {toastMessage && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-green-400 text-white px-8 py-4 rounded-full font-bold shadow-2xl flex items-center gap-3 animate-slide-up border-4 border-white">
-          <CheckCircle size={24} /> {toastMessage}
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-2xl flex items-center gap-2 animate-vq-pop">
+          <CheckCircle size={18} />
+          <span>{toastMessage}</span>
         </div>
       )}
 
-      {showEditModal && (
-        <EditQuestionsModal 
-          questions={questions} 
-          setQuestions={setQuestions} 
-          onClose={() => setShowEditModal(false)} 
+      {!isPlayOnlyMode && showEditModal && (
+        <EditQuestionsModal
+          questions={sortedQuestions}
+          setQuestions={setQuestions}
+          onClose={() => setShowEditModal(false)}
         />
       )}
 
-      <div className="flex-grow flex flex-col relative rounded-[2.5rem] overflow-hidden bg-white shadow-2xl border-4 border-white">
-        
-        <div className="relative flex-grow bg-slate-900 flex items-center justify-center overflow-hidden min-h-[500px]">
-          <div className={`absolute inset-0 w-full h-full transition-all duration-700 ${activeQuiz ? 'opacity-30 filter blur-md scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}>
-            <Player 
-              ref={videoRef}
-              src={videoUrl || "https://media.w3.org/2010/05/sintel/trailer_hd.mp4"}
-              width="100%"
-              height="100%"
-              playing={isPlaying && !activeQuiz}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={() => setIsPlaying(false)}
-              onDurationChange={(e: any) => {
-                const duration = e?.currentTarget?.duration || e?.target?.duration || 120;
-                setVideoDuration(duration);
-              }}
-              controls={true}
-              style={{ position: 'absolute', top: 0, left: 0 }}
-            />
+      {showSaveModal && (
+        <SaveQuizModal
+          user={user}
+          config={config}
+          videoUrl={videoUrl}
+          localVideoName={localVideoName}
+          isSaving={isSaving}
+          onClose={() => setShowSaveModal(false)}
+          onConfirmSave={async (saveData: any) => {
+            const res = await onSaveQuiz(saveData);
+            if (res?.ok) {
+              setShowSaveModal(false);
+            }
+            setToastMessage(res?.message || 'Quiz Saved');
+            setTimeout(() => setToastMessage(''), 3000);
+          }}
+        />
+      )}
+
+      {showSummaryModal && (
+        <ResultsSummaryModal
+          topic={config?.topic || 'Video Quiz'}
+          questions={sortedQuestions}
+          resultsMap={resultsMap}
+          xp={xp}
+          bestStreak={bestStreak}
+          wordsLearned={wordsLearned}
+          avgResponseTimeSec={avgResponseTimeSec}
+          categoryStats={categoryStats}
+          isPlayOnlyMode={isPlayOnlyMode}
+          onReplay={handleResetQuiz}
+          onSeekToQuestion={(q: any) => {
+            setShowSummaryModal(false);
+            setActiveQuiz(null);
+            setIsPlaying(false);
+            seekVideoTo(q.timeTrigger);
+            if (resultsMap[q.id] !== undefined) {
+              setReviewingQuiz(q);
+            }
+          }}
+          onOpenSave={() => {
+            setShowSummaryModal(false);
+            setShowSaveModal(true);
+          }}
+          onClose={() => setShowSummaryModal(false)}
+        />
+      )}
+
+      {/* TOP ZONE: FULL-SCREEN CINEMA VIDEO STAGE */}
+      <div className="w-full flex flex-col bg-[#141026] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+        {/* Compact Cinema Stage Control Header */}
+        <div className="px-4 py-2.5 border-b border-white/10 flex flex-wrap items-center justify-between gap-2.5 bg-[#0F0C1D]">
+          {/* Left: Title + Live Status Badge */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="vq-display font-extrabold text-white text-sm sm:text-base truncate">
+              {config?.topic || localVideoName || 'Video Quiz'}
+            </span>
+            {activeQuiz ? (
+              <span className="px-2.5 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[11px] font-black uppercase tracking-wide flex items-center gap-1 animate-pulse shrink-0">
+                <Zap size={12} fill="currentColor" />
+                Question Active Below
+              </span>
+            ) : (
+              <span className="text-xs font-semibold text-amber-400 whitespace-nowrap">
+                {config?.level || 'All Levels'}
+              </span>
+            )}
           </div>
-          
-          {!isPlaying && !activeQuiz && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/10 backdrop-blur-sm z-10 cursor-pointer" onClick={togglePlayPause}>
-              <button className="bg-yellow-400 border-4 border-white hover:bg-yellow-500 text-yellow-900 p-8 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.2)] transition-all duration-300 hover:scale-110">
-                <Play fill="currentColor" size={56} className="ml-2" />
+
+          {/* Center: Compact Non-Spoiler Question Status Pills */}
+          <div className="hidden lg:flex items-center gap-1.5">
+            {sortedQuestions.map((q: any, idx: number) => {
+              const rec = resultsMap[q.id];
+              const isAct = activeQuiz?.id === q.id;
+              const isRev = reviewingQuiz?.id === q.id;
+
+              let pillStyle = 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-white/25';
+              if (isAct || isRev) {
+                pillStyle = 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm scale-105';
+              } else if (rec?.isCorrect === true) {
+                pillStyle = 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300';
+              } else if (rec?.isCorrect === false) {
+                pillStyle = 'bg-rose-500/20 border-rose-400/50 text-rose-300';
+              }
+
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => {
+                    if (rec !== undefined) {
+                      setIsPlaying(false);
+                      seekVideoTo(q.timeTrigger);
+                      setReviewingQuiz(q);
+                    } else {
+                      triggerQuizNow(q);
+                    }
+                  }}
+                  title={
+                    rec !== undefined
+                      ? `Q${idx + 1} (${formatSeconds(q.timeTrigger)}) · Click to review`
+                      : `Checkpoint ${idx + 1} at ${formatSeconds(q.timeTrigger)}`
+                  }
+                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-extrabold vq-mono flex items-center gap-1 transition-all cursor-pointer ${pillStyle}`}
+                >
+                  <span>Q{idx + 1}</span>
+                  {rec?.isCorrect === true && <Check size={11} strokeWidth={3} />}
+                  {rec?.isCorrect === false && <X size={11} strokeWidth={3} />}
+                  {rec === undefined && <span className="text-[10px] opacity-75">{formatSeconds(q.timeTrigger)}</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right: Analytics, Reset, and Creator Actions (Hidden when saved & played) */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowSummaryModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 hover:text-amber-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <BarChart3 size={14} />
+              <span>Analytics</span>
+              {answeredIds.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 vq-mono text-[10px]">
+                  {accuracyPct}%
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetQuiz}
+              title="Reset Progress"
+              className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw size={13} />
+              <span className="hidden sm:inline">Reset</span>
+            </button>
+
+            {!isPlayOnlyMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={onBackToSetup}
+                  className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  Change Video
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Settings size={13} className="text-amber-400" />
+                  <span>Edit Questions</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => setShowSaveModal(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Folder size={13} />}
+                  <span>{isSaving ? 'Saving...' : 'Save Quiz'}</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Full-Screen Cinema Video Viewport — NEVER dimmed or blocked when a question pops below! */}
+        <div
+          id="vq-video-stage"
+          className={`relative w-full bg-black flex items-center justify-center overflow-hidden transition-all duration-300 ${
+            activeQuiz || reviewingQuiz
+              ? 'h-[44vh] sm:h-[50vh] lg:h-[54vh] min-h-[260px]'
+              : 'h-[60vh] sm:h-[68vh] lg:h-[72vh] min-h-[360px]'
+          }`}
+        >
+          <div className="absolute inset-0 w-full h-full">
+            {useNativeVideo ? (
+              <video
+                ref={nativeVideoRef}
+                src={videoUrl}
+                controls
+                playsInline
+                onTimeUpdate={(e) => evaluateTimeTrigger(e.currentTarget.currentTime)}
+                onLoadedMetadata={(e) => {
+                  const dur = e.currentTarget.duration;
+                  if (dur && Number.isFinite(dur)) setVideoDuration(dur);
+                }}
+                onPlay={() => (!activeQuiz || isReplayingClip) && setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onEnded={() => {
+                  setIsPlaying(false);
+                  vqAudio.playFanfare();
+                  setShowSummaryModal(true);
+                }}
+                className="w-full h-full object-contain bg-black"
+              />
+            ) : (
+              <Player
+                ref={videoRef}
+                src={videoUrl}
+                width="100%"
+                height="100%"
+                playing={isPlaying && (!activeQuiz || isReplayingClip)}
+                onTimeUpdate={handleTimeUpdate}
+                onEnded={() => {
+                  setIsPlaying(false);
+                  vqAudio.playFanfare();
+                  setShowSummaryModal(true);
+                }}
+                onDurationChange={(e: any) => {
+                  const duration = e?.currentTarget?.duration || e?.target?.duration || 120;
+                  if (duration && Number.isFinite(duration)) setVideoDuration(duration);
+                }}
+                controls={true}
+                style={{ position: 'absolute', top: 0, left: 0 }}
+              />
+            )}
+          </div>
+
+          {/* Center Play Button Overlay (only when paused and no active question below) */}
+          {!isPlaying && !activeQuiz && !reviewingQuiz && (
+            <div
+              onClick={() => setIsPlaying(true)}
+              className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 cursor-pointer group"
+            >
+              <button
+                type="button"
+                aria-label="Play video"
+                className="w-20 h-20 rounded-full bg-amber-400 group-hover:bg-amber-300 text-slate-950 flex items-center justify-center shadow-[0_0_40px_rgba(245,158,11,0.55)] transition-transform duration-200 group-hover:scale-105 cursor-pointer"
+              >
+                <Play fill="currentColor" size={36} className="ml-1" />
               </button>
             </div>
           )}
 
+          {/* Subtle Top-Right Scene Indicator when Question is Active Below (Does NOT cover video) */}
           {activeQuiz && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-cyan-900/40 backdrop-blur-md p-6">
-              <QuizCard quiz={activeQuiz} onComplete={handleQuizComplete} />
+            <div className="absolute top-3 right-3 z-10 pointer-events-none px-3 py-1.5 rounded-xl bg-black/75 border border-amber-400/50 text-amber-300 text-xs font-extrabold flex items-center gap-1.5 shadow-lg">
+              <Eye size={14} />
+              <span>
+                {isReplayingClip
+                  ? 'Replaying Scene...'
+                  : `Scene Paused at ${formatSeconds(activeQuiz.timeTrigger)} — Answer Below`}
+              </span>
             </div>
           )}
 
           {showConfetti && <Confetti />}
         </div>
 
-        <div className="h-20 bg-white border-t border-slate-100 flex items-center px-8 gap-6 z-30">
-          <button onClick={togglePlayPause} className="text-cyan-500 hover:text-cyan-600 transition-colors w-10 flex justify-center">
-            {isPlaying ? <span className="font-black text-2xl leading-none">||</span> : <Play fill="currentColor" size={28} />}
-          </button>
-          
-          <div className="flex-grow h-4 bg-slate-100 rounded-full overflow-hidden relative group cursor-pointer border border-slate-200">
-            {questions.map((q: any) => (
-              <div 
-                key={q.id}
-                className={`absolute top-0 bottom-0 w-2 z-10 ${quizHistory.includes(q.id) ? 'bg-green-400 opacity-80' : 'bg-yellow-400 shadow-sm'}`}
-                style={{ left: `${(q.timeTrigger / videoDuration) * 100}%` }}
-              />
-            ))}
-            <div 
-              className="h-full bg-cyan-400 transition-all duration-300 ease-linear"
-              style={{ width: `${progress}%` }}
+        {/* Interactive Checkpoint Timeline & Transport Bar */}
+        <div className="px-4 py-2.5 sm:px-5 bg-[#0F0C1D] border-t border-white/10 flex flex-col gap-2">
+          {/* Scrubber Track with Clickable Checkpoint Pins */}
+          <div
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              seekVideoTo(ratio * (videoDuration || 120));
+            }}
+            className="relative h-2.5 bg-white/10 rounded-full cursor-pointer flex items-center group"
+          >
+            <div
+              className="h-full bg-gradient-to-r from-amber-400 to-pink-500 rounded-full transition-all duration-150"
+              style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
             />
+
+            {sortedQuestions.map((q: any, idx: number) => {
+              const leftPct = Math.min(98, Math.max(2, (q.timeTrigger / (videoDuration || 120)) * 100));
+              const record = resultsMap[q.id];
+              const isAct = activeQuiz?.id === q.id;
+              const pinColor = isAct
+                ? 'bg-amber-300 border-white text-slate-950 scale-125 ring-4 ring-amber-400/30'
+                : record?.isCorrect === true
+                ? 'bg-emerald-400 border-emerald-950 text-slate-950'
+                : record?.isCorrect === false
+                ? 'bg-rose-500 border-rose-950 text-white'
+                : 'bg-amber-400 border-slate-950 text-slate-950';
+
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  title={`Checkpoint ${idx + 1} (${formatSeconds(q.timeTrigger)})`}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    if (record !== undefined) {
+                      setIsPlaying(false);
+                      seekVideoTo(q.timeTrigger);
+                      setReviewingQuiz(q);
+                    } else {
+                      triggerQuizNow(q);
+                    }
+                  }}
+                  style={{ left: `${leftPct}%` }}
+                  className={`-translate-x-1/2 w-5 h-5 rounded-full border-2 text-[10px] font-black flex items-center justify-center shadow-md hover:scale-125 transition-transform z-10 cursor-pointer ${pinColor}`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
           </div>
-          <span className="text-base font-bold tabular-nums text-slate-500 min-w-[90px] text-right">
-             {Math.floor(currentTime)}s / {Math.floor(videoDuration)}s
-          </span>
-          {questions.some((q: any) => !quizHistory.includes(q.id)) && !activeQuiz && (
-            <button
-              type="button"
-              onClick={() => {
-                const nextQ = questions.find((q: any) => !quizHistory.includes(q.id));
-                if (nextQ) {
-                  setIsPlaying(false);
-                  setActiveQuiz(nextQ);
-                }
-              }}
-              className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-950 font-black text-xs sm:text-sm rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer"
-            >
-              Pop Next Quiz →
-            </button>
-          )}
+
+          {/* Transport Controls Row */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeQuiz && !isReplayingClip) {
+                    handleReplayQuestionScene();
+                  } else {
+                    setIsPlaying(!isPlaying);
+                  }
+                }}
+                className="w-8 h-8 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center justify-center transition-colors cursor-pointer"
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" className="ml-0.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => seekVideoTo(currentTime - 5)}
+                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Back 5s"
+              >
+                <SkipBack size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => seekVideoTo(currentTime + 5)}
+                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Forward 5s"
+              >
+                <SkipForward size={14} />
+              </button>
+
+              <span className="vq-mono text-xs font-bold text-slate-300 ml-1.5">
+                {formatSeconds(currentTime)} <span className="text-slate-600">/</span> {formatSeconds(videoDuration)}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!isPlayOnlyMode && (
+                <button
+                  type="button"
+                  onClick={handleAddQuestionAtCurrentTime}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Plus size={13} className="text-amber-400" />
+                  Add Q at {formatSeconds(currentTime)}
+                </button>
+              )}
+
+              {activeQuiz ? (
+                <button
+                  type="button"
+                  onClick={handleReplayQuestionScene}
+                  className="px-3 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw size={13} />
+                  Replay Clip (-5s)
+                </button>
+              ) : nextUnanswered ? (
+                <button
+                  type="button"
+                  onClick={() => triggerQuizNow(nextUnanswered)}
+                  className="px-3.5 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-400 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Zap size={13} fill="currentColor" />
+                  Next Question
+                </button>
+              ) : (
+                answeredIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSummaryModal(true)}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Award size={14} />
+                    Full Analytics Report
+                  </button>
+                )
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Right Panel */}
-      <div className="w-full lg:w-[350px] flex flex-col gap-6">
-        
-        <div className="flex gap-4">
-           <button 
-             onClick={() => setShowEditModal(true)} 
-             className="flex-1 bg-white border-2 border-cyan-200 text-cyan-600 font-bold py-3 rounded-2xl hover:bg-cyan-50 transition-all flex justify-center items-center gap-2 shadow-sm"
-           >
-             <Settings size={20} /> Edit Quizzes
-           </button>
-           <button 
-             disabled={isSaving}
-             onClick={async () => {
-               const res = await onSaveQuiz();
-               setToastMessage(res?.message || 'Quiz Saved! 🌻');
-               setTimeout(() => setToastMessage(''), 3000);
-             }} 
-             className="flex-1 bg-yellow-400 text-yellow-900 font-bold py-3 rounded-2xl hover:shadow-lg hover:bg-yellow-500 disabled:opacity-60 transition-all flex justify-center items-center gap-2 shadow-md border-2 border-white"
-           >
-             {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Folder size={20} />}
-             {isSaving ? 'Saving...' : 'Save Quiz'}
-           </button>
-        </div>
-
-        <div className="sunny-panel p-8 relative overflow-hidden">
-          <h3 className="font-black text-cyan-500 text-sm tracking-widest uppercase mb-3">Lesson Progress</h3>
-          <div className="flex items-end gap-3 mb-6">
-            <span className="text-6xl font-black text-slate-800 drop-shadow-sm">{quizHistory.length}</span>
-            <span className="text-slate-500 mb-2 font-bold text-lg">/ {questions.length} Quizzes</span>
-          </div>
-          
-          <div className="h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
-            <div 
-              className="h-full rounded-full bg-green-400 transition-all duration-700"
-              style={{ width: questions.length ? `${(quizHistory.length / questions.length) * 100}%` : '0%' }}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div className="sunny-panel p-6 flex flex-col items-center justify-center text-center">
-            <Star className="text-yellow-400 mb-3" size={36} fill="currentColor" />
-            <span className="text-3xl font-black mb-1 text-slate-800">{xp}</span>
-            <span className="text-xs text-cyan-600 uppercase font-bold tracking-widest">Total XP</span>
-          </div>
-          <div className="sunny-panel p-6 flex flex-col items-center justify-center text-center">
-            <Flame className={`mb-3 ${streak > 0 ? 'text-orange-500' : 'text-slate-300'}`} size={36} fill={streak > 0 ? "currentColor" : "none"} />
-            <span className={`text-3xl font-black mb-1 ${streak > 0 ? 'text-slate-800' : 'text-slate-400'}`}>{streak}</span>
-            <span className={`text-xs uppercase font-bold tracking-widest ${streak > 0 ? 'text-cyan-600' : 'text-slate-400'}`}>Streak</span>
-          </div>
-        </div>
-
-        <div className="sunny-panel p-8 flex-grow flex flex-col max-h-[300px]">
-          <h3 className="font-black text-cyan-500 text-sm tracking-widest uppercase mb-6 flex items-center gap-3">
-            <BookOpen size={20}/> Words Learned ({wordsLearned})
-          </h3>
-          <div className="flex-grow space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-             {quizHistory.length === 0 ? (
-               <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 space-y-4">
-                 <div className="text-5xl opacity-50">🐹</div>
-                 <p className="text-sm font-medium">Keep watching to discover sunny new vocabulary!</p>
-               </div>
-             ) : (
-               questions.filter((q: any) => q.type === 'Vocabulary Meaning' && quizHistory.includes(q.id)).map((q: any) => (
-                 <div key={q.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center shadow-sm">
-                   <div>
-                     <div className="font-black text-cyan-700 text-lg mb-1">{q.word}</div>
-                     <div className="text-sm text-slate-500 font-medium">{q.pronunciation}</div>
-                   </div>
-                 </div>
-               ))
-             )}
-          </div>
-        </div>
+      {/* BOTTOM ZONE (DIRECTLY BELOW VIDEO): ACTIVE QUESTION DOCK OR LIVE QUESTIONS ANALYTICS */}
+      <div ref={questionDockRef} className="w-full">
+        {activeQuiz ? (
+          <BelowVideoQuestionDock
+            key={activeQuiz.id}
+            quiz={activeQuiz}
+            index={sortedQuestions.findIndex((q) => q.id === activeQuiz.id) + 1}
+            total={sortedQuestions.length}
+            isReplayingClip={isReplayingClip}
+            onReplayScene={handleReplayQuestionScene}
+            onComplete={handleQuizComplete}
+            onSkip={() => {
+              setActiveQuiz(null);
+              setIsReplayingClip(false);
+              setIsPlaying(true);
+            }}
+          />
+        ) : reviewingQuiz ? (
+          <BelowVideoReviewCard
+            quiz={reviewingQuiz}
+            index={sortedQuestions.findIndex((q) => q.id === reviewingQuiz.id) + 1}
+            total={sortedQuestions.length}
+            record={resultsMap[reviewingQuiz.id]}
+            onReplayClip={() => {
+              seekVideoTo(Math.max(0, reviewingQuiz.timeTrigger - 4));
+              setIsPlaying(true);
+            }}
+            onCloseReview={() => {
+              setReviewingQuiz(null);
+            }}
+          />
+        ) : (
+          <LiveQuestionsAnalyticsDeck
+            sortedQuestions={sortedQuestions}
+            resultsMap={resultsMap}
+            xp={xp}
+            streak={streak}
+            bestStreak={bestStreak}
+            wordsLearned={wordsLearned}
+            accuracyPct={accuracyPct}
+            correctCount={correctCount}
+            missedCount={missedCount}
+            avgResponseTimeSec={avgResponseTimeSec}
+            fastestResponseSec={fastestResponseSec}
+            mastery={mastery}
+            categoryStats={categoryStats}
+            onSelectAnsweredQuestion={(q: any) => {
+              setIsPlaying(false);
+              seekVideoTo(q.timeTrigger);
+              setReviewingQuiz(q);
+            }}
+            onTriggerUpcomingQuestion={(q: any) => {
+              triggerQuizNow(q);
+            }}
+            onOpenFullAnalytics={() => setShowSummaryModal(true)}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function QuizCard({ quiz, onComplete }: any) {
+/**
+ * Below-Video Interactive Question Dock
+ * Keeps the video 100% visible above while showing the active question & answer choices below.
+ */
+function BelowVideoQuestionDock({
+  quiz,
+  index,
+  total,
+  isReplayingClip,
+  onReplayScene,
+  onComplete,
+  onSkip,
+}: any) {
   const [selected, setSelected] = useState<number | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  const [finalTimeSec, setFinalTimeSec] = useState<number>(0);
+  const startTimeRef = useRef<number>(performance.now());
 
-  const handleSelect = (idx: number) => {
-    if (showExplanation) return;
-    setSelected(idx);
-    setShowExplanation(true);
+  useEffect(() => {
+    startTimeRef.current = performance.now();
+    setElapsedSec(0);
+    const interval = setInterval(() => {
+      setElapsedSec(Number(((performance.now() - startTimeRef.current) / 1000).toFixed(1)));
+    }, 100);
+    return () => clearInterval(interval);
+  }, [quiz.id]);
+
+  const handleSelect = useCallback(
+    (idx: number) => {
+      if (showExplanation) return;
+      const timeTaken = Math.max(
+        0.5,
+        Number(((performance.now() - startTimeRef.current) / 1000).toFixed(1))
+      );
+      setFinalTimeSec(timeTaken);
+      setSelected(idx);
+      setShowExplanation(true);
+      const isCorrect = Boolean(quiz.options?.[idx]?.isCorrect);
+      if (isCorrect) vqAudio.playCorrect();
+      else vqAudio.playWrong();
+    },
+    [showExplanation, quiz]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!showExplanation) {
+        const key = e.key.toUpperCase();
+        const numIdx = ['1', '2', '3', '4'].indexOf(key);
+        const charIdx = ['A', 'B', 'C', 'D'].indexOf(key);
+        const idx = numIdx >= 0 ? numIdx : charIdx;
+        if (idx >= 0 && idx < (quiz.options?.length || 0)) {
+          e.preventDefault();
+          handleSelect(idx);
+        }
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onComplete({
+          isCorrect: Boolean(quiz.options?.[selected!]?.isCorrect),
+          selectedIndex: selected ?? 0,
+          responseTimeSec: finalTimeSec || elapsedSec || 2.0,
+        });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showExplanation, selected, finalTimeSec, elapsedSec, quiz, handleSelect, onComplete]);
+
+  const speakText = (text: string) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      window.speechSynthesis.speak(u);
+    }
   };
 
+  const letters = ['A', 'B', 'C', 'D'];
+  const optionCount = (quiz.options || []).length;
+
   return (
-    <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-[0_20px_60px_rgba(0,0,0,0.3)] p-8 animate-pop-in border-4 border-white relative overflow-hidden">
-      
-      {/* Decorative top ribbon */}
-      <div className="absolute top-0 left-0 right-0 h-3 bg-gradient-to-r from-cyan-400 to-yellow-400"></div>
-      
-      <div className="flex justify-between items-center mb-6 mt-2">
-        <span className="bg-cyan-100 text-cyan-700 font-black px-4 py-2 rounded-xl text-sm uppercase tracking-widest flex items-center gap-2">
-           <Sparkles size={16}/> {quiz.type}
-        </span>
-        <span className="text-yellow-500 font-black flex items-center gap-1">
-          +{quiz.xp} XP <Star fill="currentColor" size={16}/>
-        </span>
+    <div className="w-full bg-[#161229] border-2 border-amber-400/50 rounded-2xl p-4 sm:p-5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] animate-vq-pop text-white">
+      {/* Top Bar: Question Badge + Timer + Replay Scene + Listen + Skip */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 font-black">
+            Question {index} of {total}
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 font-bold">
+            {quiz.type}
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-amber-300 vq-mono font-bold">
+            @{formatSeconds(quiz.timeTrigger)}
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 vq-mono font-bold flex items-center gap-1">
+            <Clock size={12} className="text-amber-400" />
+            {showExplanation ? `${finalTimeSec}s` : `${elapsedSec.toFixed(1)}s`}
+          </span>
+          <span className="vq-mono font-extrabold text-amber-400 ml-1">
+            +{quiz.xp || 100} XP
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onReplayScene}
+            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <RotateCcw size={13} />
+            {isReplayingClip ? 'Replaying above...' : 'Watch Scene Again (-5s)'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => speakText(quiz.word ? `${quiz.word}. ${quiz.question}` : quiz.question)}
+            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <Volume2 size={13} className="text-amber-400" />
+            Read Aloud
+          </button>
+
+          <button
+            type="button"
+            onClick={onSkip}
+            className="px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 text-xs font-semibold cursor-pointer"
+          >
+            Skip
+          </button>
+        </div>
       </div>
 
-      <h2 className="text-2xl font-black text-slate-800 mb-8 font-fredoka leading-snug">
-        {quiz.question}
-      </h2>
+      {/* Question Prompt & Optional Vocabulary Chip */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        <h2 className="vq-display text-base sm:text-xl font-extrabold text-white leading-snug">
+          {quiz.question}
+        </h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {quiz.options.map((opt: any, idx: number) => {
-          let stateClass = "bg-slate-50 border-slate-200 text-slate-700 hover:border-cyan-400 hover:bg-cyan-50";
+        {quiz.word && (
+          <div className="px-3.5 py-2 rounded-xl bg-[#0E0B1A] border border-amber-400/30 flex items-center gap-3 shrink-0">
+            <div>
+              <span className="vq-display text-base font-black text-amber-400 tracking-wide">
+                {quiz.word}
+              </span>
+              {quiz.pronunciation && (
+                <span className="text-xs text-slate-400 ml-2 vq-mono">{quiz.pronunciation}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => speakText(quiz.word)}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-amber-400 cursor-pointer"
+              title="Pronounce word"
+            >
+              <Volume2 size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Answer Options Grid — Below the Video */}
+      <div
+        className={`grid gap-2.5 ${
+          optionCount === 2
+            ? 'grid-cols-1 sm:grid-cols-2'
+            : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+        }`}
+      >
+        {(quiz.options || []).map((opt: any, idx: number) => {
+          let btnStyle =
+            'bg-[#0E0B1A] border-white/15 text-slate-100 hover:border-amber-400 hover:bg-white/5';
+          let badgeStyle = 'bg-white/10 text-amber-300';
+
           if (showExplanation) {
-            if (opt.isCorrect) stateClass = "bg-green-100 border-green-400 text-green-800 shadow-md scale-105 z-10";
-            else if (selected === idx) stateClass = "bg-red-50 border-red-300 text-red-500 opacity-80";
-            else stateClass = "bg-slate-50 border-slate-200 text-slate-400 opacity-50";
+            if (opt.isCorrect) {
+              btnStyle = 'bg-emerald-500/20 border-emerald-400 text-white shadow-[0_0_20px_rgba(16,185,129,0.2)]';
+              badgeStyle = 'bg-emerald-400 text-slate-950';
+            } else if (selected === idx) {
+              btnStyle = 'bg-rose-500/20 border-rose-400 text-rose-200';
+              badgeStyle = 'bg-rose-500 text-white';
+            } else {
+              btnStyle = 'bg-[#0E0B1A]/50 border-white/5 text-slate-500 opacity-60';
+              badgeStyle = 'bg-white/5 text-slate-500';
+            }
           }
 
           return (
-            <button 
+            <button
               key={idx}
-              onClick={() => handleSelect(idx)}
+              type="button"
               disabled={showExplanation}
-              className={`p-5 rounded-2xl border-2 font-bold text-left transition-all duration-300 ${stateClass}`}
+              onClick={() => handleSelect(idx)}
+              className={`p-3.5 rounded-xl border-2 text-left transition-all flex items-start gap-3 cursor-pointer ${btnStyle}`}
             >
-              {opt.text}
+              <span
+                className={`w-6 h-6 rounded-lg text-xs font-extrabold flex items-center justify-center shrink-0 mt-0.5 ${badgeStyle}`}
+              >
+                {letters[idx] || idx + 1}
+              </span>
+              <span className="text-xs sm:text-sm font-bold leading-snug">{opt.text}</span>
             </button>
           );
         })}
       </div>
 
+      {/* Instant Answer Explanation & Continue Bar */}
       {showExplanation && (
-        <div className="mt-8 pt-6 border-t border-slate-100 animate-slide-up">
-          <div className={`p-5 rounded-2xl flex items-start gap-4 ${quiz.options[selected!].isCorrect ? 'bg-green-50' : 'bg-orange-50'}`}>
-            <div className="mt-1">
-              {quiz.options[selected!].isCorrect ? 
-                <div className="w-8 h-8 bg-green-400 rounded-full flex items-center justify-center text-white"><Check size={20} strokeWidth={3}/></div> : 
-                <div className="w-8 h-8 bg-orange-400 rounded-full flex items-center justify-center text-white"><XCircle size={20} strokeWidth={3}/></div>
-              }
-            </div>
-            <div>
-              <h4 className={`font-black text-lg mb-1 ${quiz.options[selected!].isCorrect ? 'text-green-700' : 'text-orange-700'}`}>
-                {quiz.options[selected!].isCorrect ? 'Awesome job! 🌻' : 'Not quite! Let\'s learn. 🐹'}
-              </h4>
-              <p className="text-slate-600 font-medium leading-relaxed">{quiz.explanation}</p>
+        <div className="mt-4 pt-3.5 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 animate-vq-fade">
+          <div className="flex items-start gap-2.5 text-left">
+            {quiz.options[selected!]?.isCorrect ? (
+              <CheckCircle size={19} className="text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <XCircle size={19} className="text-rose-400 shrink-0 mt-0.5" />
+            )}
+            <div className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+              <span
+                className={`font-extrabold mr-2 ${
+                  quiz.options[selected!]?.isCorrect ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {quiz.options[selected!]?.isCorrect
+                  ? `Correct! (+${quiz.xp || 100} XP in ${finalTimeSec}s)`
+                  : `Not quite (${finalTimeSec}s).`}
+              </span>
+              <span className="text-slate-300">{quiz.explanation}</span>
             </div>
           </div>
-          <button 
-            onClick={() => onComplete({ isCorrect: quiz.options[selected!].isCorrect })}
-            className="w-full mt-6 bg-cyan-500 hover:bg-cyan-600 text-white font-black py-4 rounded-2xl shadow-[0_6px_0_#0284c7] hover:shadow-[0_3px_0_#0284c7] hover:translate-y-1 transition-all flex justify-center items-center gap-2 text-lg"
+
+          <button
+            type="button"
+            onClick={() =>
+              onComplete({
+                isCorrect: Boolean(quiz.options[selected!]?.isCorrect),
+                selectedIndex: selected ?? 0,
+                responseTimeSec: finalTimeSec || 2.0,
+              })
+            }
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap shadow-lg"
           >
-            CONTINUE VIDEO <ArrowRight size={20} />
+            Continue Video
+            <ArrowRight size={16} />
           </button>
         </div>
       )}
@@ -1019,48 +2118,1021 @@ function QuizCard({ quiz, onComplete }: any) {
   );
 }
 
-function EditQuestionsModal({ questions, setQuestions, onClose }: any) {
-  const [editedQuestions, setEditedQuestions] = useState([...questions]);
+/**
+ * Below-Video Answered Question Review Card
+ * Lets players or teachers inspect an already-answered question below the video while viewing the scene above.
+ */
+function BelowVideoReviewCard({
+  quiz,
+  index,
+  total,
+  record,
+  onReplayClip,
+  onCloseReview,
+}: any) {
+  const letters = ['A', 'B', 'C', 'D'];
 
-  const handleTextChange = (id: number, newText: string) => {
-    setEditedQuestions(editedQuestions.map(q => q.id === id ? { ...q, question: newText } : q));
+  return (
+    <div className="w-full bg-[#161229] border border-white/15 rounded-2xl p-4 sm:p-5 shadow-xl animate-vq-pop text-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
+        <div className="flex items-center gap-2 text-xs">
+          <span
+            className={`px-2.5 py-1 rounded-lg font-extrabold ${
+              record?.isCorrect
+                ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/40'
+                : 'bg-rose-500/20 text-rose-300 border border-rose-400/40'
+            }`}
+          >
+            {record?.isCorrect ? '✓ Answered Correctly' : '✗ Missed Question'}
+          </span>
+          <span className="text-slate-300 font-bold">
+            Question {index} of {total}
+          </span>
+          <span className="text-amber-400 vq-mono font-bold">@{formatSeconds(quiz.timeTrigger)}</span>
+          {record?.responseTimeSec ? (
+            <span className="text-slate-400 vq-mono">· {record.responseTimeSec}s</span>
+          ) : null}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onReplayClip}
+            className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <RotateCcw size={12} />
+            Replay Scene
+          </button>
+          <button
+            type="button"
+            onClick={onCloseReview}
+            className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-bold cursor-pointer"
+          >
+            Back to Analytics
+          </button>
+        </div>
+      </div>
+
+      <h3 className="vq-display text-base sm:text-lg font-extrabold text-white mb-3">
+        {quiz.question}
+      </h3>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {(quiz.options || []).map((opt: any, idx: number) => {
+          const isChosen = record?.selectedIndex === idx;
+          const isRight = Boolean(opt.isCorrect);
+          return (
+            <div
+              key={idx}
+              className={`p-3 rounded-xl border text-xs font-bold flex items-start gap-2.5 ${
+                isRight
+                  ? 'bg-emerald-500/20 border-emerald-400 text-white'
+                  : isChosen
+                  ? 'bg-rose-500/20 border-rose-400 text-rose-200'
+                  : 'bg-[#0E0B1A] border-white/10 text-slate-400'
+              }`}
+            >
+              <span
+                className={`w-5 h-5 rounded text-[11px] font-black flex items-center justify-center shrink-0 ${
+                  isRight
+                    ? 'bg-emerald-400 text-slate-950'
+                    : isChosen
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-white/10 text-slate-400'
+                }`}
+              >
+                {letters[idx] || idx + 1}
+              </span>
+              <span>{opt.text}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {quiz.explanation && (
+        <div className="mt-3 text-xs text-slate-300 bg-[#0E0B1A] p-3 rounded-xl border border-white/10">
+          <span className="font-bold text-amber-400 mr-1.5">Explanation:</span>
+          {quiz.explanation}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Live Questions Analytics Deck (Below the Video when no question is actively popping)
+ * Shows rich real-time question analytics without spoiling upcoming unanswered questions.
+ */
+function LiveQuestionsAnalyticsDeck({
+  sortedQuestions,
+  resultsMap,
+  xp,
+  streak,
+  bestStreak,
+  wordsLearned,
+  accuracyPct,
+  correctCount,
+  missedCount,
+  avgResponseTimeSec,
+  fastestResponseSec,
+  mastery,
+  categoryStats,
+  onSelectAnsweredQuestion,
+  onTriggerUpcomingQuestion,
+  onOpenFullAnalytics,
+}: any) {
+  const total = sortedQuestions.length || 1;
+  const answeredCount = correctCount + missedCount;
+  const remainingCount = Math.max(0, sortedQuestions.length - answeredCount);
+
+  return (
+    <div className="w-full bg-[#141026] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col gap-4">
+      {/* Top Row: Live Analytics KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* KPI 1: Accuracy & Mastery Grade */}
+        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+              <Target size={13} className="text-emerald-400" />
+              Accuracy Rate
+            </div>
+            <div className="vq-mono text-xl sm:text-2xl font-black text-white mt-0.5">
+              {answeredCount > 0 ? `${accuracyPct}%` : '—'}
+            </div>
+            <div className="text-[11px] text-slate-400">
+              {correctCount} correct · {missedCount} missed
+            </div>
+          </div>
+          <div className={`px-3 py-2 rounded-xl border text-center shrink-0 ${mastery.bg}`}>
+            <div className={`vq-display text-lg font-black leading-none ${mastery.color}`}>
+              {mastery.grade}
+            </div>
+            <div className="text-[10px] font-bold text-slate-300 mt-0.5">{mastery.label}</div>
+          </div>
+        </div>
+
+        {/* KPI 2: Segmented Question Progress */}
+        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
+            <span>Question Progress</span>
+            <span className="vq-mono text-white">
+              {answeredCount} / {sortedQuestions.length}
+            </span>
+          </div>
+          {/* Multi-segment bar */}
+          <div className="h-2.5 w-full bg-white/5 rounded-full overflow-hidden flex my-2">
+            {correctCount > 0 && (
+              <div
+                className="h-full bg-emerald-400 transition-all duration-300"
+                style={{ width: `${(correctCount / total) * 100}%` }}
+                title={`${correctCount} Correct`}
+              />
+            )}
+            {missedCount > 0 && (
+              <div
+                className="h-full bg-rose-500 transition-all duration-300"
+                style={{ width: `${(missedCount / total) * 100}%` }}
+                title={`${missedCount} Missed`}
+              />
+            )}
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <span className="text-emerald-400 font-semibold">{correctCount} Passed</span>
+            <span>{remainingCount} Remaining</span>
+          </div>
+        </div>
+
+        {/* KPI 3: Response Speed Analytics */}
+        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+              <Clock size={13} className="text-amber-400" />
+              Response Speed
+            </div>
+            <div className="vq-mono text-xl sm:text-2xl font-black text-amber-400 mt-0.5">
+              {answeredCount > 0 ? `${avgResponseTimeSec}s` : '—'}
+            </div>
+            <div className="text-[11px] text-slate-400">
+              {answeredCount > 0 ? `Fastest: ${fastestResponseSec}s` : 'Avg time per question'}
+            </div>
+          </div>
+          {categoryStats.length > 0 && (
+            <div className="hidden sm:flex flex-col gap-1 text-right">
+              {categoryStats.slice(0, 2).map((cs) => (
+                <div key={cs.type} className="text-[10px] text-slate-400">
+                  <span className="font-semibold text-slate-300">{cs.type.split(' ')[0]}:</span>{' '}
+                  <span className="vq-mono font-bold text-amber-300">
+                    {cs.pct !== null ? `${cs.pct}%` : `${cs.answered}/${cs.total}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* KPI 4: Score XP & Streak Multiplier */}
+        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+              <Trophy size={13} className="text-pink-400" />
+              Total Score & Streak
+            </div>
+            <div className="vq-mono text-xl sm:text-2xl font-black text-white mt-0.5">
+              {xp} <span className="text-xs font-bold text-amber-400">XP</span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Best Streak: <span className="text-rose-400 font-bold">{bestStreak}</span> · Vocab:{' '}
+              <span className="text-emerald-400 font-bold">{wordsLearned}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenFullAnalytics}
+            className="px-3 py-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-extrabold flex flex-col items-center justify-center shrink-0 cursor-pointer transition-colors"
+          >
+            <BarChart3 size={16} />
+            <span className="text-[10px] mt-0.5">Report</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Row: Question-by-Question Status Cards (Answered questions show review; Unanswered stay locked without spoilers!) */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+            <BarChart3 size={14} className="text-amber-400" />
+            Questions & Analytics Timeline (Questions pop here below the video as you watch)
+          </span>
+          {answeredCount > 0 && (
+            <button
+              type="button"
+              onClick={onOpenFullAnalytics}
+              className="text-xs font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
+            >
+              View Full Breakdown →
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+          {sortedQuestions.map((q: any, idx: number) => {
+            const rec: QuizAnswerRecord | undefined = resultsMap[q.id];
+            const isAnswered = rec !== undefined;
+
+            if (isAnswered) {
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => onSelectAnsweredQuestion(q)}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    rec.isCorrect
+                      ? 'bg-emerald-500/10 border-emerald-400/40 hover:border-emerald-400'
+                      : 'bg-rose-500/10 border-rose-400/40 hover:border-rose-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-extrabold text-white">Q{idx + 1}</span>
+                    <span
+                      className={`text-[10px] font-black px-1.5 py-0.5 rounded vq-mono ${
+                        rec.isCorrect
+                          ? 'bg-emerald-400 text-slate-950'
+                          : 'bg-rose-500 text-white'
+                      }`}
+                    >
+                      {rec.isCorrect ? `+${rec.earnedXp} XP` : 'Missed'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-semibold text-slate-200 line-clamp-1">
+                    {q.question}
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 vq-mono">
+                    <span>@{formatSeconds(q.timeTrigger)}</span>
+                    <span>{rec.responseTimeSec}s</span>
+                  </div>
+                </button>
+              );
+            }
+
+            // Unanswered Question Card — Locked (No question text spoiler!)
+            return (
+              <button
+                key={q.id}
+                type="button"
+                onClick={() => onTriggerUpcomingQuestion(q)}
+                title={`Jump to Question ${idx + 1} at ${formatSeconds(q.timeTrigger)}`}
+                className="p-3 rounded-xl border border-white/10 bg-[#0E0B1A] hover:border-amber-400/40 text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 group"
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-extrabold text-slate-300 group-hover:text-white">
+                    Question {idx + 1}
+                  </span>
+                  <span className="text-[10px] font-bold vq-mono px-1.5 py-0.5 rounded bg-white/5 text-amber-400">
+                    {formatSeconds(q.timeTrigger)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <HelpCircle size={12} className="text-slate-500 shrink-0" />
+                  <span className="truncate">{q.type}</span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-semibold group-hover:text-amber-300 transition-colors">
+                  Unlocks at {formatSeconds(q.timeTrigger)}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SaveQuizModal({
+  user,
+  config,
+  videoUrl,
+  localVideoName,
+  isSaving,
+  onClose,
+  onConfirmSave,
+}: any) {
+  const isBlobUrl = Boolean(videoUrl && videoUrl.startsWith('blob:'));
+  const [title, setTitle] = useState(config?.topic || localVideoName?.replace(/\.[^/.]+$/, '') || 'Video Quiz');
+  const [className, setClassName] = useState(config?.className || config?.level || 'A2 Movers');
+  const [folders, setFolders] = useState<UnifiedFolderItem[]>(() => mergeUserFolders(user?.uid));
+  const [selectedFolderId, setSelectedFolderId] = useState<string>(config?.folderId || '');
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolderBusy, setCreatingFolderBusy] = useState(false);
+  const [isPublic, setIsPublic] = useState<boolean>(config?.isPublic ?? true);
+  const [webUrlFallback, setWebUrlFallback] = useState(isBlobUrl ? '' : videoUrl || '');
+
+  useEffect(() => {
+    let active = true;
+    if (user?.uid) {
+      fetchAllAvailableFolders(db, user.uid).then((list) => {
+        if (active && Array.isArray(list)) {
+          setFolders(list);
+          if (!selectedFolderId && config?.folder) {
+            const match = list.find(
+              (f) => f.name.toLowerCase().trim() === String(config.folder).toLowerCase().trim()
+            );
+            if (match) setSelectedFolderId(match.id);
+          }
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [user?.uid, config?.folder]);
+
+  const handleCreateNewFolder = async () => {
+    const clean = newFolderName.trim();
+    if (!clean || creatingFolderBusy) return;
+    setCreatingFolderBusy(true);
+    try {
+      const created = await createUnifiedFolder(db, user?.uid, clean);
+      const next = mergeUserFolders(user?.uid, [created], folders);
+      setFolders(next);
+      setSelectedFolderId(created.id);
+      setNewFolderName('');
+      setIsCreatingFolder(false);
+    } finally {
+      setCreatingFolderBusy(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const matchedFolder = folders.find((f) => String(f.id) === String(selectedFolderId));
+    onConfirmSave({
+      title: title.trim() || 'Video Quiz',
+      className: className.trim(),
+      folderId: selectedFolderId,
+      folderName: matchedFolder?.name || '',
+      isPublic,
+      videoUrlOverride: isBlobUrl && webUrlFallback.trim() ? webUrlFallback.trim() : undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 animate-vq-pop">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-[#161229] border border-white/15 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col text-white"
+      >
+        <div className="px-6 py-4 bg-[#120E22] border-b border-white/10 flex justify-between items-center">
+          <h2 className="vq-display text-lg font-extrabold text-white flex items-center gap-2">
+            <Folder size={18} className="text-amber-400" />
+            Save Video Quiz
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+          >
+            <XCircle size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto max-h-[75vh] vq-scrollbar">
+          <div>
+            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+              Quiz Title
+            </label>
+            <input
+              type="text"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Ocean Wildlife Video Quiz"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                Class / Level
+              </label>
+              <input
+                type="text"
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                placeholder="e.g. Grade 4 · A2"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-xs font-semibold text-white"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-300">Folder</label>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingFolder(!isCreatingFolder)}
+                  className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                >
+                  <FolderPlus size={12} />
+                  {isCreatingFolder ? 'Cancel' : 'New Folder'}
+                </button>
+              </div>
+
+              {isCreatingFolder ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder="Folder name..."
+                    className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-[#0E0B1A] border border-amber-400/50 text-xs font-semibold text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={creatingFolderBusy || !newFolderName.trim()}
+                    onClick={handleCreateNewFolder}
+                    className="px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-slate-950 text-xs font-extrabold cursor-pointer shrink-0"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={selectedFolderId}
+                  onChange={(e) => setSelectedFolderId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-xs font-semibold text-white"
+                >
+                  <option value="">No Folder (All Games)</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+
+          {/* Visibility Selector */}
+          <div>
+            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+              Visibility
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsPublic(true)}
+                className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
+                  isPublic
+                    ? 'bg-amber-400/15 border-amber-400 text-white'
+                    : 'bg-[#0E0B1A] border-white/10 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Globe size={16} className={isPublic ? 'text-amber-400 shrink-0' : 'text-slate-500 shrink-0'} />
+                <div className="min-w-0">
+                  <div className="text-xs font-extrabold truncate">Public Library</div>
+                  <div className="text-[10px] text-slate-400 truncate">Shared with teachers</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPublic(false)}
+                className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
+                  !isPublic
+                    ? 'bg-pink-500/15 border-pink-400 text-white'
+                    : 'bg-[#0E0B1A] border-white/10 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Lock size={16} className={!isPublic ? 'text-pink-400 shrink-0' : 'text-slate-500 shrink-0'} />
+                <div className="min-w-0">
+                  <div className="text-xs font-extrabold truncate">Private</div>
+                  <div className="text-[10px] text-slate-400 truncate">Only in My Games</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {isBlobUrl && (
+            <div className="p-3.5 rounded-2xl bg-[#0E0B1A] border border-amber-400/30 space-y-2">
+              <div className="flex items-start gap-2 text-xs text-amber-300">
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <span>
+                  You uploaded a local video file (<strong>{localVideoName}</strong>). Your checkpoints will be saved, or you can paste an online video URL below to link permanently:
+                </span>
+              </div>
+              <input
+                type="text"
+                value={webUrlFallback}
+                onChange={(e) => setWebUrlFallback(e.target.value)}
+                placeholder="Optional: https://youtube.com/watch?v=..."
+                className="w-full px-3 py-2 rounded-lg bg-[#161229] border border-white/15 text-xs text-white focus:border-amber-400 focus:outline-none"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-white/5 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 flex items-center gap-1.5 cursor-pointer"
+          >
+            {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+            {isSaving ? 'Saving...' : 'Save Quiz'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ResultsSummaryModal({
+  topic,
+  questions,
+  resultsMap,
+  xp,
+  bestStreak,
+  wordsLearned,
+  avgResponseTimeSec,
+  categoryStats,
+  isPlayOnlyMode,
+  onReplay,
+  onSeekToQuestion,
+  onOpenSave,
+  onClose,
+}: any) {
+  const total = questions.length || 1;
+  const answeredCount = Object.keys(resultsMap).length;
+  const correctCount = Object.values(resultsMap).filter((r: any) => r?.isCorrect).length;
+  const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
+  const mastery = getMasteryGrade(accuracy, answeredCount);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 animate-vq-pop">
+      <div className="bg-[#161229] border border-white/15 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-white">
+        {/* Header */}
+        <div className="px-6 py-4 bg-[#120E22] border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`px-3.5 py-2 rounded-2xl border text-center ${mastery.bg}`}>
+              <div className={`vq-display text-xl font-black leading-none ${mastery.color}`}>
+                {mastery.grade}
+              </div>
+              <div className="text-[10px] font-bold text-slate-300 mt-0.5">{mastery.label}</div>
+            </div>
+            <div>
+              <span className="text-xs font-bold text-amber-400">Questions Analytics & Performance Report</span>
+              <h2 className="vq-display text-lg sm:text-2xl font-black text-white">
+                {topic}
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+          >
+            <XCircle size={22} />
+          </button>
+        </div>
+
+        {/* Metrics Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-4 bg-[#0E0B1A] border-b border-white/10 text-center">
+          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
+            <div className="vq-mono text-xl font-black text-emerald-400">
+              {answeredCount > 0 ? `${accuracy}%` : '—'}
+            </div>
+            <div className="text-[11px] text-slate-400 font-semibold">
+              Accuracy ({correctCount}/{answeredCount || questions.length})
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
+            <div className="vq-mono text-xl font-black text-amber-400">
+              {xp}
+            </div>
+            <div className="text-[11px] text-slate-400 font-semibold">Total XP</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
+            <div className="vq-mono text-xl font-black text-sky-400">
+              {answeredCount > 0 ? `${avgResponseTimeSec}s` : '—'}
+            </div>
+            <div className="text-[11px] text-slate-400 font-semibold">Avg Response</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
+            <div className="vq-mono text-xl font-black text-rose-400">
+              {bestStreak}
+            </div>
+            <div className="text-[11px] text-slate-400 font-semibold">Best Streak</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10 col-span-2 sm:col-span-1">
+            <div className="vq-mono text-xl font-black text-pink-400">
+              {answeredCount}/{questions.length}
+            </div>
+            <div className="text-[11px] text-slate-400 font-semibold">Completed</div>
+          </div>
+        </div>
+
+        {/* Category Mastery Breakdown */}
+        {Array.isArray(categoryStats) && categoryStats.length > 0 && (
+          <div className="px-5 py-3 bg-[#120E22] border-b border-white/10 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400 mr-1">Skill Breakdown:</span>
+            {categoryStats.map((cs: any) => (
+              <div
+                key={cs.type}
+                className="px-2.5 py-1 rounded-lg bg-[#161229] border border-white/10 text-xs flex items-center gap-2"
+              >
+                <span className="font-bold text-slate-200">{cs.type}</span>
+                <span className="vq-mono font-extrabold text-amber-400">
+                  {cs.pct !== null ? `${cs.pct}% (${cs.correct}/${cs.answered})` : `0/${cs.total}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Question-by-Question Review List (Unanswered questions remain spoiler-free mid-game) */}
+        <div className="p-5 overflow-y-auto flex-1 space-y-3 vq-scrollbar">
+          {questions.map((q: any, idx: number) => {
+            const rec: QuizAnswerRecord | undefined = resultsMap[q.id];
+            const isAnswered = rec !== undefined;
+            const correctOpt = (q.options || []).find((o: any) => o.isCorrect);
+            const chosenOpt = isAnswered ? q.options?.[rec.selectedIndex] : null;
+
+            if (!isAnswered) {
+              return (
+                <div
+                  key={q.id}
+                  className="p-3.5 rounded-2xl border border-white/10 bg-[#0E0B1A] flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-2.5 text-xs">
+                    <span className="px-2 py-0.5 rounded bg-white/5 text-slate-400 font-bold">
+                      Question {idx + 1}
+                    </span>
+                    <span className="text-slate-400">{q.type}</span>
+                    <span className="text-slate-500">· Not answered yet</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSeekToQuestion(q)}
+                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-bold text-amber-300 vq-mono cursor-pointer"
+                  >
+                    Watch at {formatSeconds(q.timeTrigger)}
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={q.id}
+                className={`p-4 rounded-2xl border ${
+                  rec?.isCorrect === true
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-rose-500/10 border-rose-500/30'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span
+                      className={`font-extrabold ${
+                        rec?.isCorrect === true ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {rec?.isCorrect === true ? `✓ Correct (+${rec.earnedXp} XP)` : '✗ Missed'}
+                    </span>
+                    <span aria-hidden="true" className="text-white/20">·</span>
+                    <span className="text-slate-300 font-bold">Q{idx + 1} ({q.type})</span>
+                    <span aria-hidden="true" className="text-white/20">·</span>
+                    <span className="text-slate-400 vq-mono">{rec.responseTimeSec}s response</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onSeekToQuestion(q)}
+                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-bold text-amber-300 vq-mono cursor-pointer"
+                  >
+                    Inspect Scene @ {formatSeconds(q.timeTrigger)}
+                  </button>
+                </div>
+
+                <p className="text-xs sm:text-sm font-bold text-white mb-2">
+                  {q.question}
+                </p>
+
+                {rec?.isCorrect === false && chosenOpt && (
+                  <div className="text-xs text-rose-300 mb-1">
+                    Selected answer: <span className="font-semibold">{chosenOpt.text}</span>
+                  </div>
+                )}
+
+                {correctOpt && (
+                  <div className="text-xs text-emerald-300">
+                    Correct answer: <span className="font-bold">{correctOpt.text}</span>
+                  </div>
+                )}
+
+                {q.explanation && (
+                  <div className="text-[11px] text-slate-400 mt-1.5">
+                    {q.explanation}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onReplay}
+            className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <RotateCcw size={14} />
+            Play Again
+          </button>
+
+          <div className="flex items-center gap-2.5">
+            {!isPlayOnlyMode && (
+              <button
+                type="button"
+                onClick={onOpenSave}
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Folder size={14} />
+                Save Quiz
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer"
+            >
+              Back to Video
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditQuestionsModal({ questions, setQuestions, onClose }: any) {
+  const [editedQuestions, setEditedQuestions] = useState<any[]>(() =>
+    questions.map((q: any) => ({
+      ...q,
+      options: (q.options || []).map((o: any) => ({ ...o })),
+    }))
+  );
+
+  const updateQuestionField = (id: number, field: string, value: any) => {
+    setEditedQuestions((prev) =>
+      prev.map((q) => (q.id === id ? { ...q, [field]: value } : q))
+    );
+  };
+
+  const updateOptionText = (qId: number, optIdx: number, text: string) => {
+    setEditedQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId) return q;
+        const nextOpts = q.options.map((o: any, idx: number) =>
+          idx === optIdx ? { ...o, text } : o
+        );
+        return { ...q, options: nextOpts };
+      })
+    );
+  };
+
+  const setCorrectOption = (qId: number, correctIdx: number) => {
+    setEditedQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId) return q;
+        const nextOpts = q.options.map((o: any, idx: number) => ({
+          ...o,
+          isCorrect: idx === correctIdx,
+        }));
+        return { ...q, options: nextOpts };
+      })
+    );
+  };
+
+  const handleDeleteQuestion = (id: number) => {
+    if (editedQuestions.length <= 1) return;
+    setEditedQuestions((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  const handleAddQuestion = () => {
+    const nextId = editedQuestions.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
+    const lastTime = editedQuestions[editedQuestions.length - 1]?.timeTrigger || 15;
+    setEditedQuestions((prev) => [
+      ...prev,
+      {
+        id: nextId,
+        timeTrigger: lastTime + 20,
+        type: 'Multiple Choice',
+        xp: 100,
+        question: 'New checkpoint question?',
+        options: [
+          { text: 'Correct answer', isCorrect: true },
+          { text: 'Wrong option 1', isCorrect: false },
+          { text: 'Wrong option 2', isCorrect: false },
+          { text: 'Wrong option 3', isCorrect: false },
+        ],
+        explanation: 'Explanation for the correct answer.',
+      },
+    ]);
   };
 
   const handleSave = () => {
-    setQuestions(editedQuestions);
+    const sorted = [...editedQuestions].sort(
+      (a, b) => Number(a.timeTrigger || 0) - Number(b.timeTrigger || 0)
+    );
+    setQuestions(sorted);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-sky-900/60 backdrop-blur-sm animate-pop-in">
-      <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl border-4 border-white overflow-hidden flex flex-col max-h-[80vh]">
-        <div className="bg-cyan-50 p-6 border-b border-cyan-100 flex justify-between items-center">
-          <h2 className="text-2xl font-black text-cyan-800 font-fredoka flex items-center gap-3">
-            <Settings className="text-cyan-500" /> Edit Quizzes
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 animate-vq-pop">
+      <div className="bg-[#161229] border border-white/15 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] text-white">
+        <div className="px-6 py-4 bg-[#120E22] border-b border-white/10 flex justify-between items-center">
+          <h2 className="vq-display text-lg font-extrabold text-white flex items-center gap-2">
+            <Settings size={18} className="text-amber-400" />
+            Edit Video Questions ({editedQuestions.length})
           </h2>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-red-500 bg-white rounded-full shadow-sm">
-            <XCircle size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAddQuestion}
+              className="px-3 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Plus size={14} /> Add Question
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+            >
+              <XCircle size={20} />
+            </button>
+          </div>
         </div>
-        <div className="p-6 overflow-y-auto flex-grow space-y-6 custom-scrollbar bg-slate-50">
+
+        <div className="p-6 overflow-y-auto flex-1 space-y-5 vq-scrollbar">
           {editedQuestions.map((q, index) => (
-            <div key={q.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="flex justify-between items-center mb-3">
-                <span className="font-bold text-cyan-600 uppercase text-xs tracking-widest">Question {index + 1} ({q.type})</span>
-                <span className="bg-yellow-100 text-yellow-700 text-xs font-bold px-3 py-1 rounded-full">At {q.timeTrigger}s</span>
+            <div
+              key={q.id}
+              className="bg-[#0E0B1A] p-4 rounded-2xl border border-white/10 space-y-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-extrabold text-amber-400">
+                  Question #{index + 1}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-slate-400 font-semibold">
+                    Time (sec):
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={3600}
+                    value={q.timeTrigger}
+                    onChange={(e) =>
+                      updateQuestionField(q.id, 'timeTrigger', Math.max(1, Number(e.target.value)))
+                    }
+                    className="w-20 px-2.5 py-1 rounded-lg bg-[#161229] border border-white/15 text-xs font-bold text-white vq-mono"
+                  />
+
+                  <select
+                    value={q.type}
+                    onChange={(e) => updateQuestionField(q.id, 'type', e.target.value)}
+                    className="px-2.5 py-1 rounded-lg bg-[#161229] border border-white/15 text-xs font-semibold text-slate-200"
+                  >
+                    {QUESTION_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+
+                  {editedQuestions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteQuestion(q.id)}
+                      className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                      title="Delete question"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <textarea 
+
+              <input
+                type="text"
                 value={q.question}
-                onChange={(e) => handleTextChange(q.id, e.target.value)}
-                className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-100 font-medium text-slate-700 resize-none h-20"
+                onChange={(e) => updateQuestionField(q.id, 'question', e.target.value)}
+                placeholder="Question prompt..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#161229] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
               />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(q.options || []).map((opt: any, oIdx: number) => (
+                  <div
+                    key={oIdx}
+                    className={`flex items-center gap-2 p-2 rounded-xl border ${
+                      opt.isCorrect
+                        ? 'bg-emerald-500/10 border-emerald-400/50'
+                        : 'bg-[#161229] border-white/10'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setCorrectOption(q.id, oIdx)}
+                      title="Mark as correct answer"
+                      className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 cursor-pointer ${
+                        opt.isCorrect
+                          ? 'bg-emerald-400 text-slate-950'
+                          : 'bg-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Check size={12} strokeWidth={3} />
+                    </button>
+                    <input
+                      type="text"
+                      value={opt.text}
+                      onChange={(e) => updateOptionText(q.id, oIdx, e.target.value)}
+                      className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
-        <div className="p-6 bg-white border-t border-slate-100 flex justify-end gap-4">
-          <button onClick={onClose} className="px-6 py-3 font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
-          <button onClick={handleSave} className="px-8 py-3 font-black text-white bg-green-400 hover:bg-green-500 rounded-xl shadow-[0_4px_0_#16a34a] hover:translate-y-1 transition-all flex items-center gap-2">
-            <Check size={20} /> Save Changes
+
+        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-white/5 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-5 py-2 rounded-xl text-xs font-extrabold bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center gap-1.5 cursor-pointer"
+          >
+            <Check size={15} />
+            Save Questions
           </button>
         </div>
       </div>
@@ -1071,15 +3143,17 @@ function EditQuestionsModal({ questions, setQuestions, onClose }: any) {
 function Confetti() {
   return (
     <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
-      {[...Array(60)].map((_, i) => (
-        <div key={i} className="absolute w-4 h-4 rounded-full shadow-sm"
-             style={{
-               left: `${Math.random() * 100}%`,
-               top: `-20px`,
-               backgroundColor: ['#fde047', '#38bdf8', '#4ade80', '#ffffff', '#fbbf24'][Math.floor(Math.random() * 5)],
-               animation: `confettiFall ${Math.random() * 2 + 1.5}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
-               animationDelay: `${Math.random() * 0.3}s`
-             }}
+      {[...Array(40)].map((_, i) => (
+        <div
+          key={i}
+          className="absolute w-3 h-3 rounded-sm"
+          style={{
+            left: `${(i * 19) % 100}%`,
+            top: `-16px`,
+            backgroundColor: ['#f59e0b', '#ec4899', '#10b981', '#a855f7', '#fde047'][i % 5],
+            animation: `vqConfetti ${1.4 + (i % 5) * 0.25}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
+            animationDelay: `${(i % 6) * 0.04}s`,
+          }}
         />
       ))}
     </div>

@@ -1062,29 +1062,29 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
   // 8. HAMSTER POP QUIZ (hamster-pop-quiz)
   if (normalizedType === 'hamster-pop-quiz') {
     return (
-      <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-sky-400 via-cyan-300 to-amber-200 flex flex-col justify-between p-3 pointer-events-none select-none overflow-hidden">
+      <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-[#0E0B1A] via-[#1C1436] to-[#2E184A] flex flex-col justify-between p-3 pointer-events-none select-none overflow-hidden border border-amber-400/20">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 bg-white/95 px-2.5 py-0.5 rounded-full">
-            <span className="text-sm leading-none">🐹</span>
-            <span className="text-[10px] font-black text-sky-900 uppercase tracking-wider">Video Pop Quiz</span>
+          <div className="flex items-center gap-1.5 bg-amber-400 px-2.5 py-0.5 rounded-full">
+            <span className="text-sm leading-none">🎬</span>
+            <span className="text-[10px] font-black text-slate-950 uppercase tracking-wider">Video Quiz</span>
           </div>
-          <span className="text-[10px] font-black text-sky-950 bg-white/85 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-black text-amber-300 bg-white/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
             {totalCount} Qs
           </span>
         </div>
 
-        <div className="bg-white/95 rounded-2xl p-2.5 border border-white">
-          <div className="text-[9px] font-black text-sky-700 uppercase tracking-wider truncate mb-0.5">
+        <div className="bg-[#161229]/95 rounded-2xl p-2.5 border border-white/15">
+          <div className="text-[9px] font-black text-amber-400 uppercase tracking-wider truncate mb-0.5">
             {cleanTitle}
           </div>
-          <p className="text-[11px] font-extrabold text-slate-900 line-clamp-2 leading-tight">
+          <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
             {firstQuestion}
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-1.5">
           {options.slice(0, 2).map((opt, idx) => (
-            <div key={idx} className="bg-sky-900/90 text-white rounded-lg px-2 py-1 text-[10px] font-bold truncate text-center">
+            <div key={idx} className="bg-white/10 text-slate-100 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-bold truncate text-center">
               {opt}
             </div>
           ))}
