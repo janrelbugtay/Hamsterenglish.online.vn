@@ -260,268 +260,154 @@ function normalizePaintballQuestions(rawList: any): Question[] {
 }
 
 // =============================================================
-// HAMSTER PAINTBALL CHARACTERS (12 FULL-BODY ILLUSTRATED & 3D CHARACTERS)
+// HAMSTER PAINTBALL CHARACTERS (6 CHARACTERS MATCHING PROFILE PORTRAITS)
 // =============================================================
+type HamsterOutfitStyle = 'cardigan' | 'varsity' | 'blazer' | 'hoodie' | 'overalls' | 'argyle';
+
 interface HamsterSkin {
   id: string;
+  breedIndex: number;
   name: string;
-  roleTitle: string;
   furColor: number;
   furHex: string;
+  earInnerColor: number;
   earInnerHex: string;
   bellyColor: number;
   bellyHex: string;
-  visorColor: number;
-  visorHex: string;
-  strapColor: number;
-  vestColor: number;
-  vestHex: string;
+  outfitStyle: HamsterOutfitStyle;
+  outfitColor: number;
+  outfitHex: string;
+  outfitAccentColor: number;
+  shirtColor?: number;
+  noseColor: number;
+  hasWhiteBlaze?: boolean;
+  hasWhiteBrows?: boolean;
+  hasRosyCheeks?: boolean;
   paintColor: number;
   paintHex: string;
   badgeBg: string;
-  headgear:
-    | 'Bandana'
-    | 'Helmet'
-    | 'SpecOps'
-    | 'Crown'
-    | 'Cyber'
-    | 'Blossom'
-    | 'Flame'
-    | 'Astro'
-    | 'Samurai'
-    | 'Headphones'
-    | 'Cowboy'
-    | 'Viking';
 }
 
 const HAMSTER_SKINS: HamsterSkin[] = [
   {
-    id: 'amber',
-    name: 'Captain Hammy',
-    roleTitle: 'Golden Ranger',
-    furColor: 0xd97706,
-    furHex: '#d97706',
-    earInnerHex: '#fda4af',
+    id: 'sunny_clover',
+    breedIndex: 0,
+    name: 'Sunny Clover',
+    furColor: 0xe7b364,
+    furHex: '#e7b364',
+    earInnerColor: 0xfca5a5,
+    earInnerHex: '#fca5a5',
     bellyColor: 0xfef3c7,
     bellyHex: '#fef3c7',
-    visorColor: 0xec4899,
-    visorHex: '#ec4899',
-    strapColor: 0xbe185d,
-    vestColor: 0x1e293b,
-    vestHex: '#1e293b',
-    paintColor: 0xa3e635,
-    paintHex: '#a3e635',
-    badgeBg: '#f59e0b',
-    headgear: 'Bandana'
-  },
-  {
-    id: 'teal',
-    name: 'Mint Striker',
-    roleTitle: 'Speed Sprinter',
-    furColor: 0x0d9488,
-    furHex: '#0d9488',
-    earInnerHex: '#99f6e4',
-    bellyColor: 0xccfbf1,
-    bellyHex: '#ccfbf1',
-    visorColor: 0xf97316,
-    visorHex: '#f97316',
-    strapColor: 0xc2410c,
-    vestColor: 0x0f172a,
-    vestHex: '#0f172a',
-    paintColor: 0x22d3ee,
-    paintHex: '#22d3ee',
-    badgeBg: '#14b8a6',
-    headgear: 'Helmet'
-  },
-  {
-    id: 'cocoa',
-    name: 'Shadow Paws',
-    roleTitle: 'Stealth Scout',
-    furColor: 0x78350f,
-    furHex: '#78350f',
-    earInnerHex: '#fdba74',
-    bellyColor: 0xfde68a,
-    bellyHex: '#fde68a',
-    visorColor: 0x06b6d4,
-    visorHex: '#06b6d4',
-    strapColor: 0x0369a1,
-    vestColor: 0x18181b,
-    vestHex: '#18181b',
-    paintColor: 0xf43f5e,
-    paintHex: '#f43f5e',
-    badgeBg: '#92400e',
-    headgear: 'SpecOps'
-  },
-  {
-    id: 'snow',
-    name: 'Arctic Frost',
-    roleTitle: 'Ice Defender',
-    furColor: 0xcbd5e1,
-    furHex: '#cbd5e1',
-    earInnerHex: '#f9a8d4',
-    bellyColor: 0xffffff,
-    bellyHex: '#ffffff',
-    visorColor: 0x84cc16,
-    visorHex: '#84cc16',
-    strapColor: 0x4d7c0f,
-    vestColor: 0x334155,
-    vestHex: '#334155',
-    paintColor: 0xa855f7,
-    paintHex: '#a855f7',
-    badgeBg: '#64748b',
-    headgear: 'Crown'
-  },
-  {
-    id: 'violet',
-    name: 'Neon Viper',
-    roleTitle: 'Cyber Blaster',
-    furColor: 0x7c3aed,
-    furHex: '#7c3aed',
-    earInnerHex: '#ddd6fe',
-    bellyColor: 0xede9fe,
-    bellyHex: '#ede9fe',
-    visorColor: 0xfacc15,
-    visorHex: '#facc15',
-    strapColor: 0xa16207,
-    vestColor: 0x1e1b4b,
-    vestHex: '#1e1b4b',
-    paintColor: 0xfacc15,
-    paintHex: '#facc15',
-    badgeBg: '#7c3aed',
-    headgear: 'Cyber'
-  },
-  {
-    id: 'sakura',
-    name: 'Sakura Splat',
-    roleTitle: 'Paint Artist',
-    furColor: 0xec4899,
-    furHex: '#ec4899',
-    earInnerHex: '#fbcfe8',
-    bellyColor: 0xfce7f3,
-    bellyHex: '#fce7f3',
-    visorColor: 0x38bdf8,
-    visorHex: '#38bdf8',
-    strapColor: 0x0284c7,
-    vestColor: 0x3b0764,
-    vestHex: '#3b0764',
-    paintColor: 0xf472b6,
-    paintHex: '#f472b6',
-    badgeBg: '#db2777',
-    headgear: 'Blossom'
-  },
-  {
-    id: 'blaze',
-    name: 'Blaze Inferno',
-    roleTitle: 'Pyro Striker',
-    furColor: 0xea580c,
-    furHex: '#ea580c',
-    earInnerHex: '#fed7aa',
-    bellyColor: 0xffedd5,
-    bellyHex: '#ffedd5',
-    visorColor: 0xfef08a,
-    visorHex: '#fef08a',
-    strapColor: 0x9a3412,
-    vestColor: 0x450a0a,
-    vestHex: '#450a0a',
-    paintColor: 0xf97316,
-    paintHex: '#f97316',
-    badgeBg: '#ea580c',
-    headgear: 'Flame'
-  },
-  {
-    id: 'astro',
-    name: 'Astro Nibbles',
-    roleTitle: 'Galaxy Ranger',
-    furColor: 0x2563eb,
-    furHex: '#2563eb',
-    earInnerHex: '#bfdbfe',
-    bellyColor: 0xeff6ff,
-    bellyHex: '#eff6ff',
-    visorColor: 0x22d3ee,
-    visorHex: '#22d3ee',
-    strapColor: 0x1e40af,
-    vestColor: 0x0f172a,
-    vestHex: '#0f172a',
-    paintColor: 0x38bdf8,
-    paintHex: '#38bdf8',
-    badgeBg: '#2563eb',
-    headgear: 'Astro'
-  },
-  {
-    id: 'samurai',
-    name: 'Shogun Whiskers',
-    roleTitle: 'Samurai Duelist',
-    furColor: 0x334155,
-    furHex: '#334155',
-    earInnerHex: '#fda4af',
-    bellyColor: 0xe2e8f0,
-    bellyHex: '#e2e8f0',
-    visorColor: 0xef4444,
-    visorHex: '#ef4444',
-    strapColor: 0x991b1b,
-    vestColor: 0x09090b,
-    vestHex: '#09090b',
-    paintColor: 0xef4444,
-    paintHex: '#ef4444',
-    badgeBg: '#dc2626',
-    headgear: 'Samurai'
-  },
-  {
-    id: 'dj',
-    name: 'DJ Cheeks',
-    roleTitle: 'Bass Dropper',
-    furColor: 0x65a30d,
-    furHex: '#65a30d',
-    earInnerHex: '#d9f99d',
-    bellyColor: 0xf7fee7,
-    bellyHex: '#f7fee7',
-    visorColor: 0xe879f9,
-    visorHex: '#e879f9',
-    strapColor: 0x86198f,
-    vestColor: 0x1e1b4b,
-    vestHex: '#1e1b4b',
-    paintColor: 0xa3e635,
-    paintHex: '#a3e635',
-    badgeBg: '#65a30d',
-    headgear: 'Headphones'
-  },
-  {
-    id: 'sheriff',
-    name: 'Sheriff Peanut',
-    roleTitle: 'Wild West Ace',
-    furColor: 0xb45309,
-    furHex: '#b45309',
-    earInnerHex: '#fde68a',
-    bellyColor: 0xfef9c3,
-    bellyHex: '#fef9c3',
-    visorColor: 0x38bdf8,
-    visorHex: '#38bdf8',
-    strapColor: 0x78350f,
-    vestColor: 0x422006,
-    vestHex: '#422006',
-    paintColor: 0xfacc15,
-    paintHex: '#facc15',
-    badgeBg: '#d97706',
-    headgear: 'Cowboy'
-  },
-  {
-    id: 'viking',
-    name: 'Viking Chonk',
-    roleTitle: 'Nordic Berserker',
-    furColor: 0x9a3412,
-    furHex: '#9a3412',
-    earInnerHex: '#fed7aa',
-    bellyColor: 0xffedd5,
-    bellyHex: '#ffedd5',
-    visorColor: 0x10b981,
-    visorHex: '#10b981',
-    strapColor: 0x065f46,
-    vestColor: 0x1c1917,
-    vestHex: '#1c1917',
+    outfitStyle: 'cardigan',
+    outfitColor: 0x15803d,
+    outfitHex: '#15803d',
+    outfitAccentColor: 0xfbbf24,
+    noseColor: 0xf472b6,
+    hasRosyCheeks: true,
     paintColor: 0x10b981,
     paintHex: '#10b981',
-    badgeBg: '#059669',
-    headgear: 'Viking'
+    badgeBg: '#10b981'
+  },
+  {
+    id: 'cinnamon_pip',
+    breedIndex: 1,
+    name: 'Cinnamon Pip',
+    furColor: 0xd97a38,
+    furHex: '#d97a38',
+    earInnerColor: 0xfdba74,
+    earInnerHex: '#fdba74',
+    bellyColor: 0xfff7ed,
+    bellyHex: '#fff7ed',
+    outfitStyle: 'varsity',
+    outfitColor: 0x3b96d4,
+    outfitHex: '#3b96d4',
+    outfitAccentColor: 0xfef3c7,
+    noseColor: 0x92400e,
+    paintColor: 0x0ea5e9,
+    paintHex: '#0ea5e9',
+    badgeBg: '#0ea5e9'
+  },
+  {
+    id: 'snowy_pearl',
+    breedIndex: 2,
+    name: 'Snowy Pearl',
+    furColor: 0xf1f5f9,
+    furHex: '#f1f5f9',
+    earInnerColor: 0xfbcfe8,
+    earInnerHex: '#fbcfe8',
+    bellyColor: 0xffffff,
+    bellyHex: '#ffffff',
+    outfitStyle: 'blazer',
+    outfitColor: 0x1e3a5f,
+    outfitHex: '#1e3a5f',
+    outfitAccentColor: 0xfbbf24,
+    noseColor: 0xf472b6,
+    hasRosyCheeks: true,
+    paintColor: 0x6366f1,
+    paintHex: '#6366f1',
+    badgeBg: '#6366f1'
+  },
+  {
+    id: 'mocha_cheer',
+    breedIndex: 3,
+    name: 'Mocha Cheer',
+    furColor: 0x8c5d3c,
+    furHex: '#8c5d3c',
+    earInnerColor: 0xfdba74,
+    earInnerHex: '#fdba74',
+    bellyColor: 0xfaf5ef,
+    bellyHex: '#faf5ef',
+    outfitStyle: 'hoodie',
+    outfitColor: 0xf16842,
+    outfitHex: '#f16842',
+    outfitAccentColor: 0xfed7aa,
+    noseColor: 0xf472b6,
+    hasWhiteBlaze: true,
+    paintColor: 0xf97316,
+    paintHex: '#f97316',
+    badgeBg: '#f97316'
+  },
+  {
+    id: 'caramel_sprout',
+    breedIndex: 4,
+    name: 'Caramel Sprout',
+    furColor: 0xde9847,
+    furHex: '#de9847',
+    earInnerColor: 0xfdba74,
+    earInnerHex: '#fdba74',
+    bellyColor: 0xfff8eb,
+    bellyHex: '#fff8eb',
+    outfitStyle: 'overalls',
+    outfitColor: 0x426c9c,
+    outfitHex: '#426c9c',
+    outfitAccentColor: 0xfbbf24,
+    shirtColor: 0xfacc15,
+    noseColor: 0x78350f,
+    hasWhiteBrows: true,
+    paintColor: 0xeab308,
+    paintHex: '#eab308',
+    badgeBg: '#eab308'
+  },
+  {
+    id: 'pudding_hop',
+    breedIndex: 5,
+    name: 'Pudding Hop',
+    furColor: 0x9ca3af,
+    furHex: '#9ca3af',
+    earInnerColor: 0xfda4af,
+    earInnerHex: '#fda4af',
+    bellyColor: 0xf8fafc,
+    bellyHex: '#f8fafc',
+    outfitStyle: 'argyle',
+    outfitColor: 0x4db6ac,
+    outfitHex: '#4db6ac',
+    outfitAccentColor: 0xfef3c7,
+    noseColor: 0xf472b6,
+    hasRosyCheeks: true,
+    paintColor: 0x14b8a6,
+    paintHex: '#14b8a6',
+    badgeBg: '#14b8a6'
   }
 ];
 
@@ -534,403 +420,28 @@ function HamsterCharacterAvatar({
   size?: number;
   team?: TeamId;
 }) {
-  const uid = `h3d-${skin.id}-${team || 'solo'}-${size}`;
+  const breed =
+    CUTE_HAMSTER_BREEDS[skin.breedIndex % CUTE_HAMSTER_BREEDS.length] || CUTE_HAMSTER_BREEDS[0];
   const isRedTeam = team === 'red';
   const isBlueTeam = team === 'blue';
-  const hasTeamBand = isRedTeam || isBlueTeam;
-  const teamBandHex = isRedTeam ? '#ef4444' : isBlueTeam ? '#2563eb' : skin.paintHex;
-  const teamBandHiHex = isRedTeam ? '#fecaca' : isBlueTeam ? '#bfdbfe' : '#ffffff';
-  const teamBandDarkHex = isRedTeam ? '#b91c1c' : isBlueTeam ? '#1d4ed8' : skin.badgeBg;
-  const activePaintHex = hasTeamBand ? teamBandHex : skin.paintHex;
-
-  const skinIndex = Math.max(
-    0,
-    HAMSTER_SKINS.findIndex(s => s.id === skin.id)
-  );
-  const cuteBreed = CUTE_HAMSTER_BREEDS[skinIndex % CUTE_HAMSTER_BREEDS.length];
+  const ringClass = isRedTeam
+    ? 'ring-2 ring-rose-500 border-white'
+    : isBlueTeam
+    ? 'ring-2 ring-sky-600 border-white'
+    : 'ring-1 ring-slate-200 border-white';
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 116 120"
-      className="overflow-visible select-none shrink-0 drop-shadow-[0_6px_12px_rgba(15,23,42,0.22)]"
+    <div
+      className={`relative rounded-full overflow-hidden bg-white border-2 ${ringClass} shadow-xs shrink-0 select-none flex items-center justify-center`}
+      style={{ width: size, height: size }}
     >
-      <defs>
-        <clipPath id={`${uid}-portrait-clip`}>
-          <circle cx="58" cy="54" r="38" />
-        </clipPath>
-        {/* Warm Plush 3D Fur Gradient (Vibrant, Never Muddy or Black!) */}
-        <radialGradient id={`${uid}-fur`} cx="36%" cy="28%" r="72%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
-          <stop offset="22%" stopColor={skin.furHex} />
-          <stop offset="78%" stopColor={skin.furHex} />
-          <stop offset="100%" stopColor={skin.badgeBg} stopOpacity="0.92" />
-        </radialGradient>
-
-        {/* Soft Sculpted Ear Gradient */}
-        <radialGradient id={`${uid}-ear`} cx="34%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
-          <stop offset="32%" stopColor={skin.furHex} />
-          <stop offset="100%" stopColor={skin.badgeBg} />
-        </radialGradient>
-
-        {/* Warm Pink Inner Ear Gradient */}
-        <radialGradient id={`${uid}-inner`} cx="38%" cy="34%" r="68%">
-          <stop offset="0%" stopColor="#fff1f2" />
-          <stop offset="45%" stopColor={skin.earInnerHex} />
-          <stop offset="100%" stopColor="#f43f5e" />
-        </radialGradient>
-
-        {/* Cream Plush Belly & Muzzle Gradient */}
-        <radialGradient id={`${uid}-belly`} cx="40%" cy="30%" r="72%">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="68%" stopColor={skin.bellyHex} />
-          <stop offset="100%" stopColor={skin.furHex} stopOpacity="0.65" />
-        </radialGradient>
-
-        {/* Tactical Armor Vest Gradient */}
-        <linearGradient id={`${uid}-vest`} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#64748b" />
-          <stop offset="45%" stopColor={skin.vestHex} />
-          <stop offset="100%" stopColor="#1e293b" />
-        </linearGradient>
-
-        {/* Vibrant Team Bandana Gradient */}
-        <linearGradient id={`${uid}-band`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={teamBandHiHex} />
-          <stop offset="28%" stopColor={teamBandHex} />
-          <stop offset="78%" stopColor={teamBandHex} />
-          <stop offset="100%" stopColor={teamBandDarkHex} />
-        </linearGradient>
-
-        {/* Glossy Pro Paintball Visor Gradient */}
-        <linearGradient id={`${uid}-visor`} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.88" />
-          <stop offset="22%" stopColor={skin.visorHex} />
-          <stop offset="78%" stopColor={skin.visorHex} />
-          <stop offset="100%" stopColor={teamBandDarkHex} />
-        </linearGradient>
-
-        {/* Blaster Metallic Receiver Gradient */}
-        <linearGradient id={`${uid}-gun`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={teamBandHiHex} />
-          <stop offset="35%" stopColor={hasTeamBand ? teamBandHex : '#0284c7'} />
-          <stop offset="100%" stopColor="#1e293b" />
-        </linearGradient>
-
-        {/* Paint Hopper Sphere Gradient */}
-        <radialGradient id={`${uid}-pod`} cx="35%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="34%" stopColor={activePaintHex} />
-          <stop offset="100%" stopColor={teamBandDarkHex} />
-        </radialGradient>
-      </defs>
-
-      {/* Soft Pedestal Shadow & Team Aura Ring */}
-      <ellipse cx="58" cy="109" rx="38" ry="7.5" fill="rgba(15,23,42,0.18)" />
-      <ellipse
-        cx="58"
-        cy="108"
-        rx="32"
-        ry="5.5"
-        fill={hasTeamBand ? teamBandHex : skin.badgeBg}
-        opacity="0.45"
+      <img
+        src={breed.imageUrl}
+        alt={skin.name}
+        draggable={false}
+        className="w-full h-full object-cover object-center scale-[1.12]"
       />
-
-      {/* Flowing Team Bandana Tails Behind Head */}
-      <g>
-        <path
-          d="M 85 28 C 99 20, 109 27, 111 37 C 102 40, 93 36, 85 32 Z"
-          fill={`url(#${uid}-band)`}
-          stroke="#ffffff"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M 84 33 C 97 34, 105 43, 105 51 C 95 50, 89 42, 83 36 Z"
-          fill={`url(#${uid}-band)`}
-          stroke="#ffffff"
-          strokeWidth="1.8"
-        />
-        <circle cx="87" cy="31" r="6" fill={`url(#${uid}-band)`} stroke="#ffffff" strokeWidth="1.8" />
-      </g>
-
-      {/* Sculpted Round Hamster Ears with Crisp White Sticker Rim */}
-      <g>
-        <circle cx="29" cy="22" r="14.5" fill={`url(#${uid}-ear)`} stroke="#ffffff" strokeWidth="2.8" />
-        <circle cx="29" cy="22" r="8.5" fill={`url(#${uid}-inner)`} />
-        <ellipse cx="26.5" cy="18.5" rx="3.5" ry="2.2" fill="#ffffff" opacity="0.65" />
-
-        <circle cx="87" cy="22" r="14.5" fill={`url(#${uid}-ear)`} stroke="#ffffff" strokeWidth="2.8" />
-        <circle cx="87" cy="22" r="8.5" fill={`url(#${uid}-inner)`} />
-        <ellipse cx="84.5" cy="18.5" rx="3.5" ry="2.2" fill="#ffffff" opacity="0.65" />
-      </g>
-
-      {/* High-Top Arcade Sneakers at Base */}
-      <g>
-        <ellipse cx="41" cy="101" rx="13" ry="7.2" fill="#1e293b" stroke="#ffffff" strokeWidth="2" />
-        <ellipse cx="41" cy="99.5" rx="11" ry="5.5" fill={activePaintHex} />
-        <ellipse cx="38.5" cy="98" rx="5" ry="2.2" fill="#ffffff" opacity="0.7" />
-
-        <ellipse cx="75" cy="101" rx="13" ry="7.2" fill="#1e293b" stroke="#ffffff" strokeWidth="2" />
-        <ellipse cx="75" cy="99.5" rx="11" ry="5.5" fill={activePaintHex} />
-        <ellipse cx="72.5" cy="98" rx="5" ry="2.2" fill="#ffffff" opacity="0.7" />
-      </g>
-
-      {/* Plump Hamster Torso */}
-      <path
-        d="M 26 64 C 21 47, 33 40, 58 40 C 83 40, 95 47, 90 64 C 94 86, 82 99, 58 99 C 34 99, 22 86, 26 64 Z"
-        fill={`url(#${uid}-fur)`}
-        stroke="#ffffff"
-        strokeWidth="2.8"
-      />
-
-      {/* Plush Cream Belly */}
-      <ellipse cx="58" cy="76" rx="22" ry="17" fill={`url(#${uid}-belly)`} />
-
-      {/* Shoulder Armor Pauldrons */}
-      <ellipse cx="27" cy="67" rx="9" ry="6.8" fill={`url(#${uid}-vest)`} stroke="#ffffff" strokeWidth="1.8" />
-      <ellipse cx="89" cy="67" rx="9" ry="6.8" fill={`url(#${uid}-vest)`} stroke="#ffffff" strokeWidth="1.8" />
-
-      {/* Tactical Paintball Chest Vest */}
-      <path
-        d="M 33 60 Q 58 65 83 60 L 79 94 Q 58 99 37 94 Z"
-        fill={`url(#${uid}-vest)`}
-        stroke="#ffffff"
-        strokeWidth="2"
-      />
-      {/* Team Ribbons & Glowing Chest Core */}
-      <path d="M 37 62 L 46 63 L 44 91 L 37 89 Z" fill={`url(#${uid}-band)`} />
-      <path d="M 79 62 L 70 63 L 72 91 L 79 89 Z" fill={`url(#${uid}-band)`} />
-      <rect x="49" y="68.5" width="18" height="13" rx="4.5" fill="#0f172a" stroke="#ffffff" strokeWidth="1.5" />
-      <rect x="51" y="70.5" width="14" height="9" rx="3" fill={`url(#${uid}-visor)`} />
-      <ellipse cx="55.5" cy="73" rx="3.5" ry="1.5" fill="#ffffff" opacity="0.88" />
-
-      {/* Belt Canisters (Health Can on Left Hip, Shield Can on Right Hip) */}
-      <g transform="translate(26, 78) rotate(-8)">
-        <rect x="0" y="0" width="9" height="13" rx="3.2" fill="#10b981" stroke="#ffffff" strokeWidth="1.4" />
-        <rect x="1.5" y="1.5" width="3" height="9.5" rx="1.2" fill="#a7f3d0" opacity="0.85" />
-      </g>
-      <g transform="translate(80, 78) rotate(8)">
-        <rect x="0" y="0" width="9" height="13" rx="3.2" fill="#0ea5e9" stroke="#ffffff" strokeWidth="1.4" />
-        <rect x="1.5" y="1.5" width="3" height="9.5" rx="1.2" fill="#bae6fd" opacity="0.85" />
-      </g>
-
-      {/* Big Chubby Hamster Head & Cheeks */}
-      <ellipse
-        cx="58"
-        cy="42"
-        rx="34"
-        ry="27.5"
-        fill={`url(#${uid}-fur)`}
-        stroke="#ffffff"
-        strokeWidth="2.8"
-      />
-      <circle cx="28" cy="48.5" r="13" fill={`url(#${uid}-fur)`} />
-      <circle cx="88" cy="48.5" r="13" fill={`url(#${uid}-fur)`} />
-
-      {/* Plush Muzzle & Rosy Cheek Blush */}
-      <ellipse cx="58" cy="52" rx="22.5" ry="14" fill={`url(#${uid}-belly)`} />
-      <ellipse cx="31" cy="51.5" rx="6.8" ry="4.2" fill="#fb7185" opacity="0.82" />
-      <ellipse cx="85" cy="51.5" rx="6.8" ry="4.2" fill="#fb7185" opacity="0.82" />
-      <ellipse cx="47" cy="23" rx="14" ry="5.2" fill="#ffffff" opacity="0.45" />
-
-      {/* Distinct Character Headgear */}
-      {skin.headgear === 'Helmet' && (
-        <path
-          d="M 26 28 C 28 9, 88 9, 90 28 Z"
-          fill={`url(#${uid}-vest)`}
-          stroke="#ffffff"
-          strokeWidth="2"
-        />
-      )}
-      {skin.headgear === 'SpecOps' && (
-        <g>
-          <path d="M 27 27 C 31 11, 85 11, 89 27 Z" fill="#1e293b" stroke="#ffffff" strokeWidth="2" />
-          <circle cx="45" cy="18" r="4.8" fill="#22c55e" stroke="#ffffff" strokeWidth="1.4" />
-          <circle cx="43.8" cy="16.8" r="1.6" fill="#ffffff" />
-          <circle cx="71" cy="18" r="4.8" fill="#22c55e" stroke="#ffffff" strokeWidth="1.4" />
-          <circle cx="69.8" cy="16.8" r="1.6" fill="#ffffff" />
-        </g>
-      )}
-      {skin.headgear === 'Crown' && (
-        <polygon
-          points="37,20 45,4 58,14 71,4 79,20"
-          fill="#facc15"
-          stroke="#ffffff"
-          strokeWidth="2"
-          strokeLinejoin="round"
-        />
-      )}
-      {skin.headgear === 'Cyber' && (
-        <g>
-          <polygon
-            points="35,20 58,5 81,20"
-            fill="#facc15"
-            stroke="#ffffff"
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-          <circle cx="58" cy="14" r="4" fill="#7c3aed" stroke="#ffffff" strokeWidth="1.2" />
-        </g>
-      )}
-      {skin.headgear === 'Blossom' && (
-        <g>
-          <circle cx="39" cy="15" r="7" fill="#f472b6" stroke="#ffffff" strokeWidth="1.8" />
-          <circle cx="39" cy="15" r="3" fill="#fef08a" />
-          <circle cx="77" cy="15" r="7" fill="#f472b6" stroke="#ffffff" strokeWidth="1.8" />
-          <circle cx="77" cy="15" r="3" fill="#fef08a" />
-        </g>
-      )}
-      {skin.headgear === 'Flame' && (
-        <g>
-          <polygon
-            points="41,21 50,3 58,14 66,2 75,21"
-            fill="#f97316"
-            stroke="#ffffff"
-            strokeWidth="1.8"
-            strokeLinejoin="round"
-          />
-          <polygon points="48,20 58,7 68,20" fill="#fef08a" />
-        </g>
-      )}
-      {skin.headgear === 'Astro' && (
-        <g>
-          <line x1="58" y1="17" x2="58" y2="4" stroke="#64748b" strokeWidth="3.6" strokeLinecap="round" />
-          <circle cx="58" cy="4.5" r="5.5" fill={`url(#${uid}-visor)`} stroke="#ffffff" strokeWidth="1.8" />
-          <circle cx="56.5" cy="3" r="2" fill="#ffffff" />
-        </g>
-      )}
-      {skin.headgear === 'Samurai' && (
-        <g>
-          <polygon points="58,19 36,3 48,20" fill="#facc15" stroke="#ffffff" strokeWidth="1.8" />
-          <polygon points="58,19 80,3 68,20" fill="#facc15" stroke="#ffffff" strokeWidth="1.8" />
-        </g>
-      )}
-      {skin.headgear === 'Headphones' && (
-        <g>
-          <path d="M 21 36 C 21 9, 95 9, 95 36" fill="none" stroke="#84cc16" strokeWidth="5" strokeLinecap="round" />
-          <rect x="15" y="28" width="10.5" height="18" rx="5" fill="#ec4899" stroke="#ffffff" strokeWidth="1.8" />
-          <rect x="90.5" y="28" width="10.5" height="18" rx="5" fill="#ec4899" stroke="#ffffff" strokeWidth="1.8" />
-        </g>
-      )}
-      {skin.headgear === 'Cowboy' && (
-        <g>
-          <ellipse cx="58" cy="18.5" rx="35" ry="6.2" fill="#92400e" stroke="#ffffff" strokeWidth="1.8" />
-          <path
-            d="M 38 18.5 C 40 4, 52 7, 58 10 C 64 7, 76 4, 78 18.5 Z"
-            fill="#d97706"
-            stroke="#ffffff"
-            strokeWidth="1.8"
-          />
-          <circle cx="58" cy="14.5" r="3.2" fill="#facc15" />
-        </g>
-      )}
-      {skin.headgear === 'Viking' && (
-        <g>
-          <path
-            d="M 34 22 C 24 7, 16 9, 20 2 C 29 2, 36 11, 40 18 Z"
-            fill="#fef3c7"
-            stroke="#d97706"
-            strokeWidth="1.8"
-          />
-          <path
-            d="M 82 22 C 92 7, 100 9, 96 2 C 87 2, 80 11, 76 18 Z"
-            fill="#fef3c7"
-            stroke="#d97706"
-            strokeWidth="1.8"
-          />
-        </g>
-      )}
-
-      {/* Wrap-Around Team Headband */}
-      <g>
-        <path
-          d="M 24 31.5 Q 58 22 92 31.5 L 91 22 Q 58 12.5 25 22 Z"
-          fill={`url(#${uid}-band)`}
-          stroke="#ffffff"
-          strokeWidth="1.8"
-        />
-        <rect x="49" y="20" width="18" height="7.5" rx="3.8" fill="#ffffff" />
-        <rect x="51" y="21.5" width="14" height="4.5" rx="2.2" fill={teamBandHex} />
-      </g>
-
-      {/* Cute 2D Illustrated Hamster Portrait Overlay inside Head Frame */}
-      {cuteBreed?.imageUrl && (
-        <g clipPath={`url(#${uid}-portrait-clip)`}>
-          <circle cx="58" cy="54" r="38" fill={skin.bellyHex} />
-          <image
-            href={cuteBreed.imageUrl}
-            x="16"
-            y="12"
-            width="84"
-            height="84"
-            preserveAspectRatio="xMidYMid slice"
-          />
-          <circle
-            cx="58"
-            cy="54"
-            r="37"
-            fill="none"
-            stroke={teamBandHex}
-            strokeWidth="3.5"
-            opacity="0.9"
-          />
-        </g>
-      )}
-
-      {/* Pro Paintball Visor & Expressive Glossy Eyes */}
-      <rect x="26" y="28" width="64" height="16.5" rx="8.2" fill="#1e293b" stroke="#ffffff" strokeWidth="2" opacity="0.92" />
-      <rect x="28.5" y="30" width="59" height="12.5" rx="6.2" fill={`url(#${uid}-visor)`} opacity="0.88" />
-      {/* Expressive Eyes with Triple Catchlights */}
-      <circle cx="44" cy="36.2" r="4.4" fill="#0f172a" />
-      <circle cx="42.4" cy="34.6" r="1.9" fill="#ffffff" />
-      <circle cx="45.6" cy="37.5" r="0.95" fill="#ffffff" opacity="0.9" />
-      <circle cx="72" cy="36.2" r="4.4" fill="#0f172a" />
-      <circle cx="70.4" cy="34.6" r="1.9" fill="#ffffff" />
-      <circle cx="73.6" cy="37.5" r="0.95" fill="#ffffff" opacity="0.9" />
-      {/* Curved Lens Glint */}
-      <path
-        d="M 33 32.2 Q 58 29.5 82 32.2"
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        opacity="0.88"
-      />
-
-      {/* Cute Pink Nose, Confident Smile & Buck Tooth */}
-      <ellipse cx="58" cy="51" rx="4.2" ry="3.0" fill="#f43f5e" opacity={cuteBreed?.imageUrl ? 0 : 1} />
-      <ellipse cx="56.5" cy="50" rx="1.8" ry="1.1" fill="#ffffff" opacity="0.85" />
-      <path
-        d="M 51.5 56 Q 58 61 64.5 56"
-        fill="none"
-        stroke="#1e293b"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-      <rect x="55.6" y="57.4" width="4.8" height="4.4" rx="1.4" fill="#ffffff" stroke="#cbd5e1" strokeWidth="0.8" />
-
-      {/* Left Paw */}
-      <ellipse cx="27" cy="74" rx="9" ry="7.5" fill={`url(#${uid}-fur)`} stroke="#ffffff" strokeWidth="2" />
-      <ellipse cx="25" cy="72" rx="3.5" ry="2" fill="#ffffff" opacity="0.55" />
-
-      {/* Pro Paintball Marker Held Across Chest */}
-      <g transform="rotate(-9 65 74)">
-        <rect x="48" y="77" width="16" height="7" rx="3.5" fill="#1e293b" stroke="#ffffff" strokeWidth="1.2" />
-        <ellipse cx="65" cy="61" rx="11" ry="7.4" fill={`url(#${uid}-pod)`} stroke="#ffffff" strokeWidth="1.8" />
-        <ellipse cx="62" cy="59" rx="4.5" ry="2" fill="#ffffff" opacity="0.8" />
-        <rect x="53" y="67" width="35" height="11" rx="5.5" fill={`url(#${uid}-gun)`} stroke="#ffffff" strokeWidth="1.8" />
-        <rect x="57" y="69" width="22" height="2.8" rx="1.4" fill="#ffffff" opacity="0.6" />
-        <rect x="84" y="69" width="14.5" height="7" rx="3.5" fill="#1e293b" stroke="#ffffff" strokeWidth="1.4" />
-        <circle cx="98.5" cy="72.5" r="4.2" fill={activePaintHex} stroke="#ffffff" strokeWidth="1.4" />
-        <circle cx="97.2" cy="71.2" r="1.5" fill="#ffffff" opacity="0.9" />
-      </g>
-
-      {/* Right Paw Gripping Marker */}
-      <ellipse cx="87" cy="76" rx="9" ry="7.5" fill={`url(#${uid}-fur)`} stroke="#ffffff" strokeWidth="2" />
-      <ellipse cx="85" cy="74" rx="3.5" ry="2" fill="#ffffff" opacity="0.55" />
-    </svg>
+    </div>
   );
 }
 
@@ -5118,7 +4629,6 @@ export default function HamsterPaintball({
   // 5. HIGH-DEFINITION 3D HAMSTER & POWER-UP CRATE BUILDERS
   // =============================================================
   const furTextureCacheRef = useRef<Map<string, THREE.CanvasTexture>>(new Map());
-  const maskGrillTexRef = useRef<THREE.CanvasTexture | null>(null);
 
   function createFurTexture(baseHex: string): THREE.CanvasTexture {
     const cached = furTextureCacheRef.current.get(baseHex);
@@ -5149,39 +4659,6 @@ export default function HamsterPaintball({
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(2, 2);
     furTextureCacheRef.current.set(baseHex, tex);
-    return tex;
-  }
-
-  function createMaskGrillTexture(): THREE.CanvasTexture {
-    if (maskGrillTexRef.current) return maskGrillTexRef.current;
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#18181b';
-    ctx.fillRect(0, 0, 256, 128);
-
-    ctx.fillStyle = '#27272a';
-    for (let y = 0; y < 128; y += 6) {
-      for (let x = 0; x < 256; x += 6) {
-        if ((x + y) % 12 === 0) ctx.fillRect(x, y, 3, 3);
-      }
-    }
-
-    ctx.fillStyle = '#09090b';
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 8; col++) {
-        const sx = 28 + col * 26;
-        const sy = 32 + row * 24;
-        ctx.beginPath();
-        ctx.roundRect(sx, sy, 16, 10, 4);
-        ctx.fill();
-      }
-    }
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    maskGrillTexRef.current = tex;
     return tex;
   }
 
@@ -5228,7 +4705,7 @@ export default function HamsterPaintball({
       ctx.fillStyle = '#fef08a';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('👑 TEACHER JAN [HOST]', 256, 61);
+      ctx.fillText('HOST', 256, 61);
       return;
     }
 
@@ -5352,6 +4829,57 @@ export default function HamsterPaintball({
     (sprite.userData.tex as THREE.CanvasTexture).needsUpdate = true;
   }
 
+  function createOutfitTexture(skin: HamsterSkin): THREE.CanvasTexture | null {
+    if (skin.outfitStyle !== 'argyle' && skin.outfitStyle !== 'varsity') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = skin.outfitHex;
+    ctx.fillRect(0, 0, 256, 128);
+
+    if (skin.outfitStyle === 'argyle') {
+      const cols = 8;
+      const rows = 2;
+      const w = canvas.width / cols;
+      const h = canvas.height / rows;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const cx = c * w + w / 2;
+          const cy = r * h + h / 2;
+          ctx.fillStyle = (r + c) % 2 === 0 ? '#f8fafc' : '#2dd4bf';
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - h * 0.44);
+          ctx.lineTo(cx + w * 0.44, cy);
+          ctx.lineTo(cx, cy + h * 0.44);
+          ctx.lineTo(cx - w * 0.44, cy);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = '#5eead4';
+      ctx.fillRect(0, 0, 256, 10);
+      ctx.fillRect(0, 116, 256, 12);
+    } else if (skin.outfitStyle === 'varsity') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.lineWidth = 2;
+      for (let x = 0; x < 256; x += 8) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 128);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#fef3c7';
+      ctx.fillRect(0, 106, 256, 6);
+      ctx.fillRect(0, 118, 256, 6);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    return tex;
+  }
+
   function buildHighDefHamster(
     skinIdx: number,
     callsign: string,
@@ -5359,7 +4887,7 @@ export default function HamsterPaintball({
     team: TeamId = 'solo',
     showNameTag: boolean = true
   ): THREE.Group {
-    const skin = HAMSTER_SKINS[skinIdx % HAMSTER_SKINS.length];
+    const skin = HAMSTER_SKINS[Math.abs(skinIdx || 0) % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
     const teamColorNum =
       isHostReferee
         ? 0xfacc15
@@ -5374,237 +4902,278 @@ export default function HamsterPaintball({
     const furMat = new THREE.MeshStandardMaterial({
       color: skin.furColor,
       map: furTex,
-      roughness: 0.72,
-      metalness: 0.04
+      roughness: 0.74,
+      metalness: 0.02
     });
     const bellyMat = new THREE.MeshStandardMaterial({
       color: skin.bellyColor,
-      roughness: 0.8,
+      roughness: 0.82,
+      metalness: 0.01
+    });
+    const earInnerMat = new THREE.MeshStandardMaterial({
+      color: skin.earInnerColor,
+      roughness: 0.6,
       metalness: 0.02
     });
-    const pinkMat = new THREE.MeshStandardMaterial({
-      color: 0xf472b6,
-      roughness: 0.5,
-      metalness: 0.05
+    const outfitTex = createOutfitTexture(skin);
+    const outfitMat = new THREE.MeshStandardMaterial({
+      color: outfitTex ? 0xffffff : skin.outfitColor,
+      map: outfitTex || undefined,
+      roughness: 0.78,
+      metalness: 0.04
     });
-    const vestMat = new THREE.MeshStandardMaterial({
-      color: isHostReferee ? 0x1e1b4b : skin.vestColor,
-      roughness: 0.45,
-      metalness: 0.25
+    const accentMat = new THREE.MeshStandardMaterial({
+      color: skin.outfitAccentColor,
+      roughness: 0.35,
+      metalness: 0.35
     });
-    const strapMat = new THREE.MeshStandardMaterial({
+    const teamMat = new THREE.MeshStandardMaterial({
       color: teamColorNum,
-      roughness: 0.4,
-      metalness: 0.2
-    });
-    const visorMat = new THREE.MeshPhysicalMaterial({
-      color: isHostReferee ? 0xfacc15 : skin.visorColor,
-      metalness: 0.92,
-      roughness: 0.06,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.04,
-      reflectivity: 1.0
+      emissive: teamColorNum,
+      emissiveIntensity: team === 'red' || team === 'blue' ? 0.24 : 0.08,
+      roughness: 0.38,
+      metalness: 0.12
     });
 
-    // 1. Articulated 3D Legs, Knee Pads & High-Top Sneakers
+    // 1. Cute Plush Hamster Legs & Little Paws
     const leftLeg = new THREE.Group();
-    leftLeg.position.set(-0.44, 0.4, 0);
+    leftLeg.position.set(-0.4, 0.38, 0);
     const rightLeg = new THREE.Group();
-    rightLeg.position.set(0.44, 0.4, 0);
+    rightLeg.position.set(0.4, 0.38, 0);
 
     const buildFoot = () => {
       const fg = new THREE.Group();
-      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.22, 12, 16), furMat);
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.2, 12, 16), furMat);
       thigh.castShadow = true;
       fg.add(thigh);
 
-      const kneePad = new THREE.Mesh(
-        new THREE.SphereGeometry(0.16, 14, 12),
-        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.45 })
-      );
-      kneePad.scale.set(1.0, 0.85, 0.65);
-      kneePad.position.set(0, -0.05, 0.18);
-      fg.add(kneePad);
-
-      const shoe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.4, 0.24, 0.62),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.32, metalness: 0.35 })
-      );
-      shoe.position.set(0, -0.23, 0.13);
-      shoe.castShadow = true;
-      fg.add(shoe);
-
-      const toeCap = new THREE.Mesh(
-        new THREE.SphereGeometry(0.2, 14, 12),
-        new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 })
-      );
-      toeCap.scale.set(0.98, 0.58, 0.85);
-      toeCap.position.set(0, -0.24, 0.36);
-      fg.add(toeCap);
-
-      const sole = new THREE.Mesh(
-        new THREE.BoxGeometry(0.43, 0.07, 0.66),
-        new THREE.MeshStandardMaterial({
-          color: teamColorNum,
-          emissive: teamColorNum,
-          emissiveIntensity: 0.3
-        })
-      );
-      sole.position.set(0, -0.33, 0.13);
-      fg.add(sole);
+      const pawPadMat = new THREE.MeshStandardMaterial({ color: 0xf5b7b1, roughness: 0.55 });
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 12), pawPadMat);
+      foot.scale.set(0.95, 0.45, 1.45);
+      foot.position.set(0, -0.26, 0.16);
+      foot.castShadow = true;
+      fg.add(foot);
       return fg;
     };
     leftLeg.add(buildFoot());
     rightLeg.add(buildFoot());
     root.add(leftLeg, rightLeg);
 
-    // 2. Plump Sculpted 3D Torso, Belly & Fluffy Tail
+    // 2. Chubby Hamster Torso, Plush Cream Belly & Fluffy Tail
     const bodyGroup = new THREE.Group();
     const torso = new THREE.Mesh(new THREE.SphereGeometry(0.92, 28, 24), furMat);
-    torso.scale.set(1.05, 1.04, 0.98);
-    torso.position.y = 0.94;
+    torso.scale.set(1.06, 1.02, 0.98);
+    torso.position.y = 0.92;
     torso.castShadow = true;
     torso.receiveShadow = true;
     bodyGroup.add(torso);
 
     const belly = new THREE.Mesh(new THREE.SphereGeometry(0.76, 24, 20), bellyMat);
-    belly.scale.set(0.88, 0.92, 0.48);
-    belly.position.set(0, 0.9, 0.66);
+    belly.scale.set(0.88, 0.9, 0.48);
+    belly.position.set(0, 0.88, 0.65);
     bodyGroup.add(belly);
 
-    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), bellyMat);
-    tail.position.set(0, 0.64, -0.94);
+    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), furMat);
+    tail.position.set(0, 0.62, -0.94);
     tail.castShadow = true;
     bodyGroup.add(tail);
 
-    // 3. Tactical 3D Paintball Chest Vest, Shoulder Pauldrons & Rear 4-Pod Harness Pack
-    const vestShell = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.89, 0.96, 0.74, 28, 1, true),
-      vestMat
-    );
-    vestShell.position.y = 0.97;
-    vestShell.castShadow = true;
-    bodyGroup.add(vestShell);
-
-    // 3D Shoulder Armor Pauldrons with Team Trim
-    [-1, 1].forEach(side => {
-      const pauldronGroup = new THREE.Group();
-      pauldronGroup.position.set(side * 0.86, 1.28, 0.06);
-      pauldronGroup.rotation.z = -side * 0.32;
-
-      const pauldronShell = new THREE.Mesh(
-        new THREE.SphereGeometry(0.3, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.58),
-        vestMat
+    // 3. Signature Cozy Outfit Matching Each Profile Portrait
+    if (skin.outfitStyle === 'overalls') {
+      const teeShirt = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.91, 0.95, 0.54, 28),
+        new THREE.MeshStandardMaterial({ color: skin.shirtColor || 0xfacc15, roughness: 0.75 })
       );
-      pauldronShell.scale.set(1.0, 0.85, 1.15);
-      pauldronShell.castShadow = true;
-      pauldronGroup.add(pauldronShell);
+      teeShirt.position.y = 1.12;
+      teeShirt.castShadow = true;
+      bodyGroup.add(teeShirt);
 
-      const pauldronStripe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.12, 0.14, 0.48),
-        new THREE.MeshStandardMaterial({
-          color: teamColorNum,
-          emissive: teamColorNum,
-          emissiveIntensity: 0.35,
-          roughness: 0.25
-        })
+      const overallsBottom = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.96, 0.92, 0.56, 28),
+        outfitMat
       );
-      pauldronStripe.position.set(0, 0.18, 0);
-      pauldronGroup.add(pauldronStripe);
-      bodyGroup.add(pauldronGroup);
-    });
+      overallsBottom.position.y = 0.72;
+      overallsBottom.castShadow = true;
+      bodyGroup.add(overallsBottom);
 
-    // 3D Back X-Harness Straps & Chest Armor Plate
-    [-1, 1].forEach(side => {
-      const backStrap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 0.68, 0.08),
-        new THREE.MeshStandardMaterial({
-          color: teamColorNum,
-          emissive: teamColorNum,
-          emissiveIntensity: 0.22,
-          roughness: 0.4
-        })
+      const bibFront = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.48, 0.24), outfitMat);
+      bibFront.position.set(0, 1.12, 0.84);
+      bodyGroup.add(bibFront);
+
+      const bibPocket = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.26, 0.06),
+        new THREE.MeshStandardMaterial({ color: 0x355880, roughness: 0.8 })
       );
-      backStrap.position.set(0, 1.06, -0.88);
-      backStrap.rotation.z = side * 0.52;
-      bodyGroup.add(backStrap);
-    });
+      bibPocket.position.set(0, 1.07, 0.96);
+      bodyGroup.add(bibPocket);
 
-    const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.48, 0.24), strapMat);
-    chestPlate.position.set(0, 1.0, 0.84);
-    bodyGroup.add(chestPlate);
+      [-0.3, 0.3].forEach(sx => {
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.42, 0.92), outfitMat);
+        strap.position.set(sx, 1.32, 0.22);
+        bodyGroup.add(strap);
 
+        const brassBtn = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.05, 14), accentMat);
+        brassBtn.rotation.x = Math.PI / 2;
+        brassBtn.position.set(sx, 1.28, 0.96);
+        bodyGroup.add(brassBtn);
+      });
+    } else {
+      const garmentShell = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.91, 0.98, 0.78, 28),
+        outfitMat
+      );
+      garmentShell.position.y = 0.96;
+      garmentShell.castShadow = true;
+      bodyGroup.add(garmentShell);
+
+      if (skin.outfitStyle === 'cardigan') {
+        const placket = new THREE.Mesh(
+          new THREE.BoxGeometry(0.12, 0.62, 0.08),
+          new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.75 })
+        );
+        placket.position.set(0, 0.94, 0.94);
+        bodyGroup.add(placket);
+        [1.14, 0.94, 0.74].forEach(by => {
+          const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 14), accentMat);
+          btn.rotation.x = Math.PI / 2;
+          btn.position.set(0, by, 0.98);
+          bodyGroup.add(btn);
+        });
+        const crest = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.2, 0.05), accentMat);
+        crest.position.set(0.38, 1.08, 0.88);
+        bodyGroup.add(crest);
+      } else if (skin.outfitStyle === 'varsity') {
+        const vTrim = new THREE.Mesh(
+          new THREE.TorusGeometry(0.46, 0.05, 8, 20),
+          new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.7 })
+        );
+        vTrim.rotation.x = Math.PI / 2.2;
+        vTrim.position.set(0, 1.32, 0.28);
+        bodyGroup.add(vTrim);
+
+        const hMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.6 });
+        [-0.1, 0.1].forEach(hx => {
+          const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.05), hMat);
+          bar.position.set(hx, 0.98, 0.95);
+          bodyGroup.add(bar);
+        });
+        const crossBar = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.05), hMat);
+        crossBar.position.set(0, 0.98, 0.95);
+        bodyGroup.add(crossBar);
+      } else if (skin.outfitStyle === 'blazer') {
+        const lapelMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.35, metalness: 0.45 });
+        [-0.2, 0.2].forEach(lx => {
+          const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.38, 0.06), lapelMat);
+          lapel.position.set(lx, 1.18, 0.88);
+          lapel.rotation.z = lx > 0 ? 0.32 : -0.32;
+          bodyGroup.add(lapel);
+        });
+        [1.0, 0.8].forEach(by => {
+          const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 14), accentMat);
+          btn.rotation.x = Math.PI / 2;
+          btn.position.set(0, by, 0.96);
+          bodyGroup.add(btn);
+        });
+      } else if (skin.outfitStyle === 'hoodie') {
+        const hoodCollar = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.16, 12, 24), outfitMat);
+        hoodCollar.rotation.x = Math.PI / 2.2;
+        hoodCollar.position.set(0, 1.36, -0.08);
+        bodyGroup.add(hoodCollar);
+
+        [-0.13, 0.13].forEach(dx => {
+          const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.34, 8), accentMat);
+          cord.position.set(dx, 1.12, 0.94);
+          bodyGroup.add(cord);
+        });
+      }
+    }
+
+    // Subtle Neck Scarf / Team Collar Band in Teams Mode (Red / Blue)
+    if (isHostReferee || team === 'red' || team === 'blue') {
+      const collarScarf = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.1, 10, 26), teamMat);
+      collarScarf.rotation.x = Math.PI / 2;
+      collarScarf.position.set(0, 1.35, 0.02);
+      bodyGroup.add(collarScarf);
+    }
+
+    // Compact Rear Paintball Pod Pack
     const podPackGroup = new THREE.Group();
-    podPackGroup.position.set(0, 0.95, -0.88);
+    podPackGroup.position.set(0, 0.82, -0.88);
     const packBelt = new THREE.Mesh(
-      new THREE.BoxGeometry(0.94, 0.46, 0.3),
-      new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.45, metalness: 0.3 })
+      new THREE.BoxGeometry(0.76, 0.28, 0.22),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
     );
     podPackGroup.add(packBelt);
 
     const podColors =
       team === 'red' || team === 'blue'
-        ? [teamColorNum, teamColorNum, teamColorNum, teamColorNum]
-        : [0xa3e635, 0xec4899, 0x22d3ee, 0xfacc15];
-    for (let p = 0; p < 4; p++) {
-      const px = -0.3 + p * 0.2;
+        ? [teamColorNum, teamColorNum, teamColorNum]
+        : [skin.paintColor, skin.paintColor, skin.paintColor];
+    for (let p = 0; p < 3; p++) {
+      const px = -0.2 + p * 0.2;
       const podTube = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.088, 0.088, 0.6, 14),
+        new THREE.CylinderGeometry(0.075, 0.075, 0.44, 12),
         new THREE.MeshPhysicalMaterial({
           color: podColors[p],
-          emissive: podColors[p],
-          emissiveIntensity: team === 'red' || team === 'blue' ? 0.28 : 0.1,
-          transmission: 0.35,
-          transparent: true,
-          opacity: 0.94,
           clearcoat: 1.0,
-          roughness: 0.1
+          roughness: 0.12
         })
       );
-      podTube.position.set(px, 0.04, -0.11);
+      podTube.position.set(px, 0.04, -0.09);
       podPackGroup.add(podTube);
-
-      const podCap = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.098, 0.098, 0.085, 14),
-        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 })
-      );
-      podCap.position.set(px, 0.35, -0.11);
-      podPackGroup.add(podCap);
     }
     bodyGroup.add(podPackGroup);
 
-    // 4. Sculpted 3D Head, Chubby Cheeks, Prominent 3D Ears & Snout
+    // 4. Sculpted Cute 3D Head Matching Profile Portrait (Open Glossy Eyes, Chubby Cheeks)
     const headGroup = new THREE.Group();
-    headGroup.position.set(0, 1.74, 0.04);
+    headGroup.position.set(0, 1.72, 0.04);
 
-    const headSphere = new THREE.Mesh(new THREE.SphereGeometry(0.77, 30, 26), furMat);
-    headSphere.scale.set(1.06, 0.97, 1.0);
+    const headSphere = new THREE.Mesh(new THREE.SphereGeometry(0.78, 30, 26), furMat);
+    headSphere.scale.set(1.06, 0.96, 0.98);
     headSphere.castShadow = true;
     headGroup.add(headSphere);
 
     const leftCheek = new THREE.Mesh(new THREE.SphereGeometry(0.44, 20, 18), bellyMat);
     leftCheek.scale.set(1.12, 0.86, 0.96);
-    leftCheek.position.set(-0.53, -0.14, 0.35);
+    leftCheek.position.set(-0.48, -0.15, 0.36);
     const rightCheek = leftCheek.clone();
-    rightCheek.position.set(0.53, -0.14, 0.35);
+    rightCheek.position.set(0.48, -0.15, 0.36);
     headGroup.add(leftCheek, rightCheek);
+
+    if (skin.hasWhiteBlaze) {
+      const blaze = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 14), bellyMat);
+      blaze.scale.set(0.55, 1.15, 0.32);
+      blaze.position.set(0, 0.14, 0.72);
+      headGroup.add(blaze);
+    }
+
+    if (skin.hasRosyCheeks) {
+      const blushMat = new THREE.MeshStandardMaterial({ color: 0xfda4af, roughness: 0.8 });
+      [-0.5, 0.5].forEach(bx => {
+        const blush = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), blushMat);
+        blush.scale.set(1.3, 0.65, 0.35);
+        blush.position.set(bx, -0.11, 0.68);
+        blush.rotation.y = bx > 0 ? 0.45 : -0.45;
+        headGroup.add(blush);
+      });
+    }
 
     const buildEar = (side: number) => {
       const earG = new THREE.Group();
-      earG.position.set(side * 0.6, 0.6, -0.04);
-      earG.rotation.z = -side * 0.36;
-      earG.rotation.y = side * 0.24;
+      earG.position.set(side * 0.58, 0.6, -0.02);
+      earG.rotation.z = -side * 0.35;
+      earG.rotation.y = side * 0.22;
 
-      const outerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.15, 22), furMat);
+      const outerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.14, 22), furMat);
       outerEar.rotation.x = Math.PI / 2;
       outerEar.castShadow = true;
       earG.add(outerEar);
 
-      const earRim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.055, 12, 22), furMat);
+      const earRim = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.055, 12, 22), furMat);
       earRim.position.z = 0.02;
       earG.add(earRim);
 
-      const innerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.16, 20), pinkMat);
+      const innerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.15, 20), earInnerMat);
       innerEar.rotation.x = Math.PI / 2;
       innerEar.position.z = 0.025;
       earG.add(innerEar);
@@ -5614,349 +5183,95 @@ export default function HamsterPaintball({
     const rightEar = buildEar(1);
     headGroup.add(leftEar, rightEar);
 
+    const eyeMat = new THREE.MeshPhysicalMaterial({
+      color: 0x1a1412,
+      roughness: 0.06,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.04
+    });
+    const highlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const browColor = skin.hasWhiteBrows ? skin.bellyColor : 0x451a03;
+    const browMat = new THREE.MeshStandardMaterial({ color: browColor, roughness: 0.7 });
+
+    [-1, 1].forEach(side => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.145, 18, 16), eyeMat);
+      eye.scale.set(0.95, 1.08, 0.72);
+      eye.position.set(side * 0.3, 0.14, 0.71);
+      eye.rotation.y = side * 0.18;
+      headGroup.add(eye);
+
+      const catchlightBig = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 10), highlightMat);
+      catchlightBig.position.set(side * 0.27 - 0.03, 0.19, 0.8);
+      headGroup.add(catchlightBig);
+
+      const catchlightSmall = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), highlightMat);
+      catchlightSmall.position.set(side * 0.32 + 0.02, 0.09, 0.79);
+      headGroup.add(catchlightSmall);
+
+      const brow = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.032, skin.hasWhiteBrows ? 0.12 : 0.09, 6, 10),
+        browMat
+      );
+      brow.rotation.z = Math.PI / 2 - side * 0.18;
+      brow.position.set(side * 0.31, 0.34, 0.7);
+      headGroup.add(brow);
+    });
+
     const snout = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 14), bellyMat);
-    snout.scale.set(1.12, 0.82, 0.92);
-    snout.position.set(0, -0.1, 0.73);
+    snout.scale.set(1.15, 0.82, 0.9);
+    snout.position.set(0, -0.09, 0.72);
     headGroup.add(snout);
 
     const nose = new THREE.Mesh(
-      new THREE.SphereGeometry(0.095, 14, 14),
-      new THREE.MeshPhysicalMaterial({ color: 0xf43f5e, clearcoat: 1.0, roughness: 0.12 })
+      new THREE.SphereGeometry(0.09, 14, 14),
+      new THREE.MeshPhysicalMaterial({ color: skin.noseColor, clearcoat: 0.8, roughness: 0.2 })
     );
-    nose.position.set(0, -0.04, 0.93);
+    nose.scale.set(1.15, 0.85, 0.85);
+    nose.position.set(0, -0.02, 0.92);
     headGroup.add(nose);
 
-    // Cute 3D Buck Tooth & Whiskers
     const buckTooth = new THREE.Mesh(
-      new THREE.BoxGeometry(0.11, 0.12, 0.04),
+      new THREE.BoxGeometry(0.11, 0.11, 0.04),
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
     );
-    buckTooth.position.set(0, -0.2, 0.88);
+    buckTooth.position.set(0, -0.18, 0.88);
     headGroup.add(buckTooth);
 
-    const whiskerMat = new THREE.MeshBasicMaterial({ color: 0x1e293b });
+    const whiskerMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
     [-1, 1].forEach(side => {
       [-0.04, 0.04].forEach((wy, wi) => {
         const whisker = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.36, 6), whiskerMat);
-        whisker.rotation.z = (Math.PI / 2) + side * (wi === 0 ? 0.12 : -0.12);
-        whisker.position.set(side * 0.68, -0.12 + wy, 0.56);
+        whisker.rotation.z = Math.PI / 2 + side * (wi === 0 ? 0.12 : -0.12);
+        whisker.position.set(side * 0.65, -0.11 + wy, 0.56);
         headGroup.add(whisker);
       });
     });
 
-    // Character-Specific 3D Headgear (Positioned cleanly above the Team Headband so the Red/Blue Headband is ALWAYS 100% visible!)
-    const headgearGroup = new THREE.Group();
-    if (skin.headgear === 'Bandana') {
-      const band = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.77, 0.78, 0.16, 28),
-        new THREE.MeshStandardMaterial({ color: teamColorNum, roughness: 0.45 })
-      );
-      band.position.set(0, 0.42, 0);
-      headgearGroup.add(band);
-    } else if (skin.headgear === 'Helmet') {
-      const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(0.79, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.36),
-        new THREE.MeshPhysicalMaterial({ color: 0x0f172a, clearcoat: 1.0, roughness: 0.15 })
-      );
-      dome.position.y = 0.24;
-      headgearGroup.add(dome);
-      const crest = new THREE.Mesh(
-        new THREE.BoxGeometry(0.16, 0.14, 0.85),
-        new THREE.MeshStandardMaterial({ color: teamColorNum, emissive: teamColorNum, emissiveIntensity: 0.45 })
-      );
-      crest.position.set(0, 0.88, 0.05);
-      headgearGroup.add(crest);
-    } else if (skin.headgear === 'SpecOps') {
-      const mount = new THREE.Mesh(
-        new THREE.BoxGeometry(0.58, 0.16, 0.24),
-        new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.7, roughness: 0.3 })
-      );
-      mount.position.set(0, 0.62, 0.56);
-      headgearGroup.add(mount);
-      [-0.17, 0.17].forEach(ox => {
-        const nvg = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.09, 0.09, 0.26, 14),
-          new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.75 })
-        );
-        nvg.rotation.x = Math.PI / 2;
-        nvg.position.set(ox, 0.62, 0.68);
-        headgearGroup.add(nvg);
-      });
-    } else if (skin.headgear === 'Crown') {
-      const crownBase = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.46, 0.4, 0.26, 16),
-        new THREE.MeshPhysicalMaterial({ color: 0xfacc15, metalness: 0.85, roughness: 0.15, clearcoat: 1.0 })
-      );
-      crownBase.position.set(0, 0.84, 0.05);
-      headgearGroup.add(crownBase);
-    } else if (skin.headgear === 'Cyber') {
-      const cyberFin = new THREE.Mesh(
-        new THREE.ConeGeometry(0.28, 0.62, 4),
-        new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.35 })
-      );
-      cyberFin.position.set(0, 0.94, 0.12);
-      headgearGroup.add(cyberFin);
-    } else if (skin.headgear === 'Blossom') {
-      [-0.42, 0.42].forEach(bx => {
-        const flower = new THREE.Mesh(
-          new THREE.DodecahedronGeometry(0.18, 0),
-          new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.4 })
-        );
-        flower.position.set(bx, 0.76, 0.22);
-        headgearGroup.add(flower);
-      });
-    } else if (skin.headgear === 'Flame') {
-      [-0.22, 0, 0.22].forEach((fx, fi) => {
-        const flameCone = new THREE.Mesh(
-          new THREE.ConeGeometry(fi === 1 ? 0.22 : 0.16, fi === 1 ? 0.62 : 0.45, 8),
-          new THREE.MeshStandardMaterial({
-            color: fi === 1 ? 0xfef08a : 0xf97316,
-            emissive: 0xf97316,
-            emissiveIntensity: 0.55
-          })
-        );
-        flameCone.position.set(fx, 0.88, 0.08);
-        headgearGroup.add(flameCone);
-      });
-    } else if (skin.headgear === 'Astro') {
-      const stalk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.035, 0.035, 0.45, 10),
-        new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8 })
-      );
-      stalk.position.set(0, 0.88, 0.05);
-      headgearGroup.add(stalk);
-      const orb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.14, 14, 14),
-        new THREE.MeshStandardMaterial({
-          color: 0x38bdf8,
-          emissive: 0x38bdf8,
-          emissiveIntensity: 0.85
-        })
-      );
-      orb.position.set(0, 1.12, 0.05);
-      headgearGroup.add(orb);
-    } else if (skin.headgear === 'Samurai') {
-      const kabutoCrest = new THREE.Mesh(
-        new THREE.TorusGeometry(0.38, 0.06, 10, 20, Math.PI),
-        new THREE.MeshPhysicalMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.15 })
-      );
-      kabutoCrest.rotation.z = Math.PI;
-      kabutoCrest.position.set(0, 0.96, 0.42);
-      headgearGroup.add(kabutoCrest);
-    } else if (skin.headgear === 'Headphones') {
-      const arcBand = new THREE.Mesh(
-        new THREE.TorusGeometry(0.78, 0.065, 12, 24, Math.PI),
-        new THREE.MeshStandardMaterial({
-          color: 0xa3e635,
-          emissive: 0xa3e635,
-          emissiveIntensity: 0.3
-        })
-      );
-      arcBand.position.set(0, 0.12, 0);
-      headgearGroup.add(arcBand);
-      [-0.78, 0.78].forEach(hx => {
-        const cup = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.24, 0.24, 0.18, 16),
-          new THREE.MeshPhysicalMaterial({ color: 0xec4899, clearcoat: 1.0, roughness: 0.15 })
-        );
-        cup.rotation.z = Math.PI / 2;
-        cup.position.set(hx, 0.08, 0.05);
-        headgearGroup.add(cup);
-      });
-    } else if (skin.headgear === 'Cowboy') {
-      const brim = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.02, 1.02, 0.07, 24),
-        new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 })
-      );
-      brim.position.set(0, 0.72, 0.02);
-      headgearGroup.add(brim);
-      const hatTop = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.46, 0.56, 0.36, 20),
-        new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6 })
-      );
-      hatTop.position.set(0, 0.92, 0.02);
-      headgearGroup.add(hatTop);
-    } else if (skin.headgear === 'Viking') {
-      const helm = new THREE.Mesh(
-        new THREE.SphereGeometry(0.77, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.35),
-        new THREE.MeshStandardMaterial({ color: 0x57534e, metalness: 0.7, roughness: 0.35 })
-      );
-      helm.position.y = 0.25;
-      headgearGroup.add(helm);
-      [-1, 1].forEach(side => {
-        const horn = new THREE.Mesh(
-          new THREE.ConeGeometry(0.14, 0.55, 12),
-          new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.3 })
-        );
-        horn.position.set(side * 0.76, 0.74, 0.1);
-        horn.rotation.z = -side * 0.55;
-        headgearGroup.add(horn);
-      });
-    }
-    headGroup.add(headgearGroup);
-
-    // 5. Pro Paintball Mask, High-Visibility Team Headband & Iridescent Thermal Goggles
-    const maskGroup = new THREE.Group();
-    const maskGrillMat = new THREE.MeshStandardMaterial({
-      map: createMaskGrillTexture(),
-      roughness: 0.4,
-      metalness: 0.35
-    });
-
-    const faceGuard = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.79, 0.68, 0.44, 24, 1, false, -Math.PI * 0.38, Math.PI * 0.76),
-      maskGrillMat
-    );
-    faceGuard.position.set(0, -0.16, 0.08);
-    maskGroup.add(faceGuard);
-
-    const goggleStrap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.785, 0.785, 0.24, 28),
-      strapMat
-    );
-    goggleStrap.position.set(0, 0.14, 0);
-    maskGroup.add(goggleStrap);
-
-    // PROMINENT 3D TEAM IDENTIFICATION HEADBAND (Red Headband on Red Team, Blue Headband on Blue Team!)
-    const headbandColorNum =
-      isHostReferee
-        ? 0xfacc15
-        : team === 'red'
-        ? 0xef4444
-        : team === 'blue'
-        ? 0x2563eb
-        : teamColorNum;
-
-    const headbandMat = new THREE.MeshStandardMaterial({
-      color: headbandColorNum,
-      emissive: headbandColorNum,
-      emissiveIntensity: 0.34,
-      roughness: 0.35,
-      metalness: 0.1
-    });
-
-    // Main Forehead Cloth Band (Radius 0.825 so it wraps outside the 0.805 head fur radius all the way around!)
-    const headband = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.822, 0.828, 0.23, 32),
-      headbandMat
-    );
-    headband.position.set(0, 0.43, 0.02);
-    maskGroup.add(headband);
-
-    // Crisp White Top & Bottom Contrast Trim Rings on the Headband so Red/Blue pops on any fur color
-    const trimMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    [0.32, 0.54].forEach(ty => {
-      const trimRing = new THREE.Mesh(
-        new THREE.TorusGeometry(0.826, 0.02, 10, 32),
-        trimMat
-      );
-      trimRing.rotation.x = Math.PI / 2;
-      trimRing.position.set(0, ty, 0.02);
-      maskGroup.add(trimRing);
-    });
-
-    // Front Forehead Team Plate Emblem on the Headband
-    const frontEmblemPlate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.48, 0.19, 0.08),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
-    );
-    frontEmblemPlate.position.set(0, 0.43, 0.82);
-    maskGroup.add(frontEmblemPlate);
-
-    const frontEmblemCore = new THREE.Mesh(
-      new THREE.BoxGeometry(0.38, 0.11, 0.095),
-      headbandMat
-    );
-    frontEmblemCore.position.set(0, 0.43, 0.825);
-    maskGroup.add(frontEmblemCore);
-
-    // Back Tied Headband Knot & Two Flowing Bandana Tails
-    const headbandKnot = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 16, 16),
-      headbandMat
-    );
-    headbandKnot.position.set(0, 0.43, -0.84);
-    maskGroup.add(headbandKnot);
-
-    [-1, 1].forEach(side => {
-      const tailRibbon = new THREE.Mesh(
-        new THREE.BoxGeometry(0.16, 0.52, 0.06),
-        headbandMat
-      );
-      tailRibbon.position.set(side * 0.19, 0.22, -0.94);
-      tailRibbon.rotation.z = side * 0.44;
-      tailRibbon.rotation.x = 0.36;
-      maskGroup.add(tailRibbon);
-    });
-
-    const visorFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(1.12, 0.44, 0.42),
-      new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.3, metalness: 0.5 })
-    );
-    visorFrame.position.set(0, 0.15, 0.58);
-    maskGroup.add(visorFrame);
-
-    const visorLens = new THREE.Mesh(
-      new THREE.SphereGeometry(0.64, 28, 20, 0, Math.PI, Math.PI * 0.32, Math.PI * 0.36),
-      visorMat
-    );
-    visorLens.rotation.y = -Math.PI / 2;
-    visorLens.scale.set(0.95, 0.85, 1.18);
-    visorLens.position.set(0, 0.15, 0.24);
-    maskGroup.add(visorLens);
-
-    // Expressive 3D Eyebrows & Glowing Eye Catchlights on Visor
-    [-1, 1].forEach(side => {
-      const brow = new THREE.Mesh(
-        new THREE.BoxGeometry(0.28, 0.065, 0.08),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 })
-      );
-      brow.position.set(side * 0.26, 0.34, 0.8);
-      brow.rotation.z = -side * 0.14;
-      maskGroup.add(brow);
-
-      const eyeHighlight = new THREE.Mesh(
-        new THREE.SphereGeometry(0.055, 10, 10),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
-      );
-      eyeHighlight.position.set(side * 0.24, 0.17, 0.88);
-      maskGroup.add(eyeHighlight);
-    });
-
-    headGroup.add(maskGroup);
     bodyGroup.add(headGroup);
 
-    // Hip-Holstered Mini Health Can (Left Hip) & Defence Can (Right Hip) on Tactical Belt
-    const hipHealthCan = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.11, 0.11, 0.32, 12),
-      new THREE.MeshPhysicalMaterial({ color: 0x22c55e, clearcoat: 1.0, roughness: 0.15 })
-    );
-    hipHealthCan.position.set(-0.88, 0.78, 0.18);
-    hipHealthCan.rotation.z = 0.22;
-    bodyGroup.add(hipHealthCan);
+    // 5. Articulated 3D Arms with Matching Sleeves & Paws
+    const armMat =
+      skin.outfitStyle === 'cardigan' || skin.outfitStyle === 'blazer' || skin.outfitStyle === 'hoodie'
+        ? outfitMat
+        : skin.outfitStyle === 'overalls'
+        ? new THREE.MeshStandardMaterial({ color: skin.shirtColor || 0xfacc15, roughness: 0.75 })
+        : furMat;
 
-    const hipShieldCan = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.11, 0.11, 0.32, 12),
-      new THREE.MeshPhysicalMaterial({ color: 0x06b6d4, clearcoat: 1.0, roughness: 0.15 })
-    );
-    hipShieldCan.position.set(0.88, 0.78, -0.15);
-    hipShieldCan.rotation.z = -0.22;
-    bodyGroup.add(hipShieldCan);
-
-    // 6. Articulated 3D Arms, Paws, Held Canister & Pro Mechanical Paintball Marker Gun
     const leftArmGroup = new THREE.Group();
     leftArmGroup.position.set(-0.8, 1.18, 0.34);
-    const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.4, 12, 16), furMat);
+    const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.38, 12, 16), armMat);
     leftArm.rotation.x = Math.PI / 2.8;
     leftArm.rotation.z = -0.28;
     leftArm.castShadow = true;
     leftArmGroup.add(leftArm);
 
-    const leftPaw = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 14), bellyMat);
+    const leftPaw = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 14, 14),
+      new THREE.MeshStandardMaterial({ color: 0xf5b7b1, roughness: 0.55 })
+    );
     leftPaw.position.set(0.12, -0.12, 0.26);
     leftArmGroup.add(leftPaw);
 
-    // 3D Canister in Left Paw (Visible when player Long-Presses Health/Defence Can!)
     const heldCanMesh = new THREE.Mesh(
       new THREE.CylinderGeometry(0.14, 0.14, 0.38, 14),
       new THREE.MeshStandardMaterial({
@@ -5973,25 +5288,28 @@ export default function HamsterPaintball({
 
     const rightArmGroup = new THREE.Group();
     rightArmGroup.position.set(0.78, 1.18, 0.42);
-    const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.4, 12, 16), furMat);
+    const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.38, 12, 16), armMat);
     rightArm.rotation.x = Math.PI / 2.3;
     rightArm.castShadow = true;
     rightArmGroup.add(rightArm);
 
-    const rightPaw = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 14), bellyMat);
+    const rightPaw = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 14, 14),
+      new THREE.MeshStandardMaterial({ color: 0xf5b7b1, roughness: 0.55 })
+    );
     rightPaw.position.set(0.02, -0.06, 0.28);
     rightArmGroup.add(rightPaw);
     bodyGroup.add(rightArmGroup);
 
+    // 6. Pro Mechanical Paintball Marker Gun
     const markerGroup = new THREE.Group();
     markerGroup.position.set(0.82, 1.24, 0.55);
-    // Subtle inward toe-in so the gun barrel naturally converges on the forward crosshair line
     markerGroup.rotation.y = -0.055;
 
     const anodizedMat = new THREE.MeshPhysicalMaterial({
       color: teamColorNum,
-      metalness: 0.88,
-      roughness: 0.16,
+      metalness: 0.85,
+      roughness: 0.18,
       clearcoat: 0.8
     });
     const carbonMat = new THREE.MeshStandardMaterial({
@@ -6009,7 +5327,6 @@ export default function HamsterPaintball({
     receiver.castShadow = true;
     markerGroup.add(receiver);
 
-    // Reciprocating Mechanical Bolt on Top-Rear of Receiver (Slams back & forth on every shot!)
     const boltMesh = new THREE.Mesh(
       new THREE.CylinderGeometry(0.068, 0.068, 0.44, 14),
       chromeMat
@@ -6018,7 +5335,6 @@ export default function HamsterPaintball({
     boltMesh.position.set(0, 0.15, -0.22);
     markerGroup.add(boltMesh);
 
-    // Chambered Paintball visible travelling down the Barrel Breach when firing
     const chamberBallMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.085, 12, 12),
       new THREE.MeshBasicMaterial({ color: teamColorNum })
@@ -6043,7 +5359,6 @@ export default function HamsterPaintball({
     barrelTip.position.set(0, 0.05, 1.3);
     markerGroup.add(barrelTip);
 
-    // Ported Muzzle Brake & Hollow Dark Barrel Bore at the Tip of the Gun
     const muzzleBrake = new THREE.Mesh(
       new THREE.CylinderGeometry(0.082, 0.072, 0.18, 16),
       chromeMat
@@ -6060,12 +5375,10 @@ export default function HamsterPaintball({
     barrelBore.position.set(0, 0.05, 1.71);
     markerGroup.add(barrelBore);
 
-    // Exact 3D Muzzle Spawn Point at the Front Opening of the Gun Barrel!
     const muzzleTip = new THREE.Object3D();
     muzzleTip.position.set(0, 0.05, 1.75);
     markerGroup.add(muzzleTip);
 
-    // Multi-Part 3D Muzzle Blast & Gas Ring at the Gun Barrel Tip (Flashes when bullet exits!)
     const muzzleFlash = new THREE.Group();
     muzzleFlash.position.set(0, 0.05, 1.76);
     muzzleFlash.visible = false;
@@ -6152,7 +5465,6 @@ export default function HamsterPaintball({
     hopperShell.scale.set(0.92, 0.82, 1.38);
     hopperGroup.add(hopperShell);
 
-    // Visible 3D Paintballs inside the Translucent Hopper that Agitate & Feed into the Gun when Shooting!
     const hopperBallsGroup = new THREE.Group();
     const hopperBallOffsets = [
       [-0.08, -0.04, -0.1],
@@ -10074,9 +9386,9 @@ export default function HamsterPaintball({
       />
 
       {/* -------------------------------------------------------------
-          TOP ARCADE NAVIGATION HEADER (CLEAN, BRIGHT, NON-OVERLAPPING)
+          TOP NAVIGATION BAR
          ------------------------------------------------------------- */}
-      <div className="absolute top-2 inset-x-2.5 sm:inset-x-4 z-30 flex items-center justify-between pointer-events-none gap-2 flex-nowrap">
+      <div className="absolute top-2.5 inset-x-3 sm:inset-x-4 z-30 flex items-center justify-between pointer-events-none gap-2 flex-nowrap">
         <button
           type="button"
           onClick={() => {
@@ -10087,9 +9399,9 @@ export default function HamsterPaintball({
             }
             onViewChange('games');
           }}
-          className="pointer-events-auto shrink-0 flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-slate-800 font-extrabold text-xs border-2 border-sky-200 border-b-4 border-b-sky-300 shadow-md transition active:translate-y-0.5 cursor-pointer whitespace-nowrap"
+          className="pointer-events-auto shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 font-semibold text-xs border border-slate-200/90 shadow-sm transition active:scale-[0.98] cursor-pointer whitespace-nowrap"
         >
-          <ArrowLeft size={14} className="text-sky-600" />
+          <ArrowLeft size={14} className="text-slate-500" />
           <span>Back</span>
         </button>
 
@@ -10099,8 +9411,8 @@ export default function HamsterPaintball({
               <button
                 type="button"
                 onClick={cycleCameraViewPreset}
-                className="shrink-0 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-slate-800 border-2 border-sky-200 border-b-4 border-b-sky-300 flex items-center gap-1.5 transition shadow-md active:translate-y-0.5 cursor-pointer text-xs font-extrabold whitespace-nowrap"
-                title="Switch Camera View Distance (Shortcut: V)"
+                className="shrink-0 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 border border-slate-200/90 flex items-center gap-1.5 transition shadow-sm active:scale-[0.98] cursor-pointer text-xs font-semibold whitespace-nowrap"
+                title="Switch Camera Distance (V)"
               >
                 <Video size={14} className="text-sky-600" />
                 <span>
@@ -10121,18 +9433,18 @@ export default function HamsterPaintball({
                   setAimControlMode(prev => (prev === 'shoulder' ? 'separate' : 'shoulder'));
                   sfx.playCameraSwitch();
                 }}
-                className={`hidden sm:flex shrink-0 px-2.5 py-1.5 rounded-xl border-2 border-b-4 items-center gap-1.5 transition shadow-md active:translate-y-0.5 cursor-pointer text-xs font-extrabold whitespace-nowrap ${
+                className={`hidden sm:flex shrink-0 px-2.5 py-1.5 rounded-xl border items-center gap-1.5 transition shadow-sm active:scale-[0.98] cursor-pointer text-xs font-semibold whitespace-nowrap ${
                   aimControlMode === 'separate'
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-600 border-b-emerald-700'
-                    : 'bg-white hover:bg-sky-50 text-slate-800 border-sky-200 border-b-sky-300'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                    : 'bg-white/95 hover:bg-white text-slate-700 border-slate-200/90'
                 }`}
-                title="Toggle PUBG TPS Free-Look Aim vs Separate Free-Cursor Aim"
+                title="Switch Aim Mode"
               >
                 <Crosshair
                   size={14}
                   className={aimControlMode === 'separate' ? 'text-white' : 'text-emerald-600'}
                 />
-                <span>{aimControlMode === 'separate' ? 'Aim: Free Cursor' : 'Aim: PUBG TPS'}</span>
+                <span>{aimControlMode === 'separate' ? 'Aim: Cursor' : 'Aim: Free Look'}</span>
               </button>
             </>
           )}
@@ -10140,60 +9452,56 @@ export default function HamsterPaintball({
           <button
             type="button"
             onClick={() => setIsSettingsOpen(true)}
-            className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 border-2 border-amber-500 border-b-4 border-b-amber-600 flex items-center gap-1.5 transition shadow-md active:translate-y-0.5 cursor-pointer text-xs font-extrabold whitespace-nowrap"
-            title="Camera, Aim & Audio Settings"
+            className="shrink-0 px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 border border-slate-200/90 flex items-center gap-1.5 transition shadow-sm active:scale-[0.98] cursor-pointer text-xs font-semibold whitespace-nowrap"
+            title="Settings"
           >
-            <Settings size={14} className="text-slate-900" />
+            <Settings size={14} className="text-slate-600" />
             <span>Settings</span>
           </button>
 
           <FullscreenButton
             targetId="paintball-game-container"
             showLabel
-            className="shrink-0 bg-white hover:bg-sky-50 text-slate-800 border-2 border-sky-200 border-b-4 border-b-sky-300 shadow-md text-xs font-extrabold px-3 py-1.5 rounded-xl"
+            className="shrink-0 bg-white/95 hover:bg-white text-slate-700 border border-slate-200/90 shadow-sm text-xs font-semibold px-3 py-1.5 rounded-xl"
           />
         </div>
       </div>
 
       {/* -------------------------------------------------------------
-          GAME SETTINGS MODAL (BRIGHT ARCADE CARD)
+          SETTINGS MODAL
          ------------------------------------------------------------- */}
       {isSettingsOpen && (
-        <div className="absolute inset-0 z-50 bg-slate-900/55 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white border-2 border-sky-200 rounded-3xl shadow-2xl w-full max-w-lg max-h-[92dvh] overflow-y-auto p-4 sm:p-6 text-slate-900 relative space-y-3.5 my-auto">
-            <div className="flex items-center justify-between">
+        <div className="absolute inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md max-h-[92dvh] overflow-y-auto p-5 text-slate-900 relative space-y-4 my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Sliders size={18} className="text-sky-600" />
-                <h2 className="font-['Poppins',sans-serif] font-extrabold text-lg tracking-tight text-slate-900">
-                  Camera, Aim &amp; Audio Settings
+                <Sliders size={17} className="text-sky-600" />
+                <h2 className="font-['Poppins',sans-serif] font-bold text-base tracking-tight text-slate-900">
+                  Settings
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSettingsOpen(false)}
-                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer transition"
               >
                 <X size={16} />
               </button>
             </div>
 
-            {/* 1. Camera View Distance Presets (Close / Balanced / Far / Tactical) */}
-            <div className="bg-sky-50/90 rounded-2xl p-3.5 border border-sky-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                  <Video size={14} className="text-sky-600" />
-                  <span>Camera View Distance</span>
-                </span>
-                <span className="text-[11px] font-bold text-sky-700">Shortcut: V</span>
+            {/* Camera Distance */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-slate-700">Camera Distance</span>
+                <span className="text-[11px] font-medium text-slate-400">Key: V</span>
               </div>
-
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-xl">
                 {(
                   [
-                    { id: 'close', label: 'Close', sub: 'Action' },
-                    { id: 'balanced', label: 'Balanced', sub: 'Shoulder' },
-                    { id: 'far', label: 'Far', sub: 'Wide' },
-                    { id: 'tactical', label: 'Tactical', sub: 'High View' }
+                    { id: 'close', label: 'Close' },
+                    { id: 'balanced', label: 'Balanced' },
+                    { id: 'far', label: 'Far' },
+                    { id: 'tactical', label: 'Tactical' }
                   ] as const
                 ).map(preset => {
                   const active = cameraViewPreset === preset.id;
@@ -10205,90 +9513,63 @@ export default function HamsterPaintball({
                         setCameraViewPreset(preset.id);
                         sfx.playCameraSwitch();
                       }}
-                      className={`py-2 px-1.5 rounded-xl border transition cursor-pointer flex flex-col items-center justify-center whitespace-nowrap ${
+                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                         active
-                          ? 'bg-sky-600 text-white border-sky-700 border-b-2 shadow-sm'
-                          : 'bg-white text-slate-700 border-sky-200 hover:bg-sky-100'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      <span className="font-extrabold text-xs leading-tight">{preset.label}</span>
-                      <span
-                        className={`text-[9px] font-semibold mt-0.5 ${
-                          active ? 'text-sky-100' : 'text-slate-500'
-                        }`}
-                      >
-                        {preset.sub}
-                      </span>
+                      {preset.label}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* 2. Aim Control Mode & Device HUD Layout (Laptop vs Touch Buttons) */}
-            <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-3">
+            {/* Aim & HUD Layout */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                    <Crosshair size={14} className="text-emerald-600" />
-                    <span>Aiming System</span>
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
+                <div className="text-xs font-bold text-slate-700 mb-1.5">Aim Mode</div>
+                <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
                   <button
                     type="button"
                     onClick={() => {
                       setAimControlMode('shoulder');
                       sfx.playCameraSwitch();
                     }}
-                    className={`p-2.5 rounded-xl border-2 text-left transition cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                       aimControlMode === 'shoulder'
-                        ? 'bg-white border-sky-500 shadow-xs'
-                        : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <div className="font-extrabold text-xs text-slate-900">PUBG TPS Aim</div>
-                    <div className="text-[10px] font-semibold text-slate-500 mt-0.5 leading-snug">
-                      360° free-look aim, dynamic recoil crosshair &amp; RMB 2x Scope zoom.
-                    </div>
+                    Free Look
                   </button>
-
                   <button
                     type="button"
                     onClick={() => {
                       setAimControlMode('separate');
                       sfx.playCameraSwitch();
                     }}
-                    className={`p-2.5 rounded-xl border-2 text-left transition cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                       aimControlMode === 'separate'
-                        ? 'bg-white border-emerald-500 shadow-xs'
-                        : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <div className="font-extrabold text-xs text-slate-900">Separate Cam &amp; Aim</div>
-                    <div className="text-[10px] font-semibold text-slate-500 mt-0.5 leading-snug">
-                      Move cursor or tap anywhere on screen to aim; Right-drag orbits camera.
-                    </div>
+                    Free Cursor
                   </button>
                 </div>
               </div>
 
-              <div className="pt-2.5 border-t border-slate-200">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-extrabold text-slate-800">
-                    On-Screen Control HUD
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-500">
-                    {isTouchHudVisible ? 'Showing Touch Controls' : 'Laptop Mode (Keys + Mouse)'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
+              <div>
+                <div className="text-xs font-bold text-slate-700 mb-1.5">Controls HUD</div>
+                <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl">
                   {(
                     [
-                      { id: 'auto', label: 'Auto Detect' },
-                      { id: 'laptop', label: 'Laptop Keys' },
-                      { id: 'touch', label: 'Touch Pad' }
+                      { id: 'auto', label: 'Auto' },
+                      { id: 'laptop', label: 'Keys' },
+                      { id: 'touch', label: 'Touch' }
                     ] as const
                   ).map(opt => {
                     const active = controlLayoutMode === opt.id;
@@ -10297,10 +9578,10 @@ export default function HamsterPaintball({
                         key={opt.id}
                         type="button"
                         onClick={() => setControlLayoutMode(opt.id)}
-                        className={`py-1.5 px-2 rounded-xl font-extrabold text-[11px] border transition cursor-pointer whitespace-nowrap ${
+                        className={`py-1.5 px-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                           active
-                            ? 'bg-slate-900 text-white border-slate-900'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
                         {opt.label}
@@ -10311,15 +9592,12 @@ export default function HamsterPaintball({
               </div>
             </div>
 
-            {/* 3. Separate Camera Orbit & Aim Sensitivity Sliders */}
-            <div className="bg-sky-50/70 rounded-2xl p-3.5 border border-sky-200 space-y-3">
-              {/* Camera Sensitivity */}
+            {/* Sensitivity Sliders */}
+            <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-3">
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-extrabold text-slate-800">
-                    Camera Rotation Sensitivity
-                  </span>
-                  <span className="font-mono tabular-nums font-extrabold text-xs text-sky-700">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-700">Camera Sensitivity</span>
+                  <span className="font-mono tabular-nums font-bold text-xs text-slate-900">
                     {Math.round(cameraSensitivity * 100)}%
                   </span>
                 </div>
@@ -10330,11 +9608,11 @@ export default function HamsterPaintball({
                   step={0.05}
                   value={cameraSensitivity}
                   onChange={e => setCameraSensitivity(parseFloat(e.target.value))}
-                  className="w-full accent-sky-600 cursor-pointer h-2 bg-sky-200 rounded-lg"
+                  className="w-full accent-sky-600 cursor-pointer h-1.5 bg-slate-200 rounded-lg"
                 />
                 <div className="grid grid-cols-4 gap-1.5 mt-1.5">
                   {[
-                    { label: 'Steady', val: 0.6 },
+                    { label: 'Low', val: 0.6 },
                     { label: 'Normal', val: 1.0 },
                     { label: 'Fast', val: 1.5 },
                     { label: 'Pro', val: 2.0 }
@@ -10343,10 +9621,10 @@ export default function HamsterPaintball({
                       key={p.label}
                       type="button"
                       onClick={() => setCameraSensitivity(p.val)}
-                      className={`py-1 rounded-lg font-extrabold text-[11px] border transition cursor-pointer whitespace-nowrap ${
+                      className={`py-1 rounded-lg font-semibold text-[11px] border transition cursor-pointer whitespace-nowrap ${
                         Math.abs(cameraSensitivity - p.val) < 0.06
-                          ? 'bg-sky-600 text-white border-sky-700'
-                          : 'bg-white text-slate-600 border-sky-200 hover:bg-sky-100'
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       {p.label}
@@ -10355,13 +9633,10 @@ export default function HamsterPaintball({
                 </div>
               </div>
 
-              {/* Aim Sensitivity */}
-              <div className="pt-2.5 border-t border-sky-200/80">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-extrabold text-slate-800">
-                    Aim &amp; Crosshair Sensitivity
-                  </span>
-                  <span className="font-mono tabular-nums font-extrabold text-xs text-emerald-700">
+              <div className="pt-2.5 border-t border-slate-200/80">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-700">Aim Sensitivity</span>
+                  <span className="font-mono tabular-nums font-bold text-xs text-slate-900">
                     {Math.round(aimSensitivity * 100)}%
                   </span>
                 </div>
@@ -10372,7 +9647,7 @@ export default function HamsterPaintball({
                   step={0.05}
                   value={aimSensitivity}
                   onChange={e => setAimSensitivity(parseFloat(e.target.value))}
-                  className="w-full accent-emerald-600 cursor-pointer h-2 bg-emerald-200 rounded-lg"
+                  className="w-full accent-emerald-600 cursor-pointer h-1.5 bg-slate-200 rounded-lg"
                 />
                 <div className="grid grid-cols-4 gap-1.5 mt-1.5">
                   {[
@@ -10385,10 +9660,10 @@ export default function HamsterPaintball({
                       key={p.label}
                       type="button"
                       onClick={() => setAimSensitivity(p.val)}
-                      className={`py-1 rounded-lg font-extrabold text-[11px] border transition cursor-pointer whitespace-nowrap ${
+                      className={`py-1 rounded-lg font-semibold text-[11px] border transition cursor-pointer whitespace-nowrap ${
                         Math.abs(aimSensitivity - p.val) < 0.06
-                          ? 'bg-emerald-600 text-white border-emerald-700'
-                          : 'bg-white text-slate-600 border-sky-200 hover:bg-emerald-50'
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       {p.label}
@@ -10396,55 +9671,70 @@ export default function HamsterPaintball({
                   ))}
                 </div>
               </div>
-
-              <p className="text-[11px] text-slate-600 leading-snug pt-1">
-                <b>Laptop Controls:</b> <b>WASD</b> Move · <b>Mouse</b> Aim · <b>Left-Click</b> Fire ·{' '}
-                <b>Right-Click / Shift</b> 2x Scope · <b>Space</b> Jump · <b>C / Ctrl</b> Crouch ·{' '}
-                <b>Z / X</b> Crawl · <b>E</b> Swap Shoulder · <b>Esc</b> Unlock Mouse.
-              </p>
             </div>
 
-            {/* 4. Audio Quick Toggles */}
+            {/* Keybind Chips */}
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+              {[
+                ['WASD', 'Move'],
+                ['Click', 'Fire'],
+                ['RMB', 'Scope'],
+                ['Space', 'Jump'],
+                ['C', 'Crouch'],
+                ['Z', 'Crawl'],
+                ['Q', 'Quiz']
+              ].map(([k, desc]) => (
+                <span
+                  key={k}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700"
+                >
+                  <strong className="font-mono text-[10px] text-slate-900">{k}</strong>
+                  <span>{desc}</span>
+                </span>
+              ))}
+            </div>
+
+            {/* Audio Toggles */}
             <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => setMusicEnabled(!musicEnabled)}
-                className={`py-2.5 px-3 rounded-xl font-extrabold text-xs border-2 flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap ${
+                className={`py-2 px-3 rounded-xl font-semibold text-xs border flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap ${
                   musicEnabled
-                    ? 'bg-emerald-50 border-emerald-400 text-emerald-800'
-                    : 'bg-slate-100 border-slate-200 text-slate-500'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : 'bg-slate-50 border-slate-200 text-slate-500'
                 }`}
               >
-                {musicEnabled ? <Volume2 size={15} className="text-emerald-600" /> : <VolumeX size={15} />}
-                <span>{musicEnabled ? 'Music: On' : 'Music: Off'}</span>
+                {musicEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                <span>Music {musicEnabled ? 'On' : 'Off'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setSoundEnabled(!soundEnabled)}
-                className={`py-2.5 px-3 rounded-xl font-extrabold text-xs border-2 flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap ${
+                className={`py-2 px-3 rounded-xl font-semibold text-xs border flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap ${
                   soundEnabled
-                    ? 'bg-sky-50 border-sky-400 text-sky-800'
-                    : 'bg-slate-100 border-slate-200 text-slate-500'
+                    ? 'bg-sky-50 border-sky-200 text-sky-700'
+                    : 'bg-slate-50 border-slate-200 text-slate-500'
                 }`}
               >
-                {soundEnabled ? <Volume2 size={15} className="text-sky-600" /> : <VolumeX size={15} />}
-                <span>{soundEnabled ? 'Sound FX: On' : 'Sound FX: Off'}</span>
+                {soundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                <span>SFX {soundEnabled ? 'On' : 'Off'}</span>
               </button>
             </div>
 
             <button
               type="button"
               onClick={() => setIsSettingsOpen(false)}
-              className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-sm border-b-4 border-sky-800 shadow-md transition active:translate-y-0.5 cursor-pointer"
+              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm transition cursor-pointer"
             >
-              Save &amp; Close
+              Done
             </button>
           </div>
         </div>
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 1: QUIZ EDITOR (GAME SETUP DESIGN)
+          SCREEN 1: QUIZ EDITOR
          ------------------------------------------------------------- */}
       {screen === 'editor' && (
         <div className="absolute inset-0 z-50 w-full h-full overflow-y-auto bg-[#f4f7f9] pt-14 pb-10">
@@ -10465,118 +9755,88 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 2: STUDENT JOIN & HERO CHARACTER CUSTOMIZER (MOBILE-FIRST ARCADE)
+          SCREEN 2: PLAYER JOIN & CHARACTER SELECTOR
          ------------------------------------------------------------- */}
       {screen === 'join' && (
-        <div className="absolute inset-0 z-40 w-full h-full bg-slate-900/40 flex items-center justify-center p-2 sm:p-4 pt-12 pb-2.5 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[640px] max-h-[90dvh] overflow-y-auto p-3.5 sm:p-5 flex flex-col border-2 border-sky-200 relative text-slate-900 my-auto">
-            {/* Hero Spotlight Header + Live Room Status */}
-            <div className="flex items-center justify-between gap-3 pb-2.5 mb-2.5 border-b border-slate-100">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[11px] font-extrabold text-sky-600 uppercase tracking-wider">
-                  <span>Choose Your Champion</span>
-                  {roomCode && (
-                    <span className="text-slate-400 font-mono tabular-nums normal-case">
-                      · Room {roomCode} ({roomPlayers.length} Online)
-                    </span>
-                  )}
-                </div>
-                <h1 className="font-['Poppins',sans-serif] font-extrabold text-xl sm:text-2xl tracking-tight text-slate-900 leading-tight mt-0.5">
-                  {selectedHeroSkin.name}
-                </h1>
-                <div className="text-xs font-bold text-slate-500 mt-0.5">
-                  {selectedHeroSkin.roleTitle} · Gear: {selectedHeroSkin.headgear}
-                  {matchStatus === 'playing' && (
-                    <span className="ml-2 text-emerald-600 font-extrabold">
-                      · Match Live
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div
-                className={`shrink-0 flex items-center justify-center p-2 rounded-2xl border-2 shadow-sm ${
-                  matchMode === 'teams'
-                    ? myTeam === 'blue'
-                      ? 'bg-gradient-to-b from-sky-50 to-sky-100/90 border-sky-300'
-                      : 'bg-gradient-to-b from-rose-50 to-rose-100/90 border-rose-300'
-                    : 'bg-gradient-to-b from-emerald-50 to-emerald-100/90 border-emerald-300'
-                }`}
-              >
+        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/50 flex items-center justify-center p-3 sm:p-5 pt-14 pb-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[540px] max-h-[90dvh] overflow-y-auto p-5 sm:p-6 flex flex-col gap-4 border border-slate-200 relative text-slate-900 my-auto">
+            {/* Selected Hamster Spotlight */}
+            <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <HamsterCharacterAvatar
                   skin={selectedHeroSkin}
-                  size={68}
+                  size={60}
                   team={matchMode === 'teams' ? myTeam : 'solo'}
                 />
+                <div className="min-w-0">
+                  <h1 className="font-['Poppins',sans-serif] font-bold text-lg sm:text-xl tracking-tight text-slate-900 truncate">
+                    {selectedHeroSkin.name}
+                  </h1>
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mt-0.5 tabular-nums">
+                    {roomCode && <span>Room {roomCode}</span>}
+                    <span>·</span>
+                    <span>{roomPlayers.length} Online</span>
+                    {matchStatus === 'playing' && (
+                      <span className="text-emerald-600 font-semibold">· Live</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* All-Visible 12-Character Tactile Grid (4x3 Desktop, 3x4 Mobile — No Clipped Row) */}
-            <div className="w-full bg-sky-50/75 rounded-2xl p-2 sm:p-2.5 mb-2.5 border border-sky-100">
-              <div className="flex items-center justify-between px-1 mb-1.5">
-                <span className="text-[11px] font-extrabold text-slate-700">
-                  12 Paintball Champions
-                </span>
-                <span className="text-[10px] font-bold text-sky-700">
-                  Tap any hero to equip
-                </span>
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 sm:gap-2">
-                {HAMSTER_SKINS.map((skin, idx) => {
-                  const isSelected = idx === selectedSkinIdx;
-                  const activeBorderClass =
-                    matchMode === 'teams'
-                      ? myTeam === 'blue'
-                        ? 'border-sky-600 bg-gradient-to-b from-white to-sky-50 ring-2 ring-sky-400/50 shadow-md -translate-y-0.5'
-                        : 'border-rose-500 bg-gradient-to-b from-white to-rose-50 ring-2 ring-rose-400/50 shadow-md -translate-y-0.5'
-                      : 'border-emerald-500 bg-gradient-to-b from-white to-emerald-50 ring-2 ring-emerald-400/50 shadow-md -translate-y-0.5';
-                  const checkBgClass =
-                    matchMode === 'teams'
-                      ? myTeam === 'blue'
-                        ? 'bg-sky-600'
-                        : 'bg-rose-500'
-                      : 'bg-emerald-500';
-                  return (
-                    <button
-                      key={skin.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedSkinIdx(idx);
-                        sfx.playCorrect();
-                      }}
-                      className={`py-1.5 px-1.5 rounded-xl border-2 flex flex-col items-center justify-center transition cursor-pointer relative ${
-                        isSelected
-                          ? activeBorderClass
-                          : 'border-sky-100 bg-white hover:bg-sky-50/60 hover:border-sky-300'
-                      }`}
-                    >
-                      {isSelected && (
-                        <span
-                          className={`absolute top-1 right-1 w-4 h-4 rounded-full ${checkBgClass} text-white flex items-center justify-center text-[9px] font-extrabold shadow-xs`}
-                        >
-                          ✓
-                        </span>
-                      )}
-                      <HamsterCharacterAvatar
-                        skin={skin}
-                        size={48}
-                        team={matchMode === 'teams' ? myTeam : 'solo'}
-                      />
-                      <span className="mt-0.5 font-extrabold text-[10px] sm:text-[11px] text-slate-900 leading-tight text-center truncate w-full">
-                        {skin.name}
+            {/* 6-Hamster Portrait Grid */}
+            <div className="grid grid-cols-3 gap-2.5">
+              {HAMSTER_SKINS.map((skin, idx) => {
+                const isSelected = idx === selectedSkinIdx;
+                const activeClasses =
+                  matchMode === 'teams'
+                    ? myTeam === 'blue'
+                      ? 'border-sky-600 bg-sky-50/70 ring-2 ring-sky-500/20'
+                      : 'border-rose-500 bg-rose-50/70 ring-2 ring-rose-500/20'
+                    : 'border-slate-900 bg-slate-50 ring-2 ring-slate-900/15';
+                const checkBgClass =
+                  matchMode === 'teams'
+                    ? myTeam === 'blue'
+                      ? 'bg-sky-600'
+                      : 'bg-rose-500'
+                    : 'bg-slate-900';
+                return (
+                  <button
+                    key={skin.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSkinIdx(idx);
+                      sfx.playCorrect();
+                    }}
+                    className={`py-2.5 px-2 rounded-xl border flex flex-col items-center justify-center transition cursor-pointer relative ${
+                      isSelected
+                        ? activeClasses
+                        : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
+                    }`}
+                  >
+                    {isSelected && (
+                      <span
+                        className={`absolute top-1.5 right-1.5 w-4 h-4 rounded-full ${checkBgClass} text-white flex items-center justify-center text-[9px] font-bold`}
+                      >
+                        ✓
                       </span>
-                      <span className="text-[9px] font-semibold text-slate-500 leading-none mt-0.5 truncate w-full text-center">
-                        {skin.headgear}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                    )}
+                    <HamsterCharacterAvatar
+                      skin={skin}
+                      size={54}
+                      team={matchMode === 'teams' ? myTeam : 'solo'}
+                    />
+                    <span className="mt-1.5 font-semibold text-xs text-slate-900 leading-tight text-center truncate w-full">
+                      {skin.name}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Team Squad Selector Cards */}
+            {/* Team Selector */}
             {matchMode === 'teams' && (
-              <div className="w-full grid grid-cols-2 gap-2 mb-2.5">
+              <div className="w-full grid grid-cols-2 gap-2">
                 {(['red', 'blue'] as TeamId[]).map(tId => {
                   const active = myTeam === tId;
                   const count = tId === 'red' ? teamTotals.red.count : teamTotals.blue.count;
@@ -10585,21 +9845,21 @@ export default function HamsterPaintball({
                       key={tId}
                       type="button"
                       onClick={() => setMyTeam(tId)}
-                      className={`py-2 px-3 rounded-xl font-extrabold text-xs sm:text-sm border-2 transition cursor-pointer flex items-center justify-between gap-2 whitespace-nowrap ${
+                      className={`py-2 px-3 rounded-xl font-semibold text-xs sm:text-sm border transition cursor-pointer flex items-center justify-between gap-2 whitespace-nowrap ${
                         active
                           ? tId === 'red'
-                            ? 'bg-rose-500 text-white border-rose-600 border-b-4 border-b-rose-700 shadow-sm'
-                            : 'bg-sky-600 text-white border-sky-700 border-b-4 border-b-sky-800 shadow-sm'
+                            ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                            : 'bg-sky-600 text-white border-sky-600 shadow-xs'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       <span>{tId === 'red' ? 'Red Squad' : 'Blue Squad'}</span>
                       <span
-                        className={`text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded-md ${
-                          active ? 'bg-black/15 text-white' : 'bg-slate-200/80 text-slate-600'
+                        className={`text-[11px] font-mono tabular-nums px-1.5 py-0.5 rounded-md ${
+                          active ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'
                         }`}
                       >
-                        {count}P
+                        {count}
                       </span>
                     </button>
                   );
@@ -10607,15 +9867,15 @@ export default function HamsterPaintball({
               </div>
             )}
 
-            {/* Nickname & 6-Char Room Code Inputs (16px text-base prevents iOS Safari auto-zoom) */}
-            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2.5">
+            {/* Nickname & Room Code */}
+            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input
                 type="text"
                 maxLength={16}
                 value={playerName === 'Teacher Jan' ? '' : playerName}
                 onChange={e => setPlayerName(e.target.value)}
-                placeholder="Your Nickname"
-                className="sm:col-span-2 h-10 sm:h-11 px-3.5 text-center sm:text-left text-base font-bold text-slate-900 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition"
+                placeholder="Nickname"
+                className="sm:col-span-2 h-11 px-3.5 text-center sm:text-left text-base font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-900 focus:bg-white transition"
               />
               <input
                 type="text"
@@ -10624,8 +9884,8 @@ export default function HamsterPaintball({
                 onChange={e =>
                   setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6))
                 }
-                placeholder="ROOM"
-                className="h-10 sm:h-11 px-2 text-center font-mono tabular-nums text-base sm:text-lg font-extrabold tracking-widest text-slate-900 bg-sky-50 border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600 focus:bg-white"
+                placeholder="CODE"
+                className="h-11 px-2 text-center font-mono tabular-nums text-base font-bold tracking-widest text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-900 focus:bg-white"
               />
             </div>
 
@@ -10711,159 +9971,135 @@ export default function HamsterPaintball({
 
                 handleForceResyncRoom(cleanCode);
               }}
-              className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-sm sm:text-base rounded-2xl shadow-lg transition flex items-center justify-center gap-2 border-2 border-emerald-600 border-b-4 border-b-emerald-700 cursor-pointer whitespace-nowrap"
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-['Poppins',sans-serif] font-semibold text-sm sm:text-base rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
             >
-              <Play size={17} fill="currentColor" />
-              <span>{matchStatus === 'playing' ? 'JOIN LIVE BATTLE' : 'JOIN ARENA LOBBY'}</span>
+              <Play size={16} fill="currentColor" />
+              <span>{matchStatus === 'playing' ? 'Join Match' : 'Join Lobby'}</span>
             </button>
           </div>
         </div>
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 3: BRIGHT PROJECTOR-READY HOST PARK LOBBY COMMAND DECK
+          SCREEN 3: HOST LOBBY COMMAND DECK
          ------------------------------------------------------------- */}
       {screen === 'lobby' && role === 'host' && (
         <div className="absolute inset-0 z-25 flex flex-col justify-between px-3 sm:px-5 pt-14 sm:pt-16 pb-3 pointer-events-none overflow-y-auto">
           {isLobbyMinimized ? (
-            /* Compact Collapsed Floating Host Bar so Teacher can inspect the 3D Arena freely */
-            <div className="host-lobby-interactive-panel pointer-events-auto self-center bg-white px-4 py-2.5 rounded-2xl shadow-xl border-2 border-sky-200 border-b-4 border-b-sky-300 flex flex-wrap items-center gap-3 text-slate-900">
+            <div className="host-lobby-interactive-panel pointer-events-auto self-center bg-white/95 px-4 py-2 rounded-xl shadow-lg border border-slate-200 flex flex-wrap items-center gap-2.5 text-slate-900">
               <div className="flex items-center gap-2">
-                <QrCode size={16} className="text-sky-600" />
-                <span className="font-extrabold text-xs sm:text-sm tabular-nums">
-                  Room <span className="font-mono text-sky-700">{roomCode}</span> · {roomPlayers.length}{' '}
+                <QrCode size={15} className="text-slate-500" />
+                <span className="font-semibold text-xs sm:text-sm tabular-nums">
+                  <span className="font-mono font-bold text-slate-900">{roomCode}</span> · {roomPlayers.length}{' '}
                   {roomPlayers.length === 1 ? 'Player' : 'Players'}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsQrModalOpen(true)}
-                className="px-2.5 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-extrabold text-xs cursor-pointer whitespace-nowrap"
+                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs cursor-pointer whitespace-nowrap"
               >
-                Show QR
+                QR Code
               </button>
               <button
                 type="button"
                 onClick={handleStartMultiplayerMatch}
-                className="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white border-b-2 border-emerald-700 font-extrabold text-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
               >
                 <Play size={12} fill="currentColor" />
-                <span>Start Battle</span>
+                <span>Start Match</span>
               </button>
               <button
                 type="button"
                 onClick={() => setIsLobbyMinimized(false)}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs cursor-pointer whitespace-nowrap"
+                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs cursor-pointer whitespace-nowrap"
               >
-                Open Arena Setup
+                Lobby
               </button>
             </div>
           ) : (
-            /* COHESIVE STADIUM 2-COLUMN COMMAND CENTER (RULES + INTEGRATED ADJACENT QR PASS) */
-            <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-[920px] mx-auto my-auto bg-white rounded-3xl shadow-2xl border-2 border-sky-200 overflow-hidden text-slate-900">
-              {/* Stadium Top Command Ribbon */}
-              <div className="bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-4 sm:px-6 py-3 text-white flex flex-wrap items-center justify-between gap-2">
+            <div className="host-lobby-interactive-panel pointer-events-auto w-full max-w-[880px] mx-auto my-auto bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900">
+              {/* Clean Studio Header */}
+              <div className="bg-slate-900 px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
-                    <Radio size={16} className="text-amber-300" />
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-extrabold uppercase tracking-widest text-sky-100">
-                      Classroom Multiplayer Arena
-                    </div>
-                    <h2 className="font-['Poppins',sans-serif] font-extrabold text-base sm:text-lg leading-tight">
-                      Host Arena Setup
-                    </h2>
-                  </div>
+                  <Radio size={16} className="text-emerald-400 shrink-0" />
+                  <h2 className="font-['Poppins',sans-serif] font-bold text-base sm:text-lg tracking-tight">
+                    Arena Lobby
+                  </h2>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setScreen('editor')}
-                    className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/30 font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap tabular-nums"
-                    title="Edit Quiz Questions"
+                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap tabular-nums"
                   >
                     <Edit3 size={13} />
-                    <span>Edit Quiz ({effectiveQuestions.length} Qs)</span>
+                    <span>Edit Quiz ({effectiveQuestions.length})</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsLobbyMinimized(true)}
-                    className="px-3 py-1.5 rounded-xl bg-white text-slate-800 hover:bg-sky-50 font-extrabold text-xs transition cursor-pointer whitespace-nowrap shadow-xs"
-                    title="Minimize setup deck to inspect the 3D Arena"
+                    className="px-3 py-1.5 rounded-lg bg-white text-slate-900 hover:bg-slate-100 font-semibold text-xs transition cursor-pointer whitespace-nowrap"
                   >
-                    Inspect 3D Arena
+                    3D Preview
                   </button>
                 </div>
               </div>
 
-              {/* 2-Column Body: Left = Match Settings & Squad Roster | Right = Classroom QR & Room Code Station */}
+              {/* 2-Column Body */}
               <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
-                {/* LEFT COLUMN (7 Cols): Match Rules, Squad Roster & START BATTLE */}
-                <div className="lg:col-span-7 p-4 sm:p-5 flex flex-col justify-between gap-3.5">
-                  <div className="space-y-3">
-                    {/* Battle Mode Segmented Selector */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                          Battle Format
-                        </span>
-                        <span className="text-[11px] font-bold text-slate-500">
-                          {matchMode === 'teams' ? '2 Squads · Team KOs' : 'Every Hamster for Themselves'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => setMatchMode('teams')}
-                          className={`py-2 px-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
-                            matchMode === 'teams'
-                              ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          <Users size={14} className="text-rose-500" />
-                          <span>Red vs Blue Squads</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMatchMode('solo')}
-                          className={`py-2 px-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
-                            matchMode === 'solo'
-                              ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          <Trophy size={14} className="text-amber-500" />
-                          <span>Free-For-All</span>
-                        </button>
-                      </div>
+                {/* LEFT COLUMN */}
+                <div className="lg:col-span-7 p-4 sm:p-5 flex flex-col justify-between gap-4">
+                  <div className="space-y-3.5">
+                    {/* Match Mode */}
+                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setMatchMode('teams')}
+                        className={`py-2 px-3 rounded-lg font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
+                          matchMode === 'teams'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Users size={14} className="text-rose-500" />
+                        <span>Red vs Blue</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMatchMode('solo')}
+                        className={`py-2 px-3 rounded-lg font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
+                          matchMode === 'solo'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Trophy size={14} className="text-amber-500" />
+                        <span>Free-For-All</span>
+                      </button>
                     </div>
 
-                    {/* Paintballs Reward + Match Timer Side-by-Side / Stacked */}
+                    {/* Ammo & Duration */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {/* Paintballs Per Correct Answer */}
-                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
                         <div className="flex items-center justify-between gap-1 mb-2">
-                          <span className="text-xs font-extrabold text-slate-800">
-                            Ammo / Answer
-                          </span>
+                          <span className="text-xs font-bold text-slate-700">Ammo / Answer</span>
                           <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-lg border border-slate-200">
                             <button
                               type="button"
                               onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion - 1)}
-                              className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs flex items-center justify-center cursor-pointer"
+                              className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center cursor-pointer"
                             >
                               -
                             </button>
-                            <span className="text-xs font-mono tabular-nums font-extrabold text-emerald-700 px-1.5">
+                            <span className="text-xs font-mono tabular-nums font-bold text-emerald-700 px-1.5">
                               +{ballsPerQuestion}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleHostUpdateBallsPerQuestion(ballsPerQuestion + 1)}
-                              className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs flex items-center justify-center cursor-pointer"
+                              className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center cursor-pointer"
                             >
                               +
                             </button>
@@ -10875,9 +10111,9 @@ export default function HamsterPaintball({
                               key={bCount}
                               type="button"
                               onClick={() => handleHostUpdateBallsPerQuestion(bCount)}
-                              className={`py-1 rounded-lg font-extrabold text-[11px] transition cursor-pointer tabular-nums whitespace-nowrap ${
+                              className={`py-1 rounded-lg font-semibold text-[11px] transition cursor-pointer tabular-nums whitespace-nowrap ${
                                 ballsPerQuestion === bCount
-                                  ? 'bg-emerald-500 text-white border-b-2 border-emerald-700 shadow-xs'
+                                  ? 'bg-slate-900 text-white'
                                   : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                               }`}
                             >
@@ -10887,14 +10123,13 @@ export default function HamsterPaintball({
                         </div>
                       </div>
 
-                      {/* Match Timer */}
-                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
                         <div className="flex items-center justify-between gap-1 mb-2">
-                          <span className="flex items-center gap-1 text-xs font-extrabold text-slate-800">
-                            <Clock size={13} className="text-sky-600 shrink-0" />
-                            <span>Match Timer</span>
+                          <span className="flex items-center gap-1 text-xs font-bold text-slate-700">
+                            <Clock size={13} className="text-slate-500 shrink-0" />
+                            <span>Duration</span>
                           </span>
-                          <span className="font-mono tabular-nums font-extrabold text-xs text-sky-700">
+                          <span className="font-mono tabular-nums font-bold text-xs text-slate-900">
                             {Math.floor(configuredDurationSec / 60)}:
                             {(configuredDurationSec % 60).toString().padStart(2, '0')}
                           </span>
@@ -10910,9 +10145,9 @@ export default function HamsterPaintball({
                                   setConfiguredDurationSec(sec);
                                   setMatchSeconds(sec);
                                 }}
-                                className={`py-1 rounded-lg font-extrabold text-[11px] transition cursor-pointer tabular-nums whitespace-nowrap ${
+                                className={`py-1 rounded-lg font-semibold text-[11px] transition cursor-pointer tabular-nums whitespace-nowrap ${
                                   configuredDurationSec === sec
-                                    ? 'bg-sky-600 text-white border-b-2 border-sky-800 shadow-xs'
+                                    ? 'bg-slate-900 text-white'
                                     : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                                 }`}
                               >
@@ -10924,15 +10159,15 @@ export default function HamsterPaintball({
                       </div>
                     </div>
 
-                    {/* Live Connected Squad Roster */}
+                    {/* Connected Players */}
                     <div>
-                      <div className="flex items-center justify-between gap-2 text-xs font-extrabold text-slate-800 mb-1.5">
+                      <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-700 mb-1.5">
                         <div className="flex items-center gap-2 tabular-nums">
-                          <span>Connected Champions ({roomPlayers.length})</span>
+                          <span>Players ({roomPlayers.length})</span>
                           {matchMode === 'teams' && (
-                            <span className="text-[11px] font-bold text-slate-500">
-                              <span className="text-rose-600">Red {teamTotals.red.count}</span> ·{' '}
-                              <span className="text-sky-600">Blue {teamTotals.blue.count}</span>
+                            <span className="text-[11px] font-semibold text-slate-500">
+                              <span className="text-rose-600">{teamTotals.red.count} Red</span> ·{' '}
+                              <span className="text-sky-600">{teamTotals.blue.count} Blue</span>
                             </span>
                           )}
                         </div>
@@ -10940,32 +10175,29 @@ export default function HamsterPaintball({
                           <button
                             type="button"
                             onClick={handleShuffleTeams}
-                            className="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 font-extrabold text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap"
                           >
-                            <Shuffle size={11} /> Balance Teams
+                            <Shuffle size={11} /> Balance
                           </button>
                         )}
                       </div>
 
-                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">
                         {roomPlayers.length === 0 ? (
-                          <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-dashed border-sky-300 text-xs text-slate-600 font-semibold text-center">
-                            Waiting for players — scan the QR code on the right or enter{' '}
-                            <strong className="text-sky-700 font-mono tabular-nums">{roomCode}</strong>
+                          <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-xs text-slate-500 font-medium text-center">
+                            Waiting for players to join room{' '}
+                            <strong className="text-slate-900 font-mono tabular-nums">{roomCode}</strong>
                           </div>
                         ) : (
                           roomPlayers.map(p => {
-                            const tCfg =
-                              matchMode === 'teams'
-                                ? TEAM_CONFIG[p.team || 'red']
-                                : TEAM_CONFIG.solo;
                             const charSkin =
-                              HAMSTER_SKINS[p.skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
+                              HAMSTER_SKINS[Math.abs(p.skinIdx || 0) % HAMSTER_SKINS.length] ||
+                              HAMSTER_SKINS[0];
                             const nextTeam: TeamId = p.team === 'red' ? 'blue' : 'red';
                             return (
                               <div
                                 key={p.id}
-                                className={`p-2 rounded-xl bg-white border ${tCfg.borderClass} flex items-center justify-between gap-2 shadow-2xs`}
+                                className="px-2.5 py-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2"
                               >
                                 <div className="flex items-center gap-2.5 min-w-0">
                                   <HamsterCharacterAvatar
@@ -10975,28 +10207,21 @@ export default function HamsterPaintball({
                                   />
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5">
-                                      <span className="font-extrabold text-xs text-slate-900 truncate">
+                                      <span className="font-semibold text-xs text-slate-900 truncate">
                                         {p.name}
                                       </span>
-                                      <span
-                                        className={`text-[10px] font-extrabold shrink-0 ${
-                                          matchMode === 'teams'
-                                            ? p.team === 'blue'
-                                              ? 'text-sky-600'
-                                              : 'text-rose-600'
-                                            : 'text-emerald-600'
-                                        }`}
-                                      >
-                                        ·{' '}
-                                        {matchMode === 'teams'
-                                          ? p.team === 'blue'
-                                            ? 'Blue Squad'
-                                            : 'Red Squad'
-                                          : 'Solo'}
-                                      </span>
+                                      {matchMode === 'teams' && (
+                                        <span
+                                          className={`text-[10px] font-semibold shrink-0 ${
+                                            p.team === 'blue' ? 'text-sky-600' : 'text-rose-600'
+                                          }`}
+                                        >
+                                          · {p.team === 'blue' ? 'Blue' : 'Red'}
+                                        </span>
+                                      )}
                                     </div>
-                                    <div className="text-[10px] font-semibold text-slate-500">
-                                      {charSkin.name} · Ready in Spawn
+                                    <div className="text-[10px] font-medium text-slate-500">
+                                      {charSkin.name}
                                     </div>
                                   </div>
                                 </div>
@@ -11006,19 +10231,19 @@ export default function HamsterPaintball({
                                     <button
                                       type="button"
                                       onClick={() => handleMovePlayerTeam(p, nextTeam)}
-                                      className={`px-2 py-1 rounded-lg font-extrabold text-[10px] border transition cursor-pointer whitespace-nowrap ${
+                                      className={`px-2 py-1 rounded-lg font-semibold text-[10px] border transition cursor-pointer whitespace-nowrap ${
                                         nextTeam === 'blue'
                                           ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200'
                                           : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
                                       }`}
                                     >
-                                      To {nextTeam === 'blue' ? 'Blue' : 'Red'}
+                                      {nextTeam === 'blue' ? 'Blue' : 'Red'}
                                     </button>
                                   )}
                                   <button
                                     type="button"
                                     onClick={() => handleDeletePlayer(p)}
-                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 transition cursor-pointer"
+                                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-500 text-slate-400 hover:text-white border border-slate-200 hover:border-rose-500 transition cursor-pointer"
                                     title={`Remove ${p.name}`}
                                   >
                                     <Trash2 size={12} />
@@ -11032,32 +10257,30 @@ export default function HamsterPaintball({
                     </div>
                   </div>
 
-                  {/* Bold Emerald START BATTLE CTA */}
+                  {/* Start Match CTA */}
                   <button
                     type="button"
                     onClick={handleStartMultiplayerMatch}
-                    className="w-full bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-base py-3.5 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 border-2 border-emerald-600 border-b-4 border-b-emerald-700 cursor-pointer whitespace-nowrap"
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-['Poppins',sans-serif] font-semibold text-sm sm:text-base py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                   >
-                    <Play size={18} fill="currentColor" />
-                    <span>START BATTLE ({roomPlayers.length} READY)</span>
+                    <Play size={16} fill="currentColor" />
+                    <span>Start Match ({roomPlayers.length})</span>
                   </button>
                 </div>
 
-                {/* RIGHT COLUMN (5 Cols): Integrated Classroom QR & Room Code Join Station */}
-                <div className="lg:col-span-5 bg-gradient-to-b from-sky-50/90 via-white to-sky-50/70 p-4 sm:p-5 flex flex-col items-center justify-between text-center gap-3">
+                {/* RIGHT COLUMN: QR & Room Code */}
+                <div className="lg:col-span-5 bg-slate-50/70 p-5 flex flex-col items-center justify-between text-center gap-3.5">
                   <div className="w-full">
-                    <div className="text-[11px] font-extrabold text-sky-600 uppercase tracking-widest flex items-center justify-center gap-1.5">
-                      <QrCode size={14} className="text-sky-600" />
-                      <span>Scan or Enter Room Code</span>
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Room Code
                     </div>
 
-                    {/* Giant Copyable 6-Digit Room Code */}
-                    <div className="mt-2 flex items-center justify-center gap-2">
+                    <div className="mt-1.5 flex items-center justify-center gap-2">
                       <button
                         type="button"
                         onClick={handleCopyRoomCode}
-                        className="bg-white border-2 border-sky-300 hover:border-sky-500 px-4 py-2 rounded-2xl text-slate-900 font-mono tabular-nums font-extrabold text-3xl tracking-[0.18em] leading-none cursor-pointer shadow-xs transition"
-                        title="Click to copy Room Code"
+                        className="bg-white border border-slate-200 hover:border-slate-400 px-4 py-2 rounded-xl text-slate-900 font-mono tabular-nums font-bold text-2xl sm:text-3xl tracking-[0.18em] leading-none cursor-pointer shadow-2xs transition"
+                        title="Copy Room Code"
                       >
                         {roomCode}
                       </button>
@@ -11065,20 +10288,20 @@ export default function HamsterPaintball({
                         <button
                           type="button"
                           onClick={handleCopyRoomCode}
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-sky-100 text-slate-700 font-extrabold text-[10px] border border-sky-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-semibold text-[10px] border border-slate-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
                         >
                           {copiedType === 'code' ? (
                             <Check size={11} className="text-emerald-600" />
                           ) : (
                             <Copy size={11} />
                           )}
-                          <span>{copiedType === 'code' ? 'Copied' : 'Code'}</span>
+                          <span>{copiedType === 'code' ? 'Copied' : 'Copy'}</span>
                         </button>
                         <button
                           type="button"
                           onClick={handleGenerateNewRoomCode}
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-50 text-amber-700 font-extrabold text-[10px] border border-amber-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                          title="Generate a fresh Room Code"
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-semibold text-[10px] border border-slate-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                          title="New Room Code"
                         >
                           <RotateCw size={11} />
                           <span>New</span>
@@ -11087,15 +10310,15 @@ export default function HamsterPaintball({
                     </div>
                   </div>
 
-                  {/* High-Contrast Scannable QR Pass */}
+                  {/* QR Pass */}
                   <div
                     onClick={() => setIsQrModalOpen(true)}
-                    className="p-3.5 bg-white rounded-3xl border-2 border-sky-200 hover:border-sky-400 shadow-md cursor-pointer transition hover:scale-[1.02]"
-                    title="Click to open Full-Screen Projector QR"
+                    className="p-3.5 bg-white rounded-2xl border border-slate-200 hover:border-slate-300 shadow-sm cursor-pointer transition hover:scale-[1.01]"
+                    title="Enlarge QR Code"
                   >
                     <QRCodeSVG
                       value={liveJoinUrl}
-                      size={188}
+                      size={184}
                       level="M"
                       includeMargin={false}
                       bgColor="#ffffff"
@@ -11103,20 +10326,19 @@ export default function HamsterPaintball({
                     />
                   </div>
 
-                  {/* Domain Routing Switch + Direct Link Actions */}
                   <div className="w-full space-y-2">
-                    <div className="text-xs font-bold text-slate-600 truncate px-2">
-                      Join at <span className="text-sky-700 font-extrabold">{liveDisplayHost}</span>
+                    <div className="text-xs font-medium text-slate-500 truncate px-2">
+                      {liveDisplayHost}
                     </div>
 
                     {!isCurrentOriginHamsterEnglish && (
-                      <div className="inline-flex items-center gap-1 p-1 bg-sky-100/80 rounded-xl border border-sky-200">
+                      <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
                         <button
                           type="button"
                           onClick={() => setJoinDomainMode('current')}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                             joinDomainMode === 'current'
-                              ? 'bg-white text-sky-700 shadow-2xs'
+                              ? 'bg-white text-slate-900 shadow-2xs'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
@@ -11125,9 +10347,9 @@ export default function HamsterPaintball({
                         <button
                           type="button"
                           onClick={() => setJoinDomainMode('hamsterenglish')}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                             joinDomainMode === 'hamsterenglish'
-                              ? 'bg-white text-sky-700 shadow-2xs'
+                              ? 'bg-white text-slate-900 shadow-2xs'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
@@ -11140,18 +10362,18 @@ export default function HamsterPaintball({
                       <button
                         type="button"
                         onClick={handleCopyJoinLink}
-                        className="py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs border-b-3 border-sky-800 flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap shadow-xs"
+                        className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                       >
                         {copiedType === 'link' ? <Check size={13} /> : <Copy size={13} />}
-                        <span>{copiedType === 'link' ? 'Copied Link' : 'Copy Link'}</span>
+                        <span>{copiedType === 'link' ? 'Copied' : 'Copy Link'}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsQrModalOpen(true)}
-                        className="py-2.5 px-3 rounded-xl bg-white hover:bg-sky-50 text-sky-800 font-extrabold text-xs border-2 border-sky-200 flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
+                        className="py-2 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-semibold text-xs border border-slate-200 flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                       >
                         <QrCode size={13} />
-                        <span>Large QR</span>
+                        <span>Enlarge QR</span>
                       </button>
                     </div>
                   </div>
@@ -11160,36 +10382,30 @@ export default function HamsterPaintball({
             </div>
           )}
 
-          {/* Subtle Bottom Park Roam Helper */}
-          <div className="mx-auto mt-2 px-4 py-1.5 rounded-xl bg-white/95 border border-sky-200 text-[11px] sm:text-xs font-bold text-slate-700 shadow-md">
-            Host Camera: W/A/S/D or Arrows to roam the 3D Arena · Drag to look around
-          </div>
-
-          {/* Enlarged Classroom QR Modal */}
+          {/* Enlarged QR Modal */}
           {isQrModalOpen && (
-            <div className="pointer-events-auto absolute inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-              <div className="bg-white text-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border-2 border-sky-200 flex flex-col items-center text-center relative">
+            <div className="pointer-events-auto absolute inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
+              <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 flex flex-col items-center text-center relative">
                 <button
                   type="button"
                   onClick={() => setIsQrModalOpen(false)}
-                  className="absolute top-4 right-4 w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                  className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
                 >
-                  <X size={18} />
+                  <X size={16} />
                 </button>
-                <div className="text-xs font-bold text-sky-600 mb-0.5">{liveDisplayHost}</div>
-                <h3 className="font-['Poppins',sans-serif] font-extrabold text-2xl text-slate-900 tabular-nums">
-                  Room Code: <span className="font-mono text-sky-700">{roomCode}</span>
+                <div className="text-xs font-medium text-slate-500 mb-0.5">{liveDisplayHost}</div>
+                <h3 className="font-['Poppins',sans-serif] font-bold text-2xl text-slate-900 tabular-nums">
+                  <span className="font-mono tracking-wider">{roomCode}</span>
                 </h3>
 
-                {/* Domain Switcher inside QR Modal (Only when not already on hamsterenglish.online) */}
                 {!isCurrentOriginHamsterEnglish && (
-                  <div className="flex items-center gap-1 p-1 bg-sky-50 rounded-xl border border-sky-200 mt-3">
+                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg mt-3">
                     <button
                       type="button"
                       onClick={() => setJoinDomainMode('current')}
-                      className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                         joinDomainMode === 'current'
-                          ? 'bg-sky-600 text-white shadow-xs'
+                          ? 'bg-white text-slate-900 shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
@@ -11198,9 +10414,9 @@ export default function HamsterPaintball({
                     <button
                       type="button"
                       onClick={() => setJoinDomainMode('hamsterenglish')}
-                      className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                         joinDomainMode === 'hamsterenglish'
-                          ? 'bg-sky-600 text-white shadow-xs'
+                          ? 'bg-white text-slate-900 shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
@@ -11209,7 +10425,7 @@ export default function HamsterPaintball({
                   </div>
                 )}
 
-                <div className="my-4 p-4 bg-white rounded-2xl border-2 border-sky-100 shadow-xs">
+                <div className="my-4 p-3.5 bg-white rounded-xl border border-slate-200">
                   <QRCodeSVG
                     value={liveJoinUrl}
                     size={240}
@@ -11219,22 +10435,22 @@ export default function HamsterPaintball({
                     fgColor="#0f172a"
                   />
                 </div>
-                <p className="text-xs font-semibold text-slate-500 break-all px-2 mb-4">
+                <p className="text-xs font-medium text-slate-400 break-all px-2 mb-4">
                   {liveJoinUrl}
                 </p>
                 <div className="flex gap-2 w-full">
                   <button
                     type="button"
                     onClick={handleCopyJoinLink}
-                    className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs rounded-xl border-b-3 border-sky-800 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <Copy size={14} />
-                    <span>{copiedType === 'link' ? 'Copied Link' : 'Copy Join Link'}</span>
+                    <span>{copiedType === 'link' ? 'Copied' : 'Copy Link'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsQrModalOpen(false)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl cursor-pointer whitespace-nowrap"
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-xl cursor-pointer whitespace-nowrap"
                   >
                     Close
                   </button>
@@ -11304,40 +10520,37 @@ export default function HamsterPaintball({
           {/* TOP HUD BAR: CLEAN 3-ZONE ARCADE SCOREBAR */}
           <div className="w-full flex items-start justify-between gap-1.5 sm:gap-2.5 flex-nowrap">
             {role === 'player' ? (
-              /* STUDENT TOP-LEFT: BRIGHT VITALS & CAN BELT CARD */
+              /* STUDENT TOP-LEFT VITALS */
               <div
-                className={`relative pointer-events-auto shrink-0 bg-white/95 rounded-2xl p-2 sm:p-2.5 w-[138px] min-[390px]:w-[152px] sm:w-52 md:w-60 border-2 shadow-md ${
+                className={`relative pointer-events-auto shrink-0 bg-white/95 rounded-xl p-2 sm:p-2.5 w-[140px] min-[390px]:w-[152px] sm:w-52 md:w-56 border shadow-sm ${
                   matchMode === 'teams'
                     ? myTeam === 'blue'
-                      ? 'border-sky-300'
-                      : 'border-rose-300'
-                    : 'border-emerald-300'
+                      ? 'border-sky-200'
+                      : 'border-rose-200'
+                    : 'border-slate-200'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1 pb-1 mb-1.5 border-b border-slate-100 min-w-0">
                   <div className="flex items-center gap-1 min-w-0">
                     {matchMode === 'teams' && (
                       <span
-                        className={`text-[9px] sm:text-[10px] font-extrabold shrink-0 ${
-                          myTeam === 'blue' ? 'text-sky-600' : 'text-rose-600'
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          myTeam === 'blue' ? 'bg-sky-600' : 'bg-rose-500'
                         }`}
-                      >
-                        {myTeam === 'blue' ? 'BLUE' : 'RED'} ·
-                      </span>
+                      />
                     )}
-                    <span className="font-extrabold text-slate-900 text-[10px] sm:text-xs truncate">
+                    <span className="font-bold text-slate-900 text-[11px] sm:text-xs truncate">
                       {playerName}
                     </span>
                   </div>
-                  <span className="font-mono tabular-nums text-[10px] font-extrabold text-amber-600 shrink-0">
+                  <span className="font-mono tabular-nums text-[10px] font-bold text-slate-600 shrink-0">
                     {kos} KO
                   </span>
                 </div>
 
-                {/* HP & Shield Bars with Tabular Numerals */}
                 <div className="space-y-1">
                   <div>
-                    <div className="flex items-center justify-between text-[8px] sm:text-[10px] font-extrabold text-emerald-700 leading-none mb-0.5 tabular-nums">
+                    <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-bold text-slate-600 leading-none mb-0.5 tabular-nums">
                       <span className="flex items-center gap-0.5">
                         <Heart size={9} className="text-rose-500 fill-rose-500" /> HP
                       </span>
@@ -11345,7 +10558,7 @@ export default function HamsterPaintball({
                         {hp}/{maxHp}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 sm:h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-emerald-500 rounded-full transition-all duration-150"
                         style={{ width: `${Math.max(0, (hp / maxHp) * 100)}%` }}
@@ -11354,7 +10567,7 @@ export default function HamsterPaintball({
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between text-[8px] sm:text-[10px] font-extrabold text-sky-700 leading-none mb-0.5 tabular-nums">
+                    <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-bold text-slate-600 leading-none mb-0.5 tabular-nums">
                       <span className="flex items-center gap-0.5">
                         <Shield size={9} className="text-sky-500 fill-sky-500" /> SHD
                       </span>
@@ -11362,7 +10575,7 @@ export default function HamsterPaintball({
                         {shield}/{maxShield}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 sm:h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-sky-500 rounded-full transition-all duration-150"
                         style={{ width: `${Math.max(0, (shield / maxShield) * 100)}%` }}
@@ -11371,7 +10584,6 @@ export default function HamsterPaintball({
                   </div>
                 </div>
 
-                {/* Quick Hold Can Belt Buttons (+HP / +DEF) */}
                 <div className="grid grid-cols-2 gap-1 mt-1.5 pt-1.5 border-t border-slate-100">
                   <button
                     type="button"
@@ -11384,14 +10596,14 @@ export default function HamsterPaintball({
                     }}
                     onTouchEnd={stopCanLongPress}
                     onTouchCancel={stopCanLongPress}
-                    className={`py-1 px-1.5 rounded-lg text-[9px] sm:text-[10px] font-extrabold border transition cursor-pointer tabular-nums whitespace-nowrap select-none ${
+                    className={`py-1 px-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold border transition cursor-pointer tabular-nums whitespace-nowrap select-none ${
                       holdingCanType === 'health'
-                        ? 'bg-emerald-500 text-white border-emerald-600'
+                        ? 'bg-emerald-600 text-white border-emerald-600'
                         : healthCans > 0
-                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
                         : 'bg-slate-50 text-slate-400 border-slate-200'
                     }`}
-                    title="Hold 1s (or press H) to restore +45 HP"
+                    title="Hold (or H) to heal"
                   >
                     {holdingCanType === 'health' ? `${canHoldProgress}%` : `+HP (${healthCans})`}
                   </button>
@@ -11406,59 +10618,58 @@ export default function HamsterPaintball({
                     }}
                     onTouchEnd={stopCanLongPress}
                     onTouchCancel={stopCanLongPress}
-                    className={`py-1 px-1.5 rounded-lg text-[9px] sm:text-[10px] font-extrabold border transition cursor-pointer tabular-nums whitespace-nowrap select-none ${
+                    className={`py-1 px-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold border transition cursor-pointer tabular-nums whitespace-nowrap select-none ${
                       holdingCanType === 'shield'
-                        ? 'bg-sky-500 text-white border-sky-600'
+                        ? 'bg-sky-600 text-white border-sky-600'
                         : shieldCans > 0
-                        ? 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-200'
+                        ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200'
                         : 'bg-slate-50 text-slate-400 border-slate-200'
                     }`}
-                    title="Hold 1s (or press F) to charge +50 Shield"
+                    title="Hold (or F) to shield"
                   >
                     {holdingCanType === 'shield' ? `${canHoldProgress}%` : `+SHD (${shieldCans})`}
                   </button>
                 </div>
               </div>
             ) : (
-              /* HOST TOP-LEFT: BRIGHT CAMERA MODE & EVENT CARD */
-              <div className="pointer-events-auto shrink-0 bg-white/95 rounded-2xl p-2 sm:p-2.5 w-40 sm:w-64 md:w-72 border-2 border-sky-200 shadow-md flex flex-col gap-1">
+              /* HOST TOP-LEFT STATUS */
+              <div className="pointer-events-auto shrink-0 bg-white/95 rounded-xl p-2 sm:p-2.5 w-40 sm:w-60 border border-slate-200 shadow-sm flex flex-col gap-0.5">
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Video size={13} className="text-sky-600 shrink-0" />
-                    <span className="font-extrabold text-[10px] sm:text-xs text-slate-800 truncate">
+                    <span className="font-bold text-[11px] sm:text-xs text-slate-800 truncate">
                       {hostCameraMode === 'overview'
-                        ? 'Arena Overview'
+                        ? 'Overview'
                         : hostCameraMode === 'auto_track'
-                        ? 'Auto Camera'
-                        : 'Player Focus'}
+                        ? 'Auto Cam'
+                        : 'Focus'}
                     </span>
                   </div>
-                  <span className="text-[10px] font-bold text-sky-700 shrink-0 tabular-nums">
+                  <span className="text-[10px] font-semibold text-slate-500 shrink-0 tabular-nums">
                     {roomPlayers.length > 0 && hostCameraMode !== 'overview'
                       ? roomPlayers[hostFollowIndex % roomPlayers.length]?.name
-                      : `${roomPlayers.length}P`}
+                      : `${roomPlayers.length} Online`}
                   </span>
                 </div>
                 {liveEvents[0] && (
-                  <div className="hidden sm:block text-[10px] font-semibold text-slate-600 truncate">
+                  <div className="hidden sm:block text-[10px] font-medium text-slate-500 truncate">
                     {liveEvents[0].text}
                   </div>
                 )}
               </div>
             )}
 
-            {/* CENTER: BRIGHT ARCADE SCOREBOARD & CLOCK-SYNCED COUNTDOWN TIMER */}
+            {/* CENTER SCOREBOARD & TIMER */}
             <div className="pointer-events-auto flex flex-col items-center mx-auto shrink-0">
               {role === 'player' && matchStatus === 'lobby' ? (
-                <div className="bg-white/95 px-3 py-1.5 rounded-2xl border-2 border-sky-200 shadow-md flex items-center gap-2">
-                  <span className="text-[11px] sm:text-xs font-extrabold text-slate-800 whitespace-nowrap">
-                    Warm-Up Park · Waiting for Host ({roomPlayers.length} Joined)
+                <div className="bg-white/95 px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-700 whitespace-nowrap tabular-nums">
+                    Warm-Up · {roomPlayers.length} Joined
                   </span>
                   <button
                     type="button"
                     onClick={() => handleForceResyncRoom(roomCode)}
-                    className="px-2 py-0.5 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-800 font-extrabold text-[10px] flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                    title="Sync Room Status"
+                    className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] flex items-center gap-1 cursor-pointer whitespace-nowrap"
                   >
                     <RotateCw size={10} />
                     <span>Sync</span>
@@ -11466,67 +10677,64 @@ export default function HamsterPaintball({
                 </div>
               ) : (
                 <div
-                  className={`bg-white/95 px-2.5 sm:px-3.5 py-1.5 rounded-2xl flex flex-col items-center gap-1 border-2 shadow-md transition ${
+                  className={`bg-white/95 px-3 py-1.5 rounded-xl flex flex-col items-center gap-1 border shadow-sm transition ${
                     matchStatus === 'playing' && matchSeconds <= 30
-                      ? 'border-rose-400'
-                      : 'border-sky-200'
+                      ? 'border-rose-300'
+                      : 'border-slate-200'
                   }`}
                 >
                   <div className="flex items-center gap-2 sm:gap-3">
                     {matchMode === 'teams' && (
-                      <div className="flex items-center gap-1.5 text-xs sm:text-sm font-extrabold tabular-nums">
+                      <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold tabular-nums">
                         <span className="text-rose-600">RED {teamTotals.red.kos}</span>
                         <span className="text-slate-300">·</span>
                       </div>
                     )}
 
                     <div
-                      className={`flex items-center gap-1 font-mono tabular-nums font-extrabold text-xs sm:text-base px-2 py-0.5 rounded-xl border ${
+                      className={`flex items-center gap-1 font-mono tabular-nums font-bold text-xs sm:text-sm px-2 py-0.5 rounded-lg ${
                         isTimerPaused
-                          ? 'bg-amber-50 border-amber-300 text-amber-800'
+                          ? 'bg-amber-50 text-amber-700'
                           : matchSeconds <= 30
-                          ? 'bg-rose-50 border-rose-300 text-rose-700'
-                          : 'bg-sky-50 border-sky-200 text-slate-900'
+                          ? 'bg-rose-50 text-rose-700'
+                          : 'bg-slate-100 text-slate-900'
                       }`}
                     >
                       <Clock
-                        size={13}
-                        className={matchSeconds <= 30 ? 'text-rose-600' : 'text-sky-600'}
+                        size={12}
+                        className={matchSeconds <= 30 ? 'text-rose-600' : 'text-slate-500'}
                       />
                       <span>
                         {Math.floor(matchSeconds / 60)}:
                         {(matchSeconds % 60).toString().padStart(2, '0')}
                       </span>
                       {isTimerPaused && (
-                        <span className="text-[9px] font-sans font-extrabold text-amber-700 ml-0.5">
+                        <span className="text-[9px] font-sans font-bold text-amber-700 ml-0.5">
                           PAUSED
                         </span>
                       )}
                     </div>
 
                     {matchMode === 'teams' && (
-                      <div className="flex items-center gap-1.5 text-xs sm:text-sm font-extrabold tabular-nums">
+                      <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold tabular-nums">
                         <span className="text-slate-300">·</span>
                         <span className="text-sky-600">BLUE {teamTotals.blue.kos}</span>
                       </div>
                     )}
 
-                    {/* Host Live Timer & Balls/Question Controls */}
                     {role === 'host' && (
                       <div className="hidden sm:flex items-center gap-1 pl-1 border-l border-slate-200">
                         <button
                           type="button"
                           onClick={handleHostTogglePauseTimer}
-                          className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[10px] font-extrabold text-slate-700 cursor-pointer whitespace-nowrap"
-                          title={isTimerPaused ? 'Resume Timer' : 'Pause Timer'}
+                          className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
                         >
                           {isTimerPaused ? 'Resume' : 'Pause'}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleHostAddTime(30)}
-                          className="px-2 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-[10px] font-extrabold text-sky-700 border border-sky-200 cursor-pointer tabular-nums whitespace-nowrap"
-                          title="Add +30 Seconds"
+                          className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 cursor-pointer tabular-nums whitespace-nowrap"
                         >
                           +30s
                         </button>
@@ -11534,8 +10742,7 @@ export default function HamsterPaintball({
                     )}
                   </div>
 
-                  {/* Clean Timer Progress Track */}
-                  <div className="w-full min-w-[110px] sm:min-w-[180px] h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="w-full min-w-[110px] sm:min-w-[170px] h-1 bg-slate-200 rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all duration-300 rounded-full ${
                         matchSeconds <= 30
@@ -11556,7 +10763,7 @@ export default function HamsterPaintball({
               )}
             </div>
 
-            {/* TOP-RIGHT: HOST CAMERA, SCORES & FLAG END BUTTON */}
+            {/* TOP-RIGHT HOST ACTIONS */}
             <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1.5 shrink-0">
               {role === 'host' && (
                 <>
@@ -11566,19 +10773,19 @@ export default function HamsterPaintball({
                       setIsLobbyMinimized(false);
                       setScreen('lobby');
                     }}
-                    className="h-8 px-2.5 rounded-xl bg-white hover:bg-sky-50 text-slate-800 border-2 border-sky-200 border-b-3 border-b-sky-300 font-extrabold text-xs flex items-center gap-1 transition shadow-sm cursor-pointer whitespace-nowrap tabular-nums"
+                    className="h-8 px-2.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 border border-slate-200 font-semibold text-xs flex items-center gap-1 transition shadow-sm cursor-pointer whitespace-nowrap tabular-nums"
                   >
-                    <Users size={13} className="text-sky-600" />
+                    <Users size={13} className="text-slate-500" />
                     <span>Lobby ({roomPlayers.length})</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setHostCameraMode('overview')}
-                    className={`h-8 px-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1 transition shadow-sm cursor-pointer whitespace-nowrap border-2 ${
+                    className={`h-8 px-2.5 rounded-xl font-semibold text-xs flex items-center gap-1 transition shadow-sm cursor-pointer whitespace-nowrap border ${
                       hostCameraMode === 'overview'
-                        ? 'bg-sky-600 text-white border-sky-700 border-b-3 border-b-sky-800'
-                        : 'bg-white hover:bg-sky-50 text-slate-700 border-sky-200 border-b-3 border-b-sky-300'
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white/95 hover:bg-white text-slate-700 border-slate-200'
                     }`}
                   >
                     <Eye size={13} />
@@ -11588,17 +10795,17 @@ export default function HamsterPaintball({
                   <button
                     type="button"
                     onClick={() => setIsLeaderboardOpen(true)}
-                    className="h-8 px-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 border-2 border-amber-500 border-b-3 border-b-amber-600 font-extrabold text-xs flex items-center gap-1 transition shadow-sm cursor-pointer whitespace-nowrap"
+                    className="h-8 px-2.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 border border-slate-200 font-semibold text-xs flex items-center gap-1 transition shadow-sm cursor-pointer whitespace-nowrap"
                   >
-                    <Trophy size={13} />
+                    <Trophy size={13} className="text-amber-500" />
                     <span className="hidden sm:inline">Scores</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleEndMatch}
-                    className="h-8 px-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600 border-b-3 border-b-rose-700 font-extrabold text-xs flex items-center gap-1.5 transition shadow-sm active:translate-y-0.5 cursor-pointer whitespace-nowrap"
-                    title="End Match & Show Results"
+                    className="h-8 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer whitespace-nowrap"
+                    title="End Match"
                   >
                     <Flag size={13} fill="currentColor" />
                     <span>End</span>
@@ -11693,33 +10900,33 @@ export default function HamsterPaintball({
                 </div>
               )}
 
-              {/* Compact Non-Obstructing Status Readout Under Reticle */}
+              {/* Compact Status Under Reticle */}
               {immunitySecondsLeft > 0 ? (
-                <div className="mt-0.5 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-mono tabular-nums font-extrabold text-[10px] border border-white shadow-md whitespace-nowrap">
-                  IMMUNE {immunitySecondsLeft}s
+                <div className="mt-1 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-mono tabular-nums font-bold text-[10px] shadow-sm whitespace-nowrap">
+                  SHIELD {immunitySecondsLeft}s
                 </div>
               ) : isEnemyTargeted ? (
-                <div className="mt-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-extrabold text-[9px] tracking-wider border border-white shadow-sm whitespace-nowrap">
+                <div className="mt-1 px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-bold text-[9px] tracking-wider shadow-sm whitespace-nowrap">
                   TARGET
                 </div>
               ) : !isTouchHudVisible && !isAimLocked && aimControlMode === 'shoulder' ? (
-                <div className="mt-1 px-2 py-0.5 rounded-md bg-slate-900/80 text-white font-bold text-[10px] border border-white/25 shadow-sm whitespace-nowrap">
-                  Click Arena to Aim &amp; Fire
+                <div className="mt-1 px-2 py-0.5 rounded-md bg-slate-900/75 text-white font-medium text-[10px] shadow-sm whitespace-nowrap">
+                  Click to Aim
                 </div>
               ) : null}
             </div>
           )}
 
-          {/* STADIUM BROADCAST ALERTS: MATCH START ANNOUNCEMENT, STREAKS, 10s IMMUNITY & PICKUPS */}
+          {/* BROADCAST ALERTS */}
           <div className="self-center flex flex-col items-center gap-1.5 max-w-[92vw]">
             {killStreakCallout && (
               <div
-                className={`bg-gradient-to-r ${killStreakCallout.colorClass} border-2 px-5 py-2.5 rounded-2xl text-center shadow-2xl text-white`}
+                className={`bg-gradient-to-r ${killStreakCallout.colorClass} px-4 py-2 rounded-xl text-center shadow-lg text-white`}
               >
-                <div className="font-['Poppins',sans-serif] text-base sm:text-xl font-extrabold tracking-tight drop-shadow-xs">
+                <div className="font-['Poppins',sans-serif] text-sm sm:text-lg font-bold tracking-tight">
                   {killStreakCallout.title}
                 </div>
-                <div className="text-[10px] sm:text-xs font-extrabold tracking-wide opacity-95">
+                <div className="text-[10px] sm:text-xs font-medium opacity-95">
                   {killStreakCallout.subtitle}
                 </div>
               </div>
@@ -11727,31 +10934,23 @@ export default function HamsterPaintball({
 
             {role === 'player' && matchStatus === 'playing' && spawnHoldSecondsLeft > 0 && (
               <div
-                className={`rounded-3xl p-3.5 sm:p-4 text-center shadow-2xl border-2 text-white min-w-[270px] sm:min-w-[340px] ${
+                className={`rounded-2xl px-5 py-3.5 text-center shadow-xl text-white min-w-[240px] ${
                   matchMode === 'teams'
                     ? myTeam === 'blue'
-                      ? 'bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 border-sky-200'
-                      : 'bg-gradient-to-r from-rose-600 via-rose-500 to-orange-500 border-rose-200'
-                    : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-600 border-emerald-200'
+                      ? 'bg-sky-600'
+                      : 'bg-rose-600'
+                    : 'bg-slate-900'
                 }`}
               >
-                <div className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-widest opacity-90">
-                  Championship Battle Announcement
-                </div>
-                <div className="flex items-center justify-center gap-3 mt-1">
-                  <div className="text-left">
-                    <div className="font-['Poppins',sans-serif] text-sm sm:text-lg font-extrabold leading-tight">
-                      {matchMode === 'teams'
-                        ? myTeam === 'blue'
-                          ? 'Blue Squad — Prepare to Launch!'
-                          : 'Red Squad — Prepare to Launch!'
-                        : 'Free-For-All — Prepare to Launch!'}
-                    </div>
-                    <div className="text-[11px] font-semibold opacity-95 mt-0.5">
-                      Tap <b>Questions</b> below anytime to reload +{ballsPerQuestion} Paintballs
-                    </div>
+                <div className="flex items-center justify-center gap-3.5">
+                  <div className="font-['Poppins',sans-serif] text-base sm:text-lg font-bold leading-tight">
+                    {matchMode === 'teams'
+                      ? myTeam === 'blue'
+                        ? 'Blue Squad'
+                        : 'Red Squad'
+                      : 'Free-For-All'}
                   </div>
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-400 text-slate-950 border-2 border-white font-['Poppins',sans-serif] font-extrabold text-xl sm:text-2xl tabular-nums flex items-center justify-center shrink-0 shadow-md">
+                  <div className="w-10 h-10 rounded-xl bg-white text-slate-950 font-['Poppins',sans-serif] font-bold text-xl tabular-nums flex items-center justify-center shrink-0">
                     {spawnHoldSecondsLeft}
                   </div>
                 </div>
@@ -11759,14 +10958,14 @@ export default function HamsterPaintball({
             )}
 
             {role === 'player' && immunitySecondsLeft > 0 && (
-              <div className="bg-gradient-to-r from-amber-400 via-yellow-300 to-sky-300 border-2 border-white px-4 py-1.5 rounded-2xl text-center shadow-xl min-w-[240px]">
-                <div className="text-xs sm:text-sm font-extrabold text-slate-950 flex items-center justify-center gap-1.5 tabular-nums">
-                  <Shield size={15} className="text-slate-950 fill-white" />
-                  <span>RESPAWN SHIELD IMMUNITY · {immunitySecondsLeft}s</span>
+              <div className="bg-amber-400 px-3.5 py-1 rounded-xl text-center shadow-md min-w-[180px]">
+                <div className="text-xs font-bold text-slate-950 flex items-center justify-center gap-1.5 tabular-nums">
+                  <Shield size={13} className="text-slate-950" />
+                  <span>SHIELD {immunitySecondsLeft}s</span>
                 </div>
-                <div className="w-full h-1.5 bg-white/70 rounded-full overflow-hidden mt-1">
+                <div className="w-full h-1 bg-slate-950/20 rounded-full overflow-hidden mt-1">
                   <div
-                    className="h-full bg-slate-900 rounded-full transition-all duration-200"
+                    className="h-full bg-slate-950 rounded-full transition-all duration-200"
                     style={{ width: `${Math.min(100, (immunitySecondsLeft / 10) * 100)}%` }}
                   />
                 </div>
@@ -11774,18 +10973,14 @@ export default function HamsterPaintball({
             )}
 
             {koBannerText && (
-              <div className="bg-rose-600 border-2 border-white px-4 py-1.5 rounded-2xl text-center shadow-xl">
-                <div className="text-xs sm:text-sm font-extrabold text-white">
-                  {koBannerText}
-                </div>
+              <div className="bg-rose-600 px-3.5 py-1 rounded-xl text-center shadow-md">
+                <div className="text-xs font-semibold text-white">{koBannerText}</div>
               </div>
             )}
 
             {pickupBannerText && (
-              <div className="bg-white border-2 border-emerald-400 px-3.5 py-1 rounded-2xl text-center shadow-md">
-                <div className="text-[11px] sm:text-xs font-extrabold text-emerald-800">
-                  {pickupBannerText}
-                </div>
+              <div className="bg-white border border-slate-200 px-3 py-1 rounded-xl text-center shadow-sm">
+                <div className="text-[11px] font-semibold text-emerald-700">{pickupBannerText}</div>
               </div>
             )}
           </div>
@@ -12006,136 +11201,124 @@ export default function HamsterPaintball({
                 </div>
               </div>
             ) : (
-              /* LAPTOP / DESKTOP MODE: NO TOUCH MOVE OR FIRE ICONS — CLEAN STANCE + KEYBIND DOCK */
-              <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-2.5 pb-3 sm:pb-4 px-4">
+              /* LAPTOP / DESKTOP BOTTOM DOCK */
+              <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-2 pb-3 px-4">
                 {matchStatus === 'playing' && (
                   <button
                     type="button"
                     onClick={() => setIsQuestionModalOpen(true)}
-                    className={`pointer-events-auto px-4 sm:px-5 py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl border-2 border-b-4 transition flex items-center gap-2.5 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
+                    className={`pointer-events-auto px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm shadow-lg transition flex items-center gap-2 cursor-pointer active:scale-[0.98] whitespace-nowrap ${
                       ammo === 0
-                        ? 'bg-amber-400 hover:bg-amber-300 text-slate-900 border-amber-500 border-b-amber-600'
-                        : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-700 border-b-sky-800'
+                        ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                        : 'bg-sky-600 hover:bg-sky-500 text-white'
                     }`}
-                    title="Press Q or Click to Answer Questions & Earn Paintballs"
                   >
-                    <HelpCircle size={18} className="shrink-0" />
-                    <div className="text-left leading-tight">
-                      <div className="text-xs sm:text-sm font-['Poppins',sans-serif] font-extrabold">
-                        {ammo === 0 ? 'Earn Ammo! [Q]' : 'Questions [Q]'}
-                      </div>
-                      <div
-                        className={`text-[10px] sm:text-xs font-bold tabular-nums ${
-                          ammo === 0 ? 'text-slate-800' : 'text-sky-100'
-                        }`}
-                      >
-                        +{ballsPerQuestion} Balls · Ammo: {ammo}
-                      </div>
-                    </div>
+                    <HelpCircle size={16} className="shrink-0" />
+                    <span className="tabular-nums">
+                      {ammo === 0 ? 'Reload [Q]' : `Questions [Q] · ${ammo}`}
+                    </span>
                   </button>
                 )}
 
-                <div className="pointer-events-none bg-slate-900/85 text-white border border-white/25 rounded-2xl px-3.5 py-2 shadow-xl flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold">
-                  <span className="font-mono tabular-nums font-extrabold text-amber-300 whitespace-nowrap">
+                <div className="pointer-events-none bg-slate-900/85 text-white rounded-xl px-3.5 py-2 shadow-lg flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px] font-medium">
+                  <span className="font-mono tabular-nums font-bold text-amber-300 whitespace-nowrap">
                     {matchStatus === 'playing' ? `AMMO ${ammo}` : 'WARM-UP'}
                   </span>
-                  <span className="text-white/30">|</span>
+                  <span className="text-white/25">|</span>
                   <span
-                    className={`font-extrabold uppercase tracking-wide whitespace-nowrap ${
+                    className={`font-semibold uppercase tracking-wide whitespace-nowrap ${
                       playerStance !== 'stand' ? 'text-amber-300' : 'text-sky-300'
                     }`}
                   >
                     {playerStance === 'crawl'
-                      ? 'PRONE CRAWL'
+                      ? 'PRONE'
                       : playerStance === 'crouch'
-                      ? 'CROUCHED'
-                      : 'STANDING'}
-                    {isAdsScoped ? ' · 2X SCOPE' : ''}
+                      ? 'CROUCH'
+                      : 'STAND'}
+                    {isAdsScoped ? ' · 2X' : ''}
                   </span>
-                  <span className="hidden md:inline text-white/30">|</span>
-                  <span className="hidden md:inline text-slate-200 whitespace-nowrap">
-                    <b className="text-white">WASD</b> Move · <b className="text-white">Mouse</b> Aim ·{' '}
-                    <b className="text-white">Click</b> Shoot · <b className="text-white">RMB</b> Scope ·{' '}
-                    <b className="text-white">Space</b> Jump · <b className="text-white">C</b> Crouch ·{' '}
-                    <b className="text-white">Z</b> Crawl
+                  <span className="hidden md:inline text-white/25">|</span>
+                  <span className="hidden md:inline text-slate-300 whitespace-nowrap">
+                    <b className="text-white">WASD</b> · <b className="text-white">Click</b> Fire ·{' '}
+                    <b className="text-white">RMB</b> Scope · <b className="text-white">Space</b> Jump ·{' '}
+                    <b className="text-white">C</b> Crouch · <b className="text-white">Z</b> Crawl
                   </span>
                 </div>
               </div>
             )
           ) : (
-            /* HOST COLLAPSIBLE BOTTOM CAMERA DOCK (ZERO VIEWPORT OCCLUSION) */
+            /* HOST BOTTOM CAMERA DOCK */
             <div className="pointer-events-auto w-full max-w-4xl mx-auto flex flex-col items-center">
               <button
                 type="button"
                 onClick={() => setIsLobbyMinimized(prev => !prev)}
-                className="mb-1 px-3 py-1 rounded-t-xl bg-white/95 border-2 border-b-0 border-sky-200 text-[11px] font-extrabold text-slate-700 shadow-xs cursor-pointer whitespace-nowrap"
+                className="mb-1 px-3 py-1 rounded-t-lg bg-white/95 border border-b-0 border-slate-200 text-[11px] font-semibold text-slate-700 shadow-xs cursor-pointer whitespace-nowrap"
               >
-                {isLobbyMinimized
-                  ? `▲ Show Player Cameras (${roomPlayers.length})`
-                  : '▼ Hide Camera Dock'}
+                {isLobbyMinimized ? `▲ Cameras (${roomPlayers.length})` : '▼ Hide'}
               </button>
 
               {!isLobbyMinimized && (
-                <div className="w-full bg-white/95 p-2.5 sm:p-3 rounded-2xl border-2 border-sky-200 shadow-xl">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold text-slate-800 mb-2">
+                <div className="w-full bg-white/95 p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-lg">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-800 mb-2">
                     <div className="flex items-center gap-2 tabular-nums">
-                      <span>Live Classroom Cameras ({roomPlayers.length})</span>
+                      <span>Players ({roomPlayers.length})</span>
                       {roomPlayers.length > 0 && hostCameraMode !== 'overview' && (
-                        <span className="text-sky-600 font-bold">
-                          · Watching {roomPlayers[hostFollowIndex % roomPlayers.length]?.name}
+                        <span className="text-sky-600 font-semibold">
+                          · {roomPlayers[hostFollowIndex % roomPlayers.length]?.name}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => setHostCameraMode('track_one')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer transition whitespace-nowrap ${
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition whitespace-nowrap ${
                           hostCameraMode === 'track_one'
-                            ? 'bg-sky-600 text-white'
+                            ? 'bg-slate-900 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
-                        Focus 1 Player
+                        Focus
                       </button>
                       <button
                         type="button"
                         onClick={() => setHostCameraMode('auto_track')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer transition whitespace-nowrap ${
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition whitespace-nowrap ${
                           hostCameraMode === 'auto_track'
-                            ? 'bg-emerald-500 text-white'
+                            ? 'bg-slate-900 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
-                        Auto Rotate
+                        Auto
                       </button>
                       <button
                         type="button"
                         onClick={() => setHostCameraMode('overview')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer transition whitespace-nowrap ${
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition whitespace-nowrap ${
                           hostCameraMode === 'overview'
-                            ? 'bg-amber-400 text-slate-900'
+                            ? 'bg-slate-900 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
-                        Full Arena
+                        Overview
                       </button>
                     </div>
                   </div>
                   {roomPlayers.length === 0 ? (
-                    <div className="text-xs text-slate-500 font-semibold text-center py-1.5">
-                      No students connected yet. Click &quot;Lobby&quot; at the top right to display the QR code.
+                    <div className="text-xs text-slate-500 font-medium text-center py-1.5">
+                      No players connected.
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 overflow-x-auto pb-1">
                       {roomPlayers.map((rp, i) => {
-                        const tCfg =
-                          matchMode === 'teams' ? TEAM_CONFIG[rp.team || 'red'] : TEAM_CONFIG.solo;
                         const isWatched =
                           hostCameraMode !== 'overview' &&
                           roomPlayers.length > 0 &&
                           hostFollowIndex % roomPlayers.length === i;
                         const qStats = getPlayerQuestionStats(rp);
+                        const charSkin =
+                          HAMSTER_SKINS[Math.abs(rp.skinIdx || 0) % HAMSTER_SKINS.length] ||
+                          HAMSTER_SKINS[0];
                         return (
                           <button
                             key={rp.id}
@@ -12144,23 +11327,25 @@ export default function HamsterPaintball({
                               setHostCameraMode('track_one');
                               setHostFollowIndex(i);
                             }}
-                            className={`shrink-0 px-3 py-1.5 rounded-xl border-2 text-left flex items-center gap-2 cursor-pointer transition ${
+                            className={`shrink-0 px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-2 cursor-pointer transition ${
                               isWatched
-                                ? 'bg-sky-50 border-sky-500 shadow-xs'
-                                : `bg-white ${tCfg.borderClass} hover:bg-slate-50`
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-white border-slate-200 text-slate-900 hover:bg-slate-50'
                             }`}
                           >
                             <HamsterCharacterAvatar
-                              skin={HAMSTER_SKINS[rp.skinIdx] || HAMSTER_SKINS[0]}
+                              skin={charSkin}
                               size={26}
                               team={matchMode === 'teams' ? rp.team || 'red' : 'solo'}
                             />
                             <div className="tabular-nums">
-                              <div className="font-extrabold text-xs text-slate-900">
-                                {rp.name}
-                              </div>
-                              <div className="text-[10px] font-bold text-slate-500">
-                                {rp.kos || 0} KO · {qStats.accuracy}% Quiz
+                              <div className="font-semibold text-xs">{rp.name}</div>
+                              <div
+                                className={`text-[10px] font-medium ${
+                                  isWatched ? 'text-slate-300' : 'text-slate-500'
+                                }`}
+                              >
+                                {rp.kos || 0} KO · {qStats.accuracy}%
                               </div>
                             </div>
                           </button>
@@ -12176,13 +11361,12 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          SCREEN 5: CELEBRATORY PODIUM RESULTS, WINNER ANNOUNCEMENT & QUESTION ACCURACY ANALYTICS
+          SCREEN 5: MATCH RESULTS
          ------------------------------------------------------------- */}
       {screen === 'results' && (
-        <div className="absolute inset-0 z-50 bg-slate-900/65 flex items-center justify-center p-2.5 sm:p-5 overflow-y-auto">
-          <div className="bg-white border-2 border-sky-200 rounded-3xl max-w-3xl w-full overflow-hidden shadow-2xl my-auto text-center text-slate-900 max-h-[93dvh] flex flex-col">
-            <div className="overflow-y-auto p-4 sm:p-6 space-y-4">
-              {/* Grand Stadium Championship Header Banner */}
+        <div className="absolute inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full overflow-hidden shadow-2xl my-auto text-center text-slate-900 max-h-[92dvh] flex flex-col">
+            <div className="overflow-y-auto p-5 sm:p-6 space-y-5">
               {(() => {
                 const redWins =
                   teamTotals.red.kos > teamTotals.blue.kos ||
@@ -12202,78 +11386,62 @@ export default function HamsterPaintball({
                 const headlineText =
                   matchMode === 'teams'
                     ? redWins
-                      ? 'Red Squad Wins!'
+                      ? 'Red Squad Wins'
                       : blueWins
-                      ? 'Blue Squad Wins!'
-                      : 'Championship Draw!'
-                    : `${finalStandings[0]?.name || playerName || 'Champion'} Wins!`;
+                      ? 'Blue Squad Wins'
+                      : 'Match Draw'
+                    : `${finalStandings[0]?.name || playerName || 'Champion'} Wins`;
 
                 const bannerTheme =
                   matchMode === 'teams'
                     ? redWins
-                      ? 'from-rose-600 via-rose-500 to-amber-500 text-white border-rose-300'
+                      ? 'from-rose-600 to-rose-700 text-white'
                       : blueWins
-                      ? 'from-sky-600 via-blue-600 to-indigo-600 text-white border-sky-300'
-                      : 'from-slate-800 via-sky-800 to-indigo-900 text-white border-sky-300'
-                    : 'from-amber-500 via-orange-500 to-rose-500 text-white border-amber-300';
+                      ? 'from-sky-600 to-indigo-700 text-white'
+                      : 'from-slate-800 to-slate-900 text-white'
+                    : 'from-slate-900 to-slate-800 text-white';
 
                 return (
-                  <div
-                    className={`relative overflow-hidden rounded-3xl p-5 sm:p-6 bg-gradient-to-br border-2 shadow-xl ${bannerTheme}`}
-                  >
-                    {/* Subtle Radial Stadium Spotlight Accent */}
-                    <div
-                      className="pointer-events-none absolute inset-0 opacity-25"
-                      style={{
-                        background:
-                          'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.85) 0%, transparent 65%)'
-                      }}
-                    />
-
-                    <div className="relative z-10 flex flex-col items-center">
-                      <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 border-2 border-white shadow-lg flex items-center justify-center mb-2">
-                        <Trophy size={24} />
+                  <div className={`rounded-2xl p-5 bg-gradient-to-br shadow-md ${bannerTheme}`}>
+                    <div className="flex flex-col items-center">
+                      <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center mb-2">
+                        <Trophy size={20} />
                       </div>
-                      <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] opacity-90">
-                        Grand Arena Championship
-                      </div>
-                      <h2 className="font-['Poppins',sans-serif] text-2xl sm:text-4xl font-extrabold tracking-tight mt-0.5 drop-shadow-xs">
+                      <h2 className="font-['Poppins',sans-serif] text-2xl sm:text-3xl font-bold tracking-tight">
                         {headlineText}
                       </h2>
 
                       {matchMode === 'teams' && (
-                        <div className="mt-4 w-full grid grid-cols-2 gap-3 max-w-xl mx-auto tabular-nums">
+                        <div className="mt-4 w-full grid grid-cols-2 gap-3 max-w-md mx-auto tabular-nums">
                           <div
-                            className={`bg-white/95 text-slate-900 rounded-2xl p-3 border-2 shadow-sm ${
-                              redWins ? 'border-amber-300 ring-2 ring-amber-300/50' : 'border-rose-200'
+                            className={`bg-white/95 text-slate-900 rounded-xl p-3 ${
+                              redWins ? 'ring-2 ring-amber-300' : ''
                             }`}
                           >
-                            <div className="text-[11px] font-extrabold text-rose-600 uppercase tracking-wider">
-                              Red Squad {redWins ? '· Winner' : ''}
+                            <div className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">
+                              Red Squad
                             </div>
-                            <div className="text-lg sm:text-xl font-extrabold text-slate-900 mt-0.5">
+                            <div className="text-lg font-bold text-slate-900 mt-0.5">
                               {teamTotals.red.kos} KOs · {teamTotals.red.score} pts
                             </div>
-                            <div className="text-[11px] font-semibold text-slate-600 mt-0.5">
-                              {teamTotals.red.accuracy}% Quiz ({teamTotals.red.correct}✓ ·{' '}
-                              {teamTotals.red.wrong}✗)
+                            <div className="text-[11px] font-medium text-slate-500">
+                              {teamTotals.red.accuracy}% ({teamTotals.red.correct}✓ · {teamTotals.red.wrong}✗)
                             </div>
                           </div>
 
                           <div
-                            className={`bg-white/95 text-slate-900 rounded-2xl p-3 border-2 shadow-sm ${
-                              blueWins ? 'border-amber-300 ring-2 ring-amber-300/50' : 'border-sky-200'
+                            className={`bg-white/95 text-slate-900 rounded-xl p-3 ${
+                              blueWins ? 'ring-2 ring-amber-300' : ''
                             }`}
                           >
-                            <div className="text-[11px] font-extrabold text-sky-600 uppercase tracking-wider">
-                              Blue Squad {blueWins ? '· Winner' : ''}
+                            <div className="text-[11px] font-bold text-sky-600 uppercase tracking-wider">
+                              Blue Squad
                             </div>
-                            <div className="text-lg sm:text-xl font-extrabold text-slate-900 mt-0.5">
+                            <div className="text-lg font-bold text-slate-900 mt-0.5">
                               {teamTotals.blue.kos} KOs · {teamTotals.blue.score} pts
                             </div>
-                            <div className="text-[11px] font-semibold text-slate-600 mt-0.5">
-                              {teamTotals.blue.accuracy}% Quiz ({teamTotals.blue.correct}✓ ·{' '}
-                              {teamTotals.blue.wrong}✗)
+                            <div className="text-[11px] font-medium text-slate-500">
+                              {teamTotals.blue.accuracy}% ({teamTotals.blue.correct}✓ · {teamTotals.blue.wrong}✗)
                             </div>
                           </div>
                         </div>
@@ -12283,53 +11451,52 @@ export default function HamsterPaintball({
                 );
               })()}
 
-              {/* Elevated 3-Tier Championship Podium Stage (Clean Unboxed Typographic Metadata) */}
+              {/* Podium */}
               {podiumPlayers.length > 0 && (
-                <div className="grid grid-cols-3 gap-2.5 sm:gap-4 items-end pt-5 pb-0 px-3 sm:px-6 bg-gradient-to-b from-sky-50/90 via-white to-slate-50 rounded-3xl border-2 border-sky-100 overflow-hidden">
+                <div className="grid grid-cols-3 gap-3 items-end pt-4 pb-0 px-3 sm:px-6 bg-slate-50 rounded-2xl border border-slate-200/80 overflow-hidden">
                   {[1, 0, 2].map(rankIdx => {
                     const p = podiumPlayers[rankIdx];
                     if (!p) {
-                      return <div key={`empty-${rankIdx}`} className="h-28" />;
+                      return <div key={`empty-${rankIdx}`} className="h-24" />;
                     }
                     const isFirst = rankIdx === 0;
                     const rankNum = rankIdx + 1;
                     const skin =
-                      HAMSTER_SKINS[p.skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
+                      HAMSTER_SKINS[Math.abs(p.skinIdx || 0) % HAMSTER_SKINS.length] ||
+                      HAMSTER_SKINS[0];
                     const qStats = getPlayerQuestionStats(p);
                     return (
                       <div key={p.id} className="flex flex-col items-center justify-end">
-                        <div className="relative mb-1">
+                        <div className="relative mb-1.5">
                           {isFirst && (
-                            <div className="mx-auto mb-1 w-7 h-7 rounded-full bg-amber-400 text-slate-950 border-2 border-white shadow-sm flex items-center justify-center">
-                              <Award size={15} />
+                            <div className="mx-auto mb-1 w-6 h-6 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center">
+                              <Award size={13} />
                             </div>
                           )}
                           <HamsterCharacterAvatar
                             skin={skin}
-                            size={isFirst ? 92 : 70}
+                            size={isFirst ? 82 : 64}
                             team={matchMode === 'teams' ? p.team || 'red' : 'solo'}
                           />
                         </div>
 
-                        <div className="font-['Poppins',sans-serif] font-extrabold text-xs sm:text-base text-slate-900 truncate max-w-full">
+                        <div className="font-['Poppins',sans-serif] font-bold text-xs sm:text-sm text-slate-900 truncate max-w-full">
                           {p.name}
                         </div>
-                        <div className="text-[11px] sm:text-xs font-extrabold text-slate-700 tabular-nums">
-                          {p.kos || 0} KOs · {p.score || 0} pts
+                        <div className="text-[11px] font-semibold text-slate-700 tabular-nums">
+                          {p.kos || 0} KO · {p.score || 0} pts
                         </div>
-                        <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 tabular-nums mb-2">
-                          {qStats.accuracy}% Quiz ·{' '}
-                          <span className="text-emerald-700 font-bold">{qStats.correct}✓</span>{' '}
-                          <span className="text-rose-600 font-bold">{qStats.wrong}✗</span>
+                        <div className="text-[10px] font-medium text-slate-500 tabular-nums mb-2">
+                          {qStats.accuracy}% Quiz
                         </div>
 
                         <div
-                          className={`w-full rounded-t-2xl font-['Poppins',sans-serif] font-extrabold flex flex-col items-center justify-center shadow-md ${
+                          className={`w-full rounded-t-xl font-['Poppins',sans-serif] font-bold flex items-center justify-center ${
                             isFirst
-                              ? 'h-16 sm:h-20 bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 text-xl sm:text-2xl border-2 border-b-0 border-amber-500'
+                              ? 'h-14 sm:h-16 bg-amber-400 text-slate-950 text-lg sm:text-xl'
                               : rankNum === 2
-                              ? 'h-12 sm:h-14 bg-gradient-to-b from-sky-400 to-sky-600 text-white text-base sm:text-lg border-2 border-b-0 border-sky-600'
-                              : 'h-10 sm:h-11 bg-gradient-to-b from-rose-400 to-rose-600 text-white text-sm sm:text-base border-2 border-b-0 border-rose-600'
+                              ? 'h-11 sm:h-12 bg-slate-200 text-slate-800 text-base'
+                              : 'h-9 sm:h-10 bg-slate-300 text-slate-800 text-sm'
                           }`}
                         >
                           <span>#{rankNum}</span>
@@ -12340,89 +11507,79 @@ export default function HamsterPaintball({
                 </div>
               )}
 
-              {/* 4-Column Match Honors & Class Accuracy Strip */}
+              {/* Summary Metrics */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-left tabular-nums">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Class Accuracy
                   </div>
-                  <div className="text-lg font-extrabold text-slate-900 mt-0.5">
+                  <div className="text-lg font-bold text-slate-900 mt-0.5">
                     {classAccuracySummary.avgAccuracy}%
                   </div>
-                  <div className="text-[10px] font-semibold text-slate-500">
+                  <div className="text-[10px] font-medium text-slate-500">
                     {classAccuracySummary.totalCorrect}✓ · {classAccuracySummary.totalWrong}✗
                   </div>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="text-[10px] font-extrabold text-rose-600 uppercase tracking-wider">
-                    Top Eliminations
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Top KOs
                   </div>
-                  <div className="text-sm font-extrabold text-slate-900 truncate mt-0.5">
+                  <div className="text-sm font-bold text-slate-900 truncate mt-0.5">
                     {mvpAwards.topKiller ? mvpAwards.topKiller.name : '—'}
                   </div>
-                  <div className="text-[10px] font-semibold text-slate-500">
+                  <div className="text-[10px] font-medium text-slate-500">
                     {mvpAwards.topKiller ? `${mvpAwards.topKiller.kos || 0} KOs` : '0 KOs'}
                   </div>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="text-[10px] font-extrabold text-sky-600 uppercase tracking-wider">
-                    Top Quiz Whiz
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Top Accuracy
                   </div>
-                  <div className="text-sm font-extrabold text-slate-900 truncate mt-0.5">
+                  <div className="text-sm font-bold text-slate-900 truncate mt-0.5">
                     {mvpAwards.bestAccuracy ? mvpAwards.bestAccuracy.player.name : '—'}
                   </div>
-                  <div className="text-[10px] font-semibold text-slate-500">
-                    {mvpAwards.bestAccuracy
-                      ? `${mvpAwards.bestAccuracy.accuracy}% (${mvpAwards.bestAccuracy.correct}✓/${mvpAwards.bestAccuracy.wrong}✗)`
-                      : 'No Answers'}
+                  <div className="text-[10px] font-medium text-slate-500">
+                    {mvpAwards.bestAccuracy ? `${mvpAwards.bestAccuracy.accuracy}%` : '—'}
                   </div>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Best Streak
                   </div>
-                  <div className="text-sm font-extrabold text-slate-900 truncate mt-0.5">
+                  <div className="text-sm font-bold text-slate-900 truncate mt-0.5">
                     {mvpAwards.bestStreak ? mvpAwards.bestStreak.name : '—'}
                   </div>
-                  <div className="text-[10px] font-semibold text-slate-500">
-                    {mvpAwards.bestStreak ? `${mvpAwards.bestStreak.bestStreak || 0}x Streak` : '0x'}
+                  <div className="text-[10px] font-medium text-slate-500">
+                    {mvpAwards.bestStreak ? `${mvpAwards.bestStreak.bestStreak || 0}x` : '0x'}
                   </div>
                 </div>
               </div>
 
-              {/* Per-Player Question Accuracy & Match Standings Table */}
-              <div className="bg-slate-50 rounded-2xl p-3 sm:p-3.5 border border-slate-200 text-left space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-extrabold text-slate-800">
-                    Player Question Accuracy &amp; Standings ({finalStandings.length})
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-500">
-                    Correct · Wrong · Accuracy
-                  </span>
+              {/* Standings Table */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 text-left space-y-2">
+                <div className="text-xs font-bold text-slate-700 px-1">
+                  Standings ({finalStandings.length})
                 </div>
 
                 <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
                   {finalStandings.map((rp, i) => {
                     const qStats = getPlayerQuestionStats(rp);
                     const charSkin =
-                      HAMSTER_SKINS[rp.skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
+                      HAMSTER_SKINS[Math.abs(rp.skinIdx || 0) % HAMSTER_SKINS.length] ||
+                      HAMSTER_SKINS[0];
                     return (
                       <div
                         key={rp.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 text-xs gap-2 tabular-nums shadow-2xs"
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200/80 text-xs gap-2 tabular-nums"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span
-                            className={`w-6 h-6 rounded-lg font-extrabold flex items-center justify-center shrink-0 ${
+                            className={`w-6 h-6 rounded-lg font-bold flex items-center justify-center shrink-0 ${
                               i === 0
                                 ? 'bg-amber-400 text-slate-950'
-                                : i === 1
-                                ? 'bg-sky-100 text-sky-800'
-                                : i === 2
-                                ? 'bg-rose-100 text-rose-800'
                                 : 'bg-slate-100 text-slate-700'
                             }`}
                           >
@@ -12430,17 +11587,17 @@ export default function HamsterPaintball({
                           </span>
                           <HamsterCharacterAvatar
                             skin={charSkin}
-                            size={34}
+                            size={32}
                             team={matchMode === 'teams' ? rp.team || 'red' : 'solo'}
                           />
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-slate-900 font-extrabold truncate">
+                              <span className="text-slate-900 font-semibold truncate">
                                 {rp.name}
                               </span>
                               {matchMode === 'teams' && (
                                 <span
-                                  className={`text-[10px] font-extrabold shrink-0 ${
+                                  className={`text-[10px] font-semibold shrink-0 ${
                                     rp.team === 'blue' ? 'text-sky-600' : 'text-rose-600'
                                   }`}
                                 >
@@ -12448,20 +11605,19 @@ export default function HamsterPaintball({
                                 </span>
                               )}
                             </div>
-                            <div className="text-[10px] font-semibold text-slate-500">
-                              {rp.kos || 0} KOs · {rp.score || 0} pts · {qStats.total} Qs Answered
+                            <div className="text-[10px] font-medium text-slate-500">
+                              {rp.kos || 0} KO · {rp.score || 0} pts
                             </div>
                           </div>
                         </div>
 
-                        {/* Clean Tabular Accuracy Readout + Dual-Color Progress Bar */}
                         <div className="flex flex-col sm:items-end gap-1 shrink-0">
-                          <div className="flex items-center gap-2.5 text-[11px] font-extrabold">
-                            <span className="text-emerald-700">✓ {qStats.correct} Correct</span>
-                            <span className="text-rose-600">✗ {qStats.wrong} Wrong</span>
+                          <div className="flex items-center gap-2 text-[11px] font-semibold">
+                            <span className="text-emerald-700">✓ {qStats.correct}</span>
+                            <span className="text-rose-600">✗ {qStats.wrong}</span>
                             <span className="text-slate-900 font-mono">{qStats.accuracy}%</span>
                           </div>
-                          <div className="w-full sm:w-44 h-1.5 bg-slate-200 rounded-full overflow-hidden flex">
+                          <div className="w-full sm:w-40 h-1.5 bg-slate-200 rounded-full overflow-hidden flex">
                             <div
                               className="h-full bg-emerald-500 transition-all duration-300"
                               style={{ width: `${qStats.accuracy}%` }}
@@ -12480,15 +11636,14 @@ export default function HamsterPaintball({
                 </div>
               </div>
 
-              {/* Action Buttons: Play Again (Same Room) or Back to Classroom Lobby */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                 {role === 'host' && (
                   <button
                     type="button"
                     onClick={handleStartMultiplayerMatch}
-                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-sm rounded-2xl border-2 border-emerald-600 border-b-4 border-b-emerald-700 shadow-md cursor-pointer whitespace-nowrap"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-['Poppins',sans-serif] font-semibold text-sm rounded-xl shadow-sm cursor-pointer whitespace-nowrap"
                   >
-                    Play Again (Same Room)
+                    Play Again
                   </button>
                 )}
                 <button
@@ -12506,11 +11661,11 @@ export default function HamsterPaintball({
                       setScreen('game');
                     }
                   }}
-                  className={`w-full py-3 bg-sky-600 hover:bg-sky-500 active:translate-y-0.5 text-white font-['Poppins',sans-serif] font-extrabold text-sm rounded-2xl border-2 border-sky-700 border-b-4 border-b-sky-800 shadow-md cursor-pointer whitespace-nowrap ${
+                  className={`w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-['Poppins',sans-serif] font-semibold text-sm rounded-xl shadow-sm cursor-pointer whitespace-nowrap ${
                     role !== 'host' ? 'sm:col-span-2' : ''
                   }`}
                 >
-                  {role === 'host' ? 'Back to Classroom Lobby' : 'Return to Warm-Up Park'}
+                  {role === 'host' ? 'Back to Lobby' : 'Back to Arena'}
                 </button>
               </div>
             </div>
@@ -12519,51 +11674,49 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          BRIGHT ESL GAME STUDIO LIVE TRIVIA OVERLAY (`matchStatus === 'playing'`)
+          QUIZ RELOAD OVERLAY
          ------------------------------------------------------------- */}
       {isQuestionModalOpen && matchStatus === 'playing' && currentTriviaQ && (
-        <div className="fixed inset-0 z-50 w-full h-full bg-gradient-to-b from-sky-100 via-sky-50 to-white text-slate-900 flex flex-col justify-between overflow-y-auto">
-          {/* Bright Arcade Quiz Header */}
-          <div className="bg-white px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2 shrink-0 border-b-2 border-sky-200 shadow-xs">
+        <div className="fixed inset-0 z-50 w-full h-full bg-slate-50 text-slate-900 flex flex-col justify-between overflow-y-auto">
+          <div className="bg-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0 border-b border-slate-200">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <HelpCircle size={18} className="text-sky-600 shrink-0" />
-                <h3 className="font-['Poppins',sans-serif] font-extrabold text-sm sm:text-lg text-slate-900 leading-none truncate">
-                  Answer to Earn +{ballsPerQuestion} Paintballs
+                <HelpCircle size={17} className="text-sky-600 shrink-0" />
+                <h3 className="font-['Poppins',sans-serif] font-bold text-sm sm:text-base text-slate-900 leading-none truncate tabular-nums">
+                  +{ballsPerQuestion} Paintballs
                 </h3>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-500 font-semibold mt-1 truncate tabular-nums">
-                Question {(triviaDeckIndex % effectiveQuestions.length) + 1} of{' '}
-                {effectiveQuestions.length} · Streak: {triviaStreak}x · Current Ammo: {ammo}
+              <p className="text-xs text-slate-500 font-medium mt-1 truncate tabular-nums">
+                Q{(triviaDeckIndex % effectiveQuestions.length) + 1}/{effectiveQuestions.length} ·{' '}
+                {triviaStreak}x Streak · {ammo} Ammo
               </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               <div
-                className={`px-3 py-1.5 rounded-xl font-mono tabular-nums font-extrabold text-xs sm:text-sm flex items-center gap-1.5 border-2 ${
+                className={`px-2.5 py-1 rounded-lg font-mono tabular-nums font-bold text-xs sm:text-sm flex items-center gap-1.5 border ${
                   questionTimeLeft <= 5
-                    ? 'bg-rose-50 text-rose-700 border-rose-300'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
                     : questionTimeLeft >= 10
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                    : 'bg-amber-50 text-amber-800 border-amber-300'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}
               >
-                <Clock size={14} />
+                <Clock size={13} />
                 <span>{questionTimeLeft}s</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => setIsQuestionModalOpen(false)}
-                className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-extrabold text-xs sm:text-sm border-b-3 border-emerald-700 shadow-sm cursor-pointer whitespace-nowrap tabular-nums"
+                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs sm:text-sm cursor-pointer whitespace-nowrap tabular-nums"
               >
-                Back to Arena ({ammo})
+                Resume ({ammo})
               </button>
             </div>
           </div>
 
-          {/* 15-Second Question Timer Bar */}
-          <div className="w-full h-2 bg-sky-100 shrink-0 overflow-hidden">
+          <div className="w-full h-1.5 bg-slate-200 shrink-0 overflow-hidden">
             <div
               className={`h-full transition-all duration-300 ${
                 questionTimeLeft <= 5
@@ -12578,7 +11731,6 @@ export default function HamsterPaintball({
             />
           </div>
 
-          {/* Question Card & 2x2 Color-Coded Arcade Answer Buttons */}
           {(() => {
             const parsedQuestion = parseOptionContent(currentTriviaQ.text || '');
             const displayQText = parsedQuestion.text || currentTriviaQ.text;
@@ -12596,10 +11748,10 @@ export default function HamsterPaintball({
             ];
 
             return (
-              <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-8 py-4 sm:py-6 flex flex-col justify-between gap-4 overflow-y-auto">
-                <div className="bg-white border-2 border-sky-200 rounded-3xl p-5 sm:p-7 flex flex-col items-center justify-center text-center shadow-lg my-auto">
+              <div className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-8 py-5 flex flex-col justify-between gap-4 overflow-y-auto">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center shadow-sm my-auto">
                   {displayQImage && (
-                    <div className="mb-4 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 max-h-44 sm:max-h-56 flex items-center justify-center">
+                    <div className="mb-4 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-h-44 sm:max-h-56 flex items-center justify-center">
                       <img
                         src={displayQImage}
                         alt={displayQText || 'Question'}
@@ -12608,12 +11760,12 @@ export default function HamsterPaintball({
                       />
                     </div>
                   )}
-                  <h2 className="font-['Poppins',sans-serif] font-extrabold text-xl sm:text-3xl md:text-4xl text-slate-900 leading-snug max-w-3xl">
+                  <h2 className="font-['Poppins',sans-serif] font-bold text-xl sm:text-3xl text-slate-900 leading-snug max-w-3xl">
                     {displayQText}
                   </h2>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 my-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-auto">
                   {currentTriviaQ.options.map((opt, idx) => {
                     const parsed = parseOptionContent(opt);
                     const isAnswered = selectedOptionIdx !== null;
@@ -12621,14 +11773,12 @@ export default function HamsterPaintball({
                     const isThisCorrect = idx === correctIdx;
 
                     let btnClasses =
-                      'bg-white hover:bg-sky-50 border-sky-200 hover:border-sky-400 border-b-4 border-b-sky-300 text-slate-900';
+                      'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-900';
                     if (isAnswered) {
                       if (isThisCorrect) {
-                        btnClasses =
-                          'bg-emerald-500 border-emerald-600 border-b-4 border-b-emerald-700 text-white shadow-lg';
+                        btnClasses = 'bg-emerald-600 border-emerald-600 text-white shadow-md';
                       } else if (isThisSelected) {
-                        btnClasses =
-                          'bg-rose-500 border-rose-600 border-b-4 border-b-rose-700 text-white';
+                        btnClasses = 'bg-rose-600 border-rose-600 text-white';
                       } else {
                         btnClasses = 'bg-slate-100 border-slate-200 text-slate-400 opacity-75';
                       }
@@ -12640,10 +11790,10 @@ export default function HamsterPaintball({
                         type="button"
                         disabled={isAnswered}
                         onClick={() => handleTriviaAnswer(idx)}
-                        className={`p-4 sm:p-5 rounded-2xl border-2 font-bold text-base sm:text-xl text-left transition shadow-sm cursor-pointer active:translate-y-0.5 flex items-center gap-3.5 ${btnClasses}`}
+                        className={`p-4 rounded-xl border font-semibold text-base sm:text-lg text-left transition shadow-2xs cursor-pointer active:scale-[0.99] flex items-center gap-3.5 ${btnClasses}`}
                       >
                         <span
-                          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-['Poppins',sans-serif] font-extrabold text-base sm:text-lg shrink-0 ${
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center font-['Poppins',sans-serif] font-bold text-sm shrink-0 ${
                             isAnswered && (isThisCorrect || isThisSelected)
                               ? 'bg-white/25 text-white'
                               : optionBadgeStyles[idx % optionBadgeStyles.length]
@@ -12656,7 +11806,7 @@ export default function HamsterPaintball({
                             src={parsed.imageUrl}
                             alt={parsed.text || 'Option'}
                             referrerPolicy="no-referrer"
-                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-200 shrink-0 bg-white"
+                            className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0 bg-white"
                           />
                         )}
                         <span className="flex-1 leading-snug">{parsed.text || opt}</span>
@@ -12667,8 +11817,8 @@ export default function HamsterPaintball({
 
                 {triviaFeedback && (
                   <div
-                    className={`p-3.5 text-white font-extrabold text-center text-sm sm:text-base rounded-2xl shadow-md ${
-                      selectedOptionIdx === correctIdx ? 'bg-emerald-500' : 'bg-rose-500'
+                    className={`p-3 text-white font-semibold text-center text-sm sm:text-base rounded-xl ${
+                      selectedOptionIdx === correctIdx ? 'bg-emerald-600' : 'bg-rose-600'
                     }`}
                   >
                     {triviaFeedback}
@@ -12681,22 +11831,22 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          HOST LIVE SCOREBOARD MODAL (BRIGHT CLASSROOM CARD)
+          SCOREBOARD MODAL
          ------------------------------------------------------------- */}
       {isLeaderboardOpen && (
-        <div className="absolute inset-0 z-50 bg-slate-900/55 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border-2 border-sky-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 my-auto text-slate-900">
+        <div className="absolute inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 my-auto text-slate-900">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <Trophy className="text-amber-500" size={20} />
-                <h3 className="font-['Poppins',sans-serif] font-extrabold text-base sm:text-lg text-slate-900">
-                  Live Classroom Scoreboard
+                <Trophy className="text-amber-500" size={18} />
+                <h3 className="font-['Poppins',sans-serif] font-bold text-base text-slate-900">
+                  Scoreboard
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsLeaderboardOpen(false)}
-                className="text-xs font-extrabold px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 cursor-pointer"
+                className="text-xs font-semibold px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 cursor-pointer"
               >
                 Close
               </button>
@@ -12704,23 +11854,23 @@ export default function HamsterPaintball({
 
             {matchMode === 'teams' && (
               <div className="grid grid-cols-2 gap-3 tabular-nums">
-                <div className="p-3 rounded-2xl bg-rose-50 border-2 border-rose-200 text-center">
-                  <div className="text-xs font-extrabold text-rose-600">Red Squad</div>
-                  <div className="text-2xl font-extrabold text-slate-900">{teamTotals.red.kos} Kills</div>
-                  <div className="text-[11px] font-semibold text-slate-500">{teamTotals.red.count} Players</div>
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-center">
+                  <div className="text-xs font-bold text-rose-600">Red Squad</div>
+                  <div className="text-xl font-bold text-slate-900">{teamTotals.red.kos} KOs</div>
+                  <div className="text-[11px] font-medium text-slate-500">{teamTotals.red.count} Players</div>
                 </div>
-                <div className="p-3 rounded-2xl bg-sky-50 border-2 border-sky-200 text-center">
-                  <div className="text-xs font-extrabold text-sky-600">Blue Squad</div>
-                  <div className="text-2xl font-extrabold text-slate-900">{teamTotals.blue.kos} Kills</div>
-                  <div className="text-[11px] font-semibold text-slate-500">{teamTotals.blue.count} Players</div>
+                <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-center">
+                  <div className="text-xs font-bold text-sky-600">Blue Squad</div>
+                  <div className="text-xl font-bold text-slate-900">{teamTotals.blue.kos} KOs</div>
+                  <div className="text-[11px] font-medium text-slate-500">{teamTotals.blue.count} Players</div>
                 </div>
               </div>
             )}
 
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
               {finalStandings.length === 0 ? (
-                <div className="text-xs text-slate-500 font-semibold text-center py-4">
-                  No students connected yet. Room Code: <strong className="font-mono">{roomCode}</strong>
+                <div className="text-xs text-slate-500 font-medium text-center py-4">
+                  No players connected. Room: <strong className="font-mono text-slate-900">{roomCode}</strong>
                 </div>
               ) : (
                 finalStandings.map((rp, idx) => {
@@ -12728,18 +11878,21 @@ export default function HamsterPaintball({
                   return (
                     <div
                       key={rp.id}
-                      className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 tabular-nums gap-2"
+                      className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-900 tabular-nums gap-2"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-5 h-5 rounded-md bg-sky-100 text-sky-800 font-extrabold flex items-center justify-center shrink-0">
+                        <span className="w-5 h-5 rounded-md bg-slate-200 text-slate-700 font-bold flex items-center justify-center shrink-0">
                           {idx + 1}
                         </span>
                         <HamsterCharacterAvatar
-                          skin={HAMSTER_SKINS[rp.skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0]}
+                          skin={
+                            HAMSTER_SKINS[Math.abs(rp.skinIdx || 0) % HAMSTER_SKINS.length] ||
+                            HAMSTER_SKINS[0]
+                          }
                           size={28}
                           team={matchMode === 'teams' ? rp.team || 'red' : 'solo'}
                         />
-                        <span className="font-extrabold truncate">{rp.name}</span>
+                        <span className="font-semibold truncate">{rp.name}</span>
                         {matchMode === 'teams' && (
                           <span className="text-[11px] text-slate-500 shrink-0">
                             · {rp.team === 'blue' ? 'Blue' : 'Red'}
@@ -12747,19 +11900,13 @@ export default function HamsterPaintball({
                         )}
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="font-extrabold text-slate-900">
-                          {rp.kos || 0} KOs · {rp.score || 0} pts
+                        <div className="font-bold text-slate-900">
+                          {rp.kos || 0} KO · {rp.score || 0} pts
                         </div>
-                        <div className="flex items-center justify-end gap-1 mt-0.5 text-[10px]">
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold">
-                            ✓ {qStats.correct}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-extrabold">
-                            ✗ {qStats.wrong}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-extrabold">
-                            {qStats.accuracy}%
-                          </span>
+                        <div className="flex items-center justify-end gap-1.5 mt-0.5 text-[10px]">
+                          <span className="text-emerald-700 font-semibold">✓ {qStats.correct}</span>
+                          <span className="text-rose-600 font-semibold">✗ {qStats.wrong}</span>
+                          <span className="text-slate-600 font-mono">{qStats.accuracy}%</span>
                         </div>
                       </div>
                     </div>
