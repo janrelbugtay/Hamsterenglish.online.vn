@@ -2209,6 +2209,16 @@ export default function HamsterPaintball({
   const joystickOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
+  const [graphicsQuality, setGraphicsQuality] = useState<'low' | 'medium' | 'high' | 'ultra'>(() => {
+    if (typeof window === 'undefined') return 'medium';
+    const saved = localStorage.getItem('pb_graphics_quality');
+    if (saved === 'low' || saved === 'medium' || saved === 'high' || saved === 'ultra') {
+      return saved;
+    }
+    return 'medium';
+  });
+  const graphicsQualityRef = useRef<'low' | 'medium' | 'high' | 'ultra'>(graphicsQuality);
+
   const [cameraSensitivity, setCameraSensitivity] = useState<number>(() => {
     if (typeof window === 'undefined') return 1.0;
     const saved = parseFloat(
@@ -2458,14 +2468,14 @@ export default function HamsterPaintball({
     return valid.length > 0 ? valid : DEFAULT_TRIVIA;
   }, [activeQuiz.questions]);
 
-  // Enforce: Answer questions ONLY during the active game (`matchStatus === 'playing'`)
+  // Close Question Modal when leaving arena or when match finishes
   useEffect(() => {
-    if (matchStatus !== 'playing') {
+    if (matchStatus === 'results' || screen !== 'game') {
       setIsQuestionModalOpen(false);
       setTriviaFeedback(null);
       setSelectedOptionIdx(null);
     }
-  }, [matchStatus]);
+  }, [matchStatus, screen]);
 
   // Keep roomCode in sessionStorage and reset merged players cache on room change
   useEffect(() => {
@@ -2613,7 +2623,75 @@ export default function HamsterPaintball({
     aimLaserLine?: THREE.Line;
     shootButtonHeld?: boolean;
     broadcastChannel?: BroadcastChannel;
+    sunLight?: THREE.DirectionalLight;
+    isSoftwareGl?: boolean;
   } | null>(null);
+
+  const getGraphicsQualitySettings = (
+    quality: 'low' | 'medium' | 'high' | 'ultra',
+    isSoftwareGl: boolean
+  ) => {
+    const deviceDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    if (quality === 'low') {
+      return {
+        pixelRatio: isSoftwareGl ? 0.72 : Math.min(deviceDpr, 0.75),
+        shadowsEnabled: false,
+        shadowMapSize: 512
+      };
+    }
+    if (quality === 'high') {
+      return {
+        pixelRatio: isSoftwareGl ? 1.0 : Math.min(deviceDpr, 1.5),
+        shadowsEnabled: !isSoftwareGl,
+        shadowMapSize: 1536
+      };
+    }
+    if (quality === 'ultra') {
+      return {
+        pixelRatio: isSoftwareGl ? 1.0 : Math.min(deviceDpr, 2.25),
+        shadowsEnabled: !isSoftwareGl,
+        shadowMapSize: 2048
+      };
+    }
+    // Preset: Medium (balanced resolution + crisp FPS across mobile, tablet, and laptop)
+    return {
+      pixelRatio: isSoftwareGl ? 0.9 : Math.min(deviceDpr, 1.0),
+      shadowsEnabled: !isSoftwareGl,
+      shadowMapSize: 1024
+    };
+  };
+
+  useEffect(() => {
+    graphicsQualityRef.current = graphicsQuality;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pb_graphics_quality', graphicsQuality);
+    }
+    const g = gameRef.current;
+    const container = canvasContainerRef.current;
+    if (!g || !container) return;
+    const isSoftwareGl = Boolean(g.isSoftwareGl);
+    const cfg = getGraphicsQualitySettings(graphicsQuality, isSoftwareGl);
+    const w = container.clientWidth || window.innerWidth;
+    const h = container.clientHeight || window.innerHeight;
+    g.renderer.setPixelRatio(cfg.pixelRatio);
+    g.renderer.setSize(w, h);
+    g.renderer.shadowMap.enabled = cfg.shadowsEnabled;
+    g.renderer.shadowMap.needsUpdate = true;
+    if (g.sunLight) {
+      g.sunLight.castShadow = cfg.shadowsEnabled;
+      if (
+        g.sunLight.shadow.mapSize.width !== cfg.shadowMapSize ||
+        g.sunLight.shadow.mapSize.height !== cfg.shadowMapSize
+      ) {
+        g.sunLight.shadow.mapSize.width = cfg.shadowMapSize;
+        g.sunLight.shadow.mapSize.height = cfg.shadowMapSize;
+        if (g.sunLight.shadow.map) {
+          g.sunLight.shadow.map.dispose();
+          g.sunLight.shadow.map = null;
+        }
+      }
+    }
+  }, [graphicsQuality]);
 
   useEffect(() => {
     sfx.enabled = soundEnabled;
@@ -3079,7 +3157,7 @@ export default function HamsterPaintball({
 
   // 15-Second Per-Question Countdown Timer inside Question Modal
   useEffect(() => {
-    if (!isQuestionModalOpen || matchStatus !== 'playing' || triviaFeedback !== null) {
+    if (!isQuestionModalOpen || matchStatus === 'results' || triviaFeedback !== null) {
       return;
     }
     setQuestionTimeLeft(QUESTION_TIME_LIMIT_SEC);
@@ -6654,8 +6732,12 @@ export default function HamsterPaintball({
     const rendererStr = debugBasic ? gl.getParameter(debugBasic.UNMASKED_RENDERER_WEBGL) : '';
     const isSoftwareGl = /SwiftShader|Software|llvmpipe|Microsoft Basic Render/i.test(rendererStr);
 
-    renderer.setPixelRatio(isSoftwareGl ? 1.0 : Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = !isSoftwareGl;
+    const initialQualityCfg = getGraphicsQualitySettings(
+      graphicsQualityRef.current,
+      isSoftwareGl
+    );
+    renderer.setPixelRatio(initialQualityCfg.pixelRatio);
+    renderer.shadowMap.enabled = initialQualityCfg.shadowsEnabled;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.02;
@@ -6678,9 +6760,9 @@ export default function HamsterPaintball({
 
     const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.32);
     sunLight.position.set(34, 68, 28);
-    sunLight.castShadow = !isSoftwareGl;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
+    sunLight.castShadow = initialQualityCfg.shadowsEnabled;
+    sunLight.shadow.mapSize.width = initialQualityCfg.shadowMapSize;
+    sunLight.shadow.mapSize.height = initialQualityCfg.shadowMapSize;
     sunLight.shadow.camera.near = 10;
     sunLight.shadow.camera.far = 180;
     const d = 48;
@@ -7522,6 +7604,8 @@ export default function HamsterPaintball({
       scene,
       camera,
       renderer,
+      sunLight,
+      isSoftwareGl,
       localHamster,
       teacherJanNpc,
       aimReticle,
@@ -7894,7 +7978,7 @@ export default function HamsterPaintball({
         snap.screen === 'game' &&
         snap.aimControlMode === 'shoulder' &&
         !snap.isTouchHudVisible &&
-        !(snap.matchStatus === 'playing' && snap.ammo <= 0)
+        snap.ammo > 0
       ) {
         g.virtualMouseLock = true;
         setIsAimLocked(true);
@@ -8063,6 +8147,11 @@ export default function HamsterPaintball({
       const baseFov = getBaseFov();
       gameRef.current.camera.fov = THREE.MathUtils.lerp(baseFov, 32, gameRef.current.adsLerp || 0);
       gameRef.current.camera.updateProjectionMatrix();
+      const qCfg = getGraphicsQualitySettings(
+        graphicsQualityRef.current,
+        Boolean(gameRef.current.isSoftwareGl)
+      );
+      gameRef.current.renderer.setPixelRatio(qCfg.pixelRatio);
       gameRef.current.renderer.setSize(w, h);
     };
     handleResize();
@@ -9783,9 +9872,9 @@ export default function HamsterPaintball({
     }
   };
 
-  // Trivia Answer Handler (Only allowed once match has started -> `matchStatus === 'playing'`)
+  // Trivia Answer Handler (Works during Live Match and Warm-Up practice)
   const handleTriviaAnswer = (optIdx: number) => {
-    if (matchStatus !== 'playing' || triviaFeedback !== null) return;
+    if (matchStatus === 'results' || triviaFeedback !== null) return;
     const qList = effectiveQuestions;
     const currentQ = qList[triviaDeckIndex % qList.length];
     if (!currentQ) return;
@@ -9795,6 +9884,7 @@ export default function HamsterPaintball({
       typeof currentQ.answerIndex === 'number' && !Number.isNaN(currentQ.answerIndex)
         ? currentQ.answerIndex
         : 0;
+    const isLiveMatch = matchStatus === 'playing';
 
     if (Number(optIdx) === Number(correctIdx)) {
       const nextStreak = triviaStreak + 1;
@@ -9806,41 +9896,48 @@ export default function HamsterPaintball({
 
       sfx.playScoreCombo(nextStreak);
       setTriviaStreak(nextStreak);
-      setBestStreak(b => Math.max(b, nextStreak));
       setAmmo(a => a + earnedBalls);
-      setQuestionsAnswered(q => q + 1);
-      setQuestionsCorrect(c => c + 1);
-      awardPoints(
-        totalEarnedPts,
-        speedBonusPts > 0
-          ? `⚡ FAST +${totalEarnedPts} PTS (${nextStreak}x)`
-          : `✅ +${totalEarnedPts} PTS (${nextStreak}x)`,
-        '#a3e635'
-      );
 
-      const bonusBreakdown: string[] = [`+${basePts} Base`];
-      if (streakBonusPts > 0) bonusBreakdown.push(`+${streakBonusPts} Streak (${nextStreak}x)`);
-      if (speedBonusPts > 0) bonusBreakdown.push(`+${speedBonusPts} Speed Bonus`);
+      if (isLiveMatch) {
+        setBestStreak(b => Math.max(b, nextStreak));
+        setQuestionsAnswered(q => q + 1);
+        setQuestionsCorrect(c => c + 1);
+        awardPoints(
+          totalEarnedPts,
+          speedBonusPts > 0
+            ? `⚡ FAST +${totalEarnedPts} PTS (${nextStreak}x)`
+            : `✅ +${totalEarnedPts} PTS (${nextStreak}x)`,
+          '#a3e635'
+        );
 
-      setTriviaFeedback(
-        `✅ CORRECT! +${earnedBalls} Paintballs (${bonusBreakdown.join(' • ')})!`
-      );
+        const bonusBreakdown: string[] = [`+${basePts} Base`];
+        if (streakBonusPts > 0) bonusBreakdown.push(`+${streakBonusPts} Streak (${nextStreak}x)`);
+        if (speedBonusPts > 0) bonusBreakdown.push(`+${speedBonusPts} Speed Bonus`);
 
-      const evText = `🎯 ${playerName} answered correctly in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${earnedBalls} Balls • ${nextStreak}x Streak)!`;
-      pushLiveEvent(evText, '#a3e635');
-      if (roomCode) {
-        setDoc(
-          getRoomDocRef(roomCode),
-          {
-            latestEvent: {
-              id: `ans-${Date.now()}`,
-              text: evText,
-              color: '#a3e635',
-              timestamp: Date.now()
-            }
-          },
-          { merge: true }
-        ).catch(() => {});
+        setTriviaFeedback(
+          `✅ CORRECT! +${earnedBalls} Paintballs (${bonusBreakdown.join(' • ')})!`
+        );
+
+        const evText = `🎯 ${playerName} answered correctly in ${QUESTION_TIME_LIMIT_SEC - questionTimeLeft}s (+${earnedBalls} Balls • ${nextStreak}x Streak)!`;
+        pushLiveEvent(evText, '#a3e635');
+        if (roomCode) {
+          setDoc(
+            getRoomDocRef(roomCode),
+            {
+              latestEvent: {
+                id: `ans-${Date.now()}`,
+                text: evText,
+                color: '#a3e635',
+                timestamp: Date.now()
+              }
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
+      } else {
+        setTriviaFeedback(
+          `✅ WARM-UP! +${earnedBalls} Practice Paintballs!`
+        );
       }
 
       setTimeout(() => {
@@ -9851,7 +9948,9 @@ export default function HamsterPaintball({
     } else {
       sfx.playWrong();
       setTriviaStreak(0);
-      setQuestionsWrong(w => w + 1);
+      if (isLiveMatch) {
+        setQuestionsWrong(w => w + 1);
+      }
       const rightOptParsed = parseOptionContent(currentQ.options[correctIdx] || '');
       const rightLabel = rightOptParsed.text || OPTION_LETTERS[correctIdx] || ' Option';
       setTriviaFeedback(
@@ -10158,17 +10257,28 @@ export default function HamsterPaintball({
         </button>
 
         <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 flex-nowrap justify-end min-w-0">
-          {role === 'host' && (
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="shrink-0 px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 border border-slate-200/90 flex items-center gap-1.5 transition shadow-sm active:scale-[0.98] cursor-pointer text-xs font-semibold whitespace-nowrap"
-              title="Host Settings"
-            >
-              <Settings size={14} className="text-slate-600" />
-              <span>Settings</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.stopPropagation();
+              if (gameRef.current) {
+                gameRef.current.virtualMouseLock = false;
+                gameRef.current.mouseDown = false;
+              }
+              setIsAimLocked(false);
+              if (typeof document !== 'undefined' && document.pointerLockElement) {
+                try {
+                  document.exitPointerLock();
+                } catch {}
+              }
+            }}
+            onClick={() => setIsSettingsOpen(true)}
+            className="shrink-0 px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 border border-slate-200/90 flex items-center gap-1.5 transition shadow-sm active:scale-[0.98] cursor-pointer text-xs font-semibold whitespace-nowrap"
+            title="Settings"
+          >
+            <Settings size={14} className="text-slate-600" />
+            <span>Settings</span>
+          </button>
 
           <FullscreenButton
             targetId="paintball-game-container"
@@ -10179,16 +10289,17 @@ export default function HamsterPaintball({
       </div>
 
       {/* -------------------------------------------------------------
-          HOST SETTINGS MODAL
+          USER & HOST SETTINGS MODAL
+          (Host-only match/camera controls are hidden for players)
          ------------------------------------------------------------- */}
-      {role === 'host' && isSettingsOpen && (
+      {isSettingsOpen && (
         <div className="absolute inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md max-h-[92dvh] overflow-y-auto p-5 text-slate-900 relative space-y-4 my-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Sliders size={17} className="text-sky-600" />
                 <h2 className="font-['Poppins',sans-serif] font-bold text-base tracking-tight text-slate-900">
-                  Game Settings
+                  {role === 'host' ? 'Host & Graphics Settings' : 'Settings'}
                 </h2>
               </div>
               <button
@@ -10200,26 +10311,35 @@ export default function HamsterPaintball({
               </button>
             </div>
 
-            {/* Game Camera Distance (Synced to All Players) */}
+            {/* Resolution & Graphics Quality (All Users — Preset: Medium) */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-700">Game Camera (All Players)</span>
-                <span className="text-[11px] font-medium text-slate-400">Host Only</span>
+                <span className="text-xs font-bold text-slate-700">Resolution &amp; Quality</span>
+                <span className="text-[11px] font-medium text-slate-500">
+                  {graphicsQuality === 'low'
+                    ? 'Fastest FPS (No Shadows)'
+                    : graphicsQuality === 'medium'
+                    ? 'Balanced (Default Preset)'
+                    : graphicsQuality === 'high'
+                    ? 'Crisp HD'
+                    : 'Maximum Detail'}
+                </span>
               </div>
-              <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl">
+              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl">
                 {(
                   [
-                    { id: 'close', label: 'Close' },
-                    { id: 'balanced', label: 'Balanced' },
-                    { id: 'tactical', label: 'Tactical' }
+                    { id: 'low', label: 'Low' },
+                    { id: 'medium', label: 'Medium' },
+                    { id: 'high', label: 'High' },
+                    { id: 'ultra', label: 'Ultra' }
                   ] as const
                 ).map(preset => {
-                  const active = cameraViewPreset === preset.id;
+                  const active = graphicsQuality === preset.id;
                   return (
                     <button
                       key={preset.id}
                       type="button"
-                      onClick={() => handleHostChangeCameraPreset(preset.id)}
+                      onClick={() => setGraphicsQuality(preset.id)}
                       className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                         active
                           ? 'bg-white text-slate-900 shadow-xs'
@@ -10231,65 +10351,105 @@ export default function HamsterPaintball({
                   );
                 })}
               </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Lower resolution reduces lag on phones, tablets, and laptops.
+              </p>
             </div>
 
-            {/* Aim & HUD Layout */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="text-xs font-bold text-slate-700 mb-1.5">Player Aim Mode</div>
-                <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => handleHostChangeAimMode('shoulder')}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                      aimControlMode === 'shoulder'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Free Look
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleHostChangeAimMode('separate')}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                      aimControlMode === 'separate'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Free Cursor
-                  </button>
+            {/* Host-Only Game Camera & Aim Mode */}
+            {role === 'host' && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-slate-700">
+                      Game Camera (All Players)
+                    </span>
+                    <span className="text-[11px] font-medium text-slate-400">Host Only</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                    {(
+                      [
+                        { id: 'close', label: 'Close' },
+                        { id: 'balanced', label: 'Balanced' },
+                        { id: 'tactical', label: 'Tactical' }
+                      ] as const
+                    ).map(preset => {
+                      const active = cameraViewPreset === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleHostChangeCameraPreset(preset.id)}
+                          className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                            active
+                              ? 'bg-white text-slate-900 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <div className="text-xs font-bold text-slate-700 mb-1.5">Controls HUD</div>
-                <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl">
-                  {(
-                    [
-                      { id: 'auto', label: 'Auto' },
-                      { id: 'laptop', label: 'Keys' },
-                      { id: 'touch', label: 'Touch' }
-                    ] as const
-                  ).map(opt => {
-                    const active = controlLayoutMode === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setControlLayoutMode(opt.id)}
-                        className={`py-1.5 px-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                          active
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
+                <div>
+                  <div className="text-xs font-bold text-slate-700 mb-1.5">Player Aim Mode</div>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => handleHostChangeAimMode('shoulder')}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                        aimControlMode === 'shoulder'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Free Look
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleHostChangeAimMode('separate')}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                        aimControlMode === 'separate'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Free Cursor
+                    </button>
+                  </div>
                 </div>
+              </>
+            )}
+
+            {/* Controls Layout HUD (Device Preference) */}
+            <div>
+              <div className="text-xs font-bold text-slate-700 mb-1.5">Controls Layout</div>
+              <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl">
+                {(
+                  [
+                    { id: 'auto', label: 'Auto' },
+                    { id: 'laptop', label: 'Laptop / Keys' },
+                    { id: 'touch', label: 'Mobile / Touch' }
+                  ] as const
+                ).map(opt => {
+                  const active = controlLayoutMode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setControlLayoutMode(opt.id)}
+                      className={`py-1.5 px-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                        active
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -10374,25 +10534,26 @@ export default function HamsterPaintball({
               </div>
             </div>
 
-            {/* Keybind Chips */}
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
-              {[
-                ['WASD', 'Move'],
-                ['Click', 'Fire'],
-                ['RMB', 'Scope'],
-                ['Space', 'Jump'],
-                ['C', 'Crouch'],
-                ['Z', 'Crawl']
-              ].map(([k, desc]) => (
-                <span
-                  key={k}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700"
-                >
-                  <strong className="font-mono text-[10px] text-slate-900">{k}</strong>
-                  <span>{desc}</span>
-                </span>
-              ))}
-            </div>
+            {!isTouchHudVisible && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                {[
+                  ['WASD', 'Move'],
+                  ['Click', 'Fire'],
+                  ['RMB', 'Scope'],
+                  ['Space', 'Jump'],
+                  ['C', 'Crouch'],
+                  ['Z', 'Crawl']
+                ].map(([k, desc]) => (
+                  <span
+                    key={k}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700"
+                  >
+                    <strong className="font-mono text-[10px] text-slate-900">{k}</strong>
+                    <span>{desc}</span>
+                  </span>
+                ))}
+              </div>
+            )}
 
             {/* Audio Toggles */}
             <div className="grid grid-cols-2 gap-2.5">
@@ -11721,69 +11882,33 @@ export default function HamsterPaintball({
             )}
           </div>
 
-          {/* BOTTOM ROW: CLEAN LAPTOP KEYBIND DOCK OR INSET PUBG MOBILE TOUCH CONTROLS */}
+          {/* BOTTOM ROW: CLEAN LAPTOP KEYBIND DOCK OR INSET PUBG MOBILE/TABLET TOUCH CONTROLS */}
           {role === 'player' ? (
             isTouchHudVisible ? (
-              /* MOBILE / TABLET TOUCH MODE: PULLED AWAY FROM SCREEN EDGES + CRAWL/CROUCH/JUMP UNDER SHOOT */
-              <div className="w-full flex items-end justify-between gap-3 sm:gap-6 pb-5 sm:pb-7 px-6 sm:px-10 flex-nowrap">
-                {/* LEFT THUMB ZONE (INSET AWAY FROM BEZEL): REDESIGNED 360° TACTICAL THUMBSTICK */}
-                <div className="flex flex-col items-center shrink-0">
-                  <div
-                    onTouchStart={handleJoystickStart}
-                    onTouchMove={handleJoystickMove}
-                    onTouchEnd={handleJoystickEnd}
-                    onTouchCancel={handleJoystickEnd}
-                    className="pb-touch-joystick pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900/55 border-2 border-white/75 flex items-center justify-center relative touch-none shadow-2xl select-none"
-                  >
-                    {/* Outer Directional Chevrons */}
-                    <span className="absolute top-1.5 text-[9px] font-black text-white/70 leading-none">
-                      ▲
-                    </span>
-                    <span className="absolute bottom-1.5 text-[9px] font-black text-white/70 leading-none">
-                      ▼
-                    </span>
-                    <span className="absolute left-2 text-[9px] font-black text-white/70 leading-none">
-                      ◀
-                    </span>
-                    <span className="absolute right-2 text-[9px] font-black text-white/70 leading-none">
-                      ▶
-                    </span>
-                    {/* Inner Guide Ring */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border border-white/25 flex items-center justify-center">
-                      {/* Tactile Grip Thumb Puck */}
-                      <div
-                        className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-b from-sky-400 to-sky-600 border-2 border-white shadow-lg flex items-center justify-center transition-transform duration-75"
-                        style={{
-                          transform: `translate(${joystickVec.x * 26}px, ${joystickVec.y * 26}px)`
-                        }}
-                      >
-                        <div className="w-4 h-4 rounded-full border border-white/60 bg-white/25" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CENTER DOCK: CLICKABLE QUESTION BOX BUTTON */}
-                {matchStatus === 'playing' ? (
-                  <div className="pointer-events-auto flex items-center justify-center min-w-0 shrink pb-1">
+              /* MOBILE / TABLET TOUCH MODE: QUESTION BOX ALWAYS ACCESSIBLE ABOVE THUMB CONTROLS ON PORTRAIT, CENTERED ON LANDSCAPE/TABLET */
+              <div className="w-full flex flex-col gap-2 pb-3 sm:pb-6 px-3 sm:px-8">
+                {/* Mobile Portrait Question Box Row (Zero Squeeze / Zero Clipping) */}
+                {matchStatus !== 'results' && (
+                  <div className="flex sm:hidden items-center justify-center w-full">
                     <button
                       type="button"
+                      onTouchStart={e => e.stopPropagation()}
                       onClick={() => setIsQuestionModalOpen(true)}
-                      className={`px-3.5 sm:px-5 py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl border-2 border-b-4 transition flex items-center gap-2 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
+                      className={`pointer-events-auto px-4 py-2 rounded-2xl font-extrabold text-xs shadow-xl border-2 border-b-4 transition flex items-center gap-2 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
                         ammo === 0
-                          ? 'bg-amber-400 hover:bg-amber-300 text-slate-900 border-amber-500 border-b-amber-600'
+                          ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500 border-b-amber-600'
                           : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-700 border-b-sky-800'
                       }`}
-                      title="Click Question Box to Earn Paintballs"
+                      title="Tap Question Box to Earn Paintballs"
                     >
-                      <HelpCircle size={18} className="shrink-0" />
+                      <HelpCircle size={16} className="shrink-0" />
                       <div className="text-left leading-tight">
-                        <div className="text-xs sm:text-sm font-['Poppins',sans-serif] font-extrabold">
+                        <div className="font-['Poppins',sans-serif] font-extrabold text-xs">
                           Question Box
                         </div>
                         <div
-                          className={`text-[10px] sm:text-xs font-bold tabular-nums ${
-                            ammo === 0 ? 'text-slate-800' : 'text-sky-100'
+                          className={`text-[10px] font-bold tabular-nums ${
+                            ammo === 0 ? 'text-slate-900' : 'text-sky-100'
                           }`}
                         >
                           +{ballsPerQuestion} Balls · Ammo {ammo}
@@ -11791,155 +11916,220 @@ export default function HamsterPaintball({
                       </div>
                     </button>
                   </div>
-                ) : (
-                  <div className="min-w-0 shrink" />
                 )}
 
-                {/* RIGHT THUMB ZONE (INSET AWAY FROM BEZEL): 2X SCOPE + SHOOT TRIGGER + CRAWL/CROUCH/JUMP UNDERNEATH */}
-                <div className="pointer-events-auto flex flex-col items-end gap-2.5 shrink-0">
-                  {/* Upper Combat Row: 2x ADS Scope + Redesigned Primary Shoot Trigger */}
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onTouchStart={e => {
-                        e.preventDefault();
-                        toggleAdsScope();
-                      }}
-                      onClick={() => toggleAdsScope()}
-                      className={`w-12 h-12 sm:w-13 sm:h-13 rounded-2xl border-2 border-b-4 shadow-xl flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
-                        isAdsScoped
-                          ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
-                          : 'bg-slate-900/80 text-white border-white/75 border-b-slate-950'
-                      }`}
-                      title="Toggle 2x Scope Zoom"
+                <div className="w-full flex items-end justify-between gap-2 sm:gap-5 flex-nowrap">
+                  {/* LEFT THUMB ZONE: 360° TACTICAL THUMBSTICK */}
+                  <div className="flex flex-col items-center shrink-0">
+                    <div
+                      onTouchStart={handleJoystickStart}
+                      onTouchMove={handleJoystickMove}
+                      onTouchEnd={handleJoystickEnd}
+                      onTouchCancel={handleJoystickEnd}
+                      className="pb-touch-joystick pointer-events-auto w-22 h-22 sm:w-28 sm:h-28 rounded-full bg-slate-900/55 border-2 border-white/75 flex items-center justify-center relative touch-none shadow-2xl select-none"
                     >
-                      <Crosshair size={16} />
-                      <span className="mt-0.5 leading-none">2X</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onMouseDown={() => {
-                        if (gameRef.current) gameRef.current.shootButtonHeld = true;
-                        fireShot();
-                      }}
-                      onMouseUp={() => {
-                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                      }}
-                      onMouseLeave={() => {
-                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                      }}
-                      onTouchStart={e => {
-                        e.preventDefault();
-                        if (gameRef.current) gameRef.current.shootButtonHeld = true;
-                        fireShot();
-                      }}
-                      onTouchEnd={() => {
-                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                      }}
-                      onTouchCancel={() => {
-                        if (gameRef.current) gameRef.current.shootButtonHeld = false;
-                      }}
-                      onContextMenu={e => e.preventDefault()}
-                      className={`w-[74px] h-[74px] sm:w-[84px] sm:h-[84px] rounded-full active:scale-95 border-3 border-white border-b-5 shadow-2xl flex flex-col items-center justify-center font-extrabold cursor-pointer select-none touch-none transition ${
-                        matchStatus === 'playing' && ammo === 0
-                          ? 'bg-slate-700 text-amber-300 border-b-slate-900'
-                          : 'bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white border-b-rose-800'
-                      }`}
-                    >
-                      <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full border border-white/45 bg-white/10 flex flex-col items-center justify-center">
-                        <Crosshair size={20} />
-                        <span className="text-[9px] sm:text-[10px] font-black tracking-wide leading-none mt-0.5 tabular-nums">
-                          {matchStatus === 'playing' ? ammo : 'FIRE'}
-                        </span>
+                      <span className="absolute top-1.5 text-[9px] font-black text-white/70 leading-none">
+                        ▲
+                      </span>
+                      <span className="absolute bottom-1.5 text-[9px] font-black text-white/70 leading-none">
+                        ▼
+                      </span>
+                      <span className="absolute left-2 text-[9px] font-black text-white/70 leading-none">
+                        ◀
+                      </span>
+                      <span className="absolute right-2 text-[9px] font-black text-white/70 leading-none">
+                        ▶
+                      </span>
+                      <div className="w-13 h-13 sm:w-16 sm:h-16 rounded-full border border-white/25 flex items-center justify-center">
+                        <div
+                          className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-b from-sky-400 to-sky-600 border-2 border-white shadow-lg flex items-center justify-center transition-transform duration-75"
+                          style={{
+                            transform: `translate(${joystickVec.x * 26}px, ${joystickVec.y * 26}px)`
+                          }}
+                        >
+                          <div className="w-4 h-4 rounded-full border border-white/60 bg-white/25" />
+                        </div>
                       </div>
-                    </button>
+                    </div>
                   </div>
 
-                  {/* Stance & Agility Row Directly Under Shoot: Crawl, Crouch, Jump */}
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onTouchStart={e => {
-                        e.preventDefault();
-                        togglePlayerStance('crawl');
-                      }}
-                      onClick={() => togglePlayerStance('crawl')}
-                      className={`min-w-[54px] h-11 sm:h-12 px-2.5 rounded-2xl border-2 border-b-4 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
-                        playerStance === 'crawl'
-                          ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
-                          : 'bg-slate-900/80 text-white border-white/70 border-b-slate-950'
-                      }`}
-                      title="Crawl / Prone"
-                    >
-                      <svg width="16" height="12" viewBox="0 0 20 12" fill="none" className="shrink-0">
-                        <circle cx="16.5" cy="4.5" r="2.3" fill="currentColor" />
-                        <path
-                          d="M2 9.5H13.5L15 6.8H8.5L5.5 9.5"
-                          stroke="currentColor"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      <span className="mt-0.5 leading-none">Crawl</span>
-                    </button>
+                  {/* TABLET & LANDSCAPE CENTER DOCK: CLICKABLE QUESTION BOX */}
+                  {matchStatus !== 'results' ? (
+                    <div className="hidden sm:flex pointer-events-auto items-center justify-center shrink-0 pb-1">
+                      <button
+                        type="button"
+                        onTouchStart={e => e.stopPropagation()}
+                        onClick={() => setIsQuestionModalOpen(true)}
+                        className={`px-4 py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl border-2 border-b-4 transition flex items-center gap-2 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
+                          ammo === 0
+                            ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500 border-b-amber-600'
+                            : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-700 border-b-sky-800'
+                        }`}
+                        title="Click Question Box to Earn Paintballs"
+                      >
+                        <HelpCircle size={18} className="shrink-0" />
+                        <div className="text-left leading-tight">
+                          <div className="text-xs sm:text-sm font-['Poppins',sans-serif] font-extrabold">
+                            Question Box
+                          </div>
+                          <div
+                            className={`text-[10px] sm:text-xs font-bold tabular-nums ${
+                              ammo === 0 ? 'text-slate-900' : 'text-sky-100'
+                            }`}
+                          >
+                            +{ballsPerQuestion} Balls · Ammo {ammo}
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="min-w-0 shrink" />
+                  )}
 
-                    <button
-                      type="button"
-                      onTouchStart={e => {
-                        e.preventDefault();
-                        togglePlayerStance('crouch');
-                      }}
-                      onClick={() => togglePlayerStance('crouch')}
-                      className={`min-w-[56px] h-11 sm:h-12 px-2.5 rounded-2xl border-2 border-b-4 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
-                        playerStance === 'crouch'
-                          ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
-                          : 'bg-slate-900/80 text-white border-white/70 border-b-slate-950'
-                      }`}
-                      title="Crouch / Duck Behind Cover"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                        <circle cx="10" cy="3.2" r="2.1" fill="currentColor" />
-                        <path
-                          d="M5.5 13.5L8.5 10.5L6.5 7.5L10.5 6.5L12.5 9.5"
-                          stroke="currentColor"
-                          strokeWidth="2.1"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      <span className="mt-0.5 leading-none">Crouch</span>
-                    </button>
+                  {/* RIGHT THUMB ZONE: 2X SCOPE + SHOOT TRIGGER + CRAWL/CROUCH/JUMP */}
+                  <div className="pointer-events-auto flex flex-col items-end gap-2 shrink-0">
+                    <div className="flex items-center justify-end gap-2.5 sm:gap-3">
+                      <button
+                        type="button"
+                        onTouchStart={e => {
+                          e.preventDefault();
+                          toggleAdsScope();
+                        }}
+                        onClick={() => toggleAdsScope()}
+                        className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl border-2 border-b-4 shadow-xl flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
+                          isAdsScoped
+                            ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
+                            : 'bg-slate-900/80 text-white border-white/75 border-b-slate-950'
+                        }`}
+                        title="Toggle 2x Scope Zoom"
+                      >
+                        <Crosshair size={16} />
+                        <span className="mt-0.5 leading-none">2X</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onTouchStart={e => {
-                        e.preventDefault();
-                        triggerPlayerJump();
-                      }}
-                      onClick={() => triggerPlayerJump()}
-                      className="min-w-[54px] h-11 sm:h-12 px-2.5 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white border-2 border-white border-b-4 border-b-sky-700 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap"
-                      title="Jump"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                        <path
-                          d="M8 13V3.5M8 3.5L4 7.5M8 3.5L12 7.5"
-                          stroke="currentColor"
-                          strokeWidth="2.3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      <span className="mt-0.5 leading-none">Jump</span>
-                    </button>
+                      <button
+                        type="button"
+                        onMouseDown={() => {
+                          if (gameRef.current) gameRef.current.shootButtonHeld = true;
+                          fireShot();
+                        }}
+                        onMouseUp={() => {
+                          if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                        }}
+                        onMouseLeave={() => {
+                          if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                        }}
+                        onTouchStart={e => {
+                          e.preventDefault();
+                          if (gameRef.current) gameRef.current.shootButtonHeld = true;
+                          fireShot();
+                        }}
+                        onTouchEnd={() => {
+                          if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                        }}
+                        onTouchCancel={() => {
+                          if (gameRef.current) gameRef.current.shootButtonHeld = false;
+                        }}
+                        onContextMenu={e => e.preventDefault()}
+                        className={`w-[70px] h-[70px] sm:w-[84px] sm:h-[84px] rounded-full active:scale-95 border-3 border-white border-b-5 shadow-2xl flex flex-col items-center justify-center font-extrabold cursor-pointer select-none touch-none transition ${
+                          matchStatus === 'playing' && ammo === 0
+                            ? 'bg-slate-700 text-amber-300 border-b-slate-900'
+                            : 'bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white border-b-rose-800'
+                        }`}
+                      >
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white/45 bg-white/10 flex flex-col items-center justify-center">
+                          <Crosshair size={20} />
+                          <span className="text-[9px] sm:text-[10px] font-black tracking-wide leading-none mt-0.5 tabular-nums">
+                            {matchStatus === 'playing' ? ammo : 'FIRE'}
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                      <button
+                        type="button"
+                        onTouchStart={e => {
+                          e.preventDefault();
+                          togglePlayerStance('crawl');
+                        }}
+                        onClick={() => togglePlayerStance('crawl')}
+                        className={`min-w-[50px] sm:min-w-[54px] h-10 sm:h-12 px-2 sm:px-2.5 rounded-2xl border-2 border-b-4 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
+                          playerStance === 'crawl'
+                            ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
+                            : 'bg-slate-900/80 text-white border-white/70 border-b-slate-950'
+                        }`}
+                        title="Crawl / Prone"
+                      >
+                        <svg width="16" height="12" viewBox="0 0 20 12" fill="none" className="shrink-0">
+                          <circle cx="16.5" cy="4.5" r="2.3" fill="currentColor" />
+                          <path
+                            d="M2 9.5H13.5L15 6.8H8.5L5.5 9.5"
+                            stroke="currentColor"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span className="mt-0.5 leading-none">Crawl</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onTouchStart={e => {
+                          e.preventDefault();
+                          togglePlayerStance('crouch');
+                        }}
+                        onClick={() => togglePlayerStance('crouch')}
+                        className={`min-w-[52px] sm:min-w-[56px] h-10 sm:h-12 px-2 sm:px-2.5 rounded-2xl border-2 border-b-4 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap ${
+                          playerStance === 'crouch'
+                            ? 'bg-amber-400 text-slate-950 border-white border-b-amber-600'
+                            : 'bg-slate-900/80 text-white border-white/70 border-b-slate-950'
+                        }`}
+                        title="Crouch / Duck Behind Cover"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
+                          <circle cx="10" cy="3.2" r="2.1" fill="currentColor" />
+                          <path
+                            d="M5.5 13.5L8.5 10.5L6.5 7.5L10.5 6.5L12.5 9.5"
+                            stroke="currentColor"
+                            strokeWidth="2.1"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span className="mt-0.5 leading-none">Crouch</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onTouchStart={e => {
+                          e.preventDefault();
+                          triggerPlayerJump();
+                        }}
+                        onClick={() => triggerPlayerJump()}
+                        className="min-w-[50px] sm:min-w-[54px] h-10 sm:h-12 px-2 sm:px-2.5 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white border-2 border-white border-b-4 border-b-sky-700 shadow-lg flex flex-col items-center justify-center font-extrabold text-[10px] transition active:translate-y-0.5 cursor-pointer select-none touch-none whitespace-nowrap"
+                        title="Jump"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
+                          <path
+                            d="M8 13V3.5M8 3.5L4 7.5M8 3.5L12 7.5"
+                            stroke="currentColor"
+                            strokeWidth="2.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span className="mt-0.5 leading-none">Jump</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             ) : (
               /* LAPTOP / DESKTOP BOTTOM DOCK */
-              <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-2.5 pb-3 px-4">
-                {matchStatus === 'playing' && (
+              <div className="w-full flex flex-col items-center justify-end gap-2 pb-2.5 px-4">
+                {matchStatus !== 'results' && (
                   <button
                     type="button"
                     onMouseDown={e => {
@@ -12467,9 +12657,9 @@ export default function HamsterPaintball({
       )}
 
       {/* -------------------------------------------------------------
-          QUIZ RELOAD OVERLAY
+          QUIZ RELOAD OVERLAY (Available in Warm-Up Practice & Live Match)
          ------------------------------------------------------------- */}
-      {isQuestionModalOpen && matchStatus === 'playing' && currentTriviaQ && (
+      {isQuestionModalOpen && role === 'player' && screen === 'game' && matchStatus !== 'results' && currentTriviaQ && (
         <div className="fixed inset-0 z-50 w-full h-full bg-slate-50 text-slate-900 flex flex-col justify-between overflow-y-auto">
           <div className="bg-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0 border-b border-slate-200">
             <div className="min-w-0">
