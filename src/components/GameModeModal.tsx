@@ -318,29 +318,37 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
 ];
 
 export function detectOriginalGameMode(gameData: any): PlayableGameMode {
-  if (!gameData) return 'bubble-pop';
-  const rawType = (gameData.originalGameType || gameData.gameType || '').toString().toLowerCase().trim();
-  const normalized = rawType.replace(/[-_ ]+/g, '');
+  if (!gameData) return 'mystery-box';
 
-  if (normalized === 'bubblepop') return 'bubble-pop';
-  if (normalized === 'rollercoasterquiz' || normalized === 'coasterquiz') return 'roller-coaster-quiz';
-  if (normalized === 'hamsterpaintball' || normalized === 'paintball') return 'hamster-paintball';
-  if (normalized === 'slapandchop' || normalized === 'slapchop') return 'slap-and-chop';
-  if (normalized === 'sharkattack' || normalized === 'sharkstairs') return 'shark-attack';
-  if (normalized === 'sumo' || normalized === 'sumotags' || normalized === 'sumoshowdown') return 'sumo';
-  if (normalized === 'yoga' || normalized === 'yogaquiz') return 'yoga-quiz';
-  if (normalized === 'mysterybox') return 'mystery-box';
-  if (normalized === 'bubbleisland' || normalized === 'bubblesentencepro') return 'bubble-sentence-pro';
-  if (normalized === 'tictactoe' || normalized === 'tictactoebattle') return 'tic-tac-toe';
-  if (normalized === 'flashcardsmatch' || normalized === 'flashmatch') return 'flashcards-match';
-  if (normalized === 'familyfeud') return 'family-feud';
-  if (normalized === 'hamsterpopquiz' || normalized === 'hamsterpop') return 'hamster-pop-quiz';
+  // Check gameType first (matches the Game Mode shown on the card in Games), then originalGameType
+  const candidates = [gameData.gameType, gameData.originalGameType].filter(Boolean);
+  for (const rawCandidate of candidates) {
+    const normalized = String(rawCandidate).toLowerCase().trim().replace(/[-_ ]+/g, '');
+    if (normalized === 'bubblepop') return 'bubble-pop';
+    if (normalized === 'rollercoasterquiz' || normalized === 'coasterquiz') return 'roller-coaster-quiz';
+    if (normalized === 'hamsterpaintball' || normalized === 'paintball') return 'hamster-paintball';
+    if (normalized === 'slapandchop' || normalized === 'slapchop' || normalized === 'mosquitoslap') return 'slap-and-chop';
+    if (normalized === 'sharkattack' || normalized === 'sharkstairs') return 'shark-attack';
+    if (normalized === 'sumo' || normalized === 'sumotags' || normalized === 'sumoshowdown') return 'sumo';
+    if (normalized === 'yoga' || normalized === 'yogaquiz') return 'yoga-quiz';
+    if (normalized === 'mysterybox') return 'mystery-box';
+    if (normalized === 'bubbleisland' || normalized === 'bubblesentencepro') return 'bubble-sentence-pro';
+    if (normalized === 'tictactoe' || normalized === 'tictactoebattle') return 'tic-tac-toe';
+    if (normalized === 'flashcardsmatch' || normalized === 'flashmatch' || normalized === 'flashcards') return 'flashcards-match';
+    if (normalized === 'familyfeud') return 'family-feud';
+    if (normalized === 'hamsterpopquiz' || normalized === 'hamsterpop' || normalized === 'videoquiz') return 'hamster-pop-quiz';
+  }
+
+  if (gameData.videoUrl) return 'hamster-pop-quiz';
+  if (Array.isArray(gameData.cards) && gameData.cards.length > 0 && !gameData.customQuestions?.length) {
+    return 'flashcards-match';
+  }
 
   const title = (gameData.name || gameData.title || gameData.topic || '').toLowerCase();
   if (title.includes('bubble pop')) return 'bubble-pop';
   if (title.includes('roller coaster') || title.includes('coaster')) return 'roller-coaster-quiz';
   if (title.includes('paintball') || title.includes('speedball')) return 'hamster-paintball';
-  if (title.includes('slap') || title.includes('chop')) return 'slap-and-chop';
+  if (title.includes('slap') || title.includes('chop') || title.includes('mosquito')) return 'slap-and-chop';
   if (title.includes('shark')) return 'shark-attack';
   if (title.includes('sumo')) return 'sumo';
   if (title.includes('yoga')) return 'yoga-quiz';
@@ -348,7 +356,7 @@ export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   if (title.includes('tic tac toe') || title.includes('tic-tac-toe')) return 'tic-tac-toe';
   if (title.includes('flashcard')) return 'flashcards-match';
   if (title.includes('family feud')) return 'family-feud';
-  if (title.includes('hamster pop') || title.includes('hamster')) return 'hamster-pop-quiz';
+  if (title.includes('video quiz') || title.includes('hamster pop')) return 'hamster-pop-quiz';
 
   return 'mystery-box';
 }
@@ -396,6 +404,12 @@ export function GameModeModal({
   publishedGames: propPublishedGames,
 }: GameModeSelectionModalProps) {
   const [selectedCategory, setSelectedCategory] = useState<'all' | GameCategoryId>('all');
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedCategory('all');
+    }
+  }, [isOpen, gameData]);
 
   const [livePublishedGames, setLivePublishedGames] = useState<Record<string, boolean>>(() => {
     if (propPublishedGames && Object.keys(propPublishedGames).length > 0) {
@@ -452,23 +466,56 @@ export function GameModeModal({
     };
   }, []);
 
+  const originalModeId = useMemo(() => detectOriginalGameMode(gameData), [gameData]);
+
   const publishedOptions = useMemo(() => {
-    return PLAYABLE_GAME_OPTIONS.filter((opt) => isGameModePublished(opt.id, livePublishedGames));
-  }, [livePublishedGames]);
+    return PLAYABLE_GAME_OPTIONS.filter(
+      (opt) => opt.id === originalModeId || isGameModePublished(opt.id, livePublishedGames)
+    );
+  }, [livePublishedGames, originalModeId]);
 
   if (!isOpen || !gameData) return null;
 
   const gameTitle = gameData.topic || gameData.name || gameData.title || 'Custom Quiz';
-  const originalModeId = detectOriginalGameMode(gameData);
+  const originalGameOption =
+    publishedOptions.find((opt) => opt.id === originalModeId) ||
+    PLAYABLE_GAME_OPTIONS.find((opt) => opt.id === originalModeId) ||
+    publishedOptions[0];
 
-  const visibleSections = GAME_CATEGORY_SECTIONS.map((section) => ({
-    ...section,
-    games: publishedOptions.filter((g) => g.category === section.id),
-  })).filter(
-    (section) =>
-      section.games.length > 0 &&
-      (selectedCategory === 'all' || selectedCategory === section.id)
-  );
+  // Order category sections so the category of the built-for game comes first when browsing categories
+  const orderedCategorySections = [...GAME_CATEGORY_SECTIONS].sort((a, b) => {
+    if (a.id === originalGameOption?.category) return -1;
+    if (b.id === originalGameOption?.category) return 1;
+    return 0;
+  });
+
+  const visibleSections = orderedCategorySections
+    .map((section) => {
+      const sectionGames = publishedOptions
+        .filter((g) => {
+          if (g.category !== section.id) return false;
+          // In "All Games" view, originalGameOption is already featured at the very top as the #1 first game
+          if (selectedCategory === 'all' && originalGameOption && g.id === originalGameOption.id) {
+            return false;
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          if (a.id === originalModeId) return -1;
+          if (b.id === originalModeId) return 1;
+          return 0;
+        });
+
+      return {
+        ...section,
+        games: sectionGames,
+      };
+    })
+    .filter(
+      (section) =>
+        section.games.length > 0 &&
+        (selectedCategory === 'all' || selectedCategory === section.id)
+    );
 
   const countByCategory = (catId: GameCategoryId) =>
     publishedOptions.filter((g) => g.category === catId).length;
@@ -479,10 +526,18 @@ export function GameModeModal({
     const normalizedQuestions = (Array.isArray(rawQuestions) ? rawQuestions : []).map((q: any, idx: number) => {
       const text = q.text || q.question || `Question ${idx + 1}`;
       let options = Array.isArray(q.options)
-        ? q.options.filter((o: any) => typeof o === 'string' && o.trim() !== '')
+        ? q.options
+            .map((o: any) => (typeof o === 'string' ? o : o?.text || ''))
+            .filter((s: string) => s.trim() !== '')
         : Array.isArray(q.answers)
-        ? q.answers.filter((a: any) => a && typeof a.text === 'string' && a.text.trim() !== '').map((a: any) => a.text)
+        ? q.answers
+            .filter((a: any) => a && typeof a.text === 'string' && a.text.trim() !== '')
+            .map((a: any) => a.text)
         : [];
+
+      const foundCorrectObjIdx = Array.isArray(q.options)
+        ? q.options.findIndex((o: any) => typeof o === 'object' && Boolean(o?.isCorrect))
+        : -1;
 
       let answerIndex =
         typeof q.answerIndex === 'number'
@@ -491,6 +546,8 @@ export function GameModeModal({
           ? q.correctIndex
           : typeof q.correct === 'number'
           ? q.correct
+          : foundCorrectObjIdx >= 0
+          ? foundCorrectObjIdx
           : 0;
 
       if (options.length < 2) {
@@ -523,6 +580,12 @@ export function GameModeModal({
         answerIndex,
         correct: answerIndex,
         answers: feudAnswers,
+        ...(typeof q.timeTrigger === 'number' ? { timeTrigger: q.timeTrigger } : {}),
+        ...(q.type ? { type: q.type } : {}),
+        ...(q.xp ? { xp: q.xp } : {}),
+        ...(q.explanation ? { explanation: q.explanation } : {}),
+        ...(q.word ? { word: q.word } : {}),
+        ...(q.pronunciation ? { pronunciation: q.pronunciation } : {}),
         ...(Array.isArray(q.optionImages) ? { optionImages: q.optionImages } : {}),
         ...(q.image || q.imageUrl ? { image: q.image || q.imageUrl, imageUrl: q.image || q.imageUrl } : {}),
       };
@@ -718,6 +781,46 @@ export function GameModeModal({
     onClose();
   };
 
+  const renderGameCard = (option: GameOptionConfig, isPrimaryBuiltFor: boolean = false) => (
+    <div
+      key={option.id}
+      onClick={() => handlePlayInterchangeable(option.id)}
+      className={`w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden group hover:-translate-y-2 hover:scale-[1.02] active:translate-y-0.5 transition-all duration-300 cursor-pointer select-none ${
+        isPrimaryBuiltFor
+          ? 'ring-4 ring-emerald-500/80 shadow-[0_24px_50px_-12px_rgba(16,185,129,0.42),0_10px_20px_-8px_rgba(15,23,42,0.25)]'
+          : 'shadow-[0_22px_44px_-12px_rgba(15,23,42,0.36),0_10px_20px_-8px_rgba(15,23,42,0.22)] hover:shadow-[0_32px_60px_-12px_rgba(15,23,42,0.45)]'
+      }`}
+    >
+      <img
+        src={option.image}
+        alt={option.title}
+        referrerPolicy="no-referrer"
+        onError={(e) => {
+          const target = e.target as HTMLImageElement;
+          if (option.fallbackImage && target.src !== option.fallbackImage) {
+            target.src = option.fallbackImage;
+          } else if (option.id === 'hamster-paintball') {
+            target.src = '/images/hamster-paintball-card.png';
+          }
+        }}
+        className="w-full h-full object-cover scale-[1.01] group-hover:scale-[1.06] transition-transform duration-300"
+      />
+      {isPrimaryBuiltFor && (
+        <div className="absolute top-3.5 left-3.5 z-10 px-3 py-1 rounded-full bg-emerald-600/95 text-white text-xs font-extrabold tracking-tight shadow-md flex items-center gap-1.5">
+          <span>★ Built For This Game</span>
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),inset_0_-8px_16px_rgba(15,23,42,0.25)]" />
+      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+        <div className="w-16 h-16 bg-white/95 backdrop-blur-md rounded-full shadow-[0_12px_28px_rgba(15,23,42,0.35)] flex items-center justify-center text-slate-950 transform scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-200">
+          <svg className="w-8 h-8 ml-1 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
@@ -730,9 +833,16 @@ export function GameModeModal({
         {/* Minimalist Header + Classification Filter Tabs */}
         <div className="px-6 sm:px-8 py-4 flex flex-col gap-3.5 shrink-0 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight truncate">
-              {gameTitle}
-            </h2>
+            <div className="flex items-center gap-3 min-w-0">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight truncate">
+                {gameTitle}
+              </h2>
+              {originalGameOption && (
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold whitespace-nowrap shrink-0">
+                  Built for {originalGameOption.title}
+                </span>
+              )}
+            </div>
 
             <button
               onClick={onClose}
@@ -760,7 +870,7 @@ export function GameModeModal({
                 <span className="text-xs opacity-75 tabular-nums">({publishedOptions.length})</span>
               </button>
 
-              {GAME_CATEGORY_SECTIONS.map((cat) => {
+              {orderedCategorySections.map((cat) => {
                 const Icon = cat.icon;
                 const count = countByCategory(cat.id);
                 if (count === 0) return null;
@@ -786,8 +896,23 @@ export function GameModeModal({
           </div>
         </div>
 
-        {/* Divided by Classification Sections with Pure 3D Game Image Cards */}
+        {/* Divided by Classification Sections with the Built-For Game Always Placed First */}
         <div className="p-6 sm:p-8 overflow-y-auto custom-scrollbar flex flex-col gap-10">
+          {selectedCategory === 'all' && originalGameOption && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2.5">
+                <Gamepad2 size={22} className="text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+                  Built For This Game · {originalGameOption.title}
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {renderGameCard(originalGameOption, true)}
+              </div>
+            </div>
+          )}
+
           {visibleSections.map((section) => {
             const SectionIcon = section.icon;
             return (
@@ -800,36 +925,9 @@ export function GameModeModal({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {section.games.map((option) => (
-                    <div
-                      key={option.id}
-                      onClick={() => handlePlayInterchangeable(option.id)}
-                      className="w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden shadow-[0_22px_44px_-12px_rgba(15,23,42,0.36),0_10px_20px_-8px_rgba(15,23,42,0.22)] group hover:-translate-y-2 hover:scale-[1.02] hover:shadow-[0_32px_60px_-12px_rgba(15,23,42,0.45)] active:translate-y-0.5 transition-all duration-300 cursor-pointer select-none"
-                    >
-                      <img
-                        src={option.image}
-                        alt={option.title}
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          if (option.fallbackImage && target.src !== option.fallbackImage) {
-                            target.src = option.fallbackImage;
-                          } else if (option.id === 'hamster-paintball') {
-                            target.src = '/images/hamster-paintball-card.png';
-                          }
-                        }}
-                        className="w-full h-full object-cover scale-[1.01] group-hover:scale-[1.06] transition-transform duration-300"
-                      />
-                      <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),inset_0_-8px_16px_rgba(15,23,42,0.25)]" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-                        <div className="w-16 h-16 bg-white/95 backdrop-blur-md rounded-full shadow-[0_12px_28px_rgba(15,23,42,0.35)] flex items-center justify-center text-slate-950 transform scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-200">
-                          <svg className="w-8 h-8 ml-1 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  {section.games.map((option) =>
+                    renderGameCard(option, option.id === originalModeId)
+                  )}
                 </div>
               </div>
             );
