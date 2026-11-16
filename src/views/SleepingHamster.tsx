@@ -419,6 +419,8 @@ export function SleepingHamster({
   const [isTimerPaused, setIsTimerPaused] = useState(false);
   const [isTimerMenuOpen, setIsTimerMenuOpen] = useState(false);
   const [timerFinished, setTimerFinished] = useState(false);
+  const [timerEndPhase, setTimerEndPhase] = useState<'idle' | 'awake_10s' | 'eating'>('idle');
+  const [wakeSoundSecondsLeft, setWakeSoundSecondsLeft] = useState(0);
 
   const [starPoints, setStarPoints] = useState(3.0);
   const [starSlots, setStarSlots] = useState(3);
@@ -437,6 +439,8 @@ export function SleepingHamster({
 
   const sustainedRef = useRef(8);
   const sleepStateRef = useRef<SleepState>('DEEP_SLEEP');
+  const timerEndPhaseRef = useRef<'idle' | 'awake_10s' | 'eating'>('idle');
+  const timerSequenceTimersRef = useRef<number[]>([]);
   const lastStateChangeRef = useRef(0);
   const recoveryHoldFramesRef = useRef(0);
   const lastWarningSoundRef = useRef(0);
@@ -468,12 +472,27 @@ export function SleepingHamster({
   const currentThreshold = getThresholdsForSensitivity(sensitivityValue);
   const activeUi = STATE_UI[sleepState];
 
+  const clearTimerEndSequence = useCallback(() => {
+    timerSequenceTimersRef.current.forEach((id) => {
+      window.clearTimeout(id);
+      window.clearInterval(id);
+    });
+    timerSequenceTimersRef.current = [];
+    timerEndPhaseRef.current = 'idle';
+    setTimerEndPhase('idle');
+    setWakeSoundSecondsLeft(0);
+  }, []);
+
   // Clean up audio & animation frame on unmount
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', onFsChange);
     return () => {
       document.removeEventListener('fullscreenchange', onFsChange);
+      timerSequenceTimersRef.current.forEach((id) => {
+        window.clearTimeout(id);
+        window.clearInterval(id);
+      });
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -503,12 +522,12 @@ export function SleepingHamster({
   // Strong, Loud, Clear Classroom Sound Effects: Hamster Voice (default), Beep, Shush, or No sound
   const playAlertSound = useCallback(
     (
-      type: 'warning' | 'awake' | 'star' | 'pet',
+      type: 'warning' | 'awake' | 'star' | 'pet' | 'eat',
       overrideMode?: NoiseAlertMode,
       forceLoop = false
     ) => {
       const mode = overrideMode ?? stateSnapshotRef.current.noiseAlert;
-      if (mode === 'none') return;
+      if (mode === 'none' && type !== 'eat') return;
 
       try {
         const Ctx = window.AudioContext || (window as any).webkitAudioContext;
@@ -527,7 +546,10 @@ export function SleepingHamster({
 
         // Master boost + brickwall limiter delivers loud, commanding classroom alerts with zero clipping
         const masterGain = ctx.createGain();
-        masterGain.gain.setValueAtTime(type === 'star' || type === 'pet' ? 1.1 : 1.75, now);
+        masterGain.gain.setValueAtTime(
+          type === 'star' || type === 'pet' || type === 'eat' ? 1.15 : 1.75,
+          now
+        );
 
         const limiter = ctx.createDynamicsCompressor();
         limiter.threshold.setValueAtTime(-2, now);
@@ -541,6 +563,50 @@ export function SleepingHamster({
 
         // Brief duck window (260ms) so speaker burst never blocks listening for silence
         muteMicUntilRef.current = performance.now() + 260;
+
+        if (type === 'eat') {
+          // Cute crispy seed crunch + happy hamster nibble squeak
+          [0, 0.11, 0.22].forEach((offset, idx) => {
+            const crunchDur = 0.065;
+            const bufSize = Math.floor(ctx.sampleRate * crunchDur);
+            const crunchBuf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+            const data = crunchBuf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) {
+              data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.35));
+            }
+            const noise = ctx.createBufferSource();
+            noise.buffer = crunchBuf;
+
+            const bp = ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.frequency.setValueAtTime(1900 + idx * 320, now + offset);
+            bp.Q.setValueAtTime(2.4, now + offset);
+
+            const nGain = ctx.createGain();
+            nGain.gain.setValueAtTime(0.55, now + offset);
+            nGain.gain.exponentialRampToValueAtTime(0.001, now + offset + crunchDur);
+
+            noise.connect(bp);
+            bp.connect(nGain);
+            nGain.connect(masterGain);
+            noise.start(now + offset);
+            noise.stop(now + offset + crunchDur + 0.01);
+
+            // Little happy nibble tone
+            const nibbleOsc = ctx.createOscillator();
+            const nibbleGain = ctx.createGain();
+            nibbleOsc.type = 'triangle';
+            nibbleOsc.frequency.setValueAtTime(1150 + idx * 180, now + offset);
+            nibbleOsc.frequency.exponentialRampToValueAtTime(1480 + idx * 140, now + offset + 0.055);
+            nibbleGain.gain.setValueAtTime(0.22, now + offset);
+            nibbleGain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.06);
+            nibbleOsc.connect(nibbleGain);
+            nibbleGain.connect(masterGain);
+            nibbleOsc.start(now + offset);
+            nibbleOsc.stop(now + offset + 0.065);
+          });
+          return;
+        }
 
         if (type === 'star') {
           [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
@@ -737,6 +803,7 @@ export function SleepingHamster({
   // Continuous Noise Alert Loop while Disturbed / Almost Awake / Awake
   useEffect(() => {
     if (!hasStarted || isMicMuted || noiseAlert === 'none') return;
+    if (timerEndPhase !== 'idle') return;
     if (sleepState !== 'DISTURBED' && sleepState !== 'ALMOST_AWAKE' && sleepState !== 'AWAKE') {
       return;
     }
@@ -746,14 +813,18 @@ export function SleepingHamster({
       sleepState === 'AWAKE' ? 620 : sleepState === 'ALMOST_AWAKE' ? 740 : 900;
 
     const id = window.setInterval(() => {
-      if (stateSnapshotRef.current.isMicMuted || stateSnapshotRef.current.noiseAlert === 'none') {
+      if (
+        stateSnapshotRef.current.isMicMuted ||
+        stateSnapshotRef.current.noiseAlert === 'none' ||
+        timerEndPhaseRef.current !== 'idle'
+      ) {
         return;
       }
       playAlertSound(soundType, undefined, true);
     }, intervalMs);
 
     return () => clearInterval(id);
-  }, [hasStarted, sleepState, isMicMuted, noiseAlert, playAlertSound]);
+  }, [hasStarted, sleepState, isMicMuted, noiseAlert, timerEndPhase, playAlertSound]);
 
   const applySleepState = useCallback(
     (next: SleepState) => {
@@ -771,6 +842,87 @@ export function SleepingHamster({
     },
     [playAlertSound]
   );
+
+  // Triggered when the countdown timer reaches 0:
+  // 1) Wake up & make sounds for 10 seconds
+  // 2) Eat the food from the bowl (~4.5 seconds)
+  // 3) Fall back asleep peacefully
+  const startTimerOverSequence = useCallback(() => {
+    clearTimerEndSequence();
+
+    // Phase 1: Wake up and make hamster sounds for 10 seconds
+    timerEndPhaseRef.current = 'awake_10s';
+    setTimerEndPhase('awake_10s');
+    setWakeSoundSecondsLeft(10);
+
+    sleepStateRef.current = 'AWAKE';
+    lastStateChangeRef.current = performance.now();
+    setSleepState('AWAKE');
+
+    const getWakeMode = (): NoiseAlertMode =>
+      stateSnapshotRef.current.noiseAlert === 'none'
+        ? 'hamster'
+        : stateSnapshotRef.current.noiseAlert;
+
+    playAlertSound('awake', getWakeMode(), true);
+    spawnParticle('star', '⏰ 🐹', 1.65);
+
+    const soundLoopId = window.setInterval(() => {
+      if (timerEndPhaseRef.current !== 'awake_10s') return;
+      playAlertSound('awake', getWakeMode(), true);
+      const notes = ['🎵 🐹', '🎶 🔔', '⏰ ✨', '🐹 💬'];
+      spawnParticle('star', notes[Math.floor(Math.random() * notes.length)], 1.45);
+    }, 680);
+
+    const countdownTickId = window.setInterval(() => {
+      setWakeSoundSecondsLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    // Phase 2: After 10 seconds, eat the food
+    const toEatTimeoutId = window.setTimeout(() => {
+      window.clearInterval(soundLoopId);
+      window.clearInterval(countdownTickId);
+
+      timerEndPhaseRef.current = 'eating';
+      setTimerEndPhase('eating');
+      setWakeSoundSecondsLeft(0);
+
+      // Switch out of startled AWAKE posture so the eating animation renders cleanly
+      sleepStateRef.current = 'RECOVERING';
+      lastStateChangeRef.current = performance.now();
+      setSleepState('RECOVERING');
+
+      playAlertSound('eat');
+      spawnParticle('heart', '🌻 😋', 1.6);
+
+      const eatLoopId = window.setInterval(() => {
+        if (timerEndPhaseRef.current !== 'eating') return;
+        playAlertSound('eat');
+        const treats = ['🌻 😋', '🥕 ✨', '🥜 💛', '😋 💕'];
+        spawnParticle('heart', treats[Math.floor(Math.random() * treats.length)], 1.5);
+      }, 650);
+      timerSequenceTimersRef.current.push(eatLoopId);
+
+      // Phase 3: After eating the food (~4.5 seconds), return to sleep
+      const toSleepTimeoutId = window.setTimeout(() => {
+        window.clearInterval(eatLoopId);
+        timerEndPhaseRef.current = 'idle';
+        setTimerEndPhase('idle');
+        setTimerFinished(false);
+        sustainedRef.current = 8;
+        recoveryHoldFramesRef.current = 0;
+        sleepStateRef.current = 'DEEP_SLEEP';
+        lastStateChangeRef.current = performance.now();
+        setSleepState('DEEP_SLEEP');
+        setSustainedEnergy(8);
+        spawnParticle('z', 'Zzz 😴', 1.65);
+      }, 4500);
+
+      timerSequenceTimersRef.current.push(toSleepTimeoutId);
+    }, 10000);
+
+    timerSequenceTimersRef.current.push(soundLoopId, countdownTickId, toEatTimeoutId);
+  }, [clearTimerEndSequence, playAlertSound, spawnParticle]);
 
   // Main 60fps Live Microphone Audio Processing Loop (with hysteresis to prevent face glitching)
   useEffect(() => {
@@ -840,7 +992,19 @@ export function SleepingHamster({
         const awakeHoldFrames = 65;
         const holdWindowMs = 950;
 
-        if (curState === 'AWAKE') {
+        // When the timer-over sequence is active (10s wake sound phase or eating phase),
+        // lock the hamster state to the sequence so quiet room audio doesn't cancel it early.
+        if (timerEndPhaseRef.current === 'awake_10s') {
+          if (curState !== 'AWAKE') {
+            sleepStateRef.current = 'AWAKE';
+            setSleepState('AWAKE');
+          }
+        } else if (timerEndPhaseRef.current === 'eating') {
+          if (curState === 'AWAKE') {
+            sleepStateRef.current = 'RECOVERING';
+            setSleepState('RECOVERING');
+          }
+        } else if (curState === 'AWAKE') {
           if (energy < t.disturbed - 6) {
             recoveryHoldFramesRef.current += 1;
             if (recoveryHoldFramesRef.current > awakeHoldFrames) {
@@ -888,6 +1052,7 @@ export function SleepingHamster({
         const activeState = sleepStateRef.current;
         if (
           !snap.isMicMuted &&
+          timerEndPhaseRef.current === 'idle' &&
           (activeState === 'DISTURBED' || activeState === 'ALMOST_AWAKE' || activeState === 'AWAKE')
         ) {
           const drainPerSec =
@@ -936,8 +1101,7 @@ export function SleepingHamster({
           if (prev <= 0) return 0;
           if (prev === 1) {
             setTimerFinished(true);
-            playAlertSound('star');
-            spawnParticle('star', '🎉 ⭐', 1.55);
+            startTimerOverSequence();
             return 0;
           }
           return prev - 1;
@@ -965,12 +1129,13 @@ export function SleepingHamster({
     }, 1000);
 
     return () => clearInterval(id);
-  }, [hasStarted, playAlertSound, spawnParticle]);
+  }, [hasStarted, playAlertSound, spawnParticle, startTimerOverSequence]);
 
   // Floating Zzz generator while sleeping peacefully
   useEffect(() => {
     if (!hasStarted) return;
     const id = window.setInterval(() => {
+      if (timerEndPhaseRef.current !== 'idle') return;
       const st = sleepStateRef.current;
       if (st === 'DEEP_SLEEP' || st === 'LIGHT_SLEEP' || st === 'RECOVERING') {
         const sizeRem =
@@ -1035,6 +1200,7 @@ export function SleepingHamster({
     setIsConnectingMic(true);
     try {
       await connectMicrophoneStream();
+      clearTimerEndSequence();
       sustainedRef.current = 8;
       sleepStateRef.current = 'DEEP_SLEEP';
       lastStateChangeRef.current = performance.now();
@@ -1064,6 +1230,7 @@ export function SleepingHamster({
   };
 
   const handleResetTimerAndStars = () => {
+    clearTimerEndSequence();
     sustainedRef.current = 8;
     sleepStateRef.current = 'DEEP_SLEEP';
     lastStateChangeRef.current = performance.now();
@@ -1086,6 +1253,7 @@ export function SleepingHamster({
   };
 
   const handleApplyEditedTimer = () => {
+    clearTimerEndSequence();
     const hrs = Math.max(0, Math.min(23, Number.isFinite(editHours) ? editHours : 0));
     const mins = Math.max(0, Math.min(59, Number.isFinite(editMinutes) ? editMinutes : 0));
     const secs = Math.max(0, Math.min(59, Number.isFinite(editSeconds) ? editSeconds : 0));
@@ -1099,6 +1267,7 @@ export function SleepingHamster({
   };
 
   const handleSwitchStopwatch = () => {
+    clearTimerEndSequence();
     setTimerMode('up');
     setTimerSeconds(0);
     setTimerFinished(false);
@@ -1107,6 +1276,7 @@ export function SleepingHamster({
   };
 
   const handleSelectTimerOption = (openEditor = true) => {
+    clearTimerEndSequence();
     const base = timerMode === 'countdown' ? timerSeconds : countdownDuration;
     syncEditFieldsFromSeconds(base);
     setTimerMode('countdown');
@@ -1163,6 +1333,7 @@ export function SleepingHamster({
     if (!hasStarted) return;
     spawnParticle('heart', '💖', 1.55);
     playAlertSound('pet');
+    if (timerEndPhaseRef.current !== 'idle') return;
     if (sleepStateRef.current === 'AWAKE') {
       sustainedRef.current = 8;
       recoveryHoldFramesRef.current = 0;
@@ -1264,9 +1435,24 @@ export function SleepingHamster({
           0%, 100% { opacity: 0.7; transform: scale(0.95); }
           50% { opacity: 1; transform: scale(1.12); }
         }
+        @keyframes shChewCheeks {
+          0%, 100% { transform: scale(1, 1) translateY(0); }
+          50% { transform: scale(1.06, 0.95) translateY(-2px); }
+        }
+        @keyframes shTreatNibble {
+          0%, 100% { transform: translateY(0) rotate(-4deg); }
+          50% { transform: translateY(-5px) rotate(5deg); }
+        }
+        @keyframes shMouthMunch {
+          0%, 100% { transform: scaleY(0.55); }
+          50% { transform: scaleY(1.25); }
+        }
         .sh-enclosure-shake { animation: shEnclosureShake 0.45s infinite; }
         .sh-body-calm { transform-origin: 500px 410px; animation: shBreatheCalm 4.2s ease-in-out infinite; }
         .sh-body-fast { transform-origin: 500px 410px; animation: shBreatheFast 1.4s ease-in-out infinite; }
+        .sh-chew-cheeks { transform-origin: 485px 380px; animation: shChewCheeks 0.28s ease-in-out infinite; }
+        .sh-treat-nibble { transform-origin: 482px 392px; animation: shTreatNibble 0.28s ease-in-out infinite; }
+        .sh-mouth-munch { transform-origin: 472px 382px; animation: shMouthMunch 0.28s ease-in-out infinite; }
         .sh-ear { transform-origin: 435px 285px; animation: shEarTwitch 4.5s infinite; }
         .sh-star-calm { transform-origin: 690px 40px; animation: shStarCalm 5s ease-in-out infinite; }
         .sh-star-noisy { transform-origin: 690px 40px; animation: shStarNoisy 1.1s ease-in-out infinite; }
@@ -1366,7 +1552,13 @@ export function SleepingHamster({
                         : 'text-purple-300/75 hover:text-white'
                     }`}
                   >
-                    {timerMode === 'countdown' && timerFinished ? 'Timer Done!' : 'Timer'}
+                    {timerMode === 'countdown' && timerEndPhase === 'awake_10s'
+                      ? `Woke Up! (${wakeSoundSecondsLeft}s)`
+                      : timerMode === 'countdown' && timerEndPhase === 'eating'
+                      ? 'Eating Food 🌻'
+                      : timerMode === 'countdown' && timerFinished
+                      ? 'Timer Done!'
+                      : 'Timer'}
                   </button>
                 </div>
                 <span
@@ -1375,7 +1567,13 @@ export function SleepingHamster({
                       ? 'text-3xl sm:text-4xl md:text-[2.7rem]'
                       : 'text-4xl sm:text-5xl md:text-[3.35rem]'
                   } font-black font-mono tabular-nums leading-none ${
-                    timerFinished ? 'text-emerald-300 animate-pulse' : 'text-white'
+                    timerEndPhase === 'awake_10s'
+                      ? 'text-amber-300 animate-pulse'
+                      : timerEndPhase === 'eating'
+                      ? 'text-emerald-300'
+                      : timerFinished
+                      ? 'text-emerald-300 animate-pulse'
+                      : 'text-white'
                   }`}
                 >
                   {formatTime(
@@ -1434,6 +1632,7 @@ export function SleepingHamster({
                 const fill = Math.max(0, Math.min(1, starPoints - idx));
                 const isNoisyNow =
                   !isMicMuted &&
+                  timerEndPhase === 'idle' &&
                   (sleepState === 'DISTURBED' ||
                     sleepState === 'ALMOST_AWAKE' ||
                     sleepState === 'AWAKE');
@@ -1670,6 +1869,29 @@ export function SleepingHamster({
                     </div>
                   ))}
                 </div>
+
+                {/* Timer Over Status Banner inside Habitat */}
+                {timerEndPhase !== 'idle' && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                    <div
+                      className={`px-4 py-2 rounded-2xl border backdrop-blur-md shadow-xl flex items-center gap-2 text-xs sm:text-sm font-black tracking-wide ${
+                        timerEndPhase === 'awake_10s'
+                          ? 'bg-amber-500/90 border-amber-200 text-purple-950 animate-bounce'
+                          : 'bg-emerald-500/90 border-emerald-200 text-emerald-950'
+                      }`}
+                    >
+                      {timerEndPhase === 'awake_10s' ? (
+                        <>
+                          <span>⏰ Time&apos;s Up! Hamster is awake &amp; squeaking ({wakeSoundSecondsLeft}s)</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>🌻 Yum! Eating a snack before going back to sleep...</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Interactive SVG Habitat & Character */}
                 <svg
@@ -2028,7 +2250,86 @@ export function SleepingHamster({
                     <title>Click to gently pet & soothe the hamster!</title>
                     <ellipse cx="496" cy="438" rx="155" ry="30" fill="rgba(16, 6, 38, 0.7)" />
 
-                    {sleepState !== 'AWAKE' ? (
+                    {timerEndPhase === 'eating' ? (
+                      /* HAPPY EATING FOOD POSTURE (after 10s timer wake-up, before sleeping again) */
+                      <g transform="translate(22, 0)">
+                        <g className="sh-ear">
+                          <circle cx="386" cy="292" r="34" fill="url(#shFurHeadGrad)" stroke="#6b2710" strokeWidth="4" />
+                          <circle cx="388" cy="295" r="21" fill="#f48fb1" />
+                        </g>
+                        <g>
+                          <circle cx="536" cy="272" r="33" fill="url(#shFurHeadGrad)" stroke="#6b2710" strokeWidth="4" />
+                          <circle cx="534" cy="275" r="20" fill="#f48fb1" />
+                        </g>
+
+                        {/* Body & Chubby Chewing Cheeks */}
+                        <path
+                          d="M 342 430 C 330 342, 382 268, 468 265 C 555 262, 622 325, 628 422 C 610 448, 370 450, 342 430 Z"
+                          fill="url(#shFurGrad)"
+                          stroke="#6b2710"
+                          strokeWidth="4"
+                          strokeLinejoin="round"
+                        />
+                        <g className="sh-chew-cheeks">
+                          <path
+                            d="M 350 426 C 338 368, 384 334, 435 344 C 455 346, 476 346, 498 340 C 552 326, 602 356, 594 420 C 566 448, 382 450, 350 426 Z"
+                            fill="url(#shCheekGrad)"
+                          />
+                          {/* Extra Puffy Snack Pouches */}
+                          <circle cx="395" cy="392" r="28" fill="url(#shCheekGrad)" />
+                          <circle cx="548" cy="376" r="27" fill="url(#shCheekGrad)" />
+                          <ellipse cx="398" cy="392" rx="23" ry="13" transform="rotate(-8 398 392)" fill="#fda4af" opacity="0.86" />
+                          <ellipse cx="546" cy="374" rx="22" ry="12.5" transform="rotate(-8 546 374)" fill="#fda4af" opacity="0.86" />
+                        </g>
+
+                        {/* Pushed-Up Bear Sleep Mask on Forehead */}
+                        <g transform="translate(0, -28) rotate(-3 465 295)">
+                          <path d="M 348 370 Q 356 335 376 318" fill="none" stroke="#facc15" strokeWidth="9" strokeLinecap="round" />
+                          <path d="M 554 308 Q 582 325 598 354" fill="none" stroke="#facc15" strokeWidth="9" strokeLinecap="round" />
+                          <circle cx="404" cy="276" r="15" fill="url(#shSleepMaskGrad)" stroke="#713f12" strokeWidth="3.5" />
+                          <circle cx="512" cy="264" r="15" fill="url(#shSleepMaskGrad)" stroke="#713f12" strokeWidth="3.5" />
+                          <path d="M 372 324 C 362 288, 408 262, 462 258 C 516 254, 560 274, 558 308 C 556 328, 524 328, 496 318 C 474 310, 456 314, 434 328 C 408 344, 378 344, 372 324 Z" fill="url(#shSleepMaskGrad)" stroke="#713f12" strokeWidth="3.8" strokeLinejoin="round" />
+                          <circle cx="442" cy="292" r="4" fill="#451a03" />
+                          <circle cx="486" cy="286" r="4" fill="#451a03" />
+                          <ellipse cx="464" cy="291" rx="4.5" ry="3" fill="#451a03" />
+                        </g>
+
+                        {/* Happy Crescent Eating Eyes (^ ^) */}
+                        <path d="M 408 356 Q 426 338 444 354" fill="none" stroke="#3b1106" strokeWidth="5.5" strokeLinecap="round" />
+                        <path d="M 494 344 Q 512 326 530 342" fill="none" stroke="#3b1106" strokeWidth="5.5" strokeLinecap="round" />
+
+                        {/* Nose & Munching Mouth */}
+                        <path d="M 462 362 C 462 356, 480 355, 480 361 C 480 367, 474 372, 471 372 C 468 372, 462 368, 462 362 Z" fill="url(#shPinkNose)" />
+                        <g className="sh-mouth-munch">
+                          <ellipse cx="474" cy="384" rx="13" ry="10" fill="#7f1d1d" stroke="#451a03" strokeWidth="3.2" />
+                          <rect x="469" y="375" width="9" height="6" rx="1.5" fill="#ffffff" />
+                        </g>
+
+                        {/* Tasty Treat (Crunchy Carrot + Sunflower Seed) Held in Both Paws */}
+                        <g className="sh-treat-nibble">
+                          {/* Leafy green carrot top */}
+                          <path d="M 505 376 C 516 364, 526 368, 514 382" fill="none" stroke="#22c55e" strokeWidth="5" strokeLinecap="round" />
+                          <path d="M 508 380 C 522 374, 526 382, 512 386" fill="none" stroke="#16a34a" strokeWidth="4.5" strokeLinecap="round" />
+                          {/* Crunchy carrot & seed */}
+                          <path d="M 468 386 L 510 374 C 516 378, 514 392, 506 394 L 468 394 Z" fill="#f97316" stroke="#c2410c" strokeWidth="3" strokeLinejoin="round" />
+                          <ellipse cx="468" cy="390" rx="10" ry="7" transform="rotate(-15 468 390)" fill="#27272a" stroke="#fef08a" strokeWidth="2" />
+                          {/* Little flying crumbs */}
+                          <circle cx="452" cy="378" r="2.8" fill="#fbbf24" />
+                          <circle cx="496" cy="368" r="2.4" fill="#f97316" />
+                          <circle cx="460" cy="402" r="2.2" fill="#fde047" />
+
+                          {/* Both Paws Holding the Food */}
+                          <g transform="translate(446, 398) rotate(24)">
+                            <ellipse cx="0" cy="0" rx="16" ry="20" fill="#fda4af" stroke="#881337" strokeWidth="3.2" />
+                            <path d="M -5 -11 L -5 -3 M 0 -13 L 0 -3 M 5 -11 L 5 -3" stroke="#9f1239" strokeWidth="2.3" strokeLinecap="round" />
+                          </g>
+                          <g transform="translate(502, 394) rotate(-24)">
+                            <ellipse cx="0" cy="0" rx="16" ry="20" fill="#fda4af" stroke="#881337" strokeWidth="3.2" />
+                            <path d="M -5 -11 L -5 -3 M 0 -13 L 0 -3 M 5 -11 L 5 -3" stroke="#9f1239" strokeWidth="2.3" strokeLinecap="round" />
+                          </g>
+                        </g>
+                      </g>
+                    ) : sleepState !== 'AWAKE' ? (
                       /* SLEEPING / DISTURBED / ALMOST AWAKE POSTURE */
                       <g>
                         <g className="sh-ear">
@@ -2291,18 +2592,31 @@ export function SleepingHamster({
                     </g>
 
                     {/* Ceramic Food Bowl */}
-                    <g transform="translate(686, 408)" filter="url(#shSoftShadow)">
+                    <g
+                      transform={timerEndPhase === 'eating' ? 'translate(650, 408)' : 'translate(686, 408)'}
+                      filter="url(#shSoftShadow)"
+                      className="transition-transform duration-500"
+                    >
                       <ellipse cx="60" cy="60" rx="68" ry="15" fill="rgba(0,0,0,0.38)" />
                       <path d="M 12 22 L 108 22 L 120 55 Q 60 70 0 55 Z" fill={currentTheme.bowlBody} stroke={currentTheme.bowlStroke} strokeWidth="3" strokeLinejoin="round" />
                       <path d="M 16 32 L 10 50" stroke="rgba(255,255,255,0.35)" strokeWidth="4" strokeLinecap="round" />
                       <ellipse cx="60" cy="22" rx="48" ry="13" fill="#47301f" stroke={currentTheme.bowlRim} strokeWidth="4" />
-                      <circle cx="38" cy="22" r="5.5" fill="#f59e0b" />
-                      <circle cx="52" cy="19" r="6.5" fill="#d97706" />
-                      <circle cx="72" cy="21" r="5.5" fill="#fbbf24" />
-                      <circle cx="85" cy="23" r="5" fill="#d97706" />
-                      <circle cx="46" cy="25" r="5.5" fill="#22c55e" />
-                      <circle cx="64" cy="24" r="6" fill="#f97316" stroke="#fdba74" strokeWidth="1.5" />
-                      <ellipse cx="56" cy="21" rx="5" ry="3" transform="rotate(-18 56 21)" fill="#27272a" stroke="#e4e4e7" strokeWidth="1" />
+                      <g
+                        style={{
+                          transformOrigin: '60px 22px',
+                          transform: timerEndPhase === 'eating' ? 'scale(0.55)' : 'scale(1)',
+                          opacity: timerEndPhase === 'eating' ? 0.55 : 1,
+                          transition: 'transform 3.8s ease-out, opacity 3.8s ease-out',
+                        }}
+                      >
+                        <circle cx="38" cy="22" r="5.5" fill="#f59e0b" />
+                        <circle cx="52" cy="19" r="6.5" fill="#d97706" />
+                        <circle cx="72" cy="21" r="5.5" fill="#fbbf24" />
+                        <circle cx="85" cy="23" r="5" fill="#d97706" />
+                        <circle cx="46" cy="25" r="5.5" fill="#22c55e" />
+                        <circle cx="64" cy="24" r="6" fill="#f97316" stroke="#fdba74" strokeWidth="1.5" />
+                        <ellipse cx="56" cy="21" rx="5" ry="3" transform="rotate(-18 56 21)" fill="#27272a" stroke="#e4e4e7" strokeWidth="1" />
+                      </g>
                       <path d="M 60 45 C 60 41 54 37 51 41 C 48 45 60 53 60 53 C 60 53 72 45 69 41 C 66 37 60 41 60 45 Z" fill="#fbcfe8" opacity="0.9" />
                     </g>
                   </g>
