@@ -73,18 +73,20 @@ const HatArtwork: React.FC<{ gearId: HamsterGearTier['id'] }> = ({ gearId }) => 
       return (
         <g>
           <polygon
-            points="-15,4 15,4 0,-25"
+            points="-15,5 15,5 0,-25"
             fill="url(#partyConeGrad)"
-            stroke="#831843"
+            stroke="#9d174d"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
-          <ellipse cx="0" cy="4" rx="16" ry="3.5" fill="#fde047" stroke="#a16207" strokeWidth="1.2" />
-          <circle cx="-5" cy="-4" r="2.3" fill="#fef08a" />
-          <circle cx="5" cy="-8" r="2.1" fill="#67e8f9" />
+          <path d="M-11,-2 Q0,1 11,-2" stroke="#fde047" strokeWidth="2.2" fill="none" />
+          <path d="M-7,-11 Q0,-9 7,-11" stroke="#38bdf8" strokeWidth="2" fill="none" />
+          <ellipse cx="0" cy="5" rx="16" ry="3.5" fill="#f472b6" stroke="#9d174d" strokeWidth="1.2" />
+          <circle cx="-5" cy="-5" r="2.1" fill="#fef08a" />
+          <circle cx="5" cy="-7" r="2" fill="#67e8f9" />
           <circle cx="-2" cy="-15" r="1.9" fill="#bbf7d0" />
-          <circle cx="0" cy="-27" r="5" fill="#facc15" stroke="#a16207" strokeWidth="1.3" />
-          <circle cx="-1.5" cy="-28.5" r="1.5" fill="#fef9c3" />
+          <circle cx="0" cy="-27" r="5.5" fill="#fbbf24" stroke="#b45309" strokeWidth="1.3" />
+          <circle cx="-1.5" cy="-28.5" r="1.8" fill="#fef08a" />
         </g>
       );
 
@@ -92,21 +94,28 @@ const HatArtwork: React.FC<{ gearId: HamsterGearTier['id'] }> = ({ gearId }) => 
       return (
         <g>
           <path
-            d="M-18,3 C-18,-13 18,-13 18,3 Z"
+            d="M-19,4 C-19,-13 19,-13 19,4 Z"
             fill="url(#scholarCapGrad)"
-            stroke="#92400e"
+            stroke="#1e3a8a"
             strokeWidth="1.5"
           />
           <path
-            d="M-16,2 C-4,-1 14,-1 25,4 C23,8 6,7 -16,4 Z"
+            d="M-10,3 C-10,-11 10,-11 10,3 Z"
+            fill="#eff6ff"
+            opacity="0.92"
+          />
+          <path
+            d="M-18,3 C-4,-1 15,-1 25,4.5 C23,8.5 5,7.5 -18,4.5 Z"
             fill="#1d4ed8"
             stroke="#1e3a8a"
             strokeWidth="1.3"
           />
-          <circle cx="0" cy="-10" r="2.4" fill="#1d4ed8" />
+          <circle cx="0" cy="-10.5" r="2.3" fill="#1e40af" />
           <polygon
-            points="0,-7 1.6,-3.8 5,-3.3 2.5,-1 3.1,2.2 0,0.6 -3.1,2.2 -2.5,-1 -5,-3.3 -1.6,-3.8"
-            fill="#ffffff"
+            points="0,-7.5 1.8,-4 5.5,-3.4 2.8,-0.8 3.5,2.6 0,0.8 -3.5,2.6 -2.8,-0.8 -5.5,-3.4 -1.8,-4"
+            fill="#facc15"
+            stroke="#b45309"
+            strokeWidth="0.8"
           />
         </g>
       );
@@ -372,7 +381,7 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
   size = 120,
   dollars,
   showBadge = true,
-  showGear = true,
+  showGear = false,
   equippedGearId,
   avatarStyle = 'cute',
   className = '',
@@ -421,8 +430,8 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
       : char.breed.headAnchor;
 
   const sizeClass = getSizeClass(size);
-  const showHatOverlay = showGear && size >= 36 && (activeGear !== null || (dollars !== undefined && dollars < 0));
-  const showSideAccessory = showGear && size >= 62 && activeGear !== null;
+  const showHatOverlay = false;
+  const showSideAccessory = false;
 
   return (
     <div
@@ -461,7 +470,7 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
         </svg>
       )}
 
-      {/* HAMSTER CHARACTER PORTRAIT + COLLECTIBLE SVG HATS & ACCESSORIES */}
+      {/* FULL-BODY 3D HAMSTER CHARACTER (NO IDLE LIVE ANIMATION, NO FRAME) */}
       <div
         className={`relative w-full h-full flex items-center justify-center z-10 transition-transform duration-200 ${
           isBouncing
@@ -469,12 +478,6 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
               ? 'animate-shake'
               : 'animate-character-bounce'
             : ''
-        } ${
-          isBouncing && isPositiveGlow
-            ? 'drop-shadow-[0_0_16px_rgba(250,204,21,0.9)]'
-            : isBouncing && isNegativeGlow
-              ? 'drop-shadow-[0_0_14px_rgba(244,63,94,0.8)]'
-              : ''
         }`}
       >
         {failCount >= 4 ? (
@@ -493,11 +496,7 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
           <img
             src={imgSrc}
             alt={name || `${char.title} (#${char.tag})`}
-            className={`w-full h-full object-contain select-none transition-all duration-200 ${
-              avatarStyle === 'cute'
-                ? 'mix-blend-multiply dark:mix-blend-normal dark:rounded-2xl'
-                : 'drop-shadow-sm'
-            }`}
+            className="w-full h-full object-contain select-none mix-blend-multiply dark:mix-blend-normal"
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={handleError}
@@ -523,8 +522,8 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
                 <stop offset="100%" stopColor="#db2777" />
               </linearGradient>
               <linearGradient id="scholarCapGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#fde047" />
-                <stop offset="100%" stopColor="#f59e0b" />
+                <stop offset="0%" stopColor="#3b82f6" />
+                <stop offset="100%" stopColor="#1d4ed8" />
               </linearGradient>
               <linearGradient id="beretGrad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#fb7185" />
@@ -596,20 +595,20 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
         </div>
       )}
 
-      {/* PROMINENT DOLLAR BADGE IN TOP-RIGHT + EQUIPPED ITEM MINI ICON */}
+      {/* PROMINENT GLOSSY DOLLAR BADGE IN TOP-RIGHT */}
       {showBadge && dollars !== undefined && (
         <div
-          className={`absolute -top-1.5 -right-1.5 rounded-full text-white font-black flex items-center justify-center gap-1 shadow-lg border-[2.5px] border-white z-30 pointer-events-none transform transition-all tabular-nums tracking-tight ${
+          className={`absolute -top-1.5 -right-1.5 rounded-full text-white font-black flex items-center justify-center gap-1 shadow-[0_4px_8px_rgba(0,0,0,0.22)] border-[2.5px] border-white z-30 pointer-events-none transform transition-all tabular-nums tracking-tight ${
             isBouncing && isPositiveGlow ? 'scale-118 ring-4 ring-amber-300/80' : ''
           } ${
             dollars < 0
-              ? 'bg-rose-600 ring-2 ring-rose-500/30 shadow-rose-600/30'
+              ? 'bg-gradient-to-b from-rose-500 to-rose-700 ring-2 ring-rose-500/30'
               : dollars >= 30
-                ? 'bg-gradient-to-r from-amber-500 to-emerald-600 ring-2 ring-amber-400/40'
-                : 'bg-[#10b981] ring-2 ring-emerald-500/25'
+                ? 'bg-gradient-to-b from-amber-400 via-emerald-500 to-emerald-700 ring-2 ring-amber-400/40'
+                : 'bg-gradient-to-b from-[#22c55e] to-[#15803d] ring-2 ring-emerald-500/25'
           } ${
             size >= 90
-              ? 'min-w-[44px] h-[32px] px-2.5 text-sm sm:text-base'
+              ? 'min-w-[46px] h-[32px] px-2.5 text-sm sm:text-base drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]'
               : 'min-w-[28px] h-[24px] px-1.5 text-xs'
           }`}
         >
@@ -617,14 +616,14 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
         </div>
       )}
 
-      {/* SUBTLE UNLOCKED HAT / ITEM TAG IN BOTTOM-LEFT ON FULL CARDS */}
+      {/* UNLOCKED HAT / ACCESSORY PILL BADGE AT BOTTOM OF PORTRAIT */}
       {showBadge && showGear && activeGear && size >= 110 && (
         <div
-          className="absolute -bottom-1 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-2 py-0.5 rounded-full bg-white/95 dark:bg-slate-800/95 border border-amber-200/90 dark:border-slate-700 shadow-xs flex items-center gap-1 whitespace-nowrap"
+          className="absolute -bottom-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-2.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border-2 border-[#e2c792] dark:border-slate-700 shadow-[0_2px_6px_rgba(0,0,0,0.14)] flex items-center gap-1 whitespace-nowrap"
           title={`${activeGear.name}: ${activeGear.description}`}
         >
-          <span className="text-[11px] leading-none">{activeGear.badgeEmoji}</span>
-          <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-200 leading-none">
+          <span className="text-xs leading-none">{activeGear.badgeEmoji}</span>
+          <span className="text-[11px] font-black text-slate-800 dark:text-slate-100 leading-none tracking-tight">
             {activeGear.shortName}
           </span>
         </div>

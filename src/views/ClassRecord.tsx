@@ -12,11 +12,6 @@ import { SquidHamsterSprite, LiveRewardDelta } from '../components/SquidHamsterS
 import {
   GOOGLE_DRIVE_STUDENTS,
   OFFICIAL_CHARACTER_NUMBERS,
-  HAMSTER_GEAR_TIERS,
-  getUnlockedGearTiers,
-  getActiveHamsterGear,
-  getNextHamsterGear,
-  getNewlyUnlockedGear,
 } from '../lib/studentCharacters';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -1662,27 +1657,20 @@ export function ClassRecord({
     return list;
   }, [activeClass, searchQuery, sortBy]);
 
-  // Award Dollars to Single Student (with radiant glow, sound effect & milestone hat unlock!)
+  // Award Dollars to Single Student (with radiant glow & sound effect)
   const handleAwardStudent = (studentId: string, amount: number, reason: string) => {
     const targetStudent = activeClass.students.find((s) => s.id === studentId);
-    const prevDollars = targetStudent ? targetStudent.dollars : 0;
-    const nextDollars = prevDollars + amount;
-    const unlockedGear = amount > 0 ? getNewlyUnlockedGear(prevDollars, nextDollars) : null;
 
     playCashSound(amount > 0, soundMuted);
-    if (unlockedGear) {
-      window.setTimeout(() => playItemUnlockFanfare(soundMuted), 95);
-    }
 
-    // Trigger radiant character glow + starburst + optional NEW HAT banner
+    // Trigger radiant character glow + starburst
     triggerStudentEffect(
       studentId,
       {
         amount,
         key: Date.now(),
-        unlockedGear,
       },
-      unlockedGear ? 2600 : 1950
+      1950
     );
 
     const updated = classes.map((c) => {
@@ -1694,11 +1682,6 @@ export function ClassRecord({
             return {
               ...s,
               dollars: s.dollars + amount,
-              // Auto-show newly unlocked gear if user hadn't explicitly disabled hats
-              equippedGearId:
-                unlockedGear && s.equippedGearId && s.equippedGearId !== 'none'
-                  ? 'auto'
-                  : s.equippedGearId,
             };
           }
           return s;
@@ -1707,15 +1690,12 @@ export function ClassRecord({
     });
 
     if (targetStudent) {
-      const unlockSuffix = unlockedGear
-        ? ` • 🎉 Unlocked ${unlockedGear.badgeEmoji} ${unlockedGear.name}!`
-        : '';
       setRecentTransaction({
-        text: `${targetStudent.name} (${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`}) for "${reason}"${unlockSuffix}`,
+        text: `${targetStudent.name} (${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`}) for "${reason}"`,
         amount,
         time: Date.now(),
       });
-      window.setTimeout(() => setRecentTransaction(null), unlockedGear ? 4200 : 3200);
+      window.setTimeout(() => setRecentTransaction(null), 3200);
     }
 
     saveClasses(updated);
@@ -1726,10 +1706,6 @@ export function ClassRecord({
       return {
         ...prev,
         dollars: prev.dollars + amount,
-        equippedGearId:
-          unlockedGear && prev.equippedGearId && prev.equippedGearId !== 'none'
-            ? 'auto'
-            : prev.equippedGearId,
       };
     });
   };
@@ -1746,24 +1722,6 @@ export function ClassRecord({
     saveClasses(updated);
     setSelectedStudent((prev) => (prev && prev.id === studentId ? { ...prev, number: newNumber } : prev));
     setShowNumberPicker(false);
-  };
-
-  // Equip or toggle Student Hamster Hat / Collectible Gear
-  const handleChangeStudentGear = (studentId: string, gearId: string | null) => {
-    const updated = classes.map((c) => {
-      if (c.id !== activeClass.id) return c;
-      return {
-        ...c,
-        students: c.students.map((s) =>
-          s.id === studentId ? { ...s, equippedGearId: gearId } : s
-        ),
-      };
-    });
-    saveClasses(updated);
-    setSelectedStudent((prev) =>
-      prev && prev.id === studentId ? { ...prev, equippedGearId: gearId } : prev
-    );
-    playCashSound(true, soundMuted);
   };
 
   // Switch between Cute Hamsters and Classic Tracksuit style
@@ -1794,17 +1752,10 @@ export function ClassRecord({
       if (c.id !== activeClass.id) return c;
       return {
         ...c,
-        students: c.students.map((s) => {
-          const unlocked = amount > 0 ? getNewlyUnlockedGear(s.dollars, s.dollars + amount) : null;
-          return {
-            ...s,
-            dollars: s.dollars + amount,
-            equippedGearId:
-              unlocked && s.equippedGearId && s.equippedGearId !== 'none'
-                ? 'auto'
-                : s.equippedGearId,
-          };
-        }),
+        students: c.students.map((s) => ({
+          ...s,
+          dollars: s.dollars + amount,
+        })),
       };
     });
 
@@ -1823,8 +1774,6 @@ export function ClassRecord({
       const stepDelayMs = Math.max(55, Math.min(110, Math.floor(1600 / rosterSnapshot.length)));
       rosterSnapshot.forEach((st, idx) => {
         const tId = window.setTimeout(() => {
-          const unlockedGear =
-            amount > 0 ? getNewlyUnlockedGear(st.dollars, st.dollars + amount) : null;
           setStaggeredDollarOverrides((prev) => {
             const next = { ...prev };
             delete next[st.id];
@@ -1833,7 +1782,7 @@ export function ClassRecord({
           playComboStepSound(
             idx,
             amount > 0,
-            Boolean(unlockedGear),
+            false,
             idx === rosterSnapshot.length - 1,
             soundMuted
           );
@@ -1842,7 +1791,6 @@ export function ClassRecord({
             {
               amount,
               key: Date.now() + idx,
-              unlockedGear,
               comboStep: idx + 1,
             },
             2000
@@ -2082,15 +2030,9 @@ export function ClassRecord({
         ...c,
         students: c.students.map((s) => {
           if (grp.studentIds.includes(s.id)) {
-            const unlocked =
-              amount > 0 ? getNewlyUnlockedGear(s.dollars, s.dollars + amount) : null;
             return {
               ...s,
               dollars: s.dollars + amount,
-              equippedGearId:
-                unlocked && s.equippedGearId && s.equippedGearId !== 'none'
-                  ? 'auto'
-                  : s.equippedGearId,
             };
           }
           return s;
@@ -2114,10 +2056,6 @@ export function ClassRecord({
       const stepMs = 235; // Crisp one-by-one spotlight rhythm!
       groupStudentsSnapshot.forEach((st, idx) => {
         const tId = window.setTimeout(() => {
-          const unlockedGear =
-            amount > 0 ? getNewlyUnlockedGear(st.dollars, st.dollars + amount) : null;
-
-          // Reveal updated dollar balance & newly unlocked hat right as this student's turn hits!
           setStaggeredDollarOverrides((prev) => {
             const next = { ...prev };
             delete next[st.id];
@@ -2127,7 +2065,7 @@ export function ClassRecord({
           playComboStepSound(
             idx,
             amount > 0,
-            Boolean(unlockedGear),
+            false,
             idx === groupStudentsSnapshot.length - 1,
             soundMuted
           );
@@ -2137,10 +2075,9 @@ export function ClassRecord({
             {
               amount,
               key: Date.now() + idx,
-              unlockedGear,
               comboStep: idx + 1,
             },
-            unlockedGear ? 2600 : 2100
+            2100
           );
         }, idx * stepMs);
         cascadeTimersRef.current.push(tId);
@@ -2154,15 +2091,8 @@ export function ClassRecord({
       playCashSound(amount > 0, soundMuted);
     }
 
-    const newlyUnlockedCount =
-      amount > 0
-        ? groupStudentsSnapshot.filter((st) =>
-            Boolean(getNewlyUnlockedGear(st.dollars, st.dollars + amount))
-          ).length
-        : 0;
-
     setRecentTransaction({
-      text: `Team "${grp.name}" (${groupStudentsSnapshot.length} students) ${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`} one by one! (${reason})${newlyUnlockedCount > 0 ? ` • 🎉 ${newlyUnlockedCount} new hat${newlyUnlockedCount === 1 ? '' : 's'} unlocked!` : ''}`,
+      text: `Team "${grp.name}" (${groupStudentsSnapshot.length} students) ${amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`} one by one! (${reason})`,
       amount,
       time: Date.now(),
     });
@@ -3457,63 +3387,64 @@ export function ClassRecord({
                 )}
               </div>
             ) : (
-              /* SQUID GAME HAMSTER STUDENTS GRID */
-              <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-                
+              /* PURE WHITE FULL-BODY 3D HAMSTER CLASS LEADERBOARD */
+              <div className="relative flex-1 overflow-y-auto p-6 sm:p-8 bg-white dark:bg-slate-900 overflow-x-hidden">
+
                 {/* RECENT TRANSACTION TOAST NOTIFICATION */}
                 {recentTransaction && (
-                  <div className="mb-6 p-3.5 rounded-2xl bg-emerald-600 text-white flex items-center justify-between shadow-lg shadow-emerald-600/30 animate-in fade-in slide-in-from-top-2">
-                    <div className="flex items-center gap-2.5 text-xs sm:text-sm font-bold">
+                  <div className="relative z-20 mb-6 p-3.5 rounded-2xl bg-emerald-600 text-white flex items-center justify-between shadow-lg shadow-emerald-600/30 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2.5 text-xs sm:text-sm font-black">
                       <Sparkles size={18} className="text-amber-300 animate-spin" />
                       <span>{recentTransaction.text}</span>
                     </div>
-                    <span className="text-xs bg-white/20 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                    <span className="text-xs bg-white/25 px-3 py-0.5 rounded-full font-mono font-black">
                       {recentTransaction.amount >= 0 ? `+$${recentTransaction.amount}` : `-$${Math.abs(recentTransaction.amount)}`}
                     </span>
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-y-8 gap-x-4 sm:gap-x-6">
+                <div className="relative z-10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-y-8 gap-x-4 sm:gap-x-6">
                   
-                  {/* WHOLE CLASS VAULT CARD (ALWAYS FIRST) */}
+                  {/* WHOLE CLASS VAULT CARD (CLEAN FRAMELESS ON WHITE) */}
                   {!searchQuery && (
                     <div 
                       onClick={() => {
                         setWholeClassMode('award');
                         setIsAwardingWholeClass(true);
                       }}
-                      className="flex flex-col items-center group cursor-pointer"
+                      className="flex flex-col items-center justify-between group cursor-pointer p-2 transition-transform duration-200 hover:-translate-y-1 relative"
                     >
-                      <div className="flex items-center justify-center relative w-full aspect-square max-w-[150px] transition-transform duration-200 group-hover:scale-108 active:scale-95">
-                        {/* Cluster of official hamsters (#1, #2, #4, #5) */}
-                        <div className="relative w-28 h-28 flex items-center justify-center">
-                          <div className="absolute top-0 left-0">
-                            <SquidHamsterSprite number={1} size={54} showBadge={false} />
-                          </div>
-                          <div className="absolute top-0 right-0">
-                            <SquidHamsterSprite number={2} size={54} showBadge={false} />
-                          </div>
-                          <div className="absolute bottom-0 left-0">
-                            <SquidHamsterSprite number={4} size={54} showBadge={false} />
-                          </div>
-                          <div className="absolute bottom-0 right-0 z-10">
-                            <SquidHamsterSprite number={5} size={58} showBadge={false} />
-                          </div>
-                          <div className={`absolute -top-1 -right-1 min-w-[34px] h-[26px] px-2 rounded-full text-white font-black text-xs flex items-center justify-center shadow-md border-2 border-white z-20 ${
-                            totalClassDollars < 0 ? 'bg-rose-600' : 'bg-emerald-600'
-                          }`}>
-                            {totalClassDollars < 0 ? `-$${Math.abs(totalClassDollars)}` : `$${totalClassDollars}`}
-                          </div>
+                      {/* 2x2 Mini Full-Body Hamsters Cluster */}
+                      <div className="flex items-center justify-center relative w-full aspect-square max-w-[150px]">
+                        <div className="grid grid-cols-2 gap-1 w-full max-w-[124px] place-items-center">
+                          <SquidHamsterSprite number={1} size={56} showBadge={false} showGear={false} />
+                          <SquidHamsterSprite number={2} size={56} showBadge={false} showGear={false} />
+                          <SquidHamsterSprite number={4} size={56} showBadge={false} showGear={false} />
+                          <SquidHamsterSprite number={5} size={56} showBadge={false} showGear={false} />
+                        </div>
+                        <div
+                          className={`absolute -top-1 -right-1 min-w-[40px] h-[28px] px-2.5 rounded-full text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-md border-2 border-white z-20 ${
+                            totalClassDollars < 0 ? 'bg-rose-600' : 'bg-[#16a34a]'
+                          }`}
+                        >
+                          {totalClassDollars < 0 ? `-$${Math.abs(totalClassDollars)}` : `$${totalClassDollars}`}
                         </div>
                       </div>
-                      <span className="mt-2 font-black text-sm sm:text-base text-slate-900 group-hover:text-emerald-700 transition-colors text-center tracking-tight">
+
+                      {/* Class Total Title & Dollar Counter (No Brown Box) */}
+                      <span className="mt-2 font-black text-sm sm:text-base text-slate-900 dark:text-white group-hover:text-emerald-700 transition-colors text-center tracking-tight">
                         Class Total
                       </span>
-                      <span className={`text-[11px] font-bold ${totalClassDollars < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      <span
+                        className={`text-xs font-extrabold ${
+                          totalClassDollars < 0 ? 'text-rose-600' : 'text-emerald-600'
+                        }`}
+                      >
                         {totalClassDollars < 0 ? `-$${Math.abs(totalClassDollars)}` : `$${totalClassDollars}`}
                       </span>
-                      {/* Quick action buttons for Award & Deduct Entire Class */}
-                      <div className="flex items-center gap-1.5 mt-1.5">
+
+                      {/* Quick Action Buttons (+ Award / - Deduct) */}
+                      <div className="flex items-center justify-center gap-1.5 mt-1.5">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -3521,7 +3452,7 @@ export function ClassRecord({
                             setWholeClassMode('award');
                             setIsAwardingWholeClass(true);
                           }}
-                          className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer whitespace-nowrap"
                           title="Award dollars to entire class"
                         >
                           + Award
@@ -3533,7 +3464,7 @@ export function ClassRecord({
                             setWholeClassMode('deduct');
                             setIsAwardingWholeClass(true);
                           }}
-                          className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-200 transition-colors cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-200 transition-colors cursor-pointer whitespace-nowrap"
                           title="Deduct dollars from entire class"
                         >
                           - Deduct
@@ -3542,28 +3473,32 @@ export function ClassRecord({
                     </div>
                   )}
 
-                  {/* INDIVIDUAL CUTE HAMSTER STUDENT CARDS - WITH HATS, GLOW & QUICK +$1 */}
-                  {displayedStudents.map(student => {
+                  {/* INDIVIDUAL FULL-BODY FRAMELESS 3D HAMSTER STUDENT CARDS */}
+                  {displayedStudents.map((student) => {
                     const studentLiveEffect = activeEffectsByStudent[student.id] || null;
                     const displayedDollars = staggeredDollarOverrides[student.id] ?? student.dollars;
+                    const isPositiveRewardActive = Boolean(studentLiveEffect && studentLiveEffect.amount > 0);
 
                     return (
                       <div
                         key={student.id}
                         onClick={() => setSelectedStudent(student)}
-                        className="flex flex-col items-center group cursor-pointer transition-transform duration-200 hover:-translate-y-2 relative pt-3"
+                        className="flex flex-col items-center group cursor-pointer transition-transform duration-200 hover:-translate-y-1.5 relative pt-2"
                       >
-                        {/* Quick +$1 reward button on hover */}
+                        {/* Quick +$1★ glossy green pill button (top-left) */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleAwardStudent(student.id, 1, 'Quick +$1 Star');
                           }}
-                          className="absolute top-0 left-1 z-30 px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black shadow-md border border-emerald-300 opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95 cursor-pointer"
+                          className={`absolute top-1 left-1 z-30 px-2.5 py-0.5 rounded-full bg-[#16a34a] hover:bg-emerald-500 text-white text-xs font-black shadow-md border-2 border-white flex items-center gap-0.5 transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+                            isPositiveRewardActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          }`}
                           title={`Give +$1 to ${student.name}`}
                         >
-                          +$1 ✨
+                          <span>+$1</span>
+                          <span className="text-amber-300 text-[11px]">★</span>
                         </button>
 
                         {/* Quick delete student button on hover */}
@@ -3573,28 +3508,33 @@ export function ClassRecord({
                             e.stopPropagation();
                             setStudentToDelete({ student, classId: activeClass.id, className: activeClass.name });
                           }}
-                          className="absolute top-0 right-1 z-30 w-7 h-7 rounded-full bg-white/95 hover:bg-rose-50 text-slate-400 hover:text-rose-600 shadow-sm border border-slate-200/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110 cursor-pointer"
+                          className="absolute top-1 right-12 z-30 w-6 h-6 rounded-full bg-white/95 hover:bg-rose-50 text-slate-400 hover:text-rose-600 shadow-sm border border-slate-200/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110 cursor-pointer"
                           title={`Delete ${student.name}`}
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={12} />
                         </button>
 
-                        {/* Hamster Character Container - Borderless Floating Character */}
-                        <div className="flex items-center justify-center relative w-full aspect-square max-w-[155px] transition-transform duration-200 group-hover:scale-108 active:scale-95">
+                        {/* Full-Body Frameless 3D Hamster Character */}
+                        <div className="flex items-center justify-center relative w-full aspect-square max-w-[160px] transition-transform duration-200 group-hover:scale-105 active:scale-95">
                           <SquidHamsterSprite
                             number={student.number}
                             dollars={displayedDollars}
-                            size={128}
+                            size={150}
                             showBadge={true}
-                            showGear={true}
-                            equippedGearId={student.equippedGearId}
+                            showGear={false}
                             avatarStyle={student.avatarStyle || 'cute'}
                             liveDelta={studentLiveEffect}
                           />
                         </div>
                         
-                        {/* Complete Student Name across up to two lines without ellipsis */}
-                        <span className="mt-2 font-black text-xs sm:text-sm text-slate-900 group-hover:text-emerald-700 transition-colors text-center w-full max-w-[145px] px-1 leading-snug break-words min-h-[2.5rem] flex items-center justify-center">
+                        {/* Clean Student Name (No Brown Box) */}
+                        <span
+                          className={`mt-2 font-black text-xs sm:text-sm text-center w-full max-w-[155px] px-1 leading-snug break-words min-h-[2.25rem] flex items-center justify-center transition-colors ${
+                            isPositiveRewardActive
+                              ? 'text-emerald-600'
+                              : 'text-slate-900 dark:text-slate-100 group-hover:text-emerald-700'
+                          }`}
+                        >
                           {student.name}
                         </span>
                       </div>
@@ -3774,95 +3714,8 @@ export function ClassRecord({
               </div>
             ) : null}
 
-            {/* Modal Body: Hamster Wardrobe + Dollar Reward Presets */}
+            {/* Modal Body: Dollar Reward Presets */}
             <div className="p-6 overflow-y-auto flex-1 space-y-5">
-              {/* HAMSTER HAT & ACCESSORY WARDROBE */}
-              {(() => {
-                const activeGear = getActiveHamsterGear(selectedStudent.dollars, selectedStudent.equippedGearId);
-                const nextGear = getNextHamsterGear(selectedStudent.dollars);
-                const unlockedIds = new Set(getUnlockedGearTiers(selectedStudent.dollars).map(g => g.id));
-                const currentEquipPref = selectedStudent.equippedGearId || 'auto';
-
-                return (
-                  <div className="bg-gradient-to-r from-amber-50/90 via-yellow-50/50 to-emerald-50/70 p-4 rounded-2xl border border-amber-200/80">
-                    <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">{activeGear ? activeGear.badgeEmoji : '🐹'}</span>
-                        <div>
-                          <span className="text-xs font-black text-amber-950 uppercase tracking-wider block leading-tight">
-                            Hamster Hat & Item Wardrobe
-                          </span>
-                          <span className="text-[11px] font-semibold text-amber-800/80">
-                            {activeGear
-                              ? `Wearing: ${activeGear.name}`
-                              : 'Earn $1 to unlock the first cute hat!'}
-                          </span>
-                        </div>
-                      </div>
-                      {nextGear ? (
-                        <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-white/90 border border-amber-200 text-emerald-800">
-                          +${Math.max(1, nextGear.minDollars - Math.max(0, selectedStudent.dollars))} more → {nextGear.badgeEmoji} {nextGear.shortName} (${nextGear.minDollars})
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-amber-200/80 text-amber-950">
-                          All Hats Unlocked! 🏆
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                      <button
-                        type="button"
-                        onClick={() => handleChangeStudentGear(selectedStudent.id, 'auto')}
-                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black shrink-0 border transition-all cursor-pointer ${
-                          currentEquipPref === 'auto'
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-400'
-                        }`}
-                      >
-                        ✨ Auto Best
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleChangeStudentGear(selectedStudent.id, 'none')}
-                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold shrink-0 border transition-all cursor-pointer ${
-                          currentEquipPref === 'none'
-                            ? 'bg-slate-800 text-white border-slate-800 shadow-2xs'
-                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
-                        }`}
-                      >
-                        No Hat
-                      </button>
-                      {HAMSTER_GEAR_TIERS.map(tier => {
-                        const isUnlocked = unlockedIds.has(tier.id);
-                        const isEquipped = activeGear?.id === tier.id && currentEquipPref !== 'none';
-                        return (
-                          <button
-                            key={tier.id}
-                            type="button"
-                            disabled={!isUnlocked}
-                            onClick={() => isUnlocked && handleChangeStudentGear(selectedStudent.id, tier.id)}
-                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black shrink-0 border transition-all flex items-center gap-1 ${
-                              isUnlocked
-                                ? isEquipped && currentEquipPref === tier.id
-                                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs cursor-pointer'
-                                  : isEquipped
-                                    ? 'bg-amber-100 text-amber-950 border-amber-400 cursor-pointer'
-                                    : 'bg-white text-slate-800 border-amber-200 hover:bg-amber-50 cursor-pointer'
-                                : 'bg-slate-100/80 text-slate-400 border-slate-200/70 cursor-not-allowed opacity-75'
-                            }`}
-                            title={isUnlocked ? `Equip ${tier.name}` : `Unlocks at $${tier.minDollars}`}
-                          >
-                            <span>{isUnlocked ? tier.badgeEmoji : '🔒'}</span>
-                            <span>{tier.shortName}</span>
-                            <span className="text-[9px] opacity-80">${tier.minDollars}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
               
               {/* MY CUSTOM CLASS REWARDS */}
               <div className="bg-gradient-to-r from-purple-50/80 via-indigo-50/50 to-purple-50/80 p-4 rounded-2xl border border-purple-200/80">

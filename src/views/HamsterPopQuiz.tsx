@@ -6,8 +6,8 @@ import {
   CheckCircle, XCircle, Sparkles, Volume2, VolumeX,
   Plus, Trash2, Check, Loader2, Folder, FolderPlus,
   ArrowRight, ArrowLeft, RotateCcw, SkipForward, SkipBack,
-  Edit3, Zap, Upload, Globe, Lock, Award, AlertCircle, FileVideo, X,
-  BarChart3, Clock, Target, Flame, Trophy, Eye, HelpCircle
+  Edit3, Upload, Globe, Lock, AlertCircle, FileVideo, X,
+  Clock, Maximize2, Minimize2
 } from 'lucide-react';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
@@ -50,13 +50,39 @@ const customStyles = `
   .vq-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(245, 158, 11, 0.6); }
 `;
 
-const CEFR_LEVELS = ['Pre-A1', 'A1 Starters', 'A2 Movers', 'B1 Preliminary', 'B2 First', 'C1 Advanced'];
-const QUESTION_TYPES = ['Multiple Choice', 'True or False', 'Vocabulary Meaning', 'Grammar Choice'];
-const QUIZ_COUNTS = [
-  { count: 3, label: '3 Checkpoints', freq: 'Every 5 Minutes' },
-  { count: 4, label: '4 Checkpoints', freq: 'Smart Timing' },
-  { count: 6, label: '6 Checkpoints', freq: 'Every 2 Minutes' },
+const CEFR_LEVELS = ['Starters', 'Movers', 'Flyers', 'KET', 'B1', 'B2'];
+const QUESTION_TYPES = [
+  'Fill in the Blanks',
+  'Multiple Choice',
+  'Grammar Choice',
+  'True or False',
+  'Vocabulary Meaning',
 ];
+const QUESTION_COUNT_PRESETS = [5, 10, 15, 20, 30];
+
+const POPULAR_GRAMMAR_TOPICS = [
+  "Must and mustn't",
+  'Should and shouldn\'t',
+  'Present Perfect',
+  'Past Simple',
+  'Present Continuous',
+  'Passive Voice',
+  'Conditionals',
+];
+
+const normalizeEnglishLevel = (raw?: string): string => {
+  const s = (raw || '').trim();
+  if (!s) return 'Movers';
+  if (CEFR_LEVELS.includes(s)) return s;
+  const lower = s.toLowerCase();
+  if (lower.includes('starter') || lower.includes('pre-a1') || lower === 'a1') return 'Starters';
+  if (lower.includes('mover')) return 'Movers';
+  if (lower.includes('flyer')) return 'Flyers';
+  if (lower.includes('ket') || lower.includes('a2 key')) return 'KET';
+  if (lower.includes('b1')) return 'B1';
+  if (lower.includes('b2') || lower.includes('c1')) return 'B2';
+  return 'Movers';
+};
 
 export interface QuizAnswerRecord {
   isCorrect: boolean;
@@ -65,7 +91,7 @@ export interface QuizAnswerRecord {
   earnedXp: number;
 }
 
-// Synthesized Web Audio FX
+// Rich Multi-Harmonic Classroom Game-Show Sound Effects
 class VideoQuizAudio {
   private ctx: AudioContext | null = null;
   public muted: boolean = false;
@@ -87,52 +113,144 @@ class VideoQuizAudio {
     if (!ctx) return;
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
+    const sub = ctx.createOscillator();
     const gain = ctx.createGain();
+
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(520, now);
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.11);
-    gain.gain.setValueAtTime(0.14, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    sub.type = 'triangle';
+    osc.frequency.setValueAtTime(480, now);
+    osc.frequency.exponentialRampToValueAtTime(960, now + 0.12);
+    sub.frequency.setValueAtTime(240, now);
+    sub.frequency.exponentialRampToValueAtTime(480, now + 0.12);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
     osc.connect(gain);
+    sub.connect(gain);
     gain.connect(ctx.destination);
+
     osc.start(now);
-    osc.stop(now + 0.15);
+    sub.start(now);
+    osc.stop(now + 0.16);
+    sub.stop(now + 0.16);
   }
 
   playCorrect() {
     const ctx = this.getContext();
     if (!ctx) return;
-    const notes = [523.25, 659.25, 783.99, 1046.5];
-    notes.forEach((freq, idx) => {
-      const now = ctx.currentTime + idx * 0.06;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, now);
-      gain.gain.setValueAtTime(0.14, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.24);
+    const baseTime = ctx.currentTime;
+
+    // Bright, celebratory ascending chime arpeggio (C5 -> E5 -> G5 -> C6 -> E6)
+    const chimeNotes = [
+      { freq: 523.25, delay: 0.0, duration: 0.28, vol: 0.22 },
+      { freq: 659.25, delay: 0.065, duration: 0.28, vol: 0.24 },
+      { freq: 783.99, delay: 0.13, duration: 0.32, vol: 0.25 },
+      { freq: 1046.5, delay: 0.195, duration: 0.45, vol: 0.28 },
+      { freq: 1318.51, delay: 0.26, duration: 0.55, vol: 0.24 },
+    ];
+
+    chimeNotes.forEach(({ freq, delay, duration, vol }) => {
+      const start = baseTime + delay;
+      const mainOsc = ctx.createOscillator();
+      const sparkleOsc = ctx.createOscillator();
+      const noteGain = ctx.createGain();
+
+      mainOsc.type = 'triangle';
+      sparkleOsc.type = 'sine';
+      mainOsc.frequency.setValueAtTime(freq, start);
+      sparkleOsc.frequency.setValueAtTime(freq * 2, start); // Shimmering octave harmonic
+
+      const sparkleGain = ctx.createGain();
+      sparkleGain.gain.setValueAtTime(0.35, start);
+
+      noteGain.gain.setValueAtTime(0.001, start);
+      noteGain.gain.linearRampToValueAtTime(vol, start + 0.015);
+      noteGain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+
+      mainOsc.connect(noteGain);
+      sparkleOsc.connect(sparkleGain);
+      sparkleGain.connect(noteGain);
+      noteGain.connect(ctx.destination);
+
+      mainOsc.start(start);
+      sparkleOsc.start(start);
+      mainOsc.stop(start + duration + 0.02);
+      sparkleOsc.stop(start + duration + 0.02);
+    });
+
+    // Warm triumphant major chord sustain underneath
+    [523.25, 659.25, 783.99].forEach((chordFreq) => {
+      const start = baseTime + 0.19;
+      const padOsc = ctx.createOscillator();
+      const padGain = ctx.createGain();
+      padOsc.type = 'sine';
+      padOsc.frequency.setValueAtTime(chordFreq, start);
+      padGain.gain.setValueAtTime(0.001, start);
+      padGain.gain.linearRampToValueAtTime(0.09, start + 0.03);
+      padGain.gain.exponentialRampToValueAtTime(0.001, start + 0.6);
+      padOsc.connect(padGain);
+      padGain.connect(ctx.destination);
+      padOsc.start(start);
+      padOsc.stop(start + 0.62);
     });
   }
 
   playWrong() {
     const ctx = this.getContext();
     if (!ctx) return;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(220, now);
-    osc.frequency.linearRampToValueAtTime(155, now + 0.22);
-    gain.gain.setValueAtTime(0.1, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.26);
+    const baseTime = ctx.currentTime;
+
+    // Classic, unmistakable two-step descending game-show wrong answer buzz ("uh-oh / buzz")
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(950, baseTime);
+    filter.connect(ctx.destination);
+
+    const steps = [
+      { startFreq: 311.13, endFreq: 277.18, delay: 0.0, duration: 0.18, vol: 0.22 }, // Eb4 -> C#4
+      { startFreq: 233.08, endFreq: 164.81, delay: 0.16, duration: 0.34, vol: 0.25 }, // Bb3 -> E3
+    ];
+
+    steps.forEach(({ startFreq, endFreq, delay, duration, vol }) => {
+      const start = baseTime + delay;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const subOsc = ctx.createOscillator();
+      const stepGain = ctx.createGain();
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'sawtooth';
+      subOsc.type = 'triangle';
+
+      osc1.frequency.setValueAtTime(startFreq, start);
+      osc1.frequency.linearRampToValueAtTime(endFreq, start + duration);
+
+      // Slight detune for rich game-show buzzer texture
+      osc2.frequency.setValueAtTime(startFreq * 1.015, start);
+      osc2.frequency.linearRampToValueAtTime(endFreq * 1.015, start + duration);
+
+      subOsc.frequency.setValueAtTime(startFreq * 0.5, start);
+      subOsc.frequency.linearRampToValueAtTime(endFreq * 0.5, start + duration);
+
+      stepGain.gain.setValueAtTime(0.001, start);
+      stepGain.gain.linearRampToValueAtTime(vol, start + 0.015);
+      stepGain.gain.setValueAtTime(vol * 0.85, start + duration * 0.65);
+      stepGain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+
+      osc1.connect(stepGain);
+      osc2.connect(stepGain);
+      subOsc.connect(stepGain);
+      stepGain.connect(filter);
+
+      osc1.start(start);
+      osc2.start(start);
+      subOsc.start(start);
+      osc1.stop(start + duration + 0.02);
+      osc2.stop(start + duration + 0.02);
+      subOsc.stop(start + duration + 0.02);
+    });
   }
 
   playFanfare() {
@@ -145,12 +263,12 @@ class VideoQuizAudio {
       const gain = ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, now);
-      gain.gain.setValueAtTime(0.15, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
-      osc.stop(now + 0.34);
+      osc.stop(now + 0.38);
     });
   }
 }
@@ -164,94 +282,717 @@ const formatSeconds = (sec: number) => {
   return `${m}:${rem < 10 ? '0' : ''}${rem}`;
 };
 
+const parseTimeInputToSeconds = (val: string): number | null => {
+  const trimmed = (val || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':').map((p) => Number(p.trim()));
+    if (parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+      return Math.max(1, Math.floor(parts[0] * 60 + parts[1]));
+    }
+  }
+  const num = Number(trimmed);
+  if (Number.isFinite(num) && num >= 0) {
+    return Math.max(1, Math.floor(num));
+  }
+  return null;
+};
+
 const isDirectVideoSource = (url: string) => {
   if (!url) return false;
   if (url.startsWith('blob:') || url.startsWith('data:video/')) return true;
   return /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url);
 };
 
-const getMasteryGrade = (accuracy: number, answeredCount: number) => {
-  if (answeredCount === 0) return { grade: '—', label: 'Ready to Play', color: 'text-slate-400', bg: 'bg-white/5 border-white/10' };
-  if (accuracy >= 95) return { grade: 'S', label: 'Mastery Star', color: 'text-amber-300', bg: 'bg-amber-400/15 border-amber-400/40' };
-  if (accuracy >= 85) return { grade: 'A+', label: 'Excellent', color: 'text-emerald-300', bg: 'bg-emerald-400/15 border-emerald-400/40' };
-  if (accuracy >= 75) return { grade: 'A', label: 'Great Job', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' };
-  if (accuracy >= 60) return { grade: 'B', label: 'Good Effort', color: 'text-sky-300', bg: 'bg-sky-400/15 border-sky-400/30' };
-  return { grade: 'C', label: 'Keep Practicing', color: 'text-rose-300', bg: 'bg-rose-500/15 border-rose-500/30' };
+const extractClientYouTubeId = (urlRaw?: string): string | null => {
+  const s = (urlRaw || '').trim();
+  if (!s) return null;
+  const m = s.match(
+    /(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  return m ? m[1] : null;
 };
 
-const generateDynamicQuestions = (config: any) => {
-  const topic = (config?.topic || "English Video Lesson").trim();
-  const level = config?.level || "A2 Movers";
-  const types = Array.isArray(config?.selectedTypes) && config.selectedTypes.length > 0
-    ? config.selectedTypes
-    : ['Multiple Choice'];
-  const count = config?.count || 4;
+const isLegacyPlaceholderQuestion = (textRaw?: string): boolean => {
+  const t = (textRaw || '').trim();
+  if (!t) return true;
+  return /what is the main focus of this scene|what does .* mean in this context|key details and actions related to|an unrelated topic not shown|a silent title card/i.test(
+    t
+  );
+};
 
-  const baseTimings = count === 3 ? [15, 40, 70] : count === 6 ? [12, 26, 42, 58, 74, 90] : [14, 34, 56, 78];
-
-  return baseTimings.map((time, index) => {
-    const qType = types[index % types.length];
-    const questionObj: any = {
-      id: index + 1,
-      timeTrigger: time,
-      type: qType,
-      xp: 100,
-    };
-
-    if (qType === 'Multiple Choice') {
-      questionObj.question = `What is the main focus of this scene about ${topic}?`;
-      questionObj.options = [
-        { text: `Key details and actions related to ${topic.toLowerCase()}.`, isCorrect: true },
-        { text: `An unrelated topic not shown in the clip.`, isCorrect: false },
-        { text: `A silent title card with no action.`, isCorrect: false },
-        { text: `The ending credits of the video.`, isCorrect: false },
-      ];
-      questionObj.explanation = `This segment highlights core details about ${topic}.`;
-    } else if (qType === 'Vocabulary Meaning') {
-      const words = topic.split(/\s+/).filter((w: string) => w.replace(/[^a-zA-Z]/g, '').length > 2);
-      const focusWord = (words[words.length - 1] || 'DISCOVERY').replace(/[^a-zA-Z]/g, '').toUpperCase();
-      questionObj.word = focusWord;
-      questionObj.pronunciation = `/${focusWord.toLowerCase()}/`;
-      questionObj.question = `What does "${focusWord}" mean in this context?`;
-      questionObj.options = [
-        { text: `An important concept connected to ${topic.toLowerCase()}.`, isCorrect: true },
-        { text: `Something completely opposite to the scene.`, isCorrect: false },
-        { text: `A type of musical instrument.`, isCorrect: false },
-        { text: `A measurement of distance.`, isCorrect: false },
-      ];
-      questionObj.explanation = `"${focusWord}" is a key ${level} vocabulary term for ${topic}.`;
-      questionObj.xp = 150;
-    } else if (qType === 'Grammar Choice') {
-      questionObj.question = `Which sentence uses correct ${level} grammar?`;
-      questionObj.options = [
-        { text: `They are watching a video about ${topic.toLowerCase()}.`, isCorrect: true },
-        { text: `They is watching a video about ${topic.toLowerCase()}.`, isCorrect: false },
-        { text: `They watches a video about ${topic.toLowerCase()}.`, isCorrect: false },
-        { text: `They watching a video about ${topic.toLowerCase()}.`, isCorrect: false },
-      ];
-      questionObj.explanation = `Use "are + verb-ing" with plural subjects in the present continuous tense.`;
-    } else {
-      questionObj.type = 'True or False';
-      questionObj.question = `True or False: This part of the video focuses on ${topic}.`;
-      questionObj.options = [
-        { text: `True`, isCorrect: true },
-        { text: `False`, isCorrect: false },
-      ];
-      questionObj.explanation = `The scene directly connects to ${topic}.`;
-    }
-
-    return questionObj;
+const hasOnlyDummyOptionPlaceholders = (options?: any[]): boolean => {
+  if (!Array.isArray(options) || options.length === 0) return true;
+  return options.every((o) => {
+    const txt = (typeof o === 'string' ? o : o?.text || '').trim();
+    return !txt || /^Option\s+[A-D1-4]$/i.test(txt);
   });
 };
 
-export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (view: ViewState) => void; initialGame?: any; }) {
+// Smart helper to infer a sensible missing word when a teacher types a Fill-in-the-Blank sentence like "He has____ at the mirror"
+const inferSmartBlankAnswerFromQuestion = (questionText: string): {
+  answer: string;
+  acceptedAnswers: string[];
+} => {
+  const q = (questionText || '').trim();
+  const lower = q.toLowerCase();
+
+  // Check if verb hint is in brackets, e.g., "He has ____ (look) at the mirror"
+  const bracketMatch = q.match(/\(([a-zA-Z\s]+)\)/);
+  if (bracketMatch?.[1]) {
+    const base = bracketMatch[1].trim().toLowerCase();
+    const irregularV3: Record<string, string> = {
+      be: 'been',
+      do: 'done',
+      go: 'gone',
+      make: 'made',
+      see: 'seen',
+      take: 'taken',
+      break: 'broken',
+      choose: 'chosen',
+      drive: 'driven',
+      eat: 'eaten',
+      fall: 'fallen',
+      find: 'found',
+      forget: 'forgotten',
+      get: 'gotten',
+      give: 'given',
+      have: 'had',
+      know: 'known',
+      leave: 'left',
+      lose: 'lost',
+      put: 'put',
+      run: 'run',
+      say: 'said',
+      sit: 'sat',
+      speak: 'spoken',
+      stand: 'stood',
+      think: 'thought',
+      wear: 'worn',
+      write: 'written',
+    };
+    if (/\b(has|have|had)\b/i.test(lower)) {
+      const v3 =
+        irregularV3[base] ||
+        (base.endsWith('e')
+          ? `${base}d`
+          : base.endsWith('y') && !/[aeiou]y$/.test(base)
+          ? `${base.slice(0, -1)}ied`
+          : `${base}ed`);
+      return {
+        answer: v3,
+        acceptedAnswers: [v3, `has ${v3}`, `have ${v3}`],
+      };
+    }
+    return { answer: base, acceptedAnswers: [base] };
+  }
+
+  if (/\bmirror\b/i.test(lower)) {
+    if (/\b(has|have)\b/i.test(lower)) {
+      return {
+        answer: 'looked',
+        acceptedAnswers: ['looked', 'has looked', 'stared', 'checked', 'seen himself'],
+      };
+    }
+    return {
+      answer: 'looks',
+      acceptedAnswers: ['looks', 'looked', 'is looking', 'has looked'],
+    };
+  }
+
+  if (/\b(sink|hands|water|tap|faucet)\b/i.test(lower)) {
+    if (/\b(has|have)\b/i.test(lower)) {
+      return {
+        answer: 'washed',
+        acceptedAnswers: ['washed', 'has washed', 'turned on', 'cleaned'],
+      };
+    }
+    return {
+      answer: 'washed',
+      acceptedAnswers: ['washed', 'washes', 'is washing'],
+    };
+  }
+
+  if (/\b(has|have)\s*_+/i.test(lower)) {
+    return {
+      answer: 'looked',
+      acceptedAnswers: ['looked', 'made', 'done', 'tried', 'seen', 'gone'],
+    };
+  }
+
+  return {
+    answer: 'looked',
+    acceptedAnswers: ['looked', 'done', 'made', 'tried'],
+  };
+};
+
+const normalizeBlankQuestionText = (raw: string): string => {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return '';
+  // Ensure there's a clean space before and after ____ if attached to words like "has____"
+  return trimmed.replace(/([a-zA-Z])(_+)/g, '$1 $2').replace(/(_+)([a-zA-Z])/g, '$1 $2');
+};
+
+const checkFillInBlankMatch = (
+  userInputRaw: string,
+  quiz: any
+): { isCorrect: boolean; primaryAnswer: string } => {
+  const cleanText = (s: string) =>
+    (s || '')
+      .toLowerCase()
+      .replace(/[.,!?;:'"()[\]]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const userClean = cleanText(userInputRaw);
+  const correctOpt = (quiz?.options || []).find((o: any) => o?.isCorrect);
+  const primaryAnswer = String(
+    quiz?.answer || correctOpt?.text || quiz?.options?.[0]?.text || ''
+  ).trim();
+
+  if (!userClean) {
+    return { isCorrect: false, primaryAnswer };
+  }
+
+  const candidatePool = new Set<string>();
+  const addWithContractionVariants = (rawVal: string) => {
+    const cleaned = cleanText(rawVal);
+    if (!cleaned) return;
+    candidatePool.add(cleaned);
+    // Also allow with/without apostrophe from raw string
+    const noApostrophe = rawVal
+      .toLowerCase()
+      .replace(/['’]/g, '')
+      .replace(/[.,!?;:"()[\]]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (noApostrophe) candidatePool.add(noApostrophe);
+
+    const lowerRaw = rawVal.toLowerCase().replace(/’/g, "'").trim();
+    const contractionPairs: Array<[RegExp, string]> = [
+      [/\bmustn'?t\b/g, 'must not'],
+      [/\bmust not\b/g, 'mustnt'],
+      [/\bshouldn'?t\b/g, 'should not'],
+      [/\bshould not\b/g, 'shouldnt'],
+      [/\bcan'?t\b/g, 'cannot'],
+      [/\bcannot\b/g, 'cant'],
+      [/\bcouldn'?t\b/g, 'could not'],
+      [/\bdon'?t\b/g, 'do not'],
+      [/\bdoesn'?t\b/g, 'does not'],
+      [/\bdidn'?t\b/g, 'did not'],
+      [/\bhaven'?t\b/g, 'have not'],
+      [/\bhasn'?t\b/g, 'has not'],
+      [/\bwouldn'?t\b/g, 'would not'],
+      [/\bwon'?t\b/g, 'will not'],
+      [/\bisn'?t\b/g, 'is not'],
+      [/\baren'?t\b/g, 'are not'],
+      [/\bwasn'?t\b/g, 'was not'],
+      [/\bweren'?t\b/g, 'were not'],
+    ];
+    contractionPairs.forEach(([pattern, replacement]) => {
+      if (pattern.test(lowerRaw)) {
+        candidatePool.add(cleanText(lowerRaw.replace(pattern, replacement)));
+      }
+    });
+  };
+
+  if (primaryAnswer) {
+    addWithContractionVariants(primaryAnswer);
+    if (primaryAnswer.includes('...')) {
+      const parts = primaryAnswer
+        .split('...')
+        .map((p) => cleanText(p))
+        .filter(Boolean);
+      candidatePool.add(parts.join(' '));
+      if (parts.length > 0) candidatePool.add(parts[parts.length - 1]);
+    }
+  }
+
+  if (Array.isArray(quiz?.acceptedAnswers)) {
+    quiz.acceptedAnswers.forEach((a: string) => {
+      addWithContractionVariants(String(a || ''));
+    });
+  }
+
+  Array.from(candidatePool).forEach((cand) => {
+    const strippedAux = cand.replace(/^(has|have|had|is|are|was|were)\s+/i, '').trim();
+    if (strippedAux) {
+      candidatePool.add(strippedAux);
+      candidatePool.add(`has ${strippedAux}`);
+      candidatePool.add(`have ${strippedAux}`);
+    }
+  });
+
+  const userNoApostrophe = userInputRaw
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[.,!?;:"()[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return {
+    isCorrect: candidatePool.has(userClean) || (Boolean(userNoApostrophe) && candidatePool.has(userNoApostrophe)),
+    primaryAnswer: primaryAnswer || 'must',
+  };
+};
+
+const extractClientVideoSubject = (videoTitleRaw?: string, topicRaw?: string): string => {
+  const combined = `${videoTitleRaw || ''} ${topicRaw || ''}`;
+  if (/mr\.?\s*bean/i.test(combined)) return 'Mr. Bean';
+  if (/pink\s*panther/i.test(combined)) return 'The Pink Panther';
+  if (/tom\s*and\s*jerry/i.test(combined)) return 'Tom and Jerry';
+  if (/spongebob/i.test(combined)) return 'SpongeBob';
+  if (/peppa\s*pig/i.test(combined)) return 'Peppa Pig';
+  if (/paddington/i.test(combined)) return 'Paddington';
+  if (/harry\s*potter/i.test(combined)) return 'Harry Potter';
+  if (/minion/i.test(combined)) return 'the Minions';
+  if (/hamster/i.test(combined)) return 'the hamster';
+
+  const cleanTitle = (videoTitleRaw || '')
+    .replace(/\[.*?\]|\(.*?\)/g, ' ')
+    .replace(
+      /\b(4k|hd|official|video|clip|clips|funny|full|episode|seconds|minutes|hours|of|the|best|worst|ideas|ever|compilation|scene|scenes|movie|cartoon)\b/gi,
+      ' '
+    )
+    .replace(/[|•:-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (cleanTitle.length >= 3 && cleanTitle.length <= 32) {
+    return cleanTitle;
+  }
+  return 'the main character';
+};
+
+const generateDynamicQuestions = (config: any) => {
+  const topic = (config?.topic || '').trim();
+  const topicLower = topic.toLowerCase();
+  const videoTitle = (config?.videoTitle || '').trim();
+  const cleanTitle = videoTitle.replace(/\s*\|.*$/, '').trim() || 'this video';
+  const types: string[] =
+    Array.isArray(config?.selectedTypes) && config.selectedTypes.length > 0
+      ? config.selectedTypes
+      : ['Fill in the Blanks', 'Multiple Choice', 'Grammar Choice'];
+  const count = Math.max(1, Math.min(100, Number(config?.count) || 5));
+  const duration = Math.max(60, Number(config?.videoDuration) || 540);
+  const usableStart = Math.max(8, Math.floor(duration * 0.04));
+  const usableSpan = Math.max(30, Math.floor(duration * 0.90) - usableStart);
+
+  const subject = extractClientVideoSubject(videoTitle, topic);
+  const isPluralSubject = /\b(and|they|minions|kids|students|animals|friends|people)\b/i.test(subject);
+  const hasAux = isPluralSubject ? 'have' : 'has';
+  const wrongAux = isPluralSubject ? 'has' : 'have';
+  const wasAux = isPluralSubject ? 'were' : 'was';
+  const isAux = isPluralSubject ? 'are' : 'is';
+  const wrongIsAux = isPluralSubject ? 'is' : 'are';
+  const haveToPos = isPluralSubject ? 'have to' : 'has to';
+  const haveToNeg = isPluralSubject ? "don't have to" : "doesn't have to";
+
+  const isHospital = /\b(hospital|doctor|nurse|ambulance|clinic|patient|medical|health|emergency|dentist)\b/i.test(
+    videoTitle
+  );
+  const isSchool = /\b(school|class|classroom|exam|test|student|teacher|study|library)\b/i.test(videoTitle);
+  const isFood = /\b(restaurant|kitchen|cook|food|dinner|lunch|eat|waiter|menu|steak|cafe)\b/i.test(videoTitle);
+
+  const scenes = isHospital
+    ? [
+        {
+          sceneLabel: 'outside the hospital entrance by the ambulance',
+          location: 'outside the hospital entrance',
+          mustRule: 'keep the ambulance entrance clear for emergency vehicles',
+          mustntRule: 'park a car directly behind the hospital ambulance',
+          shouldAction: 'park in a regular parking space instead of blocking the ambulance',
+          shouldntAction: 'block the emergency ambulance doors with his car',
+          v1: 'park',
+          v2: 'parked',
+          v3: 'parked',
+          ing: 'parking',
+          phrase: 'near the ambulance outside the hospital entrance',
+        },
+        {
+          sceneLabel: 'at the hospital reception and queue ticket machine',
+          location: 'in the hospital waiting area',
+          mustRule: 'take a numbered ticket and wait for his turn',
+          mustntRule: "steal or swap another patient's queue ticket in the hospital",
+          shouldAction: 'check his waiting-room ticket number carefully',
+          shouldntAction: 'trick other patients to get an earlier ticket number',
+          v1: 'take',
+          v2: 'took',
+          v3: 'taken',
+          ing: 'taking',
+          phrase: 'a numbered ticket in the hospital waiting room',
+        },
+        {
+          sceneLabel: 'in the hospital waiting room chairs',
+          location: 'in the hospital waiting room',
+          mustRule: 'sit quietly and respect the injured patients nearby',
+          mustntRule: 'annoy or disturb the bandaged patient sitting next to him',
+          shouldAction: 'wait calmly on his chair until his number is called',
+          shouldntAction: 'fidget noisily and bother the patients in the row',
+          v1: 'wait',
+          v2: 'waited',
+          v3: 'waited',
+          ing: 'waiting',
+          phrase: 'on the chair next to the bandaged patient in the hospital',
+        },
+        {
+          sceneLabel: 'showing his stuck hand to the medical staff',
+          location: 'at the hospital reception desk',
+          mustRule: 'explain his injury honestly to the doctor and nurse',
+          mustntRule: 'hide his stuck teapot hand when his turn arrives',
+          shouldAction: 'ask the nurse or doctor for help removing the teapot',
+          shouldntAction: 'pull the stuck teapot off roughly by himself',
+          v1: 'show',
+          v2: 'showed',
+          v3: 'shown',
+          ing: 'showing',
+          phrase: 'his stuck hand at the hospital desk',
+        },
+        {
+          sceneLabel: 'watching the electronic number board in the hospital',
+          location: 'by the hospital display screen',
+          mustRule: 'watch the electronic display board and go when his number flashes',
+          mustntRule: 'push ahead of injured patients when the nurse calls a number',
+          shouldAction: 'listen carefully when the nurse calls the next number',
+          shouldntAction: 'turn the ticket upside down and confuse the queue number',
+          v1: 'check',
+          v2: 'checked',
+          v3: 'checked',
+          ing: 'checking',
+          phrase: 'the electronic number board in the hospital waiting room',
+        },
+        {
+          sceneLabel: 'inside the hospital corridor',
+          location: 'inside the hospital corridor',
+          mustRule: 'follow the hospital signs and obey the medical staff',
+          mustntRule: 'touch medical equipment or bandages belonging to other patients',
+          shouldAction: 'walk carefully along the hospital corridor',
+          shouldntAction: 'run or cause chaos near the wheelchairs',
+          v1: 'follow',
+          v2: 'followed',
+          v3: 'followed',
+          ing: 'following',
+          phrase: 'the signs along the hospital corridor',
+        },
+      ]
+    : isSchool
+    ? [
+        {
+          sceneLabel: 'at the desk during the classroom exam',
+          location: 'in the examination room',
+          mustRule: 'write his own answers quietly on the test paper',
+          mustntRule: "copy answers from the student sitting at the next desk",
+          shouldAction: 'prepare the right pens and pencils before the exam starts',
+          shouldntAction: 'waste time taking out toys on the desk',
+          v1: 'write',
+          v2: 'wrote',
+          v3: 'written',
+          ing: 'writing',
+          phrase: 'the answers on the exam paper at the desk',
+        },
+        {
+          sceneLabel: 'when the teacher is watching the class',
+          location: 'inside the classroom',
+          mustRule: 'stop writing immediately when the teacher says time is up',
+          mustntRule: 'cheat or make loud noises during the test',
+          shouldAction: 'read the instructions on the exam envelope carefully',
+          shouldntAction: 'study the wrong topic before the test',
+          v1: 'open',
+          v2: 'opened',
+          v3: 'opened',
+          ing: 'opening',
+          phrase: 'the question envelope on the classroom desk',
+        },
+      ]
+    : isFood
+    ? [
+        {
+          sceneLabel: 'at the dining table with the food and menu',
+          location: 'at the restaurant table',
+          mustRule: 'use clean cutlery and behave politely at the table',
+          mustntRule: "hide unwanted food inside napkins, flowerpots, or someone's bag",
+          shouldAction: 'order a meal from the menu that he actually likes',
+          shouldntAction: 'make a mess with the food when the waiter looks away',
+          v1: 'order',
+          v2: 'ordered',
+          v3: 'ordered',
+          ing: 'ordering',
+          phrase: 'a special dish from the menu at the table',
+        },
+      ]
+    : [
+        {
+          sceneLabel: `at the start of "${cleanTitle}"`,
+          location: `in "${cleanTitle}"`,
+          mustRule: 'follow the rules and pay attention to what is happening',
+          mustntRule: `break the rules or cause an accident in "${cleanTitle}"`,
+          shouldAction: `think carefully before acting in "${cleanTitle}"`,
+          shouldntAction: 'rush into a silly mistake without looking first',
+          v1: 'arrive',
+          v2: 'arrived',
+          v3: 'arrived',
+          ing: 'arriving',
+          phrase: `at the main location in "${cleanTitle}"`,
+        },
+        {
+          sceneLabel: `when the problem begins in "${cleanTitle}"`,
+          location: `in this scene of "${cleanTitle}"`,
+          mustRule: 'stay calm and respect the other people in the room',
+          mustntRule: `annoy or push the other people in "${cleanTitle}"`,
+          shouldAction: 'ask for help politely when something goes wrong',
+          shouldntAction: 'hide the mistake or blame someone else',
+          v1: 'try',
+          v2: 'tried',
+          v3: 'tried',
+          ing: 'trying',
+          phrase: `to solve the problem in "${cleanTitle}"`,
+        },
+        {
+          sceneLabel: `during the middle scene of "${cleanTitle}"`,
+          location: `in "${cleanTitle}"`,
+          mustRule: 'keep the area safe and follow the instructions on the signs',
+          mustntRule: `touch things that belong to other people in "${cleanTitle}"`,
+          shouldAction: 'use the equipment properly and safely',
+          shouldntAction: 'do something dangerous or against the rules',
+          v1: 'look',
+          v2: 'looked',
+          v3: 'looked',
+          ing: 'looking',
+          phrase: `closely at what is happening in "${cleanTitle}"`,
+        },
+        {
+          sceneLabel: `near the end of "${cleanTitle}"`,
+          location: `toward the end of "${cleanTitle}"`,
+          mustRule: 'learn from the mistake and follow the proper rule next time',
+          mustntRule: `repeat the same silly mistake at the end of "${cleanTitle}"`,
+          shouldAction: 'apologize and clean up any mess before leaving',
+          shouldntAction: 'leave a big mess behind for other people',
+          v1: 'finish',
+          v2: 'finished',
+          v3: 'finished',
+          ing: 'finishing',
+          phrase: `the funny scene in "${cleanTitle}"`,
+        },
+      ];
+
+  return Array.from({ length: count }, (_, index) => {
+    const scene = scenes[index % scenes.length];
+    const requestedType = types[index % types.length];
+    const timeTrigger = Math.min(
+      Math.max(8, Math.round(usableStart + ((index + 0.5) / count) * usableSpan)),
+      Math.max(15, duration - 6)
+    );
+
+    const isMustTopic = /\bmust\b|\bmustn'?t\b|\bmust\s+not\b/i.test(topicLower);
+    const isShouldTopic = /\bshould\b|\bshouldn'?t\b/i.test(topicLower);
+    const isCanTopic = /\bcan\b|\bcan'?t\b|\bcould\b|\bcouldn'?t\b/i.test(topicLower);
+    const isHaveToTopic = /\bhave\s+to\b|\bhas\s+to\b|\bdon'?t\s+have\s+to\b/i.test(topicLower);
+    const isPresentPerfect =
+      topicLower.includes('present perf') ||
+      topicLower.includes('present per') ||
+      /\b(have|has|just|already|yet|ever|never|since|for)\b/i.test(topicLower);
+    const isPastSimple = topicLower.includes('past simple') || topicLower.includes('simple past');
+    const isPresentCont =
+      topicLower.includes('present continuous') || topicLower.includes('present progressive');
+
+    let question = '';
+    let answer = '';
+    let acceptedAnswers: string[] = [];
+    let options: Array<{ text: string; isCorrect: boolean }> = [];
+    let explanation = '';
+
+    if (isMustTopic) {
+      const askMustnt = index % 2 === 0;
+      if (requestedType === 'Fill in the Blanks') {
+        question = askMustnt
+          ? `Look at ${subject} ${scene.sceneLabel}: ${subject} ____ (must / mustn't) ${scene.mustntRule}.`
+          : `Complete the rule ${scene.location}: "${subject} ____ (must / mustn't) ${scene.mustRule}."`;
+        answer = askMustnt ? "mustn't" : 'must';
+        acceptedAnswers = askMustnt ? ["mustn't", 'must not', 'mustnt'] : ['must'];
+        options = [
+          { text: answer, isCorrect: true },
+          { text: askMustnt ? 'must' : "mustn't", isCorrect: false },
+          { text: 'must to', isCorrect: false },
+          { text: 'musts', isCorrect: false },
+        ];
+        explanation = askMustnt
+          ? `We use "mustn't" (must not) for prohibition — something that is forbidden ${scene.location}.`
+          : `We use "must + base verb" for an important rule or obligation ${scene.location}.`;
+      } else {
+        question = askMustnt
+          ? `Choose the correct modal verb ${scene.sceneLabel}: "${subject} ____ ${scene.mustntRule}!"`
+          : `Which sentence uses "must" or "mustn't" correctly ${scene.sceneLabel}?`;
+        answer = askMustnt ? "mustn't" : `${subject} must ${scene.mustRule}.`;
+        options = askMustnt
+          ? [
+              { text: "mustn't", isCorrect: true },
+              { text: 'must', isCorrect: false },
+              { text: 'must to', isCorrect: false },
+              { text: "don't must", isCorrect: false },
+            ]
+          : [
+              { text: `${subject} must ${scene.mustRule}.`, isCorrect: true },
+              { text: `${subject} musts ${scene.mustRule}.`, isCorrect: false },
+              { text: `${subject} must to ${scene.mustRule}.`, isCorrect: false },
+              { text: `${subject} mustn't ${scene.mustRule}.`, isCorrect: false },
+            ];
+        explanation = `Use "must" for rules/obligations and "mustn't" for prohibitions, followed by the base verb.`;
+      }
+    } else if (isShouldTopic) {
+      const askShouldnt = index % 2 === 0;
+      question = askShouldnt
+        ? `Give advice ${scene.sceneLabel}: "${subject} ____ (should / shouldn't) ${scene.shouldntAction}."`
+        : `Complete the advice ${scene.location}: "${subject} ____ (should / shouldn't) ${scene.shouldAction}."`;
+      answer = askShouldnt ? "shouldn't" : 'should';
+      acceptedAnswers = askShouldnt ? ["shouldn't", 'should not', 'shouldnt'] : ['should'];
+      options = [
+        { text: answer, isCorrect: true },
+        { text: askShouldnt ? 'should' : "shouldn't", isCorrect: false },
+        { text: 'should to', isCorrect: false },
+        { text: 'shoulds', isCorrect: false },
+      ];
+      explanation = `We use "should" and "shouldn't" + base verb to give advice ${scene.location}.`;
+    } else if (isCanTopic) {
+      const askCant = index % 2 === 0;
+      question = askCant
+        ? `In the scene ${scene.sceneLabel}, ${subject} ____ (can / can't) ${scene.mustntRule}.`
+        : `In the scene ${scene.sceneLabel}, ${subject} ____ (can / can't) ${scene.mustRule}.`;
+      answer = askCant ? "can't" : 'can';
+      acceptedAnswers = askCant ? ["can't", 'cannot', 'cant'] : ['can'];
+      options = [
+        { text: answer, isCorrect: true },
+        { text: askCant ? 'can' : "can't", isCorrect: false },
+        { text: 'can to', isCorrect: false },
+        { text: 'cans', isCorrect: false },
+      ];
+      explanation = `Use "can" for ability/permission and "can't" when something is not allowed or possible.`;
+    } else if (isHaveToTopic) {
+      question = `Complete the obligation sentence ${scene.sceneLabel}: "${subject} ____ (${haveToPos} / ${haveToNeg}) ${scene.mustRule}."`;
+      answer = haveToPos;
+      acceptedAnswers = [haveToPos, 'must'];
+      options = [
+        { text: haveToPos, isCorrect: true },
+        { text: haveToNeg, isCorrect: false },
+        { text: isPluralSubject ? 'has to' : 'have to', isCorrect: false },
+        { text: 'having to', isCorrect: false },
+      ];
+      explanation = `With "${subject}", we use "${haveToPos} + base verb" to express necessity.`;
+    } else if (isPresentPerfect) {
+      if (requestedType === 'Fill in the Blanks') {
+        question = `In the scene ${scene.sceneLabel}, ${subject} ${hasAux} ____ (${scene.v1}) ${scene.phrase}.`;
+        answer = scene.v3;
+        acceptedAnswers = [scene.v3, `${hasAux} ${scene.v3}`];
+        options = [
+          { text: scene.v3, isCorrect: true },
+          { text: scene.v1, isCorrect: false },
+          { text: scene.ing, isCorrect: false },
+          { text: `${wrongAux} ${scene.v1}`, isCorrect: false },
+        ];
+        explanation = `In the Present Perfect, use "${hasAux} + ${scene.v3}" (past participle of "${scene.v1}").`;
+      } else {
+        question = `Complete the Present Perfect sentence ${scene.sceneLabel}: "${subject} ____ just ____ (${scene.v1}) ${scene.phrase}!"`;
+        answer = `${hasAux} ... ${scene.v3}`;
+        acceptedAnswers = [`${hasAux} ${scene.v3}`, scene.v3];
+        options = [
+          { text: `${hasAux} ... ${scene.v3}`, isCorrect: true },
+          { text: `${wrongAux} ... ${scene.v1}`, isCorrect: false },
+          { text: `did ... ${scene.v3}`, isCorrect: false },
+          { text: `${isAux} ... ${scene.ing}`, isCorrect: false },
+        ];
+        explanation = `Present Perfect uses "${hasAux} + past participle (${scene.v3})".`;
+      }
+    } else if (isPastSimple) {
+      question = `In the scene ${scene.sceneLabel}, ${subject} ____ (${scene.v1}) ${scene.phrase}.`;
+      answer = scene.v2;
+      acceptedAnswers = [scene.v2];
+      options = [
+        { text: scene.v2, isCorrect: true },
+        { text: scene.v1, isCorrect: false },
+        { text: scene.ing, isCorrect: false },
+        { text: `did ${scene.v2}`, isCorrect: false },
+      ];
+      explanation = `The Past Simple form of "${scene.v1}" is "${scene.v2}".`;
+    } else if (isPresentCont) {
+      question = `Look at the scene ${scene.sceneLabel}! ${subject} ${isAux} ____ (${scene.v1}) ${scene.phrase}.`;
+      answer = scene.ing;
+      acceptedAnswers = [scene.ing, `${isAux} ${scene.ing}`];
+      options = [
+        { text: scene.ing, isCorrect: true },
+        { text: scene.v1, isCorrect: false },
+        { text: scene.v2, isCorrect: false },
+        { text: `${wrongIsAux} ${scene.ing}`, isCorrect: false },
+      ];
+      explanation = `Present Continuous uses "${isAux} + ${scene.ing}" for actions happening right now on screen.`;
+    } else if (/\b(and|vs\.?|or|\/)\b/i.test(topic)) {
+      const parts = topic
+        .split(/\s+(?:and|vs\.?|or|\/)\s+/i)
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      const choiceA = (parts[0] || topic).toLowerCase();
+      const choiceB = (parts[1] || `not ${choiceA}`).toLowerCase();
+      const useB = index % 2 === 0;
+      question = useB
+        ? `Complete the sentence ${scene.sceneLabel}: "${subject} ____ (${choiceA} / ${choiceB}) ${scene.mustntRule}."`
+        : `Complete the sentence ${scene.sceneLabel}: "${subject} ____ (${choiceA} / ${choiceB}) ${scene.mustRule}."`;
+      answer = useB ? choiceB : choiceA;
+      acceptedAnswers = [answer];
+      options = [
+        { text: answer, isCorrect: true },
+        { text: useB ? choiceA : choiceB, isCorrect: false },
+        { text: `${choiceA} to`, isCorrect: false },
+        { text: `${choiceB}s`, isCorrect: false },
+      ];
+      explanation = `"${answer}" is the accurate form for this scene ${scene.location}.`;
+    } else {
+      const topicPrefix = topic ? `(${topic}) ` : '';
+      question = `${topicPrefix}In the scene ${scene.sceneLabel}, ${subject} ____ (${scene.v1}) ${scene.phrase}.`;
+      answer = scene.v2;
+      acceptedAnswers = [scene.v2, scene.v1, scene.v3, `${hasAux} ${scene.v3}`, `${isAux} ${scene.ing}`];
+      options = [
+        { text: scene.v2, isCorrect: true },
+        { text: scene.ing, isCorrect: false },
+        { text: `to ${scene.v1}`, isCorrect: false },
+        { text: `${wasAux} ${scene.v1}`, isCorrect: false },
+      ];
+      explanation = `In this scene ${scene.location}, "${scene.v2}" accurately completes the sentence.`;
+    }
+
+    const rotatedOpts = options.map((o) => ({ ...o }));
+    if (rotatedOpts.length > 2) {
+      const shift = index % rotatedOpts.length;
+      for (let s = 0; s < shift; s++) {
+        const first = rotatedOpts.shift();
+        if (first) rotatedOpts.push(first);
+      }
+    }
+
+    return {
+      id: index + 1,
+      timeTrigger,
+      type: requestedType,
+      xp: 100,
+      question,
+      answer,
+      acceptedAnswers: acceptedAnswers.length > 0 ? acceptedAnswers : [answer],
+      options: rotatedOpts,
+      explanation,
+    };
+  });
+};
+
+export function HamsterPopQuiz({
+  onViewChange,
+  initialGame,
+}: {
+  onViewChange: (view: ViewState) => void;
+  initialGame?: any;
+}) {
   const { user } = useAuth();
   const [savedGameRecord, setSavedGameRecord] = useState<any>(initialGame || null);
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false);
   const [isMuted, setIsMuted] = useState(false);
 
-  // When a saved game is opened to play (not via explicit edit icon) or after saving in session, lock into clean Play Mode
   const [isLockedPlayMode, setIsLockedPlayMode] = useState<boolean>(
     Boolean(initialGame && !initialGame.editMode)
   );
@@ -260,24 +1001,95 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
     const raw = game?.customQuestions || game?.questions || [];
     if (!Array.isArray(raw) || raw.length === 0) return null;
     const total = raw.length;
+    const gameTopic = game?.topic || game?.name || game?.title || '';
+    const gameVideoTitle = game?.lessonConfig?.videoTitle || '';
+    const gameLevel = normalizeEnglishLevel(game?.classLevel || game?.className);
+
+    const replacementPool = generateDynamicQuestions({
+      topic: gameTopic,
+      videoTitle: gameVideoTitle,
+      level: gameLevel,
+      count: total,
+    });
+
     return raw.map((q: any, idx: number) => {
-      const text = q.text || q.question || `Question ${idx + 1}`;
-      const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['True', 'False'];
+      const text = (q.text || q.question || '').trim();
+      if (isLegacyPlaceholderQuestion(text)) {
+        const rep = replacementPool[idx % replacementPool.length];
+        return {
+          ...rep,
+          id: q.id || idx + 1,
+          timeTrigger:
+            typeof q.timeTrigger === 'number'
+              ? q.timeTrigger
+              : rep.timeTrigger || Math.round(((idx + 1) / (total + 1)) * 90) + 5,
+        };
+      }
+      const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : [];
       const foundCorrect = opts.findIndex((o: any) => typeof o === 'object' && Boolean(o?.isCorrect));
-      const ansIdx = typeof q.answerIndex === 'number' ? q.answerIndex : (foundCorrect >= 0 ? foundCorrect : 0);
+      const ansIdx =
+        typeof q.answerIndex === 'number'
+          ? q.answerIndex
+          : foundCorrect >= 0
+          ? foundCorrect
+          : 0;
+
+      // Detect if saved question is Fill in the Blanks or had dummy Option A/B/C/D
+      const isBlankQuestion =
+        q.type === 'Fill in the Blanks' ||
+        (text.includes('___') && hasOnlyDummyOptionPlaceholders(opts));
+
+      if (isBlankQuestion) {
+        const inferred = inferSmartBlankAnswerFromQuestion(text);
+        const rawAns =
+          q.answer ||
+          (opts[ansIdx] && !/^Option\s+[A-D1-4]$/i.test(String(opts[ansIdx]?.text || opts[ansIdx]))
+            ? typeof opts[ansIdx] === 'string'
+              ? opts[ansIdx]
+              : opts[ansIdx]?.text
+            : '') ||
+          inferred.answer;
+
+        return {
+          id: q.id || idx + 1,
+          timeTrigger:
+            typeof q.timeTrigger === 'number'
+              ? q.timeTrigger
+              : Math.round(((idx + 1) / (total + 1)) * 90) + 5,
+          type: 'Fill in the Blanks',
+          xp: q.xp || 100,
+          question: normalizeBlankQuestionText(text),
+          answer: rawAns,
+          acceptedAnswers: Array.isArray(q.acceptedAnswers)
+            ? q.acceptedAnswers
+            : [rawAns, ...inferred.acceptedAnswers],
+          options: [{ text: rawAns, isCorrect: true }],
+          explanation: q.explanation || `Correct answer: "${rawAns}".`,
+        };
+      }
+
+      const safeOpts = opts.length >= 2 ? opts : ['True', 'False'];
       return {
         id: q.id || idx + 1,
-        timeTrigger: typeof q.timeTrigger === 'number' ? q.timeTrigger : Math.round(((idx + 1) / (total + 1)) * 90) + 5,
+        timeTrigger:
+          typeof q.timeTrigger === 'number'
+            ? q.timeTrigger
+            : Math.round(((idx + 1) / (total + 1)) * 90) + 5,
         type: q.type || 'Multiple Choice',
         xp: q.xp || 100,
         question: text,
-        options: opts.map((o: any, oIdx: number) => ({
-          text: typeof o === 'string' ? o : o?.text || `Option ${oIdx + 1}`,
+        answer:
+          q.answer ||
+          (typeof safeOpts[ansIdx] === 'string' ? safeOpts[ansIdx] : safeOpts[ansIdx]?.text || ''),
+        options: safeOpts.map((o: any, oIdx: number) => ({
+          text: typeof o === 'string' ? o : o?.text || `Choice ${oIdx + 1}`,
           isCorrect: oIdx === ansIdx,
         })),
-        explanation: q.explanation || `Correct answer: ${typeof opts[ansIdx] === 'string' ? opts[ansIdx] : opts[ansIdx]?.text || ''}`,
-        ...(q.word ? { word: q.word } : {}),
-        ...(q.pronunciation ? { pronunciation: q.pronunciation } : {}),
+        explanation:
+          q.explanation ||
+          `Correct answer: ${
+            typeof safeOpts[ansIdx] === 'string' ? safeOpts[ansIdx] : safeOpts[ansIdx]?.text || ''
+          }`,
       };
     });
   }, []);
@@ -288,19 +1100,26 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
     initialMappedQuestions && hasInitialVideo ? 'player' : 'setup'
   );
   const [questions, setQuestions] = useState<any[]>(initialMappedQuestions || []);
+  const [openEditorOnMount, setOpenEditorOnMount] = useState<boolean>(
+    Boolean(initialGame?.editMode && !isLockedPlayMode)
+  );
   const [lessonConfig, setLessonConfig] = useState<any>(
     initialGame
       ? {
           topic: initialGame.topic || initialGame.name || initialGame.title || '',
-          level: initialGame.classLevel || initialGame.className || 'A2 Movers',
+          videoTitle: initialGame.lessonConfig?.videoTitle || '',
+          level: normalizeEnglishLevel(initialGame.classLevel || initialGame.className),
+          count: initialGame.lessonConfig?.count || (initialMappedQuestions?.length || 5),
           className: initialGame.className || '',
           folderId: initialGame.folderId || '',
           folder: initialGame.folderName || '',
           isPublic: initialGame.isPublic ?? true,
         }
       : {
-          topic: '',
-          level: 'A2 Movers',
+          topic: '', // Do NOT automatically load a quiz topic
+          videoTitle: '',
+          level: 'Movers',
+          count: 5,
           className: '',
           folderId: '',
           folder: '',
@@ -312,12 +1131,9 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
   const [localVideoName, setLocalVideoName] = useState<string>('');
   const localBlobUrlRef = useRef<string | null>(null);
 
-  const [xp, setXp] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [bestStreak, setBestStreak] = useState(0);
-  const [wordsLearned, setWordsLearned] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [setupError, setSetupError] = useState('');
+  const [liveScoreCount, setLiveScoreCount] = useState(0);
 
   useEffect(() => {
     return () => {
@@ -339,8 +1155,10 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
     if (mapped) {
       setQuestions(mapped);
       setLessonConfig({
-        topic: initialGame.topic || initialGame.name || initialGame.title || 'Video Quiz',
-        level: initialGame.classLevel || initialGame.className || 'A2 Movers',
+        topic: initialGame.topic || initialGame.name || initialGame.title || '',
+        videoTitle: initialGame.lessonConfig?.videoTitle || '',
+        level: normalizeEnglishLevel(initialGame.classLevel || initialGame.className),
+        count: initialGame.lessonConfig?.count || mapped.length || 5,
         className: initialGame.className || '',
         folderId: initialGame.folderId || '',
         folder: initialGame.folderName || '',
@@ -364,8 +1182,8 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
     setSetupError('');
 
     const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
-    if (cleanFileName && !lessonConfig?.topic) {
-      setLessonConfig((prev: any) => ({ ...prev, topic: cleanFileName }));
+    if (cleanFileName) {
+      setLessonConfig((prev: any) => ({ ...prev, videoTitle: cleanFileName }));
     }
   };
 
@@ -413,6 +1231,7 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
       const resolvedTitle =
         saveOverrides?.title?.trim() ||
         lessonConfig?.topic?.trim() ||
+        lessonConfig?.videoTitle?.trim() ||
         existing?.topic ||
         existing?.name ||
         existing?.title ||
@@ -462,15 +1281,17 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
 
       const normalizedQuestions = (questions || []).map((q: any, idx: number) => {
         const rawOpts = Array.isArray(q.options) ? q.options : [];
-        const optionTexts = rawOpts.map((o: any, oIdx: number) =>
-          typeof o === 'string' ? o : o?.text || `Option ${oIdx + 1}`
-        );
+        const optionTexts = rawOpts
+          .map((o: any) => (typeof o === 'string' ? o : o?.text || ''))
+          .filter(Boolean);
         const foundAnsIdx = rawOpts.findIndex((o: any) => typeof o === 'object' && Boolean(o?.isCorrect));
         const answerIndex = foundAnsIdx >= 0 ? foundAnsIdx : (typeof q.answerIndex === 'number' ? q.answerIndex : 0);
         return {
           id: q.id || idx + 1,
-          text: q.question || q.text || `Question ${idx + 1}`,
-          options: optionTexts.length >= 2 ? optionTexts : ['True', 'False'],
+          text: q.question || q.text || '',
+          answer: q.answer || optionTexts[answerIndex] || '',
+          acceptedAnswers: Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers : undefined,
+          options: optionTexts.length >= 1 ? optionTexts : [q.answer || 'looked'],
           answerIndex,
           timeTrigger:
             typeof q.timeTrigger === 'number'
@@ -479,14 +1300,12 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
           type: q.type || 'Multiple Choice',
           xp: q.xp || 100,
           explanation: q.explanation || '',
-          ...(q.word ? { word: q.word } : {}),
-          ...(q.pronunciation ? { pronunciation: q.pronunciation } : {}),
         };
       });
 
       const updatedConfig = {
         ...lessonConfig,
-        topic: resolvedTitle,
+        topic: lessonConfig?.topic || '',
         className: resolvedClass,
         folderId: resolvedFolderId,
         folder: resolvedFolderName,
@@ -501,7 +1320,7 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
       const gameToSave = {
         name: resolvedTitle,
         title: resolvedTitle,
-        topic: resolvedTitle,
+        topic: lessonConfig?.topic || '',
         className: resolvedClass,
         classLevel: resolvedClass,
         folderId: resolvedFolderId,
@@ -517,7 +1336,6 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
         existingGame: existing,
       });
       setSavedGameRecord(result.savedGame);
-      // Once saved, enter clean Play Mode without Edit Questions or Checkpoint lists
       setIsLockedPlayMode(true);
       return {
         ok: true,
@@ -544,38 +1362,73 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
     setVideoUrl(cleanUrl);
     setLessonConfig(config);
     setIsLockedPlayMode(false);
+    setOpenEditorOnMount(false);
+
+    // If the teacher already typed custom questions in Setup, start immediately with those
+    if (Array.isArray(config.manualQuestions) && config.manualQuestions.length > 0) {
+      setQuestions(config.manualQuestions);
+      setCurrentView('player');
+      return;
+    }
+
     setIsGenerating(true);
+    const desiredCount = Math.max(1, Math.min(100, Number(config.count) || 5));
 
     try {
       const res = await fetch('/api/generate-hamster-questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: config.topic || 'Video Lesson',
-          level: config.level || 'A2 Movers',
+          topic: (config.topic || '').trim(),
+          videoTitle: config.videoTitle || localVideoName || '',
+          level: normalizeEnglishLevel(config.level),
           types: config.selectedTypes,
-          freq: config.frequency,
+          count: desiredCount,
           videoUrl: cleanUrl.startsWith('blob:') ? localVideoName : cleanUrl,
         }),
       });
       const data = await res.json();
-      if (Array.isArray(data.questions) && data.questions.length > 0) {
-        const desiredCount = config.count || 4;
-        const base = data.questions;
+      const resolvedVidTitle = data?.videoTitle || config.videoTitle || '';
+      const resolvedVidDuration = Number(data?.videoDuration) || Number(config.videoDuration) || 0;
+      if (resolvedVidTitle || resolvedVidDuration) {
+        setLessonConfig((prev: any) => ({
+          ...prev,
+          ...(resolvedVidTitle ? { videoTitle: resolvedVidTitle } : {}),
+          ...(resolvedVidDuration > 0 ? { videoDuration: resolvedVidDuration } : {}),
+        }));
+      }
+      const fallbackPool = generateDynamicQuestions({
+        ...config,
+        videoTitle: resolvedVidTitle,
+        videoDuration: resolvedVidDuration || config.videoDuration,
+        count: desiredCount,
+      });
+
+      if (Array.isArray(data?.questions) && data.questions.length > 0) {
+        const validFromApi = data.questions.filter(
+          (q: any) =>
+            q &&
+            typeof q.question === 'string' &&
+            !isLegacyPlaceholderQuestion(q.question) &&
+            (q.type === 'Fill in the Blanks' ||
+              (Array.isArray(q.options) && q.options.length >= 2))
+        );
         const finalQs =
-          base.length >= desiredCount
-            ? base.slice(0, desiredCount)
-            : [...base, ...generateDynamicQuestions(config).slice(base.length, desiredCount)].map((q, i) => ({
-                ...q,
-                id: i + 1,
-              }));
+          validFromApi.length >= desiredCount
+            ? validFromApi.slice(0, desiredCount)
+            : [...validFromApi, ...fallbackPool.slice(validFromApi.length, desiredCount)].map(
+                (q, i) => ({
+                  ...q,
+                  id: i + 1,
+                })
+              );
         setQuestions(finalQs);
       } else {
-        setQuestions(generateDynamicQuestions(config));
+        setQuestions(fallbackPool);
       }
     } catch (e) {
       console.error(e);
-      setQuestions(generateDynamicQuestions(config));
+      setQuestions(generateDynamicQuestions({ ...config, count: desiredCount }));
     } finally {
       setIsGenerating(false);
       setCurrentView('player');
@@ -593,12 +1446,11 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
     >
       <style>{customStyles}</style>
 
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-40 w-full bg-[#0E0B1A]/95 border-b border-white/10 px-3 sm:px-5 h-14 flex items-center justify-between gap-3 shrink-0">
-        {/* Zone 1: Back + Fullscreen + Brand */}
+      {/* Clean Top Navigation Bar */}
+      <header className="sticky top-0 z-40 w-full bg-[#0E0B1A]/95 border-b border-white/10 px-3 sm:px-5 h-13 flex items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-2.5 shrink-0 min-w-0">
           <button
-            onClick={() => onViewChange("games")}
+            onClick={() => onViewChange('games')}
             title="Back to Games"
             className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
           >
@@ -618,15 +1470,15 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
             <span className="vq-display text-base sm:text-lg font-extrabold tracking-tight text-white truncate">
               Video <span className="text-amber-400">Quiz</span>
             </span>
-            {currentView === 'player' && (lessonConfig?.topic || localVideoName) && (
+            {currentView === 'player' && (lessonConfig?.topic || lessonConfig?.videoTitle || localVideoName) && (
               <>
                 <span aria-hidden="true" className="text-white/20 hidden md:inline">·</span>
                 <span className="hidden md:inline text-xs font-bold text-slate-300 truncate max-w-[260px]">
-                  {lessonConfig?.topic || localVideoName}
+                  {lessonConfig?.topic || lessonConfig?.videoTitle || localVideoName}
                 </span>
                 {lessonConfig?.level && (
                   <span className="hidden lg:inline px-2 py-0.5 rounded-md bg-amber-400/15 text-amber-300 text-[11px] font-bold whitespace-nowrap">
-                    {lessonConfig.level}
+                    {normalizeEnglishLevel(lessonConfig.level)}
                   </span>
                 )}
               </>
@@ -634,9 +1486,9 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
           </div>
         </div>
 
-        {/* Zone 2: Mode Switcher (Only visible when creating/editing an unsaved quiz) */}
+        {/* Mode Switcher */}
         {!isLockedPlayMode && (
-          <div className="hidden sm:flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10">
             <button
               onClick={() => setCurrentView('setup')}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
@@ -654,9 +1506,7 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
                   setCurrentView('setup');
                   return;
                 }
-                if (questions.length === 0) {
-                  setQuestions(generateDynamicQuestions(lessonConfig));
-                }
+                setOpenEditorOnMount(false);
                 setCurrentView('player');
               }}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
@@ -665,21 +1515,24 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              Player {questions.length > 0 ? `(${questions.length})` : ''}
+              Player
             </button>
           </div>
         )}
 
-        {/* Zone 3: Live Score & Audio Action */}
+        {/* Live Score (Top Right) & Audio Toggle */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-slate-300 vq-mono">
-            <span className="text-amber-400 font-extrabold">{xp} XP</span>
-            <span aria-hidden="true" className="text-white/20">·</span>
-            <span className="text-rose-400 font-extrabold flex items-center gap-1">
-              <Flame size={13} className="text-rose-400" />
-              {streak}
-            </span>
-          </div>
+          {currentView === 'player' && questions.length > 0 && (
+            <div
+              title="Live Score"
+              className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-400/50 text-emerald-300 font-extrabold text-xs sm:text-sm vq-mono flex items-center gap-1.5 shadow-sm"
+            >
+              <CheckCircle size={15} className="text-emerald-400 shrink-0" />
+              <span>
+                {liveScoreCount}/{questions.length}
+              </span>
+            </div>
+          )}
           <button
             onClick={toggleMute}
             title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
@@ -690,7 +1543,7 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
         </div>
       </header>
 
-      {/* Main Workspace — Full-Screen in Player View */}
+      {/* Main Workspace */}
       <main
         className={`flex-1 w-full mx-auto flex flex-col ${
           currentView === 'player'
@@ -709,6 +1562,8 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
             onSelectLocalFile={handleSelectLocalVideoFile}
             onClearVideo={handleClearVideoSource}
             initialConfig={lessonConfig}
+            existingQuestions={questions}
+            setQuestions={setQuestions}
             setupError={setupError}
             setSetupError={setSetupError}
             onStartLesson={handleStartLesson}
@@ -722,9 +1577,7 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
               setVideoUrl(cleanUrl);
               setLessonConfig(cfg);
               setIsLockedPlayMode(false);
-              if (questions.length === 0) {
-                setQuestions(generateDynamicQuestions(cfg));
-              }
+              setOpenEditorOnMount(false);
               setCurrentView('player');
             }}
             isGenerating={isGenerating}
@@ -735,26 +1588,14 @@ export function HamsterPopQuiz({ onViewChange, initialGame }: { onViewChange: (v
             config={lessonConfig}
             questions={questions}
             setQuestions={setQuestions}
-            xp={xp}
-            setXp={setXp}
-            streak={streak}
-            setStreak={(valOrFn: any) => {
-              setStreak((prev) => {
-                const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
-                if (next > bestStreak) setBestStreak(next);
-                return next;
-              });
-            }}
-            bestStreak={bestStreak}
-            wordsLearned={wordsLearned}
-            setWordsLearned={setWordsLearned}
             videoUrl={videoUrl}
             localVideoName={localVideoName}
             onSaveQuiz={handleSaveVideoQuiz}
             isSaving={isSaving}
             isPlayOnlyMode={isLockedPlayMode}
-            initialOpenEditor={Boolean(initialGame?.editMode && !isLockedPlayMode)}
+            initialOpenEditor={openEditorOnMount}
             onBackToSetup={() => setCurrentView('setup')}
+            onScoreChange={setLiveScoreCount}
           />
         )}
       </main>
@@ -769,6 +1610,8 @@ function SetupStudioView({
   onSelectLocalFile,
   onClearVideo,
   initialConfig,
+  existingQuestions,
+  setQuestions,
   setupError,
   setSetupError,
   onStartLesson,
@@ -777,12 +1620,26 @@ function SetupStudioView({
 }: any) {
   const isBlobUrl = Boolean(videoUrl && videoUrl.startsWith('blob:'));
   const [urlInput, setUrlInput] = useState(isBlobUrl ? '' : videoUrl || '');
+  // Do NOT automatically load a quiz topic — start blank unless user typed one
   const [topic, setTopic] = useState(initialConfig?.topic || '');
-  const [level, setLevel] = useState(initialConfig?.level || 'A2 Movers');
+  const [detectedVideoTitle, setDetectedVideoTitle] = useState(initialConfig?.videoTitle || '');
+  const [level, setLevel] = useState(normalizeEnglishLevel(initialConfig?.level));
   const [selectedTypes, setSelectedTypes] = useState<string[]>(
-    initialConfig?.selectedTypes || ['Multiple Choice', 'Vocabulary Meaning', 'Grammar Choice']
+    initialConfig?.selectedTypes || ['Fill in the Blanks', 'Multiple Choice', 'Grammar Choice']
   );
-  const [quizCount, setQuizCount] = useState<number>(4);
+
+  // Allow typing ANY number of questions freely (not limited to 10!)
+  const initialCountNum = Math.max(1, Math.min(100, Number(initialConfig?.count) || 5));
+  const [quizCountInput, setQuizCountInput] = useState<string>(String(initialCountNum));
+  const resolvedQuizCount = Math.max(1, Math.min(100, parseInt(quizCountInput, 10) || 5));
+
+  // Direct inline question typing in Setup (supports Fill in the Blanks & Multiple Choice)
+  const [directMode, setDirectMode] = useState<'Fill in the Blanks' | 'Multiple Choice'>('Fill in the Blanks');
+  const [directTime, setDirectTime] = useState('0:15');
+  const [directQuestion, setDirectQuestion] = useState('');
+  const [directBlankAnswer, setDirectBlankAnswer] = useState('');
+  const [directOptions, setDirectOptions] = useState<string[]>(['', '', '', '']);
+  const [directCorrectIdx, setDirectCorrectIdx] = useState<number>(0);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const urlInputRef = useRef<HTMLInputElement | null>(null);
@@ -795,16 +1652,13 @@ function SetupStudioView({
     }
   }, [videoUrl]);
 
-  useEffect(() => {
-    if (initialConfig?.topic && !topic) {
-      setTopic(initialConfig.topic);
-    }
-  }, [initialConfig?.topic]);
-
-  // Auto-detect YouTube title via oEmbed when user pastes a YouTube link
+  // Scan YouTube video title via oEmbed for accurate scene analysis without overwriting the user's quiz topic
   useEffect(() => {
     const trimmed = (urlInput || '').trim();
-    if (!trimmed.includes('youtube.com') && !trimmed.includes('youtu.be')) return;
+    if (!trimmed.includes('youtube.com') && !trimmed.includes('youtu.be')) {
+      setDetectedVideoTitle('');
+      return;
+    }
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -813,10 +1667,10 @@ function SetupStudioView({
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && data?.title) {
-          setTopic((prev: string) => prev.trim() || String(data.title).slice(0, 65));
+          setDetectedVideoTitle(String(data.title).trim());
         }
       } catch {}
-    }, 350);
+    }, 250);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -834,29 +1688,93 @@ function SetupStudioView({
   };
 
   const activeVideoSource = isBlobUrl ? videoUrl : urlInput.trim();
+  const ytPreviewId = !isBlobUrl ? extractClientYouTubeId(activeVideoSource) : null;
 
-  const buildPayload = () => {
-    const matchedFreq = QUIZ_COUNTS.find((c) => c.count === quizCount)?.freq || 'Smart Timing';
-    const fallbackTopic = localVideoName
-      ? localVideoName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ')
-      : 'Video Lesson';
+  const buildPayload = (manualQs?: any[]) => {
     return {
       ...initialConfig,
       videoUrl: activeVideoSource,
-      topic: topic.trim() || fallbackTopic,
-      level,
+      topic: topic.trim(), // Keep empty if user didn't enter a topic
+      videoTitle:
+        detectedVideoTitle ||
+        (localVideoName ? localVideoName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ') : ''),
+      level: normalizeEnglishLevel(level),
       selectedTypes,
-      count: quizCount,
-      frequency: matchedFreq,
+      count: resolvedQuizCount,
+      ...(manualQs ? { manualQuestions: manualQs } : {}),
     };
+  };
+
+  const handleAddDirectQuestionInSetup = () => {
+    const rawQText = directQuestion.trim();
+    if (!rawQText) return;
+    const sec = parseTimeInputToSeconds(directTime) ?? 15;
+    const nextId =
+      (existingQuestions || []).reduce((m: number, q: any) => Math.max(m, q.id || 0), 0) + 1;
+
+    const nonEmptyOpts = directOptions.map((o) => o.trim()).filter(Boolean);
+    const shouldBeFillBlank =
+      directMode === 'Fill in the Blanks' ||
+      (rawQText.includes('___') && nonEmptyOpts.length < 2) ||
+      nonEmptyOpts.length === 0;
+
+    let newQ: any;
+    if (shouldBeFillBlank) {
+      const qFormatted = rawQText.includes('___')
+        ? normalizeBlankQuestionText(rawQText)
+        : `${rawQText} ____`;
+      const inferred = inferSmartBlankAnswerFromQuestion(qFormatted);
+      const finalAns =
+        directBlankAnswer.trim() || nonEmptyOpts[0] || inferred.answer;
+
+      newQ = {
+        id: nextId,
+        timeTrigger: sec,
+        type: 'Fill in the Blanks',
+        xp: 100,
+        question: qFormatted,
+        answer: finalAns,
+        acceptedAnswers: Array.from(
+          new Set([finalAns, ...inferred.acceptedAnswers].filter(Boolean))
+        ),
+        options: [{ text: finalAns, isCorrect: true }],
+        explanation: `Correct answer: "${finalAns}".`,
+      };
+    } else {
+      const builtOpts = directOptions.map((opt, idx) => ({
+        text: opt.trim() || `Choice ${['A', 'B', 'C', 'D'][idx]}`,
+        isCorrect: idx === directCorrectIdx,
+      }));
+      const rightAns = builtOpts[directCorrectIdx]?.text || builtOpts[0]?.text || '';
+      newQ = {
+        id: nextId,
+        timeTrigger: sec,
+        type: 'Multiple Choice',
+        xp: 100,
+        question: rawQText,
+        answer: rightAns,
+        options: builtOpts,
+        explanation: `Correct answer: "${rightAns}".`,
+      };
+    }
+
+    const nextList = [...(existingQuestions || []), newQ].sort(
+      (a, b) => a.timeTrigger - b.timeTrigger
+    );
+    setQuestions(nextList);
+    setDirectQuestion('');
+    setDirectBlankAnswer('');
+    setDirectOptions(['', '', '', '']);
+    setDirectCorrectIdx(0);
+    setDirectTime(formatSeconds(sec + 20));
   };
 
   return (
     <div className="flex-1 flex flex-col justify-center max-w-5xl mx-auto w-full animate-vq-fade">
-      <div className="bg-[#161229] border border-white/10 rounded-3xl p-5 sm:p-8 shadow-2xl">
-        {/* Compact Header */}
-        <div className="flex flex-col sm:flex-row items-center gap-5 pb-6 border-b border-white/10">
-          <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 border-2 border-amber-400/50 shadow-lg bg-[#0B0914]">
+      <div className="bg-[#161229] border border-white/10 rounded-3xl p-5 sm:p-8 shadow-2xl space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-center gap-5 pb-5 border-b border-white/10">
+          <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shrink-0 border-2 border-amber-400/50 shadow-lg bg-[#0B0914]">
             <img
               src="/images/video-quiz-card-v3.jpg?v=3"
               onError={(e) => {
@@ -869,18 +1787,18 @@ function SetupStudioView({
           </div>
 
           <div className="flex-1 text-center sm:text-left">
-            <h1 className="vq-display text-2xl sm:text-4xl font-black text-white tracking-tight mb-1">
+            <h1 className="vq-display text-2xl sm:text-3xl font-black text-white tracking-tight mb-1">
               Interactive <span className="text-amber-400">Video Quiz</span>
             </h1>
-            <p className="text-sm text-slate-400 max-w-xl">
-              Paste a YouTube or video URL, or upload a video file from your computer to create live checkpoint questions below the video.
+            <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
+              Paste a video URL or upload a video file. Auto-generate scene-accurate questions by scanning the video (with an optional grammar topic), or type your own Fill in the Blanks and Multiple Choice questions below.
             </p>
           </div>
         </div>
 
         {/* Main Setup Form Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6">
-          {/* Left Column: Video Source (URL or Local File) & Topic */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column: Video Source, Topic, How Many Questions, English Level */}
           <div className="lg:col-span-7 space-y-5">
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -892,6 +1810,7 @@ function SetupStudioView({
                     type="button"
                     onClick={() => {
                       setUrlInput('');
+                      setDetectedVideoTitle('');
                       onClearVideo();
                     }}
                     className="text-xs font-semibold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
@@ -952,7 +1871,7 @@ function SetupStudioView({
                         setVideoUrl(e.target.value);
                         if (setupError) setSetupError('');
                       }}
-                      className={`w-full pl-10 pr-4 py-3.5 rounded-xl bg-[#0E0B1A] border focus:outline-none text-sm font-medium text-white placeholder:text-slate-500 transition-colors ${
+                      className={`w-full pl-10 pr-4 py-3 rounded-xl bg-[#0E0B1A] border focus:outline-none text-sm font-medium text-white placeholder:text-slate-500 transition-colors ${
                         setupError
                           ? 'border-rose-500 focus:border-rose-400'
                           : 'border-white/15 focus:border-amber-400'
@@ -963,11 +1882,35 @@ function SetupStudioView({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Upload size={15} className="text-amber-400" />
                     Upload Video
                   </button>
+                </div>
+              )}
+
+              {(detectedVideoTitle || ytPreviewId) && !isBlobUrl && (
+                <div className="mt-2.5 p-2.5 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center gap-3">
+                  {ytPreviewId && (
+                    <img
+                      src={`https://i.ytimg.com/vi/${ytPreviewId}/hqdefault.jpg`}
+                      alt="Scanned Video Preview"
+                      referrerPolicy="no-referrer"
+                      className="w-16 h-10 rounded-lg object-cover border border-amber-400/40 shrink-0"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
+                      <Sparkles size={12} className="shrink-0" />
+                      <span>Video Scanned & Ready for Scene Questions</span>
+                    </div>
+                    {detectedVideoTitle && (
+                      <div className="text-xs font-extrabold text-white truncate">
+                        {detectedVideoTitle}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -981,53 +1924,106 @@ function SetupStudioView({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-2">
-                  Quiz Title / Topic
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-300">
+                    Grammar / Quiz Topic <span className="text-slate-500 font-normal">(Optional)</span>
+                  </label>
+                  {topic && (
+                    <button
+                      type="button"
+                      onClick={() => setTopic('')}
+                      className="text-[11px] font-bold text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
-                  placeholder="e.g. Ocean Wildlife & Habitats"
+                  placeholder="Type topic or leave blank to scan video..."
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white placeholder:text-slate-500 transition-colors"
                 />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {POPULAR_GRAMMAR_TOPICS.map((presetTopic) => {
+                    const isSelected = topic.trim().toLowerCase() === presetTopic.toLowerCase();
+                    return (
+                      <button
+                        key={presetTopic}
+                        type="button"
+                        onClick={() => setTopic(isSelected ? '' : presetTopic)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-400/20 border-amber-400 text-amber-300'
+                            : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {presetTopic}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-2">
-                  Checkpoints
+                  How Many Questions <span className="text-slate-500 font-normal">(Type any number)</span>
                 </label>
-                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[#0E0B1A] border border-white/15">
-                  {QUIZ_COUNTS.map((item) => (
-                    <button
-                      key={item.count}
-                      type="button"
-                      onClick={() => setQuizCount(item.count)}
-                      className={`py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
-                        quizCount === item.count
-                          ? 'bg-amber-400 text-slate-950'
-                          : 'text-slate-300 hover:text-white'
-                      }`}
-                    >
-                      {item.count} Qs
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="e.g. 15"
+                    value={quizCountInput}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
+                      if (digitsOnly === '') {
+                        setQuizCountInput('');
+                        return;
+                      }
+                      const num = Math.min(100, parseInt(digitsOnly, 10));
+                      setQuizCountInput(String(num));
+                    }}
+                    onBlur={() => {
+                      if (!quizCountInput || parseInt(quizCountInput, 10) < 1) {
+                        setQuizCountInput('5');
+                      }
+                    }}
+                    className="w-20 px-3 py-3 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-extrabold text-amber-400 text-center vq-mono"
+                  />
+                  <div className="flex-1 grid grid-cols-5 gap-1 p-1 rounded-xl bg-[#0E0B1A] border border-white/15">
+                    {QUESTION_COUNT_PRESETS.map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setQuizCountInput(String(cnt))}
+                        className={`py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                          resolvedQuizCount === cnt
+                            ? 'bg-amber-400 text-slate-950'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {cnt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Level Selector */}
+            {/* English Level Selector */}
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-2">
                 English Level
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 {CEFR_LEVELS.map((l) => (
                   <button
                     key={l}
                     type="button"
                     onClick={() => setLevel(l)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors whitespace-nowrap cursor-pointer border ${
+                    className={`px-3 py-2.5 rounded-xl text-xs font-extrabold transition-colors whitespace-nowrap cursor-pointer border text-center ${
                       level === l
                         ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-xs'
                         : 'bg-[#0E0B1A] text-slate-300 border-white/10 hover:border-white/25'
@@ -1041,12 +2037,12 @@ function SetupStudioView({
           </div>
 
           {/* Right Column: Question Types & Launch Actions */}
-          <div className="lg:col-span-5 flex flex-col justify-between space-y-5">
+          <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-2">
                 Question Formats
               </label>
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 {QUESTION_TYPES.map((type) => {
                   const active = selectedTypes.includes(type);
                   return (
@@ -1054,7 +2050,7 @@ function SetupStudioView({
                       key={type}
                       type="button"
                       onClick={() => toggleType(type)}
-                      className={`p-3.5 rounded-xl border text-left transition-colors flex items-center gap-2.5 cursor-pointer ${
+                      className={`p-2.5 rounded-xl border text-left transition-colors flex items-center gap-2 cursor-pointer ${
                         active
                           ? 'bg-pink-500/15 border-pink-400/60 text-white'
                           : 'bg-[#0E0B1A] border-white/10 text-slate-400 hover:text-slate-200'
@@ -1074,35 +2070,8 @@ function SetupStudioView({
               </div>
             </div>
 
-            {/* Source Readiness Card */}
-            <div className="bg-[#0E0B1A] border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-slate-200 truncate">
-                  {activeVideoSource
-                    ? isBlobUrl
-                      ? `File: ${localVideoName}`
-                      : 'Video Link Ready'
-                    : 'No Video Selected Yet'}
-                </div>
-                <div className="text-[11px] text-slate-400 truncate">
-                  {activeVideoSource
-                    ? `${quizCount} checkpoints · ${level}`
-                    : 'Paste a URL or upload an MP4 file to begin'}
-                </div>
-              </div>
-              <span
-                className={`text-xs font-extrabold px-2.5 py-1 rounded-lg shrink-0 ${
-                  activeVideoSource
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'bg-white/5 text-slate-400'
-                }`}
-              >
-                {activeVideoSource ? 'Ready' : 'Waiting'}
-              </span>
-            </div>
-
             {/* Launch Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-1">
+            <div className="space-y-2.5">
               <button
                 type="button"
                 disabled={isGenerating}
@@ -1114,20 +2083,22 @@ function SetupStudioView({
                   }
                   onStartLesson(buildPayload());
                 }}
-                className="flex-1 py-3.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition-colors cursor-pointer whitespace-nowrap"
+                className="w-full py-3.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition-colors cursor-pointer"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Generating...
+                    Scanning Video & Generating {resolvedQuizCount} Questions...
                   </>
                 ) : (
                   <>
                     <Sparkles size={18} />
-                    Generate & Play
+                    Auto-Generate {resolvedQuizCount} {topic.trim() ? `${topic.trim()} ` : 'Video '}
+                    {resolvedQuizCount === 1 ? 'Question' : 'Questions'} & Play
                   </>
                 )}
               </button>
+
               <button
                 type="button"
                 disabled={isGenerating}
@@ -1137,15 +2108,209 @@ function SetupStudioView({
                     urlInputRef.current?.focus();
                     return;
                   }
-                  onOpenManual(buildPayload());
+                  onOpenManual(buildPayload(existingQuestions));
                 }}
-                className="py-3.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-1.5 border border-white/10 transition-colors cursor-pointer whitespace-nowrap"
+                className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/10 transition-colors cursor-pointer"
               >
-                <Edit3 size={15} />
-                Open Editor
+                <Play size={14} className="text-amber-400" />
+                Open Video Player & Type Questions Directly
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Direct Question Typing Box in Setup (Supports Fill in the Blanks & Multiple Choice) */}
+        <div className="pt-5 border-t border-white/10 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                <Edit3 size={15} className="text-amber-400" />
+                Directly Type Your Own Questions (Fill in the Blanks or Multiple Choice)
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Choose <strong>Fill in the Blanks</strong> (use <code className="text-amber-300">____</code> for the blank) or <strong>Multiple Choice</strong>, set the timestamp, and click Add Question.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center p-1 rounded-xl bg-[#0E0B1A] border border-white/10">
+                {(['Fill in the Blanks', 'Multiple Choice'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setDirectMode(m)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      directMode === m
+                        ? 'bg-amber-400 text-slate-950'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+
+              {Array.isArray(existingQuestions) && existingQuestions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setQuestions([])}
+                  className="text-xs font-bold text-rose-400 hover:text-rose-300 cursor-pointer ml-2"
+                >
+                  Clear All ({existingQuestions.length})
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-[#0E0B1A] border border-white/10 rounded-2xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="flex items-center gap-1.5 bg-[#161229] border border-white/15 rounded-xl px-3 py-2.5 shrink-0">
+                <Clock size={14} className="text-amber-400" />
+                <span className="text-xs font-bold text-slate-400">Time:</span>
+                <input
+                  type="text"
+                  value={directTime}
+                  onChange={(e) => setDirectTime(e.target.value)}
+                  placeholder="0:15"
+                  className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
+                />
+              </div>
+              <input
+                type="text"
+                value={directQuestion}
+                onChange={(e) => setDirectQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddDirectQuestionInSetup();
+                  }
+                }}
+                placeholder={
+                  directMode === 'Fill in the Blanks'
+                    ? 'e.g. He has ____ at the mirror.'
+                    : 'Type your multiple choice question here...'
+                }
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#161229] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
+              />
+              {directMode === 'Fill in the Blanks' && (
+                <button
+                  type="button"
+                  onClick={() => setDirectQuestion((prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}____ `)}
+                  title="Insert blank ____"
+                  className="px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-amber-300 text-xs font-extrabold cursor-pointer shrink-0"
+                >
+                  + Insert ____
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleAddDirectQuestionInSetup}
+                disabled={!directQuestion.trim()}
+                className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus size={15} />
+                Add Question
+              </button>
+            </div>
+
+            {directMode === 'Fill in the Blanks' ? (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
+                <span className="text-xs font-extrabold text-emerald-300 shrink-0">
+                  Correct Missing Word(s):
+                </span>
+                <input
+                  type="text"
+                  value={directBlankAnswer}
+                  onChange={(e) => setDirectBlankAnswer(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddDirectQuestionInSetup();
+                    }
+                  }}
+                  placeholder="e.g. looked (students will type this to fill in the blank)"
+                  className="flex-1 bg-transparent text-xs sm:text-sm font-bold text-white placeholder:text-slate-400 focus:outline-none"
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                {['A', 'B', 'C', 'D'].map((letter, idx) => {
+                  const isRight = directCorrectIdx === idx;
+                  return (
+                    <div
+                      key={letter}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border ${
+                        isRight
+                          ? 'bg-emerald-500/10 border-emerald-400/50'
+                          : 'bg-[#161229] border-white/10'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setDirectCorrectIdx(idx)}
+                        title="Click to mark as correct answer"
+                        className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
+                          isRight
+                            ? 'bg-emerald-400 text-slate-950'
+                            : 'bg-white/10 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {letter}
+                      </button>
+                      <input
+                        type="text"
+                        value={directOptions[idx]}
+                        onChange={(e) => {
+                          const next = [...directOptions];
+                          next[idx] = e.target.value;
+                          setDirectOptions(next);
+                        }}
+                        placeholder={`Choice ${letter}${isRight ? ' (Correct)' : ''}`}
+                        className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* List of custom typed questions */}
+          {Array.isArray(existingQuestions) && existingQuestions.length > 0 && (
+            <div className="space-y-2 max-h-52 overflow-y-auto vq-scrollbar pr-1">
+              {existingQuestions.map((q: any) => (
+                <div
+                  key={q.id}
+                  className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-[#0E0B1A] border border-white/10 text-xs"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span className="px-2 py-0.5 rounded bg-amber-400/15 text-amber-300 vq-mono font-bold shrink-0">
+                      @{formatSeconds(q.timeTrigger)}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-pink-500/15 text-pink-300 text-[10px] font-bold shrink-0">
+                      {q.type || 'Multiple Choice'}
+                    </span>
+                    <span className="font-semibold text-white truncate">{q.question}</span>
+                    {q.type === 'Fill in the Blanks' && q.answer && (
+                      <span className="text-emerald-300 font-bold shrink-0">
+                        Ans: {q.answer}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQuestions(existingQuestions.filter((item: any) => item.id !== q.id))
+                    }
+                    className="p-1 text-slate-400 hover:text-rose-400 cursor-pointer shrink-0"
+                    title="Remove question"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1157,13 +2322,6 @@ function PlayerView({
   config,
   questions,
   setQuestions,
-  xp,
-  setXp,
-  streak,
-  setStreak,
-  bestStreak,
-  wordsLearned,
-  setWordsLearned,
   videoUrl,
   localVideoName,
   onSaveQuiz,
@@ -1171,26 +2329,116 @@ function PlayerView({
   isPlayOnlyMode,
   initialOpenEditor,
   onBackToSetup,
+  onScoreChange,
 }: any) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [activeQuiz, setActiveQuiz] = useState<any>(null);
-  const [reviewingQuiz, setReviewingQuiz] = useState<any>(null);
   const [isReplayingClip, setIsReplayingClip] = useState(false);
   const [resultsMap, setResultsMap] = useState<Record<number, QuizAnswerRecord>>({});
   const [showConfetti, setShowConfetti] = useState(false);
   const [showEditModal, setShowEditModal] = useState(Boolean(initialOpenEditor));
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [isStageFullscreen, setIsStageFullscreen] = useState(false);
+  const [isGeneratingMore, setIsGeneratingMore] = useState(false);
 
+  // Direct inline question typing right below the video (Supports Fill in the Blanks & Multiple Choice)
+  const [inlineMode, setInlineMode] = useState<'Fill in the Blanks' | 'Multiple Choice'>('Fill in the Blanks');
+  const [inlineTimeInput, setInlineTimeInput] = useState('0:15');
+  const [inlineQuestionText, setInlineQuestionText] = useState('');
+  const [inlineBlankAnswer, setInlineBlankAnswer] = useState('');
+  const [inlineOptions, setInlineOptions] = useState<string[]>(['', '', '', '']);
+  const [inlineCorrectIdx, setInlineCorrectIdx] = useState<number>(0);
+
+  const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<any>(null);
   const nativeVideoRef = useRef<HTMLVideoElement | null>(null);
-  const questionDockRef = useRef<HTMLDivElement | null>(null);
-  const [videoDuration, setVideoDuration] = useState(120);
+  const [videoDuration, setVideoDuration] = useState(
+    Math.max(60, Number(config?.videoDuration) || 120)
+  );
   const [currentTime, setCurrentTime] = useState(0);
 
+  useEffect(() => {
+    const cfgDur = Number(config?.videoDuration);
+    if (cfgDur && cfgDur > 60 && videoDuration <= 120) {
+      setVideoDuration(cfgDur);
+    }
+  }, [config?.videoDuration, videoDuration]);
+
   const useNativeVideo = isDirectVideoSource(videoUrl);
+
+  const sortedQuestions = [...questions].sort((a, b) => a.timeTrigger - b.timeTrigger);
+  const maxQuestionTrigger = sortedQuestions.reduce(
+    (max, q) => Math.max(max, Number(q?.timeTrigger) || 0),
+    0
+  );
+  const effectiveDuration = Math.max(
+    videoDuration || 120,
+    Number(config?.videoDuration) || 0,
+    maxQuestionTrigger + 15,
+    60
+  );
+  const correctCount = Object.values(resultsMap).filter((r) => r?.isCorrect).length;
+
+  useEffect(() => {
+    if (typeof onScoreChange === 'function') {
+      onScoreChange(correctCount);
+    }
+  }, [correctCount, onScoreChange]);
+
+  // Sync browser fullscreen changes with our stage fullscreen state
+  useEffect(() => {
+    const handleFsChange = () => {
+      const doc: any = document;
+      const fsElem =
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement;
+      if (!fsElem && isStageFullscreen) {
+        setIsStageFullscreen(false);
+      } else if (fsElem && stageContainerRef.current && fsElem === stageContainerRef.current) {
+        setIsStageFullscreen(true);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+    };
+  }, [isStageFullscreen]);
+
+  const toggleStageFullscreen = async () => {
+    const doc: any = document;
+    const fsElem =
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement;
+
+    if (isStageFullscreen || fsElem) {
+      setIsStageFullscreen(false);
+      try {
+        if (fsElem) {
+          if (doc.exitFullscreen) await doc.exitFullscreen();
+          else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
+        }
+      } catch {}
+    } else {
+      setIsStageFullscreen(true);
+      try {
+        const el: any = stageContainerRef.current;
+        if (el) {
+          if (el.requestFullscreen) await el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+        }
+      } catch {
+        // Fallback to CSS fixed fullscreen
+      }
+    }
+  };
 
   // Sync play/pause with native video element when using direct/blob video
   useEffect(() => {
@@ -1204,30 +2452,11 @@ function PlayerView({
     }
   }, [isPlaying, activeQuiz, isReplayingClip, useNativeVideo, videoUrl]);
 
-  const sortedQuestions = [...questions].sort((a, b) => a.timeTrigger - b.timeTrigger);
-  const answeredRecords = Object.values(resultsMap);
-  const answeredIds = Object.keys(resultsMap).map(Number);
-  const correctCount = answeredRecords.filter((r) => r.isCorrect).length;
-  const missedCount = answeredRecords.filter((r) => !r.isCorrect).length;
-  const accuracyPct = answeredIds.length > 0 ? Math.round((correctCount / answeredIds.length) * 100) : 0;
-  const avgResponseTimeSec =
-    answeredRecords.length > 0
-      ? Number(
-          (
-            answeredRecords.reduce((acc, r) => acc + (r.responseTimeSec || 0), 0) /
-            answeredRecords.length
-          ).toFixed(1)
-        )
-      : 0;
-  const fastestResponseSec =
-    answeredRecords.length > 0
-      ? Math.min(...answeredRecords.map((r) => r.responseTimeSec || 99))
-      : 0;
-
   const seekVideoTo = (seconds: number) => {
-    const clamped = Math.max(0, Math.min(videoDuration || 120, seconds));
+    const clamped = Math.max(0, Math.min(effectiveDuration, seconds));
     setCurrentTime(clamped);
-    setProgress((clamped / (videoDuration || 120)) * 100);
+    setInlineTimeInput(formatSeconds(Math.max(1, Math.round(clamped))));
+    setProgress((clamped / effectiveDuration) * 100);
     if (useNativeVideo && nativeVideoRef.current) {
       nativeVideoRef.current.currentTime = clamped;
     } else if (videoRef.current) {
@@ -1242,7 +2471,6 @@ function PlayerView({
   const triggerQuizNow = (quiz: any) => {
     setIsReplayingClip(false);
     setIsPlaying(false);
-    setReviewingQuiz(null);
     seekVideoTo(quiz.timeTrigger);
     setActiveQuiz(quiz);
     vqAudio.playPop();
@@ -1258,10 +2486,8 @@ function PlayerView({
 
   const evaluateTimeTrigger = (currentSeconds: number) => {
     setCurrentTime(currentSeconds);
-    const duration = videoDuration || 120;
-    setProgress((currentSeconds / duration) * 100);
+    setProgress((currentSeconds / effectiveDuration) * 100);
 
-    // If replaying the 5-second scene for the active question below, pause again when reaching its checkpoint
     if (isReplayingClip && activeQuiz) {
       if (currentSeconds >= activeQuiz.timeTrigger) {
         setIsReplayingClip(false);
@@ -1293,18 +2519,10 @@ function PlayerView({
     responseTimeSec: number;
   }) => {
     if (!activeQuiz) return;
-    const earnedXp = result.isCorrect ? (activeQuiz.xp || 100) + streak * 10 : 0;
 
     if (result.isCorrect) {
-      setXp((prev: number) => prev + earnedXp);
-      setStreak((prev: number) => prev + 1);
       setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 2600);
-      if (activeQuiz.type === 'Vocabulary Meaning') {
-        setWordsLearned((prev: number) => prev + 1);
-      }
-    } else {
-      setStreak(0);
+      setTimeout(() => setShowConfetti(false), 2200);
     }
 
     const updatedResults: Record<number, QuizAnswerRecord> = {
@@ -1313,89 +2531,150 @@ function PlayerView({
         isCorrect: result.isCorrect,
         selectedIndex: result.selectedIndex,
         responseTimeSec: result.responseTimeSec,
-        earnedXp,
+        earnedXp: result.isCorrect ? 100 : 0,
       },
     };
     setResultsMap(updatedResults);
     setActiveQuiz(null);
     setIsReplayingClip(false);
 
-    const allAnswered = sortedQuestions.every((q: any) => updatedResults[q.id] !== undefined);
-    if (allAnswered && sortedQuestions.length > 0) {
-      setIsPlaying(false);
-      vqAudio.playFanfare();
-      setTimeout(() => {
-        setShowSummaryModal(true);
-      }, 350);
-    } else {
-      setTimeout(() => {
-        setIsPlaying(true);
-      }, 250);
-    }
+    setTimeout(() => {
+      setIsPlaying(true);
+    }, 220);
   };
 
   const handleResetQuiz = () => {
     setResultsMap({});
     setActiveQuiz(null);
-    setReviewingQuiz(null);
     setIsReplayingClip(false);
-    setShowSummaryModal(false);
-    setXp(0);
-    setStreak(0);
-    setWordsLearned(0);
     seekVideoTo(0);
     setIsPlaying(false);
   };
 
-  const handleAddQuestionAtCurrentTime = () => {
+  const handleAddInlineQuestion = () => {
+    const rawQText = inlineQuestionText.trim();
+    if (!rawQText) return;
+    const triggerSec =
+      parseTimeInputToSeconds(inlineTimeInput) ?? Math.max(1, Math.round(currentTime || 15));
     const nextId = questions.reduce((max: number, q: any) => Math.max(max, q.id || 0), 0) + 1;
-    const triggerSec = Math.max(2, Math.round(currentTime || 10));
-    const newQ = {
-      id: nextId,
-      timeTrigger: triggerSec,
-      type: 'Multiple Choice',
-      xp: 100,
-      question: `What happens at ${formatSeconds(triggerSec)}?`,
-      options: [
-        { text: 'Correct answer', isCorrect: true },
-        { text: 'Option B', isCorrect: false },
-        { text: 'Option C', isCorrect: false },
-        { text: 'Option D', isCorrect: false },
-      ],
-      explanation: 'Key detail from this moment in the video.',
-    };
-    const updated = [...questions, newQ].sort((a, b) => a.timeTrigger - b.timeTrigger);
-    setQuestions(updated);
-    setShowEditModal(true);
+
+    const nonEmptyOpts = inlineOptions.map((o) => o.trim()).filter(Boolean);
+    const shouldBeFillBlank =
+      inlineMode === 'Fill in the Blanks' ||
+      (rawQText.includes('___') && nonEmptyOpts.length < 2) ||
+      nonEmptyOpts.length === 0;
+
+    let newQ: any;
+    if (shouldBeFillBlank) {
+      const qFormatted = rawQText.includes('___')
+        ? normalizeBlankQuestionText(rawQText)
+        : `${rawQText} ____`;
+      const inferred = inferSmartBlankAnswerFromQuestion(qFormatted);
+      const finalAns =
+        inlineBlankAnswer.trim() || nonEmptyOpts[0] || inferred.answer;
+
+      newQ = {
+        id: nextId,
+        timeTrigger: triggerSec,
+        type: 'Fill in the Blanks',
+        xp: 100,
+        question: qFormatted,
+        answer: finalAns,
+        acceptedAnswers: Array.from(
+          new Set([finalAns, ...inferred.acceptedAnswers].filter(Boolean))
+        ),
+        options: [{ text: finalAns, isCorrect: true }],
+        explanation: `Correct answer: "${finalAns}".`,
+      };
+    } else {
+      const builtOpts = inlineOptions.map((opt, idx) => ({
+        text: opt.trim() || `Choice ${['A', 'B', 'C', 'D'][idx]}`,
+        isCorrect: idx === inlineCorrectIdx,
+      }));
+      const rightAns = builtOpts[inlineCorrectIdx]?.text || builtOpts[0]?.text || '';
+      newQ = {
+        id: nextId,
+        timeTrigger: triggerSec,
+        type: 'Multiple Choice',
+        xp: 100,
+        question: rawQText,
+        answer: rightAns,
+        options: builtOpts,
+        explanation: `Correct answer: "${rightAns}".`,
+      };
+    }
+
+    setQuestions([...questions, newQ].sort((a, b) => a.timeTrigger - b.timeTrigger));
+    setInlineQuestionText('');
+    setInlineBlankAnswer('');
+    setInlineOptions(['', '', '', '']);
+    setInlineCorrectIdx(0);
+    setToastMessage(`Added ${newQ.type} question at ${formatSeconds(triggerSec)}`);
+    setTimeout(() => setToastMessage(''), 2200);
   };
 
-  const nextUnanswered = sortedQuestions.find((q: any) => resultsMap[q.id] === undefined);
-  const mastery = getMasteryGrade(accuracyPct, answeredIds.length);
+  const handleAutoGenerateTopicQuestions = async () => {
+    setIsGeneratingMore(true);
+    const desiredCount = Math.max(1, Math.min(100, Number(config?.count) || 5));
+    try {
+      const res = await fetch('/api/generate-hamster-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: (config?.topic || '').trim(),
+          videoTitle: config?.videoTitle || localVideoName || '',
+          level: normalizeEnglishLevel(config?.level),
+          types: config?.selectedTypes || ['Fill in the Blanks', 'Multiple Choice', 'Grammar Choice'],
+          count: desiredCount,
+          videoDuration: videoDuration || 180,
+          videoUrl: videoUrl.startsWith('blob:') ? localVideoName : videoUrl,
+        }),
+      });
+      const data = await res.json();
+      const fallbackPool = generateDynamicQuestions({
+        ...config,
+        videoTitle: data?.videoTitle || config?.videoTitle,
+        count: desiredCount,
+        videoDuration: videoDuration || 180,
+      });
 
-  // Compute Category Analytics Breakdown
-  const categoryStats = QUESTION_TYPES.map((type) => {
-    const typeQuestions = sortedQuestions.filter((q) => q.type === type);
-    if (typeQuestions.length === 0) return null;
-    const answeredOfType = typeQuestions.filter((q) => resultsMap[q.id] !== undefined);
-    const correctOfType = answeredOfType.filter((q) => resultsMap[q.id]?.isCorrect);
-    const pct =
-      answeredOfType.length > 0
-        ? Math.round((correctOfType.length / answeredOfType.length) * 100)
-        : null;
-    return {
-      type,
-      total: typeQuestions.length,
-      answered: answeredOfType.length,
-      correct: correctOfType.length,
-      pct,
-    };
-  }).filter(Boolean) as Array<{
-    type: string;
-    total: number;
-    answered: number;
-    correct: number;
-    pct: number | null;
-  }>;
+      if (Array.isArray(data?.questions) && data.questions.length > 0) {
+        const valid = data.questions.filter(
+          (q: any) =>
+            q &&
+            typeof q.question === 'string' &&
+            !isLegacyPlaceholderQuestion(q.question) &&
+            (q.type === 'Fill in the Blanks' ||
+              (Array.isArray(q.options) && q.options.length >= 2))
+        );
+        setQuestions(
+          valid.length >= desiredCount
+            ? valid.slice(0, desiredCount)
+            : [...valid, ...fallbackPool.slice(valid.length, desiredCount)].map((q, i) => ({
+                ...q,
+                id: i + 1,
+              }))
+        );
+      } else {
+        setQuestions(fallbackPool);
+      }
+      setResultsMap({});
+      setActiveQuiz(null);
+      setToastMessage(
+        `Scanned video & generated ${desiredCount} ${config?.topic ? `${config.topic} ` : ''}questions`
+      );
+      setTimeout(() => setToastMessage(''), 2500);
+    } catch {
+      const fallbackPool = generateDynamicQuestions({
+        ...config,
+        count: desiredCount,
+        videoDuration: videoDuration || 180,
+      });
+      setQuestions(fallbackPool);
+    } finally {
+      setIsGeneratingMore(false);
+    }
+  };
 
   return (
     <div className="flex-1 w-full flex flex-col gap-3 pb-4 animate-vq-fade">
@@ -1410,6 +2689,9 @@ function PlayerView({
         <EditQuestionsModal
           questions={sortedQuestions}
           setQuestions={setQuestions}
+          currentTime={currentTime}
+          videoDuration={videoDuration}
+          config={config}
           onClose={() => setShowEditModal(false)}
         />
       )}
@@ -1433,121 +2715,32 @@ function PlayerView({
         />
       )}
 
-      {showSummaryModal && (
-        <ResultsSummaryModal
-          topic={config?.topic || 'Video Quiz'}
-          questions={sortedQuestions}
-          resultsMap={resultsMap}
-          xp={xp}
-          bestStreak={bestStreak}
-          wordsLearned={wordsLearned}
-          avgResponseTimeSec={avgResponseTimeSec}
-          categoryStats={categoryStats}
-          isPlayOnlyMode={isPlayOnlyMode}
-          onReplay={handleResetQuiz}
-          onSeekToQuestion={(q: any) => {
-            setShowSummaryModal(false);
-            setActiveQuiz(null);
-            setIsPlaying(false);
-            seekVideoTo(q.timeTrigger);
-            if (resultsMap[q.id] !== undefined) {
-              setReviewingQuiz(q);
-            }
-          }}
-          onOpenSave={() => {
-            setShowSummaryModal(false);
-            setShowSaveModal(true);
-          }}
-          onClose={() => setShowSummaryModal(false)}
-        />
-      )}
-
-      {/* TOP ZONE: FULL-SCREEN CINEMA VIDEO STAGE */}
-      <div className="w-full flex flex-col bg-[#141026] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-        {/* Compact Cinema Stage Control Header */}
-        <div className="px-4 py-2.5 border-b border-white/10 flex flex-wrap items-center justify-between gap-2.5 bg-[#0F0C1D]">
-          {/* Left: Title + Live Status Badge */}
+      {/* UNIFIED CINEMA VIDEO & QUESTION STAGE (Supports Fullscreen with Questions Inside!) */}
+      <div
+        ref={stageContainerRef}
+        className={`w-full flex flex-col bg-[#141026] border border-white/10 overflow-hidden shadow-2xl ${
+          isStageFullscreen
+            ? 'fixed inset-0 z-50 rounded-none border-none h-screen w-screen bg-black'
+            : 'rounded-2xl'
+        }`}
+      >
+        {/* Clean Stage Header Bar (No 0:15 timestamp chips; Live Score on Top Right!) */}
+        <div className="px-4 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-2 bg-[#0F0C1D] shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="vq-display font-extrabold text-white text-sm sm:text-base truncate">
-              {config?.topic || localVideoName || 'Video Quiz'}
+              {config?.topic || config?.videoTitle || localVideoName || 'Video Quiz'}
             </span>
-            {activeQuiz ? (
-              <span className="px-2.5 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[11px] font-black uppercase tracking-wide flex items-center gap-1 animate-pulse shrink-0">
-                <Zap size={12} fill="currentColor" />
-                Question Active Below
-              </span>
-            ) : (
-              <span className="text-xs font-semibold text-amber-400 whitespace-nowrap">
-                {config?.level || 'All Levels'}
-              </span>
-            )}
+            <span className="px-2 py-0.5 rounded bg-amber-400/15 text-amber-300 text-[11px] font-bold whitespace-nowrap">
+              {normalizeEnglishLevel(config?.level)}
+            </span>
           </div>
 
-          {/* Center: Compact Non-Spoiler Question Status Pills */}
-          <div className="hidden lg:flex items-center gap-1.5">
-            {sortedQuestions.map((q: any, idx: number) => {
-              const rec = resultsMap[q.id];
-              const isAct = activeQuiz?.id === q.id;
-              const isRev = reviewingQuiz?.id === q.id;
-
-              let pillStyle = 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-white/25';
-              if (isAct || isRev) {
-                pillStyle = 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm scale-105';
-              } else if (rec?.isCorrect === true) {
-                pillStyle = 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300';
-              } else if (rec?.isCorrect === false) {
-                pillStyle = 'bg-rose-500/20 border-rose-400/50 text-rose-300';
-              }
-
-              return (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => {
-                    if (rec !== undefined) {
-                      setIsPlaying(false);
-                      seekVideoTo(q.timeTrigger);
-                      setReviewingQuiz(q);
-                    } else {
-                      triggerQuizNow(q);
-                    }
-                  }}
-                  title={
-                    rec !== undefined
-                      ? `Q${idx + 1} (${formatSeconds(q.timeTrigger)}) · Click to review`
-                      : `Checkpoint ${idx + 1} at ${formatSeconds(q.timeTrigger)}`
-                  }
-                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-extrabold vq-mono flex items-center gap-1 transition-all cursor-pointer ${pillStyle}`}
-                >
-                  <span>Q{idx + 1}</span>
-                  {rec?.isCorrect === true && <Check size={11} strokeWidth={3} />}
-                  {rec?.isCorrect === false && <X size={11} strokeWidth={3} />}
-                  {rec === undefined && <span className="text-[10px] opacity-75">{formatSeconds(q.timeTrigger)}</span>}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Right: Analytics, Reset, and Creator Actions (Hidden when saved & played) */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSummaryModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 hover:text-amber-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <BarChart3 size={14} />
-              <span>Analytics</span>
-              {answeredIds.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 vq-mono text-[10px]">
-                  {accuracyPct}%
-                </span>
-              )}
-            </button>
-
+          {/* Right Side: Action Controls + Live Score on the Top Right (e.g. 0/30) */}
+          <div className="flex items-center gap-2 ml-auto">
             <button
               type="button"
               onClick={handleResetQuiz}
-              title="Reset Progress"
+              title="Reset Video & Questions"
               className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
             >
               <RotateCcw size={13} />
@@ -1558,40 +2751,74 @@ function PlayerView({
               <>
                 <button
                   type="button"
-                  onClick={onBackToSetup}
-                  className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
+                  onClick={handleAutoGenerateTopicQuestions}
+                  disabled={isGeneratingMore}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+                  title="Scan video & auto-generate questions"
                 >
-                  Change Video
+                  {isGeneratingMore ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={13} />
+                  )}
+                  <span className="hidden sm:inline">Auto-Generate</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setShowEditModal(true)}
-                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                  className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Settings size={13} className="text-amber-400" />
-                  <span>Edit Questions</span>
+                  <span className="hidden sm:inline">Edit Questions</span>
                 </button>
+
                 <button
                   type="button"
                   disabled={isSaving}
                   onClick={() => setShowSaveModal(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer whitespace-nowrap"
                 >
                   {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Folder size={13} />}
-                  <span>{isSaving ? 'Saving...' : 'Save Quiz'}</span>
+                  <span>{isSaving ? 'Saving...' : 'Save'}</span>
                 </button>
               </>
             )}
+
+            <button
+              type="button"
+              onClick={toggleStageFullscreen}
+              title={isStageFullscreen ? 'Exit Fullscreen' : 'Fullscreen Video & Quiz'}
+              className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              {isStageFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              <span className="hidden sm:inline">
+                {isStageFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              </span>
+            </button>
+
+            {/* Prominent Live Score Badge on Top Right (e.g. 0/30) */}
+            <div
+              title="Live Score"
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 border-2 border-emerald-400/70 text-white font-black text-xs sm:text-sm vq-mono flex items-center gap-1.5 shadow-[0_0_15px_rgba(16,185,129,0.25)] whitespace-nowrap"
+            >
+              <CheckCircle size={15} className="text-emerald-400 shrink-0" />
+              <span>
+                {correctCount}/{sortedQuestions.length}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Full-Screen Cinema Video Viewport — NEVER dimmed or blocked when a question pops below! */}
+        {/* Cinema Video Viewport */}
         <div
           id="vq-video-stage"
-          className={`relative w-full bg-black flex items-center justify-center overflow-hidden transition-all duration-300 ${
-            activeQuiz || reviewingQuiz
-              ? 'h-[44vh] sm:h-[50vh] lg:h-[54vh] min-h-[260px]'
-              : 'h-[60vh] sm:h-[68vh] lg:h-[72vh] min-h-[360px]'
+          className={`relative w-full bg-black flex items-center justify-center overflow-hidden transition-all duration-200 ${
+            isStageFullscreen
+              ? 'flex-1 min-h-[240px]'
+              : activeQuiz
+              ? 'h-[52vh] sm:h-[58vh] lg:h-[62vh] min-h-[300px]'
+              : 'h-[68vh] sm:h-[74vh] lg:h-[78vh] min-h-[400px]'
           }`}
         >
           <div className="absolute inset-0 w-full h-full">
@@ -1611,7 +2838,6 @@ function PlayerView({
                 onEnded={() => {
                   setIsPlaying(false);
                   vqAudio.playFanfare();
-                  setShowSummaryModal(true);
                 }}
                 className="w-full h-full object-contain bg-black"
               />
@@ -1626,7 +2852,6 @@ function PlayerView({
                 onEnded={() => {
                   setIsPlaying(false);
                   vqAudio.playFanfare();
-                  setShowSummaryModal(true);
                 }}
                 onDurationChange={(e: any) => {
                   const duration = e?.currentTarget?.duration || e?.target?.duration || 120;
@@ -1638,11 +2863,11 @@ function PlayerView({
             )}
           </div>
 
-          {/* Center Play Button Overlay (only when paused and no active question below) */}
-          {!isPlaying && !activeQuiz && !reviewingQuiz && (
+          {/* Center Play Button Overlay when paused and no active question */}
+          {!isPlaying && !activeQuiz && (
             <div
               onClick={() => setIsPlaying(true)}
-              className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 cursor-pointer group"
+              className="absolute inset-0 z-10 flex items-center justify-center bg-black/25 cursor-pointer group"
             >
               <button
                 type="button"
@@ -1654,74 +2879,63 @@ function PlayerView({
             </div>
           )}
 
-          {/* Subtle Top-Right Scene Indicator when Question is Active Below (Does NOT cover video) */}
-          {activeQuiz && (
-            <div className="absolute top-3 right-3 z-10 pointer-events-none px-3 py-1.5 rounded-xl bg-black/75 border border-amber-400/50 text-amber-300 text-xs font-extrabold flex items-center gap-1.5 shadow-lg">
-              <Eye size={14} />
-              <span>
-                {isReplayingClip
-                  ? 'Replaying Scene...'
-                  : `Scene Paused at ${formatSeconds(activeQuiz.timeTrigger)} — Answer Below`}
-              </span>
-            </div>
-          )}
-
           {showConfetti && <Confetti />}
         </div>
 
-        {/* Interactive Checkpoint Timeline & Transport Bar */}
-        <div className="px-4 py-2.5 sm:px-5 bg-[#0F0C1D] border-t border-white/10 flex flex-col gap-2">
-          {/* Scrubber Track with Clickable Checkpoint Pins */}
+        {/* Clean Progress Scrubber with Question Indicators Directly on the Video Slider */}
+        <div className="px-4 py-2.5 bg-[#0F0C1D] border-t border-white/10 flex flex-col gap-2.5 shrink-0">
           <div
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-              seekVideoTo(ratio * (videoDuration || 120));
+              seekVideoTo(ratio * effectiveDuration);
             }}
-            className="relative h-2.5 bg-white/10 rounded-full cursor-pointer flex items-center group"
+            className="relative h-3 bg-white/10 rounded-full cursor-pointer flex items-center my-1"
           >
+            {/* Progress Fill */}
             <div
-              className="h-full bg-gradient-to-r from-amber-400 to-pink-500 rounded-full transition-all duration-150"
+              className="h-full bg-gradient-to-r from-amber-400 to-pink-500 rounded-full transition-all duration-150 pointer-events-none"
               style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
             />
 
-            {sortedQuestions.map((q: any, idx: number) => {
-              const leftPct = Math.min(98, Math.max(2, (q.timeTrigger / (videoDuration || 120)) * 100));
-              const record = resultsMap[q.id];
+            {/* Question Indicator Markers on the Video Slider */}
+            {sortedQuestions.map((q: any) => {
+              const pct = Math.min(
+                99,
+                Math.max(1, ((Number(q.timeTrigger) || 0) / effectiveDuration) * 100)
+              );
+              const rec = resultsMap[q.id];
               const isAct = activeQuiz?.id === q.id;
-              const pinColor = isAct
-                ? 'bg-amber-300 border-white text-slate-950 scale-125 ring-4 ring-amber-400/30'
-                : record?.isCorrect === true
-                ? 'bg-emerald-400 border-emerald-950 text-slate-950'
-                : record?.isCorrect === false
-                ? 'bg-rose-500 border-rose-950 text-white'
-                : 'bg-amber-400 border-slate-950 text-slate-950';
+
+              let markerClass =
+                'bg-amber-400 border-[#0F0C1D] shadow-[0_0_8px_rgba(245,158,11,0.9)] hover:scale-125';
+              if (isAct) {
+                markerClass =
+                  'bg-white border-amber-400 scale-135 ring-4 ring-amber-400/40 z-20';
+              } else if (rec?.isCorrect === true) {
+                markerClass =
+                  'bg-emerald-400 border-[#0F0C1D] shadow-[0_0_8px_rgba(16,185,129,0.95)] hover:scale-125';
+              } else if (rec?.isCorrect === false) {
+                markerClass =
+                  'bg-rose-500 border-[#0F0C1D] shadow-[0_0_8px_rgba(244,63,94,0.95)] hover:scale-125';
+              }
 
               return (
                 <button
                   key={q.id}
                   type="button"
-                  title={`Checkpoint ${idx + 1} (${formatSeconds(q.timeTrigger)})`}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    if (record !== undefined) {
-                      setIsPlaying(false);
-                      seekVideoTo(q.timeTrigger);
-                      setReviewingQuiz(q);
-                    } else {
-                      triggerQuizNow(q);
-                    }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerQuizNow(q);
                   }}
-                  style={{ left: `${leftPct}%` }}
-                  className={`-translate-x-1/2 w-5 h-5 rounded-full border-2 text-[10px] font-black flex items-center justify-center shadow-md hover:scale-125 transition-transform z-10 cursor-pointer ${pinColor}`}
-                >
-                  {idx + 1}
-                </button>
+                  aria-label="Question checkpoint"
+                  className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full border-2 transition-all cursor-pointer z-10 ${markerClass}`}
+                  style={{ left: `${pct}%` }}
+                />
               );
             })}
           </div>
 
-          {/* Transport Controls Row */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <button
@@ -1736,7 +2950,11 @@ function PlayerView({
                 className="w-8 h-8 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center justify-center transition-colors cursor-pointer"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
-                {isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" className="ml-0.5" />}
+                {isPlaying ? (
+                  <Pause size={15} fill="currentColor" />
+                ) : (
+                  <Play size={15} fill="currentColor" className="ml-0.5" />
+                )}
               </button>
               <button
                 type="button"
@@ -1754,25 +2972,10 @@ function PlayerView({
               >
                 <SkipForward size={14} />
               </button>
-
-              <span className="vq-mono text-xs font-bold text-slate-300 ml-1.5">
-                {formatSeconds(currentTime)} <span className="text-slate-600">/</span> {formatSeconds(videoDuration)}
-              </span>
             </div>
 
             <div className="flex items-center gap-2">
-              {!isPlayOnlyMode && (
-                <button
-                  type="button"
-                  onClick={handleAddQuestionAtCurrentTime}
-                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <Plus size={13} className="text-amber-400" />
-                  Add Q at {formatSeconds(currentTime)}
-                </button>
-              )}
-
-              {activeQuiz ? (
+              {activeQuiz && (
                 <button
                   type="button"
                   onClick={handleReplayQuestionScene}
@@ -1781,130 +2984,238 @@ function PlayerView({
                   <RotateCcw size={13} />
                   Replay Clip (-5s)
                 </button>
-              ) : nextUnanswered ? (
-                <button
-                  type="button"
-                  onClick={() => triggerQuizNow(nextUnanswered)}
-                  className="px-3.5 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-400 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <Zap size={13} fill="currentColor" />
-                  Next Question
-                </button>
-              ) : (
-                answeredIds.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowSummaryModal(true)}
-                    className="px-3.5 py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    <Award size={14} />
-                    Full Analytics Report
-                  </button>
-                )
               )}
+
+              <button
+                type="button"
+                onClick={toggleStageFullscreen}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {isStageFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                <span>{isStageFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+              </button>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* BOTTOM ZONE (DIRECTLY BELOW VIDEO): ACTIVE QUESTION DOCK OR LIVE QUESTIONS ANALYTICS */}
-      <div ref={questionDockRef} className="w-full">
-        {activeQuiz ? (
-          <BelowVideoQuestionDock
-            key={activeQuiz.id}
-            quiz={activeQuiz}
-            index={sortedQuestions.findIndex((q) => q.id === activeQuiz.id) + 1}
-            total={sortedQuestions.length}
-            isReplayingClip={isReplayingClip}
-            onReplayScene={handleReplayQuestionScene}
-            onComplete={handleQuizComplete}
-            onSkip={() => {
-              setActiveQuiz(null);
-              setIsReplayingClip(false);
-              setIsPlaying(true);
-            }}
-          />
-        ) : reviewingQuiz ? (
-          <BelowVideoReviewCard
-            quiz={reviewingQuiz}
-            index={sortedQuestions.findIndex((q) => q.id === reviewingQuiz.id) + 1}
-            total={sortedQuestions.length}
-            record={resultsMap[reviewingQuiz.id]}
-            onReplayClip={() => {
-              seekVideoTo(Math.max(0, reviewingQuiz.timeTrigger - 4));
-              setIsPlaying(true);
-            }}
-            onCloseReview={() => {
-              setReviewingQuiz(null);
-            }}
-          />
-        ) : (
-          <LiveQuestionsAnalyticsDeck
-            sortedQuestions={sortedQuestions}
-            resultsMap={resultsMap}
-            xp={xp}
-            streak={streak}
-            bestStreak={bestStreak}
-            wordsLearned={wordsLearned}
-            accuracyPct={accuracyPct}
-            correctCount={correctCount}
-            missedCount={missedCount}
-            avgResponseTimeSec={avgResponseTimeSec}
-            fastestResponseSec={fastestResponseSec}
-            mastery={mastery}
-            categoryStats={categoryStats}
-            onSelectAnsweredQuestion={(q: any) => {
-              setIsPlaying(false);
-              seekVideoTo(q.timeTrigger);
-              setReviewingQuiz(q);
-            }}
-            onTriggerUpcomingQuestion={(q: any) => {
-              triggerQuizNow(q);
-            }}
-            onOpenFullAnalytics={() => setShowSummaryModal(true)}
-          />
+        {/* ACTIVE QUESTION DOCK — Inside the Stage Container so it works seamlessly in Fullscreen too! */}
+        {activeQuiz && (
+          <div className="w-full border-t-2 border-amber-400/50 bg-[#161229] shrink-0">
+            <BelowVideoQuestionDock
+              key={activeQuiz.id}
+              quiz={activeQuiz}
+              isReplayingClip={isReplayingClip}
+              onReplayScene={handleReplayQuestionScene}
+              onComplete={handleQuizComplete}
+              onSkip={() => {
+                setActiveQuiz(null);
+                setIsReplayingClip(false);
+                setIsPlaying(true);
+              }}
+            />
+          </div>
         )}
       </div>
+
+      {/* DIRECT INLINE QUESTION TYPING BAR (Supports Fill in the Blanks & Multiple Choice) */}
+      {!isPlayOnlyMode && !activeQuiz && !isStageFullscreen && (
+        <div className="w-full bg-[#141026] border border-white/10 rounded-2xl p-4 shadow-xl space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <Edit3 size={15} className="text-amber-400" />
+              <span className="text-xs sm:text-sm font-extrabold text-white">
+                Directly Type a Question at Specific Time
+              </span>
+              <div className="flex items-center p-0.5 rounded-xl bg-[#0E0B1A] border border-white/10">
+                {(['Fill in the Blanks', 'Multiple Choice'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setInlineMode(m)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                      inlineMode === m
+                        ? 'bg-amber-400 text-slate-950'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setInlineTimeInput(formatSeconds(Math.max(1, Math.round(currentTime || 15))))
+              }
+              className="text-xs font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
+            >
+              Use Current Video Time ({formatSeconds(currentTime)})
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="flex items-center gap-1.5 bg-[#0E0B1A] border border-white/15 rounded-xl px-3 py-2 shrink-0">
+              <Clock size={14} className="text-amber-400" />
+              <input
+                type="text"
+                value={inlineTimeInput}
+                onChange={(e) => setInlineTimeInput(e.target.value)}
+                placeholder="0:15"
+                title="Enter timestamp as MM:SS or seconds"
+                className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
+              />
+            </div>
+
+            <input
+              type="text"
+              value={inlineQuestionText}
+              onChange={(e) => setInlineQuestionText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddInlineQuestion();
+                }
+              }}
+              placeholder={
+                inlineMode === 'Fill in the Blanks'
+                  ? 'e.g. He has ____ at the mirror.'
+                  : 'Type your multiple choice question here...'
+              }
+              className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
+            />
+
+            {inlineMode === 'Fill in the Blanks' && (
+              <button
+                type="button"
+                onClick={() =>
+                  setInlineQuestionText(
+                    (prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}____ `
+                  )
+                }
+                title="Insert blank ____"
+                className="px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-amber-300 text-xs font-extrabold cursor-pointer shrink-0"
+              >
+                + Insert ____
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleAddInlineQuestion}
+              disabled={!inlineQuestionText.trim()}
+              className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <Plus size={15} />
+              Add Question
+            </button>
+          </div>
+
+          {inlineMode === 'Fill in the Blanks' ? (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
+              <span className="text-xs font-extrabold text-emerald-300 shrink-0">
+                Correct Missing Word(s):
+              </span>
+              <input
+                type="text"
+                value={inlineBlankAnswer}
+                onChange={(e) => setInlineBlankAnswer(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddInlineQuestion();
+                  }
+                }}
+                placeholder="e.g. looked (students type this answer when the video pauses)"
+                className="flex-1 bg-transparent text-xs sm:text-sm font-bold text-white placeholder:text-slate-400 focus:outline-none"
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {['A', 'B', 'C', 'D'].map((letter, idx) => {
+                const isRight = inlineCorrectIdx === idx;
+                return (
+                  <div
+                    key={letter}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border ${
+                      isRight
+                        ? 'bg-emerald-500/10 border-emerald-400/50'
+                        : 'bg-[#0E0B1A] border-white/10'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setInlineCorrectIdx(idx)}
+                      title="Click to mark as correct answer"
+                      className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
+                        isRight
+                          ? 'bg-emerald-400 text-slate-950'
+                          : 'bg-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {letter}
+                    </button>
+                    <input
+                      type="text"
+                      value={inlineOptions[idx]}
+                      onChange={(e) => {
+                        const next = [...inlineOptions];
+                        next[idx] = e.target.value;
+                        setInlineOptions(next);
+                      }}
+                      placeholder={`Choice ${letter}${isRight ? ' (Correct)' : ''}`}
+                      className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * Below-Video Interactive Question Dock
- * Keeps the video 100% visible above while showing the active question & answer choices below.
+ * Clean Below-Video Interactive Question Dock
+ * Supports both Fill in the Blanks (student types missing word) and Multiple Choice (A/B/C/D).
  */
 function BelowVideoQuestionDock({
   quiz,
-  index,
-  total,
   isReplayingClip,
   onReplayScene,
   onComplete,
   onSkip,
 }: any) {
+  const isFillInBlank =
+    quiz?.type === 'Fill in the Blanks' ||
+    hasOnlyDummyOptionPlaceholders(quiz?.options) ||
+    (Array.isArray(quiz?.options) && quiz.options.length < 2);
+
   const [selected, setSelected] = useState<number | null>(null);
+  const [typedBlank, setTypedBlank] = useState('');
+  const [blankCorrect, setBlankCorrect] = useState<boolean>(false);
+  const [resolvedBlankAnswer, setResolvedBlankAnswer] = useState<string>('');
   const [showExplanation, setShowExplanation] = useState(false);
-  const [elapsedSec, setElapsedSec] = useState<number>(0);
-  const [finalTimeSec, setFinalTimeSec] = useState<number>(0);
+
   const startTimeRef = useRef<number>(performance.now());
+  const blankInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     startTimeRef.current = performance.now();
-    setElapsedSec(0);
-    const interval = setInterval(() => {
-      setElapsedSec(Number(((performance.now() - startTimeRef.current) / 1000).toFixed(1)));
-    }, 100);
-    return () => clearInterval(interval);
-  }, [quiz.id]);
+    setSelected(null);
+    setTypedBlank('');
+    setBlankCorrect(false);
+    setShowExplanation(false);
+    if (isFillInBlank) {
+      setTimeout(() => blankInputRef.current?.focus(), 60);
+    }
+  }, [quiz.id, isFillInBlank]);
 
   const handleSelect = useCallback(
     (idx: number) => {
       if (showExplanation) return;
-      const timeTaken = Math.max(
-        0.5,
-        Number(((performance.now() - startTimeRef.current) / 1000).toFixed(1))
-      );
-      setFinalTimeSec(timeTaken);
       setSelected(idx);
       setShowExplanation(true);
       const isCorrect = Boolean(quiz.options?.[idx]?.isCorrect);
@@ -1914,8 +3225,34 @@ function BelowVideoQuestionDock({
     [showExplanation, quiz]
   );
 
+  const handleSubmitFillInBlank = useCallback(() => {
+    if (showExplanation || !typedBlank.trim()) return;
+    const { isCorrect, primaryAnswer } = checkFillInBlankMatch(typedBlank, quiz);
+    setBlankCorrect(isCorrect);
+    setResolvedBlankAnswer(primaryAnswer);
+    setShowExplanation(true);
+    if (isCorrect) vqAudio.playCorrect();
+    else vqAudio.playWrong();
+  }, [showExplanation, typedBlank, quiz]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isFillInBlank) {
+        if (showExplanation && e.key === 'Enter') {
+          e.preventDefault();
+          const timeTaken = Math.max(
+            0.5,
+            Number(((performance.now() - startTimeRef.current) / 1000).toFixed(1))
+          );
+          onComplete({
+            isCorrect: blankCorrect,
+            selectedIndex: 0,
+            responseTimeSec: timeTaken,
+          });
+        }
+        return;
+      }
+
       if (!showExplanation) {
         const key = e.key.toUpperCase();
         const numIdx = ['1', '2', '3', '4'].indexOf(key);
@@ -1927,21 +3264,33 @@ function BelowVideoQuestionDock({
         }
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
+        const timeTaken = Math.max(
+          0.5,
+          Number(((performance.now() - startTimeRef.current) / 1000).toFixed(1))
+        );
         onComplete({
           isCorrect: Boolean(quiz.options?.[selected!]?.isCorrect),
           selectedIndex: selected ?? 0,
-          responseTimeSec: finalTimeSec || elapsedSec || 2.0,
+          responseTimeSec: timeTaken,
         });
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showExplanation, selected, finalTimeSec, elapsedSec, quiz, handleSelect, onComplete]);
+  }, [
+    isFillInBlank,
+    showExplanation,
+    blankCorrect,
+    selected,
+    quiz,
+    handleSelect,
+    onComplete,
+  ]);
 
   const speakText = (text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
+      const u = new SpeechSynthesisUtterance(text.replace(/_+/g, 'blank'));
       u.lang = 'en-US';
       window.speechSynthesis.speak(u);
     }
@@ -1949,43 +3298,64 @@ function BelowVideoQuestionDock({
 
   const letters = ['A', 'B', 'C', 'D'];
   const optionCount = (quiz.options || []).length;
+  const isFinalCorrect = isFillInBlank
+    ? blankCorrect
+    : Boolean(quiz.options?.[selected!]?.isCorrect);
+
+  // Format question with live fill-in preview when it contains ____
+  const renderFormattedQuestion = () => {
+    const qStr = normalizeBlankQuestionText(String(quiz.question || ''));
+    if (!qStr.includes('___')) return qStr;
+    const parts = qStr.split(/(_+)/);
+    return parts.map((part, idx) => {
+      if (/^_+$/.test(part)) {
+        const previewText = showExplanation
+          ? isFinalCorrect
+            ? typedBlank.trim() || resolvedBlankAnswer
+            : resolvedBlankAnswer
+          : typedBlank.trim() || '____';
+        return (
+          <span
+            key={idx}
+            className={`inline-block mx-1.5 px-3 py-0.5 rounded-lg border-b-2 font-black transition-colors ${
+              showExplanation
+                ? isFinalCorrect
+                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                  : 'bg-amber-400/25 border-amber-400 text-amber-200'
+                : typedBlank.trim()
+                ? 'bg-amber-400/20 border-amber-400 text-amber-300'
+                : 'bg-white/10 border-amber-400/70 text-amber-300'
+            }`}
+          >
+            {previewText}
+          </span>
+        );
+      }
+      return <span key={idx}>{part}</span>;
+    });
+  };
 
   return (
-    <div className="w-full bg-[#161229] border-2 border-amber-400/50 rounded-2xl p-4 sm:p-5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] animate-vq-pop text-white">
-      {/* Top Bar: Question Badge + Timer + Replay Scene + Listen + Skip */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 font-black">
-            Question {index} of {total}
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 font-bold">
-            {quiz.type}
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-amber-300 vq-mono font-bold">
-            @{formatSeconds(quiz.timeTrigger)}
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 vq-mono font-bold flex items-center gap-1">
-            <Clock size={12} className="text-amber-400" />
-            {showExplanation ? `${finalTimeSec}s` : `${elapsedSec.toFixed(1)}s`}
-          </span>
-          <span className="vq-mono font-extrabold text-amber-400 ml-1">
-            +{quiz.xp || 100} XP
-          </span>
-        </div>
+    <div className="w-full p-4 sm:p-5 animate-vq-pop text-white">
+      {/* Question Prompt + Clean Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        <h2 className="vq-display text-base sm:text-xl font-extrabold text-white leading-snug">
+          {renderFormattedQuestion()}
+        </h2>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onReplayScene}
             className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
           >
             <RotateCcw size={13} />
-            {isReplayingClip ? 'Replaying above...' : 'Watch Scene Again (-5s)'}
+            {isReplayingClip ? 'Replaying...' : 'Replay (-5s)'}
           </button>
 
           <button
             type="button"
-            onClick={() => speakText(quiz.word ? `${quiz.word}. ${quiz.question}` : quiz.question)}
+            onClick={() => speakText(quiz.question)}
             className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
           >
             <Volume2 size={13} className="text-amber-400" />
@@ -2002,84 +3372,98 @@ function BelowVideoQuestionDock({
         </div>
       </div>
 
-      {/* Question Prompt & Optional Vocabulary Chip */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-        <h2 className="vq-display text-base sm:text-xl font-extrabold text-white leading-snug">
-          {quiz.question}
-        </h2>
-
-        {quiz.word && (
-          <div className="px-3.5 py-2 rounded-xl bg-[#0E0B1A] border border-amber-400/30 flex items-center gap-3 shrink-0">
-            <div>
-              <span className="vq-display text-base font-black text-amber-400 tracking-wide">
-                {quiz.word}
-              </span>
-              {quiz.pronunciation && (
-                <span className="text-xs text-slate-400 ml-2 vq-mono">{quiz.pronunciation}</span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => speakText(quiz.word)}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-amber-400 cursor-pointer"
-              title="Pronounce word"
-            >
-              <Volume2 size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Answer Options Grid — Below the Video */}
-      <div
-        className={`grid gap-2.5 ${
-          optionCount === 2
-            ? 'grid-cols-1 sm:grid-cols-2'
-            : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
-        }`}
-      >
-        {(quiz.options || []).map((opt: any, idx: number) => {
-          let btnStyle =
-            'bg-[#0E0B1A] border-white/15 text-slate-100 hover:border-amber-400 hover:bg-white/5';
-          let badgeStyle = 'bg-white/10 text-amber-300';
-
-          if (showExplanation) {
-            if (opt.isCorrect) {
-              btnStyle = 'bg-emerald-500/20 border-emerald-400 text-white shadow-[0_0_20px_rgba(16,185,129,0.2)]';
-              badgeStyle = 'bg-emerald-400 text-slate-950';
-            } else if (selected === idx) {
-              btnStyle = 'bg-rose-500/20 border-rose-400 text-rose-200';
-              badgeStyle = 'bg-rose-500 text-white';
-            } else {
-              btnStyle = 'bg-[#0E0B1A]/50 border-white/5 text-slate-500 opacity-60';
-              badgeStyle = 'bg-white/5 text-slate-500';
-            }
-          }
-
-          return (
-            <button
-              key={idx}
-              type="button"
+      {/* Fill in the Blanks Input OR Multiple Choice Options Grid */}
+      {isFillInBlank ? (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1">
+            <input
+              ref={blankInputRef}
+              type="text"
               disabled={showExplanation}
-              onClick={() => handleSelect(idx)}
-              className={`p-3.5 rounded-xl border-2 text-left transition-all flex items-start gap-3 cursor-pointer ${btnStyle}`}
+              value={typedBlank}
+              onChange={(e) => setTypedBlank(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !showExplanation) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleSubmitFillInBlank();
+                }
+              }}
+              placeholder="Type the missing word(s) to fill in the blank..."
+              className={`w-full px-4 py-3.5 rounded-xl border-2 text-sm sm:text-base font-extrabold focus:outline-none transition-colors ${
+                showExplanation
+                  ? blankCorrect
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                    : 'bg-rose-500/20 border-rose-400 text-rose-200'
+                  : 'bg-[#0E0B1A] border-white/20 focus:border-amber-400 text-white placeholder:text-slate-500'
+              }`}
+            />
+          </div>
+
+          {!showExplanation && (
+            <button
+              type="button"
+              disabled={!typedBlank.trim()}
+              onClick={handleSubmitFillInBlank}
+              className="px-6 py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-lg"
             >
-              <span
-                className={`w-6 h-6 rounded-lg text-xs font-extrabold flex items-center justify-center shrink-0 mt-0.5 ${badgeStyle}`}
-              >
-                {letters[idx] || idx + 1}
-              </span>
-              <span className="text-xs sm:text-sm font-bold leading-snug">{opt.text}</span>
+              <Check size={17} strokeWidth={3} />
+              Check Answer
             </button>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div
+          className={`grid gap-2.5 ${
+            optionCount === 2
+              ? 'grid-cols-1 sm:grid-cols-2'
+              : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+          }`}
+        >
+          {(quiz.options || []).map((opt: any, idx: number) => {
+            let btnStyle =
+              'bg-[#0E0B1A] border-white/15 text-slate-100 hover:border-amber-400 hover:bg-white/5';
+            let badgeStyle = 'bg-white/10 text-amber-300';
+
+            if (showExplanation) {
+              if (opt.isCorrect) {
+                btnStyle =
+                  'bg-emerald-500/20 border-emerald-400 text-white shadow-[0_0_20px_rgba(16,185,129,0.2)]';
+                badgeStyle = 'bg-emerald-400 text-slate-950';
+              } else if (selected === idx) {
+                btnStyle = 'bg-rose-500/20 border-rose-400 text-rose-200';
+                badgeStyle = 'bg-rose-500 text-white';
+              } else {
+                btnStyle = 'bg-[#0E0B1A]/50 border-white/5 text-slate-500 opacity-60';
+                badgeStyle = 'bg-white/5 text-slate-500';
+              }
+            }
+
+            return (
+              <button
+                key={idx}
+                type="button"
+                disabled={showExplanation}
+                onClick={() => handleSelect(idx)}
+                className={`p-3.5 rounded-xl border-2 text-left transition-all flex items-start gap-3 cursor-pointer ${btnStyle}`}
+              >
+                <span
+                  className={`w-6 h-6 rounded-lg text-xs font-extrabold flex items-center justify-center shrink-0 mt-0.5 ${badgeStyle}`}
+                >
+                  {letters[idx] || idx + 1}
+                </span>
+                <span className="text-xs sm:text-sm font-bold leading-snug">{opt.text}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Instant Answer Explanation & Continue Bar */}
       {showExplanation && (
         <div className="mt-4 pt-3.5 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 animate-vq-fade">
           <div className="flex items-start gap-2.5 text-left">
-            {quiz.options[selected!]?.isCorrect ? (
+            {isFinalCorrect ? (
               <CheckCircle size={19} className="text-emerald-400 shrink-0 mt-0.5" />
             ) : (
               <XCircle size={19} className="text-rose-400 shrink-0 mt-0.5" />
@@ -2087,26 +3471,33 @@ function BelowVideoQuestionDock({
             <div className="text-xs sm:text-sm text-slate-200 leading-relaxed">
               <span
                 className={`font-extrabold mr-2 ${
-                  quiz.options[selected!]?.isCorrect ? 'text-emerald-400' : 'text-rose-400'
+                  isFinalCorrect ? 'text-emerald-400' : 'text-rose-400'
                 }`}
               >
-                {quiz.options[selected!]?.isCorrect
-                  ? `Correct! (+${quiz.xp || 100} XP in ${finalTimeSec}s)`
-                  : `Not quite (${finalTimeSec}s).`}
+                {isFinalCorrect ? 'Correct!' : 'Not quite.'}
               </span>
+              {isFillInBlank && !isFinalCorrect && resolvedBlankAnswer && (
+                <span className="text-amber-300 font-bold mr-2">
+                  Correct answer: &ldquo;{resolvedBlankAnswer}&rdquo;.
+                </span>
+              )}
               <span className="text-slate-300">{quiz.explanation}</span>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
+              const timeTaken = Math.max(
+                0.5,
+                Number(((performance.now() - startTimeRef.current) / 1000).toFixed(1))
+              );
               onComplete({
-                isCorrect: Boolean(quiz.options[selected!]?.isCorrect),
+                isCorrect: isFinalCorrect,
                 selectedIndex: selected ?? 0,
-                responseTimeSec: finalTimeSec || 2.0,
-              })
-            }
+                responseTimeSec: timeTaken,
+              });
+            }}
             className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap shadow-lg"
           >
             Continue Video
@@ -2114,335 +3505,6 @@ function BelowVideoQuestionDock({
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Below-Video Answered Question Review Card
- * Lets players or teachers inspect an already-answered question below the video while viewing the scene above.
- */
-function BelowVideoReviewCard({
-  quiz,
-  index,
-  total,
-  record,
-  onReplayClip,
-  onCloseReview,
-}: any) {
-  const letters = ['A', 'B', 'C', 'D'];
-
-  return (
-    <div className="w-full bg-[#161229] border border-white/15 rounded-2xl p-4 sm:p-5 shadow-xl animate-vq-pop text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
-        <div className="flex items-center gap-2 text-xs">
-          <span
-            className={`px-2.5 py-1 rounded-lg font-extrabold ${
-              record?.isCorrect
-                ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/40'
-                : 'bg-rose-500/20 text-rose-300 border border-rose-400/40'
-            }`}
-          >
-            {record?.isCorrect ? '✓ Answered Correctly' : '✗ Missed Question'}
-          </span>
-          <span className="text-slate-300 font-bold">
-            Question {index} of {total}
-          </span>
-          <span className="text-amber-400 vq-mono font-bold">@{formatSeconds(quiz.timeTrigger)}</span>
-          {record?.responseTimeSec ? (
-            <span className="text-slate-400 vq-mono">· {record.responseTimeSec}s</span>
-          ) : null}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onReplayClip}
-            className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-          >
-            <RotateCcw size={12} />
-            Replay Scene
-          </button>
-          <button
-            type="button"
-            onClick={onCloseReview}
-            className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-bold cursor-pointer"
-          >
-            Back to Analytics
-          </button>
-        </div>
-      </div>
-
-      <h3 className="vq-display text-base sm:text-lg font-extrabold text-white mb-3">
-        {quiz.question}
-      </h3>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-        {(quiz.options || []).map((opt: any, idx: number) => {
-          const isChosen = record?.selectedIndex === idx;
-          const isRight = Boolean(opt.isCorrect);
-          return (
-            <div
-              key={idx}
-              className={`p-3 rounded-xl border text-xs font-bold flex items-start gap-2.5 ${
-                isRight
-                  ? 'bg-emerald-500/20 border-emerald-400 text-white'
-                  : isChosen
-                  ? 'bg-rose-500/20 border-rose-400 text-rose-200'
-                  : 'bg-[#0E0B1A] border-white/10 text-slate-400'
-              }`}
-            >
-              <span
-                className={`w-5 h-5 rounded text-[11px] font-black flex items-center justify-center shrink-0 ${
-                  isRight
-                    ? 'bg-emerald-400 text-slate-950'
-                    : isChosen
-                    ? 'bg-rose-500 text-white'
-                    : 'bg-white/10 text-slate-400'
-                }`}
-              >
-                {letters[idx] || idx + 1}
-              </span>
-              <span>{opt.text}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {quiz.explanation && (
-        <div className="mt-3 text-xs text-slate-300 bg-[#0E0B1A] p-3 rounded-xl border border-white/10">
-          <span className="font-bold text-amber-400 mr-1.5">Explanation:</span>
-          {quiz.explanation}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Live Questions Analytics Deck (Below the Video when no question is actively popping)
- * Shows rich real-time question analytics without spoiling upcoming unanswered questions.
- */
-function LiveQuestionsAnalyticsDeck({
-  sortedQuestions,
-  resultsMap,
-  xp,
-  streak,
-  bestStreak,
-  wordsLearned,
-  accuracyPct,
-  correctCount,
-  missedCount,
-  avgResponseTimeSec,
-  fastestResponseSec,
-  mastery,
-  categoryStats,
-  onSelectAnsweredQuestion,
-  onTriggerUpcomingQuestion,
-  onOpenFullAnalytics,
-}: any) {
-  const total = sortedQuestions.length || 1;
-  const answeredCount = correctCount + missedCount;
-  const remainingCount = Math.max(0, sortedQuestions.length - answeredCount);
-
-  return (
-    <div className="w-full bg-[#141026] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col gap-4">
-      {/* Top Row: Live Analytics KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* KPI 1: Accuracy & Mastery Grade */}
-        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
-              <Target size={13} className="text-emerald-400" />
-              Accuracy Rate
-            </div>
-            <div className="vq-mono text-xl sm:text-2xl font-black text-white mt-0.5">
-              {answeredCount > 0 ? `${accuracyPct}%` : '—'}
-            </div>
-            <div className="text-[11px] text-slate-400">
-              {correctCount} correct · {missedCount} missed
-            </div>
-          </div>
-          <div className={`px-3 py-2 rounded-xl border text-center shrink-0 ${mastery.bg}`}>
-            <div className={`vq-display text-lg font-black leading-none ${mastery.color}`}>
-              {mastery.grade}
-            </div>
-            <div className="text-[10px] font-bold text-slate-300 mt-0.5">{mastery.label}</div>
-          </div>
-        </div>
-
-        {/* KPI 2: Segmented Question Progress */}
-        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
-            <span>Question Progress</span>
-            <span className="vq-mono text-white">
-              {answeredCount} / {sortedQuestions.length}
-            </span>
-          </div>
-          {/* Multi-segment bar */}
-          <div className="h-2.5 w-full bg-white/5 rounded-full overflow-hidden flex my-2">
-            {correctCount > 0 && (
-              <div
-                className="h-full bg-emerald-400 transition-all duration-300"
-                style={{ width: `${(correctCount / total) * 100}%` }}
-                title={`${correctCount} Correct`}
-              />
-            )}
-            {missedCount > 0 && (
-              <div
-                className="h-full bg-rose-500 transition-all duration-300"
-                style={{ width: `${(missedCount / total) * 100}%` }}
-                title={`${missedCount} Missed`}
-              />
-            )}
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span className="text-emerald-400 font-semibold">{correctCount} Passed</span>
-            <span>{remainingCount} Remaining</span>
-          </div>
-        </div>
-
-        {/* KPI 3: Response Speed Analytics */}
-        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
-              <Clock size={13} className="text-amber-400" />
-              Response Speed
-            </div>
-            <div className="vq-mono text-xl sm:text-2xl font-black text-amber-400 mt-0.5">
-              {answeredCount > 0 ? `${avgResponseTimeSec}s` : '—'}
-            </div>
-            <div className="text-[11px] text-slate-400">
-              {answeredCount > 0 ? `Fastest: ${fastestResponseSec}s` : 'Avg time per question'}
-            </div>
-          </div>
-          {categoryStats.length > 0 && (
-            <div className="hidden sm:flex flex-col gap-1 text-right">
-              {categoryStats.slice(0, 2).map((cs) => (
-                <div key={cs.type} className="text-[10px] text-slate-400">
-                  <span className="font-semibold text-slate-300">{cs.type.split(' ')[0]}:</span>{' '}
-                  <span className="vq-mono font-bold text-amber-300">
-                    {cs.pct !== null ? `${cs.pct}%` : `${cs.answered}/${cs.total}`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* KPI 4: Score XP & Streak Multiplier */}
-        <div className="bg-[#0E0B1A] border border-white/10 rounded-xl p-3.5 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
-              <Trophy size={13} className="text-pink-400" />
-              Total Score & Streak
-            </div>
-            <div className="vq-mono text-xl sm:text-2xl font-black text-white mt-0.5">
-              {xp} <span className="text-xs font-bold text-amber-400">XP</span>
-            </div>
-            <div className="text-[11px] text-slate-400">
-              Best Streak: <span className="text-rose-400 font-bold">{bestStreak}</span> · Vocab:{' '}
-              <span className="text-emerald-400 font-bold">{wordsLearned}</span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenFullAnalytics}
-            className="px-3 py-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-extrabold flex flex-col items-center justify-center shrink-0 cursor-pointer transition-colors"
-          >
-            <BarChart3 size={16} />
-            <span className="text-[10px] mt-0.5">Report</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Bottom Row: Question-by-Question Status Cards (Answered questions show review; Unanswered stay locked without spoilers!) */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <BarChart3 size={14} className="text-amber-400" />
-            Questions & Analytics Timeline (Questions pop here below the video as you watch)
-          </span>
-          {answeredCount > 0 && (
-            <button
-              type="button"
-              onClick={onOpenFullAnalytics}
-              className="text-xs font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
-            >
-              View Full Breakdown →
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-          {sortedQuestions.map((q: any, idx: number) => {
-            const rec: QuizAnswerRecord | undefined = resultsMap[q.id];
-            const isAnswered = rec !== undefined;
-
-            if (isAnswered) {
-              return (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => onSelectAnsweredQuestion(q)}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                    rec.isCorrect
-                      ? 'bg-emerald-500/10 border-emerald-400/40 hover:border-emerald-400'
-                      : 'bg-rose-500/10 border-rose-400/40 hover:border-rose-400'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-extrabold text-white">Q{idx + 1}</span>
-                    <span
-                      className={`text-[10px] font-black px-1.5 py-0.5 rounded vq-mono ${
-                        rec.isCorrect
-                          ? 'bg-emerald-400 text-slate-950'
-                          : 'bg-rose-500 text-white'
-                      }`}
-                    >
-                      {rec.isCorrect ? `+${rec.earnedXp} XP` : 'Missed'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] font-semibold text-slate-200 line-clamp-1">
-                    {q.question}
-                  </p>
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 vq-mono">
-                    <span>@{formatSeconds(q.timeTrigger)}</span>
-                    <span>{rec.responseTimeSec}s</span>
-                  </div>
-                </button>
-              );
-            }
-
-            // Unanswered Question Card — Locked (No question text spoiler!)
-            return (
-              <button
-                key={q.id}
-                type="button"
-                onClick={() => onTriggerUpcomingQuestion(q)}
-                title={`Jump to Question ${idx + 1} at ${formatSeconds(q.timeTrigger)}`}
-                className="p-3 rounded-xl border border-white/10 bg-[#0E0B1A] hover:border-amber-400/40 text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 group"
-              >
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-extrabold text-slate-300 group-hover:text-white">
-                    Question {idx + 1}
-                  </span>
-                  <span className="text-[10px] font-bold vq-mono px-1.5 py-0.5 rounded bg-white/5 text-amber-400">
-                    {formatSeconds(q.timeTrigger)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                  <HelpCircle size={12} className="text-slate-500 shrink-0" />
-                  <span className="truncate">{q.type}</span>
-                </div>
-                <div className="text-[10px] text-slate-500 font-semibold group-hover:text-amber-300 transition-colors">
-                  Unlocks at {formatSeconds(q.timeTrigger)}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
@@ -2457,8 +3519,12 @@ function SaveQuizModal({
   onConfirmSave,
 }: any) {
   const isBlobUrl = Boolean(videoUrl && videoUrl.startsWith('blob:'));
-  const [title, setTitle] = useState(config?.topic || localVideoName?.replace(/\.[^/.]+$/, '') || 'Video Quiz');
-  const [className, setClassName] = useState(config?.className || config?.level || 'A2 Movers');
+  const [title, setTitle] = useState(
+    config?.topic || config?.videoTitle || localVideoName?.replace(/\.[^/.]+$/, '') || 'Video Quiz'
+  );
+  const [className, setClassName] = useState(
+    config?.className || normalizeEnglishLevel(config?.level)
+  );
   const [folders, setFolders] = useState<UnifiedFolderItem[]>(() => mergeUserFolders(user?.uid));
   const [selectedFolderId, setSelectedFolderId] = useState<string>(config?.folderId || '');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -2485,7 +3551,7 @@ function SaveQuizModal({
     return () => {
       active = false;
     };
-  }, [user?.uid, config?.folder]);
+  }, [user?.uid, config?.folder, selectedFolderId]);
 
   const handleCreateNewFolder = async () => {
     const clean = newFolderName.trim();
@@ -2546,7 +3612,7 @@ function SaveQuizModal({
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Ocean Wildlife Video Quiz"
+              placeholder="e.g. Mr. Bean Video Quiz"
               className="w-full px-3.5 py-2.5 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white"
             />
           </div>
@@ -2560,7 +3626,7 @@ function SaveQuizModal({
                 type="text"
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
-                placeholder="e.g. Grade 4 · A2"
+                placeholder="e.g. Movers · B1"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-xs font-semibold text-white"
               />
             </div>
@@ -2658,7 +3724,7 @@ function SaveQuizModal({
               <div className="flex items-start gap-2 text-xs text-amber-300">
                 <AlertCircle size={15} className="shrink-0 mt-0.5" />
                 <span>
-                  You uploaded a local video file (<strong>{localVideoName}</strong>). Your checkpoints will be saved, or you can paste an online video URL below to link permanently:
+                  You uploaded a local video file (<strong>{localVideoName}</strong>). Your questions will be saved, or you can paste an online video URL below to link permanently:
                 </span>
               </div>
               <input
@@ -2694,242 +3760,34 @@ function SaveQuizModal({
   );
 }
 
-function ResultsSummaryModal({
-  topic,
+function EditQuestionsModal({
   questions,
-  resultsMap,
-  xp,
-  bestStreak,
-  wordsLearned,
-  avgResponseTimeSec,
-  categoryStats,
-  isPlayOnlyMode,
-  onReplay,
-  onSeekToQuestion,
-  onOpenSave,
+  setQuestions,
+  currentTime,
+  videoDuration,
+  config,
   onClose,
 }: any) {
-  const total = questions.length || 1;
-  const answeredCount = Object.keys(resultsMap).length;
-  const correctCount = Object.values(resultsMap).filter((r: any) => r?.isCorrect).length;
-  const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
-  const mastery = getMasteryGrade(accuracy, answeredCount);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 animate-vq-pop">
-      <div className="bg-[#161229] border border-white/15 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-white">
-        {/* Header */}
-        <div className="px-6 py-4 bg-[#120E22] border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`px-3.5 py-2 rounded-2xl border text-center ${mastery.bg}`}>
-              <div className={`vq-display text-xl font-black leading-none ${mastery.color}`}>
-                {mastery.grade}
-              </div>
-              <div className="text-[10px] font-bold text-slate-300 mt-0.5">{mastery.label}</div>
-            </div>
-            <div>
-              <span className="text-xs font-bold text-amber-400">Questions Analytics & Performance Report</span>
-              <h2 className="vq-display text-lg sm:text-2xl font-black text-white">
-                {topic}
-              </h2>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
-          >
-            <XCircle size={22} />
-          </button>
-        </div>
-
-        {/* Metrics Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-4 bg-[#0E0B1A] border-b border-white/10 text-center">
-          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
-            <div className="vq-mono text-xl font-black text-emerald-400">
-              {answeredCount > 0 ? `${accuracy}%` : '—'}
-            </div>
-            <div className="text-[11px] text-slate-400 font-semibold">
-              Accuracy ({correctCount}/{answeredCount || questions.length})
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
-            <div className="vq-mono text-xl font-black text-amber-400">
-              {xp}
-            </div>
-            <div className="text-[11px] text-slate-400 font-semibold">Total XP</div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
-            <div className="vq-mono text-xl font-black text-sky-400">
-              {answeredCount > 0 ? `${avgResponseTimeSec}s` : '—'}
-            </div>
-            <div className="text-[11px] text-slate-400 font-semibold">Avg Response</div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10">
-            <div className="vq-mono text-xl font-black text-rose-400">
-              {bestStreak}
-            </div>
-            <div className="text-[11px] text-slate-400 font-semibold">Best Streak</div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[#161229] border border-white/10 col-span-2 sm:col-span-1">
-            <div className="vq-mono text-xl font-black text-pink-400">
-              {answeredCount}/{questions.length}
-            </div>
-            <div className="text-[11px] text-slate-400 font-semibold">Completed</div>
-          </div>
-        </div>
-
-        {/* Category Mastery Breakdown */}
-        {Array.isArray(categoryStats) && categoryStats.length > 0 && (
-          <div className="px-5 py-3 bg-[#120E22] border-b border-white/10 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-400 mr-1">Skill Breakdown:</span>
-            {categoryStats.map((cs: any) => (
-              <div
-                key={cs.type}
-                className="px-2.5 py-1 rounded-lg bg-[#161229] border border-white/10 text-xs flex items-center gap-2"
-              >
-                <span className="font-bold text-slate-200">{cs.type}</span>
-                <span className="vq-mono font-extrabold text-amber-400">
-                  {cs.pct !== null ? `${cs.pct}% (${cs.correct}/${cs.answered})` : `0/${cs.total}`}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Question-by-Question Review List (Unanswered questions remain spoiler-free mid-game) */}
-        <div className="p-5 overflow-y-auto flex-1 space-y-3 vq-scrollbar">
-          {questions.map((q: any, idx: number) => {
-            const rec: QuizAnswerRecord | undefined = resultsMap[q.id];
-            const isAnswered = rec !== undefined;
-            const correctOpt = (q.options || []).find((o: any) => o.isCorrect);
-            const chosenOpt = isAnswered ? q.options?.[rec.selectedIndex] : null;
-
-            if (!isAnswered) {
-              return (
-                <div
-                  key={q.id}
-                  className="p-3.5 rounded-2xl border border-white/10 bg-[#0E0B1A] flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-2.5 text-xs">
-                    <span className="px-2 py-0.5 rounded bg-white/5 text-slate-400 font-bold">
-                      Question {idx + 1}
-                    </span>
-                    <span className="text-slate-400">{q.type}</span>
-                    <span className="text-slate-500">· Not answered yet</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onSeekToQuestion(q)}
-                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-bold text-amber-300 vq-mono cursor-pointer"
-                  >
-                    Watch at {formatSeconds(q.timeTrigger)}
-                  </button>
-                </div>
-              );
-            }
-
-            return (
-              <div
-                key={q.id}
-                className={`p-4 rounded-2xl border ${
-                  rec?.isCorrect === true
-                    ? 'bg-emerald-500/10 border-emerald-500/30'
-                    : 'bg-rose-500/10 border-rose-500/30'
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span
-                      className={`font-extrabold ${
-                        rec?.isCorrect === true ? 'text-emerald-400' : 'text-rose-400'
-                      }`}
-                    >
-                      {rec?.isCorrect === true ? `✓ Correct (+${rec.earnedXp} XP)` : '✗ Missed'}
-                    </span>
-                    <span aria-hidden="true" className="text-white/20">·</span>
-                    <span className="text-slate-300 font-bold">Q{idx + 1} ({q.type})</span>
-                    <span aria-hidden="true" className="text-white/20">·</span>
-                    <span className="text-slate-400 vq-mono">{rec.responseTimeSec}s response</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onSeekToQuestion(q)}
-                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-bold text-amber-300 vq-mono cursor-pointer"
-                  >
-                    Inspect Scene @ {formatSeconds(q.timeTrigger)}
-                  </button>
-                </div>
-
-                <p className="text-xs sm:text-sm font-bold text-white mb-2">
-                  {q.question}
-                </p>
-
-                {rec?.isCorrect === false && chosenOpt && (
-                  <div className="text-xs text-rose-300 mb-1">
-                    Selected answer: <span className="font-semibold">{chosenOpt.text}</span>
-                  </div>
-                )}
-
-                {correctOpt && (
-                  <div className="text-xs text-emerald-300">
-                    Correct answer: <span className="font-bold">{correctOpt.text}</span>
-                  </div>
-                )}
-
-                {q.explanation && (
-                  <div className="text-[11px] text-slate-400 mt-1.5">
-                    {q.explanation}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Footer Actions */}
-        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onReplay}
-            className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-          >
-            <RotateCcw size={14} />
-            Play Again
-          </button>
-
-          <div className="flex items-center gap-2.5">
-            {!isPlayOnlyMode && (
-              <button
-                type="button"
-                onClick={onOpenSave}
-                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Folder size={14} />
-                Save Quiz
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer"
-            >
-              Back to Video
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EditQuestionsModal({ questions, setQuestions, onClose }: any) {
   const [editedQuestions, setEditedQuestions] = useState<any[]>(() =>
     questions.map((q: any) => ({
       ...q,
-      options: (q.options || []).map((o: any) => ({ ...o })),
+      answer:
+        q.answer ||
+        (Array.isArray(q.options) ? q.options.find((o: any) => o?.isCorrect)?.text : '') ||
+        '',
+      options: (q.options && q.options.length >= 2
+        ? q.options
+        : [
+            { text: q.answer || '', isCorrect: true },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+          ]
+      ).map((o: any) => ({ ...o })),
     }))
+  );
+  const [customTimeInput, setCustomTimeInput] = useState<string>(() =>
+    formatSeconds(Math.max(1, Math.round(currentTime || 15)))
   );
 
   const updateQuestionField = (id: number, field: string, value: any) => {
@@ -2964,56 +3822,174 @@ function EditQuestionsModal({ questions, setQuestions, onClose }: any) {
   };
 
   const handleDeleteQuestion = (id: number) => {
-    if (editedQuestions.length <= 1) return;
     setEditedQuestions((prev) => prev.filter((q) => q.id !== id));
   };
 
-  const handleAddQuestion = () => {
+  const handleAddQuestionAtSpecificTime = (mode: 'blank' | 'mc' | 'auto') => {
     const nextId = editedQuestions.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
-    const lastTime = editedQuestions[editedQuestions.length - 1]?.timeTrigger || 15;
-    setEditedQuestions((prev) => [
-      ...prev,
-      {
-        id: nextId,
-        timeTrigger: lastTime + 20,
-        type: 'Multiple Choice',
-        xp: 100,
-        question: 'New checkpoint question?',
-        options: [
-          { text: 'Correct answer', isCorrect: true },
-          { text: 'Wrong option 1', isCorrect: false },
-          { text: 'Wrong option 2', isCorrect: false },
-          { text: 'Wrong option 3', isCorrect: false },
-        ],
-        explanation: 'Explanation for the correct answer.',
-      },
-    ]);
+    const parsedSec =
+      parseTimeInputToSeconds(customTimeInput) ??
+      Math.max(1, Math.round(currentTime || (editedQuestions.length + 1) * 15));
+
+    if (mode === 'auto') {
+      const pool = generateDynamicQuestions({
+        ...config,
+        count: editedQuestions.length + 2,
+        videoDuration: videoDuration || 180,
+      });
+      const sample = pool[editedQuestions.length % pool.length];
+      setEditedQuestions((prev) => [
+        ...prev,
+        {
+          id: nextId,
+          timeTrigger: parsedSec,
+          type: sample?.type || 'Fill in the Blanks',
+          xp: 100,
+          question: sample?.question || '',
+          answer: sample?.answer || '',
+          acceptedAnswers: sample?.acceptedAnswers || [],
+          options: (sample?.options || [
+            { text: sample?.answer || '', isCorrect: true },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+          ]).map((o: any) => ({ ...o })),
+          explanation: sample?.explanation || '',
+        },
+      ]);
+    } else if (mode === 'blank') {
+      setEditedQuestions((prev) => [
+        ...prev,
+        {
+          id: nextId,
+          timeTrigger: parsedSec,
+          type: 'Fill in the Blanks',
+          xp: 100,
+          question: '',
+          answer: '',
+          acceptedAnswers: [],
+          options: [
+            { text: '', isCorrect: true },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+          ],
+          explanation: '',
+        },
+      ]);
+    } else {
+      setEditedQuestions((prev) => [
+        ...prev,
+        {
+          id: nextId,
+          timeTrigger: parsedSec,
+          type: 'Multiple Choice',
+          xp: 100,
+          question: '',
+          answer: '',
+          options: [
+            { text: '', isCorrect: true },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false },
+          ],
+          explanation: '',
+        },
+      ]);
+    }
   };
 
   const handleSave = () => {
-    const sorted = [...editedQuestions].sort(
-      (a, b) => Number(a.timeTrigger || 0) - Number(b.timeTrigger || 0)
-    );
+    const sorted = [...editedQuestions]
+      .filter((q) => String(q.question || '').trim().length > 0)
+      .map((q) => {
+        const qText = String(q.question || '').trim();
+        if (q.type === 'Fill in the Blanks') {
+          const formattedQ = qText.includes('___')
+            ? normalizeBlankQuestionText(qText)
+            : `${qText} ____`;
+          const inferred = inferSmartBlankAnswerFromQuestion(formattedQ);
+          const ans = String(q.answer || q.options?.[0]?.text || inferred.answer).trim();
+          return {
+            ...q,
+            question: formattedQ,
+            answer: ans,
+            acceptedAnswers: Array.from(
+              new Set([ans, ...(q.acceptedAnswers || []), ...inferred.acceptedAnswers].filter(Boolean))
+            ),
+            options: [{ text: ans, isCorrect: true }],
+            explanation: q.explanation || `Correct answer: "${ans}".`,
+          };
+        }
+        return {
+          ...q,
+          options: (q.options || []).map((o: any, idx: number) => ({
+            ...o,
+            text: String(o.text || '').trim() || `Choice ${['A', 'B', 'C', 'D'][idx]}`,
+          })),
+        };
+      })
+      .sort((a, b) => Number(a.timeTrigger || 0) - Number(b.timeTrigger || 0));
     setQuestions(sorted);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 animate-vq-pop">
-      <div className="bg-[#161229] border border-white/15 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] text-white">
-        <div className="px-6 py-4 bg-[#120E22] border-b border-white/10 flex justify-between items-center">
-          <h2 className="vq-display text-lg font-extrabold text-white flex items-center gap-2">
-            <Settings size={18} className="text-amber-400" />
-            Edit Video Questions ({editedQuestions.length})
-          </h2>
-          <div className="flex items-center gap-2">
+      <div className="bg-[#161229] border border-white/15 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-white">
+        <div className="px-6 py-4 bg-[#120E22] border-b border-white/10 flex flex-wrap justify-between items-center gap-3">
+          <div>
+            <h2 className="vq-display text-lg font-extrabold text-white flex items-center gap-2">
+              <Settings size={18} className="text-amber-400" />
+              Edit Video Questions
+            </h2>
+            <p className="text-[11px] text-slate-400">
+              {config?.topic ? (
+                <>
+                  Topic: <span className="text-amber-300 font-bold">{config.topic}</span> ·{' '}
+                </>
+              ) : null}
+              Level: <span className="text-amber-300 font-bold">{normalizeEnglishLevel(config?.level)}</span>
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-[#0E0B1A] border border-white/15 rounded-xl px-2.5 py-1">
+              <Clock size={13} className="text-amber-400" />
+              <input
+                type="text"
+                value={customTimeInput}
+                onChange={(e) => setCustomTimeInput(e.target.value)}
+                placeholder="0:15"
+                title="Enter specific time as MM:SS (e.g. 1:20) or seconds (e.g. 80)"
+                className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
+              />
+            </div>
+
             <button
               type="button"
-              onClick={handleAddQuestion}
-              className="px-3 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+              onClick={() => handleAddQuestionAtSpecificTime('blank')}
+              className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
             >
-              <Plus size={14} /> Add Question
+              <Plus size={14} /> + Fill in the Blank
             </button>
+
+            <button
+              type="button"
+              onClick={() => handleAddQuestionAtSpecificTime('mc')}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Plus size={14} className="text-amber-400" /> + Multiple Choice
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAddQuestionAtSpecificTime('auto')}
+              className="px-3 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Sparkles size={13} /> Auto-Generate
+            </button>
+
             <button
               type="button"
               onClick={onClose}
@@ -3024,45 +4000,68 @@ function EditQuestionsModal({ questions, setQuestions, onClose }: any) {
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 space-y-5 vq-scrollbar">
-          {editedQuestions.map((q, index) => (
-            <div
-              key={q.id}
-              className="bg-[#0E0B1A] p-4 rounded-2xl border border-white/10 space-y-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-extrabold text-amber-400">
-                  Question #{index + 1}
-                </span>
+        <div className="p-6 overflow-y-auto flex-1 space-y-4 vq-scrollbar">
+          {editedQuestions.length === 0 ? (
+            <div className="p-8 rounded-2xl border border-dashed border-white/15 bg-[#0E0B1A] text-center space-y-3">
+              <div className="text-sm font-extrabold text-white">
+                No questions yet — add a Fill in the Blank or Multiple Choice question above
+              </div>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                Enter a timestamp (like <span className="text-amber-300 vq-mono">0:15</span>) and click <strong>+ Fill in the Blank</strong> or <strong>+ Multiple Choice</strong>.
+              </p>
+            </div>
+          ) : (
+            editedQuestions.map((q) => (
+              <div
+                key={q.id}
+                className="bg-[#0E0B1A] p-4 rounded-2xl border border-white/10 space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-400/15 text-amber-300 text-xs font-bold vq-mono">
+                      @{formatSeconds(q.timeTrigger)}
+                    </span>
+                    <label className="text-[11px] text-slate-400 font-semibold">
+                      Seconds:
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={3600}
+                      value={q.timeTrigger}
+                      onChange={(e) =>
+                        updateQuestionField(q.id, 'timeTrigger', Math.max(1, Number(e.target.value)))
+                      }
+                      className="w-20 px-2.5 py-1 rounded-lg bg-[#161229] border border-white/15 text-xs font-bold text-white vq-mono"
+                    />
+                    <select
+                      value={q.type || 'Multiple Choice'}
+                      onChange={(e) => updateQuestionField(q.id, 'type', e.target.value)}
+                      className="px-2.5 py-1 rounded-lg bg-[#161229] border border-white/15 text-xs font-bold text-amber-300"
+                    >
+                      {QUESTION_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <label className="text-[11px] text-slate-400 font-semibold">
-                    Time (sec):
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={3600}
-                    value={q.timeTrigger}
-                    onChange={(e) =>
-                      updateQuestionField(q.id, 'timeTrigger', Math.max(1, Number(e.target.value)))
-                    }
-                    className="w-20 px-2.5 py-1 rounded-lg bg-[#161229] border border-white/15 text-xs font-bold text-white vq-mono"
-                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateQuestionField(
+                          q.id,
+                          'timeTrigger',
+                          Math.max(1, Math.round(currentTime || 10))
+                        )
+                      }
+                      className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold text-slate-300 cursor-pointer"
+                    >
+                      Use Video Time ({formatSeconds(currentTime)})
+                    </button>
 
-                  <select
-                    value={q.type}
-                    onChange={(e) => updateQuestionField(q.id, 'type', e.target.value)}
-                    className="px-2.5 py-1 rounded-lg bg-[#161229] border border-white/15 text-xs font-semibold text-slate-200"
-                  >
-                    {QUESTION_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-
-                  {editedQuestions.length > 1 && (
                     <button
                       type="button"
                       onClick={() => handleDeleteQuestion(q.id)}
@@ -3071,69 +4070,100 @@ function EditQuestionsModal({ questions, setQuestions, onClose }: any) {
                     >
                       <Trash2 size={15} />
                     </button>
-                  )}
+                  </div>
                 </div>
-              </div>
 
-              <input
-                type="text"
-                value={q.question}
-                onChange={(e) => updateQuestionField(q.id, 'question', e.target.value)}
-                placeholder="Question prompt..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#161229] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
-              />
+                <input
+                  type="text"
+                  value={q.question}
+                  onChange={(e) => updateQuestionField(q.id, 'question', e.target.value)}
+                  placeholder={
+                    q.type === 'Fill in the Blanks'
+                      ? 'e.g. He has ____ at the mirror.'
+                      : `Directly type your question for ${formatSeconds(q.timeTrigger)}...`
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#161229] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
+                />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {(q.options || []).map((opt: any, oIdx: number) => (
-                  <div
-                    key={oIdx}
-                    className={`flex items-center gap-2 p-2 rounded-xl border ${
-                      opt.isCorrect
-                        ? 'bg-emerald-500/10 border-emerald-400/50'
-                        : 'bg-[#161229] border-white/10'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setCorrectOption(q.id, oIdx)}
-                      title="Mark as correct answer"
-                      className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 cursor-pointer ${
-                        opt.isCorrect
-                          ? 'bg-emerald-400 text-slate-950'
-                          : 'bg-white/10 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <Check size={12} strokeWidth={3} />
-                    </button>
+                {q.type === 'Fill in the Blanks' ? (
+                  <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
+                    <span className="text-xs font-extrabold text-emerald-300 shrink-0">
+                      Correct Answer for Blank:
+                    </span>
                     <input
                       type="text"
-                      value={opt.text}
-                      onChange={(e) => updateOptionText(q.id, oIdx, e.target.value)}
-                      className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                      value={q.answer || ''}
+                      onChange={(e) => updateQuestionField(q.id, 'answer', e.target.value)}
+                      placeholder="e.g. looked"
+                      className="flex-1 bg-transparent text-xs sm:text-sm font-bold text-white focus:outline-none"
                     />
                   </div>
-                ))}
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(q.options || []).map((opt: any, oIdx: number) => (
+                      <div
+                        key={oIdx}
+                        className={`flex items-center gap-2 p-2 rounded-xl border ${
+                          opt.isCorrect
+                            ? 'bg-emerald-500/10 border-emerald-400/50'
+                            : 'bg-[#161229] border-white/10'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setCorrectOption(q.id, oIdx)}
+                          title="Mark as correct answer"
+                          className={`w-6 h-6 rounded-md text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
+                            opt.isCorrect
+                              ? 'bg-emerald-400 text-slate-950'
+                              : 'bg-white/10 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {['A', 'B', 'C', 'D'][oIdx] || oIdx + 1}
+                        </button>
+                        <input
+                          type="text"
+                          value={opt.text}
+                          onChange={(e) => updateOptionText(q.id, oIdx, e.target.value)}
+                          placeholder={`Choice ${['A', 'B', 'C', 'D'][oIdx] || oIdx + 1}${
+                            opt.isCorrect ? ' (Correct)' : ''
+                          }`}
+                          className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
-        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex justify-end gap-3">
+        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex justify-between items-center gap-3">
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-white/5 cursor-pointer"
+            onClick={() => setEditedQuestions([])}
+            className="px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-500/10 cursor-pointer"
           >
-            Cancel
+            Clear All
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="px-5 py-2 rounded-xl text-xs font-extrabold bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center gap-1.5 cursor-pointer"
-          >
-            <Check size={15} />
-            Save Questions
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-white/5 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-5 py-2 rounded-xl text-xs font-extrabold bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check size={15} />
+              Save Questions
+            </button>
+          </div>
         </div>
       </div>
     </div>

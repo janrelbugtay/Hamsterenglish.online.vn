@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type, GenerateVideosOperation } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel, GenerateVideosOperation } from "@google/genai";
 import multer from "multer";
 
 const getResolvedGeminiKey = () => {
@@ -1351,114 +1351,1423 @@ async function startServer() {
     }
   });
 
+  const extractVideoSubject = (videoTitleRaw?: string, topicRaw?: string): string => {
+    const cleanTitle = (videoTitleRaw || "")
+      .replace(/\[.*?\]|\(.*?\)/g, " ")
+      .replace(/\b(4k|hd|official|video|clip|full|episode|seconds|minutes|hours|of|the|best|worst|ideas|ever|compilation|scene|scenes|movie|cartoon)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (/mr\.?\s*bean/i.test(videoTitleRaw || "") || /mr\.?\s*bean/i.test(topicRaw || "")) {
+      return "Mr. Bean";
+    }
+    if (/pink\s*panther/i.test(videoTitleRaw || "")) return "The Pink Panther";
+    if (/tom\s*and\s*jerry/i.test(videoTitleRaw || "")) return "Tom and Jerry";
+    if (/spongebob/i.test(videoTitleRaw || "")) return "SpongeBob";
+    if (/peppa\s*pig/i.test(videoTitleRaw || "")) return "Peppa Pig";
+    if (/paddington/i.test(videoTitleRaw || "")) return "Paddington";
+    if (/harry\s*potter/i.test(videoTitleRaw || "")) return "Harry Potter";
+    if (/minion/i.test(videoTitleRaw || "")) return "the Minions";
+    if (/hamster/i.test(videoTitleRaw || "")) return "the hamster";
+
+    if (cleanTitle.length >= 3 && cleanTitle.length <= 36) {
+      return cleanTitle;
+    }
+    return "the main character";
+  };
+
+  const extractYouTubeId = (rawUrl?: string): string => {
+    const s = String(rawUrl || "").trim();
+    if (!s) return "";
+    const m =
+      s.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([a-zA-Z0-9_-]{11})/) ||
+      s.match(/^([a-zA-Z0-9_-]{11})$/);
+    return m ? m[1] : "";
+  };
+
+  const scanYouTubeVideoDeepContext = async (videoUrlRaw?: string) => {
+    const videoId = extractYouTubeId(videoUrlRaw);
+    let title = "";
+    let author = "";
+    let description = "";
+    let snippet = "";
+    let durationSec = 0;
+    let chapters: Array<{ title: string; sec: number }> = [];
+    const frameParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+
+    if (!videoId) {
+      return { videoId: "", title, author, description, snippet, durationSec, chapters, frameParts };
+    }
+
+    const tasks: Promise<void>[] = [];
+
+    // 1. OEmbed title & channel
+    tasks.push(
+      (async () => {
+        try {
+          const oRes = await fetch(
+            `https://noembed.com/embed?url=${encodeURIComponent(
+              `https://www.youtube.com/watch?v=${videoId}`
+            )}`
+          );
+          if (oRes.ok) {
+            const oData: any = await oRes.json();
+            if (oData?.title) title = String(oData.title).trim();
+            if (oData?.author_name) author = String(oData.author_name).trim();
+          }
+        } catch {}
+      })()
+    );
+
+    // 2. YouTube Innertube Next API for description & chapter timestamps
+    tasks.push(
+      (async () => {
+        try {
+          const nRes = await fetch("https://www.youtube.com/youtubei/v1/next?prettyPrint=false", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              videoId,
+              context: { client: { clientName: "WEB", clientVersion: "2.20250101.00.00" } },
+            }),
+          });
+          if (nRes.ok) {
+            const text = await nRes.text();
+            const descMatches = [
+              ...text.matchAll(/"attributedDescriptionBodyText":\{"content":"((?:[^"\\]|\\.)*)"/g),
+            ];
+            if (descMatches.length > 0) {
+              try {
+                description = JSON.parse(`"${descMatches[0][1]}"`).slice(0, 1500);
+              } catch {}
+            }
+            const chapMatches = [
+              ...text.matchAll(
+                /"chapterRenderer":\{"title":\{"simpleText":"([^"]+)"\},"timeRangeStartMillis":(\d+)/g
+              ),
+            ];
+            chapters = chapMatches.slice(0, 25).map((m) => ({
+              title: m[1],
+              sec: Math.round(Number(m[2]) / 1000),
+            }));
+          }
+        } catch {}
+      })()
+    );
+
+    // 3. YouTube Innertube Search API for exact durationSec (lengthText) and detailed snippet
+    tasks.push(
+      (async () => {
+        try {
+          const sRes = await fetch("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: videoId,
+              context: { client: { clientName: "WEB", clientVersion: "2.20250101.00.00" } },
+            }),
+          });
+          if (sRes.ok) {
+            const text = await sRes.text();
+            const vidIdx = text.indexOf(`"videoId":"${videoId}"`);
+            const windowText =
+              vidIdx >= 0 ? text.slice(Math.max(0, vidIdx - 400), vidIdx + 3500) : text.slice(0, 5000);
+            const lenMatch = windowText.match(
+              /"lengthText":\{.*?"simpleText":"(?:(\d+):)?(\d+):(\d+)"/
+            );
+            if (lenMatch) {
+              const hrs = lenMatch[1] ? parseInt(lenMatch[1], 10) : 0;
+              const mins = parseInt(lenMatch[2], 10) || 0;
+              const secs = parseInt(lenMatch[3], 10) || 0;
+              const parsedSec = hrs * 3600 + mins * 60 + secs;
+              if (parsedSec > 0) durationSec = parsedSec;
+            }
+            const snipMatch = windowText.match(
+              /"detailedMetadataSnippets":\[\{"snippetText":\{"runs":\[(.*?)\]\}/
+            );
+            if (snipMatch) {
+              const runs = [...snipMatch[1].matchAll(/"text":"((?:[^"\\]|\\.)*)"/g)].map(
+                (m) => m[1]
+              );
+              snippet = runs.join("").trim();
+            }
+          }
+        } catch {}
+      })()
+    );
+
+    // 4. Download actual scene frame images from YouTube (hq1.jpg, hq2.jpg, hq3.jpg)
+    tasks.push(
+      (async () => {
+        const frameNames = ["hq1.jpg", "hq2.jpg", "hq3.jpg"];
+        const fetched = await Promise.all(
+          frameNames.map(async (name) => {
+            try {
+              const fRes = await fetch(`https://i.ytimg.com/vi/${videoId}/${name}`);
+              if (!fRes.ok) return null;
+              const buf = Buffer.from(await fRes.arrayBuffer());
+              if (buf.byteLength < 1000) return null;
+              return {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: buf.toString("base64"),
+                },
+              };
+            } catch {
+              return null;
+            }
+          })
+        );
+        fetched.forEach((p) => {
+          if (p) frameParts.push(p);
+        });
+      })()
+    );
+
+    await Promise.allSettled(tasks);
+    if (!description && snippet) {
+      description = snippet;
+    } else if (snippet && !description.includes(snippet)) {
+      description = `${snippet}\n${description}`;
+    }
+    return { videoId, title, author, description, snippet, durationSec, chapters, frameParts };
+  };
+
+  interface ScannedVideoScene {
+    sceneLabel: string;
+    location: string;
+    mustRule: string;
+    mustntRule: string;
+    shouldAction: string;
+    shouldntAction: string;
+    canAction: string;
+    cantAction: string;
+    haveToAction: string;
+    dontHaveToAction: string;
+    verbBase: string;
+    verbPast: string;
+    verbV3: string;
+    verbIng: string;
+    verbS: string;
+    obj: string;
+    passiveSubject: string;
+    passiveVerbV3: string;
+    passiveWasOrIs: "was" | "is";
+    adjBase: string;
+    adjComp: string;
+    adjSuper: string;
+  }
+
+  const extractDynamicScenesFromVideo = (
+    videoTitleRaw?: string,
+    videoDescRaw?: string,
+    chaptersRaw?: Array<{ title: string; sec: number }>,
+    subject: string = "the main character"
+  ): ScannedVideoScene[] => {
+    const combinedText = `${videoTitleRaw || ""} ${videoDescRaw || ""} ${
+      Array.isArray(chaptersRaw) ? chaptersRaw.map((c) => c.title).join(" ") : ""
+    }`.toLowerCase();
+
+    const scenes: ScannedVideoScene[] = [];
+
+    // 1. Hospital / Doctor / Clinic / Ambulance / Medical setting (e.g., "Hospital BEAN")
+    if (
+      /\b(hospital|doctor|nurse|ambulance|clinic|patient|medical|sick|medicine|health|emergency|bandage|waiting room|tooth|dentist)\b/i.test(
+        combinedText
+      )
+    ) {
+      scenes.push(
+        {
+          sceneLabel: "outside the hospital entrance by the ambulance",
+          location: "outside the hospital entrance",
+          mustRule: "keep the ambulance entrance clear for emergency vehicles",
+          mustntRule: "park a car directly behind a hospital ambulance",
+          shouldAction: "park in a normal parking space instead of blocking the ambulance",
+          shouldntAction: "block the emergency ambulance doors with his car",
+          canAction: "see the white ambulance parked at the hospital entrance",
+          cantAction: "park legally in the emergency ambulance zone",
+          haveToAction: "follow the hospital parking signs outside",
+          dontHaveToAction: "drive an ambulance to enter the hospital",
+          verbBase: "park",
+          verbPast: "parked",
+          verbV3: "parked",
+          verbIng: "parking",
+          verbS: "parks",
+          obj: "near the ambulance outside the hospital entrance",
+          passiveSubject: "The hospital ambulance",
+          passiveVerbV3: "parked",
+          passiveWasOrIs: "is",
+          adjBase: "urgent",
+          adjComp: "more urgent",
+          adjSuper: "most urgent",
+        },
+        {
+          sceneLabel: "at the hospital reception and ticket machine",
+          location: "in the hospital waiting area",
+          mustRule: "take a queue ticket and wait for his number to be called",
+          mustntRule: "steal or swap someone else's queue ticket in the hospital",
+          shouldAction: "check the number on his waiting-room ticket carefully",
+          shouldntAction: "try to trick other patients to get an earlier ticket number",
+          canAction: "take a numbered ticket from the hospital machine",
+          cantAction: "skip the hospital queue without a valid ticket number",
+          haveToAction: "wait until the electronic board shows his ticket number",
+          dontHaveToAction: "pay for a queue ticket at the reception machine",
+          verbBase: "take",
+          verbPast: "took",
+          verbV3: "taken",
+          verbIng: "taking",
+          verbS: "takes",
+          obj: "a numbered ticket in the hospital waiting room",
+          passiveSubject: "A queue ticket",
+          passiveVerbV3: "taken",
+          passiveWasOrIs: "was",
+          adjBase: "patient",
+          adjComp: "more patient",
+          adjSuper: "most patient",
+        },
+        {
+          sceneLabel: "in the hospital waiting room chairs",
+          location: "in the hospital waiting room",
+          mustRule: "sit quietly and respect the injured patients in the waiting room",
+          mustntRule: "annoy or disturb the bandaged patient sitting next to him",
+          shouldAction: "sit calmly on his chair while waiting for the doctor",
+          shouldntAction: "fidget noisily and bother the other patients in the row",
+          canAction: "sit on a chair in the hospital waiting room",
+          cantAction: "make loud noise inside the quiet hospital ward",
+          haveToAction: "share the waiting room benches with other patients",
+          dontHaveToAction: "stand up the whole time while waiting for the nurse",
+          verbBase: "wait",
+          verbPast: "waited",
+          verbV3: "waited",
+          verbIng: "waiting",
+          verbS: "waits",
+          obj: "on the chair next to the bandaged patient in the hospital",
+          passiveSubject: "The waiting room chairs",
+          passiveVerbV3: "shared",
+          passiveWasOrIs: "are" as any,
+          adjBase: "quiet",
+          adjComp: "quieter",
+          adjSuper: "quietest",
+        },
+        {
+          sceneLabel: "showing his stuck hand to the medical staff",
+          location: "at the hospital clinic",
+          mustRule: "explain his injury honestly to the doctor and nurse",
+          mustntRule: "hide his stuck teapot hand when his turn finally arrives",
+          shouldAction: "ask the doctor or nurse to help remove the stuck object",
+          shouldntAction: "pull the stuck teapot off roughly by himself",
+          canAction: "ask the hospital staff for medical help",
+          cantAction: "use his hand properly while it is stuck inside the teapot",
+          haveToAction: "show the nurse what happened to his hand",
+          dontHaveToAction: "perform the medical treatment by himself",
+          verbBase: "show",
+          verbPast: "showed",
+          verbV3: "shown",
+          verbIng: "showing",
+          verbS: "shows",
+          obj: "his stuck hand at the hospital desk",
+          passiveSubject: "The patient's injured hand",
+          passiveVerbV3: "examined",
+          passiveWasOrIs: "was",
+          adjBase: "careful",
+          adjComp: "more careful",
+          adjSuper: "most careful",
+        },
+        {
+          sceneLabel: "watching the electronic number board in the hospital",
+          location: "by the hospital reception desk",
+          mustRule: "watch the electronic display board and go when his number flashes",
+          mustntRule: "push ahead of injured patients when the nurse calls a number",
+          shouldAction: "listen carefully when the nurse calls the next patient",
+          shouldntAction: "turn the ticket upside down and confuse the queue number",
+          canAction: "read the red numbers on the hospital display screen",
+          cantAction: "enter the examination room before his number is called",
+          haveToAction: "look at the digital number board in the waiting room",
+          dontHaveToAction: "shout his name across the hospital reception room",
+          verbBase: "check",
+          verbPast: "checked",
+          verbV3: "checked",
+          verbIng: "checking",
+          verbS: "checks",
+          obj: "the electronic number board in the hospital waiting room",
+          passiveSubject: "The next ticket number",
+          passiveVerbV3: "called",
+          passiveWasOrIs: "was",
+          adjBase: "polite",
+          adjComp: "more polite",
+          adjSuper: "most polite",
+        },
+        {
+          sceneLabel: "inside the hospital corridor and treatment area",
+          location: "inside the hospital corridor",
+          mustRule: "follow the hospital signs and obey the medical staff's instructions",
+          mustntRule: "touch medical equipment or bandages that belong to other patients",
+          shouldAction: "walk carefully along the hospital corridor",
+          shouldntAction: "run or cause chaos near the wheelchairs and stretchers",
+          canAction: "follow the hospital signs to the treatment room",
+          cantAction: "play with the hospital wheelchairs or bandages",
+          haveToAction: "obey the safety rules inside the hospital building",
+          dontHaveToAction: "wear a doctor's white coat as a visitor",
+          verbBase: "follow",
+          verbPast: "followed",
+          verbV3: "followed",
+          verbIng: "following",
+          verbS: "follows",
+          obj: "the signs along the hospital corridor",
+          passiveSubject: "The hospital rules",
+          passiveVerbV3: "followed",
+          passiveWasOrIs: "was",
+          adjBase: "safe",
+          adjComp: "safer",
+          adjSuper: "safest",
+        }
+      );
+    }
+
+    // 2. School / Exam / Classroom / Library / Study setting
+    if (
+      /\b(school|class|classroom|exam|test|student|teacher|homework|study|library|pencil|desk|math|science|chemistry|art class)\b/i.test(
+        combinedText
+      )
+    ) {
+      scenes.push(
+        {
+          sceneLabel: "at the desk during the classroom exam",
+          location: "in the examination room",
+          mustRule: "write his own answers quietly on the exam paper",
+          mustntRule: "copy answers from the student sitting at the next desk",
+          shouldAction: "prepare the right pens and pencils before the test starts",
+          shouldntAction: "waste time taking out dozens of pens and toys on the desk",
+          canAction: "use a pen and ruler to answer the test questions",
+          cantAction: "talk loudly or look at another student's paper during the exam",
+          haveToAction: "finish the exam before the timer runs out",
+          dontHaveToAction: "bring twenty different pencils for one test",
+          verbBase: "write",
+          verbPast: "wrote",
+          verbV3: "written",
+          verbIng: "writing",
+          verbS: "writes",
+          obj: "the answers on the exam paper at the desk",
+          passiveSubject: "The exam paper",
+          passiveVerbV3: "written",
+          passiveWasOrIs: "was",
+          adjBase: "quiet",
+          adjComp: "quieter",
+          adjSuper: "quietest",
+        },
+        {
+          sceneLabel: "when the teacher is watching the classroom",
+          location: "inside the classroom",
+          mustRule: "stop writing immediately when the teacher says time is up",
+          mustntRule: "cheat or make loud noises while the class is working",
+          shouldAction: "read the instructions on the exam envelope carefully",
+          shouldntAction: "study the wrong subject the night before the exam",
+          canAction: "raise his hand if he needs help from the teacher",
+          cantAction: "keep writing after the exam bell rings",
+          haveToAction: "listen to the teacher's instructions at the start of class",
+          dontHaveToAction: "answer both papers if only one is required",
+          verbBase: "open",
+          verbPast: "opened",
+          verbV3: "opened",
+          verbIng: "opening",
+          verbS: "opens",
+          obj: "the question paper on the classroom desk",
+          passiveSubject: "The test envelope",
+          passiveVerbV3: "opened",
+          passiveWasOrIs: "was",
+          adjBase: "careful",
+          adjComp: "more careful",
+          adjSuper: "most careful",
+        }
+      );
+    }
+
+    // 3. Restaurant / Kitchen / Cooking / Food / Cafe / Dinner setting
+    if (
+      /\b(restaurant|kitchen|cook|food|dinner|lunch|breakfast|eat|waiter|menu|steak|pizza|sandwich|cake|coffee|tea|cafe|turkey)\b/i.test(
+        combinedText
+      )
+    ) {
+      scenes.push(
+        {
+          sceneLabel: "at the table with the food and menu",
+          location: "at the dining table",
+          mustRule: "use clean cutlery and behave politely at the table",
+          mustntRule: "hide unwanted food inside napkins, flowerpots, or someone's bag",
+          shouldAction: "order a dish from the menu that he actually likes to eat",
+          shouldntAction: "make a mess with the food when the waiter is not looking",
+          canAction: "read the menu and choose a meal at the table",
+          cantAction: "throw food around the dining room",
+          haveToAction: "pay the bill after finishing the meal",
+          dontHaveToAction: "cook the meal himself at a restaurant",
+          verbBase: "order",
+          verbPast: "ordered",
+          verbV3: "ordered",
+          verbIng: "ordering",
+          verbS: "orders",
+          obj: "a special meal from the menu at the table",
+          passiveSubject: "The meal",
+          passiveVerbV3: "served",
+          passiveWasOrIs: "was",
+          adjBase: "polite",
+          adjComp: "more polite",
+          adjSuper: "most polite",
+        },
+        {
+          sceneLabel: "while preparing and serving the food",
+          location: "in the food preparation scene",
+          mustRule: "wash his hands and handle the food safely and cleanly",
+          mustntRule: "drop personal items into the food while preparing it",
+          shouldAction: "follow the recipe carefully step by step",
+          shouldntAction: "rush and spill ingredients all over the counter",
+          canAction: "use plates and utensils to serve the food neatly",
+          cantAction: "serve spoiled or raw food to the guests",
+          haveToAction: "keep the kitchen and table clean while preparing food",
+          dontHaveToAction: "eat everything on the plate in one single bite",
+          verbBase: "prepare",
+          verbPast: "prepared",
+          verbV3: "prepared",
+          verbIng: "preparing",
+          verbS: "prepares",
+          obj: "the food carefully in this scene",
+          passiveSubject: "The food",
+          passiveVerbV3: "prepared",
+          passiveWasOrIs: "was",
+          adjBase: "clean",
+          adjComp: "cleaner",
+          adjSuper: "cleanest",
+        }
+      );
+    }
+
+    // 4. Holiday / Travel / Hotel / Swimming Pool / Beach / Airport / Train setting
+    if (
+      /\b(holiday|vacation|hotel|pool|swim|beach|airport|plane|flight|train|ticket|luggage|suitcase|passport)\b/i.test(
+        combinedText
+      )
+    ) {
+      scenes.push(
+        {
+          sceneLabel: "during the travel and check-in scene",
+          location: "at the travel check-in desk",
+          mustRule: "show his ticket or booking confirmation at the check-in desk",
+          mustntRule: "push past other travellers or take someone else's luggage",
+          shouldAction: "keep his ticket and suitcase in a safe place",
+          shouldntAction: "wait until the last second to pack and find his ticket",
+          canAction: "check in at the counter with his suitcase",
+          cantAction: "board or enter without a valid ticket",
+          haveToAction: "follow the safety rules during the journey",
+          dontHaveToAction: "carry everyone else's heavy bags",
+          verbBase: "carry",
+          verbPast: "carried",
+          verbV3: "carried",
+          verbIng: "carrying",
+          verbS: "carries",
+          obj: "his suitcase during the travel scene",
+          passiveSubject: "The ticket",
+          passiveVerbV3: "checked",
+          passiveWasOrIs: "was",
+          adjBase: "fast",
+          adjComp: "faster",
+          adjSuper: "fastest",
+        }
+      );
+    }
+
+    // 5. Driving / Car / Parking / Traffic / Shopping / City street setting
+    if (
+      /\b(car|drive|driving|mini|park|parking|traffic|road|street|shop|shopping|store|supermarket)\b/i.test(
+        combinedText
+      )
+    ) {
+      scenes.push(
+        {
+          sceneLabel: "while driving and parking the green car",
+          location: "on the street and parking area",
+          mustRule: "obey the traffic signs and park only in allowed spaces",
+          mustntRule: "drive carelessly or push another car out of the way",
+          shouldAction: "check the mirrors and watch out for other vehicles",
+          shouldntAction: "park in a restricted or emergency zone",
+          canAction: "steer the small green car into a tight parking space",
+          cantAction: "ignore road safety rules on a busy street",
+          haveToAction: "lock the car door carefully after parking",
+          dontHaveToAction: "take the steering wheel off every normal car",
+          verbBase: "drive",
+          verbPast: "drove",
+          verbV3: "driven",
+          verbIng: "driving",
+          verbS: "drives",
+          obj: "his car into the scene",
+          passiveSubject: "The green car",
+          passiveVerbV3: "driven",
+          passiveWasOrIs: "was",
+          adjBase: "careful",
+          adjComp: "more careful",
+          adjSuper: "most careful",
+        }
+      );
+    }
+
+    // 6. Add any explicit chapters from the scanned YouTube video
+    if (Array.isArray(chaptersRaw) && chaptersRaw.length > 0) {
+      chaptersRaw.slice(0, 8).forEach((ch) => {
+        const cleanChap = ch.title.replace(/[^\w\s'-]/g, "").trim();
+        if (cleanChap.length > 2) {
+          scenes.push({
+            sceneLabel: `in the "${cleanChap}" scene`,
+            location: `during the "${cleanChap}" scene`,
+            mustRule: `pay attention and follow the rules during "${cleanChap}"`,
+            mustntRule: `make a careless mistake or cause trouble during "${cleanChap}"`,
+            shouldAction: `stay calm and act sensibly in the "${cleanChap}" scene`,
+            shouldntAction: `make the problem worse during "${cleanChap}"`,
+            canAction: `see what happens next in the "${cleanChap}" scene`,
+            cantAction: `solve the problem by breaking the rules in "${cleanChap}"`,
+            haveToAction: `deal with the situation carefully in "${cleanChap}"`,
+            dontHaveToAction: `panic when something unexpected happens in "${cleanChap}"`,
+            verbBase: "watch",
+            verbPast: "watched",
+            verbV3: "watched",
+            verbIng: "watching",
+            verbS: "watches",
+            obj: `what happens in the "${cleanChap}" scene`,
+            passiveSubject: `The "${cleanChap}" scene`,
+            passiveVerbV3: "shown",
+            passiveWasOrIs: "is",
+            adjBase: "funny",
+            adjComp: "funnier",
+            adjSuper: "funniest",
+          });
+        }
+      });
+    }
+
+    // 7. Universal video-title-specific scenes if no specialized category matched (or to supplement)
+    const cleanTitle = (videoTitleRaw || "").replace(/\s*\|.*$/, "").trim() || "this video clip";
+    if (scenes.length < 6) {
+      const genericAdditions: ScannedVideoScene[] = [
+        {
+          sceneLabel: `at the start of "${cleanTitle}"`,
+          location: `in "${cleanTitle}"`,
+          mustRule: `follow the rules and pay attention to what is happening around ${subject === "They" ? "them" : "him"}`,
+          mustntRule: `break the rules or cause an accident in "${cleanTitle}"`,
+          shouldAction: `think carefully before acting in "${cleanTitle}"`,
+          shouldntAction: `rush into a silly mistake without looking first`,
+          canAction: `Look closely at the problem in "${cleanTitle}"`,
+          cantAction: `ignore the rules without getting into trouble`,
+          haveToAction: `find a smart way to solve the problem in "${cleanTitle}"`,
+          dontHaveToAction: `make a big mess to solve a simple problem`,
+          verbBase: "arrive",
+          verbPast: "arrived",
+          verbV3: "arrived",
+          verbIng: "arriving",
+          verbS: "arrives",
+          obj: `at the main location in "${cleanTitle}"`,
+          passiveSubject: "The main problem",
+          passiveVerbV3: "caused",
+          passiveWasOrIs: "was",
+          adjBase: "careful",
+          adjComp: "more careful",
+          adjSuper: "most careful",
+        },
+        {
+          sceneLabel: `when the problem starts in "${cleanTitle}"`,
+          location: `in this scene of "${cleanTitle}"`,
+          mustRule: `stay calm and be respectful to the other people in the scene`,
+          mustntRule: `annoy or push the other people in "${cleanTitle}"`,
+          shouldAction: `ask for help politely when something goes wrong`,
+          shouldntAction: `hide the mistake or blame someone else in the room`,
+          canAction: `ask another person in the scene for help`,
+          cantAction: `fix the mistake by causing even more chaos`,
+          haveToAction: `wait patiently for the right moment to act`,
+          dontHaveToAction: `push ahead of everyone else in the scene`,
+          verbBase: "try",
+          verbPast: "tried",
+          verbV3: "tried",
+          verbIng: "trying",
+          verbS: "tries",
+          obj: `to fix the problem in "${cleanTitle}"`,
+          passiveSubject: "A funny plan",
+          passiveVerbV3: "tried",
+          passiveWasOrIs: "was",
+          adjBase: "patient",
+          adjComp: "more patient",
+          adjSuper: "most patient",
+        },
+        {
+          sceneLabel: `during the middle scene of "${cleanTitle}"`,
+          location: `in the middle of "${cleanTitle}"`,
+          mustRule: `keep the area safe and follow the instructions on the signs`,
+          mustntRule: `touch things that belong to other people in "${cleanTitle}"`,
+          shouldAction: `use the equipment properly and safely`,
+          shouldntAction: `do something dangerous or against the rules`,
+          canAction: `see how the other people react in "${cleanTitle}"`,
+          cantAction: `break the rules when everyone is watching`,
+          haveToAction: `follow the instructions shown in the scene`,
+          dontHaveToAction: `cause trouble for the other characters`,
+          verbBase: "look",
+          verbPast: "looked",
+          verbV3: "looked",
+          verbIng: "looking",
+          verbS: "looks",
+          obj: `around the room in "${cleanTitle}"`,
+          passiveSubject: "The instructions",
+          passiveVerbV3: "followed",
+          passiveWasOrIs: "was",
+          adjBase: "safe",
+          adjComp: "safer",
+          adjSuper: "safest",
+        },
+        {
+          sceneLabel: `near the end of "${cleanTitle}"`,
+          location: `toward the end of "${cleanTitle}"`,
+          mustRule: `learn from the mistake and follow the proper rule next time`,
+          mustntRule: `repeat the same silly mistake at the end of "${cleanTitle}"`,
+          shouldAction: `apologize and clean up any mess before leaving`,
+          shouldntAction: `leave a big mess behind for other people`,
+          canAction: `see the funny result at the end of "${cleanTitle}"`,
+          cantAction: `escape the consequences of breaking the rules`,
+          haveToAction: `face the result of the actions at the end of the clip`,
+          dontHaveToAction: `make the same mistake again`,
+          verbBase: "finish",
+          verbPast: "finished",
+          verbV3: "finished",
+          verbIng: "finishing",
+          verbS: "finishes",
+          obj: `the funny adventure in "${cleanTitle}"`,
+          passiveSubject: "The lesson",
+          passiveVerbV3: "learned",
+          passiveWasOrIs: "was",
+          adjBase: "good",
+          adjComp: "better",
+          adjSuper: "best",
+        },
+      ];
+      for (const add of genericAdditions) {
+        if (scenes.length < 6) scenes.push(add);
+      }
+    }
+
+    return scenes;
+  };
+
   const buildFallbackVideoQuizQuestions = (
     topicRaw: string,
     levelRaw: string,
-    typesRaw: string[]
+    typesRaw: string[],
+    countRaw?: number,
+    videoTitleRaw?: string,
+    videoDurationRaw?: number,
+    videoDescriptionRaw?: string,
+    chaptersRaw?: Array<{ title: string; sec: number }>
   ) => {
-    const topic = (topicRaw || "English Video Lesson").trim();
-    const level = levelRaw || "A2 Movers";
+    const rawTopicClean = (topicRaw || "").trim();
+    const topicLower = rawTopicClean.toLowerCase();
+    const count = Math.max(1, Math.min(100, Number(countRaw) || 5));
     const types =
       Array.isArray(typesRaw) && typesRaw.length > 0
         ? typesRaw
-        : ["Multiple Choice"];
-    const timings = [15, 34, 56, 78, 96, 114];
+        : ["Fill in the Blanks", "Multiple Choice", "Grammar Choice"];
+    const subject = extractVideoSubject(videoTitleRaw, topicRaw);
+    const isPluralSubject =
+      /\b(and|they|minions|kids|students|animals|friends|people)\b/i.test(subject);
+    const subjPronoun = isPluralSubject ? "they" : "he";
+    const hasAux = isPluralSubject ? "have" : "has";
+    const hasNeg = isPluralSubject ? "haven't" : "hasn't";
+    const wrongAux = isPluralSubject ? "has" : "have";
+    const wasAux = isPluralSubject ? "were" : "was";
+    const wrongWasAux = isPluralSubject ? "was" : "were";
+    const isAux = isPluralSubject ? "are" : "is";
+    const wrongIsAux = isPluralSubject ? "is" : "are";
+    const doesAux = isPluralSubject ? "do" : "does";
+    const doesntAux = isPluralSubject ? "don't" : "doesn't";
+    const haveToPos = isPluralSubject ? "have to" : "has to";
+    const haveToNeg = isPluralSubject ? "don't have to" : "doesn't have to";
 
-    return timings.map((timeTrigger, index) => {
-      const qType = types[index % types.length];
-      if (qType === "Vocabulary Meaning") {
-        const words = topic
-          .split(/\s+/)
-          .filter((w) => w.replace(/[^a-zA-Z]/g, "").length > 2);
-        const focusWord = (
-          words[words.length - 1] || "DISCOVERY"
-        )
-          .replace(/[^a-zA-Z]/g, "")
-          .toUpperCase();
-        return {
-          id: index + 1,
-          timeTrigger,
-          type: "Vocabulary Meaning",
-          xp: 150,
-          word: focusWord,
-          pronunciation: `/${focusWord.toLowerCase()}/`,
-          question: `What does "${focusWord}" mean in this context?`,
-          options: [
-            {
-              text: `An important concept connected to ${topic.toLowerCase()}.`,
-              isCorrect: true,
-            },
-            {
-              text: `Something completely opposite to the scene.`,
-              isCorrect: false,
-            },
-            { text: `A type of musical instrument.`, isCorrect: false },
-            { text: `A measurement of distance.`, isCorrect: false },
-          ],
-          explanation: `"${focusWord}" is a key ${level} vocabulary term for ${topic}.`,
-        };
+    const cleanVideoTitle = (videoTitleRaw || "").replace(/\s*\|.*$/, "").trim();
+    const videoContextLabel = cleanVideoTitle ? `in "${cleanVideoTitle}"` : "in this video";
+
+    const duration = Math.max(60, Number(videoDurationRaw) || 540);
+    // Distribute questions evenly across 5% to 94% of the real video duration
+    const usableStart = Math.max(8, Math.floor(duration * 0.04));
+    const usableSpan = Math.max(30, Math.floor(duration * 0.90) - usableStart);
+
+    const dynamicScenes = extractDynamicScenesFromVideo(
+      videoTitleRaw,
+      videoDescriptionRaw,
+      chaptersRaw,
+      subject
+    );
+
+    type QuizTemplate = {
+      type: string;
+      question: string;
+      answer: string;
+      acceptedAnswers?: string[];
+      options: Array<{ text: string; isCorrect: boolean }>;
+      explanation: string;
+    };
+
+    let bank: QuizTemplate[] = [];
+
+    // =========================================================================
+    // 1. MUST AND MUSTN'T / MUST & MUST NOT (Obligation & Prohibition)
+    // =========================================================================
+    if (/\bmust\b|\bmustn'?t\b|\bmust\s+not\b/i.test(topicLower)) {
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Look at ${subject} ${sc.sceneLabel}: ${subject} ____ (must / mustn't) ${sc.mustntRule}.`,
+            answer: "mustn't",
+            acceptedAnswers: ["mustn't", "must not", "mustnt"],
+            options: [
+              { text: "mustn't", isCorrect: true },
+              { text: "must", isCorrect: false },
+              { text: "must to", isCorrect: false },
+              { text: "musts", isCorrect: false },
+            ],
+            explanation: `We use "mustn't" (must not) for prohibition — something that is against the rules or not allowed ${sc.location}.`,
+          },
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the rule ${sc.location}: "${subject} ____ (must / mustn't) ${sc.mustRule}."`,
+            answer: "must",
+            acceptedAnswers: ["must"],
+            options: [
+              { text: "must", isCorrect: true },
+              { text: "mustn't", isCorrect: false },
+              { text: "musts", isCorrect: false },
+              { text: "must to", isCorrect: false },
+            ],
+            explanation: `We use "must + base verb" for strong obligation and important rules ${sc.location}.`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Choose the correct modal verb of obligation/prohibition ${sc.sceneLabel}: "Visitors and patients ____ ${sc.mustntRule}!"`,
+            answer: "mustn't",
+            acceptedAnswers: ["mustn't", "must not"],
+            options: [
+              { text: "mustn't", isCorrect: true },
+              { text: "must", isCorrect: false },
+              { text: "must to", isCorrect: false },
+              { text: "don't must", isCorrect: false },
+            ],
+            explanation: `"Mustn't" means it is forbidden. Note that we never say "don't must" or "must to".`,
+          },
+          {
+            type: "Multiple Choice",
+            question: `Which sentence uses "must" or "mustn't" with the correct grammar ${sc.sceneLabel}?`,
+            answer: `${subject} must ${sc.mustRule}.`,
+            acceptedAnswers: [`${subject} must ${sc.mustRule}.`, "must"],
+            options: [
+              { text: `${subject} must ${sc.mustRule}.`, isCorrect: true },
+              { text: `${subject} musts ${sc.mustRule}.`, isCorrect: false },
+              { text: `${subject} must to ${sc.mustRule}.`, isCorrect: false },
+              { text: `${subject} musting ${sc.mustRule}.`, isCorrect: false },
+            ],
+            explanation: `After "must" or "mustn't", we always use the base form of the verb (infinitive without "to" and without "-s").`,
+          },
+          {
+            type: "Fill in the Blanks",
+            question: `After "must" or "mustn't", use the base verb: "${subject} must ____ (${sc.verbBase}) carefully ${sc.location}."`,
+            answer: sc.verbBase,
+            acceptedAnswers: [sc.verbBase, `must ${sc.verbBase}`],
+            options: [
+              { text: sc.verbBase, isCorrect: true },
+              { text: `to ${sc.verbBase}`, isCorrect: false },
+              { text: sc.verbIng, isCorrect: false },
+              { text: sc.verbS, isCorrect: false },
+            ],
+            explanation: `Modal verbs ("must" and "mustn't") are followed directly by the base verb "${sc.verbBase}".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 2. SHOULD AND SHOULDN'T (Advice & Recommendations)
+    // =========================================================================
+    else if (/\bshould\b|\bshouldn'?t\b/i.test(topicLower)) {
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Give ${subject} good advice ${sc.sceneLabel}: "${subject} ____ (should / shouldn't) ${sc.shouldntAction}."`,
+            answer: "shouldn't",
+            acceptedAnswers: ["shouldn't", "should not", "shouldnt"],
+            options: [
+              { text: "shouldn't", isCorrect: true },
+              { text: "should", isCorrect: false },
+              { text: "should to", isCorrect: false },
+              { text: "shoulds", isCorrect: false },
+            ],
+            explanation: `We use "shouldn't" to advise someone not to do something unwise ${sc.location}.`,
+          },
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the advice ${sc.location}: "${subject} ____ (should / shouldn't) ${sc.shouldAction}."`,
+            answer: "should",
+            acceptedAnswers: ["should"],
+            options: [
+              { text: "should", isCorrect: true },
+              { text: "shouldn't", isCorrect: false },
+              { text: "shoulds", isCorrect: false },
+              { text: "should to", isCorrect: false },
+            ],
+            explanation: `We use "should + base verb" to give positive advice about the best thing to do.`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Which sentence gives grammatically correct advice ${sc.sceneLabel}?`,
+            answer: `${subject} should ${sc.shouldAction}.`,
+            options: [
+              { text: `${subject} should ${sc.shouldAction}.`, isCorrect: true },
+              { text: `${subject} should to ${sc.shouldAction}.`, isCorrect: false },
+              { text: `${subject} shoulds ${sc.shouldAction}.`, isCorrect: false },
+              { text: `${subject} don't should ${sc.shouldntAction}.`, isCorrect: false },
+            ],
+            explanation: `"Should" and "shouldn't" are followed by the base verb without "to".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 3. CAN AND CAN'T / COULD AND COULDN'T (Ability & Permission)
+    // =========================================================================
+    else if (/\bcan\b|\bcan'?t\b|\bcannot\b|\bcould\b|\bcouldn'?t\b/i.test(topicLower)) {
+      const useCould = /\bcould/i.test(topicLower);
+      const posModal = useCould ? "could" : "can";
+      const negModal = useCould ? "couldn't" : "can't";
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Look at ${subject} ${sc.sceneLabel}: ${subject} ____ (${posModal} / ${negModal}) ${sc.cantAction}.`,
+            answer: negModal,
+            acceptedAnswers: [negModal, useCould ? "could not" : "cannot", useCould ? "couldnt" : "cant"],
+            options: [
+              { text: negModal, isCorrect: true },
+              { text: posModal, isCorrect: false },
+              { text: `${posModal} to`, isCorrect: false },
+              { text: `${posModal}s`, isCorrect: false },
+            ],
+            explanation: `We use "${negModal}" to show that something is not possible or not permitted ${sc.location}.`,
+          },
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the sentence ${sc.location}: "${subject} ____ (${posModal} / ${negModal}) ${sc.canAction}."`,
+            answer: posModal,
+            acceptedAnswers: [posModal],
+            options: [
+              { text: posModal, isCorrect: true },
+              { text: negModal, isCorrect: false },
+              { text: `${posModal} to`, isCorrect: false },
+              { text: `${posModal}s`, isCorrect: false },
+            ],
+            explanation: `We use "${posModal} + base verb" to describe ability or what is possible in the scene.`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Choose the correct sentence with "${posModal} / ${negModal}" ${sc.sceneLabel}:`,
+            answer: `${subject} ${negModal} ${sc.cantAction}.`,
+            options: [
+              { text: `${subject} ${negModal} ${sc.cantAction}.`, isCorrect: true },
+              { text: `${subject} ${posModal}s ${sc.canAction}.`, isCorrect: false },
+              { text: `${subject} ${posModal} to ${sc.canAction}.`, isCorrect: false },
+              { text: `${subject} don't ${posModal} ${sc.cantAction}.`, isCorrect: false },
+            ],
+            explanation: `Modal verb "${posModal} / ${negModal}" takes the base verb directly without "to" or "-s".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 4. HAVE TO / HAS TO / DON'T HAVE TO / DOESN'T HAVE TO
+    // =========================================================================
+    else if (/\bhave\s+to\b|\bhas\s+to\b|\bdon'?t\s+have\s+to\b|\bdoesn'?t\s+have\s+to\b/i.test(topicLower)) {
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the sentence ${sc.sceneLabel}: "${subject} ____ (${haveToPos} / ${haveToNeg}) ${sc.haveToAction}."`,
+            answer: haveToPos,
+            acceptedAnswers: [haveToPos, "must"],
+            options: [
+              { text: haveToPos, isCorrect: true },
+              { text: haveToNeg, isCorrect: false },
+              { text: isPluralSubject ? "has to" : "have to", isCorrect: false },
+              { text: "having to", isCorrect: false },
+            ],
+            explanation: `With "${subject}", we use "${haveToPos} + base verb" to show that something is necessary.`,
+          },
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the sentence ${sc.location}: "${subject} ____ (${haveToPos} / ${haveToNeg}) ${sc.dontHaveToAction}."`,
+            answer: haveToNeg,
+            acceptedAnswers: [haveToNeg],
+            options: [
+              { text: haveToNeg, isCorrect: true },
+              { text: haveToPos, isCorrect: false },
+              { text: isPluralSubject ? "doesn't have to" : "don't have to", isCorrect: false },
+              { text: "haven't to", isCorrect: false },
+            ],
+            explanation: `We use "${haveToNeg}" when something is NOT necessary.`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 5. PRESENT PERFECT
+    // =========================================================================
+    else if (
+      topicLower.includes("present perf") ||
+      topicLower.includes("present per") ||
+      /\b(have|has)\s*\+\s*(past participle|v3|pp)\b/i.test(topicLower) ||
+      /\b(just|already|yet|ever|never|since|for)\b/i.test(topicLower)
+    ) {
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the Present Perfect sentence ${sc.sceneLabel}: "${subject} ${hasAux} ____ (${sc.verbBase}) ${sc.obj}."`,
+            answer: sc.verbV3,
+            acceptedAnswers: [sc.verbV3, `${hasAux} ${sc.verbV3}`],
+            options: [
+              { text: sc.verbV3, isCorrect: true },
+              { text: sc.verbBase, isCorrect: false },
+              { text: sc.verbIng, isCorrect: false },
+              { text: sc.verbS, isCorrect: false },
+            ],
+            explanation: `In the Present Perfect, after "${hasAux}" we use the past participle (V3) "${sc.verbV3}".`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Choose the correct Present Perfect form ${sc.sceneLabel}: "${subject} ____ just ____ ${sc.obj}!"`,
+            answer: `${hasAux} ${sc.verbV3}`,
+            acceptedAnswers: [`${hasAux} ${sc.verbV3}`, sc.verbV3],
+            options: [
+              { text: `${hasAux} ... ${sc.verbV3}`, isCorrect: true },
+              { text: `${wrongAux} ... ${sc.verbBase}`, isCorrect: false },
+              { text: `did ... ${sc.verbV3}`, isCorrect: false },
+              { text: `${isAux} ... ${sc.verbIng}`, isCorrect: false },
+            ],
+            explanation: `Present Perfect uses "${hasAux} + just + past participle (${sc.verbV3})" for a recent action with a result now.`,
+          },
+          {
+            type: "Fill in the Blanks",
+            question: `Fill in "have" or "has" ${sc.location}: "${subject} ____ ${sc.verbV3} ${sc.obj}."`,
+            answer: hasAux,
+            acceptedAnswers: [hasAux, `${hasAux} ${sc.verbV3}`],
+            options: [
+              { text: hasAux, isCorrect: true },
+              { text: wrongAux, isCorrect: false },
+              { text: "did", isCorrect: false },
+              { text: wasAux, isCorrect: false },
+            ],
+            explanation: `With "${subject}", we use the auxiliary verb "${hasAux}" in the Present Perfect.`,
+          },
+          {
+            type: "Multiple Choice",
+            question: `Which sentence about ${subject} ${sc.location} is in the Present Perfect tense?`,
+            answer: `${subject} ${hasAux} already ${sc.verbV3} ${sc.obj}.`,
+            options: [
+              { text: `${subject} ${hasAux} already ${sc.verbV3} ${sc.obj}.`, isCorrect: true },
+              { text: `${subject} ${sc.verbPast} ${sc.obj} yesterday.`, isCorrect: false },
+              { text: `${subject} ${isAux} ${sc.verbIng} ${sc.obj} right now.`, isCorrect: false },
+              { text: `${subject} will ${sc.verbBase} ${sc.obj} tomorrow.`, isCorrect: false },
+            ],
+            explanation: `"${hasAux} already ${sc.verbV3}" is in the Present Perfect tense (have/has + V3).`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 6. PAST SIMPLE
+    // =========================================================================
+    else if (topicLower.includes("past simple") || topicLower.includes("simple past")) {
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the Past Simple sentence ${sc.sceneLabel}: "${subject} ____ (${sc.verbBase}) ${sc.obj}."`,
+            answer: sc.verbPast,
+            acceptedAnswers: [sc.verbPast],
+            options: [
+              { text: sc.verbPast, isCorrect: true },
+              { text: sc.verbBase, isCorrect: false },
+              { text: sc.verbIng, isCorrect: false },
+              { text: sc.verbS, isCorrect: false },
+            ],
+            explanation: `The Past Simple form of "${sc.verbBase}" is "${sc.verbPast}".`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Choose the correct Past Simple negative sentence ${sc.sceneLabel}:`,
+            answer: `${subject} didn't ${sc.verbBase} carefully ${sc.location}.`,
+            options: [
+              { text: `${subject} didn't ${sc.verbBase} carefully ${sc.location}.`, isCorrect: true },
+              { text: `${subject} didn't ${sc.verbPast} carefully ${sc.location}.`, isCorrect: false },
+              { text: `${subject} ${doesntAux} ${sc.verbPast} carefully ${sc.location}.`, isCorrect: false },
+              { text: `${subject} not ${sc.verbPast} carefully ${sc.location}.`, isCorrect: false },
+            ],
+            explanation: `In Past Simple negative sentences, we use "didn't + base verb (${sc.verbBase})".`,
+          },
+          {
+            type: "Multiple Choice",
+            question: `Which Past Simple question asks about what happened ${sc.sceneLabel}?`,
+            answer: `What did ${subject} ${sc.verbBase} ${sc.location}?`,
+            options: [
+              { text: `What did ${subject} ${sc.verbBase} ${sc.location}?`, isCorrect: true },
+              { text: `What did ${subject} ${sc.verbPast} ${sc.location}?`, isCorrect: false },
+              { text: `What ${wasAux} ${subject} ${sc.verbBase} ${sc.location}?`, isCorrect: false },
+              { text: `What ${doesAux} ${subject} ${sc.verbPast} ${sc.location}?`, isCorrect: false },
+            ],
+            explanation: `Past Simple questions use "Did + subject + base verb (${sc.verbBase})?".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 7. PRESENT CONTINUOUS / PAST CONTINUOUS
+    // =========================================================================
+    else if (
+      topicLower.includes("continuous") ||
+      topicLower.includes("progressive")
+    ) {
+      const isPastCont = topicLower.includes("past");
+      const beAux = isPastCont ? wasAux : isAux;
+      const wrongBe = isPastCont ? wrongWasAux : wrongIsAux;
+      const tenseLabel = isPastCont ? "Past Continuous" : "Present Continuous";
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the ${tenseLabel} sentence ${sc.sceneLabel}: "${subject} ${beAux} ____ (${sc.verbBase}) ${sc.obj}."`,
+            answer: sc.verbIng,
+            acceptedAnswers: [sc.verbIng, `${beAux} ${sc.verbIng}`],
+            options: [
+              { text: sc.verbIng, isCorrect: true },
+              { text: sc.verbBase, isCorrect: false },
+              { text: sc.verbPast, isCorrect: false },
+              { text: sc.verbS, isCorrect: false },
+            ],
+            explanation: `${tenseLabel} uses "${beAux} + verb-ing (${sc.verbIng})".`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Choose the correct ${tenseLabel} sentence ${sc.sceneLabel}:`,
+            answer: `${subject} ${beAux} ${sc.verbIng} ${sc.obj}.`,
+            options: [
+              { text: `${subject} ${beAux} ${sc.verbIng} ${sc.obj}.`, isCorrect: true },
+              { text: `${subject} ${wrongBe} ${sc.verbIng} ${sc.obj}.`, isCorrect: false },
+              { text: `${subject} ${beAux} ${sc.verbBase} ${sc.obj}.`, isCorrect: false },
+              { text: `${subject} ${sc.verbIng} ${sc.obj}.`, isCorrect: false },
+            ],
+            explanation: `With "${subject}", we use "${beAux} + ${sc.verbIng}".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 8. PRESENT SIMPLE
+    // =========================================================================
+    else if (topicLower.includes("present simple") || topicLower.includes("simple present")) {
+      const targetVerbForm = isPluralSubject ? "base" : "s";
+      dynamicScenes.forEach((sc) => {
+        const correctForm = targetVerbForm === "s" ? sc.verbS : sc.verbBase;
+        const wrongForm = targetVerbForm === "s" ? sc.verbBase : sc.verbS;
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the Present Simple sentence ${sc.sceneLabel}: "${subject} ____ (${sc.verbBase}) ${sc.obj}."`,
+            answer: correctForm,
+            acceptedAnswers: [correctForm],
+            options: [
+              { text: correctForm, isCorrect: true },
+              { text: wrongForm, isCorrect: false },
+              { text: sc.verbIng, isCorrect: false },
+              { text: sc.verbPast, isCorrect: false },
+            ],
+            explanation: `In the Present Simple with "${subject}", we use "${correctForm}".`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Choose the correct Present Simple negative sentence ${sc.sceneLabel}:`,
+            answer: `${subject} ${doesntAux} ${sc.verbBase} ${sc.obj}.`,
+            options: [
+              { text: `${subject} ${doesntAux} ${sc.verbBase} ${sc.obj}.`, isCorrect: true },
+              { text: `${subject} ${doesntAux} ${sc.verbS} ${sc.obj}.`, isCorrect: false },
+              { text: `${subject} ${isPluralSubject ? "doesn't" : "don't"} ${sc.verbBase} ${sc.obj}.`, isCorrect: false },
+              { text: `${subject} not ${sc.verbBase} ${sc.obj}.`, isCorrect: false },
+            ],
+            explanation: `Present Simple negatives use "${doesntAux} + base verb (${sc.verbBase})".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 9. PASSIVE VOICE
+    // =========================================================================
+    else if (topicLower.includes("passive")) {
+      dynamicScenes.forEach((sc) => {
+        const auxWord = sc.passiveWasOrIs;
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the Passive Voice sentence ${sc.sceneLabel}: "${sc.passiveSubject} ${auxWord} ____ ${sc.location}."`,
+            answer: sc.passiveVerbV3,
+            acceptedAnswers: [sc.passiveVerbV3, `${auxWord} ${sc.passiveVerbV3}`],
+            options: [
+              { text: sc.passiveVerbV3, isCorrect: true },
+              { text: sc.verbBase, isCorrect: false },
+              { text: sc.verbIng, isCorrect: false },
+              { text: sc.verbS, isCorrect: false },
+            ],
+            explanation: `The Passive Voice is formed with "be (${auxWord}) + past participle (${sc.passiveVerbV3})".`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Which sentence ${sc.sceneLabel} is written in the Passive Voice?`,
+            answer: `${sc.passiveSubject} ${auxWord} ${sc.passiveVerbV3} ${sc.location}.`,
+            options: [
+              { text: `${sc.passiveSubject} ${auxWord} ${sc.passiveVerbV3} ${sc.location}.`, isCorrect: true },
+              { text: `${subject} ${sc.verbPast} ${sc.obj}.`, isCorrect: false },
+              { text: `${subject} ${isAux} ${sc.verbIng} ${sc.obj}.`, isCorrect: false },
+              { text: `${sc.passiveSubject} ${sc.verbBase} ${sc.location}.`, isCorrect: false },
+            ],
+            explanation: `"${sc.passiveSubject} ${auxWord} ${sc.passiveVerbV3}" places the receiver of the action first (Passive Voice).`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 10. CONDITIONALS (First / Second / Zero / If-clauses)
+    // =========================================================================
+    else if (topicLower.includes("conditional") || /\bif\s+clause/i.test(topicLower)) {
+      dynamicScenes.forEach((sc) => {
+        const presForm = isPluralSubject ? sc.verbBase : sc.verbS;
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the First Conditional sentence ${sc.sceneLabel}: "If ${subject} ____ (${sc.verbBase}) ${sc.obj}, everyone will notice!"`,
+            answer: presForm,
+            acceptedAnswers: [presForm],
+            options: [
+              { text: presForm, isCorrect: true },
+              { text: `will ${sc.verbBase}`, isCorrect: false },
+              { text: sc.verbIng, isCorrect: false },
+              { text: `would ${sc.verbBase}`, isCorrect: false },
+            ],
+            explanation: `In a First Conditional sentence, the "If"-clause uses the Present Simple ("${presForm}"), and the main clause uses "will + base verb".`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Complete the Second Conditional sentence ${sc.sceneLabel}: "If ${subject} ${sc.verbPast} more carefully ${sc.location}, ${subjPronoun} ____ get into trouble."`,
+            answer: "wouldn't",
+            acceptedAnswers: ["wouldn't", "would not"],
+            options: [
+              { text: "wouldn't", isCorrect: true },
+              { text: "won't", isCorrect: false },
+              { text: "didn't", isCorrect: false },
+              { text: "don't", isCorrect: false },
+            ],
+            explanation: `Second Conditional uses "If + Past Simple, ... would / wouldn't + base verb".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 11. COMPARATIVES AND SUPERLATIVES
+    // =========================================================================
+    else if (topicLower.includes("comparative") || topicLower.includes("superlative")) {
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the comparative sentence ${sc.sceneLabel}: "${subject} should be ____ (${sc.adjBase}) than before ${sc.location}."`,
+            answer: sc.adjComp,
+            acceptedAnswers: [sc.adjComp],
+            options: [
+              { text: sc.adjComp, isCorrect: true },
+              { text: sc.adjBase, isCorrect: false },
+              { text: sc.adjSuper, isCorrect: false },
+              { text: `more ${sc.adjComp}`, isCorrect: false },
+            ],
+            explanation: `Before "than", we use the comparative form "${sc.adjComp}".`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Complete the superlative sentence ${sc.sceneLabel}: "What is the ____ (${sc.adjBase}) thing to do ${sc.location}?"`,
+            answer: sc.adjSuper,
+            acceptedAnswers: [sc.adjSuper],
+            options: [
+              { text: sc.adjSuper, isCorrect: true },
+              { text: sc.adjComp, isCorrect: false },
+              { text: sc.adjBase, isCorrect: false },
+              { text: `most ${sc.adjSuper}`, isCorrect: false },
+            ],
+            explanation: `After "the", we use the superlative adjective "${sc.adjSuper}".`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 12. ANY BINARY / CONTRAST TOPIC ("X and Y", "X vs Y", "X or Y", "X / Y")
+    // =========================================================================
+    else if (/\b(and|vs\.?|or|\/)\b/i.test(rawTopicClean)) {
+      const parts = rawTopicClean
+        .split(/\s+(?:and|vs\.?|or|\/)\s+/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const choiceA = (parts[0] || rawTopicClean).toLowerCase();
+      const choiceB = (parts[1] || `not ${choiceA}`).toLowerCase();
+      dynamicScenes.forEach((sc) => {
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the sentence ${sc.sceneLabel} using "${choiceA}" or "${choiceB}": "${subject} ____ (${choiceA} / ${choiceB}) ${sc.mustRule}."`,
+            answer: choiceA,
+            acceptedAnswers: [choiceA],
+            options: [
+              { text: choiceA, isCorrect: true },
+              { text: choiceB, isCorrect: false },
+              { text: `${choiceA} to`, isCorrect: false },
+              { text: `${choiceB}s`, isCorrect: false },
+            ],
+            explanation: `In this positive rule ${sc.location}, "${choiceA}" is the accurate choice.`,
+          },
+          {
+            type: "Fill in the Blanks",
+            question: `Complete the sentence ${sc.sceneLabel} using "${choiceA}" or "${choiceB}": "${subject} ____ (${choiceA} / ${choiceB}) ${sc.mustntRule}."`,
+            answer: choiceB,
+            acceptedAnswers: [choiceB],
+            options: [
+              { text: choiceB, isCorrect: true },
+              { text: choiceA, isCorrect: false },
+              { text: `${choiceB} to`, isCorrect: false },
+              { text: `${choiceA}s`, isCorrect: false },
+            ],
+            explanation: `In this negative/prohibited action ${sc.location}, "${choiceB}" is the accurate choice.`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Choose "${choiceA}" or "${choiceB}" for ${subject} ${sc.sceneLabel}: "${subject} ____ ${sc.mustntRule}!"`,
+            answer: choiceB,
+            acceptedAnswers: [choiceB],
+            options: [
+              { text: choiceB, isCorrect: true },
+              { text: choiceA, isCorrect: false },
+              { text: `to ${choiceA}`, isCorrect: false },
+              { text: `be ${choiceB}`, isCorrect: false },
+            ],
+            explanation: `"${choiceB}" fits this sentence ${sc.location}.`,
+          }
+        );
+      });
+    }
+    // =========================================================================
+    // 13. CUSTOM TOPIC OR BLANK TOPIC (Pure Scene-Scanned Video Questions)
+    // =========================================================================
+    else {
+      dynamicScenes.forEach((sc) => {
+        const topicHint = rawTopicClean ? ` (${rawTopicClean})` : "";
+        bank.push(
+          {
+            type: "Fill in the Blanks",
+            question: `In the scene ${sc.sceneLabel}${topicHint}, ${subject} ____ (${sc.verbBase}) ${sc.obj}.`,
+            answer: sc.verbPast,
+            acceptedAnswers: [sc.verbPast, sc.verbS, sc.verbBase, `${isAux} ${sc.verbIng}`, `${hasAux} ${sc.verbV3}`],
+            options: [
+              { text: sc.verbPast, isCorrect: true },
+              { text: sc.verbIng, isCorrect: false },
+              { text: `to ${sc.verbBase}`, isCorrect: false },
+              { text: `${sc.verbBase}edly`, isCorrect: false },
+            ],
+            explanation: `"${sc.verbPast}" accurately completes the sentence about what happens ${sc.sceneLabel}.`,
+          },
+          {
+            type: "Multiple Choice",
+            question: `What should ${subject} do ${sc.sceneLabel} ${videoContextLabel}?`,
+            answer: `${subject} should ${sc.shouldAction}.`,
+            options: [
+              { text: `${subject} should ${sc.shouldAction}.`, isCorrect: true },
+              { text: `${subject} should ${sc.shouldntAction}.`, isCorrect: false },
+              { text: `${subject} must ${sc.mustntRule}.`, isCorrect: false },
+              { text: `${subject} can ${sc.cantAction}.`, isCorrect: false },
+            ],
+            explanation: `${sc.location.charAt(0).toUpperCase() + sc.location.slice(1)}, ${subject} should ${sc.shouldAction}.`,
+          },
+          {
+            type: "Grammar Choice",
+            question: `Look at ${subject} ${sc.sceneLabel}: Which rule is true ${sc.location}?`,
+            answer: `${subject} mustn't ${sc.mustntRule}.`,
+            options: [
+              { text: `${subject} mustn't ${sc.mustntRule}.`, isCorrect: true },
+              { text: `${subject} must ${sc.mustntRule}.`, isCorrect: false },
+              { text: `${subject} mustn't ${sc.mustRule}.`, isCorrect: false },
+              { text: `${subject} should ${sc.shouldntAction}.`, isCorrect: false },
+            ],
+            explanation: `In this scene ${sc.location}, ${subject} mustn't ${sc.mustntRule}.`,
+          }
+        );
+      });
+    }
+
+    const fibTemplates = bank.filter(
+      (t) =>
+        t.type === "Fill in the Blanks" &&
+        t.question.includes("___") &&
+        (t.answer || "").split(/\s+/).length <= 4
+    );
+    const choiceTemplates = bank.filter((t) => t.type !== "Fill in the Blanks");
+
+    return Array.from({ length: count }, (_, index) => {
+      const requestedType = types[index % types.length];
+      const wantsFib = requestedType === "Fill in the Blanks" && fibTemplates.length > 0;
+      const template = wantsFib
+        ? fibTemplates[Math.floor(index / Math.max(1, types.length)) % fibTemplates.length]
+        : choiceTemplates.length > 0
+        ? choiceTemplates[index % choiceTemplates.length]
+        : bank[index % bank.length];
+
+      const timeTrigger = Math.min(
+        Math.max(8, Math.round(usableStart + ((index + 0.5) / count) * usableSpan)),
+        Math.max(15, duration - 6)
+      );
+
+      const rawOpts = template.options.map((o) => ({ ...o }));
+      const correctOpt = rawOpts.find((o) => o.isCorrect) || rawOpts[0];
+      const resolvedAnswer = template.answer || correctOpt?.text || "";
+
+      const isActuallyFib =
+        wantsFib &&
+        template.question.includes("___") &&
+        resolvedAnswer.split(/\s+/).length <= 4;
+
+      if (rawOpts.length > 2) {
+        const shift = index % rawOpts.length;
+        for (let s = 0; s < shift; s++) {
+          const first = rawOpts.shift();
+          if (first) rawOpts.push(first);
+        }
       }
-      if (qType === "Grammar Choice") {
-        return {
-          id: index + 1,
-          timeTrigger,
-          type: "Grammar Choice",
-          xp: 100,
-          question: `Which sentence uses correct ${level} grammar?`,
-          options: [
-            {
-              text: `They are watching a video about ${topic.toLowerCase()}.`,
-              isCorrect: true,
-            },
-            {
-              text: `They is watching a video about ${topic.toLowerCase()}.`,
-              isCorrect: false,
-            },
-            {
-              text: `They watches a video about ${topic.toLowerCase()}.`,
-              isCorrect: false,
-            },
-            {
-              text: `They watching a video about ${topic.toLowerCase()}.`,
-              isCorrect: false,
-            },
-          ],
-          explanation: `Use "are + verb-ing" with plural subjects in the present continuous tense.`,
-        };
-      }
-      if (qType === "True or False") {
-        return {
-          id: index + 1,
-          timeTrigger,
-          type: "True or False",
-          xp: 100,
-          question: `True or False: This part of the video focuses on ${topic}.`,
-          options: [
-            { text: "True", isCorrect: true },
-            { text: "False", isCorrect: false },
-          ],
-          explanation: `The scene directly connects to ${topic}.`,
-        };
-      }
+
       return {
         id: index + 1,
         timeTrigger,
-        type: "Multiple Choice",
+        type: isActuallyFib
+          ? "Fill in the Blanks"
+          : requestedType === "Fill in the Blanks"
+          ? "Grammar Choice"
+          : requestedType || template.type || "Multiple Choice",
         xp: 100,
-        question: `What is the main focus of this scene about ${topic}?`,
-        options: [
-          {
-            text: `Key details and actions related to ${topic.toLowerCase()}.`,
-            isCorrect: true,
-          },
-          {
-            text: `An unrelated topic not shown in the clip.`,
-            isCorrect: false,
-          },
-          { text: `A silent title card with no action.`, isCorrect: false },
-          { text: `The ending credits of the video.`, isCorrect: false },
-        ],
-        explanation: `This segment highlights core details about ${topic}.`,
+        question: template.question,
+        answer: resolvedAnswer,
+        acceptedAnswers:
+          Array.isArray(template.acceptedAnswers) && template.acceptedAnswers.length > 0
+            ? template.acceptedAnswers
+            : [resolvedAnswer],
+        options: rawOpts,
+        explanation: template.explanation,
       };
     });
   };
@@ -1758,50 +3067,266 @@ async function startServer() {
   });
 
   app.post("/api/generate-hamster-questions", async (req, res) => {
-    const { topic, level, types, freq, videoUrl } = req.body || {};
-    if (!topic || !level || !types) {
-      return res.status(400).json({ error: "Missing parameters" });
-    }
+    const {
+      topic,
+      videoTitle,
+      level,
+      types,
+      count,
+      videoDuration,
+      videoUrl,
+    } = req.body || {};
+
+    const cleanTopic = typeof topic === "string" ? topic.trim() : "";
+    const cleanLevel = typeof level === "string" && level.trim() ? level.trim() : "A2 Movers";
+    const requestedTypes: string[] =
+      Array.isArray(types) && types.length > 0
+        ? types
+        : ["Fill in the Blanks", "Multiple Choice", "Grammar Choice"];
+
+    const targetCount = Math.max(1, Math.min(100, Number(count) || 5));
+    const scanned = await scanYouTubeVideoDeepContext(
+      typeof videoUrl === "string" ? videoUrl : ""
+    );
+
+    const resolvedVideoTitle =
+      (typeof videoTitle === "string" && videoTitle.trim() && !/^https?:\/\//i.test(videoTitle.trim())
+        ? videoTitle.trim()
+        : "") ||
+      scanned.title ||
+      "";
+    const resolvedAuthor = scanned.author || "";
+    const resolvedDuration = Math.max(
+      60,
+      Number(videoDuration) || Number(scanned.durationSec) || 540
+    );
+
+    const fallbackList = buildFallbackVideoQuizQuestions(
+      cleanTopic,
+      cleanLevel,
+      requestedTypes,
+      targetCount,
+      resolvedVideoTitle,
+      resolvedDuration,
+      scanned.description,
+      scanned.chapters
+    );
 
     if (!hasValidGeminiKey()) {
       return res.json({
-        questions: buildFallbackVideoQuizQuestions(topic, level, types),
+        questions: fallbackList,
+        videoTitle: resolvedVideoTitle,
+        videoDuration: resolvedDuration,
       });
     }
 
     try {
-      const prompt = `You are an expert ESL teacher creating an interactive pop quiz for a video.
-Topic: "${topic}"
-Proficiency Level: Cambridge ${level}
-Video URL: ${videoUrl || "Unknown"}
-Requested Question Types: ${Array.isArray(types) ? types.join(", ") : "Multiple Choice"}
-Frequency: ${freq || "Smart Timing"}
+      const durationSec = resolvedDuration;
+      const stepSec = Math.max(5, Math.floor((durationSec * 0.88) / (targetCount + 1)));
+      const topicInstruction = cleanTopic
+        ? `Target Grammar / Vocabulary Topic: "${cleanTopic}". Every single question MUST directly test "${cleanTopic}" while anchoring the sentence in the actual characters, setting, objects, and actions shown in THIS specific video ("${resolvedVideoTitle}"). Do NOT use unrelated grammar topics.`
+        : `No specific grammar topic was entered by the teacher — scan the video frames, title, description, and scenes to generate accurate video comprehension, action grammar, and vocabulary questions directly about what happens in "${resolvedVideoTitle}".`;
 
-Generate engaging quiz questions based on the topic "${topic}".
-Spread the timeTrigger (in seconds) out reasonably between 12 and 95 seconds.
-Respond ONLY with a valid JSON array of 6 question objects.
-Format each object with: id, timeTrigger, type, xp, question, options (array of { text, isCorrect }), and explanation.`;
+      const promptText = `You are an expert Cambridge ESL curriculum designer creating an interactive classroom video quiz.
+
+${topicInstruction}
+English Level: Cambridge ${cleanLevel} (Starters, Movers, Flyers, KET / A2 Key, B1 Preliminary, or B2 First)
+Video Title: "${resolvedVideoTitle || "Classroom Video Clip"}" ${resolvedAuthor ? `(Channel: ${resolvedAuthor})` : ""}
+Video URL: ${videoUrl || "Uploaded Video"}
+Video Description / Context: ${scanned.description ? scanned.description.slice(0, 900) : "Use the attached video scene frames and title."}
+${scanned.chapters.length > 0 ? `Video Chapters / Scenes: ${scanned.chapters.map((c) => `${c.title} (@${c.sec}s)`).join(" | ")}` : ""}
+Video Duration: ~${durationSec} seconds
+Allowed Question Types: ${requestedTypes.join(", ")}
+Number of Questions to Generate: EXACTLY ${targetCount}
+
+CRITICAL INSTRUCTIONS:
+1. Examine the attached video scene frames, video title ("${resolvedVideoTitle}"), and description carefully so every question accurately reflects the REAL setting, characters, and actions in THIS specific video. NEVER use fixed questions from other videos.
+2. Strictly test the requested topic ("${cleanTopic || "Video Scene Comprehension"}"). For example, if the topic is "Must and mustn't", every question must test "must" vs "mustn't" in the context of the scenes in "${resolvedVideoTitle}".
+3. Cycle through the Allowed Question Types (${requestedTypes.join(", ")}).
+4. Whenever a question has type "Fill in the Blanks":
+   - The "question" string MUST contain "____" showing where the missing word(s) go.
+   - Provide "answer" with the exact correct missing word/phrase and "acceptedAnswers" with valid variations.
+   - Also include 4 "options" where the first or matching option is the correct answer so it can be graded in both modes.
+5. For "Multiple Choice", "Grammar Choice", "Vocabulary Meaning", or "True or False", provide 4 clear options (or 2 for True or False) with exactly one option marked "isCorrect": true, and vary which option index is correct.
+6. NEVER write vague meta-questions like "What is the main focus of this scene?" or "What does EVER mean in this context?".
+7. Spread "timeTrigger" (in seconds) in ascending order across the video between 10 and ${Math.max(25, Math.floor(durationSec * 0.90))} seconds.`;
 
       const ai = getAiClient();
+      const contentsParts: any[] = [
+        ...(Array.isArray(scanned.frameParts) ? scanned.frameParts : []),
+        { text: promptText },
+      ];
+
       const response = await ai.models.generateContent({
         model: "gemini-4-hydrogen",
-        contents: prompt,
+        contents: contentsParts,
         config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                timeTrigger: { type: Type.INTEGER },
+                type: { type: Type.STRING },
+                question: { type: Type.STRING },
+                answer: { type: Type.STRING },
+                acceptedAnswers: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                options: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      text: { type: Type.STRING },
+                      isCorrect: { type: Type.BOOLEAN },
+                    },
+                    required: ["text", "isCorrect"],
+                  },
+                },
+                explanation: { type: Type.STRING },
+              },
+              required: ["timeTrigger", "type", "question", "options", "explanation"],
+            },
+          },
         },
       });
 
       const text = response.text?.trim() || "[]";
-      const questions = JSON.parse(text);
-      if (Array.isArray(questions) && questions.length > 0) {
-        return res.json({ questions });
+      const parsed = JSON.parse(text);
+      const rawArray = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.questions)
+        ? parsed.questions
+        : [];
+
+      const sanitized = rawArray
+        .map((q: any, idx: number) => {
+          let qText = String(q?.question || q?.text || "").trim();
+          if (
+            !qText ||
+            /main focus of this scene|what does .* mean in this context|unrelated topic not shown/i.test(
+              qText
+            )
+          ) {
+            return null;
+          }
+
+          const assignedType = requestedTypes.includes(String(q?.type || ""))
+            ? String(q.type)
+            : requestedTypes[idx % requestedTypes.length];
+
+          const rawOpts = Array.isArray(q?.options) ? q.options : [];
+          let hasCorrect = false;
+          const mappedOpts = rawOpts
+            .slice(0, 4)
+            .map((o: any, oIdx: number) => {
+              const optText =
+                typeof o === "string" ? o.trim() : String(o?.text || "").trim();
+              if (!optText || /^Option [A-D1-4]$/i.test(optText)) return null;
+              const isRight =
+                typeof o === "object" && o !== null
+                  ? Boolean(o.isCorrect)
+                  : typeof q.correctOptionIndex === "number"
+                  ? q.correctOptionIndex === oIdx
+                  : typeof q.answerIndex === "number"
+                  ? q.answerIndex === oIdx
+                  : false;
+              if (isRight) hasCorrect = true;
+              return { text: optText, isCorrect: isRight };
+            })
+            .filter(Boolean) as { text: string; isCorrect: boolean }[];
+
+          const explicitAnswer = String(
+            q?.answer ||
+              mappedOpts.find((o) => o.isCorrect)?.text ||
+              mappedOpts[0]?.text ||
+              ""
+          ).trim();
+
+          if (assignedType === "Fill in the Blanks") {
+            if (!explicitAnswer) return null;
+            if (!qText.includes("___")) {
+              qText = `${qText} (____)`;
+            }
+            const rawAccepted = Array.isArray(q?.acceptedAnswers)
+              ? q.acceptedAnswers.map((a: any) => String(a || "").trim()).filter(Boolean)
+              : [];
+            const accepted = Array.from(
+              new Set([explicitAnswer, ...rawAccepted].filter(Boolean))
+            );
+            const fallbackOpts =
+              mappedOpts.length >= 2
+                ? mappedOpts
+                : [{ text: explicitAnswer, isCorrect: true }];
+            if (!fallbackOpts.some((o) => o.isCorrect)) {
+              fallbackOpts[0].isCorrect = true;
+            }
+            return {
+              id: idx + 1,
+              timeTrigger: Math.max(5, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+              type: "Fill in the Blanks",
+              xp: 100,
+              question: qText,
+              answer: explicitAnswer,
+              acceptedAnswers: accepted,
+              options: fallbackOpts,
+              explanation: String(
+                q?.explanation || `Correct answer: "${explicitAnswer}".`
+              ),
+            };
+          }
+
+          if (mappedOpts.length < 2) return null;
+          if (!hasCorrect) {
+            mappedOpts[0].isCorrect = true;
+          }
+
+          return {
+            id: idx + 1,
+            timeTrigger: Math.max(5, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+            type: assignedType,
+            xp: 100,
+            question: qText,
+            answer: explicitAnswer,
+            options: mappedOpts,
+            explanation: String(q?.explanation || ""),
+          };
+        })
+        .filter(Boolean);
+
+      if (sanitized.length > 0) {
+        const finalQuestions =
+          sanitized.length >= targetCount
+            ? sanitized.slice(0, targetCount)
+            : [
+                ...sanitized,
+                ...fallbackList.slice(sanitized.length, targetCount),
+              ].map((item: any, idx: number) => ({
+                ...item,
+                id: idx + 1,
+              }));
+
+        return res.json({
+          questions: finalQuestions,
+          videoTitle: resolvedVideoTitle,
+          videoDuration: resolvedDuration,
+        });
       }
+
       return res.json({
-        questions: buildFallbackVideoQuizQuestions(topic, level, types),
+        questions: fallbackList,
+        videoTitle: resolvedVideoTitle,
+        videoDuration: resolvedDuration,
       });
     } catch {
       return res.json({
-        questions: buildFallbackVideoQuizQuestions(topic, level, types),
+        questions: fallbackList,
+        videoTitle: resolvedVideoTitle,
+        videoDuration: resolvedDuration,
       });
     }
   });

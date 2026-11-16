@@ -17,19 +17,15 @@
     "@types/papaparse": "^5.5.2",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^5.0.4",
-    "acorn": "^8.17.0",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.22.2",
     "firebase": "^12.15.0",
     "gsap": "^3.15.0",
-    "jimp": "^0.16.13",
-    "jsdom": "^29.1.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.4.0",
     "papaparse": "^5.5.4",
-    "puppeteer": "^25.7.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.1",
     "react-confetti": "^6.4.0",
@@ -50,8 +46,5 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
-  },
-  "overrides": {
-    "proxy-addr": "^2.0.8"
   }
 }

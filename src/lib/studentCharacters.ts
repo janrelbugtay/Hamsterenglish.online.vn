@@ -1,9 +1,9 @@
-import hamsterSunnyCream from '../assets/images/hamster_sunny_cream_1794636320949.jpg';
-import hamsterCinnamonPeach from '../assets/images/hamster_cinnamon_peach_1794636323829.jpg';
-import hamsterSnowyPearl from '../assets/images/hamster_snowy_pearl_1794636324921.jpg';
-import hamsterMochaLatte from '../assets/images/hamster_mocha_latte_1794636326150.jpg';
-import hamsterCaramelButter from '../assets/images/hamster_caramel_butter_1794636327904.jpg';
-import hamsterSilverPudding from '../assets/images/hamster_silver_pudding_1794636328341.jpg';
+import hamsterSunnyCream from '../assets/images/fullbody_hamster_sunny_1794846641651.jpg';
+import hamsterCinnamonPeach from '../assets/images/fullbody_hamster_pip_1794846644859.jpg';
+import hamsterSnowyPearl from '../assets/images/fullbody_hamster_pearl_1794846646372.jpg';
+import hamsterMochaLatte from '../assets/images/fullbody_hamster_mocha_1794846648757.jpg';
+import hamsterCaramelButter from '../assets/images/fullbody_hamster_caramel_1794846649517.jpg';
+import hamsterSilverPudding from '../assets/images/fullbody_hamster_pudding_1794846650145.jpg';
 
 export interface HamsterHeadAnchor {
   topPct: number;
@@ -25,50 +25,50 @@ export const CUTE_HAMSTER_BREEDS: CuteHamsterBreed[] = [
   {
     breedId: 'sunny_cream',
     name: 'Sunny Clover',
-    personality: 'Cheerful Cardigan Scholar',
+    personality: 'Tropical Cardigan Scholar',
     imageUrl: hamsterSunnyCream,
     accentColor: '#10b981',
-    headAnchor: { topPct: 19, leftPct: 47.5, tiltDeg: -3, scale: 1.0 },
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: -2, scale: 1.08 },
   },
   {
     breedId: 'cinnamon_peach',
     name: 'Cinnamon Pip',
-    personality: 'Varsity Star Captain',
+    personality: 'Island Varsity Captain',
     imageUrl: hamsterCinnamonPeach,
     accentColor: '#0ea5e9',
-    headAnchor: { topPct: 19, leftPct: 50, tiltDeg: 0, scale: 1.02 },
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
   },
   {
     breedId: 'snowy_pearl',
     name: 'Snowy Pearl',
-    personality: 'Honor Blazer Marshmallow',
+    personality: 'Beach Hoodie Marshmallow',
     imageUrl: hamsterSnowyPearl,
     accentColor: '#6366f1',
-    headAnchor: { topPct: 17.5, leftPct: 50, tiltDeg: 0, scale: 1.04 },
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
   },
   {
     breedId: 'mocha_latte',
     name: 'Mocha Cheer',
-    personality: 'Cozy Hoodie Hype Buddy',
+    personality: 'Sunny Hoodie Hype Buddy',
     imageUrl: hamsterMochaLatte,
     accentColor: '#f97316',
-    headAnchor: { topPct: 17.5, leftPct: 48.5, tiltDeg: -2, scale: 1.0 },
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: -2, scale: 1.08 },
   },
   {
     breedId: 'caramel_butter',
     name: 'Caramel Sprout',
-    personality: 'Curious Denim Explorer',
+    personality: 'Tropical Denim Explorer',
     imageUrl: hamsterCaramelButter,
     accentColor: '#eab308',
-    headAnchor: { topPct: 15.5, leftPct: 50, tiltDeg: 0, scale: 1.05 },
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
   },
   {
     breedId: 'silver_pudding',
     name: 'Pudding Hop',
-    personality: 'Joyful Argyle Jumper',
+    personality: 'Joyful Island Argyle',
     imageUrl: hamsterSilverPudding,
     accentColor: '#14b8a6',
-    headAnchor: { topPct: 17.5, leftPct: 50.5, tiltDeg: -3, scale: 1.0 },
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: -2, scale: 1.08 },
   },
 ];
 
@@ -118,9 +118,9 @@ export const HAMSTER_GEAR_TIERS: HamsterGearTier[] = [
     name: 'Sunny Scholar Cap',
     shortName: 'Scholar Cap',
     minDollars: 3,
-    badgeEmoji: '🧢',
-    auraColor: '#f59e0b',
-    description: 'Crisp golden-amber baseball cap with star crest!',
+    badgeEmoji: '🎓',
+    auraColor: '#3b82f6',
+    description: 'Crisp varsity baseball cap with golden star crest!',
   },
   {
     id: 'star_shades',
