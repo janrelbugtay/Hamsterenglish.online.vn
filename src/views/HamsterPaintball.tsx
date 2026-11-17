@@ -67,12 +67,12 @@ import {
 } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { persistUserGameToCloudAndCache } from '../utils/platformCache';
-import paintballHamsterSunny from '../assets/images/paintball_cute_sunny_1794755096936.jpg';
-import paintballHamsterPip from '../assets/images/paintball_cute_pip_1794755097002.jpg';
-import paintballHamsterPearl from '../assets/images/paintball_cute_pearl_1794755097117.jpg';
-import paintballHamsterMocha from '../assets/images/paintball_cute_mocha_1794755095467.jpg';
-import paintballHamsterCaramel from '../assets/images/paintball_cute_caramel_1794755095782.jpg';
-import paintballHamsterPudding from '../assets/images/paintball_cute_pudding_1794755097364.jpg';
+import paintballHamsterSunny from '../assets/images/sunny_gun_portrait_1794931013896.jpg';
+import paintballHamsterPip from '../assets/images/pip_gun_portrait_1794931015340.jpg';
+import paintballHamsterPearl from '../assets/images/pearl_gun_portrait_1794931015900.jpg';
+import paintballHamsterMocha from '../assets/images/mocha_gun_portrait_1794931060046.jpg';
+import paintballHamsterCaramel from '../assets/images/caramel_gun_portrait_1794931061424.jpg';
+import paintballHamsterPudding from '../assets/images/pudding_gun_portrait_1794931062731.jpg';
 import {
   collection,
   query,
@@ -2134,6 +2134,13 @@ export default function HamsterPaintball({
   const damageVignetteTimerRef = useRef<number | null>(null);
   const [damageArcDeg, setDamageArcDeg] = useState<number | null>(null);
   const damageArcTimerRef = useRef<number | null>(null);
+  const [underAttackAlert, setUnderAttackAlert] = useState<{
+    id: string;
+    attackerName: string;
+    damage: number;
+    isKo: boolean;
+  } | null>(null);
+  const underAttackTimerRef = useRef<number | null>(null);
   const flashDamageVignette = (color: string, arcDeg: number | null = null) => {
     setDamageVignetteColor(color);
     if (damageVignetteTimerRef.current) window.clearTimeout(damageVignetteTimerRef.current);
@@ -2341,6 +2348,166 @@ export default function HamsterPaintball({
     return saved === 'separate' ? 'separate' : 'shoulder';
   });
 
+  // Host Configurable Arena Map Preset (5 Distinct 3D Battle Stadiums & Trampoline/Obstacle Parks)
+  const [arenaPreset, setArenaPreset] = useState<
+    'stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball'
+  >(() => {
+    if (typeof window === 'undefined') return 'stadium';
+    const saved = localStorage.getItem('pb_arena_preset_v1');
+    if (
+      saved === 'stadium' ||
+      saved === 'trampoline' ||
+      saved === 'obstacle' ||
+      saved === 'skyfortress' ||
+      saved === 'speedball'
+    ) {
+      return saved;
+    }
+    return 'stadium';
+  });
+
+  // Analytical Multilevel Terrain, Staircase, Ramp & Sky-Citadel Elevation Solver (Supports 3-Story Verticality: 0m Ground/Underground, 4.6m Main Deck, 8.6m Sky Citadel!)
+  const getArenaSupportHeight = (
+    wx: number,
+    wz: number,
+    curY: number,
+    preset: 'stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball'
+  ): number => {
+    if (preset === 'stadium') {
+      // 1. Two Prominent Grand Front Staircases (z: 23.6 -> 11.6, x centered at -8.2 and +8.2, climbing 0m -> 4.6m)
+      if (
+        wz >= 11.6 &&
+        wz <= 23.6 &&
+        ((wx >= -11.2 && wx <= -5.2) || (wx >= 5.2 && wx <= 11.2))
+      ) {
+        const t = THREE.MathUtils.clamp((23.6 - wz) / 12.0, 0, 1);
+        return t * 4.6;
+      }
+      // 2. Left Grand Staircase (West / Red Side access: x: -27.8 -> -16.6, z: -4.0..4.0, climbing 0m -> 4.6m)
+      if (wx >= -27.8 && wx <= -16.6 && Math.abs(wz) <= 4.0) {
+        const t = THREE.MathUtils.clamp((wx + 27.8) / 11.2, 0, 1);
+        return t * 4.6;
+      }
+      // 3. Right Sloped Climbing Ramp (East / Blue Side access: x: 27.8 -> 16.6, z: -4.0..4.0, climbing 0m -> 4.6m)
+      if (wx >= 16.6 && wx <= 27.8 && Math.abs(wz) <= 4.0) {
+        const t = THREE.MathUtils.clamp((27.8 - wx) / 11.2, 0, 1);
+        return t * 4.6;
+      }
+      // 4. North Dual Jumping Platforms & High Side Bridges (z: -21.8 -> -11.6, x centered at ±8.2, climbing 1.8m -> 4.6m)
+      if (
+        wz >= -21.8 &&
+        wz <= -11.6 &&
+        ((wx >= -11.0 && wx <= -5.4) || (wx >= 5.4 && wx <= 11.0))
+      ) {
+        const t = THREE.MathUtils.clamp((wz + 21.8) / 10.2, 0, 1);
+        return 1.8 + t * 2.8;
+      }
+      // 5. Tier-2 Upper "Sky Citadel" Penthouse Deck (x: -7.8..7.8, z: -5.8..5.8, y = 8.6m) + Sky Ramp (z: 10.2 -> 5.8, x: -2.8..2.8)
+      if (Math.abs(wx) <= 2.9 && wz >= 5.6 && wz <= 10.4 && curY >= 3.8) {
+        const t = THREE.MathUtils.clamp((10.4 - wz) / 4.8, 0, 1);
+        return 4.6 + t * 4.0;
+      }
+      if (Math.abs(wx) <= 7.8 && Math.abs(wz) <= 5.8 && curY >= 6.8) {
+        return 8.6;
+      }
+      // 6. Tier-1 Central Elevated Battle Platform Deck (x: -16.8..16.8, z: -11.8..11.8, y = 4.6m)
+      // Players with curY >= 3.0 walk on the elevated castle platform; players with curY < 3.0 walk underneath in the spacious 4.2m-tall Underground Combat Hall (y = 0)!
+      if (Math.abs(wx) <= 16.8 && Math.abs(wz) <= 11.8) {
+        return curY >= 3.0 ? 4.6 : 0;
+      }
+      return 0;
+    }
+
+    if (preset === 'trampoline') {
+      const distCenter = Math.hypot(wx, wz);
+      // Top Apex Crown Deck (radius 5.2m, y = 9.2m)
+      if (distCenter <= 5.2 && curY >= 7.2) {
+        return 9.2;
+      }
+      // Central Sky Bounce Island (radius 11.2m, y = 5.0m)
+      if (distCenter <= 11.2 && curY >= 3.4) {
+        return 5.0;
+      }
+      // North & South Sky Bridges connecting to Central Island (x: -3.2..3.2, |z|: 11.0 -> 21.0)
+      if (Math.abs(wx) <= 3.2 && Math.abs(wz) >= 11.0 && Math.abs(wz) <= 21.0 && curY >= 1.8) {
+        const t = THREE.MathUtils.clamp((21.0 - Math.abs(wz)) / 10.0, 0, 1);
+        return 2.2 + t * 2.8;
+      }
+      // 4 Quadrant Elevated Bounce Islands (±22, ±16, radius 6.4m, y = 4.4m)
+      const bounceIslands: Array<[number, number]> = [
+        [-22, -16],
+        [22, -16],
+        [-22, 16],
+        [22, 16]
+      ];
+      for (const [ix, iz] of bounceIslands) {
+        if (Math.hypot(wx - ix, wz - iz) <= 6.4 && curY >= 2.8) {
+          return 4.4;
+        }
+      }
+      return 0;
+    }
+
+    if (preset === 'obstacle') {
+      // Central Elevated Crossover Bridge & Ramps in Wipeout Obstacle Course (x: -20.5..20.5, z: -4.6..4.6, y = 3.8m)
+      if (Math.abs(wz) <= 4.6) {
+        if (wx >= -20.5 && wx <= -11.5) {
+          return THREE.MathUtils.clamp((wx + 20.5) / 9.0, 0, 1) * 3.8;
+        }
+        if (wx >= 11.5 && wx <= 20.5) {
+          return THREE.MathUtils.clamp((20.5 - wx) / 9.0, 0, 1) * 3.8;
+        }
+        if (Math.abs(wx) <= 11.5) {
+          return curY >= 2.3 ? 3.8 : 0;
+        }
+      }
+      // 4 Elevated Jumping Platforms in Quadrants (±18, ±14, radius 4.2m, y = 2.4m)
+      const quadCoords: Array<[number, number]> = [
+        [-18, -14],
+        [18, -14],
+        [-18, 14],
+        [18, 14]
+      ];
+      for (const [qx, qz] of quadCoords) {
+        if (Math.hypot(wx - qx, wz - qz) <= 4.2 && curY >= 1.2) {
+          return 2.4;
+        }
+      }
+      return 0;
+    }
+
+    if (preset === 'skyfortress') {
+      // Twin 3-Story Sky Fortresses on West (x = -20) & East (x = +20), z: -9.5..9.5
+      for (const fx of [-20, 20]) {
+        // South & North Ramps onto each Fortress (|x - fx| <= 3.6, |z|: 9.5 -> 19.5, climbing 0m -> 4.6m)
+        if (Math.abs(wx - fx) <= 3.6 && Math.abs(wz) >= 9.5 && Math.abs(wz) <= 19.5) {
+          const t = THREE.MathUtils.clamp((19.5 - Math.abs(wz)) / 10.0, 0, 1);
+          return t * 4.6;
+        }
+        if (Math.abs(wx - fx) <= 8.6 && Math.abs(wz) <= 9.5) {
+          if (Math.abs(wx - fx) <= 4.8 && Math.abs(wz) <= 5.2 && curY >= 6.8) {
+            return 8.6;
+          }
+          if (curY >= 3.0) {
+            return 4.6;
+          }
+        }
+      }
+      // Twin High-Altitude Skybridges connecting West & East Fortresses (x: -11.5..11.5)
+      if (Math.abs(wx) <= 11.6) {
+        if (Math.abs(wz - 4.5) <= 2.6 && curY >= 6.8) {
+          return 8.6;
+        }
+        if (Math.abs(wz + 4.5) <= 2.6 && curY >= 3.0) {
+          return 4.6;
+        }
+      }
+      return 0;
+    }
+
+    return 0;
+  };
+
   const hasManualTeamChoiceRef = useRef<boolean>(false);
 
   const [aimReticlePct, setAimReticlePct] = useState<{ x: number; y: number }>({ x: 50, y: 46 });
@@ -2404,7 +2571,7 @@ export default function HamsterPaintball({
   const triggerPlayerJump = () => {
     const g = gameRef.current;
     if (!g) return;
-    // PUBG behavior: if crawling/prone, pressing Jump stands up cleanly; if standing or crouching on ground, stands & jumps!
+    // PUBG behavior: if crawling/prone, pressing Jump stands up cleanly; if standing or crouching on ground/platform, stands & jumps!
     if (playerStanceRef.current === 'crawl') {
       playerStanceRef.current = 'stand';
       setPlayerStance('stand');
@@ -2415,9 +2582,15 @@ export default function HamsterPaintball({
       playerStanceRef.current = 'stand';
       setPlayerStance('stand');
     }
-    if (g.y <= 0.08) {
+    const supportY = getArenaSupportHeight(
+      g.x,
+      g.z,
+      g.y,
+      stateSnapRef.current.arenaPreset || 'stadium'
+    );
+    if (g.y <= supportY + 0.14) {
       g.jumpVy = 9.6;
-      g.y = Math.max(0.02, g.y);
+      g.y = Math.max(supportY + 0.02, g.y);
       g.recoilBloom = Math.min(22, g.recoilBloom + 6);
       sfx.playJump();
     }
@@ -2425,7 +2598,10 @@ export default function HamsterPaintball({
 
   const togglePlayerStance = (target: 'crouch' | 'crawl') => {
     const g = gameRef.current;
-    if (g && g.y > 0.25) return; // Cannot enter crouch/prone mid-air
+    const supportY = g
+      ? getArenaSupportHeight(g.x, g.z, g.y, stateSnapRef.current.arenaPreset || 'stadium')
+      : 0;
+    if (g && g.y > supportY + 0.28) return; // Cannot enter crouch/prone mid-air
     const nextStance: 'stand' | 'crouch' | 'crawl' =
       playerStanceRef.current === target ? 'stand' : target;
     playerStanceRef.current = nextStance;
@@ -2662,7 +2838,7 @@ export default function HamsterPaintball({
     lastShotTime: number;
     hostCamX: number;
     hostCamZ: number;
-    obstacles: Array<{ x: number; z: number; r: number; h: number }>;
+    obstacles: Array<{ x: number; z: number; r: number; h: number; baseY?: number }>;
     spawnBases?: Partial<Record<TeamId, THREE.Group>>;
     powerups: PowerupNode[];
     projectiles: Array<{
@@ -2717,6 +2893,59 @@ export default function HamsterPaintball({
     broadcastChannel?: BroadcastChannel;
     sunLight?: THREE.DirectionalLight;
     isSoftwareGl?: boolean;
+    rebuildArenaPreset?: (
+      preset: 'stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball'
+    ) => void;
+    updateScoreboardDisplay?: (
+      blueScore: number,
+      redScore: number,
+      timeSec: number,
+      playersAlive: number,
+      statusText: string
+    ) => void;
+    animatedFlags?: Array<{ mesh: THREE.Object3D; phase: number }>;
+    hotAirBalloons?: Array<{
+      group: THREE.Group;
+      baseX: number;
+      baseY: number;
+      baseZ: number;
+      phase: number;
+    }>;
+    helicopterGroup?: THREE.Group;
+    blimpGroup?: THREE.Group;
+    crowdMeshes?: THREE.Object3D[];
+    trampolines?: Array<{
+      x: number;
+      z: number;
+      baseY: number;
+      r: number;
+      bounceVy: number;
+      colorHex: number;
+      mesh: THREE.Group;
+      matMesh?: THREE.Object3D;
+      pulseRing?: THREE.Object3D;
+      lastTriggeredAt?: number;
+    }>;
+    boostPads?: Array<{
+      x: number;
+      z: number;
+      baseY: number;
+      r: number;
+      rotY: number;
+      mesh: THREE.Group;
+      lastTriggeredAt?: number;
+    }>;
+    spinningHazards?: Array<{
+      x: number;
+      z: number;
+      baseY: number;
+      armLen: number;
+      speed: number;
+      angle: number;
+      pivot: THREE.Group;
+    }>;
+    speedBoostUntil?: number;
+    lastScoreboardSyncAt?: number;
   } | null>(null);
 
   const getGraphicsQualitySettings = (
@@ -2784,6 +3013,16 @@ export default function HamsterPaintball({
       }
     }
   }, [graphicsQuality]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && role === 'host') {
+      localStorage.setItem('pb_arena_preset_v1', arenaPreset);
+    }
+    const g = gameRef.current;
+    if (g && g.rebuildArenaPreset) {
+      g.rebuildArenaPreset(arenaPreset);
+    }
+  }, [arenaPreset, role]);
 
   useEffect(() => {
     sfx.enabled = soundEnabled;
@@ -2905,9 +3144,11 @@ export default function HamsterPaintball({
     aimSensitivity,
     cameraViewPreset,
     aimControlMode,
+    arenaPreset,
     playerStance,
     isAdsScoped,
     isTouchHudVisible,
+    isQuestionModalOpen,
     isAnyModalOpen
   });
 
@@ -2948,9 +3189,11 @@ export default function HamsterPaintball({
       aimSensitivity,
       cameraViewPreset,
       aimControlMode,
+      arenaPreset,
       playerStance,
       isAdsScoped,
       isTouchHudVisible,
+      isQuestionModalOpen,
       isAnyModalOpen
     };
   }, [
@@ -2989,9 +3232,11 @@ export default function HamsterPaintball({
     aimSensitivity,
     cameraViewPreset,
     aimControlMode,
+    arenaPreset,
     playerStance,
     isAdsScoped,
     isTouchHudVisible,
+    isQuestionModalOpen,
     isAnyModalOpen
   ]);
 
@@ -3716,6 +3961,7 @@ export default function HamsterPaintball({
       teamCount,
       cameraViewPreset,
       aimControlMode,
+      arenaPreset,
       matchStatus: hostStatus,
       configuredDurationSec,
       ballsPerQuestion,
@@ -3753,6 +3999,7 @@ export default function HamsterPaintball({
     teamCount,
     cameraViewPreset,
     aimControlMode,
+    arenaPreset,
     configuredDurationSec,
     ballsPerQuestion,
     liveJoinUrl,
@@ -3830,6 +4077,19 @@ export default function HamsterPaintball({
           if (data.aimControlMode !== stateSnapRef.current.aimControlMode) {
             setAimControlMode(data.aimControlMode);
             stateSnapRef.current.aimControlMode = data.aimControlMode;
+          }
+        }
+        if (
+          !data?.isUninitialized &&
+          (data?.arenaPreset === 'stadium' ||
+            data?.arenaPreset === 'trampoline' ||
+            data?.arenaPreset === 'obstacle' ||
+            data?.arenaPreset === 'skyfortress' ||
+            data?.arenaPreset === 'speedball')
+        ) {
+          if (data.arenaPreset !== stateSnapRef.current.arenaPreset) {
+            setArenaPreset(data.arenaPreset);
+            stateSnapRef.current.arenaPreset = data.arenaPreset;
           }
         }
         if (
@@ -4490,6 +4750,16 @@ export default function HamsterPaintball({
             setAimControlMode(msg.aimControlMode);
             stateSnapRef.current.aimControlMode = msg.aimControlMode;
           }
+          if (
+            msg.arenaPreset === 'stadium' ||
+            msg.arenaPreset === 'trampoline' ||
+            msg.arenaPreset === 'obstacle' ||
+            msg.arenaPreset === 'skyfortress' ||
+            msg.arenaPreset === 'speedball'
+          ) {
+            setArenaPreset(msg.arenaPreset);
+            stateSnapRef.current.arenaPreset = msg.arenaPreset;
+          }
           if (nextMode === 'teams') {
             const activeIds = getActiveTeamIds('teams', nextCount);
             if (!activeIds.includes(stateSnapRef.current.myTeam)) {
@@ -4518,6 +4788,16 @@ export default function HamsterPaintball({
           if (msg.aimControlMode === 'shoulder' || msg.aimControlMode === 'separate') {
             setAimControlMode(msg.aimControlMode);
             stateSnapRef.current.aimControlMode = msg.aimControlMode;
+          }
+          if (
+            msg.arenaPreset === 'stadium' ||
+            msg.arenaPreset === 'trampoline' ||
+            msg.arenaPreset === 'obstacle' ||
+            msg.arenaPreset === 'skyfortress' ||
+            msg.arenaPreset === 'speedball'
+          ) {
+            setArenaPreset(msg.arenaPreset);
+            stateSnapRef.current.arenaPreset = msg.arenaPreset;
           }
           if (Array.isArray(msg.questions) && msg.questions.length > 0) {
             const normQs = normalizePaintballQuestions(msg.questions);
@@ -4825,6 +5105,18 @@ export default function HamsterPaintball({
       isShieldAbsorb ? 'rgba(34, 211, 238, 0.42)' : 'rgba(244, 63, 94, 0.48)',
       hitBearingDeg
     );
+    const totalVitals = (stateSnapRef.current.shield || 0) + (stateSnapRef.current.hp || 0);
+    setUnderAttackAlert({
+      id: `atk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      attackerName: attackerName || 'Opponent',
+      damage,
+      isKo: totalVitals <= damage
+    });
+    if (underAttackTimerRef.current) window.clearTimeout(underAttackTimerRef.current);
+    underAttackTimerRef.current = window.setTimeout(() => {
+      setUnderAttackAlert(null);
+      underAttackTimerRef.current = null;
+    }, 1500);
 
     setShield(prevShield => {
       if (prevShield >= damage) {
@@ -5469,12 +5761,12 @@ export default function HamsterPaintball({
 
     const netHSpeed =
       typeof shotHSpeed === 'number' && Number.isFinite(shotHSpeed)
-        ? THREE.MathUtils.clamp(shotHSpeed, 30, 80)
-        : 58;
+        ? THREE.MathUtils.clamp(shotHSpeed, 40, 95)
+        : 76;
     const netVy =
       typeof shotVy === 'number' && Number.isFinite(shotVy)
-        ? THREE.MathUtils.clamp(shotVy, -22, 22)
-        : 1.15;
+        ? THREE.MathUtils.clamp(shotVy, -14, 8.5)
+        : 0;
 
     g.projectiles.push({
       ownerId,
@@ -5484,7 +5776,7 @@ export default function HamsterPaintball({
       vx: Math.sin(angle) * netHSpeed,
       vy: netVy,
       vz: Math.cos(angle) * netHSpeed,
-      gravity: 1.85,
+      gravity: 0.08,
       damage: 28,
       color: resolvedPaintColor
     });
@@ -6237,18 +6529,19 @@ export default function HamsterPaintball({
         : furMat;
 
     const leftArmGroup = new THREE.Group();
-    leftArmGroup.position.set(-0.8, 1.18, 0.34);
-    const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.38, 12, 16), armMat);
-    leftArm.rotation.x = Math.PI / 2.8;
-    leftArm.rotation.z = -0.28;
+    leftArmGroup.position.set(-0.52, 1.16, 0.56);
+    const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.48, 12, 16), armMat);
+    leftArm.rotation.x = Math.PI / 2.05;
+    leftArm.rotation.z = -0.52;
+    leftArm.position.set(0.24, -0.04, 0.18);
     leftArm.castShadow = true;
     leftArmGroup.add(leftArm);
 
     const leftPaw = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 14, 14),
+      new THREE.SphereGeometry(0.175, 14, 14),
       new THREE.MeshStandardMaterial({ color: 0xf5b7b1, roughness: 0.55 })
     );
-    leftPaw.position.set(0.12, -0.12, 0.26);
+    leftPaw.position.set(0.48, -0.1, 0.42);
     leftArmGroup.add(leftPaw);
 
     const heldCanMesh = new THREE.Mesh(
@@ -6260,36 +6553,47 @@ export default function HamsterPaintball({
         roughness: 0.2
       })
     );
-    heldCanMesh.position.set(0.15, 0.18, 0.32);
+    heldCanMesh.position.set(0.32, 0.18, 0.42);
     heldCanMesh.visible = false;
     leftArmGroup.add(heldCanMesh);
     bodyGroup.add(leftArmGroup);
 
     const rightArmGroup = new THREE.Group();
-    rightArmGroup.position.set(0.78, 1.18, 0.42);
-    const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.38, 12, 16), armMat);
-    rightArm.rotation.x = Math.PI / 2.3;
+    rightArmGroup.position.set(0.58, 1.16, 0.48);
+    const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.42, 12, 16), armMat);
+    rightArm.rotation.x = Math.PI / 2.15;
+    rightArm.rotation.z = 0.18;
+    rightArm.position.set(-0.05, -0.04, 0.12);
     rightArm.castShadow = true;
     rightArmGroup.add(rightArm);
 
     const rightPaw = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 14, 14),
+      new THREE.SphereGeometry(0.175, 14, 14),
       new THREE.MeshStandardMaterial({ color: 0xf5b7b1, roughness: 0.55 })
     );
-    rightPaw.position.set(0.02, -0.06, 0.28);
+    rightPaw.position.set(-0.08, -0.14, 0.32);
     rightArmGroup.add(rightPaw);
     bodyGroup.add(rightArmGroup);
 
-    // 6. Pro Mechanical Paintball Marker Gun
+    // 6. Colorful Sporty Speedball Paintball Marker Gun (Held in Two Paws & Matched to Outfit/Team)
     const markerGroup = new THREE.Group();
-    markerGroup.position.set(0.82, 1.24, 0.55);
-    markerGroup.rotation.y = -0.055;
+    markerGroup.position.set(0.46, 1.22, 0.72);
+    markerGroup.rotation.y = -0.035;
+
+    const markerPrimaryColor = team !== 'solo' ? teamColorNum : skin.outfitColor;
+    const markerTrimColor = skin.outfitAccentColor || 0xfbbf24;
 
     const anodizedMat = new THREE.MeshPhysicalMaterial({
-      color: teamColorNum,
-      metalness: 0.85,
+      color: markerPrimaryColor,
+      metalness: 0.78,
+      roughness: 0.16,
+      clearcoat: 0.9
+    });
+    const trimAnodizedMat = new THREE.MeshPhysicalMaterial({
+      color: markerTrimColor,
+      metalness: 0.82,
       roughness: 0.18,
-      clearcoat: 0.8
+      clearcoat: 0.85
     });
     const carbonMat = new THREE.MeshStandardMaterial({
       color: 0x18181b,
@@ -6302,16 +6606,33 @@ export default function HamsterPaintball({
       roughness: 0.08
     });
 
-    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.95), anodizedMat);
+    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 1.02), anodizedMat);
     receiver.castShadow = true;
     markerGroup.add(receiver);
 
+    // Sporty Diagonal Accent Stripe on Receiver matching outfit trim
+    const receiverStripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.252, 0.1, 0.48),
+      trimAnodizedMat
+    );
+    receiverStripe.position.set(0, 0.02, 0.06);
+    receiverStripe.rotation.x = 0.25;
+    markerGroup.add(receiverStripe);
+
+    // Clamping Feedneck Collar
+    const feedneckCollar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.095, 0.105, 0.18, 16),
+      trimAnodizedMat
+    );
+    feedneckCollar.position.set(0, 0.21, 0.04);
+    markerGroup.add(feedneckCollar);
+
     const boltMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.068, 0.068, 0.44, 14),
-      chromeMat
+      new THREE.CylinderGeometry(0.072, 0.072, 0.46, 14),
+      trimAnodizedMat
     );
     boltMesh.rotation.x = Math.PI / 2;
-    boltMesh.position.set(0, 0.15, -0.22);
+    boltMesh.position.set(0, 0.15, -0.24);
     markerGroup.add(boltMesh);
 
     const chamberBallMesh = new THREE.Mesh(
@@ -6323,43 +6644,43 @@ export default function HamsterPaintball({
     markerGroup.add(chamberBallMesh);
 
     const barrelBack = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.072, 0.08, 0.65, 16),
-      carbonMat
+      new THREE.CylinderGeometry(0.078, 0.086, 0.68, 16),
+      trimAnodizedMat
     );
     barrelBack.rotation.x = Math.PI / 2;
-    barrelBack.position.set(0, 0.05, 0.72);
+    barrelBack.position.set(0, 0.05, 0.74);
     markerGroup.add(barrelBack);
 
     const barrelTip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.064, 0.07, 0.68, 16),
+      new THREE.CylinderGeometry(0.068, 0.076, 0.72, 16),
       anodizedMat
     );
     barrelTip.rotation.x = Math.PI / 2;
-    barrelTip.position.set(0, 0.05, 1.3);
+    barrelTip.position.set(0, 0.05, 1.34);
     markerGroup.add(barrelTip);
 
     const muzzleBrake = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.082, 0.072, 0.18, 16),
-      chromeMat
+      new THREE.CylinderGeometry(0.086, 0.076, 0.18, 16),
+      trimAnodizedMat
     );
     muzzleBrake.rotation.x = Math.PI / 2;
-    muzzleBrake.position.set(0, 0.05, 1.64);
+    muzzleBrake.position.set(0, 0.05, 1.68);
     markerGroup.add(muzzleBrake);
 
     const barrelBore = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.052, 0.052, 0.06, 14),
+      new THREE.CylinderGeometry(0.054, 0.054, 0.06, 14),
       new THREE.MeshBasicMaterial({ color: 0x020617 })
     );
     barrelBore.rotation.x = Math.PI / 2;
-    barrelBore.position.set(0, 0.05, 1.71);
+    barrelBore.position.set(0, 0.05, 1.75);
     markerGroup.add(barrelBore);
 
     const muzzleTip = new THREE.Object3D();
-    muzzleTip.position.set(0, 0.05, 1.75);
+    muzzleTip.position.set(0, 0.05, 1.78);
     markerGroup.add(muzzleTip);
 
     const muzzleFlash = new THREE.Group();
-    muzzleFlash.position.set(0, 0.05, 1.76);
+    muzzleFlash.position.set(0, 0.05, 1.79);
     muzzleFlash.visible = false;
 
     const flashCore = new THREE.Mesh(
@@ -6397,23 +6718,44 @@ export default function HamsterPaintball({
 
     markerGroup.add(muzzleFlash);
 
-    const pistolGrip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.38, 0.2), carbonMat);
-    pistolGrip.position.set(0, -0.24, -0.15);
+    // Trigger Frame & Double-Finger Speedball Trigger Guard
+    const pistolGrip = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.4, 0.22), carbonMat);
+    pistolGrip.position.set(0, -0.25, -0.14);
     pistolGrip.rotation.x = -0.22;
     markerGroup.add(pistolGrip);
 
-    const foreGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.34, 14), carbonMat);
-    foreGrip.position.set(0, -0.22, 0.28);
+    const triggerGuard = new THREE.Mesh(
+      new THREE.TorusGeometry(0.11, 0.024, 8, 16),
+      trimAnodizedMat
+    );
+    triggerGuard.rotation.y = Math.PI / 2;
+    triggerGuard.position.set(0, -0.22, 0.03);
+    markerGroup.add(triggerGuard);
+
+    const foreGrip = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.078, 0.088, 0.38, 14),
+      anodizedMat
+    );
+    foreGrip.position.set(0, -0.23, 0.32);
     markerGroup.add(foreGrip);
+
+    // Braided Macroline Air Hose from ASA to Foregrip Regulator
+    const macrolineHose = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.02, 0.48, 8),
+      chromeMat
+    );
+    macrolineHose.rotation.x = Math.PI / 2.4;
+    macrolineHose.position.set(0, -0.36, 0.08);
+    markerGroup.add(macrolineHose);
 
     const hpaTankGroup = new THREE.Group();
     hpaTankGroup.position.set(0, -0.36, -0.52);
     const hpaBottle = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.17, 0.36, 14, 18),
+      new THREE.CapsuleGeometry(0.18, 0.38, 14, 18),
       new THREE.MeshPhysicalMaterial({
-        color: 0x0f172a,
-        metalness: 0.4,
-        roughness: 0.2,
+        color: markerPrimaryColor,
+        metalness: 0.55,
+        roughness: 0.18,
         clearcoat: 1.0
       })
     );
@@ -6422,7 +6764,7 @@ export default function HamsterPaintball({
 
     const regulatorNeck = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.1, 0.18, 14),
-      chromeMat
+      trimAnodizedMat
     );
     regulatorNeck.rotation.x = Math.PI / 2;
     regulatorNeck.position.z = 0.28;
@@ -6430,18 +6772,18 @@ export default function HamsterPaintball({
     markerGroup.add(hpaTankGroup);
 
     const hopperGroup = new THREE.Group();
-    hopperGroup.position.set(0, 0.42, 0.02);
+    hopperGroup.position.set(0, 0.44, 0.04);
     const hopperShell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.28, 20, 16),
+      new THREE.SphereGeometry(0.29, 20, 16),
       new THREE.MeshPhysicalMaterial({
-        color: 0x1e293b,
+        color: 0xe2e8f0,
         transparent: true,
-        opacity: 0.68,
-        roughness: 0.12,
+        opacity: 0.52,
+        roughness: 0.08,
         clearcoat: 1.0
       })
     );
-    hopperShell.scale.set(0.92, 0.82, 1.38);
+    hopperShell.scale.set(0.95, 0.85, 1.42);
     hopperGroup.add(hopperShell);
 
     const hopperBallsGroup = new THREE.Group();
@@ -6451,7 +6793,9 @@ export default function HamsterPaintball({
       [0, -0.02, 0.1],
       [-0.09, 0.04, 0.06],
       [0.09, 0.05, 0.08],
-      [0, 0.06, -0.04]
+      [0, 0.06, -0.04],
+      [-0.04, 0.02, -0.15],
+      [0.05, 0.03, 0.15]
     ];
     hopperBallOffsets.forEach(([bx, by, bz], bi) => {
       const hbColor =
@@ -6461,13 +6805,13 @@ export default function HamsterPaintball({
           ? teamColorNum
           : skin.paintColor;
       const hb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.072, 10, 10),
+        new THREE.SphereGeometry(0.075, 10, 10),
         new THREE.MeshPhysicalMaterial({
           color: hbColor,
           emissive: hbColor,
-          emissiveIntensity: 0.28,
+          emissiveIntensity: 0.35,
           clearcoat: 1.0,
-          roughness: 0.1
+          roughness: 0.08
         })
       );
       hb.position.set(bx, by, bz);
@@ -6476,8 +6820,8 @@ export default function HamsterPaintball({
     hopperGroup.add(hopperBallsGroup);
 
     const speedFeed = new THREE.Mesh(
-      new THREE.TorusGeometry(0.15, 0.03, 10, 20),
-      new THREE.MeshStandardMaterial({ color: teamColorNum, roughness: 0.2 })
+      new THREE.TorusGeometry(0.16, 0.034, 10, 20),
+      trimAnodizedMat
     );
     speedFeed.rotation.x = Math.PI / 2;
     speedFeed.position.y = 0.21;
@@ -6893,24 +7237,26 @@ export default function HamsterPaintball({
 
     // Mechanical Gun Shot Recoil, Vertical Aim Pitch, Stance Gun Lowering & Muzzle Blast Animation
     const runSwayY = isMoving ? Math.sin(nextPhase) * 0.032 : Math.sin(nextPhase) * 0.008;
-    const baseGunY = 1.24 - cr * 0.34 - pr * 0.68 + runSwayY;
-    const baseGunZ = 0.55 + cr * 0.08 + pr * 0.34;
+    const baseGunY = 1.22 - cr * 0.34 - pr * 0.68 + runSwayY;
+    const baseGunZ = 0.72 + cr * 0.08 + pr * 0.34;
     const clampedGunPitch = THREE.MathUtils.clamp(aimPitch, -0.58, 0.58);
+    const activeRecoil = typeof ud.recoil === 'number' && ud.recoil > 0.01 ? ud.recoil : 0;
 
-    if (typeof ud.recoil === 'number' && ud.recoil > 0.01) {
-      ud.recoil = Math.max(0, ud.recoil - dt * 6.8);
+    if (activeRecoil > 0) {
+      ud.recoil = Math.max(0, activeRecoil - dt * 6.8);
       if (ud.markerGroup) {
+        ud.markerGroup.position.x = 0.46;
         ud.markerGroup.position.z = baseGunZ - ud.recoil * 0.26;
         ud.markerGroup.position.y = baseGunY + ud.recoil * 0.045;
         ud.markerGroup.rotation.x = clampedGunPitch - ud.recoil * 0.2;
       }
       if (ud.rightArmGroup) {
-        ud.rightArmGroup.position.y = 1.18 - cr * 0.32 - pr * 0.62;
-        ud.rightArmGroup.position.z = 0.42 + pr * 0.26 - ud.recoil * 0.18;
-        ud.rightArmGroup.rotation.x = clampedGunPitch * 0.7 - ud.recoil * 0.16;
+        ud.rightArmGroup.position.y = 1.16 - cr * 0.32 - pr * 0.62;
+        ud.rightArmGroup.position.z = 0.48 + pr * 0.26 - ud.recoil * 0.18;
+        ud.rightArmGroup.rotation.x = clampedGunPitch * 0.85 - ud.recoil * 0.16;
       }
       if (ud.boltMesh) {
-        ud.boltMesh.position.z = -0.22 - Math.sin(ud.recoil * Math.PI) * 0.32;
+        ud.boltMesh.position.z = -0.24 - Math.sin(ud.recoil * Math.PI) * 0.32;
       }
       if (ud.chamberBallMesh) {
         ud.chamberBallMesh.visible = ud.recoil > 0.25;
@@ -6928,17 +7274,18 @@ export default function HamsterPaintball({
       }
     } else {
       if (ud.markerGroup) {
+        ud.markerGroup.position.x = 0.46;
         ud.markerGroup.position.z = baseGunZ;
         ud.markerGroup.position.y = baseGunY;
         ud.markerGroup.rotation.x = clampedGunPitch;
       }
       if (ud.rightArmGroup) {
-        ud.rightArmGroup.position.y = 1.18 - cr * 0.32 - pr * 0.62;
-        ud.rightArmGroup.position.z = 0.42 + pr * 0.26;
-        ud.rightArmGroup.rotation.x = clampedGunPitch * 0.7;
+        ud.rightArmGroup.position.y = 1.16 - cr * 0.32 - pr * 0.62;
+        ud.rightArmGroup.position.z = 0.48 + pr * 0.26;
+        ud.rightArmGroup.rotation.x = clampedGunPitch * 0.85;
       }
       if (ud.boltMesh) {
-        ud.boltMesh.position.z = -0.22;
+        ud.boltMesh.position.z = -0.24;
       }
       if (ud.chamberBallMesh) {
         ud.chamberBallMesh.visible = false;
@@ -6948,14 +7295,15 @@ export default function HamsterPaintball({
       }
     }
 
-    // Left Arm Crawl Motion or Long-Press Can Drinking / Charging 3D Pose
+    // Left Arm Two-Handed Foregrip Support, Crawl Motion, or Long-Press Can Drinking Pose
     if (ud.leftArmGroup && ud.heldCanMesh && ud.canAuraRing) {
-      ud.leftArmGroup.position.y = 1.18 - cr * 0.32 - pr * 0.64;
+      ud.leftArmGroup.position.y = 1.16 - cr * 0.32 - pr * 0.64;
       if (holdingCanType) {
         const canColor = holdingCanType === 'health' ? 0x22c55e : 0x06b6d4;
         ud.heldCanMesh.visible = true;
         (ud.heldCanMesh.material as THREE.MeshStandardMaterial).color.setHex(canColor);
         (ud.heldCanMesh.material as THREE.MeshStandardMaterial).emissive.setHex(canColor);
+        ud.leftArmGroup.position.z = 0.56;
         ud.leftArmGroup.rotation.x = -0.85 + Math.sin(nextPhase * 4) * 0.12;
         ud.leftArmGroup.rotation.y = 0.45;
         ud.canAuraRing.visible = true;
@@ -6964,11 +7312,16 @@ export default function HamsterPaintball({
         ud.canAuraRing.scale.setScalar(pulseScale);
       } else {
         ud.heldCanMesh.visible = false;
-        ud.leftArmGroup.rotation.x =
-          pr > 0.2
-            ? -0.95 + (isMoving ? Math.cos(nextPhase) * 0.42 : 0)
-            : 0;
-        ud.leftArmGroup.rotation.y = 0;
+        if (pr > 0.2) {
+          ud.leftArmGroup.position.z = 0.56;
+          ud.leftArmGroup.rotation.x = -0.95 + (isMoving ? Math.cos(nextPhase) * 0.42 : 0);
+          ud.leftArmGroup.rotation.y = 0;
+        } else {
+          // Grip the front foregrip of the speedball marker with the left paw!
+          ud.leftArmGroup.position.z = 0.56 - (ud.recoil || 0) * 0.16;
+          ud.leftArmGroup.rotation.x = clampedGunPitch * 0.85 - (ud.recoil || 0) * 0.14;
+          ud.leftArmGroup.rotation.y = 0.32;
+        }
         ud.canAuraRing.visible = false;
       }
     }
@@ -7095,7 +7448,7 @@ export default function HamsterPaintball({
     renderer.shadowMap.enabled = initialQualityCfg.shadowsEnabled;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.02;
+    renderer.toneMappingExposure = 0.85;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
@@ -7103,7 +7456,7 @@ export default function HamsterPaintball({
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const envTarget = pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
     scene.environment = envTarget.texture;
-    (scene as any).environmentIntensity = 0.44;
+    (scene as any).environmentIntensity = 0.26;
     pmremGenerator.dispose();
 
     let isContextLost = false;
@@ -7127,13 +7480,13 @@ export default function HamsterPaintball({
 
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.78);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.42);
     scene.add(ambientLight);
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x4d7c0f, 0.92);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x3f6212, 0.58);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.32);
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.02);
     sunLight.position.set(48, 86, 40);
     sunLight.castShadow = initialQualityCfg.shadowsEnabled;
     sunLight.shadow.mapSize.width = initialQualityCfg.shadowMapSize;
@@ -7308,7 +7661,7 @@ export default function HamsterPaintball({
     ground.receiveShadow = true;
     scene.add(ground);
 
-    const obstacles: Array<{ x: number; z: number; r: number; h: number }> = [];
+    const obstacles: Array<{ x: number; z: number; r: number; h: number; baseY?: number }> = [];
 
     // =========================================================
     // DYNAMIC 3D SPAWN BASES (Left=Red, Right=Blue, Bottom=Green, Top=Gold)
@@ -7556,14 +7909,682 @@ export default function HamsterPaintball({
         reflectivity: 0.9
       });
 
-    // Full-Scale Championship Speedball Bunker Builders (4.3m - 5.3m tall & wide so barriers hide spawned players!)
+    // Full-Scale Championship Speedball & Inflatable Battle Stadium Builders
+    let dynamicArenaGroup = new THREE.Group();
+    scene.add(dynamicArenaGroup);
+    const animatedFlags: Array<{ mesh: THREE.Object3D; phase: number }> = [];
+    const hotAirBalloons: Array<{
+      group: THREE.Group;
+      baseX: number;
+      baseY: number;
+      baseZ: number;
+      phase: number;
+    }> = [];
+    const crowdMeshes: THREE.Object3D[] = [];
+
+    // Smooth glossy inflatable material helper (Bubblegum Pink, Electric Blue, Cyan, Purple, Yellow, Orange, Turquoise, Green, White)
+    const makeGlossyInflatableMat = (colorHex: number | string, roughness = 0.18) =>
+      new THREE.MeshPhysicalMaterial({
+        color: colorHex,
+        bumpMap: bunkerBumpTex,
+        bumpScale: 0.025,
+        roughness,
+        metalness: 0.05,
+        clearcoat: 0.95,
+        clearcoatRoughness: 0.08,
+        reflectivity: 0.9
+      });
+
+    // Semi-transparent Blue Mesh Safety Netting Texture (Visible crisscross mesh pattern without blocking visibility)
+    const createBlueSafetyNetTexture = () => {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 256;
+      const ctx = c.getContext('2d')!;
+      ctx.clearRect(0, 0, 256, 256);
+      ctx.fillStyle = 'rgba(14, 165, 233, 0.16)';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.82)';
+      ctx.lineWidth = 3;
+      const step = 24;
+      for (let i = -256; i <= 512; i += step) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i + 256, 256);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(i + 256, 0);
+        ctx.lineTo(i, 256);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(37, 99, 235, 0.95)';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(4, 4, 248, 248);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(3, 2);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+    const blueSafetyNetTex = createBlueSafetyNetTexture();
+    const safetyNetMat = new THREE.MeshBasicMaterial({
+      map: blueSafetyNetTex,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    // High-contrast 3D Illuminated Stadium Sign Texture Generator
+    const createStadiumSignBoard = (
+      title: string,
+      subtitle: string,
+      bgHex: string,
+      borderHex: string,
+      textHex: string = '#ffffff',
+      widthM: number = 14,
+      heightM: number = 3.2
+    ) => {
+      const c = document.createElement('canvas');
+      c.width = 1024;
+      c.height = 256;
+      const ctx = c.getContext('2d')!;
+      const grad = ctx.createLinearGradient(0, 0, 1024, 256);
+      grad.addColorStop(0, bgHex);
+      grad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = grad;
+      drawRoundedRect(ctx, 8, 8, 1008, 240, 32);
+      ctx.fill();
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = borderHex;
+      ctx.stroke();
+
+      ctx.font = '900 68px "Poppins", "Inter", system-ui, sans-serif';
+      ctx.fillStyle = textHex;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(title, 512, subtitle ? 102 : 128);
+
+      if (subtitle) {
+        ctx.font = '800 34px "Poppins", "Inter", system-ui, sans-serif';
+        ctx.fillStyle = '#fef08a';
+        ctx.fillText(subtitle, 512, 184);
+      }
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = maxAnisotropy;
+
+      const signGroup = new THREE.Group();
+      const backing = new THREE.Mesh(
+        new THREE.BoxGeometry(widthM + 0.4, heightM + 0.4, 0.45),
+        makeGlossyInflatableMat(borderHex)
+      );
+      signGroup.add(backing);
+      const face = new THREE.Mesh(
+        new THREE.PlaneGeometry(widthM, heightM),
+        new THREE.MeshBasicMaterial({ map: tex })
+      );
+      face.position.z = 0.25;
+      signGroup.add(face);
+      const backFace = face.clone();
+      backFace.rotation.y = Math.PI;
+      backFace.position.z = -0.25;
+      signGroup.add(backFace);
+      return signGroup;
+    };
+
+    // =========================================================
+    // LIVE 3D ELECTRONIC SCOREBOARD (Overlooking Central Arena)
+    // Displays: BLUE TEAM SCORE, RED TEAM SCORE, TIME REMAINING, PLAYERS ALIVE, CURRENT ROUND
+    // =========================================================
+    const scoreboardCanvas = document.createElement('canvas');
+    scoreboardCanvas.width = 1024;
+    scoreboardCanvas.height = 512;
+    const scoreboardCtx = scoreboardCanvas.getContext('2d')!;
+    const scoreboardTex = new THREE.CanvasTexture(scoreboardCanvas);
+    scoreboardTex.colorSpace = THREE.SRGBColorSpace;
+    scoreboardTex.anisotropy = maxAnisotropy;
+
+    let lastScoreboardSig = '';
+    const updateScoreboardDisplay = (
+      blueScore: number,
+      redScore: number,
+      timeSec: number,
+      playersAlive: number,
+      statusText: string
+    ) => {
+      const mm = String(Math.floor(Math.max(0, timeSec) / 60)).padStart(2, '0');
+      const ss = String(Math.floor(Math.max(0, timeSec) % 60)).padStart(2, '0');
+      const sig = `${blueScore}|${redScore}|${mm}:${ss}|${playersAlive}|${statusText}`;
+      if (sig === lastScoreboardSig) return;
+      lastScoreboardSig = sig;
+
+      const ctx = scoreboardCtx;
+      ctx.clearRect(0, 0, 1024, 512);
+
+      // Jumbotron Dark Esports Frame
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, 512);
+      bgGrad.addColorStop(0, '#0f172a');
+      bgGrad.addColorStop(1, '#1e1b4b');
+      ctx.fillStyle = bgGrad;
+      drawRoundedRect(ctx, 10, 10, 1004, 492, 36);
+      ctx.fill();
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = '#ec4899';
+      ctx.stroke();
+
+      // Header Banner
+      ctx.fillStyle = '#9333ea';
+      drawRoundedRect(ctx, 32, 28, 960, 74, 20);
+      ctx.fill();
+      ctx.font = '900 36px "Poppins", system-ui, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('HAMSTER PAINTBALL BATTLE STADIUM • LIVE SCOREBOARD', 512, 65);
+
+      // Left Card: RED TEAM SCORE
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.24)';
+      drawRoundedRect(ctx, 36, 122, 300, 248, 24);
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#f43f5e';
+      ctx.stroke();
+      ctx.font = '900 30px "Poppins", system-ui, sans-serif';
+      ctx.fillStyle = '#fda4af';
+      ctx.fillText('RED TEAM SCORE', 186, 166);
+      ctx.font = '900 104px "Poppins", monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(String(redScore), 186, 274);
+
+      // Center Card: TIME REMAINING & CURRENT ROUND
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      drawRoundedRect(ctx, 356, 122, 312, 248, 24);
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#facc15';
+      ctx.stroke();
+      ctx.font = '800 24px "Poppins", system-ui, sans-serif';
+      ctx.fillStyle = '#fde047';
+      ctx.fillText('TIME REMAINING', 512, 162);
+      ctx.font = '900 86px "Poppins", monospace';
+      ctx.fillStyle = timeSec <= 30 ? '#fb7185' : '#38bdf8';
+      ctx.fillText(`${mm}:${ss}`, 512, 248);
+      ctx.font = '800 24px "Poppins", system-ui, sans-serif';
+      ctx.fillStyle = '#4ade80';
+      ctx.fillText(statusText, 512, 332);
+
+      // Right Card: BLUE TEAM SCORE
+      ctx.fillStyle = 'rgba(37, 99, 235, 0.28)';
+      drawRoundedRect(ctx, 688, 122, 300, 248, 24);
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#38bdf8';
+      ctx.stroke();
+      ctx.font = '900 30px "Poppins", system-ui, sans-serif';
+      ctx.fillStyle = '#bae6fd';
+      ctx.fillText('BLUE TEAM SCORE', 838, 166);
+      ctx.font = '900 104px "Poppins", monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(String(blueScore), 838, 274);
+
+      // Bottom Status Strip: PLAYERS ALIVE & ARENA MODE
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      drawRoundedRect(ctx, 36, 392, 952, 84, 20);
+      ctx.fill();
+      ctx.font = '800 30px "Poppins", system-ui, sans-serif';
+      ctx.fillStyle = '#facc15';
+      ctx.textAlign = 'left';
+      ctx.fillText(`🐹 PLAYERS ALIVE: ${playersAlive}`, 68, 434);
+      ctx.fillStyle = '#67e8f9';
+      ctx.textAlign = 'right';
+      ctx.fillText(`🏆 CHAMPIONS ARENA • ROUND 1`, 956, 434);
+
+      scoreboardTex.needsUpdate = true;
+    };
+    updateScoreboardDisplay(0, 0, 180, 1, 'ROUND 1 • WARMUP');
+
+    // =========================================================
+    // PERMANENT ESPORTS STADIUM GRANDSTANDS (8-TIER DOUBLE-DECKER COLOSSEUM), ENTRANCE GATE, JUMBOTRON & SKY ATMOSPHERE
+    // =========================================================
+    const buildPermanentEsportsStadium = () => {
+      const stadiumOuter = new THREE.Group();
+
+      // 1. Colossal 8-Tier Double-Decker Spectator Stands (Soaring 26m High!) with VIP Skyboxes, LED Fascia & Cheering Crowd
+      const tierColors = [0xec4899, 0x06b6d4, 0x9333ea, 0x2563eb, 0xfacc15, 0x10b981, 0xf97316, 0xec4899];
+      const crowdColors = [0xf472b6, 0x38bdf8, 0xfacc15, 0x4ade80, 0xc084fc, 0xfb923c];
+      const standMatBase = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.5,
+        metalness: 0.35
+      });
+
+      const buildSpectatorTribune = (
+        cx: number,
+        cz: number,
+        spanLen: number,
+        rotY: number
+      ) => {
+        const trib = new THREE.Group();
+        trib.position.set(cx, 0, cz);
+        trib.rotation.y = rotY;
+
+        for (let t = 0; t < 8; t++) {
+          const isUpperDeck = t >= 4;
+          const tierH = 2.2 + t * 2.15 + (isUpperDeck ? 1.8 : 0);
+          const tierZ = -t * 2.45 - (isUpperDeck ? 1.2 : 0);
+          const seatBench = new THREE.Mesh(
+            new THREE.BoxGeometry(spanLen, tierH, 2.35),
+            makeGlossyInflatableMat(tierColors[t % tierColors.length], 0.26)
+          );
+          seatBench.position.set(0, tierH / 2, tierZ);
+          seatBench.castShadow = true;
+          seatBench.receiveShadow = true;
+          trib.add(seatBench);
+
+          // Glowing Neon LED Fascia Ribbon between Lower Bowl and Upper Deck (t === 4)
+          if (t === 4) {
+            const ledRibbon = new THREE.Mesh(
+              new THREE.BoxGeometry(spanLen + 0.4, 0.65, 0.35),
+              new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+            );
+            ledRibbon.position.set(0, tierH - 1.2, tierZ + 1.25);
+            trib.add(ledRibbon);
+          }
+
+          // Animated Cartoon Spectator Silhouettes along rows
+          if (t >= 1 && t % 2 === 1) {
+            const crowdRow = new THREE.Group();
+            crowdRow.position.set(0, tierH + 0.48, tierZ);
+            crowdRow.userData.baseY = tierH + 0.48;
+            crowdRow.userData.phase = t * 1.1;
+            for (let sx = -spanLen * 0.44; sx <= spanLen * 0.44; sx += 3.8) {
+              const cMat = new THREE.MeshStandardMaterial({
+                color: crowdColors[Math.abs(Math.round(sx + t * 7)) % crowdColors.length],
+                roughness: 0.4
+              });
+              const fan = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 0.55, 6, 10), cMat);
+              fan.position.set(sx, 0, 0);
+              crowdRow.add(fan);
+            }
+            trib.add(crowdRow);
+            crowdMeshes.push(crowdRow);
+          }
+        }
+
+        // Upper VIP Skybox Gallery & High-Altitude Stadium Canopy Roof (`y = 24.8m`)
+        const vipBox = new THREE.Mesh(
+          new THREE.BoxGeometry(spanLen * 0.86, 3.2, 3.6),
+          new THREE.MeshPhysicalMaterial({
+            color: 0x38bdf8,
+            roughness: 0.12,
+            metalness: 0.2,
+            clearcoat: 1.0,
+            transparent: true,
+            opacity: 0.78
+          })
+        );
+        vipBox.position.set(0, 21.4, -18.8);
+        trib.add(vipBox);
+
+        const roof = new THREE.Mesh(
+          new THREE.BoxGeometry(spanLen + 3.2, 0.95, 22.5),
+          makeGlossyInflatableMat(0x1d4ed8, 0.22)
+        );
+        roof.position.set(0, 24.8, -11.5);
+        roof.rotation.x = 0.16;
+        trib.add(roof);
+
+        const roofTrim = new THREE.Mesh(
+          new THREE.BoxGeometry(spanLen + 3.6, 0.68, 1.2),
+          makeGlossyInflatableMat(0xfacc15, 0.18)
+        );
+        roofTrim.position.set(0, 26.5, -0.4);
+        trib.add(roofTrim);
+
+        [-spanLen * 0.45, -spanLen * 0.15, spanLen * 0.15, spanLen * 0.45].forEach(px => {
+          const col = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.85, 1.05, 24.8, 14),
+            standMatBase
+          );
+          col.position.set(px, 12.4, -19.5);
+          trib.add(col);
+        });
+
+        stadiumOuter.add(trib);
+      };
+
+      // North, South, West & East Colosseum Grandstands
+      buildSpectatorTribune(-36, -55, 38, 0);
+      buildSpectatorTribune(36, -55, 38, 0);
+      buildSpectatorTribune(-36, 55, 38, Math.PI);
+      buildSpectatorTribune(36, 55, 38, Math.PI);
+      buildSpectatorTribune(-66, 0, 74, Math.PI / 2);
+      buildSpectatorTribune(66, 0, 74, -Math.PI / 2);
+
+      // 2. Colossal Stadium Entrance Gate & Main Sign + Raised Live 3D Electronic Scoreboard (North Center)
+      const gateGroup = new THREE.Group();
+      gateGroup.position.set(0, 0, -52.5);
+      [-13.2, 13.2].forEach((gx, idx) => {
+        const gateCol = new THREE.Mesh(
+          new THREE.CylinderGeometry(2.3, 2.6, 25.5, 22),
+          makeGlossyInflatableMat(idx === 0 ? 0xec4899 : 0x2563eb)
+        );
+        gateCol.position.set(gx, 12.75, 0);
+        gateCol.castShadow = true;
+        gateGroup.add(gateCol);
+
+        [8.5, 16.5, 22.5].forEach((ry, rIdx) => {
+          const colRing = new THREE.Mesh(
+            new THREE.TorusGeometry(2.45, 0.38, 12, 24),
+            makeGlossyInflatableMat(rIdx === 1 ? 0x06b6d4 : 0xfacc15)
+          );
+          colRing.rotation.x = Math.PI / 2;
+          colRing.position.set(gx, ry, 0);
+          gateGroup.add(colRing);
+        });
+
+        const domeCap = new THREE.Mesh(
+          new THREE.SphereGeometry(2.65, 20, 16),
+          makeGlossyInflatableMat(0x06b6d4)
+        );
+        domeCap.scale.set(1, 0.82, 1);
+        domeCap.position.set(gx, 25.8, 0);
+        gateGroup.add(domeCap);
+      });
+
+      const gateArchBeam = new THREE.Mesh(
+        new THREE.CapsuleGeometry(1.6, 25.4, 14, 22),
+        makeGlossyInflatableMat(0x9333ea)
+      );
+      gateArchBeam.rotation.z = Math.PI / 2;
+      gateArchBeam.position.set(0, 18.2, 0);
+      gateGroup.add(gateArchBeam);
+
+      // Main Entrance Sign: "HAMSTER PAINTBALL BATTLE STADIUM"
+      const mainEntranceSign = createStadiumSignBoard(
+        'HAMSTER PAINTBALL',
+        'MEGA BATTLE STADIUM • CHAMPIONS COLOSSEUM',
+        '#ec4899',
+        '#facc15',
+        '#ffffff',
+        24.0,
+        4.5
+      );
+      mainEntranceSign.position.set(0, 18.2, 1.5);
+      gateGroup.add(mainEntranceSign);
+
+      // Giant Overhead Live 3D Electronic Scoreboard (Raised to y = 28.8m!)
+      const jumbotronFrame = new THREE.Mesh(
+        new THREE.BoxGeometry(25.2, 12.6, 1.2),
+        makeGlossyInflatableMat(0x1e1b4b, 0.25)
+      );
+      jumbotronFrame.position.set(0, 28.8, 0);
+      gateGroup.add(jumbotronFrame);
+
+      const jumbotronScreen = new THREE.Mesh(
+        new THREE.PlaneGeometry(24.0, 11.5),
+        new THREE.MeshBasicMaterial({ map: scoreboardTex })
+      );
+      jumbotronScreen.position.set(0, 28.8, 0.65);
+      gateGroup.add(jumbotronScreen);
+
+      stadiumOuter.add(gateGroup);
+
+      // 3. High-Elevation Perimeter Illuminated Esports Signage
+      const redTeamSign = createStadiumSignBoard(
+        'RED TEAM BASE',
+        'BATTLE ZONE • WEST WING',
+        '#e11d48',
+        '#facc15',
+        '#ffffff',
+        18,
+        3.6
+      );
+      redTeamSign.position.set(-60.5, 14.8, 0);
+      redTeamSign.rotation.y = Math.PI / 2;
+      stadiumOuter.add(redTeamSign);
+
+      const blueTeamSign = createStadiumSignBoard(
+        'BLUE TEAM BASE',
+        'BATTLE ZONE • EAST WING',
+        '#2563eb',
+        '#38bdf8',
+        '#ffffff',
+        18,
+        3.6
+      );
+      blueTeamSign.position.set(60.5, 14.8, 0);
+      blueTeamSign.rotation.y = -Math.PI / 2;
+      stadiumOuter.add(blueTeamSign);
+
+      const southSign = createStadiumSignBoard(
+        'PAINTBALL CHALLENGE',
+        'CHAMPIONS ARENA • SKY CITADEL',
+        '#0284c7',
+        '#ec4899',
+        '#ffffff',
+        20,
+        3.8
+      );
+      southSign.position.set(0, 16.5, 52.5);
+      southSign.rotation.y = Math.PI;
+      stadiumOuter.add(southSign);
+
+      // 4. Puffy 3D White Cartoon Clouds in the Sky
+      const cloudMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.9,
+        metalness: 0.0
+      });
+      [
+        [-88, 64, -92, 1.35],
+        [82, 68, -84, 1.45],
+        [-94, 60, 48, 1.25],
+        [90, 62, 58, 1.4],
+        [0, 72, -112, 1.55],
+        [18, 66, 102, 1.3]
+      ].forEach(([cx, cy, cz, sc]) => {
+        const cg = new THREE.Group();
+        cg.position.set(cx, cy, cz);
+        [
+          [0, 0, 0, 5.5],
+          [-4.2, -0.6, 0.8, 4.1],
+          [4.4, -0.5, -0.6, 4.3],
+          [1.5, 1.8, 0.5, 3.8]
+        ].forEach(([ox, oy, oz, r]) => {
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(r * sc, 14, 12), cloudMat);
+          puff.scale.set(1.2, 0.72, 0.95);
+          puff.position.set(ox * sc, oy * sc, oz * sc);
+          cg.add(puff);
+        });
+        stadiumOuter.add(cg);
+      });
+
+      // 5. High-Altitude Floating Hot Air Balloons (Blue/Yellow, Pink/Purple, Orange/Cyan)
+      const balloonConfigs: Array<{
+        x: number;
+        y: number;
+        z: number;
+        c1: number;
+        c2: number;
+        scale: number;
+      }> = [
+        { x: -72, y: 46, z: -66, c1: 0x2563eb, c2: 0xfacc15, scale: 1.3 },
+        { x: 74, y: 50, z: -62, c1: 0xec4899, c2: 0x9333ea, scale: 1.35 },
+        { x: -76, y: 44, z: 56, c1: 0xf97316, c2: 0x06b6d4, scale: 1.2 },
+        { x: 75, y: 48, z: 60, c1: 0x10b981, c2: 0xfacc15, scale: 1.25 },
+        { x: -26, y: 56, z: -84, c1: 0xec4899, c2: 0x38bdf8, scale: 1.15 },
+        { x: 34, y: 54, z: 80, c1: 0x9333ea, c2: 0xfacc15, scale: 1.22 }
+      ];
+
+      balloonConfigs.forEach((bCfg, idx) => {
+        const bg = new THREE.Group();
+        bg.position.set(bCfg.x, bCfg.y, bCfg.z);
+
+        const envMain = new THREE.Mesh(
+          new THREE.SphereGeometry(4.2 * bCfg.scale, 20, 18),
+          makeGlossyInflatableMat(bCfg.c1, 0.22)
+        );
+        envMain.scale.set(1, 1.26, 1);
+        envMain.position.y = 4.8 * bCfg.scale;
+        bg.add(envMain);
+
+        const stripeBand = new THREE.Mesh(
+          new THREE.TorusGeometry(4.05 * bCfg.scale, 0.55 * bCfg.scale, 12, 24),
+          makeGlossyInflatableMat(bCfg.c2, 0.2)
+        );
+        stripeBand.rotation.x = Math.PI / 2;
+        stripeBand.position.y = 5.0 * bCfg.scale;
+        bg.add(stripeBand);
+
+        const midBand = new THREE.Mesh(
+          new THREE.TorusGeometry(3.3 * bCfg.scale, 0.42 * bCfg.scale, 10, 22),
+          makeGlossyInflatableMat(0xffffff, 0.2)
+        );
+        midBand.rotation.x = Math.PI / 2;
+        midBand.position.y = 7.2 * bCfg.scale;
+        bg.add(midBand);
+
+        const burnerGlow = new THREE.Mesh(
+          new THREE.SphereGeometry(0.65 * bCfg.scale, 10, 10),
+          new THREE.MeshBasicMaterial({ color: 0xfef08a })
+        );
+        burnerGlow.position.y = 0.6 * bCfg.scale;
+        bg.add(burnerGlow);
+
+        const basket = new THREE.Mesh(
+          new THREE.BoxGeometry(1.6 * bCfg.scale, 1.2 * bCfg.scale, 1.6 * bCfg.scale),
+          new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.75 })
+        );
+        basket.position.y = -1.2 * bCfg.scale;
+        bg.add(basket);
+
+        stadiumOuter.add(bg);
+        hotAirBalloons.push({
+          group: bg,
+          baseX: bCfg.x,
+          baseY: bCfg.y,
+          baseZ: bCfg.z,
+          phase: idx * 1.15
+        });
+      });
+
+      // 6. Background Cartoon Helicopter + Championship Sky Blimp (Orbiting high above the stadium!)
+      const heli = new THREE.Group();
+      heli.position.set(66, 46, 0);
+      const heliBody = new THREE.Mesh(
+        new THREE.CapsuleGeometry(1.55, 2.8, 12, 18),
+        makeGlossyInflatableMat(0x06b6d4, 0.16)
+      );
+      heliBody.rotation.x = Math.PI / 2;
+      heli.add(heliBody);
+
+      const heliCockpit = new THREE.Mesh(
+        new THREE.SphereGeometry(1.42, 16, 14),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xfef08a,
+          roughness: 0.08,
+          clearcoat: 1.0,
+          transparent: true,
+          opacity: 0.88
+        })
+      );
+      heliCockpit.position.set(0, 0.15, 1.45);
+      heli.add(heliCockpit);
+
+      const tailBoom = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.28, 0.55, 4.6, 12),
+        makeGlossyInflatableMat(0xec4899, 0.2)
+      );
+      tailBoom.rotation.x = Math.PI / 2;
+      tailBoom.position.set(0, 0.25, -3.4);
+      heli.add(tailBoom);
+
+      const tailFin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 1.6, 1.1),
+        makeGlossyInflatableMat(0xfacc15, 0.2)
+      );
+      tailFin.position.set(0, 0.75, -5.4);
+      heli.add(tailFin);
+
+      const mainRotor = new THREE.Group();
+      mainRotor.position.set(0, 1.85, 0);
+      const blade1 = new THREE.Mesh(
+        new THREE.BoxGeometry(7.8, 0.08, 0.45),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      const blade2 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.45, 0.08, 7.8),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+      );
+      mainRotor.add(blade1, blade2);
+      heli.add(mainRotor);
+      heli.userData.mainRotor = mainRotor;
+      stadiumOuter.add(heli);
+
+      // Championship Sky Blimp / Airship
+      const blimp = new THREE.Group();
+      blimp.position.set(-68, 56, 0);
+      const blimpHull = new THREE.Mesh(
+        new THREE.CapsuleGeometry(4.2, 11.5, 16, 24),
+        makeGlossyInflatableMat(0x9333ea, 0.18)
+      );
+      blimpHull.rotation.x = Math.PI / 2;
+      blimp.add(blimpHull);
+
+      const blimpStripe = new THREE.Mesh(
+        new THREE.TorusGeometry(4.25, 0.42, 12, 28),
+        makeGlossyInflatableMat(0xfacc15, 0.16)
+      );
+      blimpStripe.position.z = 0;
+      blimp.add(blimpStripe);
+
+      const blimpGondola = new THREE.Mesh(
+        new THREE.BoxGeometry(2.4, 1.6, 5.2),
+        makeGlossyInflatableMat(0x38bdf8, 0.2)
+      );
+      blimpGondola.position.set(0, -4.4, 0);
+      blimp.add(blimpGondola);
+
+      [-1, 1].forEach(dir => {
+        const fin = new THREE.Mesh(
+          new THREE.BoxGeometry(3.8, 0.3, 2.8),
+          makeGlossyInflatableMat(0xec4899, 0.18)
+        );
+        fin.position.set(dir * 3.2, 0, -6.2);
+        blimp.add(fin);
+      });
+      stadiumOuter.add(blimp);
+
+      scene.add(stadiumOuter);
+      return { heli, blimp };
+    };
+    const { heli: helicopterGroup, blimp: blimpGroup } = buildPermanentEsportsStadium();
+
+    // =========================================================
+    // REUSABLE OBSTACLE BUILDERS (Pro Speedball + 10-Type Colorful Inflatable Obstacle Course)
+    // =========================================================
+    const addObstacleCollider = (
+      x: number,
+      z: number,
+      r: number,
+      h: number,
+      baseY: number = 0
+    ) => {
+      obstacles.push({ x, z, r, h, baseY });
+    };
+
     const createDorito = (
       x: number,
       z: number,
       c1: string,
       c2: string,
       c3: string,
-      rot = 0
+      rot = 0,
+      baseY = 0
     ) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, c3, 'DORITO'));
@@ -7581,13 +8602,20 @@ export default function HamsterPaintball({
       cap.position.y = 4.45;
       g.add(cap);
 
-      g.position.set(x, 0, z);
+      g.position.set(x, baseY, z);
       g.rotation.y = rot;
-      scene.add(g);
-      obstacles.push({ x, z, r: 2.38, h: 4.55 });
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, 2.38, baseY + 4.55, baseY);
     };
 
-    const createCan = (x: number, z: number, c1: string, c2: string, c3: string) => {
+    const createCan = (
+      x: number,
+      z: number,
+      c1: string,
+      c2: string,
+      c3: string,
+      baseY = 0
+    ) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, c3, 'PRO CAN'));
       const cyl = new THREE.Mesh(new THREE.CylinderGeometry(2.18, 2.3, 4.55, 28), mat);
@@ -7604,9 +8632,9 @@ export default function HamsterPaintball({
       topRing.position.y = 4.55;
       g.add(topRing);
 
-      g.position.set(x, 0, z);
-      scene.add(g);
-      obstacles.push({ x, z, r: 2.26, h: 4.6 });
+      g.position.set(x, baseY, z);
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, 2.26, baseY + 4.6, baseY);
     };
 
     const createWideSpawnFortress = (
@@ -7619,7 +8647,6 @@ export default function HamsterPaintball({
     ) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, '#facc15', badge));
-      // 4 stacked heavy horizontal tubes (~8.8m wide x ~4.65m tall) completely blocking spawn sightlines
       for (let i = 0; i < 4; i++) {
         const tube = new THREE.Mesh(new THREE.CapsuleGeometry(0.66, 7.2, 14, 22), mat);
         tube.rotation.z = Math.PI / 2;
@@ -7638,21 +8665,29 @@ export default function HamsterPaintball({
       });
       g.position.set(x, 0, z);
       g.rotation.y = rot;
-      scene.add(g);
+      dynamicArenaGroup.add(g);
 
       const cosR = Math.cos(rot);
       const sinR = Math.sin(rot);
       [-2.3, 0, 2.3].forEach(dx => {
-        obstacles.push({
-          x: Number((x + dx * cosR).toFixed(2)),
-          z: Number((z - dx * sinR).toFixed(2)),
-          r: 2.05,
-          h: 4.65
-        });
+        addObstacleCollider(
+          Number((x + dx * cosR).toFixed(2)),
+          Number((z - dx * sinR).toFixed(2)),
+          2.05,
+          4.65,
+          0
+        );
       });
     };
 
-    const createLowSnakeShield = (x: number, z: number, rot: number, c1: string, c2: string) => {
+    const createLowSnakeShield = (
+      x: number,
+      z: number,
+      rot: number,
+      c1: string,
+      c2: string,
+      baseY = 0
+    ) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(createProBunkerTexture(c1, c2, '#facc15', 'FORTRESS'));
       for (let i = 0; i < 3; i++) {
@@ -7673,13 +8708,13 @@ export default function HamsterPaintball({
         pillar.receiveShadow = true;
         g.add(pillar);
       });
-      g.position.set(x, 0, z);
+      g.position.set(x, baseY, z);
       g.rotation.y = rot;
-      scene.add(g);
-      obstacles.push({ x, z, r: 2.42, h: 4.2 });
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, 2.42, baseY + 4.2, baseY);
     };
 
-    const createCenterXBunker = (x: number, z: number, scale = 1.06) => {
+    const createCenterXBunker = (x: number, z: number, scale = 1.06, baseY = 0) => {
       const g = new THREE.Group();
       const mat = makeInflatableMat(
         createProBunkerTexture('#0284c7', '#f43f5e', '#facc15', 'X-50')
@@ -7706,90 +8741,1470 @@ export default function HamsterPaintball({
       coreHub.position.y = 2.75 * scale;
       g.add(coreHub);
 
-      g.position.set(x, 0, z);
-      scene.add(g);
-      obstacles.push({ x, z, r: 2.6 * scale, h: 5.1 * scale });
+      g.position.set(x, baseY, z);
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, 2.6 * scale, baseY + 5.1 * scale, baseY);
+    };
+
+    // 10-Type Colorful Inflatable Obstacle Course Builders:
+    // 1. Giant Inflatable Cube (Rounded edges & glossy rubber volume)
+    const createInflatableCube = (
+      x: number,
+      z: number,
+      size: number,
+      mainColor: number,
+      trimColor: number,
+      rot = 0,
+      baseY = 0
+    ) => {
+      const g = new THREE.Group();
+      const bodyMat = makeGlossyInflatableMat(mainColor);
+      const trimMat = makeGlossyInflatableMat(trimColor);
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), bodyMat);
+      cube.position.y = size / 2;
+      cube.castShadow = true;
+      cube.receiveShadow = true;
+      g.add(cube);
+
+      // Soft rounded inflatable corner bolsters
+      const half = size * 0.48;
+      [
+        [-half, -half],
+        [half, -half],
+        [-half, half],
+        [half, half]
+      ].forEach(([cx, cz]) => {
+        const edgeCol = new THREE.Mesh(
+          new THREE.CylinderGeometry(size * 0.14, size * 0.14, size * 0.96, 12),
+          trimMat
+        );
+        edgeCol.position.set(cx, size / 2, cz);
+        g.add(edgeCol);
+      });
+
+      g.position.set(x, baseY, z);
+      g.rotation.y = rot;
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, size * 0.62, baseY + size, baseY);
+    };
+
+    // 2. Stacked Rectangular Foam Blocks
+    const createStackedFoamBlocks = (
+      x: number,
+      z: number,
+      rot: number,
+      colors: [number, number, number],
+      baseY = 0
+    ) => {
+      const g = new THREE.Group();
+      colors.forEach((col, i) => {
+        const w = 3.8 - i * 0.35;
+        const h = 1.22;
+        const d = 2.0 - i * 0.12;
+        const block = new THREE.Mesh(
+          new THREE.BoxGeometry(w, h, d),
+          makeGlossyInflatableMat(col)
+        );
+        block.position.set((i % 2 === 0 ? 1 : -1) * 0.15, h / 2 + i * 1.18, 0);
+        block.rotation.y = (i - 1) * 0.08;
+        block.castShadow = true;
+        block.receiveShadow = true;
+        g.add(block);
+      });
+      g.position.set(x, baseY, z);
+      g.rotation.y = rot;
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, 2.1, baseY + 3.6, baseY);
+    };
+
+    // 3. Colorful Climbing Wall with Handhold Studs
+    const createClimbingWall = (
+      x: number,
+      z: number,
+      rot: number,
+      wallColor: number,
+      frameColor: number,
+      baseY = 0
+    ) => {
+      const g = new THREE.Group();
+      const wall = new THREE.Mesh(
+        new THREE.BoxGeometry(4.6, 4.4, 0.95),
+        makeGlossyInflatableMat(wallColor)
+      );
+      wall.position.y = 2.2;
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      g.add(wall);
+
+      [-2.35, 2.35].forEach(px => {
+        const post = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.62, 4.6, 14),
+          makeGlossyInflatableMat(frameColor)
+        );
+        post.position.set(px, 2.3, 0);
+        g.add(post);
+      });
+
+      const holdColors = [0xfacc15, 0xec4899, 0x38bdf8, 0x4ade80, 0xffffff];
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 4; c++) {
+          const hold = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 10, 10),
+            makeGlossyInflatableMat(holdColors[(r * 4 + c) % holdColors.length])
+          );
+          hold.position.set(-1.4 + c * 0.95 + (r % 2) * 0.2, 0.95 + r * 1.15, 0.52);
+          g.add(hold);
+        }
+      }
+
+      g.position.set(x, baseY, z);
+      g.rotation.y = rot;
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, 2.4, baseY + 4.5, baseY);
+    };
+
+    // 4. Inflatable Arch / Walkthrough Tunnel
+    const createInflatableArch = (
+      x: number,
+      z: number,
+      rot: number,
+      archColor: number,
+      stripeColor: number,
+      baseY = 0
+    ) => {
+      const g = new THREE.Group();
+      const span = 3.2;
+      const legH = 4.2;
+      const legMat = makeGlossyInflatableMat(archColor);
+      const stripeMat = makeGlossyInflatableMat(stripeColor);
+
+      [-span, span].forEach(lx => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.08, legH, 18), legMat);
+        leg.position.set(lx, legH / 2, 0);
+        leg.castShadow = true;
+        g.add(leg);
+
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.02, 0.22, 10, 20), stripeMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.set(lx, legH * 0.55, 0);
+        g.add(ring);
+      });
+
+      const topBeam = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.98, span * 2, 14, 20),
+        stripeMat
+      );
+      topBeam.rotation.z = Math.PI / 2;
+      topBeam.position.set(0, legH + 0.3, 0);
+      topBeam.castShadow = true;
+      g.add(topBeam);
+
+      g.position.set(x, baseY, z);
+      g.rotation.y = rot;
+      dynamicArenaGroup.add(g);
+      const cosR = Math.cos(rot);
+      const sinR = Math.sin(rot);
+      [-span, span].forEach(lx => {
+        addObstacleCollider(
+          Number((x + lx * cosR).toFixed(2)),
+          Number((z - lx * sinR).toFixed(2)),
+          1.15,
+          baseY + legH + 1.1,
+          baseY
+        );
+      });
+    };
+
+    // 5. Zigzag Inflatable Obstacle Wall
+    const createZigzagWall = (
+      x: number,
+      z: number,
+      rot: number,
+      c1: number,
+      c2: number,
+      baseY = 0
+    ) => {
+      const g = new THREE.Group();
+      [-1, 1].forEach((dir, idx) => {
+        const panel = new THREE.Mesh(
+          new THREE.BoxGeometry(3.2, 3.6, 0.85),
+          makeGlossyInflatableMat(idx === 0 ? c1 : c2)
+        );
+        panel.position.set(dir * 1.2, 1.8, dir * 0.45);
+        panel.rotation.y = dir * 0.42;
+        panel.castShadow = true;
+        panel.receiveShadow = true;
+        g.add(panel);
+      });
+      const centerPost = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.62, 0.68, 3.9, 16),
+        makeGlossyInflatableMat(0xfacc15)
+      );
+      centerPost.position.y = 1.95;
+      g.add(centerPost);
+
+      g.position.set(x, baseY, z);
+      g.rotation.y = rot;
+      dynamicArenaGroup.add(g);
+      addObstacleCollider(x, z, 2.45, baseY + 3.8, baseY);
+    };
+
+    // Interactive Arena Mechanics Arrays (Trampolines, Turbo Speed Boost Pads & Rotating Wipeout Sweepers)
+    const trampolines: Array<{
+      x: number;
+      z: number;
+      baseY: number;
+      r: number;
+      bounceVy: number;
+      colorHex: number;
+      mesh: THREE.Group;
+      matMesh?: THREE.Object3D;
+      pulseRing?: THREE.Object3D;
+      lastTriggeredAt?: number;
+    }> = [];
+    const boostPads: Array<{
+      x: number;
+      z: number;
+      baseY: number;
+      r: number;
+      rotY: number;
+      mesh: THREE.Group;
+      lastTriggeredAt?: number;
+    }> = [];
+    const spinningHazards: Array<{
+      x: number;
+      z: number;
+      baseY: number;
+      armLen: number;
+      speed: number;
+      angle: number;
+      pivot: THREE.Group;
+    }> = [];
+
+    // 6. Interactive 3D Super-Bounce Trampoline Pad (Launches Hamsters High into the Air onto Upper Decks!)
+    const createTrampolinePad = (
+      x: number,
+      z: number,
+      baseY: number = 0,
+      radius: number = 2.65,
+      bounceVy: number = 22.8,
+      ringColor: number = 0xec4899,
+      glowColor: number = 0x38bdf8
+    ) => {
+      const tg = new THREE.Group();
+      tg.position.set(x, baseY, z);
+
+      // Sturdy Metallic Leg Frame
+      const legMat = new THREE.MeshStandardMaterial({
+        color: 0x334155,
+        metalness: 0.75,
+        roughness: 0.25
+      });
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2;
+        const leg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.14, 0.18, 0.56, 10),
+          legMat
+        );
+        leg.position.set(Math.cos(ang) * (radius * 0.88), 0.28, Math.sin(ang) * (radius * 0.88));
+        tg.add(leg);
+      }
+
+      // Padded Inflatable Outer Safety Cushion Ring
+      const cushionRing = new THREE.Mesh(
+        new THREE.TorusGeometry(radius * 0.92, 0.34, 14, 28),
+        makeGlossyInflatableMat(ringColor, 0.16)
+      );
+      cushionRing.rotation.x = Math.PI / 2;
+      cushionRing.position.y = 0.56;
+      cushionRing.castShadow = true;
+      tg.add(cushionRing);
+
+      // Taut Elastic Jump Bed Mat + Neon Bullseye Target Rings
+      const matGroup = new THREE.Group();
+      matGroup.position.y = 0.54;
+      const bedMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius * 0.78, radius * 0.78, 0.1, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0x0f172a,
+          roughness: 0.55,
+          metalness: 0.1
+        })
+      );
+      matGroup.add(bedMesh);
+
+      const bullseyeOuter = new THREE.Mesh(
+        new THREE.RingGeometry(radius * 0.42, radius * 0.58, 24),
+        new THREE.MeshBasicMaterial({ color: glowColor, side: THREE.DoubleSide })
+      );
+      bullseyeOuter.rotation.x = -Math.PI / 2;
+      bullseyeOuter.position.y = 0.06;
+      matGroup.add(bullseyeOuter);
+
+      const bullseyeCenter = new THREE.Mesh(
+        new THREE.CircleGeometry(radius * 0.24, 20),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide })
+      );
+      bullseyeCenter.rotation.x = -Math.PI / 2;
+      bullseyeCenter.position.y = 0.065;
+      matGroup.add(bullseyeCenter);
+      tg.add(matGroup);
+
+      // Floating Glowing Upward Bounce Halo Ring
+      const pulseRing = new THREE.Mesh(
+        new THREE.TorusGeometry(radius * 0.68, 0.08, 10, 24),
+        new THREE.MeshBasicMaterial({
+          color: glowColor,
+          transparent: true,
+          opacity: 0.82
+        })
+      );
+      pulseRing.rotation.x = Math.PI / 2;
+      pulseRing.position.y = 1.05;
+      tg.add(pulseRing);
+
+      dynamicArenaGroup.add(tg);
+      trampolines.push({
+        x,
+        z,
+        baseY,
+        r: radius * 0.96,
+        bounceVy,
+        colorHex: glowColor,
+        mesh: tg,
+        matMesh: matGroup,
+        pulseRing,
+        lastTriggeredAt: 0
+      });
+    };
+
+    // 7. Interactive Turbo Speed Boost Strip (Grants 1.55x Speed Burst!)
+    const createSpeedBoostPad = (
+      x: number,
+      z: number,
+      baseY: number = 0,
+      rotY: number = 0
+    ) => {
+      const bg = new THREE.Group();
+      bg.position.set(x, baseY + 0.04, z);
+      bg.rotation.y = rotY;
+
+      const basePlate = new THREE.Mesh(
+        new THREE.BoxGeometry(3.2, 0.12, 4.8),
+        makeGlossyInflatableMat(0x0f172a, 0.25)
+      );
+      basePlate.position.y = 0.06;
+      bg.add(basePlate);
+
+      const borderRailL = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.2, 4.8),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+      );
+      borderRailL.position.set(-1.5, 0.12, 0);
+      bg.add(borderRailL);
+
+      const borderRailR = borderRailL.clone();
+      borderRailR.position.x = 1.5;
+      bg.add(borderRailR);
+
+      // 3 Glowing Neon Chevron Arrows
+      [-1.3, 0, 1.3].forEach((cz, idx) => {
+        const chev = new THREE.Group();
+        chev.position.set(0, 0.14, cz);
+        const col = idx === 1 ? 0xfacc15 : 0x4ade80;
+        const barL = new THREE.Mesh(
+          new THREE.BoxGeometry(1.15, 0.06, 0.34),
+          new THREE.MeshBasicMaterial({ color: col })
+        );
+        barL.position.set(-0.42, 0, 0);
+        barL.rotation.y = 0.52;
+        const barR = new THREE.Mesh(
+          new THREE.BoxGeometry(1.15, 0.06, 0.34),
+          new THREE.MeshBasicMaterial({ color: col })
+        );
+        barR.position.set(0.42, 0, 0);
+        barR.rotation.y = -0.52;
+        chev.add(barL, barR);
+        bg.add(chev);
+      });
+
+      dynamicArenaGroup.add(bg);
+      boostPads.push({
+        x,
+        z,
+        baseY,
+        r: 2.35,
+        rotY,
+        mesh: bg,
+        lastTriggeredAt: 0
+      });
+    };
+
+    // 8. Rotating Wipeout Padded Sweeper Arm Obstacle
+    const createSpinningSweeper = (
+      x: number,
+      z: number,
+      baseY: number = 0,
+      armLen: number = 5.4,
+      speed: number = 1.65,
+      hubColor: number = 0xec4899,
+      armColor: number = 0xfacc15
+    ) => {
+      const sg = new THREE.Group();
+      sg.position.set(x, baseY, z);
+
+      const pedestal = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.25, 1.45, 2.2, 20),
+        makeGlossyInflatableMat(hubColor, 0.18)
+      );
+      pedestal.position.y = 1.1;
+      pedestal.castShadow = true;
+      sg.add(pedestal);
+
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(1.28, 18, 14),
+        makeGlossyInflatableMat(0x2563eb, 0.16)
+      );
+      cap.position.y = 2.25;
+      sg.add(cap);
+
+      const pivot = new THREE.Group();
+      pivot.position.y = 1.25;
+      const arm = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.46, armLen * 2, 12, 18),
+        makeGlossyInflatableMat(armColor, 0.16)
+      );
+      arm.rotation.z = Math.PI / 2;
+      arm.castShadow = true;
+      pivot.add(arm);
+
+      [-armLen, armLen].forEach(ex => {
+        const tip = new THREE.Mesh(
+          new THREE.SphereGeometry(0.62, 14, 12),
+          makeGlossyInflatableMat(0xec4899, 0.15)
+        );
+        tip.position.set(ex, 0, 0);
+        pivot.add(tip);
+      });
+
+      sg.add(pivot);
+      dynamicArenaGroup.add(sg);
+      addObstacleCollider(x, z, 1.45, baseY + 2.8, baseY);
+      spinningHazards.push({
+        x,
+        z,
+        baseY,
+        armLen,
+        speed,
+        angle: Math.random() * Math.PI * 2,
+        pivot
+      });
+    };
+
+    // 9. Giant Curved Inflatable Tube Slide (Connects Elevated Decks to Ground!)
+    const createTubeSlide = (
+      x: number,
+      z: number,
+      topY: number,
+      rotY: number,
+      slideColor: number = 0xfacc15,
+      railColor: number = 0xec4899
+    ) => {
+      const slG = new THREE.Group();
+      slG.position.set(x, 0, z);
+      slG.rotation.y = rotY;
+
+      const runLen = 8.4;
+      const slopeAng = Math.atan2(topY, runLen);
+      const slideLen = Math.hypot(runLen, topY);
+
+      const chute = new THREE.Mesh(
+        new THREE.BoxGeometry(2.8, 0.28, slideLen),
+        makeGlossyInflatableMat(slideColor, 0.15)
+      );
+      chute.position.set(0, topY / 2, runLen / 2);
+      chute.rotation.x = slopeAng;
+      chute.castShadow = true;
+      slG.add(chute);
+
+      [-1.45, 1.45].forEach(rx => {
+        const tubeRail = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.45, slideLen, 12, 18),
+          makeGlossyInflatableMat(railColor, 0.15)
+        );
+        tubeRail.position.set(rx, topY / 2 + 0.35, runLen / 2);
+        tubeRail.rotation.x = Math.PI / 2 + slopeAng;
+        tubeRail.castShadow = true;
+        slG.add(tubeRail);
+      });
+
+      // Entry Arch Hood at Top of Slide
+      const arch = new THREE.Mesh(
+        new THREE.TorusGeometry(1.5, 0.36, 12, 22, Math.PI),
+        makeGlossyInflatableMat(0x06b6d4, 0.16)
+      );
+      arch.position.set(0, topY + 0.2, 0.2);
+      slG.add(arch);
+
+      dynamicArenaGroup.add(slG);
     };
 
     // =========================================================
-    // EXPANDED CHAMPIONSHIP SPEEDBALL ARENA (116m x 96m MULTI-ZONE FIELD)
-    // 1. Wide Shield Fortresses + Flanks directly in front of Left, Right, Bottom & Top spawns
-    // 2. Center X-Tower + 4 Wing X-Bunkers + Multi-Ring Diagonal Hides + Deep Corner Castles
+    // 1. BUILD MEGA INFLATABLE BATTLE STADIUM ('stadium' preset)
+    // Features: Higher 4.6m Main Deck + 8.6m Upper Sky Citadel Deck + Towering 13.5m Spires + Interactive Trampolines + Boost Pads + Tube Slides!
     // =========================================================
-    // 1. Direct Front-of-Spawn Fortress Shield Walls (Blocking all direct cross-map spawn views)
-    createWideSpawnFortress(-35.0, 0, Math.PI / 2, '#e11d48', '#ffffff', 'FORTRESS');
-    createWideSpawnFortress(35.0, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'FORTRESS');
-    createWideSpawnFortress(0, 27.5, 0, '#10b981', '#ffffff', 'FORTRESS');
-    createWideSpawnFortress(0, -27.5, 0, '#d97706', '#fef08a', 'FORTRESS');
+    const buildInflatableBattleStadiumMap = () => {
+      const deckY = 4.6;
+      const upperDeckY = 8.6;
+      const platW = 31.6;
+      const platD = 21.6;
+      const halfW = platW / 2; // 15.8
+      const halfD = platD / 2; // 10.8
 
-    // 2. Spawn Flank Fortress Shields (Cover left & right exit lanes directly in front of every spawn)
-    createLowSnakeShield(-37.0, -13.5, Math.PI / 2 + 0.32, '#e11d48', '#facc15');
-    createLowSnakeShield(-37.0, 13.5, Math.PI / 2 - 0.32, '#e11d48', '#ffffff');
-    createLowSnakeShield(37.0, -13.5, Math.PI / 2 - 0.32, '#2563eb', '#facc15');
-    createLowSnakeShield(37.0, 13.5, Math.PI / 2 + 0.32, '#2563eb', '#38bdf8');
-    createLowSnakeShield(-13.5, 29.0, -0.32, '#10b981', '#ffffff');
-    createLowSnakeShield(13.5, 29.0, 0.32, '#10b981', '#facc15');
-    createLowSnakeShield(-13.5, -29.0, 0.32, '#f59e0b', '#0f172a');
-    createLowSnakeShield(13.5, -29.0, -0.32, '#f59e0b', '#ffffff');
+      const castleGroup = new THREE.Group();
 
-    // 3. Center Sightline Breaker + 4 Wing X-Bunker Hubs + Inner Ring Cover
-    createCenterXBunker(0, 0, 1.14);
-    createCenterXBunker(-22.5, 0, 0.94);
-    createCenterXBunker(22.5, 0, 0.94);
-    createCenterXBunker(0, -16.5, 0.92);
-    createCenterXBunker(0, 16.5, 0.92);
+      // 1. Lower Level / Underground Combat Hall Floor Pad (`y = 0.02`, Tall 4.2m headroom!)
+      const lowerFloor = new THREE.Mesh(
+        new THREE.BoxGeometry(platW + 1.6, 0.12, platD + 1.6),
+        makeGlossyInflatableMat(0x0284c7, 0.35)
+      );
+      lowerFloor.position.set(0, 0.06, 0);
+      lowerFloor.receiveShadow = true;
+      castleGroup.add(lowerFloor);
 
-    createLowSnakeShield(-11.8, 0, Math.PI / 2, '#0ea5e9', '#ffffff');
-    createLowSnakeShield(11.8, 0, Math.PI / 2, '#f43f5e', '#facc15');
-    createLowSnakeShield(0, -8.8, 0, '#f59e0b', '#0f172a');
-    createLowSnakeShield(0, 8.8, 0, '#10b981', '#0f172a');
+      // 2. Central Elevated Battle Platform Deck (`y = 4.6m`, Bright Electric Blue with Pink & Purple Bolsters)
+      const topDeck = new THREE.Mesh(
+        new THREE.BoxGeometry(platW, 0.44, platD),
+        makeGlossyInflatableMat(0x2563eb, 0.25)
+      );
+      topDeck.position.set(0, deckY - 0.22, 0);
+      topDeck.castShadow = true;
+      topDeck.receiveShadow = true;
+      castleGroup.add(topDeck);
 
-    // 4. Inner Diagonal Tall Cans & Mid-Quadrant Tactical Doritos
-    createCan(-11.2, -9.2, '#eab308', '#0f172a', '#fef08a');
-    createCan(11.2, -9.2, '#0ea5e9', '#0f172a', '#bae6fd');
-    createCan(-11.2, 9.2, '#10b981', '#0f172a', '#a7f3d0');
-    createCan(11.2, 9.2, '#f43f5e', '#0f172a', '#fecdd3');
+      // Rounded Inflatable Edge Bumpers around the 4.6m Elevated Platform
+      const edgeMatPink = makeGlossyInflatableMat(0xec4899, 0.18);
+      const edgeMatPurple = makeGlossyInflatableMat(0x9333ea, 0.18);
+      [-halfD, halfD].forEach((ez, idx) => {
+        const beam = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.4, platW - 1.2, 12, 18),
+          idx === 0 ? edgeMatPurple : edgeMatPink
+        );
+        beam.rotation.z = Math.PI / 2;
+        beam.position.set(0, deckY + 0.05, ez);
+        castleGroup.add(beam);
+      });
+      [-halfW, halfW].forEach((ex, idx) => {
+        const beam = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.4, platD - 1.2, 12, 18),
+          idx === 0 ? edgeMatPink : edgeMatPurple
+        );
+        beam.rotation.x = Math.PI / 2;
+        beam.position.set(ex, deckY + 0.05, 0);
+        castleGroup.add(beam);
+      });
 
-    createDorito(-22.5, -14.5, '#0284c7', '#facc15', '#ffffff', 0.35);
-    createDorito(22.5, -14.5, '#f43f5e', '#facc15', '#ffffff', -0.35);
-    createDorito(-22.5, 14.5, '#10b981', '#facc15', '#ffffff', -0.35);
-    createDorito(22.5, 14.5, '#d97706', '#38bdf8', '#ffffff', 0.35);
+      // 2B. Second-Story Upper "Sky Citadel" Penthouse Platform (`y = 8.6m`, 15.6m x 11.6m)
+      const upperW = 15.6;
+      const upperD = 11.6;
+      const skyCitadelDeck = new THREE.Mesh(
+        new THREE.BoxGeometry(upperW, 0.4, upperD),
+        makeGlossyInflatableMat(0x9333ea, 0.22)
+      );
+      skyCitadelDeck.position.set(0, upperDeckY - 0.2, 0);
+      skyCitadelDeck.castShadow = true;
+      skyCitadelDeck.receiveShadow = true;
+      castleGroup.add(skyCitadelDeck);
 
-    // 5. Mid-Wing Snake Beams & Outer Wing Pro Cans (Expanded 116m x 96m Flanking Lanes)
-    createLowSnakeShield(-24.0, -28.0, 0.18, '#0284c7', '#facc15');
-    createLowSnakeShield(24.0, -28.0, -0.18, '#e11d48', '#ffffff');
-    createLowSnakeShield(-24.0, 28.0, -0.18, '#10b981', '#facc15');
-    createLowSnakeShield(24.0, 28.0, 0.18, '#d97706', '#ffffff');
+      // Golden & Cyan Trim Bolsters around the 8.6m Sky Citadel
+      [-upperD / 2, upperD / 2].forEach(ez => {
+        const beam = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.32, upperW - 0.6, 10, 16),
+          makeGlossyInflatableMat(0xfacc15, 0.18)
+        );
+        beam.rotation.z = Math.PI / 2;
+        beam.position.set(0, upperDeckY + 0.05, ez);
+        castleGroup.add(beam);
+      });
+      [-upperW / 2, upperW / 2].forEach(ex => {
+        const beam = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.32, upperD - 0.6, 10, 16),
+          makeGlossyInflatableMat(0x06b6d4, 0.18)
+        );
+        beam.rotation.x = Math.PI / 2;
+        beam.position.set(ex, upperDeckY + 0.05, 0);
+        castleGroup.add(beam);
+      });
 
-    createCan(-32.0, -21.5, '#e11d48', '#0f172a', '#fecdd3');
-    createCan(32.0, -21.5, '#2563eb', '#0f172a', '#bfdbfe');
-    createCan(-32.0, 21.5, '#10b981', '#0f172a', '#a7f3d0');
-    createCan(32.0, 21.5, '#f59e0b', '#0f172a', '#fef08a');
+      // 4 Columns Supporting the 8.6m Sky Citadel from the 4.6m Deck + Sky Ramp (z: 10.4 -> 5.6)
+      [
+        [-6.8, -4.8],
+        [6.8, -4.8],
+        [-6.8, 4.8],
+        [6.8, 4.8]
+      ].forEach(([ux, uz], idx) => {
+        const uCol = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.68, 0.76, upperDeckY - deckY, 16),
+          makeGlossyInflatableMat(idx % 2 === 0 ? 0x06b6d4 : 0xec4899, 0.18)
+        );
+        uCol.position.set(ux, deckY + (upperDeckY - deckY) / 2, uz);
+        castleGroup.add(uCol);
+        addObstacleCollider(ux, uz, 0.85, upperDeckY, deckY);
+      });
 
-    // 6. Deep Corner Pro Cans & Perimeter Wing Doritos
-    createCan(-44.0, -33.0, '#eab308', '#0f172a', '#fef08a');
-    createCan(44.0, -33.0, '#0ea5e9', '#0f172a', '#bae6fd');
-    createCan(-44.0, 33.0, '#10b981', '#0f172a', '#a7f3d0');
-    createCan(44.0, 33.0, '#f43f5e', '#0f172a', '#fecdd3');
+      // Upper Sky Ramp connecting 4.6m Deck (`z = 10.4`) up to 8.6m Sky Citadel (`z = 5.6`)
+      const skyRampLen = Math.hypot(4.8, upperDeckY - deckY);
+      const skyRampAng = Math.atan2(upperDeckY - deckY, 4.8);
+      const skyRampMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(5.2, 0.3, skyRampLen),
+        makeGlossyInflatableMat(0xfacc15, 0.2)
+      );
+      skyRampMesh.position.set(0, (deckY + upperDeckY) / 2, 8.0);
+      skyRampMesh.rotation.x = skyRampAng;
+      castleGroup.add(skyRampMesh);
 
-    createDorito(-43.0, -21.0, '#e11d48', '#facc15', '#ffffff', 0.45);
-    createDorito(43.0, -21.0, '#2563eb', '#facc15', '#ffffff', -0.45);
-    createDorito(-43.0, 21.0, '#10b981', '#facc15', '#ffffff', -0.45);
-    createDorito(43.0, 21.0, '#d97706', '#38bdf8', '#ffffff', 0.45);
+      // 3. Thick Inflatable Support Columns for the Underground Combat Zone (`y = 0 -> 4.6m`)
+      const supportCoords: Array<[number, number, number]> = [
+        [-14.6, -9.6, 0xec4899],
+        [14.6, -9.6, 0xec4899],
+        [-14.6, 9.6, 0xec4899],
+        [14.6, 9.6, 0xec4899],
+        [-4.2, -9.6, 0x9333ea],
+        [4.2, -9.6, 0x9333ea],
+        [-4.2, 9.6, 0x9333ea],
+        [4.2, 9.6, 0x9333ea],
+        [-14.6, -4.4, 0x9333ea],
+        [-14.6, 4.4, 0x9333ea],
+        [14.6, -4.4, 0x9333ea],
+        [14.6, 4.4, 0x9333ea]
+      ];
+      supportCoords.forEach(([sx, sz, colHex]) => {
+        const col = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.92, 1.02, deckY, 18),
+          makeGlossyInflatableMat(colHex)
+        );
+        col.position.set(sx, deckY / 2, sz);
+        col.castShadow = true;
+        col.receiveShadow = true;
+        castleGroup.add(col);
 
-    createDorito(-16.5, -36.5, '#0284c7', '#facc15', '#ffffff', 0.2);
-    createDorito(16.5, -36.5, '#f43f5e', '#facc15', '#ffffff', -0.2);
-    createDorito(-16.5, 36.5, '#10b981', '#facc15', '#ffffff', -0.2);
-    createDorito(16.5, 36.5, '#d97706', '#38bdf8', '#ffffff', 0.2);
+        const collar = new THREE.Mesh(
+          new THREE.TorusGeometry(1.04, 0.22, 10, 20),
+          makeGlossyInflatableMat(0xfacc15)
+        );
+        collar.rotation.x = Math.PI / 2;
+        collar.position.set(sx, 0.22, sz);
+        castleGroup.add(collar);
+
+        addObstacleCollider(sx, sz, 1.08, deckY, 0);
+      });
+
+      // Underground Lower-Level Defensive Barriers
+      [
+        [-7.2, 0, 0xec4899],
+        [7.2, 0, 0x06b6d4],
+        [0, -4.4, 0xfacc15],
+        [0, 4.4, 0x10b981]
+      ].forEach(([bx, bz, bCol]) => {
+        const uBarrier = new THREE.Mesh(
+          new THREE.BoxGeometry(3.2, 2.2, 1.2),
+          makeGlossyInflatableMat(bCol, 0.2)
+        );
+        uBarrier.position.set(bx, 1.1, bz);
+        uBarrier.castShadow = true;
+        castleGroup.add(uBarrier);
+        addObstacleCollider(bx, bz, 1.55, 2.25, 0);
+      });
+
+      // 4. Giant Towering Inflatable Castle Spires (Soaring 13.5m above the 4.6m deck = 18.1m total height!)
+      const buildCastleTower = (
+        tx: number,
+        tz: number,
+        baseLevelY: number,
+        radius: number,
+        towerH: number,
+        flagColor: number,
+        phase: number
+      ) => {
+        const tg = new THREE.Group();
+        tg.position.set(tx, baseLevelY, tz);
+
+        const col = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 0.9, radius * 1.05, towerH, 24),
+          makeGlossyInflatableMat(0xec4899, 0.15)
+        );
+        col.position.y = towerH / 2;
+        col.castShadow = true;
+        col.receiveShadow = true;
+        tg.add(col);
+
+        // Inflated horizontal rib rings
+        [0.2, 0.45, 0.7, 0.9].forEach((frac, rIdx) => {
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(radius * 1.02, 0.26, 12, 24),
+            makeGlossyInflatableMat(rIdx % 2 === 1 ? 0x9333ea : 0xfacc15, 0.16)
+          );
+          ring.rotation.x = Math.PI / 2;
+          ring.position.y = towerH * frac;
+          tg.add(ring);
+        });
+
+        // Large Rounded Electric-Blue Crown Cap
+        const blueCap = new THREE.Mesh(
+          new THREE.SphereGeometry(radius * 1.28, 22, 18),
+          makeGlossyInflatableMat(0x2563eb, 0.14)
+        );
+        blueCap.scale.set(1, 0.82, 1);
+        blueCap.position.y = towerH + radius * 0.36;
+        blueCap.castShadow = true;
+        tg.add(blueCap);
+
+        // Flagpole & Gently Waving Triangular Pennant Flag
+        const pole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.11, 3.2, 10),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
+        );
+        pole.position.y = towerH + radius * 1.15 + 1.3;
+        tg.add(pole);
+
+        const flagPivot = new THREE.Group();
+        flagPivot.position.set(0, towerH + radius * 1.15 + 2.3, 0);
+        const flagCone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.68, 2.05, 3),
+          new THREE.MeshStandardMaterial({
+            color: flagColor,
+            emissive: flagColor,
+            emissiveIntensity: 0.22,
+            roughness: 0.3
+          })
+        );
+        flagCone.rotation.z = -Math.PI / 2;
+        flagCone.position.x = 1.0;
+        flagPivot.add(flagCone);
+        tg.add(flagPivot);
+        animatedFlags.push({ mesh: flagPivot, phase });
+
+        castleGroup.add(tg);
+        addObstacleCollider(tx, tz, radius * 1.05, baseLevelY + towerH + 2.5, baseLevelY);
+      };
+
+      // 4 Colossal Corner Castle Spires + 2 Midfield Turrets + 2 Upper Sky Citadel Pinnacles
+      buildCastleTower(-14.6, -9.6, deckY, 2.15, 13.2, 0xef4444, 0.0);
+      buildCastleTower(14.6, -9.6, deckY, 2.15, 13.2, 0x2563eb, 1.4);
+      buildCastleTower(-14.6, 9.6, deckY, 2.15, 13.2, 0xfacc15, 2.8);
+      buildCastleTower(14.6, 9.6, deckY, 2.15, 13.2, 0xef4444, 4.2);
+      buildCastleTower(0, -10.0, deckY, 1.65, 10.4, 0x38bdf8, 0.8);
+      buildCastleTower(0, 10.0, deckY, 1.65, 10.4, 0xfacc15, 3.5);
+      buildCastleTower(-6.8, -4.8, upperDeckY, 1.35, 8.8, 0xec4899, 2.1);
+      buildCastleTower(6.8, -4.8, upperDeckY, 1.35, 8.8, 0x4ade80, 5.0);
+
+      // 5. Blue Mesh Safety Netting & Padded Castle Walls Between Towers
+      const addSafetyNetSpan = (
+        x1: number,
+        z1: number,
+        x2: number,
+        z2: number,
+        wallColor: number
+      ) => {
+        const cx = (x1 + x2) / 2;
+        const cz = (z1 + z2) / 2;
+        const span = Math.hypot(x2 - x1, z2 - z1);
+        const ang = Math.atan2(x2 - x1, z2 - z1) - Math.PI / 2;
+
+        const sg = new THREE.Group();
+        sg.position.set(cx, deckY, cz);
+        sg.rotation.y = -ang;
+
+        const lowWall = new THREE.Mesh(
+          new THREE.BoxGeometry(span, 1.45, 0.74),
+          makeGlossyInflatableMat(wallColor, 0.2)
+        );
+        lowWall.position.y = 0.725;
+        lowWall.castShadow = true;
+        sg.add(lowWall);
+
+        const topTube = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.26, Math.max(0.5, span - 0.6), 10, 16),
+          makeGlossyInflatableMat(0x2563eb, 0.18)
+        );
+        topTube.rotation.z = Math.PI / 2;
+        topTube.position.y = 6.2;
+        sg.add(topTube);
+
+        const netPlane = new THREE.Mesh(
+          new THREE.PlaneGeometry(Math.max(0.5, span - 0.4), 4.6),
+          safetyNetMat
+        );
+        netPlane.position.y = 3.75;
+        sg.add(netPlane);
+
+        castleGroup.add(sg);
+      };
+
+      addSafetyNetSpan(-14.6, 9.6, -10.8, 9.6, 0x9333ea);
+      addSafetyNetSpan(-4.6, 9.6, 4.6, 9.6, 0xec4899);
+      addSafetyNetSpan(10.8, 9.6, 14.6, 9.6, 0x9333ea);
+      addSafetyNetSpan(-14.6, -9.6, -10.8, -9.6, 0x06b6d4);
+      addSafetyNetSpan(-4.6, -9.6, 4.6, -9.6, 0x9333ea);
+      addSafetyNetSpan(10.8, -9.6, 14.6, -9.6, 0x06b6d4);
+      addSafetyNetSpan(-14.6, -9.6, -14.6, -4.2, 0xec4899);
+      addSafetyNetSpan(-14.6, 4.2, -14.6, 9.6, 0xec4899);
+      addSafetyNetSpan(14.6, -9.6, 14.6, -4.2, 0x2563eb);
+      addSafetyNetSpan(14.6, 4.2, 14.6, 9.6, 0x2563eb);
+
+      // 6. Two Prominent Wide Front Staircases (z: 20.6 -> 10.6 at x = -7.8 and x = +7.8, climbing to 4.6m)
+      const buildFrontStaircase = (centerX: number) => {
+        const stG = new THREE.Group();
+        const stairW = 5.2;
+        const stepCount = 11;
+        const zStart = 20.6;
+        const zEnd = 10.8;
+        const stepDepth = (zStart - zEnd) / stepCount;
+        const stepRise = deckY / stepCount;
+
+        const yellowStepMat = makeGlossyInflatableMat(0xfacc15, 0.22);
+        const blueTopMat = makeGlossyInflatableMat(0x2563eb, 0.22);
+        const pinkRailMat = makeGlossyInflatableMat(0xec4899, 0.16);
+
+        for (let s = 0; s < stepCount; s++) {
+          const curH = (s + 1) * stepRise;
+          const sz = zStart - (s + 0.5) * stepDepth;
+
+          const stepBlock = new THREE.Mesh(
+            new THREE.BoxGeometry(stairW, curH, stepDepth * 0.96),
+            yellowStepMat
+          );
+          stepBlock.position.set(centerX, curH / 2, sz);
+          stepBlock.castShadow = true;
+          stepBlock.receiveShadow = true;
+          stG.add(stepBlock);
+
+          const tread = new THREE.Mesh(
+            new THREE.BoxGeometry(stairW + 0.08, 0.12, stepDepth * 0.92),
+            blueTopMat
+          );
+          tread.position.set(centerX, curH + 0.04, sz);
+          tread.receiveShadow = true;
+          stG.add(tread);
+        }
+
+        [-stairW / 2 - 0.35, stairW / 2 + 0.35].forEach(rx => {
+          const rail = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.42, 11.2, 12, 18),
+            pinkRailMat
+          );
+          rail.position.set(centerX + rx, deckY * 0.56 + 0.65, (zStart + zEnd) / 2);
+          rail.rotation.x = Math.PI / 2 - Math.atan2(deckY, zStart - zEnd);
+          rail.castShadow = true;
+          stG.add(rail);
+        });
+
+        castleGroup.add(stG);
+      };
+      buildFrontStaircase(-7.8);
+      buildFrontStaircase(7.8);
+
+      // 7A. Left Staircase (West / Red Side: x = -24.8 -> -15.8, z = 0)
+      const westStairGroup = new THREE.Group();
+      const westSteps = 10;
+      for (let s = 0; s < westSteps; s++) {
+        const curH = ((s + 1) / westSteps) * deckY;
+        const sx = -24.8 + (s + 0.5) * (9.0 / westSteps);
+        const riser = new THREE.Mesh(
+          new THREE.BoxGeometry(9.0 / westSteps, curH, 6.8),
+          makeGlossyInflatableMat(0xfacc15, 0.22)
+        );
+        riser.position.set(sx, curH / 2, 0);
+        westStairGroup.add(riser);
+
+        const tread = new THREE.Mesh(
+          new THREE.BoxGeometry(9.0 / westSteps, 0.12, 6.85),
+          makeGlossyInflatableMat(0x06b6d4, 0.2)
+        );
+        tread.position.set(sx, curH + 0.04, 0);
+        westStairGroup.add(tread);
+      }
+      [-3.65, 3.65].forEach(rz => {
+        const rail = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.38, 10.2, 12, 16),
+          makeGlossyInflatableMat(0xec4899, 0.16)
+        );
+        rail.position.set(-20.3, deckY * 0.56 + 0.55, rz);
+        rail.rotation.z = Math.PI / 2 - Math.atan2(deckY, 9.0);
+        westStairGroup.add(rail);
+      });
+      castleGroup.add(westStairGroup);
+
+      // 7B. Right Sloped Climbing Ramp (East / Blue Side: x = 24.8 -> 15.8, z = 0)
+      const eastRampGroup = new THREE.Group();
+      const rampSlopeAngle = Math.atan2(deckY, 9.0);
+      const rampHypot = Math.hypot(9.0, deckY);
+      const rampDeck = new THREE.Mesh(
+        new THREE.BoxGeometry(rampHypot, 0.35, 6.8),
+        makeGlossyInflatableMat(0x14b8a6, 0.24)
+      );
+      rampDeck.position.set(20.3, deckY / 2, 0);
+      rampDeck.rotation.z = rampSlopeAngle;
+      rampDeck.receiveShadow = true;
+      eastRampGroup.add(rampDeck);
+
+      for (let r = 1; r <= 6; r++) {
+        const frac = r / 7;
+        const grip = new THREE.Mesh(
+          new THREE.BoxGeometry(0.24, 0.14, 6.2),
+          makeGlossyInflatableMat(0xfacc15, 0.2)
+        );
+        grip.position.set(24.8 - frac * 9.0, frac * deckY + 0.18, 0);
+        eastRampGroup.add(grip);
+      }
+      [-3.65, 3.65].forEach(rz => {
+        const bolster = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.4, 10.2, 12, 16),
+          makeGlossyInflatableMat(0x9333ea, 0.16)
+        );
+        bolster.position.set(20.3, deckY * 0.56 + 0.52, rz);
+        bolster.rotation.z = Math.PI / 2 + rampSlopeAngle;
+        eastRampGroup.add(bolster);
+      });
+      castleGroup.add(eastRampGroup);
+
+      // 7C. North Jumping Platforms & Side Bridges (x = ±7.8, z = -18.8 -> -10.8)
+      [-7.8, 7.8].forEach((bx, idx) => {
+        const jumpPad = new THREE.Mesh(
+          new THREE.CylinderGeometry(2.6, 2.8, 1.85, 22),
+          makeGlossyInflatableMat(idx === 0 ? 0xf97316 : 0x10b981, 0.2)
+        );
+        jumpPad.position.set(bx, 0.925, -17.2);
+        castleGroup.add(jumpPad);
+
+        const bridgeSlope = Math.atan2(deckY - 1.85, 6.2);
+        const bridgeDeck = new THREE.Mesh(
+          new THREE.BoxGeometry(4.4, 0.3, 6.6),
+          makeGlossyInflatableMat(0x38bdf8, 0.22)
+        );
+        bridgeDeck.position.set(bx, (1.85 + deckY) / 2, -13.8);
+        bridgeDeck.rotation.x = bridgeSlope;
+        castleGroup.add(bridgeDeck);
+      });
+
+      dynamicArenaGroup.add(castleGroup);
+
+      // =========================================================
+      // INTERACTIVE 3D TRAMPOLINES, TURBO BOOST PADS, CURVED SLIDES & SPINNING SWEEPERS IN STADIUM!
+      // =========================================================
+      // 8 Ground-to-Deck Super Trampolines around the castle perimeter (`bounceVy = 23.2` launches straight onto 4.6m Deck or 8.6m Sky Citadel!)
+      createTrampolinePad(-19.5, 13.5, 0, 2.7, 23.2, 0xec4899, 0x38bdf8);
+      createTrampolinePad(19.5, 13.5, 0, 2.7, 23.2, 0x2563eb, 0xfacc15);
+      createTrampolinePad(-19.5, -13.5, 0, 2.7, 23.2, 0x9333ea, 0x4ade80);
+      createTrampolinePad(19.5, -13.5, 0, 2.7, 23.2, 0x10b981, 0xec4899);
+      createTrampolinePad(0, 23.8, 0, 2.85, 23.8, 0xf97316, 0x38bdf8);
+      createTrampolinePad(0, -23.8, 0, 2.85, 23.8, 0x06b6d4, 0xfacc15);
+
+      // 2 Deck-to-Sky-Citadel Trampolines on the 4.6m Platform (`bounceVy = 19.5` launches onto the 8.6m Penthouse Deck!)
+      createTrampolinePad(-11.2, 0, deckY, 2.25, 19.5, 0xec4899, 0xfacc15);
+      createTrampolinePad(11.2, 0, deckY, 2.25, 19.5, 0x38bdf8, 0xfacc15);
+
+      // 2 Giant Curved Inflatable Tube Slides from the 4.6m Deck down to the Courtyard
+      createTubeSlide(-13.2, -10.8, deckY, Math.PI, 0xfacc15, 0xec4899);
+      createTubeSlide(13.2, -10.8, deckY, Math.PI, 0x38bdf8, 0x9333ea);
+
+      // 6 Turbo Speed Boost Pads across the Stadium Lanes & Deck
+      createSpeedBoostPad(-29.5, 0, 0, Math.PI / 2);
+      createSpeedBoostPad(29.5, 0, 0, -Math.PI / 2);
+      createSpeedBoostPad(-14.0, 22.0, 0, 0);
+      createSpeedBoostPad(14.0, 22.0, 0, 0);
+      createSpeedBoostPad(-14.0, -22.0, 0, Math.PI);
+      createSpeedBoostPad(14.0, -22.0, 0, Math.PI);
+
+      // 2 Rotating Wipeout Sweeper Bumpers in the Outer North/South Courtyards
+      createSpinningSweeper(-25.0, 0, 0, 4.2, 1.45, 0xec4899, 0xfacc15);
+      createSpinningSweeper(25.0, 0, 0, 4.2, -1.45, 0x2563eb, 0x38bdf8);
+
+      // =========================================================
+      // ZONE B: ELEVATED DECK (4.6m) & SKY CITADEL (8.6m) OBSTACLES
+      // =========================================================
+      createInflatableArch(0, 0, 0, 0xec4899, 0xfacc15, upperDeckY);
+      createInflatableCube(-4.2, -2.4, 2.1, 0x06b6d4, 0xfacc15, 0.25, upperDeckY);
+      createInflatableCube(4.2, 2.4, 2.1, 0xf97316, 0xffffff, -0.25, upperDeckY);
+
+      createStackedFoamBlocks(-10.8, 5.2, 0.35, [0x9333ea, 0xec4899, 0xfacc15], deckY);
+      createStackedFoamBlocks(10.8, -5.2, -0.35, [0x10b981, 0x06b6d4, 0xfacc15], deckY);
+      createStackedFoamBlocks(-10.8, -5.2, -0.35, [0xec4899, 0x38bdf8, 0xfacc15], deckY);
+      createStackedFoamBlocks(10.8, 5.2, 0.35, [0xf97316, 0x9333ea, 0xffffff], deckY);
+
+      // =========================================================
+      // ZONE A (RED TEAM BASE - WEST) & ZONE C (BLUE TEAM BASE - EAST) + OUTER COURTYARD CLUSTERS
+      // =========================================================
+      // Direct Spawn Fortresses so neither team can spawn-camp across the stadium
+      createWideSpawnFortress(-35.5, 0, Math.PI / 2, '#ec4899', '#facc15', 'RED BASE');
+      createWideSpawnFortress(35.5, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'BLUE BASE');
+      createWideSpawnFortress(0, 29.5, 0, '#10b981', '#ffffff', 'SOUTH');
+      createWideSpawnFortress(0, -29.5, 0, '#f97316', '#fef08a', 'NORTH');
+
+      // Team Lane Giant Inflatable Arches
+      createInflatableArch(-29.0, -14.5, Math.PI / 2 + 0.2, 0xec4899, 0x38bdf8, 0);
+      createInflatableArch(-29.0, 14.5, Math.PI / 2 - 0.2, 0x9333ea, 0xfacc15, 0);
+      createInflatableArch(29.0, -14.5, Math.PI / 2 - 0.2, 0x2563eb, 0xfacc15, 0);
+      createInflatableArch(29.0, 14.5, Math.PI / 2 + 0.2, 0x06b6d4, 0xec4899, 0);
+
+      // Colorful Climbing Walls & Zigzag Walls in Flanking Lanes
+      createClimbingWall(-21.5, -22.5, 0.35, 0xec4899, 0x2563eb, 0);
+      createClimbingWall(21.5, -22.5, -0.35, 0x06b6d4, 0xfacc15, 0);
+      createClimbingWall(-21.5, 22.5, -0.35, 0x9333ea, 0x10b981, 0);
+      createClimbingWall(21.5, 22.5, 0.35, 0xf97316, 0x2563eb, 0);
+
+      createZigzagWall(-38.0, -15.5, 0.5, 0xec4899, 0xfacc15, 0);
+      createZigzagWall(-38.0, 15.5, -0.5, 0x9333ea, 0x06b6d4, 0);
+      createZigzagWall(38.0, -15.5, -0.5, 0x2563eb, 0xfacc15, 0);
+      createZigzagWall(38.0, 15.5, 0.5, 0x14b8a6, 0xec4899, 0);
+
+      // Natural Clusters of Giant Inflatable Cubes, Stacked Foam Blocks, Cylinders & Doritos
+      createInflatableCube(-16.5, 28.5, 3.2, 0xec4899, 0xfacc15, 0.22, 0);
+      createInflatableCube(16.5, 28.5, 3.2, 0x2563eb, 0xffffff, -0.22, 0);
+      createInflatableCube(-16.5, -28.5, 3.2, 0x10b981, 0xfacc15, -0.22, 0);
+      createInflatableCube(16.5, -28.5, 3.2, 0xf97316, 0x06b6d4, 0.22, 0);
+
+      createStackedFoamBlocks(-32.5, -26.5, 0.4, [0xec4899, 0x38bdf8, 0xfacc15], 0);
+      createStackedFoamBlocks(32.5, -26.5, -0.4, [0x2563eb, 0xec4899, 0xfacc15], 0);
+      createStackedFoamBlocks(-32.5, 26.5, -0.4, [0x10b981, 0x9333ea, 0xfacc15], 0);
+      createStackedFoamBlocks(32.5, 26.5, 0.4, [0xf97316, 0x06b6d4, 0xffffff], 0);
+
+      createCan(-44.0, -31.0, '#ec4899', '#2563eb', '#fef08a', 0);
+      createCan(44.0, -31.0, '#06b6d4', '#9333ea', '#bae6fd', 0);
+      createCan(-44.0, 31.0, '#10b981', '#ec4899', '#a7f3d0', 0);
+      createCan(44.0, 31.0, '#f97316', '#2563eb', '#fef08a', 0);
+
+      createDorito(-43.5, -19.5, '#ec4899', '#facc15', '#ffffff', 0.45, 0);
+      createDorito(43.5, -19.5, '#2563eb', '#facc15', '#ffffff', -0.45, 0);
+      createDorito(-43.5, 19.5, '#9333ea', '#06b6d4', '#ffffff', -0.45, 0);
+      createDorito(43.5, 19.5, '#10b981', '#facc15', '#ffffff', 0.45, 0);
+    };
+
+    // =========================================================
+    // 2. BUILD TRAMPOLINE BOUNCE PARK PRESET ('trampoline')
+    // Features: Multi-Tier Sky Islands (5.0m, 9.2m, 4.4m), 14 Super-Bounce Trampolines, Aerial Bounce Rings & Turbo Lanes!
+    // =========================================================
+    const buildTrampolineBounceParkMap = () => {
+      // Central 5.0m Bounce Island (`19.6m x 15.6m`) + 9.2m Upper Crown Island (`10.4m x 8.4m`)
+      const centerDeck = new THREE.Mesh(
+        new THREE.BoxGeometry(19.6, 0.44, 15.6),
+        makeGlossyInflatableMat(0x06b6d4, 0.22)
+      );
+      centerDeck.position.set(0, 4.78, 0);
+      centerDeck.castShadow = true;
+      centerDeck.receiveShadow = true;
+      dynamicArenaGroup.add(centerDeck);
+
+      const crownDeck = new THREE.Mesh(
+        new THREE.BoxGeometry(10.4, 0.4, 8.4),
+        makeGlossyInflatableMat(0xec4899, 0.2)
+      );
+      crownDeck.position.set(0, 9.0, 0);
+      crownDeck.castShadow = true;
+      crownDeck.receiveShadow = true;
+      dynamicArenaGroup.add(crownDeck);
+
+      // Support Pillars for Central & Crown Islands
+      [
+        [-8.4, -6.4, 5.0, 0x9333ea],
+        [8.4, -6.4, 5.0, 0x9333ea],
+        [-8.4, 6.4, 5.0, 0x9333ea],
+        [8.4, 6.4, 5.0, 0x9333ea],
+        [-4.2, -3.2, 9.2, 0xfacc15],
+        [4.2, -3.2, 9.2, 0xfacc15],
+        [-4.2, 3.2, 9.2, 0xfacc15],
+        [4.2, 3.2, 9.2, 0xfacc15]
+      ].forEach(([px, pz, h, col]) => {
+        const pillar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.75, 0.88, h, 18),
+          makeGlossyInflatableMat(col, 0.18)
+        );
+        pillar.position.set(px, h / 2, pz);
+        pillar.castShadow = true;
+        dynamicArenaGroup.add(pillar);
+        addObstacleCollider(px, pz, 0.95, h, 0);
+      });
+
+      // 4 Corner Sky Islands (`y = 4.4m` at `x = ±20, z = ±15`)
+      [
+        [-20, -15, 0xec4899],
+        [20, -15, 0x2563eb],
+        [-20, 15, 0x10b981],
+        [20, 15, 0xf97316]
+      ].forEach(([ix, iz, col]) => {
+        const island = new THREE.Mesh(
+          new THREE.CylinderGeometry(5.6, 5.2, 0.55, 26),
+          makeGlossyInflatableMat(col, 0.2)
+        );
+        island.position.set(ix, 4.12, iz);
+        island.castShadow = true;
+        island.receiveShadow = true;
+        dynamicArenaGroup.add(island);
+
+        const stem = new THREE.Mesh(
+          new THREE.CylinderGeometry(1.1, 1.35, 4.4, 18),
+          makeGlossyInflatableMat(0x9333ea, 0.2)
+        );
+        stem.position.set(ix, 2.2, iz);
+        dynamicArenaGroup.add(stem);
+        addObstacleCollider(ix, iz, 1.4, 4.4, 0);
+      });
+
+      // 14 High-Powered Interactive Trampolines across Ground & Sky Islands!
+      createTrampolinePad(0, 11.5, 0, 2.9, 24.2, 0xec4899, 0x38bdf8);
+      createTrampolinePad(0, -11.5, 0, 2.9, 24.2, 0x2563eb, 0xfacc15);
+      createTrampolinePad(-13.5, 0, 0, 2.9, 24.2, 0x9333ea, 0x4ade80);
+      createTrampolinePad(13.5, 0, 0, 2.9, 24.2, 0x10b981, 0xec4899);
+
+      createTrampolinePad(-20, -7.2, 0, 2.6, 22.8, 0xf97316, 0x38bdf8);
+      createTrampolinePad(20, -7.2, 0, 2.6, 22.8, 0x06b6d4, 0xfacc15);
+      createTrampolinePad(-20, 7.2, 0, 2.6, 22.8, 0xec4899, 0x4ade80);
+      createTrampolinePad(20, 7.2, 0, 2.6, 22.8, 0x2563eb, 0xfacc15);
+
+      createTrampolinePad(-28.5, -15, 0, 2.6, 22.8, 0x9333ea, 0x38bdf8);
+      createTrampolinePad(28.5, -15, 0, 2.6, 22.8, 0x10b981, 0xfacc15);
+      createTrampolinePad(-28.5, 15, 0, 2.6, 22.8, 0xf97316, 0xec4899);
+      createTrampolinePad(28.5, 15, 0, 2.6, 22.8, 0x06b6d4, 0x4ade80);
+
+      // 2 Sky-Launch Trampolines on the 5.0m Deck that launch players up to the 9.2m Crown Island!
+      createTrampolinePad(-7.2, 0, 5.0, 2.2, 20.5, 0xfacc15, 0xec4899);
+      createTrampolinePad(7.2, 0, 5.0, 2.2, 20.5, 0xfacc15, 0x38bdf8);
+
+      // 6 Turbo Speed Boost Strips
+      createSpeedBoostPad(-24, 0, 0, Math.PI / 2);
+      createSpeedBoostPad(24, 0, 0, -Math.PI / 2);
+      createSpeedBoostPad(0, 21, 0, 0);
+      createSpeedBoostPad(0, -21, 0, Math.PI);
+      createSpeedBoostPad(-10, -24, 0, Math.PI / 4);
+      createSpeedBoostPad(10, 24, 0, -Math.PI * 0.75);
+
+      // Spawn Protection & Cover Clusters
+      createWideSpawnFortress(-35.5, 0, Math.PI / 2, '#ec4899', '#facc15', 'RED BASE');
+      createWideSpawnFortress(35.5, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'BLUE BASE');
+      createWideSpawnFortress(0, 29.5, 0, '#10b981', '#ffffff', 'SOUTH');
+      createWideSpawnFortress(0, -29.5, 0, '#f97316', '#fef08a', 'NORTH');
+
+      createInflatableArch(0, 0, 0, 0xfacc15, 0x38bdf8, 9.2);
+      createInflatableCube(-34, -24, 3.0, 0xec4899, 0xfacc15, 0.3, 0);
+      createInflatableCube(34, -24, 3.0, 0x06b6d4, 0xffffff, -0.3, 0);
+      createInflatableCube(-34, 24, 3.0, 0x9333ea, 0xfacc15, -0.3, 0);
+      createInflatableCube(34, 24, 3.0, 0x10b981, 0xffffff, 0.3, 0);
+    };
+
+    // =========================================================
+    // 3. BUILD WIPEOUT MEGA OBSTACLE COURSE PRESET ('obstacle')
+    // Features: Raised 3.8m Crossover Bridge, 2.4m Quadrant Decks, 4 Spinning Wipeout Sweeper Arms, Trampolines & Turbo Strips!
+    // =========================================================
+    const buildMegaObstacleCourseMap = () => {
+      // Central Elevated Crossover Bridge (`y = 3.8m`) with West & East Ramps
+      const bridgeG = new THREE.Group();
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(19.0, 0.42, 8.4),
+        makeGlossyInflatableMat(0xec4899, 0.22)
+      );
+      deck.position.set(0, 3.59, 0);
+      deck.castShadow = true;
+      deck.receiveShadow = true;
+      bridgeG.add(deck);
+
+      [-1, 1].forEach(dir => {
+        const rampLen = Math.hypot(8.0, 3.8);
+        const ramp = new THREE.Mesh(
+          new THREE.BoxGeometry(rampLen, 0.36, 8.2),
+          makeGlossyInflatableMat(0x06b6d4, 0.22)
+        );
+        ramp.position.set(dir * 13.5, 1.9, 0);
+        ramp.rotation.z = -dir * Math.atan2(3.8, 8.0);
+        bridgeG.add(ramp);
+      });
+      dynamicArenaGroup.add(bridgeG);
+
+      // 4 Quadrant Elevated Jumping Platforms (`y = 2.4m`)
+      [
+        [-18, -14, 0xfacc15],
+        [18, -14, 0xec4899],
+        [-18, 14, 0x10b981],
+        [18, 14, 0x2563eb]
+      ].forEach(([qx, qz, col]) => {
+        const pad = new THREE.Mesh(
+          new THREE.CylinderGeometry(4.0, 4.2, 2.4, 24),
+          makeGlossyInflatableMat(col, 0.2)
+        );
+        pad.position.set(qx, 1.2, qz);
+        pad.receiveShadow = true;
+        dynamicArenaGroup.add(pad);
+      });
+
+      // 4 Rotating Wipeout Padded Sweeper Arms + 6 Trampolines + 4 Speed Boost Strips
+      createSpinningSweeper(0, -13.5, 0, 5.2, 1.75, 0xec4899, 0xfacc15);
+      createSpinningSweeper(0, 13.5, 0, 5.2, -1.75, 0x2563eb, 0x38bdf8);
+      createSpinningSweeper(-24.5, 0, 0, 4.5, 1.55, 0x9333ea, 0x4ade80);
+      createSpinningSweeper(24.5, 0, 0, 4.5, -1.55, 0xf97316, 0xfacc15);
+
+      createTrampolinePad(-10.5, -14, 0, 2.5, 21.5, 0xec4899, 0x38bdf8);
+      createTrampolinePad(10.5, -14, 0, 2.5, 21.5, 0x2563eb, 0xfacc15);
+      createTrampolinePad(-10.5, 14, 0, 2.5, 21.5, 0x10b981, 0xec4899);
+      createTrampolinePad(10.5, 14, 0, 2.5, 21.5, 0xf97316, 0x38bdf8);
+      createTrampolinePad(0, -6.8, 0, 2.6, 22.5, 0x9333ea, 0xfacc15);
+      createTrampolinePad(0, 6.8, 0, 2.6, 22.5, 0x06b6d4, 0x4ade80);
+
+      createSpeedBoostPad(-18, 0, 0, Math.PI / 2);
+      createSpeedBoostPad(18, 0, 0, -Math.PI / 2);
+      createSpeedBoostPad(-6, -22, 0, 0);
+      createSpeedBoostPad(6, 22, 0, Math.PI);
+
+      createInflatableArch(0, 0, Math.PI / 2, 0x2563eb, 0xfacc15, 3.8);
+      createInflatableArch(0, -21, 0, 0xec4899, 0x06b6d4, 0);
+      createInflatableArch(0, 21, 0, 0x9333ea, 0xfacc15, 0);
+      createWideSpawnFortress(-35.5, 0, Math.PI / 2, '#ec4899', '#ffffff', 'FORTRESS');
+      createWideSpawnFortress(35.5, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'FORTRESS');
+      createWideSpawnFortress(0, 28.5, 0, '#10b981', '#ffffff', 'FORTRESS');
+      createWideSpawnFortress(0, -28.5, 0, '#f97316', '#fef08a', 'FORTRESS');
+
+      createClimbingWall(-27, -11, 0.4, 0xec4899, 0xfacc15, 0);
+      createClimbingWall(27, -11, -0.4, 0x2563eb, 0x06b6d4, 0);
+      createClimbingWall(-27, 11, -0.4, 0x9333ea, 0x10b981, 0);
+      createClimbingWall(27, 11, 0.4, 0xf97316, 0xfacc15, 0);
+
+      createZigzagWall(-12, -25, 0.25, 0x06b6d4, 0xec4899, 0);
+      createZigzagWall(12, -25, -0.25, 0xfacc15, 0x9333ea, 0);
+      createZigzagWall(-12, 25, -0.25, 0x10b981, 0x2563eb, 0);
+      createZigzagWall(12, 25, 0.25, 0xf97316, 0xec4899, 0);
+
+      createInflatableCube(-34, -24, 3.2, 0xec4899, 0xfacc15, 0.3, 0);
+      createInflatableCube(34, -24, 3.2, 0x06b6d4, 0xffffff, -0.3, 0);
+      createInflatableCube(-34, 24, 3.2, 0x9333ea, 0xfacc15, -0.3, 0);
+      createInflatableCube(34, 24, 3.2, 0x10b981, 0xffffff, 0.3, 0);
+
+      createStackedFoamBlocks(-42, -16, 0.35, [0xec4899, 0x2563eb, 0xfacc15], 0);
+      createStackedFoamBlocks(42, -16, -0.35, [0x06b6d4, 0x9333ea, 0xfacc15], 0);
+      createStackedFoamBlocks(-42, 16, -0.35, [0x10b981, 0xec4899, 0xfacc15], 0);
+      createStackedFoamBlocks(42, 16, 0.35, [0xf97316, 0x2563eb, 0xffffff], 0);
+    };
+
+    // =========================================================
+    // 4. BUILD SKY FORTRESS TOWERS PRESET ('skyfortress')
+    // Features: Twin 3-Story Sky Fortresses (West & East at x = ±20, y = 4.6m & 8.6m), Double-Decker Skybridges & Trampoline Elevators!
+    // =========================================================
+    const buildSkyFortressTowersMap = () => {
+      const lowY = 4.6;
+      const highY = 8.6;
+
+      // Build Twin West (Red) & East (Blue) 3-Story Sky Fortresses at x = ±20
+      [-20, 20].forEach((fx, idx) => {
+        const mainCol = idx === 0 ? 0xec4899 : 0x2563eb;
+        const accentCol = idx === 0 ? 0xfacc15 : 0x38bdf8;
+
+        // 4.6m Lower Fortress Deck (`16.8m x 16.8m`)
+        const deck1 = new THREE.Mesh(
+          new THREE.BoxGeometry(16.8, 0.44, 16.8),
+          makeGlossyInflatableMat(mainCol, 0.22)
+        );
+        deck1.position.set(fx, lowY - 0.22, 0);
+        deck1.castShadow = true;
+        deck1.receiveShadow = true;
+        dynamicArenaGroup.add(deck1);
+
+        // 8.6m Upper Penthouse Deck (`10.8m x 10.8m`)
+        const deck2 = new THREE.Mesh(
+          new THREE.BoxGeometry(10.8, 0.4, 10.8),
+          makeGlossyInflatableMat(0x9333ea, 0.2)
+        );
+        deck2.position.set(fx, highY - 0.2, 0);
+        deck2.castShadow = true;
+        deck2.receiveShadow = true;
+        dynamicArenaGroup.add(deck2);
+
+        // 4 Corner Support Columns & Towering Turret Spires (`y = 0 -> 17.5m`)
+        [
+          [-7.2, -7.2],
+          [7.2, -7.2],
+          [-7.2, 7.2],
+          [7.2, 7.2]
+        ].forEach(([ox, oz]) => {
+          const spire = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.15, 1.35, 16.5, 20),
+            makeGlossyInflatableMat(mainCol, 0.16)
+          );
+          spire.position.set(fx + ox, 8.25, oz);
+          spire.castShadow = true;
+          dynamicArenaGroup.add(spire);
+
+          const dome = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 18, 14),
+            makeGlossyInflatableMat(accentCol, 0.14)
+          );
+          dome.position.set(fx + ox, 16.8, oz);
+          dynamicArenaGroup.add(dome);
+          addObstacleCollider(fx + ox, oz, 1.38, 17.5, 0);
+        });
+
+        // North & South Access Ramps climbing from z = ±16.4 up to z = ±8.4 (`y = 0 -> 4.6m`)
+        [-1, 1].forEach(zDir => {
+          const rLen = Math.hypot(8.0, lowY);
+          const ramp = new THREE.Mesh(
+            new THREE.BoxGeometry(6.4, 0.34, rLen),
+            makeGlossyInflatableMat(accentCol, 0.22)
+          );
+          ramp.position.set(fx, lowY / 2, zDir * 12.4);
+          ramp.rotation.x = zDir * Math.atan2(lowY, 8.0);
+          dynamicArenaGroup.add(ramp);
+        });
+
+        // Curved Tube Slide from each Sky Fortress
+        createTubeSlide(fx, -8.4, lowY, Math.PI, accentCol, mainCol);
+      });
+
+      // Double-Decker Central Skybridge Catwalks connecting West & East Fortresses (`x: -11.6 -> +11.6`)
+      const bridgeLower = new THREE.Mesh(
+        new THREE.BoxGeometry(23.2, 0.4, 7.2),
+        makeGlossyInflatableMat(0x06b6d4, 0.22)
+      );
+      bridgeLower.position.set(0, lowY - 0.2, 0);
+      bridgeLower.castShadow = true;
+      bridgeLower.receiveShadow = true;
+      dynamicArenaGroup.add(bridgeLower);
+
+      const bridgeUpper = new THREE.Mesh(
+        new THREE.BoxGeometry(29.2, 0.38, 4.8),
+        makeGlossyInflatableMat(0xfacc15, 0.2)
+      );
+      bridgeUpper.position.set(0, highY - 0.19, 0);
+      bridgeUpper.castShadow = true;
+      bridgeUpper.receiveShadow = true;
+      dynamicArenaGroup.add(bridgeUpper);
+
+      // 8 Trampoline Elevators (Ground-to-Fortress & Lower-Deck-to-Upper-Citadel!)
+      createTrampolinePad(-8.5, 8.5, 0, 2.7, 23.5, 0xec4899, 0x38bdf8);
+      createTrampolinePad(8.5, 8.5, 0, 2.7, 23.5, 0x2563eb, 0xfacc15);
+      createTrampolinePad(-8.5, -8.5, 0, 2.7, 23.5, 0x9333ea, 0x4ade80);
+      createTrampolinePad(8.5, -8.5, 0, 2.7, 23.5, 0x10b981, 0xec4899);
+
+      createTrampolinePad(-20, 6.2, lowY, 2.2, 19.8, 0xfacc15, 0xec4899);
+      createTrampolinePad(20, 6.2, lowY, 2.2, 19.8, 0x38bdf8, 0xfacc15);
+      createTrampolinePad(-20, -6.2, lowY, 2.2, 19.8, 0xec4899, 0x4ade80);
+      createTrampolinePad(20, -6.2, lowY, 2.2, 19.8, 0x2563eb, 0xfacc15);
+
+      // Turbo Speed Boost Pads & Rotating Center Sweeper
+      createSpeedBoostPad(0, 0, lowY, Math.PI / 2);
+      createSpeedBoostPad(0, 16, 0, Math.PI / 2);
+      createSpeedBoostPad(0, -16, 0, -Math.PI / 2);
+      createSpinningSweeper(0, 0, 0, 5.0, 1.6, 0xec4899, 0xfacc15);
+
+      // Spawn Protection & Cover Bunkers
+      createWideSpawnFortress(-35.5, 0, Math.PI / 2, '#ec4899', '#facc15', 'RED BASE');
+      createWideSpawnFortress(35.5, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'BLUE BASE');
+      createWideSpawnFortress(0, 29.5, 0, '#10b981', '#ffffff', 'SOUTH');
+      createWideSpawnFortress(0, -29.5, 0, '#f97316', '#fef08a', 'NORTH');
+
+      createInflatableArch(0, 0, Math.PI / 2, 0xec4899, 0xfacc15, highY);
+      createStackedFoamBlocks(-20, 0, 0, [0xec4899, 0x9333ea, 0xfacc15], highY);
+      createStackedFoamBlocks(20, 0, 0, [0x2563eb, 0x06b6d4, 0xfacc15], highY);
+    };
+
+    // =========================================================
+    // 5. BUILD PRO SPEEDBALL CHAMPIONSHIP PRESET ('speedball')
+    // =========================================================
+    const buildProSpeedballMap = () => {
+      createWideSpawnFortress(-35.0, 0, Math.PI / 2, '#e11d48', '#ffffff', 'FORTRESS');
+      createWideSpawnFortress(35.0, 0, Math.PI / 2, '#2563eb', '#38bdf8', 'FORTRESS');
+      createWideSpawnFortress(0, 27.5, 0, '#10b981', '#ffffff', 'FORTRESS');
+      createWideSpawnFortress(0, -27.5, 0, '#d97706', '#fef08a', 'FORTRESS');
+
+      // Wing Trampoline Jump Pads & Turbo Speed Strips for Pro Speedball
+      createTrampolinePad(-18.0, -21.0, 0, 2.5, 21.5, 0xec4899, 0x38bdf8);
+      createTrampolinePad(18.0, -21.0, 0, 2.5, 21.5, 0x2563eb, 0xfacc15);
+      createTrampolinePad(-18.0, 21.0, 0, 2.5, 21.5, 0x10b981, 0xec4899);
+      createTrampolinePad(18.0, 21.0, 0, 2.5, 21.5, 0xf97316, 0x38bdf8);
+      createSpeedBoostPad(-28.0, 0, 0, Math.PI / 2);
+      createSpeedBoostPad(28.0, 0, 0, -Math.PI / 2);
+
+      createLowSnakeShield(-37.0, -13.5, Math.PI / 2 + 0.32, '#e11d48', '#facc15');
+      createLowSnakeShield(-37.0, 13.5, Math.PI / 2 - 0.32, '#e11d48', '#ffffff');
+      createLowSnakeShield(37.0, -13.5, Math.PI / 2 - 0.32, '#2563eb', '#facc15');
+      createLowSnakeShield(37.0, 13.5, Math.PI / 2 + 0.32, '#2563eb', '#38bdf8');
+      createLowSnakeShield(-13.5, 29.0, -0.32, '#10b981', '#ffffff');
+      createLowSnakeShield(13.5, 29.0, 0.32, '#10b981', '#facc15');
+      createLowSnakeShield(-13.5, -29.0, 0.32, '#f59e0b', '#0f172a');
+      createLowSnakeShield(13.5, -29.0, -0.32, '#f59e0b', '#ffffff');
+
+      createCenterXBunker(0, 0, 1.14);
+      createCenterXBunker(-22.5, 0, 0.94);
+      createCenterXBunker(22.5, 0, 0.94);
+      createCenterXBunker(0, -16.5, 0.92);
+      createCenterXBunker(0, 16.5, 0.92);
+
+      createLowSnakeShield(-11.8, 0, Math.PI / 2, '#0ea5e9', '#ffffff');
+      createLowSnakeShield(11.8, 0, Math.PI / 2, '#f43f5e', '#facc15');
+      createLowSnakeShield(0, -8.8, 0, '#f59e0b', '#0f172a');
+      createLowSnakeShield(0, 8.8, 0, '#10b981', '#0f172a');
+
+      createCan(-11.2, -9.2, '#eab308', '#0f172a', '#fef08a');
+      createCan(11.2, -9.2, '#0ea5e9', '#0f172a', '#bae6fd');
+      createCan(-11.2, 9.2, '#10b981', '#0f172a', '#a7f3d0');
+      createCan(11.2, 9.2, '#f43f5e', '#0f172a', '#fecdd3');
+
+      createDorito(-22.5, -14.5, '#0284c7', '#facc15', '#ffffff', 0.35);
+      createDorito(22.5, -14.5, '#f43f5e', '#facc15', '#ffffff', -0.35);
+      createDorito(-22.5, 14.5, '#10b981', '#facc15', '#ffffff', -0.35);
+      createDorito(22.5, 14.5, '#d97706', '#38bdf8', '#ffffff', 0.35);
+
+      createLowSnakeShield(-24.0, -28.0, 0.18, '#0284c7', '#facc15');
+      createLowSnakeShield(24.0, -28.0, -0.18, '#e11d48', '#ffffff');
+      createLowSnakeShield(-24.0, 28.0, -0.18, '#10b981', '#facc15');
+      createLowSnakeShield(24.0, 28.0, 0.18, '#d97706', '#ffffff');
+
+      createCan(-32.0, -21.5, '#e11d48', '#0f172a', '#fecdd3');
+      createCan(32.0, -21.5, '#2563eb', '#0f172a', '#bfdbfe');
+      createCan(-32.0, 21.5, '#10b981', '#0f172a', '#a7f3d0');
+      createCan(32.0, 21.5, '#f59e0b', '#0f172a', '#fef08a');
+
+      createCan(-44.0, -33.0, '#eab308', '#0f172a', '#fef08a');
+      createCan(44.0, -33.0, '#0ea5e9', '#0f172a', '#bae6fd');
+      createCan(-44.0, 33.0, '#10b981', '#0f172a', '#a7f3d0');
+      createCan(44.0, 33.0, '#f43f5e', '#0f172a', '#fecdd3');
+
+      createDorito(-43.0, -21.0, '#e11d48', '#facc15', '#ffffff', 0.45);
+      createDorito(43.0, -21.0, '#2563eb', '#facc15', '#ffffff', -0.45);
+      createDorito(-43.0, 21.0, '#10b981', '#facc15', '#ffffff', -0.45);
+      createDorito(43.0, 21.0, '#d97706', '#38bdf8', '#ffffff', 0.45);
+    };
+
+    const rebuildArenaPreset = (
+      preset: 'stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball'
+    ) => {
+      scene.remove(dynamicArenaGroup);
+      disposeObject3D(dynamicArenaGroup);
+      dynamicArenaGroup = new THREE.Group();
+      scene.add(dynamicArenaGroup);
+      obstacles.length = 0;
+      animatedFlags.length = 0;
+      trampolines.length = 0;
+      boostPads.length = 0;
+      spinningHazards.length = 0;
+
+      if (preset === 'trampoline') {
+        buildTrampolineBounceParkMap();
+      } else if (preset === 'obstacle') {
+        buildMegaObstacleCourseMap();
+      } else if (preset === 'skyfortress') {
+        buildSkyFortressTowersMap();
+      } else if (preset === 'speedball') {
+        buildProSpeedballMap();
+      } else {
+        buildInflatableBattleStadiumMap();
+      }
+    };
+    rebuildArenaPreset(stateSnapRef.current.arenaPreset || 'stadium');
 
     // =========================================================
     // 4 COLLECTIBLE HEALTH & DEFENCE CANS ACROSS THE EXPANDED ARENA (RESPAWNS EVERY 2 MINUTES = 120,000ms)
     // =========================================================
     const powerupConfigs: Array<{ type: 'health' | 'shield'; x: number; z: number }> = [
-      { type: 'health', x: -6.4, z: 0 },
-      { type: 'shield', x: 6.4, z: 0 },
-      { type: 'health', x: 0, z: -22.5 },
-      { type: 'shield', x: 0, z: 22.5 }
+      { type: 'health', x: -11.5, z: 0 },
+      { type: 'shield', x: 11.5, z: 0 },
+      { type: 'health', x: 0, z: -23.5 },
+      { type: 'shield', x: 0, z: 23.5 }
     ];
 
     const powerups: PowerupNode[] = powerupConfigs.map((cfg, idx) => {
@@ -7808,7 +10223,7 @@ export default function HamsterPaintball({
     });
 
     // =========================================================
-    // COMPOSITE MULTI-PART STADIUM FLOODLIGHT & BANNER TOWERS (Outside ±60 x ±50 Perimeter)
+    // COMPOSITE MULTI-PART STADIUM FLOODLIGHT & BANNER TOWERS (Soaring 22m High Outside Perimeter!)
     // =========================================================
     const buildStadiumFloodlightTower = (px: number, pz: number, accentHex: number) => {
       const tg = new THREE.Group();
@@ -7827,51 +10242,51 @@ export default function HamsterPaintball({
       const bannerMat = new THREE.MeshStandardMaterial({
         color: accentHex,
         emissive: accentHex,
-        emissiveIntensity: 0.25,
+        emissiveIntensity: 0.22,
         roughness: 0.3
       });
 
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.25, 1.2, 16), pedestalMat);
-      base.position.y = 0.6;
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.45, 1.5, 16), pedestalMat);
+      base.position.y = 0.75;
       base.castShadow = true;
       tg.add(base);
 
-      [-0.36, 0.36].forEach(ox => {
-        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 12.5, 12), steelMat);
-        col.position.set(ox, 6.75, 0);
+      [-0.42, 0.42].forEach(ox => {
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 21.5, 12), steelMat);
+        col.position.set(ox, 11.2, 0);
         col.castShadow = true;
         tg.add(col);
       });
 
-      for (let h = 2.5; h <= 11.5; h += 2.2) {
-        const brace = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.14, 0.16), steelMat);
+      for (let h = 3.0; h <= 20.5; h += 2.6) {
+        const brace = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.16, 0.18), steelMat);
         brace.position.set(0, h, 0);
         tg.add(brace);
       }
 
-      const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.8, 1.35), bannerMat);
-      pennant.position.set(0, 7.4, px < 0 ? 0.75 : -0.75);
+      const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.12, 5.2, 1.65), bannerMat);
+      pennant.position.set(0, 12.8, px < 0 ? 0.9 : -0.9);
       tg.add(pennant);
 
       const hoodGroup = new THREE.Group();
-      hoodGroup.position.set(0, 13.1, 0);
+      hoodGroup.position.set(0, 22.2, 0);
       hoodGroup.lookAt(0, 0, 0);
 
-      const hoodBox = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.2, 0.5), pedestalMat);
+      const hoodBox = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 0.6), pedestalMat);
       hoodGroup.add(hoodBox);
 
       const ledPanel = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.35, 0.9),
+        new THREE.PlaneGeometry(3.0, 1.15),
         new THREE.MeshBasicMaterial({ color: 0xfef9c3, side: THREE.DoubleSide })
       );
-      ledPanel.position.z = 0.27;
+      ledPanel.position.z = 0.32;
       hoodGroup.add(ledPanel);
 
       tg.add(hoodGroup);
       scene.add(tg);
     };
 
-    const bannerColors = [0xf43f5e, 0x38bdf8, 0x10b981, 0xfacc15];
+    const bannerColors = [0xec4899, 0x38bdf8, 0x9333ea, 0xfacc15];
     [
       [-63.5, -53.0],
       [-22.0, -53.0],
@@ -7888,61 +10303,10 @@ export default function HamsterPaintball({
     });
 
     // =========================================================
-    // NATURAL OUTER PARK FOREST TREES AROUND EXPANDED STADIUM
-    // =========================================================
-    const createTree = (x: number, z: number, scale = 1) => {
-      const tg = new THREE.Group();
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.45 * scale, 0.7 * scale, 3.6 * scale, 12),
-        new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.85 })
-      );
-      trunk.position.y = 1.8 * scale;
-      trunk.castShadow = true;
-      tg.add(trunk);
-
-      const leavesMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.65 });
-      const leavesLightMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.6 });
-      const l1 = new THREE.Mesh(new THREE.DodecahedronGeometry(2.4 * scale, 1), leavesMat);
-      l1.position.y = 4.4 * scale;
-      l1.castShadow = true;
-      tg.add(l1);
-
-      const l2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.8 * scale, 1), leavesLightMat);
-      l2.position.set(0.8 * scale, 5.8 * scale, 0.35 * scale);
-      l2.castShadow = true;
-      tg.add(l2);
-
-      const l3 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.5 * scale, 1), leavesMat);
-      l3.position.set(-0.7 * scale, 5.3 * scale, -0.3 * scale);
-      l3.castShadow = true;
-      tg.add(l3);
-
-      tg.position.set(x, 0, z);
-      scene.add(tg);
-    };
-
-    [
-      [-72, -62, 1.38],
-      [72, -62, 1.38],
-      [-72, 62, 1.35],
-      [72, 62, 1.38],
-      [-38, -64, 1.25],
-      [0, -64, 1.3],
-      [38, -64, 1.25],
-      [-38, 64, 1.25],
-      [0, 64, 1.3],
-      [38, 64, 1.25],
-      [-74, -26, 1.28],
-      [74, -26, 1.28],
-      [-74, 26, 1.28],
-      [74, 26, 1.28]
-    ].forEach(([tx, tz, sc]) => createTree(tx, tz, sc));
-
-    // =========================================================
     // 1 CHARACTER "TEACHER JAN" IN THE PARK DURING LOBBY ONLY!
     // =========================================================
     const teacherJanNpc = buildHighDefHamster(0, 'Teacher Jan', true, 'solo', true);
-    teacherJanNpc.position.set(0, 0, -9.5);
+    teacherJanNpc.position.set(0, 4.6, -6.5);
     scene.add(teacherJanNpc);
 
     const isHostRole = stateSnapRef.current.role === 'host';
@@ -7967,9 +10331,15 @@ export default function HamsterPaintball({
       undefined,
       stateSnapRef.current.teamCount
     );
-    const startX = isHostRole ? 4.8 : initialSpawn.x;
+    const startX = isHostRole ? 0 : initialSpawn.x;
     const startZ = isHostRole ? 4.8 : initialSpawn.z;
-    localHamster.position.set(startX, 0, startZ);
+    const startY = getArenaSupportHeight(
+      startX,
+      startZ,
+      isHostRole ? 4.6 : 0,
+      stateSnapRef.current.arenaPreset || 'stadium'
+    );
+    localHamster.position.set(startX, startY, startZ);
     scene.add(localHamster);
 
     // 3D Tactical Ground Aim Reticle & Laser Sight Line from Gun Barrel Muzzle!
@@ -8004,7 +10374,6 @@ export default function HamsterPaintball({
     reticleCenter.position.y = 0.01;
     aimReticle.add(reticleCenter);
     aimReticle.position.set(startX, 0.06, startZ + 6);
-    // Floor reticle & floor laser are permanently hidden: Aim is ALWAYS locked to the Center-Screen Crosshair!
     aimReticle.visible = false;
     scene.add(aimReticle);
 
@@ -8036,14 +10405,14 @@ export default function HamsterPaintball({
       aimLaserLine,
       shootButtonHeld: false,
       x: startX,
-      y: 0,
+      y: startY,
       jumpVy: 0,
       z: startZ,
       rotY: initYaw,
       camYaw: initYaw,
       camPitch: 0.12,
       camDistCurrent: 8.0,
-      camHeightCurrent: 3.35,
+      camHeightCurrent: 3.35 + startY * 0.78,
       camShoulderCurrent: 1.22,
       camKick: 0,
       crouchLerp: 0,
@@ -8073,7 +10442,7 @@ export default function HamsterPaintball({
       lookTouchStartX: 0,
       lookTouchStartY: 0,
       aimWorldX: startX + Math.sin(initYaw) * 24,
-      aimWorldY: 1.42,
+      aimWorldY: startY + 1.42,
       aimWorldZ: startZ + Math.cos(initYaw) * 24,
       lastShotTime: 0,
       hostCamX: 0,
@@ -8087,7 +10456,18 @@ export default function HamsterPaintball({
       shockwaves: [],
       remotePlayers: new Map(),
       radarPings: [],
-      broadcastChannel: broadcastChannelRef.current || undefined
+      broadcastChannel: broadcastChannelRef.current || undefined,
+      rebuildArenaPreset,
+      updateScoreboardDisplay,
+      animatedFlags,
+      hotAirBalloons,
+      helicopterGroup,
+      blimpGroup,
+      crowdMeshes,
+      trampolines,
+      boostPads,
+      spinningHazards,
+      speedBoostUntil: 0
     };
 
     // Pre-compile scene shaders once on hardware GPU to avoid first-frame stutter
@@ -8182,6 +10562,10 @@ export default function HamsterPaintball({
       const k = mapCodeToKey(e.code, e.key);
 
       if (k === 'escape') {
+        if (snap.isQuestionModalOpen) {
+          setIsQuestionModalOpen(false);
+          return;
+        }
         g.virtualMouseLock = false;
         setIsAimLocked(false);
         if (document.pointerLockElement) {
@@ -8190,6 +10574,26 @@ export default function HamsterPaintball({
           } catch {}
         }
         return;
+      }
+
+      // Press 'Q' on Computer to Open Question Box, and Press 'Q' Again to Exit Back to Arena
+      if (
+        k === 'q' &&
+        !e.repeat &&
+        snap.role === 'player' &&
+        snap.screen === 'game' &&
+        snap.matchStatus !== 'results'
+      ) {
+        e.preventDefault();
+        if (snap.isQuestionModalOpen) {
+          setIsQuestionModalOpen(false);
+          return;
+        }
+        if (!snap.isAnyModalOpen) {
+          resetAllActiveInputs();
+          setIsQuestionModalOpen(true);
+          return;
+        }
       }
 
       if (k === 'v' && !e.repeat && snap.role === 'host' && !snap.isAnyModalOpen) {
@@ -8681,10 +11085,114 @@ export default function HamsterPaintball({
           snapState.matchStatus === 'lobby' && snapState.role !== 'host';
         g.teacherJanNpc.visible = showTeacherJanInLobby;
         if (showTeacherJanInLobby) {
-          g.teacherJanNpc.position.set(0, 0, -9.5);
+          const npcY = getArenaSupportHeight(
+            0,
+            -9.5,
+            4.6,
+            snapState.arenaPreset || 'stadium'
+          );
+          g.teacherJanNpc.position.set(0, npcY, -9.5);
           g.teacherJanNpc.rotation.y = Math.sin(now * 0.0012) * 0.4;
           animateHamsterRig(g.teacherJanNpc, false, now * 0.002, dt);
         }
+      }
+
+      // Animate 3D Stadium Castle Flags, Hot Air Balloons, Helicopter & Spectator Crowd
+      if (g.animatedFlags && g.animatedFlags.length > 0) {
+        for (let fi = 0; fi < g.animatedFlags.length; fi++) {
+          const fl = g.animatedFlags[fi];
+          fl.mesh.rotation.y = Math.sin(now * 0.0048 + fl.phase) * 0.28;
+          fl.mesh.rotation.z = Math.cos(now * 0.0034 + fl.phase) * 0.08;
+        }
+      }
+      if (g.hotAirBalloons && g.hotAirBalloons.length > 0) {
+        for (let bi = 0; bi < g.hotAirBalloons.length; bi++) {
+          const b = g.hotAirBalloons[bi];
+          b.group.position.y = b.baseY + Math.sin(now * 0.0011 + b.phase) * 2.4;
+          b.group.position.x = b.baseX + Math.cos(now * 0.0005 + b.phase) * 3.2;
+          b.group.rotation.y = Math.sin(now * 0.0004 + b.phase) * 0.35;
+        }
+      }
+      if (g.helicopterGroup) {
+        const heliAngle = now * 0.00028;
+        g.helicopterGroup.position.set(
+          Math.cos(heliAngle) * 76,
+          44 + Math.sin(now * 0.0018) * 1.4,
+          Math.sin(heliAngle) * 62
+        );
+        g.helicopterGroup.rotation.y = -heliAngle + Math.PI;
+        if (g.helicopterGroup.userData.mainRotor) {
+          g.helicopterGroup.userData.mainRotor.rotation.y += dt * 18;
+        }
+      }
+      if (g.blimpGroup) {
+        const blimpAngle = -now * 0.00016 + 1.4;
+        g.blimpGroup.position.set(
+          Math.cos(blimpAngle) * 86,
+          58 + Math.sin(now * 0.0009) * 1.6,
+          Math.sin(blimpAngle) * 68
+        );
+        g.blimpGroup.rotation.y = -blimpAngle + Math.PI * 0.5;
+      }
+      if (g.trampolines && g.trampolines.length > 0) {
+        for (let ti = 0; ti < g.trampolines.length; ti++) {
+          const tramp = g.trampolines[ti];
+          if (tramp.pulseRing) {
+            tramp.pulseRing.position.y = 1.05 + Math.sin(now * 0.0055 + ti) * 0.24;
+          }
+          if (tramp.matMesh && Math.abs(tramp.matMesh.position.y - 0.54) > 0.005) {
+            tramp.matMesh.position.y = THREE.MathUtils.damp(tramp.matMesh.position.y, 0.54, 16, dt);
+          }
+        }
+      }
+      if (g.spinningHazards && g.spinningHazards.length > 0) {
+        for (let hi = 0; hi < g.spinningHazards.length; hi++) {
+          const hz = g.spinningHazards[hi];
+          hz.angle += hz.speed * dt;
+          hz.pivot.rotation.y = hz.angle;
+        }
+      }
+      if (g.crowdMeshes && g.crowdMeshes.length > 0) {
+        for (let ci = 0; ci < g.crowdMeshes.length; ci++) {
+          const cm = g.crowdMeshes[ci];
+          const baseRowY = typeof cm.userData?.baseY === 'number' ? cm.userData.baseY : 2.3;
+          const rowPhase = typeof cm.userData?.phase === 'number' ? cm.userData.phase : ci * 0.8;
+          cm.position.y = baseRowY + Math.abs(Math.sin(now * 0.0042 + rowPhase)) * 0.36;
+        }
+      }
+      if (g.updateScoreboardDisplay && (!g.lastScoreboardSyncAt || now - g.lastScoreboardSyncAt > 480)) {
+        g.lastScoreboardSyncAt = now;
+        let redScoreVal = 0;
+        let blueScoreVal = 0;
+        let aliveCount = 0;
+        const allParticipants = snapState.roomPlayers.filter(rp => rp.role === 'player' && !rp.kicked);
+        allParticipants.forEach(rp => {
+          const normT = normalizeTeamForMatch(rp.team, snapState.matchMode, snapState.teamCount);
+          const pScore = Number(rp.score) || 0;
+          if (normT === 'red' || normT === 'gold') redScoreVal += pScore;
+          else if (normT === 'blue' || normT === 'green') blueScoreVal += pScore;
+          else redScoreVal += pScore;
+          if ((rp.hp ?? 100) > 0) aliveCount += 1;
+        });
+        if (snapState.role === 'player' && !allParticipants.some(rp => rp.id === clientIdRef.current)) {
+          const myNorm = normalizeTeamForMatch(snapState.myTeam, snapState.matchMode, snapState.teamCount);
+          if (myNorm === 'blue' || myNorm === 'green') blueScoreVal += snapState.score;
+          else redScoreVal += snapState.score;
+          if (snapState.hp > 0) aliveCount += 1;
+        }
+        const roundLabel =
+          snapState.matchStatus === 'playing'
+            ? 'LIVE MATCH • ROUND 1'
+            : snapState.matchStatus === 'results'
+            ? 'FINAL RESULTS'
+            : 'WARMUP LOBBY • READY';
+        g.updateScoreboardDisplay(
+          blueScoreVal,
+          redScoreVal,
+          Math.max(0, snapState.matchSeconds),
+          Math.max(1, aliveCount || allParticipants.length || 1),
+          roundLabel
+        );
       }
 
       // Animate 3D Health Cans & Defence Cans Around the Arena
@@ -8776,7 +11284,7 @@ export default function HamsterPaintball({
             const portraitOffset =
               camAspect < 1.0 ? Math.min(4.2, (1.0 - camAspect) * 8) : camAspect < 1.4 ? 1.0 : 0;
             const followDist = 8.4 + portraitOffset * 0.45;
-            const followHeight = 5.2 + ty * 0.6 + portraitOffset * 0.35;
+            const followHeight = 5.2 + ty * 0.78 + portraitOffset * 0.35;
             const desiredCamX = THREE.MathUtils.clamp(
               tx - Math.sin(tYaw) * followDist,
               -ARENA_HALF_W,
@@ -8794,7 +11302,7 @@ export default function HamsterPaintball({
             camera.position.x += (desiredCamX - camera.position.x) * 8 * dt;
             camera.position.y += (followHeight - camera.position.y) * 8 * dt;
             camera.position.z += (desiredCamZ - camera.position.z) * 8 * dt;
-            camera.lookAt(lookX, 1.8 + ty * 0.5, lookZ);
+            camera.lookAt(lookX, 1.8 + ty * 0.72, lookZ);
           } else {
             camera.position.x += (0 - camera.position.x) * 5 * dt;
             camera.position.y += (22.0 - camera.position.y) * 5 * dt;
@@ -8807,7 +11315,7 @@ export default function HamsterPaintball({
               rp.mesh.userData.nameSprite.visible = true;
             }
           });
-          // Host Overview Camera across the expanded 116m x 96m speedball park
+          // Host Overview Camera across the expanded 116m x 96m Battle Stadium
           if (isMoving) {
             g.hostCamX = Math.max(-46, Math.min(46, g.hostCamX + rawX * 32 * dt));
             g.hostCamZ = Math.max(-36, Math.min(36, g.hostCamZ + rawZ * 32 * dt));
@@ -8819,34 +11327,21 @@ export default function HamsterPaintball({
           camera.position.x += (g.hostCamX - camera.position.x) * 5 * dt;
           camera.position.y += (targetY - camera.position.y) * 5 * dt;
           camera.position.z += (targetZ - camera.position.z) * 5 * dt;
-          camera.lookAt(g.hostCamX, 1.4, g.hostCamZ - 2);
+          camera.lookAt(g.hostCamX, 1.8, g.hostCamZ - 2);
         }
       } else {
         // ---------------------------------------------------
-        // INTERACTIVE 3D CHARACTER MOVEMENT, JUMP, CROUCH & CRAWL
+        // INTERACTIVE 3D CHARACTER MOVEMENT, MULTILEVEL STAIRS/PLATFORM, JUMP, CROUCH & CRAWL
         // ---------------------------------------------------
         g.localHamster.visible = true;
         const activeStance = snapState.role === 'player' ? snapState.playerStance : 'stand';
+        const activeArenaPreset = snapState.arenaPreset || 'stadium';
 
-        // 3D Vertical Jump Physics & Turf Landing Shockwave
-        const prevY = g.y;
-        if (g.y > 0 || g.jumpVy !== 0) {
-          g.jumpVy -= 25.0 * dt;
-          g.y += g.jumpVy * dt;
-          if (g.y <= 0) {
-            g.y = 0;
-            if (prevY > 0.22 && g.jumpVy < -3.0) {
-              sfx.playFootstep();
-              spawnShockwaveRing(g.x, 0.06, g.z, 0xffffff, 0.35, 1.45, 0.24, false);
-            }
-            g.jumpVy = 0;
-          }
-        }
-
-        // Stance & ADS Movement Speeds (Stand: 16.4, Crouch: 11.2, Prone Crawl: 6.5)
+        // Stance, ADS & Turbo Speed Boost Pad Movement Speeds (Stand: 16.4, Crouch: 11.2, Prone Crawl: 6.5)
         const baseSpeed =
           activeStance === 'crawl' ? 6.5 : activeStance === 'crouch' ? 11.2 : 16.4;
-        const speed = snapState.isAdsScoped ? baseSpeed * 0.78 : baseSpeed;
+        const turboBoostMult = g.speedBoostUntil && now < g.speedBoostUntil ? 1.55 : 1.0;
+        const speed = (snapState.isAdsScoped ? baseSpeed * 0.78 : baseSpeed) * turboBoostMult;
 
         const forwardInput = -rawZ;
         const rightInput = rawX;
@@ -8883,9 +11378,10 @@ export default function HamsterPaintball({
           g.z = Math.max(minSpawnZ, Math.min(maxSpawnZ, g.z));
         }
 
-        // Accessible Smooth Obstacle Collisions (Allows jumping onto or over low rims when airborne above obs.h!)
+        // Accessible Smooth Obstacle Collisions (Respects obs.baseY so underground players pass beneath top-deck obstacles!)
         g.obstacles.forEach(obs => {
-          if (g.y > obs.h + 0.1) return;
+          const obsBaseY = obs.baseY || 0;
+          if (g.y + 2.2 < obsBaseY || g.y > obs.h + 0.1) return;
           const dx = g.x - obs.x;
           const dz = g.z - obs.z;
           const d = Math.hypot(dx, dz);
@@ -8897,10 +11393,148 @@ export default function HamsterPaintball({
           }
         });
 
-        // Collectible Health Cans & Defence Cans Around the Arena
+        // Rotating Wipeout Sweeper Arm Collisions (Pushes & Bounces Unprepared Players!)
+        if (g.spinningHazards && g.spinningHazards.length > 0) {
+          for (let hi = 0; hi < g.spinningHazards.length; hi++) {
+            const hz = g.spinningHazards[hi];
+            if (g.y < hz.baseY - 0.2 || g.y > hz.baseY + 2.3) continue;
+            const armDirX = Math.cos(-hz.angle);
+            const armDirZ = Math.sin(-hz.angle);
+            const relX = g.x - hz.x;
+            const relZ = g.z - hz.z;
+            const proj = Math.max(-hz.armLen, Math.min(hz.armLen, relX * armDirX + relZ * armDirZ));
+            const closestX = hz.x + armDirX * proj;
+            const closestZ = hz.z + armDirZ * proj;
+            const dArm = Math.hypot(g.x - closestX, g.z - closestZ);
+            if (dArm < 1.18) {
+              const pushAngle = hz.angle + (proj >= 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
+              const tangX = -armDirZ * (proj >= 0 ? 1 : -1) * Math.sign(hz.speed || 1);
+              const tangZ = armDirX * (proj >= 0 ? 1 : -1) * Math.sign(hz.speed || 1);
+              const outPush = 1.25 - dArm;
+              g.x += tangX * Math.max(0.65, outPush) + Math.cos(pushAngle) * 0.12;
+              g.z += tangZ * Math.max(0.65, outPush) + Math.sin(pushAngle) * 0.12;
+              if (g.jumpVy <= 2.5) {
+                g.jumpVy = 7.5;
+                sfx.playJump();
+              }
+            }
+          }
+        }
+
+        // Turbo Speed Boost Pads (1.55x Speed Burst!)
+        if (g.boostPads && g.boostPads.length > 0) {
+          for (let bi = 0; bi < g.boostPads.length; bi++) {
+            const pad = g.boostPads[bi];
+            if (
+              Math.abs(g.y - pad.baseY) <= 1.25 &&
+              Math.hypot(g.x - pad.x, g.z - pad.z) <= pad.r &&
+              now - (pad.lastTriggeredAt || 0) > 650
+            ) {
+              pad.lastTriggeredAt = now;
+              g.speedBoostUntil = now + 2400;
+              sfx.playJump();
+              spawnShockwaveRing(pad.x, pad.baseY + 0.18, pad.z, 0x38bdf8, 0.4, 2.2, 0.3, false);
+              showPickupBanner('⚡ TURBO SPEED BOOST (1.55x)!', 1400);
+            }
+          }
+        }
+
+        // Super-Bounce Trampolines (Launches Hamsters onto Upper Stadium Decks & Sky Islands!)
+        if (g.trampolines && g.trampolines.length > 0) {
+          for (let ti = 0; ti < g.trampolines.length; ti++) {
+            const tramp = g.trampolines[ti];
+            if (
+              Math.abs(g.y - tramp.baseY) <= 1.35 &&
+              Math.hypot(g.x - tramp.x, g.z - tramp.z) <= tramp.r &&
+              g.jumpVy <= 3.0 &&
+              now - (tramp.lastTriggeredAt || 0) > 320
+            ) {
+              tramp.lastTriggeredAt = now;
+              g.jumpVy = tramp.bounceVy;
+              g.y = Math.max(g.y, tramp.baseY + 0.6);
+              if (tramp.matMesh) {
+                tramp.matMesh.position.y = 0.28;
+              }
+              sfx.playJump();
+              spawnShockwaveRing(
+                tramp.x,
+                tramp.baseY + 0.65,
+                tramp.z,
+                tramp.colorHex,
+                0.5,
+                2.8,
+                0.35,
+                true
+              );
+              showPickupBanner('🤸 SUPER TRAMPOLINE LAUNCH!', 1100);
+            }
+          }
+        }
+
+        // 3D Multilevel Terrain Support (Staircases, Sloped Ramps, Side Bridges, Elevated Platforms & Underground Levels)
+        const prevY = g.y;
+        const supportY = getArenaSupportHeight(g.x, g.z, g.y, activeArenaPreset);
+        if (g.jumpVy > 0 || g.y > supportY + 0.55) {
+          g.jumpVy -= 25.0 * dt;
+          g.y += g.jumpVy * dt;
+          // Underground ceiling headroom under multi-story elevated stadium decks
+          if (
+            activeArenaPreset === 'stadium' &&
+            Math.abs(g.x) < 16.4 &&
+            Math.abs(g.z) < 11.4 &&
+            prevY < 3.0 &&
+            g.y > 2.95
+          ) {
+            g.y = 2.95;
+            if (g.jumpVy > 0) g.jumpVy = -1.2;
+          } else if (
+            activeArenaPreset === 'stadium' &&
+            Math.abs(g.x) < 7.6 &&
+            Math.abs(g.z) < 5.6 &&
+            prevY >= 4.0 &&
+            prevY < 6.8 &&
+            g.y > 6.75
+          ) {
+            g.y = 6.75;
+            if (g.jumpVy > 0) g.jumpVy = -1.2;
+          } else if (
+            activeArenaPreset === 'trampoline' &&
+            Math.hypot(g.x, g.z) < 10.8 &&
+            prevY < 3.3 &&
+            g.y > 3.25
+          ) {
+            g.y = 3.25;
+            if (g.jumpVy > 0) g.jumpVy = -1.2;
+          } else if (
+            activeArenaPreset === 'skyfortress' &&
+            (Math.abs(g.x + 20) < 8.4 || Math.abs(g.x - 20) < 8.4) &&
+            Math.abs(g.z) < 9.2 &&
+            prevY < 3.0 &&
+            g.y > 2.95
+          ) {
+            g.y = 2.95;
+            if (g.jumpVy > 0) g.jumpVy = -1.2;
+          }
+          if (g.y <= supportY) {
+            g.y = supportY;
+            if (prevY - supportY > 0.25 && g.jumpVy < -3.0) {
+              sfx.playFootstep();
+              spawnShockwaveRing(g.x, supportY + 0.06, g.z, 0xffffff, 0.35, 1.45, 0.24, false);
+            }
+            g.jumpVy = 0;
+          }
+        } else {
+          // Smoothly climb/descend staircases and ramps
+          g.y = THREE.MathUtils.damp(g.y, supportY, 22, dt);
+          g.jumpVy = 0;
+        }
+
+        // Collectible Health Cans & Defence Cans Around the Arena (Level-Aware!)
         let closestCan: { id: string; type: 'health' | 'shield' } | null = null;
         g.powerups.forEach(pu => {
           if (!pu.active) return;
+          const puY = pu.mesh.position.y || 0;
+          if (Math.abs(g.y - puY) > 2.2) return;
           const dist = Math.hypot(g.x - pu.x, g.z - pu.z);
           if (dist < 2.8 && !closestCan) {
             closestCan = { id: pu.id, type: pu.type };
@@ -8928,7 +11562,7 @@ export default function HamsterPaintball({
         );
 
         // ---------------------------------------------------
-        // PUBG TPS OVER-SHOULDER CAMERA + 2X ADS SCOPE ZOOM + STANCE EYE HEIGHT
+        // PUBG TPS OVER-SHOULDER CAMERA + 2X ADS SCOPE ZOOM + MULTILEVEL STANCE EYE HEIGHT
         // ---------------------------------------------------
         const camAspect = camera.aspect || 1.5;
         const portraitOffset =
@@ -8968,7 +11602,7 @@ export default function HamsterPaintball({
             0.95,
             presetCfg.height -
               stanceCamDrop +
-              g.y * 0.78 +
+              g.y * 0.95 +
               Math.sin(g.camPitch) * 3.6 +
               portraitOffset * 0.25 -
               g.adsLerp * 0.35
@@ -9015,12 +11649,12 @@ export default function HamsterPaintball({
         const baseEyeY =
           (snapState.cameraViewPreset === 'tactical' ? 1.35 : 1.95) -
           stanceCamDrop * 0.82 +
-          g.y * 0.78;
+          g.y * 0.95;
         // True PUBG 3D vertical pitch look target: look smoothly up into the sky or down onto the ground!
         const camLookY = THREE.MathUtils.clamp(
           baseEyeY - Math.tan(g.camPitch) * (presetCfg.lookDist * 0.58),
           -5.5,
-          12.5
+          16.5
         );
         camera.lookAt(camLookX, camLookY, camLookZ);
         camera.updateMatrixWorld();
@@ -9030,7 +11664,7 @@ export default function HamsterPaintball({
         const stanceBaseSpread =
           activeStance === 'crawl' ? 4 : activeStance === 'crouch' ? 6 : 9;
         const moveSpread = isMoving ? (activeStance === 'crawl' ? 3 : 6) : 0;
-        const airSpread = g.y > 0.08 ? 11 : 0;
+        const airSpread = g.y > supportY + 0.12 ? 11 : 0;
         const targetSpread = snapState.isAdsScoped
           ? Math.max(2, (stanceBaseSpread + g.recoilBloom) * 0.35)
           : stanceBaseSpread + moveSpread + airSpread + g.recoilBloom;
@@ -9042,19 +11676,23 @@ export default function HamsterPaintball({
           setCrosshairSpreadPx(nextSpreadRounded);
         }
 
-        // Compute Reticle NDC: PUBG Center-Screen Sight (`x: 50%, y: 46%` => `(0, +0.08)`) OR Separate Free-Aim!
+        // Compute Reticle NDC: PUBG Center-Screen Sight (`x: 50%, y: 46%` => `(0, +0.015)`) OR Separate Free-Aim!
         if (snapState.role === 'player' && snapState.aimControlMode === 'separate') {
           const rPct = aimReticlePctRef.current;
           _aimReticleNdc.set((rPct.x / 100) * 2 - 1, 1 - (rPct.y / 100) * 2);
         } else {
-          _aimReticleNdc.set(0, 0.08);
+          // Align ray vertical origin with the camera's true lookAt center so long-range shots never angle upward into the sky
+          _aimReticleNdc.set(0, 0.015);
         }
 
         _aimRaycaster.setFromCamera(_aimReticleNdc, camera);
         const rayOrigin = _aimRaycaster.ray.origin;
         const rayDir = _aimRaycaster.ray.direction;
 
-        // 1. Find nearest blocking arena bunker along the 3D reticle ray
+        const shoulderY =
+          g.y + (activeStance === 'crawl' ? 0.58 : activeStance === 'crouch' ? 0.92 : 1.28);
+
+        // 1. Find nearest blocking arena bunker along the 3D reticle ray (full 125m arena sightline, level-aware!)
         let nearestObsRayT = Infinity;
         for (let oi = 0; oi < g.obstacles.length; oi++) {
           const obs = g.obstacles[oi];
@@ -9063,9 +11701,10 @@ export default function HamsterPaintball({
           const horizLenSq = rayDir.x * rayDir.x + rayDir.z * rayDir.z;
           if (horizLenSq < 0.0001) continue;
           const projT = (ocX * rayDir.x + ocZ * rayDir.z) / horizLenSq;
-          if (projT <= 2.0 || projT >= 56) continue;
+          if (projT <= 2.0 || projT >= 125) continue;
           const rayYAtT = rayOrigin.y + rayDir.y * projT;
-          if (rayYAtT > obs.h + 0.12 || rayYAtT < -0.2) continue;
+          const obsBaseY = obs.baseY || 0;
+          if (rayYAtT > obs.h + 0.15 || rayYAtT < obsBaseY - 0.15) continue;
           const perpX = rayOrigin.x + rayDir.x * projT - obs.x;
           const perpZ = rayOrigin.z + rayDir.z * projT - obs.z;
           if (perpX * perpX + perpZ * perpZ <= (obs.r + 0.15) * (obs.r + 0.15)) {
@@ -9073,15 +11712,15 @@ export default function HamsterPaintball({
           }
         }
 
-        // 2. Check if the 3D reticle ray intersects an enemy player's stance-adjusted 3D hitbox!
+        // 2. Check if the 3D reticle ray intersects an enemy player's stance-adjusted 3D hitbox across the entire arena!
         const aimAssistRadius = THREE.MathUtils.clamp(
-          1.45 + ((snapState.aimSensitivity || 1.0) - 1.0) * 0.22,
-          1.25,
-          1.95
+          1.6 + ((snapState.aimSensitivity || 1.0) - 1.0) * 0.25,
+          1.35,
+          2.15
         );
         let lockedEnemyT = Infinity;
         let lockedAimX = 0;
-        let lockedAimY = 1.38;
+        let lockedAimY = 1.28;
         let lockedAimZ = 0;
         g.remotePlayers.forEach(entry => {
           const myNormTeam = normalizeTeamForMatch(
@@ -9106,15 +11745,17 @@ export default function HamsterPaintball({
           const horizLenSq = rayDir.x * rayDir.x + rayDir.z * rayDir.z;
           if (horizLenSq < 0.0001) return;
           const projT = (toEnemyX * rayDir.x + toEnemyZ * rayDir.z) / horizLenSq;
-          if (projT <= 1.8 || projT >= nearestObsRayT || projT >= 56) return;
+          if (projT <= 1.8 || projT >= nearestObsRayT || projT >= 125) return;
           const rayYAtT = rayOrigin.y + rayDir.y * projT;
-          if (rayYAtT < ry - 0.25 || rayYAtT > ry + enemyH + 0.2) return;
+          // Allow generous vertical lock tolerance at long range so aiming horizontally at a distant player locks onto their chest
+          const verticalTolerance = Math.min(1.6, 0.35 + projT * 0.022);
+          if (rayYAtT < ry - verticalTolerance || rayYAtT > ry + enemyH + verticalTolerance) return;
           const perpX = rayOrigin.x + rayDir.x * projT - rx;
           const perpZ = rayOrigin.z + rayDir.z * projT - rz;
           if (perpX * perpX + perpZ * perpZ <= aimAssistRadius * aimAssistRadius && projT < lockedEnemyT) {
             lockedEnemyT = projT;
             lockedAimX = rx;
-            lockedAimY = THREE.MathUtils.clamp(rayYAtT, ry + 0.42, ry + enemyH - 0.25);
+            lockedAimY = THREE.MathUtils.clamp(rayYAtT, ry + 0.55, ry + enemyH * 0.68);
             lockedAimZ = rz;
           }
         });
@@ -9128,28 +11769,34 @@ export default function HamsterPaintball({
           }
         }
 
-        // 3. True 3D Target Point Resolution (Enemy 3D Hitbox -> Bunker Surface -> Ground Turf -> 3D Sky/Horizon Ray!)
+        // 3. True Laser-Flat 3D Target Point Resolution (Never angles upward when aiming far across the arena!)
         if (hasTargetLock) {
           g.aimWorldX = lockedAimX;
           g.aimWorldY = lockedAimY;
           g.aimWorldZ = lockedAimZ;
-        } else if (nearestObsRayT < 54) {
+        } else if (nearestObsRayT < 120) {
           g.aimWorldX = rayOrigin.x + rayDir.x * nearestObsRayT;
-          g.aimWorldY = Math.max(0.12, rayOrigin.y + rayDir.y * nearestObsRayT);
+          g.aimWorldY = THREE.MathUtils.clamp(
+            rayOrigin.y + rayDir.y * nearestObsRayT,
+            0.35,
+            g.y + 3.2
+          );
           g.aimWorldZ = rayOrigin.z + rayDir.z * nearestObsRayT;
-        } else if (
-          rayDir.y < -0.025 &&
-          _aimRaycaster.ray.intersectPlane(_groundPlane, _aimPlaneHit) &&
-          Math.hypot(_aimPlaneHit.x - rayOrigin.x, _aimPlaneHit.z - rayOrigin.z) < 48
-        ) {
-          g.aimWorldX = _aimPlaneHit.x;
-          g.aimWorldY = 0.14;
-          g.aimWorldZ = _aimPlaneHit.z;
         } else {
-          const rayTargetDist = 34;
+          const rayTargetDist = 75;
           g.aimWorldX = rayOrigin.x + rayDir.x * rayTargetDist;
-          g.aimWorldY = THREE.MathUtils.clamp(rayOrigin.y + rayDir.y * rayTargetDist, 0.14, 12.0);
           g.aimWorldZ = rayOrigin.z + rayDir.z * rayTargetDist;
+          // Keep long-range shots flat at player chest height unless deliberately pitching steeply up or down
+          const pitchFromLevel = g.camPitch - 0.16;
+          if (Math.abs(pitchFromLevel) < 0.09) {
+            g.aimWorldY = shoulderY;
+          } else {
+            g.aimWorldY = THREE.MathUtils.clamp(
+              shoulderY - Math.tan(pitchFromLevel) * 28,
+              0.35,
+              g.y + 4.2
+            );
+          }
         }
 
         // Smoothly align Hamster hero toward 3D Aim Point & pitch gun/head vertically!
@@ -9160,17 +11807,15 @@ export default function HamsterPaintball({
         g.localHamster.position.set(g.x, g.y, g.z);
         g.localHamster.rotation.y = g.rotY;
 
-        const aimHorizDist = Math.max(3.5, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
-        const shoulderY =
-          g.y + (activeStance === 'crawl' ? 0.58 : activeStance === 'crouch' ? 0.92 : 1.32);
-        const computedAimPitch = -Math.atan2((g.aimWorldY ?? 1.38) - shoulderY, aimHorizDist);
+        const aimHorizDist = Math.max(4.0, Math.hypot(g.aimWorldX - g.x, g.aimWorldZ - g.z));
+        const computedAimPitch = -Math.atan2((g.aimWorldY ?? shoulderY) - shoulderY, aimHorizDist);
 
         const ud = g.localHamster.userData;
         if (ud && ud.nameSprite) {
           ud.nameSprite.visible = false;
         }
         if (ud && ud.markerGroup) {
-          ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, aimHorizDist);
+          ud.markerGroup.rotation.y = -Math.atan2(0.46 * HAMSTER_HERO_SCALE, aimHorizDist);
         }
 
         g.walkPhase = animateHamsterRig(
@@ -9181,7 +11826,7 @@ export default function HamsterPaintball({
           snapState.holdingCanType,
           true,
           activeStance,
-          g.y,
+          g.y - supportY,
           computedAimPitch
         );
 
@@ -9249,7 +11894,7 @@ export default function HamsterPaintball({
 
         let hit = false;
 
-        // Swept Obstacle / Bunker Collisions
+        // Swept Obstacle / Bunker Collisions (Respects obs.baseY!)
         for (const obs of g.obstacles) {
           const tObs =
             segHorizSq > 0.0001
@@ -9258,7 +11903,9 @@ export default function HamsterPaintball({
           const closestX = prevX + segDx * tObs;
           const closestY = prevY + segDy * tObs;
           const closestZ = prevZ + segDz * tObs;
+          const obsBaseY = obs.baseY || 0;
           if (
+            closestY >= obsBaseY - 0.12 &&
             closestY <= obs.h &&
             Math.hypot(closestX - obs.x, closestZ - obs.z) < obs.r + 0.25
           ) {
@@ -9269,7 +11916,7 @@ export default function HamsterPaintball({
               g.splatDecals,
               g.particles,
               closestX,
-              Math.max(0.08, closestY),
+              Math.max(obsBaseY + 0.05, closestY),
               closestZ,
               p.color
             );
@@ -9448,16 +12095,58 @@ export default function HamsterPaintball({
           }
         }
 
-        // Ground Turf Impact
-        if (!hit && nextY <= 0.12) {
+        // Elevated Platform Deck Impact or Ground Turf Impact (Multi-Story Surface Aware!)
+        const projPreset = snapState.arenaPreset || 'stadium';
+        let elevatedDeckY: number | null = null;
+        if (projPreset === 'stadium') {
+          if (Math.abs(nextX) <= 7.8 && Math.abs(nextZ) <= 5.8 && prevY >= 8.45 && nextY <= 8.7) {
+            elevatedDeckY = 8.65;
+          } else if (
+            Math.abs(nextX) <= 16.8 &&
+            Math.abs(nextZ) <= 11.8 &&
+            prevY >= 4.45 &&
+            nextY <= 4.7
+          ) {
+            elevatedDeckY = 4.65;
+          }
+        } else if (projPreset === 'trampoline') {
+          const dC = Math.hypot(nextX, nextZ);
+          if (dC <= 5.2 && prevY >= 9.05 && nextY <= 9.3) {
+            elevatedDeckY = 9.25;
+          } else if (dC <= 11.2 && prevY >= 4.85 && nextY <= 5.1) {
+            elevatedDeckY = 5.05;
+          }
+        } else if (projPreset === 'obstacle') {
+          if (Math.abs(nextX) <= 11.5 && Math.abs(nextZ) <= 4.6 && prevY >= 3.65 && nextY <= 3.9) {
+            elevatedDeckY = 3.85;
+          }
+        } else if (projPreset === 'skyfortress') {
+          if (
+            (Math.abs(nextX + 20) <= 4.8 || Math.abs(nextX - 20) <= 4.8) &&
+            Math.abs(nextZ) <= 5.2 &&
+            prevY >= 8.45 &&
+            nextY <= 8.7
+          ) {
+            elevatedDeckY = 8.65;
+          } else if (
+            (Math.abs(nextX + 20) <= 8.6 || Math.abs(nextX - 20) <= 8.6) &&
+            Math.abs(nextZ) <= 9.5 &&
+            prevY >= 4.45 &&
+            nextY <= 4.7
+          ) {
+            elevatedDeckY = 4.65;
+          }
+        }
+        if (!hit && (elevatedDeckY !== null || nextY <= 0.12)) {
           hit = true;
+          const splatSurfaceY = elevatedDeckY !== null ? elevatedDeckY : 0.05;
           sfx.playSplat();
           spawnPaintSplatEffect(
             scene,
             g.splatDecals,
             g.particles,
             nextX,
-            0.05,
+            splatSurfaceY,
             nextZ,
             p.color
           );
@@ -9512,7 +12201,7 @@ export default function HamsterPaintball({
         }
       });
 
-      // Smooth Dead-Reckoned Interpolation, Jump Elevation, Stance Animation & Live Overhead Bars for Remote Hamsters
+      // Smooth Dead-Reckoned Interpolation, Multilevel Stair/Platform Elevation, Stance Animation & Live Overhead Bars for Remote Hamsters
       const localRecvClock = Date.now();
       g.remotePlayers.forEach(entry => {
         const ageSec = entry.lastLocalRecvAt
@@ -9530,7 +12219,16 @@ export default function HamsterPaintball({
           -(ARENA_HALF_D - 0.8),
           ARENA_HALF_D - 0.8
         );
-        const targetRemoteY = Math.max(0, typeof entry.data.y === 'number' ? entry.data.y : 0);
+        const remoteSupportY = getArenaSupportHeight(
+          predX,
+          predZ,
+          entry.mesh.position.y || 0,
+          snapState.arenaPreset || 'stadium'
+        );
+        const targetRemoteY = Math.max(
+          remoteSupportY,
+          typeof entry.data.y === 'number' ? entry.data.y : 0
+        );
         const dx = predX - entry.mesh.position.x;
         const dy = targetRemoteY - entry.mesh.position.y;
         const dz = predZ - entry.mesh.position.z;
@@ -9581,7 +12279,7 @@ export default function HamsterPaintball({
           null,
           false,
           entry.data.stance || 'stand',
-          entry.mesh.position.y,
+          Math.max(0, entry.mesh.position.y - remoteSupportY),
           0
         );
       });
@@ -9773,14 +12471,8 @@ export default function HamsterPaintball({
     }
 
     g.lastShotTime = now;
-    g.camKick = snap.isAdsScoped ? 0.32 : 0.55;
-    g.recoilBloom = Math.min(20, g.recoilBloom + (snap.isAdsScoped ? 2.8 : 5.8));
-    // Subtle authentic PUBG vertical recoil kick
-    g.camPitch = THREE.MathUtils.clamp(
-      g.camPitch - (snap.isAdsScoped ? 0.006 : 0.011),
-      -0.44,
-      0.52
-    );
+    g.camKick = snap.isAdsScoped ? 0.24 : 0.42;
+    g.recoilBloom = Math.min(14, g.recoilBloom + (snap.isAdsScoped ? 1.8 : 3.6));
     sfx.playMarkerShot();
 
     // Enforce: Active team fires its assigned squad paint color
@@ -9801,9 +12493,9 @@ export default function HamsterPaintball({
     g.localHamster.rotation.y = bodyAngle;
 
     const stanceGunBaseY =
-      snap.playerStance === 'crawl' ? 0.58 : snap.playerStance === 'crouch' ? 0.92 : 1.38;
+      snap.playerStance === 'crawl' ? 0.58 : snap.playerStance === 'crouch' ? 0.92 : 1.28;
     const targetY = typeof g.aimWorldY === 'number' ? g.aimWorldY : stanceGunBaseY + g.y;
-    const gunPitch = -Math.atan2(targetY - (g.y + stanceGunBaseY), Math.max(3.5, aimDist));
+    const gunPitch = -Math.atan2(targetY - (g.y + stanceGunBaseY), Math.max(4.0, aimDist));
 
     // 2. Compute Exact 3D World Position of the Gun Barrel Tip (`muzzleTip`) BEFORE applying kickback!
     if (!_muzzleWorldVecRef.current) _muzzleWorldVecRef.current = new THREE.Vector3();
@@ -9815,8 +12507,8 @@ export default function HamsterPaintball({
     const ud = g.localHamster.userData;
     if (ud) {
       if (ud.markerGroup) {
-        ud.markerGroup.rotation.x = THREE.MathUtils.clamp(gunPitch, -0.58, 0.58);
-        ud.markerGroup.rotation.y = -Math.atan2(0.82 * HAMSTER_HERO_SCALE, Math.max(4.5, aimDist));
+        ud.markerGroup.rotation.x = THREE.MathUtils.clamp(gunPitch, -0.45, 0.45);
+        ud.markerGroup.rotation.y = -Math.atan2(0.46 * HAMSTER_HERO_SCALE, Math.max(4.5, aimDist));
       }
       g.localHamster.updateMatrixWorld(true);
       if (ud.muzzleTip) {
@@ -9825,28 +12517,28 @@ export default function HamsterPaintball({
       ud.recoil = 1.0;
     }
 
-    // 3. Calculate Crisp 3D Ballistic Trajectory + Stance/ADS Precision Spread!
+    // 3. Calculate Laser-Flat 3D Ballistic Trajectory Directly From Gun Muzzle to Crosshair Target!
     const targetDx = g.aimWorldX - muzzleWorldPos.x;
     const targetDz = g.aimWorldZ - muzzleWorldPos.z;
-    const targetDist = Math.hypot(targetDx, targetDz);
-    const baseAngle = targetDist > 0.6 ? Math.atan2(targetDx, targetDz) : bodyAngle;
+    const targetDist = Math.max(1.0, Math.hypot(targetDx, targetDz));
+    const baseAngle = Math.atan2(targetDx, targetDz);
     const spreadRad = snap.isAdsScoped
-      ? 0.002
+      ? 0.001
       : snap.playerStance === 'crawl'
-      ? 0.004
+      ? 0.0025
       : snap.playerStance === 'crouch'
-      ? 0.008
+      ? 0.0045
       : g.y > 0.1
-      ? 0.024
-      : 0.013;
+      ? 0.014
+      : 0.007;
     const shotAngle = baseAngle + (Math.random() - 0.5) * spreadRad;
-    const hSpeed = snap.isAdsScoped ? 64 : 58;
-    const gravity = 1.85;
-    const flightTime = Math.max(0.035, Math.min(0.9, targetDist / hSpeed));
+    const hSpeed = snap.isAdsScoped ? 82 : 76;
+    const gravity = 0.08;
+    const flightTime = Math.max(0.025, targetDist / hSpeed);
     const computedVy = THREE.MathUtils.clamp(
-      (targetY - muzzleWorldPos.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
-      -22.0,
-      22.0
+      (targetY - muzzleWorldPos.y) / flightTime + 0.5 * gravity * flightTime,
+      -14.0,
+      8.5
     );
 
     // 4. Spawn 3D Paintball Projectile + Aerodynamic Streak directly out of the Gun Barrel Nozzle!
@@ -9939,7 +12631,8 @@ export default function HamsterPaintball({
           matchMode: stateSnapRef.current.matchMode,
           teamCount: stateSnapRef.current.teamCount,
           cameraViewPreset: nextCam,
-          aimControlMode: stateSnapRef.current.aimControlMode
+          aimControlMode: stateSnapRef.current.aimControlMode,
+          arenaPreset: stateSnapRef.current.arenaPreset
         });
       } catch {}
     }
@@ -9974,7 +12667,8 @@ export default function HamsterPaintball({
           matchMode: stateSnapRef.current.matchMode,
           teamCount: stateSnapRef.current.teamCount,
           cameraViewPreset: stateSnapRef.current.cameraViewPreset,
-          aimControlMode: nextAim
+          aimControlMode: nextAim,
+          arenaPreset: stateSnapRef.current.arenaPreset
         });
       } catch {}
     }
@@ -9983,6 +12677,56 @@ export default function HamsterPaintball({
     if (cleanCode) {
       const patch = {
         aimControlMode: nextAim,
+        isUninitialized: false,
+        updatedAt: getServerNow()
+      };
+      syncPaintballRoomApi(cleanCode, patch);
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(cleanCode), patch, { merge: true })
+      );
+    }
+  };
+
+  // Teacher Host Action: Switch Arena Map Preset ('stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball') & Sync to All Players
+  const handleHostChangeArenaPreset = (
+    nextArena: 'stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball'
+  ) => {
+    if (role !== 'host') return;
+    sfx.playCorrect();
+    setArenaPreset(nextArena);
+    stateSnapRef.current.arenaPreset = nextArena;
+
+    const arenaLabels: Record<
+      'stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball',
+      string
+    > = {
+      stadium: 'Mega Battle Stadium',
+      trampoline: 'Trampoline Bounce Park',
+      obstacle: 'Wipeout Obstacle Course',
+      skyfortress: 'Sky Fortress Towers',
+      speedball: 'Pro Speedball Arena'
+    };
+    pushLiveEvent(`🏟️ Host switched arena to ${arenaLabels[nextArena]}!`, '#ec4899');
+
+    const bcChannel = broadcastChannelRef.current || gameRef.current?.broadcastChannel;
+    if (bcChannel) {
+      try {
+        bcChannel.postMessage({
+          type: 'room_config',
+          id: clientIdRef.current,
+          matchMode: stateSnapRef.current.matchMode,
+          teamCount: stateSnapRef.current.teamCount,
+          cameraViewPreset: stateSnapRef.current.cameraViewPreset,
+          aimControlMode: stateSnapRef.current.aimControlMode,
+          arenaPreset: nextArena
+        });
+      } catch {}
+    }
+
+    const cleanCode = normalizeCode(roomCode);
+    if (cleanCode) {
+      const patch = {
+        arenaPreset: nextArena,
         isUninitialized: false,
         updatedAt: getServerNow()
       };
@@ -10050,6 +12794,7 @@ export default function HamsterPaintball({
         teamCount: clampedCount,
         cameraViewPreset: stateSnapRef.current.cameraViewPreset,
         aimControlMode: stateSnapRef.current.aimControlMode,
+        arenaPreset: stateSnapRef.current.arenaPreset,
         isUninitialized: false,
         updatedAt: nowTs
       };
@@ -10067,7 +12812,8 @@ export default function HamsterPaintball({
           matchMode: nextMode,
           teamCount: clampedCount,
           cameraViewPreset: stateSnapRef.current.cameraViewPreset,
-          aimControlMode: stateSnapRef.current.aimControlMode
+          aimControlMode: stateSnapRef.current.aimControlMode,
+          arenaPreset: stateSnapRef.current.arenaPreset
         });
       } catch {}
     }
@@ -10291,6 +13037,7 @@ export default function HamsterPaintball({
           teamCount,
           cameraViewPreset,
           aimControlMode,
+          arenaPreset,
           teamAssignments,
           durationSec: configuredDurationSec,
           ballsPerQuestion,
@@ -10309,6 +13056,7 @@ export default function HamsterPaintball({
         teamCount,
         cameraViewPreset,
         aimControlMode,
+        arenaPreset,
         teamAssignments,
         matchEpoch: startTs,
         hostApiOrigin: currentOrigin,
@@ -10941,9 +13689,45 @@ export default function HamsterPaintball({
               </p>
             </div>
 
-            {/* Host-Only Game Camera & Aim Mode */}
+            {/* Host-Only Arena Map, Game Camera & Aim Mode */}
             {role === 'host' && (
               <>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-slate-700">
+                      Arena Options (3D Battle Map)
+                    </span>
+                    <span className="text-[11px] font-medium text-pink-600">Host Control</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-1.5 bg-slate-100 rounded-xl">
+                    {(
+                      [
+                        { id: 'stadium', label: 'Mega Stadium' },
+                        { id: 'trampoline', label: 'Trampoline Park' },
+                        { id: 'obstacle', label: 'Wipeout Course' },
+                        { id: 'skyfortress', label: 'Sky Fortress' },
+                        { id: 'speedball', label: 'Pro Speedball' }
+                      ] as const
+                    ).map(preset => {
+                      const active = arenaPreset === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleHostChangeArenaPreset(preset.id)}
+                          className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+                            active
+                              ? 'bg-pink-600 text-white border-pink-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:text-slate-900'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs font-bold text-slate-700">
@@ -11658,36 +14442,77 @@ export default function HamsterPaintball({
                       </div>
                     </div>
 
-                    {/* Host-Only Game Camera Control (Close / Balanced / Tactical) */}
-                    <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                        <Video size={13} className="text-sky-600" />
-                        <span>Game Camera</span>
+                    {/* Host-Only Arena Options & Game Camera Control */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
+                      <div className="lg:col-span-7 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/80 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                            <span className="w-2 h-2 rounded-full bg-pink-500 shrink-0" />
+                            <span>Arena Options</span>
+                          </div>
+                          <span className="text-[10px] font-semibold text-pink-600">
+                            Multi-Deck & Trampolines
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(
+                            [
+                              { id: 'stadium', label: 'Mega Stadium' },
+                              { id: 'trampoline', label: 'Trampoline Park' },
+                              { id: 'obstacle', label: 'Wipeout Course' },
+                              { id: 'skyfortress', label: 'Sky Fortress' },
+                              { id: 'speedball', label: 'Pro Speedball' }
+                            ] as const
+                          ).map(preset => {
+                            const active = arenaPreset === preset.id;
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => handleHostChangeArenaPreset(preset.id)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+                                  active
+                                    ? 'bg-pink-600 text-white border-pink-600 shadow-xs'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:text-slate-900'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-1 p-0.5 bg-slate-200/75 rounded-lg">
-                        {(
-                          [
-                            { id: 'close', label: 'Close' },
-                            { id: 'balanced', label: 'Balanced' },
-                            { id: 'tactical', label: 'Tactical' }
-                          ] as const
-                        ).map(preset => {
-                          const active = cameraViewPreset === preset.id;
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              onClick={() => handleHostChangeCameraPreset(preset.id)}
-                              className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                                active
-                                  ? 'bg-white text-slate-900 shadow-xs'
-                                  : 'text-slate-600 hover:text-slate-900'
-                              }`}
-                            >
-                              {preset.label}
-                            </button>
-                          );
-                        })}
+
+                      <div className="lg:col-span-5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/80 flex flex-col justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                          <Video size={13} className="text-sky-600" />
+                          <span>Game Camera</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1 p-0.5 bg-slate-200/75 rounded-lg w-full">
+                          {(
+                            [
+                              { id: 'close', label: 'Close' },
+                              { id: 'balanced', label: 'Balanced' },
+                              { id: 'tactical', label: 'Tactical' }
+                            ] as const
+                          ).map(preset => {
+                            const active = cameraViewPreset === preset.id;
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => handleHostChangeCameraPreset(preset.id)}
+                                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                                  active
+                                    ? 'bg-white text-slate-900 shadow-xs'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -12865,15 +15690,24 @@ export default function HamsterPaintball({
                   >
                     <HelpCircle size={18} className="shrink-0" />
                     <div className="text-left leading-tight">
-                      <div className="font-['Poppins',sans-serif] font-extrabold text-xs sm:text-sm">
-                        Question Box
+                      <div className="font-['Poppins',sans-serif] font-extrabold text-xs sm:text-sm flex items-center gap-1.5">
+                        <span>Question Box</span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-black tracking-tight ${
+                            ammo === 0
+                              ? 'bg-slate-950/15 text-slate-950'
+                              : 'bg-slate-950/35 text-amber-300'
+                          }`}
+                        >
+                          [Q]
+                        </span>
                       </div>
                       <div
                         className={`text-[10px] font-bold tabular-nums ${
                           ammo === 0 ? 'text-slate-900' : 'text-sky-100'
                         }`}
                       >
-                        Click to Answer · +{ballsPerQuestion} Balls
+                        Press Q or Click · +{ballsPerQuestion} Balls
                       </div>
                     </div>
                     <span
@@ -12905,6 +15739,7 @@ export default function HamsterPaintball({
                   </span>
                   <span className="hidden md:inline text-white/25">|</span>
                   <span className="hidden md:inline text-slate-300 whitespace-nowrap">
+                    <b className="text-amber-300">Q</b> Question Box ·{' '}
                     <b className="text-white">WASD</b> · <b className="text-white">Click</b> Fire ·{' '}
                     <b className="text-white">RMB</b> Scope · <b className="text-white">Space</b> Jump ·{' '}
                     <b className="text-white">C</b> Crouch · <b className="text-white">Z</b> Crawl
@@ -13401,22 +16236,74 @@ export default function HamsterPaintball({
           QUIZ RELOAD OVERLAY (Available in Warm-Up Practice & Live Match)
          ------------------------------------------------------------- */}
       {isQuestionModalOpen && role === 'player' && screen === 'game' && matchStatus !== 'results' && currentTriviaQ && (
-        <div className="fixed inset-0 z-50 w-full h-full bg-slate-50 text-slate-900 flex flex-col justify-between overflow-y-auto">
-          <div className="bg-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0 border-b border-slate-200">
+        <div
+          className={`fixed inset-0 z-50 w-full h-full text-slate-900 flex flex-col justify-between overflow-y-auto transition-colors duration-150 ${
+            underAttackAlert || damageVignetteColor ? 'bg-red-50' : 'bg-slate-50'
+          }`}
+        >
+          {/* Red Under-Attack Screen Edge Vignette & Pulsing Crimson Border while answering questions */}
+          {(underAttackAlert || damageVignetteColor) && (
+            <div
+              className="pointer-events-none fixed inset-0 z-[60] ring-8 ring-inset ring-red-600/85 animate-pulse transition-opacity duration-150"
+              style={{
+                background:
+                  'radial-gradient(circle at center, transparent 38%, rgba(239, 68, 68, 0.34) 76%, rgba(220, 38, 38, 0.72) 100%)',
+                boxShadow: 'inset 0 0 70px rgba(220, 38, 38, 0.75)'
+              }}
+            />
+          )}
+
+          <div
+            className={`px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0 border-b transition-colors duration-150 ${
+              underAttackAlert || damageVignetteColor
+                ? 'bg-red-600 text-white border-red-700'
+                : 'bg-white text-slate-900 border-slate-200'
+            }`}
+          >
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <HelpCircle size={17} className="text-sky-600 shrink-0" />
-                <h3 className="font-['Poppins',sans-serif] font-bold text-sm sm:text-base text-slate-900 leading-none truncate tabular-nums">
+                <HelpCircle
+                  size={17}
+                  className={`shrink-0 ${
+                    underAttackAlert || damageVignetteColor ? 'text-white' : 'text-sky-600'
+                  }`}
+                />
+                <h3
+                  className={`font-['Poppins',sans-serif] font-bold text-sm sm:text-base leading-none truncate tabular-nums ${
+                    underAttackAlert || damageVignetteColor ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
                   +{ballsPerQuestion} Paintballs
                 </h3>
               </div>
-              <p className="text-xs text-slate-500 font-medium mt-1 truncate tabular-nums">
+              <p
+                className={`text-xs font-medium mt-1 truncate tabular-nums ${
+                  underAttackAlert || damageVignetteColor ? 'text-red-100' : 'text-slate-500'
+                }`}
+              >
                 Q{(triviaDeckIndex % effectiveQuestions.length) + 1}/{effectiveQuestions.length} ·{' '}
                 {triviaStreak}x Streak · {ammo} Ammo
               </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              {/* Live HP & Shield indicator inside Question Box */}
+              <div
+                className={`hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg font-mono tabular-nums font-bold text-xs border ${
+                  underAttackAlert || damageVignetteColor
+                    ? 'bg-red-950/80 text-white border-red-300 animate-pulse'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                <span className={underAttackAlert ? 'text-red-200' : 'text-rose-600'}>
+                  ♥ {Math.max(0, Math.round(hp))}
+                </span>
+                <span className="opacity-40">|</span>
+                <span className={underAttackAlert ? 'text-sky-200' : 'text-sky-600'}>
+                  🛡 {Math.max(0, Math.round(shield))}
+                </span>
+              </div>
+
               <div
                 className={`px-2.5 py-1 rounded-lg font-mono tabular-nums font-bold text-xs sm:text-sm flex items-center gap-1.5 border ${
                   questionTimeLeft <= 5
@@ -13433,12 +16320,49 @@ export default function HamsterPaintball({
               <button
                 type="button"
                 onClick={() => setIsQuestionModalOpen(false)}
-                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs sm:text-sm cursor-pointer whitespace-nowrap tabular-nums"
+                className={`px-3.5 py-1.5 rounded-lg font-semibold text-xs sm:text-sm cursor-pointer whitespace-nowrap tabular-nums flex items-center gap-1.5 transition ${
+                  underAttackAlert || damageVignetteColor
+                    ? 'bg-white text-red-700 hover:bg-red-50 shadow-md font-bold'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
+                }`}
               >
-                Resume ({ammo})
+                <span>Back to Arena ({ammo})</span>
+                <span
+                  className={`hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                    underAttackAlert || damageVignetteColor
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-white/15 text-amber-300'
+                  }`}
+                >
+                  Q
+                </span>
               </button>
             </div>
           </div>
+
+          {/* High-visibility red Under-Attack alert banner while answering questions */}
+          {underAttackAlert && (
+            <div className="bg-red-600 text-white px-4 py-2 border-b-2 border-red-800 shadow-md flex items-center justify-between gap-3 shrink-0 animate-pulse">
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold tracking-wide">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+                <span>
+                  {underAttackAlert.isKo
+                    ? `💥 SPLATTERED BY ${underAttackAlert.attackerName.toUpperCase()}! RESPAWNED AT BASE!`
+                    : `⚠️ UNDER ATTACK! Hit by ${underAttackAlert.attackerName} (-${underAttackAlert.damage} DMG) · HP ${Math.max(
+                        0,
+                        Math.round(hp)
+                      )} / SHIELD ${Math.max(0, Math.round(shield))}`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuestionModalOpen(false)}
+                className="px-2.5 py-1 rounded-md bg-white text-red-700 hover:bg-red-50 font-extrabold text-xs whitespace-nowrap cursor-pointer shrink-0 shadow-xs"
+              >
+                Back to Arena [Q]
+              </button>
+            </div>
+          )}
 
           <div className="w-full h-1.5 bg-slate-200 shrink-0 overflow-hidden">
             <div

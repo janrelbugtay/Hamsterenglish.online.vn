@@ -1352,28 +1352,19 @@ async function startServer() {
   });
 
   const extractVideoSubject = (videoTitleRaw?: string, topicRaw?: string): string => {
-    const cleanTitle = (videoTitleRaw || "")
-      .replace(/\[.*?\]|\(.*?\)/g, " ")
-      .replace(/\b(4k|hd|official|video|clip|full|episode|seconds|minutes|hours|of|the|best|worst|ideas|ever|compilation|scene|scenes|movie|cartoon)\b/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (/mr\.?\s*bean/i.test(videoTitleRaw || "") || /mr\.?\s*bean/i.test(topicRaw || "")) {
-      return "Mr. Bean";
-    }
-    if (/pink\s*panther/i.test(videoTitleRaw || "")) return "The Pink Panther";
-    if (/tom\s*and\s*jerry/i.test(videoTitleRaw || "")) return "Tom and Jerry";
-    if (/spongebob/i.test(videoTitleRaw || "")) return "SpongeBob";
-    if (/peppa\s*pig/i.test(videoTitleRaw || "")) return "Peppa Pig";
-    if (/paddington/i.test(videoTitleRaw || "")) return "Paddington";
-    if (/harry\s*potter/i.test(videoTitleRaw || "")) return "Harry Potter";
-    if (/minion/i.test(videoTitleRaw || "")) return "the Minions";
-    if (/hamster/i.test(videoTitleRaw || "")) return "the hamster";
-
-    if (cleanTitle.length >= 3 && cleanTitle.length <= 36) {
-      return cleanTitle;
-    }
-    return "the main character";
+    const combined = `${videoTitleRaw || ""} ${topicRaw || ""}`;
+    if (/mr\.?\s*bean/i.test(combined)) return "Mr. Bean";
+    if (/pink\s*panther/i.test(combined)) return "The Pink Panther";
+    if (/tom\s*and\s*jerry/i.test(combined)) return "Tom and Jerry";
+    if (/spongebob/i.test(combined)) return "SpongeBob";
+    if (/peppa\s*pig/i.test(combined)) return "Peppa Pig";
+    if (/paddington/i.test(combined)) return "Paddington";
+    if (/harry\s*potter/i.test(combined)) return "Harry Potter";
+    if (/elsa/i.test(combined)) return "Elsa";
+    if (/spider-?man/i.test(combined)) return "Spider-Man";
+    if (/minion/i.test(combined)) return "They";
+    if (/hamster/i.test(combined)) return "The hamster";
+    return "";
   };
 
   const extractYouTubeId = (rawUrl?: string): string => {
@@ -1405,6 +1396,54 @@ async function startServer() {
     return `${m}:${rem < 10 ? "0" : ""}${rem}`;
   };
 
+  const extractJsonObjectAfterMarker = (source: string, markerRegex: RegExp): any | null => {
+    const m = markerRegex.exec(source);
+    if (!m) return null;
+    const startIdx = source.indexOf("{", m.index);
+    if (startIdx < 0) return null;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = startIdx; i < source.length; i++) {
+      const ch = source[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === "\\") {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === "{") {
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          try {
+            return JSON.parse(source.slice(startIdx, i + 1));
+          } catch {
+            return null;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  interface StoryboardSheetInfo {
+    startSec: number;
+    endSec: number;
+    cols: number;
+    rows: number;
+    intervalSec: number;
+    mimeType: string;
+    data: string;
+  }
+
   const scanYouTubeVideoDeepContext = async (
     videoUrlRaw?: string,
     options?: { skipFrames?: boolean }
@@ -1419,6 +1458,8 @@ async function startServer() {
     let transcript = "";
     let chapters: Array<{ title: string; sec: number }> = [];
     let captionTrackUrl = "";
+    let storyboardSpec = "";
+    const storyboardSheets: StoryboardSheetInfo[] = [];
     const frameParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
 
     if (!videoId) {
@@ -1432,6 +1473,7 @@ async function startServer() {
         keywords,
         transcript,
         chapters,
+        storyboardSheets,
         frameParts,
       };
     }
@@ -1457,7 +1499,7 @@ async function startServer() {
 
     const tasks: Promise<void>[] = [];
 
-    // 1. OEmbed title & channel
+    // 1. OEmbed title & channel (fast backup)
     tasks.push(
       (async () => {
         try {
@@ -1475,155 +1517,234 @@ async function startServer() {
       })()
     );
 
-    // 2. YouTube Innertube Player (ANDROID + WEB) & Watch Page for durationSec, keywords, description, & captionTracks
+    // 2. YouTube Watch Page parsing (ytInitialPlayerResponse + ytInitialData -> captions, duration, description, chapters, & chronological storyboard sheets)
     tasks.push(
       (async () => {
-        const clientConfigs = [
-          {
-            clientName: "ANDROID",
-            clientVersion: "19.09.37",
-            androidSdkVersion: 30,
-          },
-          {
-            clientName: "WEB",
-            clientVersion: "2.20250101.00.00",
-          },
-        ];
+        try {
+          const wRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+            headers: {
+              "Accept-Language": "en-US,en;q=0.9",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            },
+          });
+          if (!wRes.ok) return;
+          const html = await wRes.text();
 
-        for (const clientCfg of clientConfigs) {
-          if (durationSec > 0 && captionTrackUrl && title && description) break;
-          try {
-            const pRes = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                videoId,
-                context: { client: clientCfg },
-              }),
-            });
-            if (pRes.ok) {
-              const pData: any = await pRes.json();
-              const vd = pData?.videoDetails;
-              if (vd) {
-                const len = parseInt(String(vd.lengthSeconds || "0"), 10);
-                if (len > 0 && durationSec <= 0) durationSec = len;
-                if (vd.title && !title) title = String(vd.title).trim();
-                if (vd.author && !author) author = String(vd.author).trim();
-                if (vd.shortDescription && !description) {
-                  description = String(vd.shortDescription).trim().slice(0, 1800);
-                }
-                if (Array.isArray(vd.keywords) && keywords.length === 0) {
-                  keywords = vd.keywords
-                    .map((k: any) => String(k || "").trim())
-                    .filter(Boolean)
-                    .slice(0, 18);
-                }
+          const pr = extractJsonObjectAfterMarker(
+            html,
+            /(?:var\s+)?ytInitialPlayerResponse\s*=\s*/
+          );
+          if (pr) {
+            const vd = pr?.videoDetails;
+            if (vd) {
+              const len = parseInt(String(vd.lengthSeconds || "0"), 10);
+              if (len > 0 && durationSec <= 0) durationSec = len;
+              if (vd.title && !title) title = String(vd.title).trim();
+              if (vd.author && !author) author = String(vd.author).trim();
+              if (vd.shortDescription && !description) {
+                description = String(vd.shortDescription).trim().slice(0, 2200);
               }
-              const tracks = pData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-              if (!captionTrackUrl && Array.isArray(tracks)) {
-                captionTrackUrl = pickCaptionTrackUrl(tracks);
+              if (Array.isArray(vd.keywords) && keywords.length === 0) {
+                keywords = vd.keywords
+                  .map((k: any) => String(k || "").trim())
+                  .filter(Boolean)
+                  .slice(0, 18);
               }
             }
-          } catch {}
-        }
-
-        if (durationSec <= 0 || !title || !captionTrackUrl) {
-          try {
-            const wRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-              headers: {
-                "Accept-Language": "en-US,en;q=0.9",
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-              },
-            });
-            if (wRes.ok) {
-              const html = await wRes.text();
-              if (durationSec <= 0) {
-                const lenMatch = html.match(/"lengthSeconds":"(\d+)"/);
-                if (lenMatch?.[1]) {
-                  const parsed = parseInt(lenMatch[1], 10);
-                  if (parsed > 0) durationSec = parsed;
-                }
-              }
-              if (!title) {
-                const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/i);
-                if (ogTitle?.[1]) title = decodeHtmlEntities(ogTitle[1]);
-              }
-              if (!captionTrackUrl) {
-                const capMatch = html.match(/"captionTracks":(\[.*?\])/);
-                if (capMatch?.[1]) {
-                  try {
-                    const parsedTracks = JSON.parse(capMatch[1]);
-                    captionTrackUrl = pickCaptionTrackUrl(parsedTracks);
-                  } catch {}
-                }
-              }
+            const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+            if (!captionTrackUrl && Array.isArray(tracks)) {
+              captionTrackUrl = pickCaptionTrackUrl(tracks);
             }
-          } catch {}
-        }
+            const sb = pr?.storyboards?.playerStoryboardSpecRenderer?.spec;
+            if (typeof sb === "string" && sb.includes("|")) {
+              storyboardSpec = sb;
+            }
+          }
+
+          if (durationSec <= 0) {
+            const lenMatch = html.match(/"lengthSeconds":"(\d+)"/);
+            if (lenMatch?.[1]) {
+              const parsed = parseInt(lenMatch[1], 10);
+              if (parsed > 0) durationSec = parsed;
+            }
+          }
+          if (!title) {
+            const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/i);
+            if (ogTitle?.[1]) title = decodeHtmlEntities(ogTitle[1]);
+          }
+
+          // Extract chapters from watch HTML if present
+          const chapMatches = [
+            ...html.matchAll(
+              /"chapterRenderer":\{"title":\{"simpleText":"([^"]+)"\},"timeRangeStartMillis":(\d+)/g
+            ),
+          ];
+          if (chapMatches.length > 0 && chapters.length === 0) {
+            chapters = chapMatches.slice(0, 30).map((m) => ({
+              title: decodeHtmlEntities(m[1]),
+              sec: Math.round(Number(m[2]) / 1000),
+            }));
+          }
+        } catch {}
 
         // Fetch and parse timestamped captions if available
+        const subTasks: Promise<void>[] = [];
         if (captionTrackUrl) {
-          try {
-            const capUrl = captionTrackUrl.includes("fmt=")
-              ? captionTrackUrl
-              : `${captionTrackUrl}&fmt=json3`;
-            const cRes = await fetch(capUrl);
-            if (cRes.ok) {
-              const rawText = await cRes.text();
-              const entries: Array<{ sec: number; text: string }> = [];
-              if (rawText.trim().startsWith("{")) {
-                try {
-                  const jsonData: any = JSON.parse(rawText);
-                  const events = Array.isArray(jsonData?.events) ? jsonData.events : [];
-                  events.forEach((ev: any) => {
-                    const segs = Array.isArray(ev?.segs) ? ev.segs : [];
-                    const line = decodeHtmlEntities(
-                      segs.map((s: any) => s?.utf8 || "").join("")
-                    );
+          subTasks.push(
+            (async () => {
+              try {
+                const capUrl = captionTrackUrl.includes("fmt=")
+                  ? captionTrackUrl
+                  : `${captionTrackUrl}&fmt=json3`;
+                const cRes = await fetch(capUrl);
+                if (!cRes.ok) return;
+                const rawText = await cRes.text();
+                const entries: Array<{ sec: number; text: string }> = [];
+                if (rawText.trim().startsWith("{")) {
+                  try {
+                    const jsonData: any = JSON.parse(rawText);
+                    const events = Array.isArray(jsonData?.events) ? jsonData.events : [];
+                    events.forEach((ev: any) => {
+                      const segs = Array.isArray(ev?.segs) ? ev.segs : [];
+                      const line = decodeHtmlEntities(
+                        segs.map((s: any) => s?.utf8 || "").join("")
+                      );
+                      if (line && !/^\[.*\]$/.test(line)) {
+                        entries.push({
+                          sec: Math.round((Number(ev?.tStartMs) || 0) / 1000),
+                          text: line,
+                        });
+                      }
+                    });
+                  } catch {}
+                } else {
+                  const xmlMatches = [
+                    ...rawText.matchAll(/<text start="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g),
+                  ];
+                  xmlMatches.forEach((m) => {
+                    const line = decodeHtmlEntities(m[2].replace(/<[^>]+>/g, " "));
                     if (line && !/^\[.*\]$/.test(line)) {
                       entries.push({
-                        sec: Math.round((Number(ev?.tStartMs) || 0) / 1000),
+                        sec: Math.round(parseFloat(m[1]) || 0),
                         text: line,
                       });
                     }
                   });
-                } catch {}
-              } else {
-                const xmlMatches = [
-                  ...rawText.matchAll(/<text start="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g),
-                ];
-                xmlMatches.forEach((m) => {
-                  const line = decodeHtmlEntities(m[2].replace(/<[^>]+>/g, " "));
-                  if (line && !/^\[.*\]$/.test(line)) {
-                    entries.push({
-                      sec: Math.round(parseFloat(m[1]) || 0),
-                      text: line,
-                    });
-                  }
-                });
-              }
-
-              if (entries.length > 0) {
-                // Sample evenly across the whole video so intro, middle, and ending dialogue are all covered
-                const maxLines = 110;
-                const step = entries.length > maxLines ? entries.length / maxLines : 1;
-                const sampled: string[] = [];
-                for (let i = 0; i < entries.length && sampled.length < maxLines; i += step) {
-                  const e = entries[Math.floor(i)];
-                  if (e && e.text) {
-                    sampled.push(`[${formatTimestampTag(e.sec)}] ${e.text}`);
-                  }
                 }
-                transcript = sampled.join("\n").slice(0, 5200);
-              }
-            }
-          } catch {}
+
+                if (entries.length > 0) {
+                  const maxLines = 160;
+                  const step = entries.length > maxLines ? entries.length / maxLines : 1;
+                  const sampled: string[] = [];
+                  for (let i = 0; i < entries.length && sampled.length < maxLines; i += step) {
+                    const e = entries[Math.floor(i)];
+                    if (e && e.text) {
+                      sampled.push(`[${formatTimestampTag(e.sec)} / ${e.sec}s] ${e.text}`);
+                    }
+                  }
+                  transcript = sampled.join("\n").slice(0, 9000);
+                }
+              } catch {}
+            })()
+          );
         }
+
+        // Download chronological YouTube Storyboard sprite sheets so Gemini can inspect the full timeline visually
+        if (!options?.skipFrames && storyboardSpec) {
+          subTasks.push(
+            (async () => {
+              try {
+                const parts = storyboardSpec.split("|");
+                const baseUrl = parts[0];
+                const levels = parts.slice(1).map((lvlStr, idx) => {
+                  const segs = lvlStr.split("#");
+                  return {
+                    levelIdx: idx,
+                    width: parseInt(segs[0] || "0", 10) || 0,
+                    height: parseInt(segs[1] || "0", 10) || 0,
+                    totalFrames: parseInt(segs[2] || "0", 10) || 0,
+                    cols: parseInt(segs[3] || "1", 10) || 1,
+                    rows: parseInt(segs[4] || "1", 10) || 1,
+                    intervalMs: parseInt(segs[5] || "0", 10) || 0,
+                    namePattern: segs[6] || "",
+                    sigh: segs[7] || "",
+                  };
+                });
+
+                // Prefer highest-resolution sheet with $M grid support
+                const validLevels = levels.filter(
+                  (l) => l.namePattern.includes("$M") && l.cols * l.rows >= 4 && l.totalFrames > 0
+                );
+                const chosen = validLevels.sort((a, b) => b.width - a.width)[0];
+                if (!chosen) return;
+
+                const framesPerSheet = Math.max(1, chosen.cols * chosen.rows);
+                const totalSheets = Math.max(1, Math.ceil(chosen.totalFrames / framesPerSheet));
+                const intervalSec =
+                  chosen.intervalMs > 0
+                    ? chosen.intervalMs / 1000
+                    : durationSec > 0
+                    ? durationSec / Math.max(1, chosen.totalFrames)
+                    : 2;
+
+                const maxSheetsToFetch = Math.min(6, totalSheets);
+                const sheetIndices = Array.from({ length: maxSheetsToFetch }, (_, i) =>
+                  maxSheetsToFetch === 1
+                    ? 0
+                    : Math.round((i / (maxSheetsToFetch - 1)) * (totalSheets - 1))
+                ).filter((v, i, arr) => arr.indexOf(v) === i);
+
+                const downloaded = await Promise.all(
+                  sheetIndices.map(async (mIdx) => {
+                    try {
+                      const sheetUrl =
+                        baseUrl
+                          .replace("$L", String(chosen.levelIdx))
+                          .replace("$N", chosen.namePattern.replace("$M", String(mIdx))) +
+                        (chosen.sigh ? `&sigh=${encodeURIComponent(chosen.sigh)}` : "");
+                      const sbRes = await fetch(sheetUrl);
+                      if (!sbRes.ok) return null;
+                      const buf = Buffer.from(await sbRes.arrayBuffer());
+                      if (buf.byteLength < 1000) return null;
+                      const startFrame = mIdx * framesPerSheet;
+                      const endFrame = Math.min(
+                        chosen.totalFrames - 1,
+                        startFrame + framesPerSheet - 1
+                      );
+                      const startSec = Math.round(startFrame * intervalSec);
+                      const endSec = Math.min(
+                        durationSec > 0 ? durationSec : Math.round(endFrame * intervalSec),
+                        Math.round((endFrame + 1) * intervalSec)
+                      );
+                      return {
+                        startSec,
+                        endSec: Math.max(startSec + 1, endSec),
+                        cols: chosen.cols,
+                        rows: chosen.rows,
+                        intervalSec: Math.max(0.5, Math.round(intervalSec * 10) / 10),
+                        mimeType: "image/jpeg",
+                        data: buf.toString("base64"),
+                      } as StoryboardSheetInfo;
+                    } catch {
+                      return null;
+                    }
+                  })
+                );
+
+                downloaded.forEach((sheet) => {
+                  if (sheet) storyboardSheets.push(sheet);
+                });
+              } catch {}
+            })()
+          );
+        }
+
+        await Promise.allSettled(subTasks);
       })()
     );
 
-    // 3. YouTube Innertube Next API for description & chapter timestamps
+    // 3. YouTube Innertube Next API for description & chapter timestamps (backup)
     tasks.push(
       (async () => {
         try {
@@ -1640,21 +1761,23 @@ async function startServer() {
             const descMatches = [
               ...text.matchAll(/"attributedDescriptionBodyText":\{"content":"((?:[^"\\]|\\.)*)"/g),
             ];
-            if (descMatches.length > 0) {
+            if (descMatches.length > 0 && !description) {
               try {
-                const parsedDesc = JSON.parse(`"${descMatches[0][1]}"`).slice(0, 1800);
+                const parsedDesc = JSON.parse(`"${descMatches[0][1]}"`).slice(0, 2200);
                 if (parsedDesc) description = parsedDesc;
               } catch {}
             }
-            const chapMatches = [
-              ...text.matchAll(
-                /"chapterRenderer":\{"title":\{"simpleText":"([^"]+)"\},"timeRangeStartMillis":(\d+)/g
-              ),
-            ];
-            chapters = chapMatches.slice(0, 25).map((m) => ({
-              title: decodeHtmlEntities(m[1]),
-              sec: Math.round(Number(m[2]) / 1000),
-            }));
+            if (chapters.length === 0) {
+              const chapMatches = [
+                ...text.matchAll(
+                  /"chapterRenderer":\{"title":\{"simpleText":"([^"]+)"\},"timeRangeStartMillis":(\d+)/g
+                ),
+              ];
+              chapters = chapMatches.slice(0, 30).map((m) => ({
+                title: decodeHtmlEntities(m[1]),
+                sec: Math.round(Number(m[2]) / 1000),
+              }));
+            }
           }
         } catch {}
       })()
@@ -1703,7 +1826,7 @@ async function startServer() {
       })()
     );
 
-    // 5. Download visual scene frame images from YouTube (hq1.jpg, hq2.jpg, hq3.jpg, 0.jpg)
+    // 5. Backup standard thumbnail frames (used only if storyboard sheets were unavailable)
     if (!options?.skipFrames) {
       tasks.push(
         (async () => {
@@ -1749,6 +1872,7 @@ async function startServer() {
       keywords,
       transcript,
       chapters,
+      storyboardSheets,
       frameParts,
     };
   };
@@ -1782,7 +1906,7 @@ async function startServer() {
     videoTitleRaw?: string,
     videoDescRaw?: string,
     chaptersRaw?: Array<{ title: string; sec: number }>,
-    subject: string = "the main character"
+    subject: string = "He"
   ): ScannedVideoScene[] => {
     const combinedText = `${videoTitleRaw || ""} ${videoDescRaw || ""} ${
       Array.isArray(chaptersRaw) ? chaptersRaw.map((c) => c.title).join(" ") : ""
@@ -2287,10 +2411,23 @@ async function startServer() {
       Array.isArray(typesRaw) && typesRaw.length > 0
         ? typesRaw
         : ["Fill in the Blanks", "Multiple Choice", "Grammar Choice"];
-    const subject = extractVideoSubject(videoTitleRaw, topicRaw);
-    const isPluralSubject =
-      /\b(and|they|minions|kids|students|animals|friends|people)\b/i.test(subject);
-    const subjPronoun = isPluralSubject ? "they" : "he";
+    const namedSubject = extractVideoSubject(videoTitleRaw, topicRaw);
+    const adaptPronoun = (phrase: string, subj: string) => {
+      if (subj !== "She") return phrase;
+      return phrase
+        .replace(/\bhimself\b/gi, "herself")
+        .replace(/\bhis\b/gi, "her")
+        .replace(/\bhe\b/gi, "she")
+        .replace(/\bhim\b/gi, "her");
+    };
+    const pickPronounForIndex = (idx: number) =>
+      namedSubject ? namedSubject : idx % 2 === 0 ? "He" : "She";
+    const subject = namedSubject || "He";
+    const isPluralFor = (subjStr: string) =>
+      /^(they|we|you)$/i.test(subjStr.trim()) || /\b(and|minions|kids|students|friends|people)\b/i.test(subjStr);
+
+    const isPluralSubject = isPluralFor(subject);
+    const subjPronoun = isPluralSubject ? "they" : subject === "She" ? "she" : "he";
     const hasAux = isPluralSubject ? "have" : "has";
     const hasNeg = isPluralSubject ? "haven't" : "hasn't";
     const wrongAux = isPluralSubject ? "has" : "have";
@@ -2333,11 +2470,14 @@ async function startServer() {
     // 1. MUST AND MUSTN'T
     // =========================================================================
     if (/\bmust\b|\bmustn'?t\b|\bmust\s+not\b/i.test(topicLower)) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const mustRule = adaptPronoun(sc.mustRule, scSubj);
+        const mustntRule = adaptPronoun(sc.mustntRule, scSubj);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (must / mustn't) ${sc.mustntRule}.`,
+            question: `${scSubj} ____ (must / mustn't) ${mustntRule}.`,
             answer: "mustn't",
             acceptedAnswers: ["mustn't", "must not", "mustnt"],
             options: [
@@ -2350,7 +2490,7 @@ async function startServer() {
           },
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (must / mustn't) ${sc.mustRule}.`,
+            question: `${scSubj} ____ (must / mustn't) ${mustRule}.`,
             answer: "must",
             acceptedAnswers: ["must"],
             options: [
@@ -2363,7 +2503,7 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `${subject} ____ ${sc.mustntRule}!`,
+            question: `${scSubj} ____ ${mustntRule}!`,
             answer: "mustn't",
             acceptedAnswers: ["mustn't", "must not"],
             options: [
@@ -2376,20 +2516,20 @@ async function startServer() {
           },
           {
             type: "Multiple Choice",
-            question: `Which sentence is correct?`,
-            answer: `${subject} must ${sc.mustRule}.`,
-            acceptedAnswers: [`${subject} must ${sc.mustRule}.`, "must"],
+            question: `Which sentence is correct ${sc.sceneLabel}?`,
+            answer: `${scSubj} must ${mustRule}.`,
+            acceptedAnswers: [`${scSubj} must ${mustRule}.`, "must"],
             options: [
-              { text: `${subject} must ${sc.mustRule}.`, isCorrect: true },
-              { text: `${subject} musts ${sc.mustRule}.`, isCorrect: false },
-              { text: `${subject} must to ${sc.mustRule}.`, isCorrect: false },
-              { text: `${subject} musting ${sc.mustRule}.`, isCorrect: false },
+              { text: `${scSubj} must ${mustRule}.`, isCorrect: true },
+              { text: `${scSubj} musts ${mustRule}.`, isCorrect: false },
+              { text: `${scSubj} must to ${mustRule}.`, isCorrect: false },
+              { text: `${scSubj} musting ${mustRule}.`, isCorrect: false },
             ],
             explanation: `Use "must" + the simple verb (no "-s" and no "to").`,
           },
           {
             type: "Fill in the Blanks",
-            question: `${subject} must ____ (${sc.verbBase}) ${sc.location}.`,
+            question: `${scSubj} must ____ (${sc.verbBase}) ${sc.location}.`,
             answer: sc.verbBase,
             acceptedAnswers: [sc.verbBase, `must ${sc.verbBase}`],
             options: [
@@ -2407,11 +2547,14 @@ async function startServer() {
     // 2. SHOULD AND SHOULDN'T
     // =========================================================================
     else if (/\bshould\b|\bshouldn'?t\b/i.test(topicLower)) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const shouldAction = adaptPronoun(sc.shouldAction, scSubj);
+        const shouldntAction = adaptPronoun(sc.shouldntAction, scSubj);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (should / shouldn't) ${sc.shouldntAction}.`,
+            question: `${scSubj} ____ (should / shouldn't) ${shouldntAction}.`,
             answer: "shouldn't",
             acceptedAnswers: ["shouldn't", "should not", "shouldnt"],
             options: [
@@ -2424,7 +2567,7 @@ async function startServer() {
           },
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (should / shouldn't) ${sc.shouldAction}.`,
+            question: `${scSubj} ____ (should / shouldn't) ${shouldAction}.`,
             answer: "should",
             acceptedAnswers: ["should"],
             options: [
@@ -2437,13 +2580,13 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `Which sentence is correct?`,
-            answer: `${subject} should ${sc.shouldAction}.`,
+            question: `Which sentence gives good advice ${sc.sceneLabel}?`,
+            answer: `${scSubj} should ${shouldAction}.`,
             options: [
-              { text: `${subject} should ${sc.shouldAction}.`, isCorrect: true },
-              { text: `${subject} should to ${sc.shouldAction}.`, isCorrect: false },
-              { text: `${subject} shoulds ${sc.shouldAction}.`, isCorrect: false },
-              { text: `${subject} don't should ${sc.shouldntAction}.`, isCorrect: false },
+              { text: `${scSubj} should ${shouldAction}.`, isCorrect: true },
+              { text: `${scSubj} should to ${shouldAction}.`, isCorrect: false },
+              { text: `${scSubj} shoulds ${shouldAction}.`, isCorrect: false },
+              { text: `${scSubj} don't should ${shouldntAction}.`, isCorrect: false },
             ],
             explanation: `Use "should" + the base verb (no "to").`,
           }
@@ -2457,11 +2600,14 @@ async function startServer() {
       const useCould = /\bcould/i.test(topicLower);
       const posModal = useCould ? "could" : "can";
       const negModal = useCould ? "couldn't" : "can't";
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const canAct = adaptPronoun(sc.canAction, scSubj);
+        const cantAct = adaptPronoun(sc.cantAction, scSubj);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (${posModal} / ${negModal}) ${sc.cantAction}.`,
+            question: `${scSubj} ____ (${posModal} / ${negModal}) ${cantAct}.`,
             answer: negModal,
             acceptedAnswers: [negModal, useCould ? "could not" : "cannot", useCould ? "couldnt" : "cant"],
             options: [
@@ -2474,7 +2620,7 @@ async function startServer() {
           },
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (${posModal} / ${negModal}) ${sc.canAction}.`,
+            question: `${scSubj} ____ (${posModal} / ${negModal}) ${canAct}.`,
             answer: posModal,
             acceptedAnswers: [posModal],
             options: [
@@ -2487,13 +2633,13 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `Which sentence is correct?`,
-            answer: `${subject} ${negModal} ${sc.cantAction}.`,
+            question: `Which sentence is correct ${sc.sceneLabel}?`,
+            answer: `${scSubj} ${negModal} ${cantAct}.`,
             options: [
-              { text: `${subject} ${negModal} ${sc.cantAction}.`, isCorrect: true },
-              { text: `${subject} ${posModal}s ${sc.canAction}.`, isCorrect: false },
-              { text: `${subject} ${posModal} to ${sc.canAction}.`, isCorrect: false },
-              { text: `${subject} don't ${posModal} ${sc.cantAction}.`, isCorrect: false },
+              { text: `${scSubj} ${negModal} ${cantAct}.`, isCorrect: true },
+              { text: `${scSubj} ${posModal}s ${canAct}.`, isCorrect: false },
+              { text: `${scSubj} ${posModal} to ${canAct}.`, isCorrect: false },
+              { text: `${scSubj} don't ${posModal} ${cantAct}.`, isCorrect: false },
             ],
             explanation: `Use "${negModal}" + base verb without "to" or "-s".`,
           }
@@ -2504,11 +2650,14 @@ async function startServer() {
     // 4. HAVE TO / HAS TO / DON'T HAVE TO / DOESN'T HAVE TO
     // =========================================================================
     else if (/\bhave\s+to\b|\bhas\s+to\b|\bdon'?t\s+have\s+to\b|\bdoesn'?t\s+have\s+to\b/i.test(topicLower)) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const haveToAct = adaptPronoun(sc.haveToAction, scSubj);
+        const dontHaveAct = adaptPronoun(sc.dontHaveToAction, scSubj);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (${haveToPos} / ${haveToNeg}) ${sc.haveToAction}.`,
+            question: `${scSubj} ____ (${haveToPos} / ${haveToNeg}) ${haveToAct}.`,
             answer: haveToPos,
             acceptedAnswers: [haveToPos, "must"],
             options: [
@@ -2517,11 +2666,11 @@ async function startServer() {
               { text: isPluralSubject ? "has to" : "have to", isCorrect: false },
               { text: "having to", isCorrect: false },
             ],
-            explanation: `Use "${haveToPos}" with "${subject}" when something is needed.`,
+            explanation: `Use "${haveToPos}" with "${scSubj}" when something is needed.`,
           },
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (${haveToPos} / ${haveToNeg}) ${sc.dontHaveToAction}.`,
+            question: `${scSubj} ____ (${haveToPos} / ${haveToNeg}) ${dontHaveAct}.`,
             answer: haveToNeg,
             acceptedAnswers: [haveToNeg],
             options: [
@@ -2544,11 +2693,13 @@ async function startServer() {
       /\b(just|already|yet|ever|never)\b/i.test(topicLower) ||
       /\bfor\s+(and|vs\.?|or|\/)\s+since\b|\bsince\s+(and|vs\.?|or|\/)\s+for\b/i.test(topicLower)
     ) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ${hasAux} ____ (${sc.verbBase}) ${sc.obj}.`,
+            question: `${scSubj} ${hasAux} ____ (${sc.verbBase}) ${scObj}.`,
             answer: sc.verbV3,
             acceptedAnswers: [sc.verbV3, `${hasAux} ${sc.verbV3}`],
             options: [
@@ -2561,7 +2712,7 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `${subject} ____ just ${sc.verbV3} ${sc.obj}!`,
+            question: `${scSubj} ____ just ${sc.verbV3} ${scObj}!`,
             answer: hasAux,
             acceptedAnswers: [hasAux],
             options: [
@@ -2574,7 +2725,7 @@ async function startServer() {
           },
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (have / has) ${sc.verbV3} ${sc.obj}.`,
+            question: `${scSubj} ____ (have / has) ${sc.verbV3} ${scObj}.`,
             answer: hasAux,
             acceptedAnswers: [hasAux, `${hasAux} ${sc.verbV3}`],
             options: [
@@ -2583,17 +2734,17 @@ async function startServer() {
               { text: "did", isCorrect: false },
               { text: wasAux, isCorrect: false },
             ],
-            explanation: `With "${subject}", we use "${hasAux}".`,
+            explanation: `With "${scSubj}", we use "${hasAux}".`,
           },
           {
             type: "Multiple Choice",
-            question: `What has ${subject} done ${sc.sceneLabel}?`,
-            answer: `${subject} ${hasAux} ${sc.verbV3} ${sc.obj}.`,
+            question: `What has ${scSubj === "He" || scSubj === "She" ? scSubj.toLowerCase() : scSubj} done ${adaptPronoun(sc.sceneLabel, scSubj)}?`,
+            answer: `${scSubj} ${hasAux} ${sc.verbV3} ${scObj}.`,
             options: [
-              { text: `${subject} ${hasAux} ${sc.verbV3} ${sc.obj}.`, isCorrect: true },
-              { text: `${subject} ${wrongAux} ${sc.verbBase} ${sc.obj}.`, isCorrect: false },
-              { text: `${subject} ${isAux} ${sc.verbV3} ${sc.obj}.`, isCorrect: false },
-              { text: `${subject} didn't ${sc.verbV3} ${sc.obj}.`, isCorrect: false },
+              { text: `${scSubj} ${hasAux} ${sc.verbV3} ${scObj}.`, isCorrect: true },
+              { text: `${scSubj} ${wrongAux} ${sc.verbBase} ${scObj}.`, isCorrect: false },
+              { text: `${scSubj} ${isAux} ${sc.verbV3} ${scObj}.`, isCorrect: false },
+              { text: `${scSubj} didn't ${sc.verbV3} ${scObj}.`, isCorrect: false },
             ],
             explanation: `"${hasAux} ${sc.verbV3}" is the correct Present Perfect form.`,
           }
@@ -2604,11 +2755,13 @@ async function startServer() {
     // 6. PAST SIMPLE
     // =========================================================================
     else if (topicLower.includes("past simple") || topicLower.includes("simple past")) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (${sc.verbBase}) ${sc.obj}.`,
+            question: `${scSubj} ____ (${sc.verbBase}) ${scObj}.`,
             answer: sc.verbPast,
             acceptedAnswers: [sc.verbPast],
             options: [
@@ -2621,7 +2774,7 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `${subject} didn't ____ (${sc.verbBase}) ${sc.location}.`,
+            question: `${scSubj} didn't ____ (${sc.verbBase}) ${sc.location}.`,
             answer: sc.verbBase,
             options: [
               { text: sc.verbBase, isCorrect: true },
@@ -2633,13 +2786,13 @@ async function startServer() {
           },
           {
             type: "Multiple Choice",
-            question: `What did ${subject} do ${sc.sceneLabel}?`,
-            answer: `${subject} ${sc.verbPast} ${sc.obj}.`,
+            question: `What did ${scSubj === "He" || scSubj === "She" ? scSubj.toLowerCase() : scSubj} do ${adaptPronoun(sc.sceneLabel, scSubj)}?`,
+            answer: `${scSubj} ${sc.verbPast} ${scObj}.`,
             options: [
-              { text: `${subject} ${sc.verbPast} ${sc.obj}.`, isCorrect: true },
-              { text: `${subject} did ${sc.verbPast} ${sc.obj}.`, isCorrect: false },
-              { text: `${subject} ${wasAux} ${sc.verbPast} ${sc.obj}.`, isCorrect: false },
-              { text: `${subject} ${sc.verbBase} ${sc.obj} yesterday.`, isCorrect: false },
+              { text: `${scSubj} ${sc.verbPast} ${scObj}.`, isCorrect: true },
+              { text: `${scSubj} did ${sc.verbPast} ${scObj}.`, isCorrect: false },
+              { text: `${scSubj} ${wasAux} ${sc.verbPast} ${scObj}.`, isCorrect: false },
+              { text: `${scSubj} ${sc.verbBase} ${scObj} yesterday.`, isCorrect: false },
             ],
             explanation: `In Past Simple statements, use "${sc.verbPast}".`,
           }
@@ -2656,11 +2809,13 @@ async function startServer() {
       const isPastCont = topicLower.includes("past");
       const beAux = isPastCont ? wasAux : isAux;
       const wrongBe = isPastCont ? wrongWasAux : wrongIsAux;
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ${beAux} ____ (${sc.verbBase}) ${sc.obj}.`,
+            question: `${scSubj} ${beAux} ____ (${sc.verbBase}) ${scObj}.`,
             answer: sc.verbIng,
             acceptedAnswers: [sc.verbIng, `${beAux} ${sc.verbIng}`],
             options: [
@@ -2673,7 +2828,7 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `${subject} ____ ${sc.verbIng} ${sc.obj}.`,
+            question: `${scSubj} ____ ${sc.verbIng} ${scObj}.`,
             answer: beAux,
             options: [
               { text: beAux, isCorrect: true },
@@ -2681,7 +2836,7 @@ async function startServer() {
               { text: isPastCont ? "did" : "does", isCorrect: false },
               { text: hasAux, isCorrect: false },
             ],
-            explanation: `With "${subject}", use "${beAux} + ${sc.verbIng}".`,
+            explanation: `With "${scSubj}", use "${beAux} + ${sc.verbIng}".`,
           }
         );
       });
@@ -2691,13 +2846,15 @@ async function startServer() {
     // =========================================================================
     else if (topicLower.includes("present simple") || topicLower.includes("simple present")) {
       const targetVerbForm = isPluralSubject ? "base" : "s";
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
         const correctForm = targetVerbForm === "s" ? sc.verbS : sc.verbBase;
         const wrongForm = targetVerbForm === "s" ? sc.verbBase : sc.verbS;
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (${sc.verbBase}) ${sc.obj}.`,
+            question: `${scSubj} ____ (${sc.verbBase}) ${scObj}.`,
             answer: correctForm,
             acceptedAnswers: [correctForm],
             options: [
@@ -2706,11 +2863,11 @@ async function startServer() {
               { text: sc.verbIng, isCorrect: false },
               { text: sc.verbPast, isCorrect: false },
             ],
-            explanation: `With "${subject}", we say "${correctForm}".`,
+            explanation: `With "${scSubj}", we say "${correctForm}".`,
           },
           {
             type: "Grammar Choice",
-            question: `${subject} ${doesntAux} ____ ${sc.obj}.`,
+            question: `${scSubj} ${doesntAux} ____ ${scObj}.`,
             answer: sc.verbBase,
             options: [
               { text: sc.verbBase, isCorrect: true },
@@ -2728,12 +2885,15 @@ async function startServer() {
     // =========================================================================
     else if (/\b(future|will|won'?t|going\s+to)\b/i.test(topicLower)) {
       const useGoingTo = topicLower.includes("going to");
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
+        const mustRule = adaptPronoun(sc.mustRule, scSubj);
         if (useGoingTo) {
           bank.push(
             {
               type: "Fill in the Blanks",
-              question: `${subject} ${isAux} going to ____ (${sc.verbBase}) ${sc.obj}.`,
+              question: `${scSubj} ${isAux} going to ____ (${sc.verbBase}) ${scObj}.`,
               answer: sc.verbBase,
               acceptedAnswers: [sc.verbBase],
               options: [
@@ -2746,7 +2906,7 @@ async function startServer() {
             },
             {
               type: "Grammar Choice",
-              question: `${subject} ____ going to ${sc.verbBase} ${sc.location}.`,
+              question: `${scSubj} ____ going to ${sc.verbBase} ${sc.location}.`,
               answer: isAux,
               options: [
                 { text: isAux, isCorrect: true },
@@ -2754,14 +2914,14 @@ async function startServer() {
                 { text: "will", isCorrect: false },
                 { text: "did", isCorrect: false },
               ],
-              explanation: `Use "${isAux} going to" with "${subject}".`,
+              explanation: `Use "${isAux} going to" with "${scSubj}".`,
             }
           );
         } else {
           bank.push(
             {
               type: "Fill in the Blanks",
-              question: `${subject} ____ (will / won't) ${sc.mustRule}.`,
+              question: `${scSubj} ____ (will / won't) ${mustRule}.`,
               answer: "will",
               acceptedAnswers: ["will"],
               options: [
@@ -2774,7 +2934,7 @@ async function startServer() {
             },
             {
               type: "Grammar Choice",
-              question: `${subject} will ____ ${sc.location}.`,
+              question: `${scSubj} will ____ ${sc.location}.`,
               answer: sc.verbBase,
               options: [
                 { text: sc.verbBase, isCorrect: true },
@@ -2792,7 +2952,9 @@ async function startServer() {
     // 10. PASSIVE VOICE
     // =========================================================================
     else if (topicLower.includes("passive")) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
         const auxWord = sc.passiveWasOrIs;
         bank.push(
           {
@@ -2814,8 +2976,8 @@ async function startServer() {
             answer: `${sc.passiveSubject} ${auxWord} ${sc.passiveVerbV3} ${sc.location}.`,
             options: [
               { text: `${sc.passiveSubject} ${auxWord} ${sc.passiveVerbV3} ${sc.location}.`, isCorrect: true },
-              { text: `${subject} ${sc.verbPast} ${sc.obj}.`, isCorrect: false },
-              { text: `${subject} ${isAux} ${sc.verbIng} ${sc.obj}.`, isCorrect: false },
+              { text: `${scSubj} ${sc.verbPast} ${scObj}.`, isCorrect: false },
+              { text: `${scSubj} ${isAux} ${sc.verbIng} ${scObj}.`, isCorrect: false },
               { text: `${sc.passiveSubject} ${sc.verbBase} ${sc.location}.`, isCorrect: false },
             ],
             explanation: `"${sc.passiveSubject} ${auxWord} ${sc.passiveVerbV3}" is Passive Voice.`,
@@ -2827,12 +2989,14 @@ async function startServer() {
     // 11. CONDITIONALS (First / Second / Zero / If-clauses)
     // =========================================================================
     else if (topicLower.includes("conditional") || /\bif\s+clause/i.test(topicLower)) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
         const presForm = isPluralSubject ? sc.verbBase : sc.verbS;
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `If ${subject} ____ (${sc.verbBase}) ${sc.obj}, everyone will see!`,
+            question: `If ${scSubj.toLowerCase() === scSubj ? scSubj : scSubj} ____ (${sc.verbBase}) ${scObj}, everyone will notice.`,
             answer: presForm,
             acceptedAnswers: [presForm],
             options: [
@@ -2845,7 +3009,7 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `If ${subject} ${sc.verbPast} carefully, ${subjPronoun} ____ get into trouble.`,
+            question: `If ${scSubj === "He" || scSubj === "She" ? scSubj.toLowerCase() : scSubj} ${sc.verbPast} carefully, ${scSubj === "She" ? "she" : "he"} ____ get into trouble.`,
             answer: "wouldn't",
             acceptedAnswers: ["wouldn't", "would not"],
             options: [
@@ -2863,11 +3027,12 @@ async function startServer() {
     // 12. COMPARATIVES AND SUPERLATIVES
     // =========================================================================
     else if (topicLower.includes("comparative") || topicLower.includes("superlative")) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} should be ____ (${sc.adjBase}) than before.`,
+            question: `${scSubj} should be ____ (${sc.adjBase}) than before.`,
             answer: sc.adjComp,
             acceptedAnswers: [sc.adjComp],
             options: [
@@ -2895,14 +3060,15 @@ async function startServer() {
       });
     }
     // =========================================================================
-    // 13. PREPOSITIONS / ARTICLES / RELATIVE CLAUSES / QUANTIFIERS
+    // 13. PREPOSITIONS / ARTICLES / RELATIVE CLAUSES
     // =========================================================================
     else if (topicLower.includes("preposition")) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `${subject} is standing ____ (in / on / at) the door ${sc.sceneLabel}.`,
+            question: `${scSubj} is standing ____ (in / on / at) the door ${adaptPronoun(sc.sceneLabel, scSubj)}.`,
             answer: "at",
             acceptedAnswers: ["at", "near", "by"],
             options: [
@@ -2915,7 +3081,7 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `${subject} puts the bag ____ the table.`,
+            question: `${scSubj} puts the bag ____ the table ${sc.location}.`,
             answer: "on",
             options: [
               { text: "on", isCorrect: true },
@@ -2927,42 +3093,303 @@ async function startServer() {
           }
         );
       });
-    } else if (topicLower.includes("article")) {
-      dynamicScenes.forEach((sc) => {
-        bank.push(
-          {
-            type: "Fill in the Blanks",
-            question: `${subject} sees ____ (a / an) funny object ${sc.location}.`,
-            answer: "a",
-            acceptedAnswers: ["a"],
-            options: [
-              { text: "a", isCorrect: true },
-              { text: "an", isCorrect: false },
-              { text: "two", isCorrect: false },
-              { text: "any", isCorrect: false },
-            ],
-            explanation: `Use "a" before consonant sounds like "funny".`,
-          },
-          {
-            type: "Grammar Choice",
-            question: `${subject} waits for ____ hour ${sc.location}.`,
-            answer: "an",
-            options: [
-              { text: "an", isCorrect: true },
-              { text: "a", isCorrect: false },
-              { text: "many", isCorrect: false },
-              { text: "few", isCorrect: false },
-            ],
-            explanation: `Use "an" before a vowel sound ("hour").`,
-          }
-        );
+    } else if (topicLower.includes("article") || /\b(a\s*,\s*an|a\s*\/\s*an|no\s+article)\b/i.test(topicLower)) {
+      const articleItems: Array<{
+        type: string;
+        q: (p: string) => string;
+        ans: string;
+        accepted?: string[];
+        opts: Array<{ text: string; isCorrect: boolean }>;
+        exp: string;
+      }> = [
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} carried ____ (a / an) umbrella because it started to rain.`,
+          ans: "an",
+          opts: [
+            { text: "an", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "an" before a vowel sound ("umbrella").`,
+        },
+        {
+          type: "Grammar Choice",
+          q: (p) => `${p} waited for almost ____ hour outside the door.`,
+          ans: "an",
+          opts: [
+            { text: "an", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `The "h" in "hour" is silent, so it starts with a vowel sound ("an hour").`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} wore ____ (a / an) bright blue uniform at work.`,
+          ans: "a",
+          opts: [
+            { text: "a", isCorrect: true },
+            { text: "an", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `"Uniform" begins with a "y" consonant sound (/juː/), so use "a".`,
+        },
+        {
+          type: "Multiple Choice",
+          q: (p) => `${p} picked up a heavy bag. ____ bag nearly fell on the floor.`,
+          ans: "The",
+          opts: [
+            { text: "The", isCorrect: true },
+            { text: "A", isCorrect: false },
+            { text: "An", isCorrect: false },
+            { text: "No article", isCorrect: false },
+          ],
+          exp: `Use "The" when talking about a specific item mentioned a second time.`,
+        },
+        {
+          type: "Grammar Choice",
+          q: (p) => `${p} asked for ____ cold water after walking up the stairs.`,
+          ans: "no article",
+          accepted: ["no article", "-", "none"],
+          opts: [
+            { text: "no article", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+            { text: "the", isCorrect: false },
+          ],
+          exp: `Use no article before uncountable nouns like "water" when speaking in general.`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} usually eats ____ (a / no article) breakfast at eight o'clock.`,
+          ans: "no article",
+          accepted: ["no article", "-"],
+          opts: [
+            { text: "no article", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+            { text: "the", isCorrect: false },
+          ],
+          exp: `We do not normally use an article before meal names like "breakfast".`,
+        },
+        {
+          type: "Grammar Choice",
+          q: () => `Look up! ____ sun is shining brightly over the street.`,
+          ans: "The",
+          opts: [
+            { text: "The", isCorrect: true },
+            { text: "A", isCorrect: false },
+            { text: "An", isCorrect: false },
+            { text: "No article", isCorrect: false },
+          ],
+          exp: `Use "The" for unique things in nature such as "the sun" or "the sky".`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} found ____ (a / an) empty seat right beside the window.`,
+          ans: "an",
+          opts: [
+            { text: "an", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "an" before vowel sounds like "empty".`,
+        },
+        {
+          type: "Multiple Choice",
+          q: (p) => `${p} plays ____ piano calmly after finishing work.`,
+          ans: "the",
+          opts: [
+            { text: "the", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "the" before musical instruments with "play" (play the piano).`,
+        },
+        {
+          type: "Grammar Choice",
+          q: (p) => `${p} loves playing ____ tennis in the park on weekends.`,
+          ans: "no article",
+          opts: [
+            { text: "no article", isCorrect: true },
+            { text: "the", isCorrect: false },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+          ],
+          exp: `Do not use an article before sports such as "tennis" or "football".`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} bought ____ (a / an) paper ticket from the counter.`,
+          ans: "a",
+          opts: [
+            { text: "a", isCorrect: true },
+            { text: "an", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "a" before singular countable nouns starting with a consonant sound ("paper ticket").`,
+        },
+        {
+          type: "Grammar Choice",
+          q: () => `Please shut ____ front door so the wind stays outside.`,
+          ans: "the",
+          opts: [
+            { text: "the", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "the" because both speakers know which specific door is meant.`,
+        },
+        {
+          type: "Multiple Choice",
+          q: (p) => `${p} speaks ____ English clearly when greeting visitors.`,
+          ans: "no article",
+          opts: [
+            { text: "no article", isCorrect: true },
+            { text: "the", isCorrect: false },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+          ],
+          exp: `Do not use an article before languages like "English".`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} peeled ____ (a / an) orange and placed it in a bowl.`,
+          ans: "an",
+          opts: [
+            { text: "an", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "an" before vowel sounds like "orange".`,
+        },
+        {
+          type: "Grammar Choice",
+          q: (p) => `${p} noticed a stray cat. ____ cat jumped onto the bench.`,
+          ans: "The",
+          opts: [
+            { text: "The", isCorrect: true },
+            { text: "A", isCorrect: false },
+            { text: "An", isCorrect: false },
+            { text: "No article", isCorrect: false },
+          ],
+          exp: `Use "The" because "cat" was already introduced in the first sentence.`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} stays awake reading ____ (the / no article) most nights.`,
+          ans: "no article",
+          accepted: ["no article", "-"],
+          opts: [
+            { text: "no article", isCorrect: true },
+            { text: "the", isCorrect: false },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+          ],
+          exp: `Use no article in the phrase "most nights" when speaking generally.`,
+        },
+        {
+          type: "Grammar Choice",
+          q: (p) => `${p} gave ____ honest answer when the friend asked why.`,
+          ans: "an",
+          opts: [
+            { text: "an", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `"Honest" begins with a silent "h", so use "an".`,
+        },
+        {
+          type: "Multiple Choice",
+          q: () => `Which sentence uses "a", "an", and "the" correctly?`,
+          ans: `She put the key in a small pocket.`,
+          opts: [
+            { text: `She put the key in a small pocket.`, isCorrect: true },
+            { text: `She put a key in an small pocket.`, isCorrect: false },
+            { text: `She drinks a water every morning.`, isCorrect: false },
+            { text: `He waited for a hour outside.`, isCorrect: false },
+          ],
+          exp: `"a small pocket" and "the key" are both grammatically correct.`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} drew ____ (a / an) quick map on a napkin.`,
+          ans: "a",
+          opts: [
+            { text: "a", isCorrect: true },
+            { text: "an", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "a" before consonant sounds like "quick".`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} checked ____ (a / the) clock on the wall before leaving.`,
+          ans: "the",
+          opts: [
+            { text: "the", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "the" for a specific object in the room ("the clock on the wall").`,
+        },
+        {
+          type: "Multiple Choice",
+          q: (p) => `${p} travels to work by ____ bus every morning.`,
+          ans: "no article",
+          opts: [
+            { text: "no article", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "an", isCorrect: false },
+            { text: "the", isCorrect: false },
+          ],
+          exp: `Use no article after "by" with transport ("by bus", "by train").`,
+        },
+        {
+          type: "Fill in the Blanks",
+          q: (p) => `${p} packed ____ (a / an) extra jacket inside the backpack.`,
+          ans: "an",
+          opts: [
+            { text: "an", isCorrect: true },
+            { text: "a", isCorrect: false },
+            { text: "the", isCorrect: false },
+            { text: "no article", isCorrect: false },
+          ],
+          exp: `Use "an" before vowel sounds like "extra".`,
+        },
+      ];
+
+      articleItems.forEach((item, idx) => {
+        const p = namedSubject || (idx % 2 === 0 ? "He" : "She");
+        bank.push({
+          type: item.type,
+          question: item.q(p),
+          answer: item.ans,
+          acceptedAnswers: item.accepted || [item.ans],
+          options: item.opts,
+          explanation: item.exp,
+        });
       });
     } else if (topicLower.includes("relative")) {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const objPronoun = scSubj === "She" ? "her" : scSubj === "He" ? "him" : scSubj;
         bank.push(
           {
             type: "Fill in the Blanks",
-            question: `The person ____ (who / which) helps ${subject} ${sc.location} is very kind.`,
+            question: `The person ____ (who / which) helps ${objPronoun} ${sc.location} is very kind.`,
             answer: "who",
             acceptedAnswers: ["who", "that"],
             options: [
@@ -2975,7 +3402,7 @@ async function startServer() {
           },
           {
             type: "Grammar Choice",
-            question: `This is the place ____ ${subject} ${sc.verbPast}.`,
+            question: `This is the place ____ ${scSubj === "He" || scSubj === "She" ? scSubj.toLowerCase() : scSubj} ${sc.verbPast}.`,
             answer: "where",
             options: [
               { text: "where", isCorrect: true },
@@ -2992,23 +3419,25 @@ async function startServer() {
     // 14. BLANK TOPIC OR GENERAL VIDEO COMPREHENSION
     // =========================================================================
     else {
-      dynamicScenes.forEach((sc) => {
+      dynamicScenes.forEach((sc, scIdx) => {
+        const scSubj = pickPronounForIndex(scIdx);
+        const scObj = adaptPronoun(sc.obj, scSubj);
         bank.push(
           {
             type: "Multiple Choice",
-            question: `What happens ${sc.sceneLabel} ${videoContextLabel}?`,
-            answer: `${subject} ${sc.verbS} ${sc.obj}.`,
+            question: `What happens ${adaptPronoun(sc.sceneLabel, scSubj)} ${videoContextLabel}?`,
+            answer: `${scSubj} ${sc.verbS} ${scObj}.`,
             options: [
-              { text: `${subject} ${sc.verbS} ${sc.obj}.`, isCorrect: true },
+              { text: `${scSubj} ${sc.verbS} ${scObj}.`, isCorrect: true },
               { text: `Everyone goes to sleep quietly.`, isCorrect: false },
               { text: `Nothing happens in this scene.`, isCorrect: false },
               { text: `The video shows an empty playground.`, isCorrect: false },
             ],
-            explanation: `In this scene, ${subject} ${sc.verbS} ${sc.obj}.`,
+            explanation: `In this scene, ${scSubj === "He" || scSubj === "She" ? scSubj.toLowerCase() : scSubj} ${sc.verbS} ${scObj}.`,
           },
           {
             type: "Fill in the Blanks",
-            question: `${subject} ____ (${sc.verbBase}) ${sc.obj}.`,
+            question: `${scSubj} ____ (${sc.verbBase}) ${scObj}.`,
             answer: sc.verbS,
             acceptedAnswers: [sc.verbS, sc.verbPast, `${isAux} ${sc.verbIng}`],
             options: [
@@ -3017,11 +3446,11 @@ async function startServer() {
               { text: `to ${sc.verbBase}`, isCorrect: false },
               { text: `didn't ${sc.verbPast}`, isCorrect: false },
             ],
-            explanation: `${subject} ${sc.verbS} ${sc.obj}.`,
+            explanation: `${scSubj} ${sc.verbS} ${scObj}.`,
           },
           {
             type: "True or False",
-            question: `True or False: ${subject} ${sc.verbS} ${sc.obj} ${sc.location}.`,
+            question: `True or False: ${scSubj} ${sc.verbS} ${scObj} ${sc.location}.`,
             answer: "True",
             options: [
               { text: "True", isCorrect: true },
@@ -3046,16 +3475,42 @@ async function startServer() {
       (t) => t.type !== "Fill in the Blanks" && t.type !== "True or False"
     );
 
+    const usedQuestions = new Set<string>();
+    let fibCursor = 0;
+    let tfCursor = 0;
+    let choiceCursor = 0;
+
     return Array.from({ length: count }, (_, index) => {
       const requestedType = types[index % types.length];
       const wantsFib = requestedType === "Fill in the Blanks" && fibTemplates.length > 0;
       const wantsTf = requestedType === "True or False" && tfTemplates.length > 0;
+
+      const pickUnique = (pool: QuizTemplate[], cursorRef: "fib" | "tf" | "choice"): QuizTemplate => {
+        const start =
+          cursorRef === "fib" ? fibCursor : cursorRef === "tf" ? tfCursor : choiceCursor;
+        for (let offset = 0; offset < pool.length; offset++) {
+          const cand = pool[(start + offset) % pool.length];
+          if (!usedQuestions.has(cand.question)) {
+            if (cursorRef === "fib") fibCursor = start + offset + 1;
+            else if (cursorRef === "tf") tfCursor = start + offset + 1;
+            else choiceCursor = start + offset + 1;
+            usedQuestions.add(cand.question);
+            return cand;
+          }
+        }
+        const fallback = pool[start % pool.length];
+        if (cursorRef === "fib") fibCursor = start + 1;
+        else if (cursorRef === "tf") tfCursor = start + 1;
+        else choiceCursor = start + 1;
+        return fallback;
+      };
+
       const template = wantsFib
-        ? fibTemplates[Math.floor(index / Math.max(1, types.length)) % fibTemplates.length]
+        ? pickUnique(fibTemplates, "fib")
         : wantsTf
-        ? tfTemplates[index % tfTemplates.length]
+        ? pickUnique(tfTemplates, "tf")
         : choiceTemplates.length > 0
-        ? choiceTemplates[index % choiceTemplates.length]
+        ? pickUnique(choiceTemplates, "choice")
         : bank[index % bank.length];
 
       const timeTrigger = Math.min(
@@ -3448,9 +3903,9 @@ async function startServer() {
         `- Prepositions MUST test the exact spatial/time preposition shown in the scene ("in", "on", "at", "under", "next to", "between", "into", "through") with only ONE clearly right preposition.`
       );
     }
-    if (/\barticle\b/i.test(lower)) {
+    if (/\barticle\b|\b(a\s*,\s*an|a\s*\/\s*an|no\s+article)\b/i.test(lower)) {
       specificRules.push(
-        `- Articles MUST test "a / an / the / no article" cleanly based on sound ("an hour", "a uniform") and first vs specific mention.`
+        `- Articles ("a / an / the / no article"): Test ALL four cases clearly across different scenes: (1) "a" before consonant sounds (including "a uniform", "a university"), (2) "an" before vowel sounds (including silent-h "an hour", "an honest..."), (3) "the" for specific/second-mention nouns or unique things ("the sun", "the door"), and (4) "no article" before general plural nouns, uncountable nouns ("water", "music"), meals ("breakfast"), sports ("tennis"), and languages ("English"). Use "no article" as the clean option text when zero article is correct.`
       );
     }
     if (/\brelative\b/i.test(lower)) {
@@ -3506,6 +3961,14 @@ async function startServer() {
         : ["Fill in the Blanks", "Multiple Choice", "Grammar Choice"];
 
     const targetCount = Math.max(1, Math.min(100, Number(count) || 5));
+
+    if (!hasValidGeminiKey()) {
+      return res.status(503).json({
+        error:
+          "Gemini API key is not configured in Settings > Secrets. Please configure GEMINI_API_KEY so the video scenes can be analyzed accurately.",
+      });
+    }
+
     const scanned = await scanYouTubeVideoDeepContext(
       typeof videoUrl === "string" ? videoUrl : ""
     );
@@ -3518,46 +3981,96 @@ async function startServer() {
       "";
     const resolvedAuthor = scanned.author || "";
     const resolvedDuration = Math.max(
-      30,
+      10,
       Number(scanned.durationSec) || Number(videoDuration) || 240
     );
 
-    const fallbackList = buildFallbackVideoQuizQuestions(
-      cleanTopic,
-      cleanLevel,
-      requestedTypes,
-      targetCount,
-      resolvedVideoTitle,
-      resolvedDuration,
-      scanned.description,
-      scanned.chapters
-    );
-
-    if (!hasValidGeminiKey()) {
-      return res.json({
-        questions: fallbackList,
-        videoTitle: resolvedVideoTitle,
-        videoDuration: resolvedDuration,
-        hasTranscript: Boolean(scanned.transcript),
-      });
-    }
-
-    // Collect visual frames from YouTube OR uploaded local video clientFrames
-    const extraClientFrames: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    // Collect timestamped visual frames from uploaded/direct video OR YouTube storyboard sheets
+    const parsedClientFrames: Array<{
+      sec: number | null;
+      mimeType: string;
+      data: string;
+    }> = [];
     if (Array.isArray(clientFrames)) {
-      clientFrames.slice(0, 4).forEach((rawFrame: any) => {
-        if (typeof rawFrame !== "string") return;
-        const m = rawFrame.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/);
-        if (m?.[1] && m?.[2] && m[2].length < 400000) {
-          extraClientFrames.push({
-            inlineData: { mimeType: m[1], data: m[2] },
+      clientFrames.slice(0, 18).forEach((rawFrame: any) => {
+        const rawUrl =
+          typeof rawFrame === "string"
+            ? rawFrame
+            : typeof rawFrame?.dataUrl === "string"
+            ? rawFrame.dataUrl
+            : "";
+        if (!rawUrl) return;
+        const m = rawUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/);
+        if (m?.[1] && m?.[2] && m[2].length < 750000) {
+          const secVal =
+            typeof rawFrame?.sec === "number" && Number.isFinite(rawFrame.sec)
+              ? Math.max(0, Math.round(rawFrame.sec))
+              : null;
+          parsedClientFrames.push({
+            sec: secVal,
+            mimeType: m[1],
+            data: m[2],
           });
         }
       });
     }
 
-    const visualFrameParts =
-      scanned.frameParts.length > 0 ? scanned.frameParts : extraClientFrames;
+    const labeledVisualParts: any[] = [];
+    if (scanned.storyboardSheets.length > 0) {
+      scanned.storyboardSheets.forEach((sheet, idx) => {
+        labeledVisualParts.push(
+          {
+            text: `[YouTube Storyboard Grid #${idx + 1} covering ${formatTimestampTag(
+              sheet.startSec
+            )} (${sheet.startSec}s) to ${formatTimestampTag(sheet.endSec)} (${sheet.endSec}s) — ${
+              sheet.cols
+            } columns x ${sheet.rows} rows, read left-to-right then top-to-bottom, ~${
+              sheet.intervalSec
+            }s per frame]:`,
+          },
+          {
+            inlineData: { mimeType: sheet.mimeType, data: sheet.data },
+          }
+        );
+      });
+    } else if (parsedClientFrames.length > 0) {
+      parsedClientFrames.forEach((cf, idx) => {
+        const timeText =
+          cf.sec !== null
+            ? `${formatTimestampTag(cf.sec)} (${cf.sec}s)`
+            : `sample ${idx + 1} of ${parsedClientFrames.length}`;
+        labeledVisualParts.push(
+          {
+            text: `[Observed Video Frame #${idx + 1} at ${timeText} of total duration ${formatTimestampTag(
+              resolvedDuration
+            )} (${resolvedDuration}s)]:`,
+          },
+          {
+            inlineData: { mimeType: cf.mimeType, data: cf.data },
+          }
+        );
+      });
+    } else if (scanned.frameParts.length > 0) {
+      scanned.frameParts.forEach((fp, idx) => {
+        labeledVisualParts.push(
+          { text: `[YouTube Preview Frame #${idx + 1}]:` },
+          fp
+        );
+      });
+    }
+
+    const hasVisualOrTranscriptEvidence =
+      labeledVisualParts.length > 0 ||
+      Boolean(scanned.transcript) ||
+      Boolean(scanned.description) ||
+      scanned.chapters.length > 0;
+
+    if (!hasVisualOrTranscriptEvidence && !resolvedVideoTitle) {
+      return res.status(400).json({
+        error:
+          "Could not extract scenes, frames, or captions from this video source. Please upload a browser-playable video (MP4/WebM) or paste a valid YouTube link.",
+      });
+    }
 
     const sanitizeGeminiBatch = (rawArray: any[], stepSec: number) => {
       return rawArray
@@ -3621,7 +4134,8 @@ async function startServer() {
             const tfAns = isTrueRight ? "True" : "False";
             return {
               id: idx + 1,
-              timeTrigger: Math.max(5, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+              timeTrigger: Math.max(4, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+              sceneContext: String(q?.sceneContext || "").trim(),
               type: "True or False",
               xp: 100,
               question: qText,
@@ -3638,16 +4152,13 @@ async function startServer() {
 
           if (assignedType === "Fill in the Blanks") {
             if (!explicitAnswer) return null;
-            // Ensure single clean blank "____"
             const blankMatches = qText.match(/_{2,}/g) || [];
             if (blankMatches.length === 0) {
-              // If the answer appears verbatim in qText, replace it with ____
               const escapedAns = explicitAnswer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const ansRe = new RegExp(`\\b${escapedAns}\\b`, "i");
               if (ansRe.test(qText)) {
                 qText = qText.replace(ansRe, "____");
               } else {
-                // Convert cleanly to Grammar Choice rather than appending awkward "(____)"
                 assignedType = requestedTypes.includes("Grammar Choice")
                   ? "Grammar Choice"
                   : requestedTypes.includes("Multiple Choice")
@@ -3658,15 +4169,17 @@ async function startServer() {
                 }
               }
             } else if (blankMatches.length > 1) {
-              // Collapse extra blanks if the model output two blanks for a single input field
               let firstKept = false;
-              qText = qText.replace(/_{2,}/g, (m) => {
-                if (!firstKept) {
-                  firstKept = true;
-                  return "____";
-                }
-                return "";
-              }).replace(/\s+/g, " ").trim();
+              qText = qText
+                .replace(/_{2,}/g, () => {
+                  if (!firstKept) {
+                    firstKept = true;
+                    return "____";
+                  }
+                  return explicitAnswer;
+                })
+                .replace(/\s+/g, " ")
+                .trim();
             } else {
               qText = qText.replace(/_{2,}/g, "____");
             }
@@ -3687,7 +4200,8 @@ async function startServer() {
               }
               return {
                 id: idx + 1,
-                timeTrigger: Math.max(5, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+                timeTrigger: Math.max(4, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+                sceneContext: String(q?.sceneContext || "").trim(),
                 type: "Fill in the Blanks",
                 xp: 100,
                 question: qText,
@@ -3703,7 +4217,6 @@ async function startServer() {
 
           if (mappedOpts.length < 2) return null;
           if (!hasCorrect) {
-            // Try matching explicitAnswer against options first
             const matchedOpt = mappedOpts.find(
               (o) => o.text.toLowerCase() === explicitAnswer.toLowerCase()
             );
@@ -3715,7 +4228,8 @@ async function startServer() {
 
           return {
             id: idx + 1,
-            timeTrigger: Math.max(5, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+            timeTrigger: Math.max(4, Number(q?.timeTrigger) || (idx + 1) * stepSec),
+            sceneContext: String(q?.sceneContext || "").trim(),
             type: assignedType,
             xp: 100,
             question: qText,
@@ -3729,57 +4243,72 @@ async function startServer() {
 
     try {
       const durationSec = resolvedDuration;
-      const stepSec = Math.max(5, Math.floor((durationSec * 0.88) / (targetCount + 1)));
+      const stepSec = Math.max(3, Math.floor((durationSec * 0.88) / (targetCount + 1)));
       const topicRules = getTopicGrammarRules(cleanTopic);
 
       const videoEvidenceBlock = [
-        `Video Title: "${resolvedVideoTitle || "Classroom Video Clip"}"${resolvedAuthor ? ` (Channel: ${resolvedAuthor})` : ""}`,
+        `Video Title: "${resolvedVideoTitle || "Uploaded Video"}"${resolvedAuthor ? ` (Channel: ${resolvedAuthor})` : ""}`,
         `Video Duration: ${durationSec} seconds (${formatTimestampTag(durationSec)})`,
         scanned.keywords.length > 0 ? `Video Tags/Keywords: ${scanned.keywords.join(", ")}` : "",
         scanned.chapters.length > 0
           ? `Chapters/Scenes:\n${scanned.chapters.map((c) => `- [${formatTimestampTag(c.sec)} / ${c.sec}s] ${c.title}`).join("\n")}`
           : "",
         scanned.description
-          ? `Video Description:\n${scanned.description.slice(0, 1200)}`
+          ? `Video Description:\n${scanned.description.slice(0, 1500)}`
           : "",
         scanned.transcript
-          ? `Timestamped Video Transcript / Spoken Dialogue (USE THIS TO MATCH REAL EVENTS & EXACT TIMESTAMPS):\n${scanned.transcript}`
-          : "No spoken captions track was found; carefully analyze the attached visual video frames, title, tags, and description.",
+          ? `Timestamped Video Transcript / Spoken Dialogue (MATCH REAL EVENTS & EXACT TIMESTAMPS):\n${scanned.transcript}`
+          : "No spoken captions track was found; rely directly on the attached timestamped video frames / storyboard grids above, plus title/description.",
       ]
         .filter(Boolean)
         .join("\n\n");
 
-      const buildPrompt = (neededCount: number, existingQs: any[] = []) => {
+      const buildPrompt = (
+        neededCount: number,
+        existingQs: any[] = [],
+        timeWindow?: { minSec: number; maxSec: number; label: string }
+      ) => {
+        const winMin = timeWindow?.minSec ?? Math.min(4, Math.max(2, Math.floor(durationSec * 0.04)));
+        const winMax = timeWindow?.maxSec ?? Math.max(winMin + 6, Math.floor(durationSec * 0.94));
         const avoidBlock =
           existingQs.length > 0
-            ? `\nAlready generated questions (DO NOT repeat these sentences or timestamps):\n${existingQs
+            ? `\nAlready generated questions (DO NOT repeat these moments, verbs, nouns, or sentence structures):\n${existingQs
                 .map((eq, i) => `${i + 1}. [@${eq.timeTrigger}s] ${eq.question}`)
                 .join("\n")}\n`
             : "";
 
-        return `You are an expert Cambridge ESL curriculum designer & grammar accuracy reviewer building an interactive classroom video quiz.
+        return `You are an expert Cambridge ESL curriculum designer & visual video analyst. Inspect EVERY attached video frame / storyboard image carefully before writing a single word.
 
 ${topicRules}
 
 English Level: Cambridge ${cleanLevel} (Starters = Pre-A1, Movers = A1, Flyers = A2, KET = A2 Key, B1 = Preliminary, B2 = First)
 Allowed Question Types: ${requestedTypes.join(", ")}
 Number of Questions Required: EXACTLY ${neededCount}
+${timeWindow ? `Focus Timeline Window: ${timeWindow.label} (${winMin}s to ${winMax}s)` : ""}
 
 === REAL VIDEO EVIDENCE ===
 ${videoEvidenceBlock}
 === END VIDEO EVIDENCE ===
 ${avoidBlock}
-STRICT QUALITY & GRAMMAR RULES:
-1. ANALYZE THE VIDEO FIRST: Before writing each question, set "sceneContext" to a concise 5-10 word description of the actual moment/dialogue/visual at that timestamp from the transcript, frames, or title. Never invent characters or locations unrelated to this video.
-2. GRAMMAR & TOPIC PRECISION: Every single question MUST strictly test ${cleanTopic ? `"${cleanTopic}"` : "video comprehension & natural level-appropriate grammar"}. Check subject-verb agreement, irregular verb forms, tense consistency, and exact target structure.
-3. UNAMBIGUOUS SINGLE ANSWER: Exactly ONE option may be marked "isCorrect": true (and must match "answer"). The 3 distractors MUST be plausible ESL mistakes that are clearly grammatically or factually WRONG in that exact sentence—never two valid answers!
-4. STUDENT-FRIENDLY CLARITY (${cleanLevel}): Keep each question short, direct, and natural (1 crisp sentence, 6–15 words). NEVER include long meta-instructions like "Choose the correct modal verb of obligation/prohibition...". Write the sentence or question directly.
-5. QUESTION TYPE FORMATS (cycle evenly across ${requestedTypes.join(", ")}):
-   - "Fill in the Blanks": MUST contain EXACTLY ONE blank "____" (never two blanks!). If testing a verb tense, put the base verb cue in parentheses right after the blank, e.g. "He has ____ (take) the wrong ticket." with "answer": "taken". If testing binary/modal choice, you may put "(must / mustn't)" or context clues so only ONE answer fits. Provide "acceptedAnswers" with valid variants (e.g. ["mustn't", "must not"]) and 4 "options".
-   - "Multiple Choice" / "Grammar Choice": Provide 4 clear options with exactly 1 "isCorrect": true.
-   - "True or False": Write a clear true/false statement about what happens in the video (using "${cleanTopic || "natural English"}"), with EXACTLY 2 options: "True" and "False".
-   - "Vocabulary Meaning": Pick a real word/action from the video and ask for its simple ${cleanLevel}-level meaning with 4 options.
-6. TIMESTAMPS: Assign ascending "timeTrigger" values (integer seconds) between 6 and ${Math.max(20, Math.floor(durationSec * 0.92))} that align with the transcript/chapters when present.`;
+STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
+1. STRICT VISUAL & TRANSCRIPT MATCHING (ZERO HALLUCINATION): Every question MUST directly match what is ACTUALLY visible in the attached timestamped video frames/storyboard or spoken in the transcript at that exact "timeTrigger". NEVER invent objects, clothing, pets, rooms, or actions (e.g., do not make up bags, pianos, umbrellas, or trains unless you actually see or hear them in this video!).
+2. INSPECT CHARACTER GENDER & PRONOUNS ACCURATELY: Look closely at who is on screen in the frame(s) near each "timeTrigger". Match the pronoun to the real person/character you see:
+   - Boy / man -> "He", "his", "him"
+   - Girl / woman -> "She", "her"
+   - Multiple people -> "They", "their", "them"
+   - Animal / object -> "It", "its"
+   NEVER guess the opposite gender or randomly alternate "He" and "She" for the same character!
+   NEVER use vague placeholders like "the main character", "someone", "something", or "a funny object".
+3. SET "sceneContext" FIRST: Start with the timestamp and concrete visible/spoken evidence, e.g. "[0:18] Boy in yellow shirt walks beside green plant and steps". Then write a question that matches that exact scene!
+4. ZERO REPETITIVE OR VAGUE QUESTIONS: Spread questions across the whole timeline (${winMin}s to ${winMax}s) so each question observes a distinct moment, action, or visible object.
+5. GRAMMAR & TOPIC PRECISION: Every question MUST accurately test ${cleanTopic ? `"${cleanTopic}"` : "video comprehension & level-appropriate English grammar"} using natural, idiomatic English for Cambridge ${cleanLevel}.
+6. UNAMBIGUOUS SINGLE ANSWER: Exactly ONE option may be marked "isCorrect": true (matching "answer"). The 3 distractors MUST be clearly wrong in that sentence.
+7. CLEAN QUESTION FORMATS (cycle evenly across ${requestedTypes.join(", ")}):
+   - "Fill in the Blanks": Write a natural complete sentence with EXACTLY ONE blank "____" (never two blanks!), plus a brief cue in parentheses when helpful (e.g. "He walks past ____ (a / an) green plant."), with "answer", "acceptedAnswers", and 4 "options".
+   - "Multiple Choice" / "Grammar Choice": Provide 4 clear options with exactly 1 "isCorrect": true. Keep stems concise (1 sentence, 6–16 words), NO meta-instructions like "Choose the correct...".
+   - "True or False": Write a clear true/false statement about what visibly happens in the video at that timestamp, with EXACTLY 2 options: "True" and "False".
+   - "Vocabulary Meaning": Pick a real visible object/action/word from the video at that timestamp and ask for its simple ${cleanLevel}-level meaning with 4 options.
+8. TIMESTAMPS: Assign strictly ascending "timeTrigger" integer seconds between ${winMin} and ${winMax} aligned directly with the observed frame/storyboard/transcript timestamps.`;
       };
 
       const ai = getAiClient();
@@ -3814,111 +4343,271 @@ STRICT QUALITY & GRAMMAR RULES:
         },
       };
 
-      const callGeminiBatch = async (needed: number, existing: any[] = []) => {
-        const contentsParts: any[] = [
-          ...visualFrameParts,
-          { text: buildPrompt(needed, existing) },
-        ];
-        const response = await ai.models.generateContent({
-          model: "gemini-4-hydrogen",
-          contents: contentsParts,
-          config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
-            responseMimeType: "application/json",
-            responseSchema: responseSchemaConfig,
-          },
+      const isNearDuplicateQuestion = (candQ: string, existingList: any[]): boolean => {
+        const normalizeWords = (s: string) =>
+          s
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .split(/\s+/)
+            .filter((w) => w.length > 2);
+        const candWords = normalizeWords(candQ);
+        if (candWords.length === 0) return false;
+        const candSet = new Set(candWords);
+        return existingList.some((ex) => {
+          const exWords = normalizeWords(String(ex?.question || ""));
+          if (exWords.length === 0) return false;
+          const overlap = exWords.filter((w) => candSet.has(w)).length;
+          return overlap / Math.max(candSet.size, exWords.length) >= 0.78;
         });
-        const text = response.text?.trim() || "[]";
-        const parsed = JSON.parse(text);
-        const rawArr = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed?.questions)
-          ? parsed.questions
-          : [];
-        return sanitizeGeminiBatch(rawArr, stepSec);
       };
 
-      let sanitized = await callGeminiBatch(targetCount);
+      const parseGeminiJson = (rawText: string) => {
+        const cleaned = rawText
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/\s*```$/i, "")
+          .trim();
+        return JSON.parse(cleaned || "[]");
+      };
 
-      // If teacher asked for a large count (e.g. 20 or 30) and first call returned fewer, run 1 follow-up batch for remaining questions
+      const extractCleanGeminiError = (err: any): { status: number; message: string } => {
+        const rawMsg = String(err?.message || err || "");
+        let parsedCode = Number(err?.status || err?.code || 0);
+        let innerStatus = "";
+        let innerMessage = rawMsg;
+
+        const jsonStart = rawMsg.indexOf("{");
+        if (jsonStart >= 0) {
+          try {
+            const parsed = JSON.parse(rawMsg.slice(jsonStart));
+            const eObj = parsed?.error || parsed;
+            if (typeof eObj?.code === "number") parsedCode = eObj.code;
+            if (typeof eObj?.status === "string") innerStatus = eObj.status;
+            if (typeof eObj?.message === "string" && eObj.message.trim()) {
+              innerMessage = eObj.message.trim();
+            }
+          } catch {}
+        }
+
+        const safeStatus = parsedCode >= 400 && parsedCode < 600 ? parsedCode : 500;
+        if (
+          safeStatus === 402 ||
+          /prepayment credits|billing#prepay/i.test(innerMessage)
+        ) {
+          return {
+            status: 402,
+            message:
+              "Gemini API prepayment credits are depleted on this project. Top up billing at ai.studio/projects or select an active GEMINI_API_KEY in Settings > Secrets.",
+          };
+        }
+        if (safeStatus === 401 || safeStatus === 403 || innerStatus === "PERMISSION_DENIED") {
+          return {
+            status: safeStatus === 401 ? 401 : 403,
+            message:
+              "Gemini API authentication failed. Please check or select a valid GEMINI_API_KEY in Settings > Secrets.",
+          };
+        }
+        if (safeStatus === 429 || innerStatus === "RESOURCE_EXHAUSTED") {
+          return {
+            status: 429,
+            message:
+              "Gemini API quota limit reached. Please wait a moment and try again, or switch to another GEMINI_API_KEY in Settings > Secrets.",
+          };
+        }
+        return {
+          status: safeStatus,
+          message:
+            innerMessage ||
+            "Failed to analyze the video and generate scene-matched questions.",
+        };
+      };
+
+      const callGeminiBatch = async (
+        needed: number,
+        existing: any[] = [],
+        timeWindow?: { minSec: number; maxSec: number; label: string }
+      ) => {
+        const promptPart = { text: buildPrompt(needed, existing, timeWindow) };
+        const primaryParts: any[] = [...labeledVisualParts, promptPart];
+
+        const runModel = async (
+          modelName: string,
+          parts: any[],
+          useHighThinking: boolean
+        ) => {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: parts,
+            config: {
+              ...(useHighThinking
+                ? { thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH } }
+                : {}),
+              responseMimeType: "application/json",
+              responseSchema: responseSchemaConfig,
+            },
+          });
+          const parsed = parseGeminiJson(response.text || "[]");
+          const rawArr = Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(parsed?.questions)
+            ? parsed.questions
+            : [];
+          return sanitizeGeminiBatch(rawArr, stepSec);
+        };
+
+        let lastErr: any = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            return await runModel("gemini-4-hydrogen", primaryParts, true);
+          } catch (err: any) {
+            lastErr = err;
+            const info = extractCleanGeminiError(err);
+            if (info.status === 402 || info.status === 429 || info.status === 404) {
+              // Automatically try lighter flash-lite model in case only the primary tier/quota is exhausted
+              try {
+                return await runModel("gemini-3.1-flash-lite", primaryParts, false);
+              } catch (liteErr: any) {
+                lastErr = liteErr;
+                break;
+              }
+            }
+            if (attempt === 0 && info.status >= 500) {
+              await new Promise((r) => setTimeout(r, 1200));
+              continue;
+            }
+            throw err;
+          }
+        }
+        throw lastErr;
+      };
+
+      let sanitized: any[] = [];
+      const minT = Math.min(4, Math.max(2, Math.floor(durationSec * 0.04)));
+      const maxT = Math.max(minT + 6, Math.floor(durationSec * 0.94));
+
+      if (targetCount > 20) {
+        const firstHalfTarget = Math.ceil(targetCount / 2);
+        const midT = Math.max(minT + 5, Math.floor((minT + maxT) / 2));
+        const batch1 = await callGeminiBatch(firstHalfTarget, [], {
+          minSec: minT,
+          maxSec: midT,
+          label: "First Half of Video",
+        });
+        batch1.forEach((item) => {
+          if (!isNearDuplicateQuestion(item.question, sanitized)) {
+            sanitized.push(item);
+          }
+        });
+
+        const secondHalfTarget = Math.max(1, targetCount - sanitized.length);
+        const batch2 = await callGeminiBatch(secondHalfTarget, sanitized, {
+          minSec: Math.min(maxT - 4, midT + 1),
+          maxSec: maxT,
+          label: "Second Half of Video",
+        });
+        batch2.forEach((item) => {
+          if (sanitized.length < targetCount && !isNearDuplicateQuestion(item.question, sanitized)) {
+            sanitized.push(item);
+          }
+        });
+      } else {
+        const batch1 = await callGeminiBatch(targetCount);
+        batch1.forEach((item) => {
+          if (!isNearDuplicateQuestion(item.question, sanitized)) {
+            sanitized.push(item);
+          }
+        });
+      }
+
+      // Top up any shortfall with another scene-grounded Gemini pass (never unrelated hardcoded fallback templates)
       if (sanitized.length > 0 && sanitized.length < targetCount) {
         try {
-          const remainingNeeded = Math.min(30, targetCount - sanitized.length);
+          const remainingNeeded = Math.min(20, targetCount - sanitized.length);
           const extra = await callGeminiBatch(remainingNeeded, sanitized);
-          const existingTextSet = new Set(
-            sanitized.map((q) => q.question.toLowerCase().trim())
-          );
           extra.forEach((item) => {
-            if (
-              sanitized.length < targetCount &&
-              !existingTextSet.has(item.question.toLowerCase().trim())
-            ) {
-              existingTextSet.add(item.question.toLowerCase().trim());
+            if (sanitized.length < targetCount && !isNearDuplicateQuestion(item.question, sanitized)) {
               sanitized.push(item);
             }
           });
         } catch {}
       }
 
-      if (sanitized.length > 0) {
-        const rawFinal =
-          sanitized.length >= targetCount
-            ? sanitized.slice(0, targetCount)
-            : [
-                ...sanitized,
-                ...fallbackList.slice(sanitized.length, targetCount),
-              ].map((item: any, idx: number) => ({
-                ...item,
-                id: idx + 1,
-              }));
-
-        // Ensure timestamps are strictly within bounds, ascending, and never colliding on the exact same second
-        const minAllowedSec = 5;
-        const maxAllowedSec = Math.max(15, durationSec - 4);
-        let prevTrigger = 0;
-        const finalQuestions = [...rawFinal]
-          .sort((a: any, b: any) => (Number(a.timeTrigger) || 0) - (Number(b.timeTrigger) || 0))
-          .map((item: any, idx: number, arr: any[]) => {
-            const rawTrig = Number(item.timeTrigger) || 0;
-            const spreadTrig = Math.max(
-              minAllowedSec,
-              Math.round(((idx + 1) / (arr.length + 1)) * maxAllowedSec)
-            );
-            let trig = rawTrig >= minAllowedSec && rawTrig <= maxAllowedSec ? rawTrig : spreadTrig;
-            if (trig <= prevTrigger) {
-              const stepRoom = Math.max(1, Math.floor((maxAllowedSec - prevTrigger) / Math.max(1, arr.length - idx)));
-              trig = Math.min(maxAllowedSec, prevTrigger + Math.min(3, stepRoom));
-            }
-            prevTrigger = trig;
-            return {
-              ...item,
-              id: idx + 1,
-              timeTrigger: trig,
-            };
-          });
-
-        return res.json({
-          questions: finalQuestions,
-          videoTitle: resolvedVideoTitle,
-          videoDuration: resolvedDuration,
-          hasTranscript: Boolean(scanned.transcript),
+      if (sanitized.length === 0) {
+        return res.status(502).json({
+          error:
+            "Gemini could not generate scene-matched questions from this video. Please verify the video has clear frames or captions and try again.",
         });
       }
 
+      const rawFinal = sanitized.slice(0, targetCount).map((item: any, idx: number) => ({
+        ...item,
+        id: idx + 1,
+      }));
+
+      // Ensure timestamps are strictly within bounds, ascending, and never colliding on the exact same second
+      const minAllowedSec = Math.min(4, Math.max(2, Math.floor(durationSec * 0.04)));
+      const maxAllowedSec = Math.max(minAllowedSec + 4, durationSec - 2);
+      let prevTrigger = 0;
+      const finalQuestions = [...rawFinal]
+        .sort((a: any, b: any) => (Number(a.timeTrigger) || 0) - (Number(b.timeTrigger) || 0))
+        .map((item: any, idx: number, arr: any[]) => {
+          const rawTrig = Number(item.timeTrigger) || 0;
+          const spreadTrig = Math.max(
+            minAllowedSec,
+            Math.round(((idx + 1) / (arr.length + 1)) * maxAllowedSec)
+          );
+          let trig = rawTrig >= minAllowedSec && rawTrig <= maxAllowedSec ? rawTrig : spreadTrig;
+          if (trig <= prevTrigger) {
+            const stepRoom = Math.max(
+              1,
+              Math.floor((maxAllowedSec - prevTrigger) / Math.max(1, arr.length - idx))
+            );
+            trig = Math.min(maxAllowedSec, prevTrigger + Math.min(3, stepRoom));
+          }
+          prevTrigger = trig;
+          return {
+            ...item,
+            id: idx + 1,
+            timeTrigger: trig,
+          };
+        });
+
       return res.json({
-        questions: fallbackList,
+        questions: finalQuestions,
         videoTitle: resolvedVideoTitle,
         videoDuration: resolvedDuration,
         hasTranscript: Boolean(scanned.transcript),
+        usedStoryboard: scanned.storyboardSheets.length > 0,
+        usedVisualFramesCount:
+          scanned.storyboardSheets.length > 0
+            ? scanned.storyboardSheets.length
+            : parsedClientFrames.length || scanned.frameParts.length,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Video quiz generation error:", err);
-      return res.json({
-        questions: fallbackList,
-        videoTitle: resolvedVideoTitle,
-        videoDuration: resolvedDuration,
-        hasTranscript: Boolean(scanned.transcript),
-      });
+      const rawMsg = String(err?.message || err || "");
+      let status = Number(err?.status || err?.code || 500);
+      let cleanMsg = rawMsg;
+      const jsonStart = rawMsg.indexOf("{");
+      if (jsonStart >= 0) {
+        try {
+          const parsed = JSON.parse(rawMsg.slice(jsonStart));
+          const eObj = parsed?.error || parsed;
+          if (typeof eObj?.code === "number") status = eObj.code;
+          if (typeof eObj?.message === "string" && eObj.message.trim()) {
+            cleanMsg = eObj.message.trim();
+          }
+        } catch {}
+      }
+      const safeStatus = status >= 400 && status < 600 ? status : 500;
+      const msg =
+        safeStatus === 402 || /prepayment credits|billing#prepay/i.test(cleanMsg)
+          ? "Gemini API prepayment credits are depleted on this project. Top up billing at ai.studio/projects or select an active GEMINI_API_KEY in Settings > Secrets."
+          : safeStatus === 403 || safeStatus === 401
+          ? "Gemini API authentication failed. Please check your GEMINI_API_KEY in Settings > Secrets."
+          : safeStatus === 429
+          ? "Gemini API rate limit reached. Please wait a moment and try again, or switch keys in Settings > Secrets."
+          : cleanMsg || "Failed to analyze the video and generate scene-matched questions.";
+      return res.status(safeStatus).json({ error: msg });
     }
   });
 

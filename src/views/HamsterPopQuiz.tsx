@@ -315,85 +315,131 @@ const extractClientYouTubeId = (urlRaw?: string): string | null => {
   return null;
 };
 
+interface CapturedVideoFrame {
+  sec: number;
+  dataUrl: string;
+}
+
 const captureLocalVideoFrames = async (
-  blobUrl: string
-): Promise<{ frames: string[]; durationSec: number }> => {
-  if (typeof window === 'undefined' || !blobUrl || !blobUrl.startsWith('blob:')) {
+  sourceUrl: string
+): Promise<{ frames: CapturedVideoFrame[]; durationSec: number }> => {
+  if (typeof window === 'undefined' || !sourceUrl || !isDirectVideoSource(sourceUrl)) {
     return { frames: [], durationSec: 0 };
   }
-  return new Promise((resolve) => {
-    const video = document.createElement('video');
-    let settled = false;
-    const frames: string[] = [];
-    let capturedDuration = 0;
 
-    const cleanupAndResolve = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(safetyTimer);
-      try {
-        video.pause();
-        video.removeAttribute('src');
-        video.load();
-      } catch {}
-      resolve({ frames, durationSec: capturedDuration });
-    };
+  const runAttempt = (useCors: boolean): Promise<{ frames: CapturedVideoFrame[]; durationSec: number; loadFailed: boolean }> =>
+    new Promise((resolve) => {
+      const video = document.createElement('video');
+      let settled = false;
+      const frames: CapturedVideoFrame[] = [];
+      let capturedDuration = 0;
 
-    const safetyTimer = setTimeout(cleanupAndResolve, 3500);
+      const cleanupAndResolve = (loadFailed = false) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(safetyTimer);
+        try {
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+        } catch {}
+        resolve({ frames, durationSec: capturedDuration, loadFailed });
+      };
 
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    video.crossOrigin = 'anonymous';
+      const safetyTimer = setTimeout(() => cleanupAndResolve(false), 18000);
 
-    video.onerror = () => cleanupAndResolve();
-
-    video.onloadedmetadata = async () => {
-      const dur = Number.isFinite(video.duration) ? video.duration : 0;
-      capturedDuration = dur > 0 ? Math.round(dur) : 0;
-      const sampleRatios = dur > 6 ? [0.15, 0.45, 0.75] : [0.25];
-      const canvas = document.createElement('canvas');
-      canvas.width = 480;
-      canvas.height = 270;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        cleanupAndResolve();
-        return;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      if (useCors) {
+        video.crossOrigin = 'anonymous';
       }
 
-      for (const ratio of sampleRatios) {
-        if (settled) break;
-        const targetSec = dur > 1 ? Math.max(0.4, Math.min(dur - 0.3, dur * ratio)) : 0.2;
-        await new Promise<void>((seekDone) => {
-          const onSeeked = () => {
-            video.removeEventListener('seeked', onSeeked);
-            try {
-              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
-              if (dataUrl && dataUrl.startsWith('data:image/jpeg;base64,')) {
-                frames.push(dataUrl);
-              }
-            } catch {}
-            seekDone();
-          };
-          video.addEventListener('seeked', onSeeked);
-          try {
-            video.currentTime = targetSec;
-          } catch {
-            video.removeEventListener('seeked', onSeeked);
-            seekDone();
+      video.onerror = () => cleanupAndResolve(true);
+
+      video.onloadedmetadata = async () => {
+        const dur = Number.isFinite(video.duration) ? video.duration : 0;
+        capturedDuration = dur > 0 ? Math.round(dur) : 0;
+        const targetCount = dur <= 10 ? 5 : dur <= 30 ? 8 : dur <= 90 ? 12 : 16;
+        const sampleTimes: number[] = [];
+        if (dur > 1.5) {
+          for (let i = 0; i < targetCount; i++) {
+            const ratio = 0.04 + (i / Math.max(1, targetCount - 1)) * 0.90;
+            const sec = Math.max(0.4, Math.min(dur - 0.3, dur * ratio));
+            if (
+              sampleTimes.length === 0 ||
+              Math.abs(sec - sampleTimes[sampleTimes.length - 1]) >= 0.4
+            ) {
+              sampleTimes.push(sec);
+            }
           }
-          setTimeout(() => {
-            video.removeEventListener('seeked', onSeeked);
-            seekDone();
-          }, 900);
-        });
-      }
-      cleanupAndResolve();
-    };
+        } else {
+          sampleTimes.push(0.2);
+        }
 
-    video.src = blobUrl;
-  });
+        const vw = video.videoWidth || 480;
+        const vh = video.videoHeight || 270;
+        const scale = Math.min(512 / vw, 288 / vh, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(160, Math.round(vw * scale));
+        canvas.height = Math.max(90, Math.round(vh * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          cleanupAndResolve(false);
+          return;
+        }
+
+        let tainted = false;
+        for (const targetSec of sampleTimes) {
+          if (settled || tainted) break;
+          await new Promise<void>((seekDone) => {
+            let done = false;
+            const finishSeek = () => {
+              if (done) return;
+              done = true;
+              clearTimeout(seekTimer);
+              video.removeEventListener('seeked', onSeeked);
+              seekDone();
+            };
+            const onSeeked = () => {
+              window.requestAnimationFrame(() => {
+                try {
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  const dataUrl = canvas.toDataURL('image/jpeg', 0.62);
+                  if (dataUrl && dataUrl.startsWith('data:image/jpeg;base64,')) {
+                    frames.push({
+                      sec: Math.round(targetSec),
+                      dataUrl,
+                    });
+                  }
+                } catch {
+                  tainted = true;
+                }
+                finishSeek();
+              });
+            };
+            const seekTimer = setTimeout(finishSeek, 1400);
+            video.addEventListener('seeked', onSeeked);
+            try {
+              video.currentTime = targetSec;
+            } catch {
+              finishSeek();
+            }
+          });
+        }
+        cleanupAndResolve(false);
+      };
+
+      video.src = sourceUrl;
+    });
+
+  const isLocal = sourceUrl.startsWith('blob:') || sourceUrl.startsWith('data:');
+  const firstTry = await runAttempt(!isLocal);
+  if (!isLocal && firstTry.loadFailed) {
+    const secondTry = await runAttempt(false);
+    return { frames: secondTry.frames, durationSec: secondTry.durationSec };
+  }
+  return { frames: firstTry.frames, durationSec: firstTry.durationSec };
 };
 
 const isLegacyPlaceholderQuestion = (textRaw?: string): boolean => {
@@ -630,21 +676,16 @@ const extractClientVideoSubject = (videoTitleRaw?: string, topicRaw?: string): s
   if (/harry\s*potter/i.test(combined)) return 'Harry Potter';
   if (/minion/i.test(combined)) return 'the Minions';
   if (/hamster/i.test(combined)) return 'the hamster';
+  return '';
+};
 
-  const cleanTitle = (videoTitleRaw || '')
-    .replace(/\[.*?\]|\(.*?\)/g, ' ')
-    .replace(
-      /\b(4k|hd|official|video|clip|clips|funny|full|episode|seconds|minutes|hours|of|the|best|worst|ideas|ever|compilation|scene|scenes|movie|cartoon)\b/gi,
-      ' '
-    )
-    .replace(/[|•:-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (cleanTitle.length >= 3 && cleanTitle.length <= 32) {
-    return cleanTitle;
-  }
-  return 'the main character';
+const adaptClientPronoun = (phrase: string, subj: string): string => {
+  if (subj !== 'She') return phrase;
+  return phrase
+    .replace(/\bhimself\b/gi, 'herself')
+    .replace(/\bhis\b/gi, 'her')
+    .replace(/\bhe\b/gi, 'she')
+    .replace(/\bhim\b/gi, 'her');
 };
 
 const generateDynamicQuestions = (config: any) => {
@@ -661,8 +702,11 @@ const generateDynamicQuestions = (config: any) => {
   const usableStart = Math.max(8, Math.floor(duration * 0.04));
   const usableSpan = Math.max(30, Math.floor(duration * 0.90) - usableStart);
 
-  const subject = extractClientVideoSubject(videoTitle, topic);
-  const isPluralSubject = /\b(and|they|minions|kids|students|animals|friends|people)\b/i.test(subject);
+  const namedSubject = extractClientVideoSubject(videoTitle, topic);
+  const defaultSubject = namedSubject || 'He';
+  const isPluralSubject = /\b(and|they|minions|kids|students|animals|friends|people)\b/i.test(
+    defaultSubject
+  );
   const hasAux = isPluralSubject ? 'have' : 'has';
   const wrongAux = isPluralSubject ? 'has' : 'have';
   const wasAux = isPluralSubject ? 'were' : 'was';
@@ -952,6 +996,33 @@ const generateDynamicQuestions = (config: any) => {
         },
       ];
 
+  const usedQuestions = new Set<string>();
+
+  const articleBank = [
+    { stem: 'sees ____ (a / an / the) funny yellow bag on the floor.', ans: 'a', acc: ['a'], wrong: ['an', 'the', 'no article'], exp: 'Use "a" before a singular countable noun starting with a consonant sound ("funny").' },
+    { stem: 'finds ____ (a / an / the) old umbrella beside the door.', ans: 'an', acc: ['an'], wrong: ['a', 'the', 'no article'], exp: 'Use "an" before a vowel sound ("old").' },
+    { stem: 'looks at ____ (a / an / the) big clock on the wall.', ans: 'the', acc: ['the'], wrong: ['a', 'an', 'no article'], exp: 'Use "the" when referring to a specific object everyone can see in the scene.' },
+    { stem: 'waits for ____ (a / an / the) hour near the entrance.', ans: 'an', acc: ['an'], wrong: ['a', 'the', 'no article'], exp: 'Use "an" before a silent "h" vowel sound ("hour").' },
+    { stem: 'usually likes ____ (a / the / no article) music while relaxing.', ans: 'no article', acc: ['no article', '-', 'nothing', 'x'], wrong: ['a', 'an', 'the'], exp: 'Use no article when talking about uncountable nouns like "music" in general.' },
+    { stem: 'picks up ____ (a / an / the) blue ticket from the desk.', ans: 'a', acc: ['a'], wrong: ['an', 'the', 'no article'], exp: 'Use "a" before a consonant sound ("blue").' },
+    { stem: 'spots ____ (a / an / the) empty seat in the front row.', ans: 'an', acc: ['an'], wrong: ['a', 'the', 'no article'], exp: 'Use "an" before a vowel sound ("empty").' },
+    { stem: 'opens ____ (a / an / the) front door very slowly.', ans: 'the', acc: ['the'], wrong: ['a', 'an', 'no article'], exp: 'Use "the" for the specific front door of the building in the clip.' },
+    { stem: 'carries ____ (a / an / the) heavy suitcase up the steps.', ans: 'a', acc: ['a'], wrong: ['an', 'the', 'no article'], exp: 'Use "a" before a consonant sound ("heavy").' },
+    { stem: 'has ____ (a / the / no article) breakfast before leaving home.', ans: 'no article', acc: ['no article', '-', 'nothing', 'x'], wrong: ['a', 'an', 'the'], exp: 'Use no article before meals like "breakfast", "lunch", or "dinner".' },
+    { stem: 'takes ____ (a / an / the) orange notebook out of his pocket.', ans: 'an', acc: ['an'], wrong: ['a', 'the', 'no article'], exp: 'Use "an" before a vowel sound ("orange").' },
+    { stem: 'points straight at ____ (a / an / the) sun through the window.', ans: 'the', acc: ['the'], wrong: ['a', 'an', 'no article'], exp: 'Use "the" for unique things in the sky like "the sun" and "the moon".' },
+    { stem: 'wears ____ (a / an / the) bright uniform to look official.', ans: 'a', acc: ['a'], wrong: ['an', 'the', 'no article'], exp: 'Use "a" before "uniform" because it starts with a /j/ consonant sound ("you-niform").' },
+    { stem: 'writes ____ (a / an / the) honest note on the small card.', ans: 'an', acc: ['an'], wrong: ['a', 'the', 'no article'], exp: 'Use "an" before "honest" because the "h" is silent.' },
+    { stem: 'goes to ____ (a / the / no article) school by bus on weekdays.', ans: 'no article', acc: ['no article', '-', 'nothing', 'x'], wrong: ['a', 'an', 'the'], exp: 'Use no article in fixed expressions like "go to school" or "at home".' },
+    { stem: 'checks ____ (a / an / the) mirror beside the bright lamp.', ans: 'the', acc: ['the'], wrong: ['a', 'an', 'no article'], exp: 'Use "the" for the specific mirror visible in the scene.' },
+    { stem: 'buys ____ (a / an / the) cup of hot tea at the counter.', ans: 'a', acc: ['a'], wrong: ['an', 'the', 'no article'], exp: 'Use "a" before a singular countable noun starting with a consonant sound ("cup").' },
+    { stem: 'has ____ (a / an / the) great idea right after looking around.', ans: 'a', acc: ['a'], wrong: ['an', 'the', 'no article'], exp: 'Use "a" before a consonant sound ("great").' },
+    { stem: 'eats ____ (a / an / the) apple quietly on the bench.', ans: 'an', acc: ['an'], wrong: ['a', 'the', 'no article'], exp: 'Use "an" before a vowel sound ("apple").' },
+    { stem: 'rarely drinks ____ (a / the / no article) coffee late at night.', ans: 'no article', acc: ['no article', '-', 'nothing', 'x'], wrong: ['a', 'an', 'the'], exp: 'Use no article for drinks and uncountable nouns spoken about in general.' },
+    { stem: 'puts ____ (a / an / the) key back onto the top shelf.', ans: 'the', acc: ['the'], wrong: ['a', 'an', 'no article'], exp: 'Use "the" when talking about the specific key already shown in the scene.' },
+    { stem: 'hears ____ (a / an / the) unusual noise behind the curtain.', ans: 'an', acc: ['an'], wrong: ['a', 'the', 'no article'], exp: 'Use "an" before a vowel sound ("unusual").' },
+  ];
+
   return Array.from({ length: count }, (_, index) => {
     const scene = scenes[index % scenes.length];
     const requestedType = types[index % types.length];
@@ -959,6 +1030,14 @@ const generateDynamicQuestions = (config: any) => {
       Math.max(8, Math.round(usableStart + ((index + 0.5) / count) * usableSpan)),
       Math.max(15, duration - 6)
     );
+
+    const scSubj = namedSubject || (index % 2 === 0 ? 'He' : 'She');
+    const scObj = isPluralSubject ? 'them' : scSubj === 'She' ? 'her' : 'him';
+    const scPhrase = adaptClientPronoun(scene.phrase, scSubj);
+    const scMustRule = adaptClientPronoun(scene.mustRule, scSubj);
+    const scMustntRule = adaptClientPronoun(scene.mustntRule, scSubj);
+    const scShouldAction = adaptClientPronoun(scene.shouldAction, scSubj);
+    const scShouldntAction = adaptClientPronoun(scene.shouldntAction, scSubj);
 
     const isMustTopic = /\bmust\b|\bmustn'?t\b|\bmust\s+not\b/i.test(topicLower);
     const isShouldTopic = /\bshould\b|\bshouldn'?t\b/i.test(topicLower);
@@ -989,14 +1068,14 @@ const generateDynamicQuestions = (config: any) => {
 
     if (requestedType === 'True or False') {
       const statementAction = isMustTopic
-        ? `${subject} must ${scene.mustRule}.`
+        ? `${scSubj} must ${scMustRule}.`
         : isPresentPerfect
-        ? `${subject} ${hasAux} ${scene.v3} ${scene.phrase}.`
+        ? `${scSubj} ${hasAux} ${scene.v3} ${scPhrase}.`
         : isPastSimple
-        ? `${subject} ${scene.v2} ${scene.phrase}.`
+        ? `${scSubj} ${scene.v2} ${scPhrase}.`
         : isContinuous
-        ? `${subject} ${topicLower.includes('past') ? wasAux : isAux} ${scene.ing} ${scene.phrase}.`
-        : `${subject} ${scene.vs} ${scene.phrase} ${scene.location}.`;
+        ? `${scSubj} ${topicLower.includes('past') ? wasAux : isAux} ${scene.ing} ${scPhrase}.`
+        : `${scSubj} ${scene.vs} ${scPhrase} ${scene.location}.`;
       question = `True or False: ${statementAction}`;
       answer = 'True';
       acceptedAnswers = ['True'];
@@ -1009,8 +1088,8 @@ const generateDynamicQuestions = (config: any) => {
       const askMustnt = index % 2 === 0;
       if (requestedType === 'Fill in the Blanks') {
         question = askMustnt
-          ? `${subject} ____ (must / mustn't) ${scene.mustntRule}.`
-          : `${subject} ____ (must / mustn't) ${scene.mustRule}.`;
+          ? `${scSubj} ____ (must / mustn't) ${scMustntRule}.`
+          : `${scSubj} ____ (must / mustn't) ${scMustRule}.`;
         answer = askMustnt ? "mustn't" : 'must';
         acceptedAnswers = askMustnt ? ["mustn't", 'must not', 'mustnt'] : ['must'];
         options = [
@@ -1024,9 +1103,9 @@ const generateDynamicQuestions = (config: any) => {
           : `Use "must" for an important rule.`;
       } else {
         question = askMustnt
-          ? `${subject} ____ ${scene.mustntRule}!`
-          : `Which sentence follows the rule?`;
-        answer = askMustnt ? "mustn't" : `${subject} must ${scene.mustRule}.`;
+          ? `${scSubj} ____ ${scMustntRule}!`
+          : `Which sentence follows the rule ${scene.sceneLabel}?`;
+        answer = askMustnt ? "mustn't" : `${scSubj} must ${scMustRule}.`;
         options = askMustnt
           ? [
               { text: "mustn't", isCorrect: true },
@@ -1035,18 +1114,18 @@ const generateDynamicQuestions = (config: any) => {
               { text: "don't must", isCorrect: false },
             ]
           : [
-              { text: `${subject} must ${scene.mustRule}.`, isCorrect: true },
-              { text: `${subject} musts ${scene.mustRule}.`, isCorrect: false },
-              { text: `${subject} must to ${scene.mustRule}.`, isCorrect: false },
-              { text: `${subject} mustn't ${scene.mustRule}.`, isCorrect: false },
+              { text: `${scSubj} must ${scMustRule}.`, isCorrect: true },
+              { text: `${scSubj} musts ${scMustRule}.`, isCorrect: false },
+              { text: `${scSubj} must to ${scMustRule}.`, isCorrect: false },
+              { text: `${scSubj} mustn't ${scMustRule}.`, isCorrect: false },
             ];
         explanation = `Use "must" + base verb (no "-s" or "to"), and "mustn't" for rules against something.`;
       }
     } else if (isShouldTopic) {
       const askShouldnt = index % 2 === 0;
       question = askShouldnt
-        ? `${subject} ____ (should / shouldn't) ${scene.shouldntAction}.`
-        : `${subject} ____ (should / shouldn't) ${scene.shouldAction}.`;
+        ? `${scSubj} ____ (should / shouldn't) ${scShouldntAction}.`
+        : `${scSubj} ____ (should / shouldn't) ${scShouldAction}.`;
       answer = askShouldnt ? "shouldn't" : 'should';
       acceptedAnswers = askShouldnt ? ["shouldn't", 'should not', 'shouldnt'] : ['should'];
       options = [
@@ -1062,8 +1141,8 @@ const generateDynamicQuestions = (config: any) => {
       const negM = useCould ? "couldn't" : "can't";
       const askCant = index % 2 === 0;
       question = askCant
-        ? `${subject} ____ (${posM} / ${negM}) ${scene.mustntRule}.`
-        : `${subject} ____ (${posM} / ${negM}) ${scene.mustRule}.`;
+        ? `${scSubj} ____ (${posM} / ${negM}) ${scMustntRule}.`
+        : `${scSubj} ____ (${posM} / ${negM}) ${scMustRule}.`;
       answer = askCant ? negM : posM;
       acceptedAnswers = askCant ? [negM, useCould ? 'could not' : 'cannot', useCould ? 'couldnt' : 'cant'] : [posM];
       options = [
@@ -1074,7 +1153,7 @@ const generateDynamicQuestions = (config: any) => {
       ];
       explanation = `Use "${posM}" when allowed or possible, and "${negM}" when not.`;
     } else if (isHaveToTopic) {
-      question = `${subject} ____ (${haveToPos} / ${haveToNeg}) ${scene.mustRule}.`;
+      question = `${scSubj} ____ (${haveToPos} / ${haveToNeg}) ${scMustRule}.`;
       answer = haveToPos;
       acceptedAnswers = [haveToPos, 'must'];
       options = [
@@ -1083,10 +1162,10 @@ const generateDynamicQuestions = (config: any) => {
         { text: isPluralSubject ? 'has to' : 'have to', isCorrect: false },
         { text: 'having to', isCorrect: false },
       ];
-      explanation = `With "${subject}", use "${haveToPos}" to talk about a rule.`;
+      explanation = `With "${scSubj}", use "${haveToPos}" to talk about a rule.`;
     } else if (isPresentPerfect) {
       if (requestedType === 'Fill in the Blanks') {
-        question = `${subject} ${hasAux} ____ (${scene.v1}) ${scene.phrase}.`;
+        question = `${scSubj} ${hasAux} ____ (${scene.v1}) ${scPhrase}.`;
         answer = scene.v3;
         acceptedAnswers = [scene.v3, `${hasAux} ${scene.v3}`];
         options = [
@@ -1097,7 +1176,7 @@ const generateDynamicQuestions = (config: any) => {
         ];
         explanation = `Present Perfect uses "${hasAux} + ${scene.v3}".`;
       } else {
-        question = `${subject} ____ just ${scene.v3} ${scene.phrase}!`;
+        question = `${scSubj} ____ just ${scene.v3} ${scPhrase}!`;
         answer = hasAux;
         acceptedAnswers = [hasAux];
         options = [
@@ -1106,10 +1185,10 @@ const generateDynamicQuestions = (config: any) => {
           { text: 'did', isCorrect: false },
           { text: isAux, isCorrect: false },
         ];
-        explanation = `With "${subject}", Present Perfect uses "${hasAux} + ${scene.v3}".`;
+        explanation = `With "${scSubj}", Present Perfect uses "${hasAux} + ${scene.v3}".`;
       }
     } else if (isPastSimple) {
-      question = `${subject} ____ (${scene.v1}) ${scene.phrase}.`;
+      question = `${scSubj} ____ (${scene.v1}) ${scPhrase}.`;
       answer = scene.v2;
       acceptedAnswers = [scene.v2];
       options = [
@@ -1124,7 +1203,7 @@ const generateDynamicQuestions = (config: any) => {
       const beAux = isPastCont ? wasAux : isAux;
       const wrongBe = isPastCont ? wrongWasAux : wrongIsAux;
       if (index % 2 === 0) {
-        question = `${subject} ${beAux} ____ (${scene.v1}) ${scene.phrase}.`;
+        question = `${scSubj} ${beAux} ____ (${scene.v1}) ${scPhrase}.`;
         answer = scene.ing;
         acceptedAnswers = [scene.ing, `${beAux} ${scene.ing}`];
         options = [
@@ -1135,7 +1214,7 @@ const generateDynamicQuestions = (config: any) => {
         ];
         explanation = `Use "${beAux} + ${scene.ing}" for an action in progress.`;
       } else {
-        question = `${subject} ____ ${scene.ing} ${scene.phrase}.`;
+        question = `${scSubj} ____ ${scene.ing} ${scPhrase}.`;
         answer = beAux;
         acceptedAnswers = [beAux];
         options = [
@@ -1144,13 +1223,13 @@ const generateDynamicQuestions = (config: any) => {
           { text: isPastCont ? 'did' : 'does', isCorrect: false },
           { text: hasAux, isCorrect: false },
         ];
-        explanation = `With "${subject}", use "${beAux} + ${scene.ing}".`;
+        explanation = `With "${scSubj}", use "${beAux} + ${scene.ing}".`;
       }
     } else if (isPresentSimple) {
       const rightVerb = isPluralSubject ? scene.v1 : scene.vs;
       const wrongVerb = isPluralSubject ? scene.vs : scene.v1;
       if (index % 2 === 0) {
-        question = `${subject} always ____ (${scene.v1}) ${scene.phrase}.`;
+        question = `${scSubj} always ____ (${scene.v1}) ${scPhrase}.`;
         answer = rightVerb;
         acceptedAnswers = [rightVerb];
         options = [
@@ -1159,9 +1238,9 @@ const generateDynamicQuestions = (config: any) => {
           { text: scene.ing, isCorrect: false },
           { text: `to ${scene.v1}`, isCorrect: false },
         ];
-        explanation = `With "${subject}", Present Simple uses "${rightVerb}".`;
+        explanation = `With "${scSubj}", Present Simple uses "${rightVerb}".`;
       } else {
-        question = `${subject} ____ like to ${scene.mustntRule}.`;
+        question = `${scSubj} ____ like to ${scMustntRule}.`;
         answer = doesntAux;
         acceptedAnswers = [doesntAux, doesAux === 'does' ? 'does not' : 'do not'];
         options = [
@@ -1170,10 +1249,10 @@ const generateDynamicQuestions = (config: any) => {
           { text: "isn't", isCorrect: false },
           { text: 'not', isCorrect: false },
         ];
-        explanation = `Use "${doesntAux} + base verb" with "${subject}".`;
+        explanation = `Use "${doesntAux} + base verb" with "${scSubj}".`;
       }
     } else if (isFuture) {
-      question = `Next, ${subject} ____ (${scene.v1}) ${scene.phrase}.`;
+      question = `Next, ${scSubj.toLowerCase()} ____ (${scene.v1}) ${scPhrase}.`;
       answer = `will ${scene.v1}`;
       acceptedAnswers = [`will ${scene.v1}`, `${isAux} going to ${scene.v1}`];
       options = [
@@ -1195,7 +1274,7 @@ const generateDynamicQuestions = (config: any) => {
       ];
       explanation = `Passive Voice uses "be + past participle (${scene.passiveV3})".`;
     } else if (isConditional) {
-      question = `If ${subject} is careful, things ____ (be) better ${scene.location}.`;
+      question = `If ${scSubj.toLowerCase()} is careful ${scene.sceneLabel}, things ____ (be) much better.`;
       answer = 'will be';
       acceptedAnswers = ['will be'];
       options = [
@@ -1231,7 +1310,7 @@ const generateDynamicQuestions = (config: any) => {
         explanation = `Use the comparative "${scene.adjComp}" to compare two choices.`;
       }
     } else if (isPreposition) {
-      question = `${subject} is waiting ____ the room ${scene.sceneLabel}.`;
+      question = `${scSubj} is waiting ____ the room ${scene.sceneLabel}.`;
       answer = 'in';
       acceptedAnswers = ['in', 'inside'];
       options = [
@@ -1242,18 +1321,17 @@ const generateDynamicQuestions = (config: any) => {
       ];
       explanation = `Use "in" for an enclosed place like a room.`;
     } else if (isArticle) {
-      question = `${subject} wants to wait for ____ hour ${scene.location}.`;
-      answer = 'an';
-      acceptedAnswers = ['an'];
+      const item = articleBank[index % articleBank.length];
+      question = `${scSubj} ${adaptClientPronoun(item.stem, scSubj)}`;
+      answer = item.ans;
+      acceptedAnswers = item.acc;
       options = [
-        { text: 'an', isCorrect: true },
-        { text: 'a', isCorrect: false },
-        { text: 'many', isCorrect: false },
-        { text: 'few', isCorrect: false },
+        { text: item.ans, isCorrect: true },
+        ...item.wrong.map((w) => ({ text: w, isCorrect: false })),
       ];
-      explanation = `Use "an" before a vowel sound ("hour").`;
+      explanation = item.exp;
     } else if (isRelative) {
-      question = `The person ____ helps ${subject} ${scene.location} is very kind.`;
+      question = `The person ____ helps ${scObj} ${scene.location} is very kind.`;
       answer = 'who';
       acceptedAnswers = ['who', 'that'];
       options = [
@@ -1264,7 +1342,7 @@ const generateDynamicQuestions = (config: any) => {
       ];
       explanation = `Use "who" when talking about a person.`;
     } else if (requestedType === 'Fill in the Blanks') {
-      question = `${subject} ____ (${scene.v1}) ${scene.phrase}.`;
+      question = `${scSubj} ____ (${scene.v1}) ${scPhrase}.`;
       answer = scene.vs;
       acceptedAnswers = [scene.vs, scene.v2, `${isAux} ${scene.ing}`];
       options = [
@@ -1273,19 +1351,27 @@ const generateDynamicQuestions = (config: any) => {
         { text: `to ${scene.v1}`, isCorrect: false },
         { text: `didn't ${scene.v2}`, isCorrect: false },
       ];
-      explanation = `${subject} ${scene.vs} ${scene.phrase}.`;
+      explanation = `${scSubj} ${scene.vs} ${scPhrase}.`;
     } else {
-      question = `What happens ${scene.sceneLabel} in "${cleanTitle}"?`;
-      answer = `${subject} ${scene.vs} ${scene.phrase}.`;
+      question = `What does ${scSubj.toLowerCase()} do ${scene.sceneLabel}?`;
+      answer = `${scSubj} ${scene.vs} ${scPhrase}.`;
       acceptedAnswers = [answer];
       options = [
-        { text: `${subject} ${scene.vs} ${scene.phrase}.`, isCorrect: true },
+        { text: `${scSubj} ${scene.vs} ${scPhrase}.`, isCorrect: true },
         { text: 'Everyone goes to sleep quietly.', isCorrect: false },
         { text: 'Nothing happens in this scene.', isCorrect: false },
         { text: 'The video shows an empty playground.', isCorrect: false },
       ];
-      explanation = `In this scene, ${subject} ${scene.vs} ${scene.phrase}.`;
+      explanation = `In this scene, ${scSubj.toLowerCase()} ${scene.vs} ${scPhrase}.`;
     }
+
+    if (usedQuestions.has(question)) {
+      const altTimeTag = `At ${Math.floor(timeTrigger / 60)}:${String(timeTrigger % 60).padStart(2, '0')}, `;
+      if (!question.startsWith('At ') && !question.startsWith('True or False:')) {
+        question = `${altTimeTag}${question.charAt(0).toLowerCase()}${question.slice(1)}`;
+      }
+    }
+    usedQuestions.add(question);
 
     const rotatedOpts = options.map((o) => ({ ...o }));
     if (rotatedOpts.length > 2) {
@@ -1316,6 +1402,123 @@ const generateDynamicQuestions = (config: any) => {
     };
   });
 };
+
+const THINKING_DURATION_MS = 30000;
+
+function ThinkingAnalysisOverlay({
+  elapsedMs,
+  totalMs = THINKING_DURATION_MS,
+  questionCount,
+  topic,
+  videoTitle,
+}: {
+  elapsedMs: number;
+  totalMs?: number;
+  questionCount: number;
+  topic?: string;
+  videoTitle?: string;
+}) {
+  const clampedElapsed = Math.min(totalMs, Math.max(0, elapsedMs));
+  const pct = Math.min(100, Math.round((clampedElapsed / totalMs) * 100));
+  const remainingSec = Math.max(0, Math.ceil((totalMs - clampedElapsed) / 1000));
+  const stepIndex = clampedElapsed < 10000 ? 0 : clampedElapsed < 20000 ? 1 : 2;
+
+  const steps = [
+    {
+      title: '1. Scanning Video Transcript & Visual Frames',
+      desc: 'Mapping timestamps, scene shifts, and spoken context across the full video.',
+    },
+    {
+      title: '2. Deep Scene & Pronoun Analysis',
+      desc: 'Replacing vague terms with natural pronouns (he/she/they) grounded in each clip.',
+    },
+    {
+      title: '3. Grammar & Uniqueness Audit',
+      desc: `Eliminating repetitive templates and verifying ${questionCount} distinct ${
+        topic ? `${topic} ` : ''
+      }questions.`,
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-[#07060C]/90 backdrop-blur-md flex items-center justify-center p-4 animate-vq-fade">
+      <div className="w-full max-w-lg bg-[#141122] border border-amber-400/40 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-amber-400/15 border border-amber-400/40 flex items-center justify-center text-amber-400 shrink-0">
+              <Loader2 size={22} className="animate-spin" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="vq-display text-lg sm:text-xl font-black text-white leading-tight">
+                Deep Video Thinking Mode
+              </h3>
+              <p className="text-xs text-slate-400 truncate">
+                {videoTitle ? `Analyzing "${videoTitle}"` : 'Analyzing video scenes & grammar'}
+              </p>
+            </div>
+          </div>
+
+          <div className="px-3.5 py-2 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-center shrink-0">
+            <div className="vq-mono text-lg sm:text-xl font-black text-amber-300 leading-none">
+              {remainingSec}s
+            </div>
+            <div className="text-[10px] font-bold text-amber-200/80 uppercase tracking-wider mt-0.5">
+              thinking
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold">
+            <span className="text-slate-300">
+              Generating {questionCount} non-repetitive {topic ? `${topic} ` : ''}questions
+            </span>
+            <span className="vq-mono text-amber-300">{pct}%</span>
+          </div>
+          <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-emerald-400 transition-all duration-200"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2.5">
+          {steps.map((st, idx) => {
+            const isDone = idx < stepIndex || remainingSec === 0;
+            const isActive = idx === stepIndex && remainingSec > 0;
+            return (
+              <div
+                key={st.title}
+                className={`p-3 rounded-2xl border transition-colors flex items-start gap-3 ${
+                  isDone
+                    ? 'bg-emerald-500/10 border-emerald-400/35 text-emerald-200'
+                    : isActive
+                    ? 'bg-amber-400/10 border-amber-400/45 text-white'
+                    : 'bg-white/[0.03] border-white/10 text-slate-500'
+                }`}
+              >
+                <div className="mt-0.5 shrink-0">
+                  {isDone ? (
+                    <CheckCircle size={16} className="text-emerald-400" />
+                  ) : isActive ? (
+                    <Sparkles size={16} className="text-amber-400 animate-pulse" />
+                  ) : (
+                    <Clock size={16} className="text-slate-500" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-extrabold">{st.title}</div>
+                  <div className="text-[11px] opacity-80 leading-relaxed mt-0.5">{st.desc}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function HamsterPopQuiz({
   onViewChange,
@@ -1467,8 +1670,19 @@ export function HamsterPopQuiz({
   const [videoUrl, setVideoUrl] = useState<string>(initialGame?.videoUrl || '');
   const [localVideoName, setLocalVideoName] = useState<string>('');
   const localBlobUrlRef = useRef<string | null>(null);
+  const processedLocalScanRef = useRef<{
+    sourceUrl: string;
+    frames: CapturedVideoFrame[];
+    durationSec: number;
+  } | null>(null);
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [thinkingState, setThinkingState] = useState<{
+    elapsedMs: number;
+    count: number;
+    topic: string;
+    videoTitle: string;
+  } | null>(null);
   const [setupError, setSetupError] = useState('');
   const [liveScoreCount, setLiveScoreCount] = useState(0);
 
@@ -1512,6 +1726,7 @@ export function HamsterPopQuiz({
       URL.revokeObjectURL(localBlobUrlRef.current);
       localBlobUrlRef.current = null;
     }
+    processedLocalScanRef.current = null;
     const blobUrl = URL.createObjectURL(file);
     localBlobUrlRef.current = blobUrl;
     setVideoUrl(blobUrl);
@@ -1529,6 +1744,7 @@ export function HamsterPopQuiz({
       URL.revokeObjectURL(localBlobUrlRef.current);
       localBlobUrlRef.current = null;
     }
+    processedLocalScanRef.current = null;
     setVideoUrl('');
     setLocalVideoName('');
   };
@@ -1703,40 +1919,80 @@ export function HamsterPopQuiz({
     setIsLockedPlayMode(false);
     setOpenEditorOnMount(false);
 
-    // If the teacher already typed custom questions in Setup, start immediately with those
-    if (Array.isArray(config.manualQuestions) && config.manualQuestions.length > 0) {
-      setQuestions(config.manualQuestions);
-      setCurrentView('player');
-      return;
-    }
-
-    setIsGenerating(true);
     const desiredCount = Math.max(1, Math.min(100, Number(config.count) || 5));
+    setIsGenerating(true);
+    const startedAt = Date.now();
+    setThinkingState({
+      elapsedMs: 0,
+      count: desiredCount,
+      topic: (config.topic || '').trim(),
+      videoTitle: config.videoTitle || localVideoName || '',
+    });
+
+    const tickInterval = window.setInterval(() => {
+      setThinkingState((prev) =>
+        prev ? { ...prev, elapsedMs: Date.now() - startedAt } : prev
+      );
+    }, 250);
 
     try {
-      let capturedClientFrames: string[] = [];
-      let capturedLocalDuration = 0;
-      if (cleanUrl.startsWith('blob:')) {
-        const localScan = await captureLocalVideoFrames(cleanUrl);
-        capturedClientFrames = localScan.frames;
-        capturedLocalDuration = localScan.durationSec;
-      }
+      const workPromise = (async () => {
+        let capturedClientFrames: CapturedVideoFrame[] = [];
+        let capturedLocalDuration = 0;
+        if (cleanUrl.startsWith('blob:') || isDirectVideoSource(cleanUrl)) {
+          if (processedLocalScanRef.current?.sourceUrl === cleanUrl) {
+            capturedClientFrames = processedLocalScanRef.current.frames;
+            capturedLocalDuration = processedLocalScanRef.current.durationSec;
+          } else {
+            const localScan = await captureLocalVideoFrames(cleanUrl);
+            capturedClientFrames = localScan.frames;
+            capturedLocalDuration = localScan.durationSec;
+            processedLocalScanRef.current = {
+              sourceUrl: cleanUrl,
+              frames: localScan.frames,
+              durationSec: localScan.durationSec,
+            };
+          }
+        }
 
-      const res = await fetch('/api/generate-hamster-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: (config.topic || '').trim(),
-          videoTitle: config.videoTitle || localVideoName || '',
-          level: normalizeEnglishLevel(config.level),
-          types: config.selectedTypes,
-          count: desiredCount,
-          videoDuration: Number(config.videoDuration) || capturedLocalDuration || 0,
-          videoUrl: cleanUrl.startsWith('blob:') ? localVideoName : cleanUrl,
-          ...(capturedClientFrames.length > 0 ? { clientFrames: capturedClientFrames } : {}),
-        }),
-      });
-      const data = await res.json();
+        const res = await fetch('/api/generate-hamster-questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: (config.topic || '').trim(),
+            videoTitle: config.videoTitle || localVideoName || '',
+            level: normalizeEnglishLevel(config.level),
+            types: config.selectedTypes,
+            count: desiredCount,
+            videoDuration: Number(config.videoDuration) || capturedLocalDuration || 0,
+            videoUrl: cleanUrl.startsWith('blob:') ? localVideoName : cleanUrl,
+            ...(capturedClientFrames.length > 0 ? { clientFrames: capturedClientFrames } : {}),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.error) {
+          throw new Error(
+            data?.error ||
+              'Could not analyze this video right now. Please check the video source or API key and try again.'
+          );
+        }
+        if (!Array.isArray(data?.questions) || data.questions.length === 0) {
+          throw new Error(
+            'No scene-matched questions could be extracted from this video. Please verify the video is accessible and try again.'
+          );
+        }
+        return { data, capturedLocalDuration };
+      })();
+
+      const minThinkingWait = new Promise<void>((resolve) =>
+        window.setTimeout(resolve, THINKING_DURATION_MS)
+      );
+
+      const [{ data, capturedLocalDuration }] = await Promise.all([
+        workPromise,
+        minThinkingWait,
+      ]);
+
       const resolvedVidTitle = data?.videoTitle || config.videoTitle || '';
       const resolvedVidDuration =
         Number(data?.videoDuration) || capturedLocalDuration || Number(config.videoDuration) || 0;
@@ -1747,41 +2003,53 @@ export function HamsterPopQuiz({
           ...(resolvedVidDuration > 0 ? { videoDuration: resolvedVidDuration } : {}),
         }));
       }
-      const fallbackPool = generateDynamicQuestions({
-        ...config,
-        videoTitle: resolvedVidTitle,
-        videoDuration: resolvedVidDuration || config.videoDuration,
-        count: desiredCount,
-      });
 
-      if (Array.isArray(data?.questions) && data.questions.length > 0) {
-        const validFromApi = data.questions.filter(
-          (q: any) =>
-            q &&
-            typeof q.question === 'string' &&
-            !isLegacyPlaceholderQuestion(q.question) &&
-            (q.type === 'Fill in the Blanks' ||
-              (Array.isArray(q.options) && q.options.length >= 2))
+      const validFromApi = data.questions.filter(
+        (q: any) =>
+          q &&
+          typeof q.question === 'string' &&
+          !isLegacyPlaceholderQuestion(q.question) &&
+          (q.type === 'Fill in the Blanks' ||
+            (Array.isArray(q.options) && q.options.length >= 2))
+      );
+
+      if (validFromApi.length === 0) {
+        throw new Error(
+          'Generated questions did not pass quality validation. Please try processing the video again.'
         );
-        const finalQs =
-          validFromApi.length >= desiredCount
-            ? validFromApi.slice(0, desiredCount)
-            : [...validFromApi, ...fallbackPool.slice(validFromApi.length, desiredCount)].map(
-                (q, i) => ({
-                  ...q,
-                  id: i + 1,
-                })
-              );
-        setQuestions(finalQs);
-      } else {
-        setQuestions(fallbackPool);
       }
-    } catch (e) {
-      console.error(e);
-      setQuestions(generateDynamicQuestions({ ...config, count: desiredCount }));
-    } finally {
-      setIsGenerating(false);
+
+      setQuestions(
+        validFromApi.slice(0, desiredCount).map((q: any, i: number) => ({
+          ...q,
+          id: i + 1,
+        }))
+      );
       setCurrentView('player');
+    } catch (e: any) {
+      console.error(e);
+      const raw = String(e?.message || '');
+      let cleanMsg = raw;
+      const jIdx = raw.indexOf('{');
+      if (jIdx >= 0) {
+        try {
+          const parsed = JSON.parse(raw.slice(jIdx));
+          const inner = parsed?.error?.message || parsed?.message;
+          if (typeof inner === 'string' && inner.trim()) cleanMsg = inner.trim();
+        } catch {}
+      }
+      if (/prepayment credits|billing#prepay/i.test(cleanMsg)) {
+        cleanMsg =
+          'Gemini API prepayment credits are depleted on this project. Top up billing at ai.studio/projects or switch to an active GEMINI_API_KEY in Settings > Secrets.';
+      }
+      setSetupError(
+        cleanMsg ||
+          'Could not generate questions matching this video. Please check your video source or try again.'
+      );
+    } finally {
+      window.clearInterval(tickInterval);
+      setThinkingState(null);
+      setIsGenerating(false);
     }
   };
 
@@ -1795,6 +2063,15 @@ export function HamsterPopQuiz({
       }}
     >
       <style>{customStyles}</style>
+
+      {thinkingState && (
+        <ThinkingAnalysisOverlay
+          elapsedMs={thinkingState.elapsedMs}
+          questionCount={thinkingState.count}
+          topic={thinkingState.topic}
+          videoTitle={thinkingState.videoTitle}
+        />
+      )}
 
       {/* Clean Top Navigation Bar */}
       <header className="sticky top-0 z-40 w-full bg-[#0E0C17]/95 backdrop-blur-md border-b border-white/10 px-3 sm:px-5 h-13 flex items-center justify-between gap-3 shrink-0">
@@ -1861,7 +2138,7 @@ export function HamsterPopQuiz({
         <div className="flex items-center gap-2 shrink-0">
           {currentView === 'setup' && questions.length > 0 && (
             <span className="hidden sm:inline text-xs font-bold text-slate-300 vq-mono whitespace-nowrap mr-1">
-              {questions.length} custom {questions.length === 1 ? 'Q' : 'Qs'} ready
+              {questions.length} {questions.length === 1 ? 'Q' : 'Qs'} ready
             </span>
           )}
           <button
@@ -1892,23 +2169,19 @@ export function HamsterPopQuiz({
             localVideoName={localVideoName}
             onSelectLocalFile={handleSelectLocalVideoFile}
             onClearVideo={handleClearVideoSource}
+            onProcessedLocalScan={(scan: { sourceUrl: string; frames: CapturedVideoFrame[]; durationSec: number }) => {
+              processedLocalScanRef.current = scan;
+            }}
             initialConfig={lessonConfig}
-            existingQuestions={questions}
-            setQuestions={setQuestions}
             setupError={setupError}
             setSetupError={setSetupError}
             onStartLesson={handleStartLesson}
-            onOpenManual={(cfg: any) => {
-              const cleanUrl = normalizeVideoUrl(cfg.videoUrl || videoUrl);
-              if (!cleanUrl) {
-                setSetupError('Please paste a video URL or upload a local video file first.');
-                return;
-              }
+            onOpenManualPlayer={(config: any) => {
+              const cleanUrl = normalizeVideoUrl(config?.videoUrl || videoUrl);
+              if (cleanUrl) setVideoUrl(cleanUrl);
+              setLessonConfig(config);
               setSetupError('');
-              setVideoUrl(cleanUrl);
-              setLessonConfig(cfg);
-              setIsLockedPlayMode(false);
-              setOpenEditorOnMount(false);
+              setOpenEditorOnMount(true);
               setCurrentView('player');
             }}
             isGenerating={isGenerating}
@@ -1922,6 +2195,7 @@ export function HamsterPopQuiz({
             setQuestions={setQuestions}
             videoUrl={videoUrl}
             localVideoName={localVideoName}
+            cachedVideoScan={processedLocalScanRef.current}
             onSaveQuiz={handleSaveVideoQuiz}
             isSaving={isSaving}
             isPlayOnlyMode={isLockedPlayMode}
@@ -1943,13 +2217,12 @@ function SetupStudioView({
   localVideoName,
   onSelectLocalFile,
   onClearVideo,
+  onProcessedLocalScan,
   initialConfig,
-  existingQuestions,
-  setQuestions,
   setupError,
   setSetupError,
   onStartLesson,
-  onOpenManual,
+  onOpenManualPlayer,
   isGenerating,
 }: any) {
   const isBlobUrl = Boolean(videoUrl && videoUrl.startsWith('blob:'));
@@ -1962,11 +2235,13 @@ function SetupStudioView({
   const [scanMeta, setScanMeta] = useState<{
     hasTranscript?: boolean;
     chaptersCount?: number;
+    framesCount?: number;
   } | null>(null);
   const [isScanningVideoTitle, setIsScanningVideoTitle] = useState(false);
-  const lastScannedYtIdRef = useRef<string | null>(
-    extractClientYouTubeId(isBlobUrl ? '' : videoUrl || '')
+  const [processedSourceKey, setProcessedSourceKey] = useState<string>(
+    initialConfig?.videoTitle && initialConfig?.videoUrl ? initialConfig.videoUrl : ''
   );
+
   const [level, setLevel] = useState(normalizeEnglishLevel(initialConfig?.level));
   const [selectedTypes, setSelectedTypes] = useState<string[]>(
     initialConfig?.selectedTypes || ['Fill in the Blanks', 'Multiple Choice', 'Grammar Choice']
@@ -1977,14 +2252,6 @@ function SetupStudioView({
   const [quizCountInput, setQuizCountInput] = useState<string>(String(initialCountNum));
   const resolvedQuizCount = Math.max(1, Math.min(100, parseInt(quizCountInput, 10) || 5));
 
-  // Direct inline question typing in Setup (supports Fill in the Blanks & Multiple Choice)
-  const [directMode, setDirectMode] = useState<'Fill in the Blanks' | 'Multiple Choice'>('Fill in the Blanks');
-  const [directTime, setDirectTime] = useState('0:15');
-  const [directQuestion, setDirectQuestion] = useState('');
-  const [directBlankAnswer, setDirectBlankAnswer] = useState('');
-  const [directOptions, setDirectOptions] = useState<string[]>(['', '', '', '']);
-  const [directCorrectIdx, setDirectCorrectIdx] = useState<number>(0);
-
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const urlInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1994,73 +2261,11 @@ function SetupStudioView({
       setDetectedVideoTitle('');
       setDetectedDurationSec(0);
       setScanMeta(null);
-      lastScannedYtIdRef.current = null;
+      setProcessedSourceKey('');
     } else if (!videoUrl.startsWith('blob:')) {
       setUrlInput(videoUrl);
     }
   }, [videoUrl]);
-
-  // Deep-scan YouTube video (title, duration, transcript captions, chapters) for accurate question generation
-  useEffect(() => {
-    const trimmed = (urlInput || '').trim();
-    const ytId = extractClientYouTubeId(trimmed);
-    if (!ytId) {
-      if (lastScannedYtIdRef.current !== null) {
-        lastScannedYtIdRef.current = null;
-        setDetectedVideoTitle('');
-        setDetectedDurationSec(0);
-        setScanMeta(null);
-      }
-      setIsScanningVideoTitle(false);
-      return;
-    }
-
-    if (lastScannedYtIdRef.current !== ytId) {
-      lastScannedYtIdRef.current = ytId;
-      setDetectedVideoTitle('');
-      setDetectedDurationSec(0);
-      setScanMeta(null);
-    }
-
-    let cancelled = false;
-    setIsScanningVideoTitle(true);
-    const timer = setTimeout(async () => {
-      try {
-        const canonicalWatch = `https://www.youtube.com/watch?v=${ytId}`;
-        const scanRes = await fetch('/api/scan-video-info', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl: canonicalWatch }),
-        });
-        if (scanRes.ok) {
-          const info = await scanRes.json();
-          if (!cancelled) {
-            if (info?.title) setDetectedVideoTitle(String(info.title).trim());
-            if (Number(info?.durationSec) > 0) setDetectedDurationSec(Number(info.durationSec));
-            setScanMeta({
-              hasTranscript: Boolean(info?.hasTranscript),
-              chaptersCount: Number(info?.chaptersCount) || 0,
-            });
-            if (info?.title) return;
-          }
-        }
-        const res = await fetch(
-          `https://noembed.com/embed?url=${encodeURIComponent(canonicalWatch)}`
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled && data?.title) {
-          setDetectedVideoTitle(String(data.title).trim());
-        }
-      } catch {} finally {
-        if (!cancelled) setIsScanningVideoTitle(false);
-      }
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [urlInput]);
 
   const toggleType = (type: string) => {
     setSelectedTypes((prev) =>
@@ -2083,7 +2288,102 @@ function SetupStudioView({
     return /^https?:\/\//i.test(s) ? s : `https://${s}`;
   };
 
-  const buildPayload = (manualQs?: any[]) => {
+  const canonicalActiveSource = normalizeSetupUrl(activeVideoSource);
+  const isCurrentSourceProcessed = Boolean(
+    canonicalActiveSource && processedSourceKey && processedSourceKey === canonicalActiveSource
+  );
+
+  // Explicit user-triggered video processing (not automatic!)
+  const handleProcessVideo = async () => {
+    if (!activeVideoSource) {
+      setSetupError('Please paste a video URL or upload a local video file first.');
+      urlInputRef.current?.focus();
+      return;
+    }
+    setSetupError('');
+    setIsScanningVideoTitle(true);
+
+    try {
+      if (isBlobUrl || isDirectVideoSource(canonicalActiveSource)) {
+        const targetSource = isBlobUrl ? videoUrl : canonicalActiveSource;
+        const localScan = await captureLocalVideoFrames(targetSource);
+        if (localScan.durationSec > 0) {
+          setDetectedDurationSec(localScan.durationSec);
+        }
+        const fileSlug = (isBlobUrl ? localVideoName : canonicalActiveSource.split('/').pop()?.split('?')[0]) || '';
+        const cleanLocalTitle =
+          fileSlug.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim() ||
+          'Uploaded Video';
+        setDetectedVideoTitle(cleanLocalTitle);
+        setScanMeta({
+          hasTranscript: false,
+          framesCount: localScan.frames.length,
+        });
+        if (typeof onProcessedLocalScan === 'function') {
+          onProcessedLocalScan({
+            sourceUrl: targetSource,
+            frames: localScan.frames,
+            durationSec: localScan.durationSec,
+          });
+        }
+        setProcessedSourceKey(canonicalActiveSource);
+        return;
+      }
+
+      const ytId = extractClientYouTubeId(activeVideoSource);
+      const targetUrl = ytId
+        ? `https://www.youtube.com/watch?v=${ytId}`
+        : canonicalActiveSource;
+
+      let resolvedTitle = '';
+      try {
+        const scanRes = await fetch('/api/scan-video-info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl: targetUrl }),
+        });
+        if (scanRes.ok) {
+          const info = await scanRes.json();
+          if (info?.title) {
+            resolvedTitle = String(info.title).trim();
+            setDetectedVideoTitle(resolvedTitle);
+          }
+          if (Number(info?.durationSec) > 0) {
+            setDetectedDurationSec(Number(info.durationSec));
+          }
+          setScanMeta({
+            hasTranscript: Boolean(info?.hasTranscript),
+            chaptersCount: Number(info?.chaptersCount) || 0,
+          });
+        }
+      } catch {}
+
+      if (!resolvedTitle && ytId) {
+        try {
+          const res = await fetch(
+            `https://noembed.com/embed?url=${encodeURIComponent(
+              `https://www.youtube.com/watch?v=${ytId}`
+            )}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.title) {
+              resolvedTitle = String(data.title).trim();
+              setDetectedVideoTitle(resolvedTitle);
+            }
+          }
+        } catch {}
+      }
+
+      setProcessedSourceKey(canonicalActiveSource);
+    } catch {
+      setSetupError('Could not scan this video automatically. You can still generate questions.');
+    } finally {
+      setIsScanningVideoTitle(false);
+    }
+  };
+
+  const buildPayload = () => {
     const canonicalVideoUrl = normalizeSetupUrl(activeVideoSource);
     const prevYtId = extractClientYouTubeId(initialConfig?.videoUrl || '');
     const currYtId = extractClientYouTubeId(canonicalVideoUrl);
@@ -2106,72 +2406,7 @@ function SetupStudioView({
       level: normalizeEnglishLevel(level),
       selectedTypes,
       count: resolvedQuizCount,
-      ...(manualQs ? { manualQuestions: manualQs } : {}),
     };
-  };
-
-  const handleAddDirectQuestionInSetup = () => {
-    const rawQText = directQuestion.trim();
-    if (!rawQText) return;
-    const sec = parseTimeInputToSeconds(directTime) ?? 15;
-    const nextId =
-      (existingQuestions || []).reduce((m: number, q: any) => Math.max(m, q.id || 0), 0) + 1;
-
-    const nonEmptyOpts = directOptions.map((o) => o.trim()).filter(Boolean);
-    const shouldBeFillBlank =
-      directMode === 'Fill in the Blanks' ||
-      (rawQText.includes('___') && nonEmptyOpts.length < 2) ||
-      nonEmptyOpts.length === 0;
-
-    let newQ: any;
-    if (shouldBeFillBlank) {
-      const qFormatted = rawQText.includes('___')
-        ? normalizeBlankQuestionText(rawQText)
-        : `${rawQText} ____`;
-      const inferred = inferSmartBlankAnswerFromQuestion(qFormatted);
-      const finalAns =
-        directBlankAnswer.trim() || nonEmptyOpts[0] || inferred.answer;
-
-      newQ = {
-        id: nextId,
-        timeTrigger: sec,
-        type: 'Fill in the Blanks',
-        xp: 100,
-        question: qFormatted,
-        answer: finalAns,
-        acceptedAnswers: Array.from(
-          new Set([finalAns, ...inferred.acceptedAnswers].filter(Boolean))
-        ),
-        options: [{ text: finalAns, isCorrect: true }],
-        explanation: `Correct answer: "${finalAns}".`,
-      };
-    } else {
-      const builtOpts = directOptions.map((opt, idx) => ({
-        text: opt.trim() || `Choice ${['A', 'B', 'C', 'D'][idx]}`,
-        isCorrect: idx === directCorrectIdx,
-      }));
-      const rightAns = builtOpts[directCorrectIdx]?.text || builtOpts[0]?.text || '';
-      newQ = {
-        id: nextId,
-        timeTrigger: sec,
-        type: 'Multiple Choice',
-        xp: 100,
-        question: rawQText,
-        answer: rightAns,
-        options: builtOpts,
-        explanation: `Correct answer: "${rightAns}".`,
-      };
-    }
-
-    const nextList = [...(existingQuestions || []), newQ].sort(
-      (a, b) => a.timeTrigger - b.timeTrigger
-    );
-    setQuestions(nextList);
-    setDirectQuestion('');
-    setDirectBlankAnswer('');
-    setDirectOptions(['', '', '', '']);
-    setDirectCorrectIdx(0);
-    setDirectTime(formatSeconds(sec + 20));
   };
 
   return (
@@ -2196,7 +2431,7 @@ function SetupStudioView({
               Interactive <span className="text-amber-400">Video Quiz</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
-              Paste a video URL or upload a video file. Auto-generate scene-accurate questions by scanning the video (with an optional grammar topic), or type your own Fill in the Blanks and Multiple Choice questions below.
+              Paste a video URL or upload a video file, click <strong>Process Video</strong> to scan its scenes &amp; transcript, then auto-generate accurate, non-repetitive questions. You can click and edit any generated question inside the player.
             </p>
           </div>
         </div>
@@ -2218,6 +2453,7 @@ function SetupStudioView({
                       setDetectedVideoTitle('');
                       setDetectedDurationSec(0);
                       setScanMeta(null);
+                      setProcessedSourceKey('');
                       onClearVideo();
                     }}
                     className="text-xs font-semibold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
@@ -2235,6 +2471,10 @@ function SetupStudioView({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
+                    setDetectedVideoTitle('');
+                    setDetectedDurationSec(0);
+                    setScanMeta(null);
+                    setProcessedSourceKey('');
                     onSelectLocalFile(file);
                   }
                   e.target.value = '';
@@ -2242,8 +2482,8 @@ function SetupStudioView({
               />
 
               {isBlobUrl ? (
-                <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40 text-white">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40 text-white">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-9 h-9 rounded-lg bg-emerald-400/20 text-emerald-300 flex items-center justify-center shrink-0">
                       <FileVideo size={18} />
                     </div>
@@ -2252,20 +2492,49 @@ function SetupStudioView({
                         {localVideoName || 'Uploaded Video File'}
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        Local video ready for playback & frame scanning
+                        {isCurrentSourceProcessed
+                          ? `Processed${detectedDurationSec > 0 ? ` · ${formatSeconds(detectedDurationSec)}` : ''}${
+                              scanMeta?.framesCount ? ` · ${scanMeta.framesCount} visual frames ready` : ' · Ready'
+                            }`
+                          : 'Click Process Video to analyze frames & duration'}
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-bold text-white shrink-0 cursor-pointer whitespace-nowrap"
-                  >
-                    Change File
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isScanningVideoTitle}
+                      onClick={handleProcessVideo}
+                      className="px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      {isScanningVideoTitle ? (
+                        <>
+                          <Loader2 size={13} className="animate-spin" />
+                          Processing...
+                        </>
+                      ) : isCurrentSourceProcessed ? (
+                        <>
+                          <Check size={13} strokeWidth={3} />
+                          Re-Process Video
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={13} />
+                          Process Video
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-bold text-white cursor-pointer whitespace-nowrap"
+                    >
+                      Change File
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="flex flex-col sm:flex-row gap-2.5">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1 flex items-center">
                     <Video size={17} className="absolute left-3.5 text-amber-400 pointer-events-none" />
                     <input
@@ -2274,8 +2543,13 @@ function SetupStudioView({
                       placeholder="Paste YouTube or MP4 video URL..."
                       value={urlInput}
                       onChange={(e) => {
-                        setUrlInput(e.target.value);
-                        setVideoUrl(e.target.value);
+                        const nextVal = e.target.value;
+                        setUrlInput(nextVal);
+                        setVideoUrl(nextVal);
+                        setDetectedVideoTitle('');
+                        setDetectedDurationSec(0);
+                        setScanMeta(null);
+                        setProcessedSourceKey('');
                         if (setupError) setSetupError('');
                       }}
                       className={`w-full pl-10 pr-4 py-3 rounded-xl bg-[#0E0B1A] border focus:outline-none text-sm font-medium text-white placeholder:text-slate-500 transition-colors ${
@@ -2288,6 +2562,34 @@ function SetupStudioView({
 
                   <button
                     type="button"
+                    disabled={isScanningVideoTitle || !activeVideoSource}
+                    onClick={handleProcessVideo}
+                    className={`px-4 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      isCurrentSourceProcessed
+                        ? 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 hover:bg-emerald-500/30'
+                        : 'bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950'
+                    }`}
+                  >
+                    {isScanningVideoTitle ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Processing...
+                      </>
+                    ) : isCurrentSourceProcessed ? (
+                      <>
+                        <Check size={14} strokeWidth={3} />
+                        Processed
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        Process Video
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
@@ -2297,33 +2599,48 @@ function SetupStudioView({
                 </div>
               )}
 
-              {(detectedVideoTitle || ytPreviewId || isScanningVideoTitle) && !isBlobUrl && (
-                <div className="mt-2.5 p-2.5 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center gap-3">
+              {activeVideoSource && !isBlobUrl && (isScanningVideoTitle || isCurrentSourceProcessed || ytPreviewId) && (
+                <div
+                  className={`mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 ${
+                    isCurrentSourceProcessed
+                      ? 'bg-emerald-500/10 border-emerald-400/35'
+                      : 'bg-amber-400/10 border-amber-400/30'
+                  }`}
+                >
                   {ytPreviewId && (
                     <img
                       src={`https://i.ytimg.com/vi/${ytPreviewId}/hqdefault.jpg`}
-                      alt="Scanned Video Preview"
+                      alt="Video Preview"
                       referrerPolicy="no-referrer"
-                      className="w-16 h-10 rounded-lg object-cover border border-amber-400/40 shrink-0"
+                      className="w-16 h-10 rounded-lg object-cover border border-white/20 shrink-0"
                     />
                   )}
                   <div className="min-w-0 flex-1 text-left">
-                    <div className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5 flex-wrap">
-                      {isScanningVideoTitle && !detectedVideoTitle ? (
+                    <div
+                      className={`text-[11px] font-bold flex items-center gap-1.5 flex-wrap ${
+                        isCurrentSourceProcessed ? 'text-emerald-300' : 'text-amber-300'
+                      }`}
+                    >
+                      {isScanningVideoTitle ? (
                         <>
                           <Loader2 size={12} className="animate-spin shrink-0" />
-                          <span>Scanning video transcript, duration & scenes...</span>
+                          <span>Processing video transcript, duration &amp; scenes...</span>
                         </>
-                      ) : (
+                      ) : isCurrentSourceProcessed ? (
                         <>
-                          <Sparkles size={12} className="shrink-0" />
+                          <CheckCircle size={12} className="shrink-0" />
                           <span>
-                            Scanned
+                            Processed
                             {detectedDurationSec > 0 ? ` · ${formatSeconds(detectedDurationSec)}` : ''}
                             {scanMeta?.hasTranscript
                               ? ' · Transcript & Scenes ready'
-                              : ' · Visual Frames ready'}
+                              : ' · Video Info & Frames ready'}
                           </span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={12} className="shrink-0" />
+                          <span>Not processed yet — click Process Video to scan title, duration &amp; captions</span>
                         </>
                       )}
                     </div>
@@ -2337,9 +2654,22 @@ function SetupStudioView({
               )}
 
               {setupError && (
-                <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-400">
-                  <AlertCircle size={14} className="shrink-0" />
-                  <span>{setupError}</span>
+                <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-xs text-rose-200 space-y-2">
+                  <div className="flex items-start gap-2 font-semibold leading-relaxed">
+                    <AlertCircle size={15} className="shrink-0 text-rose-400 mt-0.5" />
+                    <span>{setupError}</span>
+                  </div>
+                  {activeVideoSource && typeof onOpenManualPlayer === 'function' && (
+                    <div className="pl-5">
+                      <button
+                        type="button"
+                        onClick={() => onOpenManualPlayer(buildPayload())}
+                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                      >
+                        Open Video Player &amp; Add Questions Manually
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2458,7 +2788,7 @@ function SetupStudioView({
             </div>
           </div>
 
-          {/* Right Column: Question Types & Launch Actions */}
+          {/* Right Column: Question Types & Launch Action */}
           <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-2">
@@ -2492,8 +2822,8 @@ function SetupStudioView({
               </div>
             </div>
 
-            {/* Launch Buttons */}
-            <div className="space-y-2.5">
+            {/* Auto-Generate Button */}
+            <div className="space-y-2">
               <button
                 type="button"
                 disabled={isGenerating}
@@ -2505,236 +2835,27 @@ function SetupStudioView({
                   }
                   onStartLesson(buildPayload());
                 }}
-                className="w-full py-3.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition-colors cursor-pointer"
+                className="w-full py-4 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition-colors cursor-pointer"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Scanning Video & Generating {resolvedQuizCount} Questions...
+                    Thinking &amp; Generating {resolvedQuizCount} Questions...
                   </>
                 ) : (
                   <>
                     <Sparkles size={18} />
                     Auto-Generate {resolvedQuizCount} {topic.trim() ? `${topic.trim()} ` : 'Video '}
-                    {resolvedQuizCount === 1 ? 'Question' : 'Questions'} & Play
+                    {resolvedQuizCount === 1 ? 'Question' : 'Questions'} &amp; Play
                   </>
                 )}
               </button>
-
-              <button
-                type="button"
-                disabled={isGenerating}
-                onClick={() => {
-                  if (!activeVideoSource) {
-                    setSetupError('Please paste a video URL or upload a local video file first.');
-                    urlInputRef.current?.focus();
-                    return;
-                  }
-                  onOpenManual(buildPayload(existingQuestions));
-                }}
-                className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/10 transition-colors cursor-pointer"
-              >
-                <Play size={14} className="text-amber-400" />
-                Open Video Player & Type Questions Directly
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Direct Question Typing Box in Setup (Supports Fill in the Blanks & Multiple Choice) */}
-        <div className="pt-5 border-t border-white/10 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                <Edit3 size={15} className="text-amber-400" />
-                Directly Type Your Own Questions (Fill in the Blanks or Multiple Choice)
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Choose <strong>Fill in the Blanks</strong> (use <code className="text-amber-300">____</code> for the blank) or <strong>Multiple Choice</strong>, set the timestamp, and click Add Question.
+              <p className="text-[11px] text-slate-400 text-center flex items-center justify-center gap-1.5">
+                <Clock size={12} className="text-amber-400 shrink-0" />
+                <span>Takes ~30 seconds of deep thinking to avoid repetitive or vague questions.</span>
               </p>
             </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center p-1 rounded-xl bg-[#0E0B1A] border border-white/10">
-                {(['Fill in the Blanks', 'Multiple Choice'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setDirectMode(m)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                      directMode === m
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-
-              {Array.isArray(existingQuestions) && existingQuestions.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setQuestions([])}
-                  className="text-xs font-bold text-rose-400 hover:text-rose-300 cursor-pointer ml-2"
-                >
-                  Clear All ({existingQuestions.length})
-                </button>
-              )}
-            </div>
           </div>
-
-          <div className="bg-[#0E0B1A] border border-white/10 rounded-2xl p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row gap-2.5">
-              <div className="flex items-center gap-1.5 bg-[#161229] border border-white/15 rounded-xl px-3 py-2.5 shrink-0">
-                <Clock size={14} className="text-amber-400" />
-                <span className="text-xs font-bold text-slate-400">Time:</span>
-                <input
-                  type="text"
-                  value={directTime}
-                  onChange={(e) => setDirectTime(e.target.value)}
-                  placeholder="0:15"
-                  className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
-                />
-              </div>
-              <input
-                type="text"
-                value={directQuestion}
-                onChange={(e) => setDirectQuestion(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddDirectQuestionInSetup();
-                  }
-                }}
-                placeholder={
-                  directMode === 'Fill in the Blanks'
-                    ? 'e.g. He has ____ at the mirror.'
-                    : 'Type your multiple choice question here...'
-                }
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#161229] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
-              />
-              {directMode === 'Fill in the Blanks' && (
-                <button
-                  type="button"
-                  onClick={() => setDirectQuestion((prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}____ `)}
-                  title="Insert blank ____"
-                  className="px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-amber-300 text-xs font-extrabold cursor-pointer shrink-0"
-                >
-                  + Insert ____
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleAddDirectQuestionInSetup}
-                disabled={!directQuestion.trim()}
-                className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-              >
-                <Plus size={15} />
-                Add Question
-              </button>
-            </div>
-
-            {directMode === 'Fill in the Blanks' ? (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
-                <span className="text-xs font-extrabold text-emerald-300 shrink-0">
-                  Correct Missing Word(s):
-                </span>
-                <input
-                  type="text"
-                  value={directBlankAnswer}
-                  onChange={(e) => setDirectBlankAnswer(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddDirectQuestionInSetup();
-                    }
-                  }}
-                  placeholder="e.g. looked (students will type this to fill in the blank)"
-                  className="flex-1 bg-transparent text-xs sm:text-sm font-bold text-white placeholder:text-slate-400 focus:outline-none"
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                {['A', 'B', 'C', 'D'].map((letter, idx) => {
-                  const isRight = directCorrectIdx === idx;
-                  return (
-                    <div
-                      key={letter}
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border ${
-                        isRight
-                          ? 'bg-emerald-500/10 border-emerald-400/50'
-                          : 'bg-[#161229] border-white/10'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setDirectCorrectIdx(idx)}
-                        title="Click to mark as correct answer"
-                        className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
-                          isRight
-                            ? 'bg-emerald-400 text-slate-950'
-                            : 'bg-white/10 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {letter}
-                      </button>
-                      <input
-                        type="text"
-                        value={directOptions[idx]}
-                        onChange={(e) => {
-                          const next = [...directOptions];
-                          next[idx] = e.target.value;
-                          setDirectOptions(next);
-                        }}
-                        placeholder={`Choice ${letter}${isRight ? ' (Correct)' : ''}`}
-                        className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* List of custom typed questions */}
-          {Array.isArray(existingQuestions) && existingQuestions.length > 0 && (
-            <div className="space-y-2 max-h-56 overflow-y-auto vq-scrollbar pr-1">
-              {existingQuestions.map((q: any) => (
-                <div
-                  key={q.id}
-                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-[#0C0A15] border border-white/10 text-xs sm:text-sm"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <span className="text-amber-300 vq-mono font-extrabold shrink-0">
-                      @{formatSeconds(q.timeTrigger)}
-                    </span>
-                    <span aria-hidden="true" className="text-white/20">·</span>
-                    <span className="text-slate-400 text-xs font-bold shrink-0">
-                      {q.type || 'Multiple Choice'}
-                    </span>
-                    <span aria-hidden="true" className="text-white/20">·</span>
-                    <span className="font-semibold text-white truncate">{q.question}</span>
-                    {q.type === 'Fill in the Blanks' && q.answer && (
-                      <span className="text-emerald-300 text-xs font-bold shrink-0 ml-1">
-                        ({q.answer})
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setQuestions(existingQuestions.filter((item: any) => item.id !== q.id))
-                    }
-                    className="p-1.5 text-slate-400 hover:text-rose-400 cursor-pointer shrink-0"
-                    title="Remove question"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -2973,6 +3094,7 @@ function PlayerView({
   setQuestions,
   videoUrl,
   localVideoName,
+  cachedVideoScan,
   onSaveQuiz,
   isSaving,
   isPlayOnlyMode,
@@ -2992,6 +3114,7 @@ function PlayerView({
   const [showEditModal, setShowEditModal] = useState(Boolean(initialOpenEditor));
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [errorToast, setErrorToast] = useState('');
   const [isStageFullscreen, setIsStageFullscreen] = useState(false);
   const [isGeneratingMore, setIsGeneratingMore] = useState(false);
   const [showEndScore, setShowEndScore] = useState(false);
@@ -3006,14 +3129,10 @@ function PlayerView({
   const [volume, setVolume] = useState(100);
   const [playerMuted, setPlayerMuted] = useState(Boolean(isAppMuted));
   const pendingPlayRef = useRef<boolean>(false);
-
-  // Direct inline question typing right below the video (Supports Fill in the Blanks & Multiple Choice)
-  const [inlineMode, setInlineMode] = useState<'Fill in the Blanks' | 'Multiple Choice'>('Fill in the Blanks');
-  const [inlineTimeInput, setInlineTimeInput] = useState('0:15');
-  const [inlineQuestionText, setInlineQuestionText] = useState('');
-  const [inlineBlankAnswer, setInlineBlankAnswer] = useState('');
-  const [inlineOptions, setInlineOptions] = useState<string[]>(['', '', '', '']);
-  const [inlineCorrectIdx, setInlineCorrectIdx] = useState<number>(0);
+  const [playerThinkingState, setPlayerThinkingState] = useState<{
+    elapsedMs: number;
+    count: number;
+  } | null>(null);
 
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<YouTubeQuizHandle | null>(null);
@@ -3210,7 +3329,6 @@ function PlayerView({
       seekGuardUntilRef.current = Date.now() + 850;
       lastEvaluatedTimeRef.current = clamped;
       setCurrentTime(clamped);
-      setInlineTimeInput(formatSeconds(Math.max(1, Math.round(clamped))));
       setProgress(effectiveDuration > 0 ? (clamped / effectiveDuration) * 100 : 0);
       if (!activeQuiz && clamped < effectiveDuration - 3) {
         setVideoEnded(false);
@@ -3384,130 +3502,108 @@ function PlayerView({
     seekVideoTo(0);
   };
 
-  const handleAddInlineQuestion = () => {
-    const rawQText = inlineQuestionText.trim();
-    if (!rawQText) return;
-    const triggerSec =
-      parseTimeInputToSeconds(inlineTimeInput) ?? Math.max(1, Math.round(currentTime || 15));
-    const nextId = questions.reduce((max: number, q: any) => Math.max(max, q.id || 0), 0) + 1;
-
-    const nonEmptyOpts = inlineOptions.map((o) => o.trim()).filter(Boolean);
-    const shouldBeFillBlank =
-      inlineMode === 'Fill in the Blanks' ||
-      (rawQText.includes('___') && nonEmptyOpts.length < 2) ||
-      nonEmptyOpts.length === 0;
-
-    let newQ: any;
-    if (shouldBeFillBlank) {
-      const qFormatted = rawQText.includes('___')
-        ? normalizeBlankQuestionText(rawQText)
-        : `${rawQText} ____`;
-      const inferred = inferSmartBlankAnswerFromQuestion(qFormatted);
-      const finalAns =
-        inlineBlankAnswer.trim() || nonEmptyOpts[0] || inferred.answer;
-
-      newQ = {
-        id: nextId,
-        timeTrigger: triggerSec,
-        type: 'Fill in the Blanks',
-        xp: 100,
-        question: qFormatted,
-        answer: finalAns,
-        acceptedAnswers: Array.from(
-          new Set([finalAns, ...inferred.acceptedAnswers].filter(Boolean))
-        ),
-        options: [{ text: finalAns, isCorrect: true }],
-        explanation: `Correct answer: "${finalAns}".`,
-      };
-    } else {
-      const builtOpts = inlineOptions.map((opt, idx) => ({
-        text: opt.trim() || `Choice ${['A', 'B', 'C', 'D'][idx]}`,
-        isCorrect: idx === inlineCorrectIdx,
-      }));
-      const rightAns = builtOpts[inlineCorrectIdx]?.text || builtOpts[0]?.text || '';
-      newQ = {
-        id: nextId,
-        timeTrigger: triggerSec,
-        type: 'Multiple Choice',
-        xp: 100,
-        question: rawQText,
-        answer: rightAns,
-        options: builtOpts,
-        explanation: `Correct answer: "${rightAns}".`,
-      };
-    }
-
-    setQuestions([...questions, newQ].sort((a, b) => a.timeTrigger - b.timeTrigger));
-    setInlineQuestionText('');
-    setInlineBlankAnswer('');
-    setInlineOptions(['', '', '', '']);
-    setInlineCorrectIdx(0);
-    setToastMessage(`Added ${newQ.type} question at ${formatSeconds(triggerSec)}`);
+  const handleUpdateSingleQuestion = (updatedQ: any) => {
+    const nextList = questions
+      .map((item: any) => (item.id === updatedQ.id ? updatedQ : item))
+      .sort((a: any, b: any) => (Number(a.timeTrigger) || 0) - (Number(b.timeTrigger) || 0));
+    setQuestions(nextList);
+    setActiveQuiz(updatedQ);
+    setToastMessage(`Updated Question at ${formatSeconds(updatedQ.timeTrigger)}`);
     setTimeout(() => setToastMessage(''), 2200);
   };
 
   const handleAutoGenerateTopicQuestions = async () => {
     setIsGeneratingMore(true);
+    setErrorToast('');
     const desiredCount = Math.max(1, Math.min(100, Number(config?.count) || 5));
-    try {
-      let capturedClientFrames: string[] = [];
-      let capturedLocalDuration = 0;
-      if (videoUrl.startsWith('blob:')) {
-        const localScan = await captureLocalVideoFrames(videoUrl);
-        capturedClientFrames = localScan.frames;
-        capturedLocalDuration = localScan.durationSec;
-      }
+    const startedAt = Date.now();
+    setPlayerThinkingState({ elapsedMs: 0, count: desiredCount });
+    const tickInterval = window.setInterval(() => {
+      setPlayerThinkingState((prev) =>
+        prev ? { ...prev, elapsedMs: Date.now() - startedAt } : prev
+      );
+    }, 250);
 
-      const res = await fetch('/api/generate-hamster-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: (config?.topic || '').trim(),
-          videoTitle: config?.videoTitle || localVideoName || '',
-          level: normalizeEnglishLevel(config?.level),
-          types: config?.selectedTypes || ['Fill in the Blanks', 'Multiple Choice', 'Grammar Choice'],
-          count: desiredCount,
-          videoDuration: hasRealDuration
-            ? videoDuration
-            : capturedLocalDuration || config?.videoDuration || 180,
-          videoUrl: videoUrl.startsWith('blob:') ? localVideoName : videoUrl,
-          ...(capturedClientFrames.length > 0 ? { clientFrames: capturedClientFrames } : {}),
-        }),
-      });
-      const data = await res.json();
+    try {
+      const workPromise = (async () => {
+        let capturedClientFrames: CapturedVideoFrame[] = [];
+        let capturedLocalDuration = 0;
+        if (videoUrl.startsWith('blob:') || isDirectVideoSource(videoUrl)) {
+          if (cachedVideoScan?.sourceUrl === videoUrl && Array.isArray(cachedVideoScan.frames)) {
+            capturedClientFrames = cachedVideoScan.frames;
+            capturedLocalDuration = cachedVideoScan.durationSec || 0;
+          } else {
+            const localScan = await captureLocalVideoFrames(videoUrl);
+            capturedClientFrames = localScan.frames;
+            capturedLocalDuration = localScan.durationSec;
+          }
+        }
+
+        const res = await fetch('/api/generate-hamster-questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: (config?.topic || '').trim(),
+            videoTitle: config?.videoTitle || localVideoName || '',
+            level: normalizeEnglishLevel(config?.level),
+            types: config?.selectedTypes || ['Fill in the Blanks', 'Multiple Choice', 'Grammar Choice'],
+            count: desiredCount,
+            videoDuration: hasRealDuration
+              ? videoDuration
+              : capturedLocalDuration || config?.videoDuration || 180,
+            videoUrl: videoUrl.startsWith('blob:') ? localVideoName : videoUrl,
+            ...(capturedClientFrames.length > 0 ? { clientFrames: capturedClientFrames } : {}),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.error) {
+          throw new Error(
+            data?.error ||
+              'Could not analyze this video right now. Please check the video source or API key.'
+          );
+        }
+        if (!Array.isArray(data?.questions) || data.questions.length === 0) {
+          throw new Error(
+            'Could not generate scene-matched questions from this video. Please try again.'
+          );
+        }
+        return { data, capturedClientFrames, capturedLocalDuration };
+      })();
+
+      const minThinkingWait = new Promise<void>((resolve) =>
+        window.setTimeout(resolve, THINKING_DURATION_MS)
+      );
+
+      const [{ data, capturedClientFrames, capturedLocalDuration }] = await Promise.all([
+        workPromise,
+        minThinkingWait,
+      ]);
+
       const resolvedDuration = hasRealDuration
         ? videoDuration
         : Number(data?.videoDuration) || capturedLocalDuration || Number(videoDuration) || 180;
       if (!hasRealDuration && resolvedDuration > 0 && resolvedDuration !== videoDuration) {
         setVideoDuration(resolvedDuration);
       }
-      const fallbackPool = generateDynamicQuestions({
-        ...config,
-        videoTitle: data?.videoTitle || config?.videoTitle,
-        count: desiredCount,
-        videoDuration: resolvedDuration,
-      });
 
-      if (Array.isArray(data?.questions) && data.questions.length > 0) {
-        const valid = data.questions.filter(
-          (q: any) =>
-            q &&
-            typeof q.question === 'string' &&
-            !isLegacyPlaceholderQuestion(q.question) &&
-            (q.type === 'Fill in the Blanks' ||
-              (Array.isArray(q.options) && q.options.length >= 2))
-        );
-        setQuestions(
-          valid.length >= desiredCount
-            ? valid.slice(0, desiredCount)
-            : [...valid, ...fallbackPool.slice(valid.length, desiredCount)].map((q, i) => ({
-                ...q,
-                id: i + 1,
-              }))
-        );
-      } else {
-        setQuestions(fallbackPool);
+      const valid = data.questions.filter(
+        (q: any) =>
+          q &&
+          typeof q.question === 'string' &&
+          !isLegacyPlaceholderQuestion(q.question) &&
+          (q.type === 'Fill in the Blanks' ||
+            (Array.isArray(q.options) && q.options.length >= 2))
+      );
+      if (valid.length === 0) {
+        throw new Error('Generated questions did not pass quality validation. Please try again.');
       }
+
+      setQuestions(
+        valid.slice(0, desiredCount).map((q: any, i: number) => ({
+          ...q,
+          id: i + 1,
+        }))
+      );
       setResultsMap({});
       setSkippedIds({});
       lastEvaluatedTimeRef.current = 0;
@@ -3515,22 +3611,26 @@ function PlayerView({
       setVideoEnded(false);
       setShowEndScore(false);
       const sourceLabel = data?.hasTranscript
-        ? 'Analyzed transcript & scenes'
+        ? 'Analyzed transcript & storyboard'
+        : data?.usedStoryboard
+        ? 'Analyzed video storyboard scenes'
         : capturedClientFrames.length > 0
-        ? 'Analyzed uploaded video frames'
+        ? `Analyzed ${capturedClientFrames.length} video frames`
         : 'Scanned video scenes';
       setToastMessage(
-        `${sourceLabel} · Generated ${desiredCount} ${config?.topic ? `${config.topic} ` : ''}questions`
+        `${sourceLabel} · Generated ${Math.min(valid.length, desiredCount)} ${
+          config?.topic ? `${config.topic} ` : ''
+        }questions`
       );
       setTimeout(() => setToastMessage(''), 2800);
-    } catch {
-      const fallbackPool = generateDynamicQuestions({
-        ...config,
-        count: desiredCount,
-        videoDuration: effectiveDuration || 180,
-      });
-      setQuestions(fallbackPool);
+    } catch (e: any) {
+      setErrorToast(
+        e?.message || 'Could not regenerate video-matched questions. Please try again.'
+      );
+      setTimeout(() => setErrorToast(''), 5500);
     } finally {
+      window.clearInterval(tickInterval);
+      setPlayerThinkingState(null);
       setIsGeneratingMore(false);
     }
   };
@@ -3540,10 +3640,26 @@ function PlayerView({
 
   return (
     <div className="flex-1 w-full flex flex-col gap-3 pb-4 animate-vq-fade">
+      {playerThinkingState && (
+        <ThinkingAnalysisOverlay
+          elapsedMs={playerThinkingState.elapsedMs}
+          questionCount={playerThinkingState.count}
+          topic={config?.topic}
+          videoTitle={config?.videoTitle || localVideoName}
+        />
+      )}
+
       {toastMessage && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-2xl flex items-center gap-2 animate-vq-pop">
           <CheckCircle size={18} />
           <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {errorToast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-2xl flex items-center gap-2 max-w-xl animate-vq-pop">
+          <AlertCircle size={18} className="shrink-0" />
+          <span>{errorToast}</span>
         </div>
       )}
 
@@ -4205,6 +4321,8 @@ function PlayerView({
               totalQuestions={sortedQuestions.length}
               isFullscreen={isStageFullscreen}
               isReplayingClip={isReplayingClip}
+              canEdit={!isPlayOnlyMode}
+              onUpdateQuestion={handleUpdateSingleQuestion}
               onReplayScene={handleReplayQuestionScene}
               onComplete={handleQuizComplete}
               onSkip={() => {
@@ -4424,160 +4542,60 @@ function PlayerView({
         </div>
       </div>
 
-      {/* DIRECT INLINE QUESTION TYPING BAR (Supports Fill in the Blanks & Multiple Choice) */}
-      {!isPlayOnlyMode && !activeQuiz && !isStageFullscreen && (
+      {/* CLICKABLE GENERATED QUESTION NUMBERS BAR */}
+      {!isStageFullscreen && sortedQuestions.length > 0 && (
         <div className="w-full bg-[#13111E] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <Edit3 size={15} className="text-amber-400" />
+            <div className="flex items-center gap-2">
+              <Sparkles size={15} className="text-amber-400 shrink-0" />
               <span className="text-xs sm:text-sm font-extrabold text-white">
-                Directly Type a Question at Specific Time
+                Generated Questions ({sortedQuestions.length})
               </span>
-              <div className="flex items-center p-0.5 rounded-xl bg-[#0C0A15] border border-white/10">
-                {(['Fill in the Blanks', 'Multiple Choice'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setInlineMode(m)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
-                      inlineMode === m
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
+              <span className="text-[11px] sm:text-xs text-slate-400">
+                Click any number to open{!isPlayOnlyMode ? ' & edit' : ''} that question
+              </span>
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                setInlineTimeInput(formatSeconds(Math.max(1, Math.round(currentTime || 15))))
-              }
-              className="text-xs font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
-            >
-              Use Current Video Time ({formatSeconds(currentTime)})
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            <div className="flex items-center gap-1.5 bg-[#0C0A15] border border-white/15 rounded-xl px-3 py-2 shrink-0">
-              <Clock size={14} className="text-amber-400" />
-              <input
-                type="text"
-                value={inlineTimeInput}
-                onChange={(e) => setInlineTimeInput(e.target.value)}
-                placeholder="0:15"
-                title="Enter timestamp as MM:SS or seconds"
-                className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
-              />
-            </div>
-
-            <input
-              type="text"
-              value={inlineQuestionText}
-              onChange={(e) => setInlineQuestionText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddInlineQuestion();
-                }
-              }}
-              placeholder={
-                inlineMode === 'Fill in the Blanks'
-                  ? 'e.g. He has ____ at the mirror.'
-                  : 'Type your multiple choice question here...'
-              }
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#0C0A15] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
-            />
-
-            {inlineMode === 'Fill in the Blanks' && (
+            {activeQuiz && (
               <button
                 type="button"
-                onClick={() =>
-                  setInlineQuestionText(
-                    (prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}____ `
-                  )
-                }
-                title="Insert blank ____"
-                className="px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-amber-300 text-xs font-extrabold cursor-pointer shrink-0"
+                onClick={() => setActiveQuiz(null)}
+                className="text-xs font-bold text-slate-400 hover:text-white cursor-pointer"
               >
-                + Insert ____
+                Close Question
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={handleAddInlineQuestion}
-              disabled={!inlineQuestionText.trim()}
-              className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <Plus size={15} />
-              Add Question
-            </button>
           </div>
 
-          {inlineMode === 'Fill in the Blanks' ? (
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
-              <span className="text-xs font-extrabold text-emerald-300 shrink-0">
-                Correct Missing Word(s):
-              </span>
-              <input
-                type="text"
-                value={inlineBlankAnswer}
-                onChange={(e) => setInlineBlankAnswer(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddInlineQuestion();
-                  }
-                }}
-                placeholder="e.g. looked (students type this answer when the video pauses)"
-                className="flex-1 bg-transparent text-xs sm:text-sm font-bold text-white placeholder:text-slate-400 focus:outline-none"
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-              {['A', 'B', 'C', 'D'].map((letter, idx) => {
-                const isRight = inlineCorrectIdx === idx;
-                return (
-                  <div
-                    key={letter}
-                    className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border ${
-                      isRight
-                        ? 'bg-emerald-500/10 border-emerald-400/50'
-                        : 'bg-[#0C0A15] border-white/10'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setInlineCorrectIdx(idx)}
-                      title="Click to mark as correct answer"
-                      className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
-                        isRight
-                          ? 'bg-emerald-400 text-slate-950'
-                          : 'bg-white/10 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {letter}
-                    </button>
-                    <input
-                      type="text"
-                      value={inlineOptions[idx]}
-                      onChange={(e) => {
-                        const next = [...inlineOptions];
-                        next[idx] = e.target.value;
-                        setInlineOptions(next);
-                      }}
-                      placeholder={`Choice ${letter}${isRight ? ' (Correct)' : ''}`}
-                      className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {sortedQuestions.map((q: any, idx: number) => {
+              const rec = resultsMap[q.id];
+              const isAct = activeQuiz?.id === q.id;
+              let btnClass =
+                'bg-[#0C0A15] border-white/15 text-slate-200 hover:border-amber-400 hover:text-amber-300';
+              if (isAct) {
+                btnClass =
+                  'bg-amber-400 border-amber-300 text-slate-950 shadow-md ring-2 ring-amber-400/40';
+              } else if (rec?.isCorrect === true) {
+                btnClass =
+                  'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 hover:bg-emerald-500/30';
+              } else if (rec?.isCorrect === false) {
+                btnClass =
+                  'bg-rose-500/20 border-rose-400/60 text-rose-300 hover:bg-rose-500/30';
+              }
+
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => triggerQuizNow(q, true)}
+                  title={`Question ${idx + 1} (${formatSeconds(q.timeTrigger)}) — ${q.question}`}
+                  className={`min-w-[44px] h-10 px-3 rounded-xl border font-black text-xs sm:text-sm vq-mono flex items-center justify-center gap-1.5 transition-all cursor-pointer ${btnClass}`}
+                >
+                  <span>{idx + 1}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -4594,6 +4612,8 @@ function BelowVideoQuestionDock({
   totalQuestions,
   isFullscreen,
   isReplayingClip,
+  canEdit,
+  onUpdateQuestion,
   onReplayScene,
   onComplete,
   onSkip,
@@ -4609,6 +4629,16 @@ function BelowVideoQuestionDock({
   const [resolvedBlankAnswer, setResolvedBlankAnswer] = useState<string>('');
   const [showExplanation, setShowExplanation] = useState(false);
 
+  // Direct inline editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTime, setEditTime] = useState(() => formatSeconds(quiz?.timeTrigger || 15));
+  const [editType, setEditType] = useState<string>(quiz?.type || 'Multiple Choice');
+  const [editQuestion, setEditQuestion] = useState<string>(quiz?.question || '');
+  const [editBlankAnswer, setEditBlankAnswer] = useState<string>(quiz?.answer || '');
+  const [editOptions, setEditOptions] = useState<string[]>(['', '', '', '']);
+  const [editCorrectIdx, setEditCorrectIdx] = useState<number>(0);
+  const [editExplanation, setEditExplanation] = useState<string>(quiz?.explanation || '');
+
   const startTimeRef = useRef<number>(performance.now());
   const blankInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -4618,35 +4648,130 @@ function BelowVideoQuestionDock({
     setTypedBlank('');
     setBlankCorrect(false);
     setShowExplanation(false);
+    setIsEditing(false);
     if (isFillInBlank) {
       setTimeout(() => blankInputRef.current?.focus(), 60);
     }
   }, [quiz.id, isFillInBlank]);
 
+  const openInlineEditor = () => {
+    const rawOpts = Array.isArray(quiz?.options) ? quiz.options : [];
+    const optTexts = [0, 1, 2, 3].map((i) => String(rawOpts[i]?.text || ''));
+    const rightIdx = Math.max(
+      0,
+      rawOpts.findIndex((o: any) => Boolean(o?.isCorrect))
+    );
+    const derivedBlankAns =
+      quiz?.answer ||
+      rawOpts.find((o: any) => Boolean(o?.isCorrect))?.text ||
+      '';
+
+    setEditTime(formatSeconds(quiz?.timeTrigger || 15));
+    setEditType(quiz?.type || (isFillInBlank ? 'Fill in the Blanks' : 'Multiple Choice'));
+    setEditQuestion(String(quiz?.question || ''));
+    setEditBlankAnswer(String(derivedBlankAns));
+    setEditOptions(optTexts);
+    setEditCorrectIdx(rightIdx);
+    setEditExplanation(String(quiz?.explanation || ''));
+    setIsEditing(true);
+  };
+
+  const handleSaveInlineEdit = () => {
+    const cleanQ = editQuestion.trim();
+    if (!cleanQ || typeof onUpdateQuestion !== 'function') return;
+
+    const nextSec = parseTimeInputToSeconds(editTime) ?? Number(quiz?.timeTrigger || 15);
+    const targetType = editType || 'Multiple Choice';
+
+    if (targetType === 'Fill in the Blanks') {
+      const formattedQ = cleanQ.includes('___')
+        ? normalizeBlankQuestionText(cleanQ)
+        : `${cleanQ} ____`;
+      const inferred = inferSmartBlankAnswerFromQuestion(formattedQ);
+      const finalAns = editBlankAnswer.trim() || inferred.answer || 'answer';
+      const updated = {
+        ...quiz,
+        timeTrigger: nextSec,
+        type: 'Fill in the Blanks',
+        question: formattedQ,
+        answer: finalAns,
+        acceptedAnswers: Array.from(
+          new Set([finalAns, ...(Array.isArray(quiz?.acceptedAnswers) ? quiz.acceptedAnswers : [])].filter(Boolean))
+        ),
+        options: [{ text: finalAns, isCorrect: true }],
+        explanation: editExplanation.trim() || `Correct answer: "${finalAns}".`,
+      };
+      onUpdateQuestion(updated);
+      setIsEditing(false);
+      return;
+    }
+
+    if (targetType === 'True or False') {
+      const trueIsRight = editCorrectIdx === 0;
+      const rightAns = trueIsRight ? 'True' : 'False';
+      const updated = {
+        ...quiz,
+        timeTrigger: nextSec,
+        type: 'True or False',
+        question: cleanQ,
+        answer: rightAns,
+        acceptedAnswers: [rightAns],
+        options: [
+          { text: 'True', isCorrect: trueIsRight },
+          { text: 'False', isCorrect: !trueIsRight },
+        ],
+        explanation: editExplanation.trim() || `Correct answer: "${rightAns}".`,
+      };
+      onUpdateQuestion(updated);
+      setIsEditing(false);
+      return;
+    }
+
+    const builtOpts = editOptions.map((opt, idx) => ({
+      text: opt.trim() || `Choice ${['A', 'B', 'C', 'D'][idx]}`,
+      isCorrect: idx === editCorrectIdx,
+    }));
+    const rightAns = builtOpts[editCorrectIdx]?.text || builtOpts[0]?.text || '';
+    const updated = {
+      ...quiz,
+      timeTrigger: nextSec,
+      type: targetType,
+      question: cleanQ,
+      answer: rightAns,
+      acceptedAnswers: [rightAns],
+      options: builtOpts,
+      explanation: editExplanation.trim() || `Correct answer: "${rightAns}".`,
+    };
+    onUpdateQuestion(updated);
+    setIsEditing(false);
+  };
+
   const handleSelect = useCallback(
     (idx: number) => {
-      if (showExplanation) return;
+      if (showExplanation || isEditing) return;
       setSelected(idx);
       setShowExplanation(true);
       const isCorrect = Boolean(quiz.options?.[idx]?.isCorrect);
       if (isCorrect) vqAudio.playCorrect();
       else vqAudio.playWrong();
     },
-    [showExplanation, quiz]
+    [showExplanation, isEditing, quiz]
   );
 
   const handleSubmitFillInBlank = useCallback(() => {
-    if (showExplanation || !typedBlank.trim()) return;
+    if (showExplanation || isEditing || !typedBlank.trim()) return;
     const { isCorrect, primaryAnswer } = checkFillInBlankMatch(typedBlank, quiz);
     setBlankCorrect(isCorrect);
     setResolvedBlankAnswer(primaryAnswer);
     setShowExplanation(true);
     if (isCorrect) vqAudio.playCorrect();
     else vqAudio.playWrong();
-  }, [showExplanation, typedBlank, quiz]);
+  }, [showExplanation, isEditing, typedBlank, quiz]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isEditing) return;
+
       if (isFillInBlank) {
         if (showExplanation && e.key === 'Enter') {
           e.preventDefault();
@@ -4688,6 +4813,7 @@ function BelowVideoQuestionDock({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
+    isEditing,
     isFillInBlank,
     showExplanation,
     blankCorrect,
@@ -4750,6 +4876,164 @@ function BelowVideoQuestionDock({
     });
   };
 
+  if (isEditing) {
+    return (
+      <div className="w-full p-5 sm:p-6 animate-vq-pop text-white max-w-6xl mx-auto space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-amber-300">
+            <Edit3 size={15} />
+            <span>Editing Question {questionNumber || 1} of {totalQuestions || 1}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsEditing(false)}
+              className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-300 text-xs font-bold cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveInlineEdit}
+              disabled={!editQuestion.trim()}
+              className="px-4 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check size={14} strokeWidth={3} />
+              Save Changes
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          <div className="flex items-center gap-1.5 bg-[#0C0A15] border border-white/15 rounded-xl px-3 py-2 shrink-0">
+            <Clock size={14} className="text-amber-400" />
+            <span className="text-xs font-bold text-slate-400">Time:</span>
+            <input
+              type="text"
+              value={editTime}
+              onChange={(e) => setEditTime(e.target.value)}
+              placeholder="0:15"
+              className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
+            />
+          </div>
+
+          <select
+            value={editType}
+            onChange={(e) => setEditType(e.target.value)}
+            className="px-3 py-2 rounded-xl bg-[#0C0A15] border border-white/15 text-xs font-bold text-white focus:border-amber-400 focus:outline-none"
+          >
+            {QUESTION_TYPES.map((t) => (
+              <option key={t} value={t} className="bg-[#13111E] text-white">
+                {t}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="text"
+            value={editQuestion}
+            onChange={(e) => setEditQuestion(e.target.value)}
+            placeholder="Edit question sentence..."
+            className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#0C0A15] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white"
+          />
+
+          {editType === 'Fill in the Blanks' && (
+            <button
+              type="button"
+              onClick={() =>
+                setEditQuestion((prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}____ `)
+              }
+              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-amber-300 text-xs font-extrabold cursor-pointer shrink-0"
+            >
+              + Insert ____
+            </button>
+          )}
+        </div>
+
+        {editType === 'Fill in the Blanks' ? (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
+            <span className="text-xs font-extrabold text-emerald-300 shrink-0">
+              Correct Missing Word(s):
+            </span>
+            <input
+              type="text"
+              value={editBlankAnswer}
+              onChange={(e) => setEditBlankAnswer(e.target.value)}
+              placeholder="Correct answer..."
+              className="flex-1 bg-transparent text-sm font-bold text-white placeholder:text-slate-400 focus:outline-none"
+            />
+          </div>
+        ) : editType === 'True or False' ? (
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-bold text-slate-300">Correct Answer:</span>
+            {(['True', 'False'] as const).map((tf, idx) => (
+              <button
+                key={tf}
+                type="button"
+                onClick={() => setEditCorrectIdx(idx)}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold border cursor-pointer ${
+                  editCorrectIdx === idx
+                    ? 'bg-emerald-400 text-slate-950 border-emerald-300'
+                    : 'bg-[#0C0A15] text-slate-300 border-white/15'
+                }`}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {['A', 'B', 'C', 'D'].map((letter, idx) => {
+              const isRight = editCorrectIdx === idx;
+              return (
+                <div
+                  key={letter}
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border ${
+                    isRight
+                      ? 'bg-emerald-500/10 border-emerald-400/50'
+                      : 'bg-[#0C0A15] border-white/10'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setEditCorrectIdx(idx)}
+                    title="Click to mark as correct answer"
+                    className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
+                      isRight
+                        ? 'bg-emerald-400 text-slate-950'
+                        : 'bg-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {letter}
+                  </button>
+                  <input
+                    type="text"
+                    value={editOptions[idx] || ''}
+                    onChange={(e) => {
+                      const next = [...editOptions];
+                      next[idx] = e.target.value;
+                      setEditOptions(next);
+                    }}
+                    placeholder={`Choice ${letter}${isRight ? ' (Correct)' : ''}`}
+                    className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <input
+          type="text"
+          value={editExplanation}
+          onChange={(e) => setEditExplanation(e.target.value)}
+          placeholder="Optional explanation shown after answering..."
+          className="w-full px-3.5 py-2 rounded-xl bg-[#0C0A15] border border-white/10 focus:border-amber-400 focus:outline-none text-xs text-slate-200"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="w-full p-5 sm:p-7 animate-vq-pop text-white max-w-6xl mx-auto">
       {/* Unboxed Question Metadata & Quick Actions */}
@@ -4762,7 +5046,18 @@ function BelowVideoQuestionDock({
           <span className="text-slate-300">{quiz?.type || 'Question'}</span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={openInlineEditor}
+              className="px-3.5 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Edit3 size={14} />
+              Edit
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onReplayScene}
