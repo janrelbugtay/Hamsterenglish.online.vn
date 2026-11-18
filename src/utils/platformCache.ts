@@ -1418,11 +1418,14 @@ export function saveAndSyncUserGame(
               {
                 id: uid,
                 uid,
-                email: email || 'Guest',
+                email: email || (user?.isAnonymous ? 'Guest' : ''),
                 displayName: name,
                 photoURL: user?.photoURL || null,
                 isAnonymous: Boolean(user?.isAnonymous),
-                lastLoginAt: Date.now(),
+                lastActiveAt: Date.now(),
+                ...(user?.metadata?.lastSignInTime
+                  ? { lastLoginAt: new Date(user.metadata.lastSignInTime).getTime() }
+                  : {}),
               },
             ]
           : [],
@@ -1652,11 +1655,14 @@ export async function persistUserGameToCloudAndCache(
                   {
                     id: uid,
                     uid,
-                    email: email || 'Guest',
+                    email: email || (user?.isAnonymous ? 'Guest' : ''),
                     displayName: name,
                     photoURL: user?.photoURL || null,
                     isAnonymous: Boolean(user?.isAnonymous),
-                    lastLoginAt: Date.now(),
+                    lastActiveAt: Date.now(),
+                    ...(user?.metadata?.lastSignInTime
+                      ? { lastLoginAt: new Date(user.metadata.lastSignInTime).getTime() }
+                      : {}),
                   },
                 ]
               : [],
@@ -1769,14 +1775,16 @@ export async function syncLocalComputerGamesForUser(currentUser: any, db?: any):
           {
             id: currentUser.uid,
             uid: currentUser.uid,
-            email: currentUser.email || 'Guest',
+            email: currentUser.email || (currentUser.isAnonymous ? 'Guest' : ''),
             displayName:
               currentUser.displayName ||
-              (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
+              (currentUser.email ? currentUser.email.split('@')[0] : currentUser.isAnonymous ? 'Guest Player' : 'User'),
             photoURL: currentUser.photoURL || null,
             isAnonymous: Boolean(currentUser.isAnonymous),
             localGamesCount: ownedLocalGames.length,
-            lastLoginAt: Date.now(),
+            ...(currentUser.metadata?.lastSignInTime
+              ? { lastLoginAt: new Date(currentUser.metadata.lastSignInTime).getTime() }
+              : {}),
           },
         ],
       }),
@@ -2126,6 +2134,10 @@ export function mergePlatformUsers(
 ): any[] {
   const byKey = new Map<string, any>();
   const uidToEmailKey = new Map<string, string>();
+  const KNOWN_BY_UID = new Map<string, any>();
+  KNOWN_REGISTERED_USERS.forEach((ku) => {
+    if (ku?.uid) KNOWN_BY_UID.set(String(ku.uid), ku);
+  });
 
   const getTime = (val: any): number => {
     if (!val) return 0;
@@ -2156,7 +2168,7 @@ export function mergePlatformUsers(
     return '';
   };
 
-  const upsertUser = (u: any) => {
+  const upsertUser = (u: any, options?: { fromFirestore?: boolean }) => {
     if (!u || isLegacySyntheticUser(u)) return;
     const key = getCanonicalKey(u);
     if (!key) return;
@@ -2170,37 +2182,105 @@ export function mergePlatformUsers(
     const incomingLoginMs = getTime(u.lastLoginAt);
     const bestLoginMs = Math.max(existingLoginMs, incomingLoginMs);
 
+    const existingActiveMs = getTime(existing.lastActiveAt);
+    const incomingActiveMs = getTime(u.lastActiveAt);
+    const bestActiveMs = Math.max(existingActiveMs, incomingActiveMs, bestLoginMs);
+
+    const resolvedEmail =
+      u.email && u.email.includes('@')
+        ? u.email
+        : existing.email && existing.email.includes('@')
+        ? existing.email
+        : u.isAnonymous === true || existing.isAnonymous === true
+        ? 'Guest'
+        : existing.email || u.email || '';
+
+    const resolvedIsAnonymous =
+      resolvedEmail && resolvedEmail.includes('@')
+        ? false
+        : typeof u.isAnonymous === 'boolean' && (options?.fromFirestore || u.isAnonymous === false)
+        ? u.isAnonymous
+        : Boolean(
+            u.isAnonymous ||
+              existing.isAnonymous ||
+              resolvedEmail.toLowerCase() === 'guest'
+          );
+
+    const incomingName = String(u.displayName || '').trim();
+    const existingName = String(existing.displayName || '').trim();
+    const resolvedName =
+      incomingName && !GENERIC_NAMES.has(incomingName.toLowerCase())
+        ? incomingName
+        : existingName && !GENERIC_NAMES.has(existingName.toLowerCase())
+        ? existingName
+        : incomingName || existingName || (resolvedIsAnonymous ? 'Guest Player' : 'Teacher');
+
+    const resolvedProvider =
+      u.authProvider ||
+      existing.authProvider ||
+      (resolvedIsAnonymous ? 'guest' : resolvedEmail.includes('@') ? 'google' : undefined);
+
     const merged = {
       ...existing,
       ...u,
       id: realUid,
       uid: realUid,
-      displayName:
-        u.displayName && u.displayName !== 'User'
-          ? u.displayName
-          : existing.displayName || u.displayName || 'User',
-      email:
-        u.email && u.email.includes('@')
-          ? u.email
-          : existing.email || u.email || 'Guest',
+      displayName: resolvedName,
+      email: resolvedIsAnonymous && !resolvedEmail.includes('@') ? 'Guest' : resolvedEmail,
+      isAnonymous: resolvedIsAnonymous,
+      ...(resolvedProvider ? { authProvider: resolvedProvider } : {}),
       photoURL: u.photoURL || existing.photoURL || null,
-      lastLoginAt: bestLoginMs > 0 ? bestLoginMs : existing.lastLoginAt || u.lastLoginAt || Date.now(),
+      lastLoginAt: bestLoginMs > 0 ? bestLoginMs : null,
+      lastActiveAt: bestActiveMs > 0 ? bestActiveMs : null,
     };
-    if (realUid && merged.email && merged.email.includes('@') && !String(realUid).startsWith('creator-') && !String(realUid).startsWith('act-')) {
+    if (
+      realUid &&
+      merged.email &&
+      merged.email.includes('@') &&
+      !String(realUid).startsWith('creator-') &&
+      !String(realUid).startsWith('act-')
+    ) {
       uidToEmailKey.set(String(realUid), `email:${merged.email.toLowerCase().trim()}`);
     }
     byKey.set(key, merged);
   };
 
-  // 1. Seed real registered platform accounts so non-guest accounts are never lost during quota limits
-  KNOWN_REGISTERED_USERS.forEach(upsertUser);
+  // 1. Seed baseline registered platform accounts so non-guest accounts are never lost during quota limits
+  KNOWN_REGISTERED_USERS.forEach((u) => upsertUser(u));
 
   // 2. Previously cached admin users (filtering out any legacy synthetic user-* entries)
   safeReadLocalArray(CACHE_KEY_ADMIN_USERS)
     .filter((u) => !isLegacySyntheticUser(u))
-    .forEach(upsertUser);
+    .forEach((u) => upsertUser(u));
 
-  // 3. Extract any additional creators from games (including privately saved computer games)
+  // 3. Live Firestore users (authoritative user records & login timestamps)
+  firestoreUsers
+    .filter((u) => !isLegacySyntheticUser(u))
+    .forEach((u) => upsertUser(u, { fromFirestore: true }));
+
+  // 4. Current authenticated user (use true Firebase lastSignInTime, never overwrite with Date.now() on every render)
+  if (currentUser?.uid) {
+    const signInStr = currentUser.metadata?.lastSignInTime;
+    const signInMs = signInStr ? new Date(signInStr).getTime() : 0;
+    const isGuest = Boolean(currentUser.isAnonymous);
+    upsertUser(
+      {
+        id: currentUser.uid,
+        uid: currentUser.uid,
+        displayName:
+          currentUser.displayName ||
+          (currentUser.email ? currentUser.email.split('@')[0] : isGuest ? 'Guest Player' : 'Teacher Jan'),
+        email: isGuest ? 'Guest' : currentUser.email || '',
+        photoURL: currentUser.photoURL || null,
+        isAnonymous: isGuest,
+        authProvider: isGuest ? 'guest' : 'google',
+        lastLoginAt: signInMs > 0 && !isNaN(signInMs) ? signInMs : 0,
+      },
+      { fromFirestore: true }
+    );
+  }
+
+  // 5. Enrich with creators from games (update lastActiveAt, never mislabel non-anonymous creators as Guest)
   games.forEach((g: any) => {
     if (!g || isSyntheticOrSampleGame(g)) return;
     const email = String(g.creatorEmail || '').trim();
@@ -2214,68 +2294,66 @@ export function mergePlatformUsers(
       return;
     }
     if ((email && email.includes('@')) || uid) {
-      const existingByUid = uid ? KNOWN_REGISTERED_USERS.find((ku) => ku.uid === uid) : null;
+      const existingByUid = uid ? KNOWN_BY_UID.get(uid) : null;
+      const gameMs = getTime(g.publishedAt || g.updatedAt || g.createdAt);
+      const isGuestUid = uid.startsWith('guest-');
       upsertUser({
         id: uid || `creator-${email || name}`,
         uid: uid || `creator-${email || name}`,
         displayName:
           name ||
           existingByUid?.displayName ||
-          (email ? email.split('@')[0] : 'Teacher'),
+          (email ? email.split('@')[0] : isGuestUid ? 'Guest Player' : 'Teacher'),
         email:
           email ||
           existingByUid?.email ||
-          (name.toLowerCase() === 'teacher jan' ? SUPER_ADMIN_EMAIL : ''),
+          (name.toLowerCase() === 'teacher jan' ? SUPER_ADMIN_EMAIL : isGuestUid ? 'Guest' : ''),
         photoURL: existingByUid?.photoURL || null,
-        isAnonymous: false,
-        lastLoginAt: existingByUid?.lastLoginAt || g.publishedAt || g.updatedAt || g.createdAt || 0,
+        isAnonymous: isGuestUid,
+        lastActiveAt: gameMs,
       });
     }
   });
 
-  // 4. Extract any additional users from activities
+  // 6. Enrich with activity events: real 'login' events update lastLoginAt; other actions update lastActiveAt
   activities.forEach((a: any) => {
     if (!a || String(a.id || '').startsWith('synth-act-')) return;
     const email = String(a.userEmail || '').trim();
     const name = String(a.userName || '').trim();
     const uid = String(a.userId || '').trim();
-    if (LEGACY_SYNTHETIC_USER_IDS.has(uid)) return;
-    if (uid || email) {
-      const existingByUid = uid ? KNOWN_REGISTERED_USERS.find((ku) => ku.uid === uid) : null;
-      const isGuest = !existingByUid && (Boolean(a.isAnonymous) || !email || !email.includes('@'));
-      upsertUser({
-        id: uid || `act-${email || name}`,
-        uid: uid || `act-${email || name}`,
-        displayName: existingByUid?.displayName || name || (email ? email.split('@')[0] : 'Player'),
-        email: existingByUid?.email || (isGuest ? 'Guest' : email),
-        photoURL: a.userPhoto || existingByUid?.photoURL || null,
-        isAnonymous: isGuest,
-        lastLoginAt: existingByUid?.lastLoginAt || a.timestamp || a.createdAtMs || 0,
-      });
+    if (!uid && !email) return;
+    if (uid === 'local-user' || uid === 'teacher-studio-user' || LEGACY_SYNTHETIC_USER_IDS.has(uid)) {
+      return;
     }
+    const existingByUid = uid ? KNOWN_BY_UID.get(uid) : null;
+    const actMs = getTime(a.timestamp || a.createdAtMs);
+    const isLoginAction = a.action === 'login' || a.actionType === 'login';
+    const isGuest =
+      !existingByUid &&
+      (Boolean(a.isAnonymous) ||
+        uid.startsWith('guest-') ||
+        email.toLowerCase() === 'guest');
+    upsertUser({
+      id: uid || `act-${email || name}`,
+      uid: uid || `act-${email || name}`,
+      displayName:
+        existingByUid?.displayName ||
+        name ||
+        (email && email.includes('@') ? email.split('@')[0] : isGuest ? 'Guest Player' : 'Player'),
+      email: existingByUid?.email || (isGuest ? 'Guest' : email && email.includes('@') ? email : ''),
+      photoURL: a.userPhoto || existingByUid?.photoURL || null,
+      isAnonymous: isGuest,
+      ...(isGuest ? { authProvider: 'guest' } : {}),
+      ...(isLoginAction && actMs > 0 ? { lastLoginAt: actMs } : {}),
+      lastActiveAt: actMs,
+    });
   });
 
-  // 5. Current authenticated user
-  if (currentUser?.uid) {
-    upsertUser({
-      id: currentUser.uid,
-      uid: currentUser.uid,
-      displayName:
-        currentUser.displayName ||
-        (currentUser.email ? currentUser.email.split('@')[0] : 'Teacher Jan'),
-      email: currentUser.email || 'Guest',
-      photoURL: currentUser.photoURL || null,
-      isAnonymous: Boolean(currentUser.isAnonymous),
-      lastLoginAt: Date.now(),
-    });
-  }
-
-  // 6. Live Firestore users (highest priority override, while preserving valid lastLoginAt if Firestore local cache has unresolved null sentinel)
-  firestoreUsers.filter((u) => !isLegacySyntheticUser(u)).forEach(upsertUser);
-
-  const result = Array.from(byKey.values()).sort(
-    (a, b) => getTime(b.lastLoginAt) - getTime(a.lastLoginAt)
-  );
+  const result = Array.from(byKey.values()).sort((a, b) => {
+    const aTime = getTime(a.lastLoginAt) || getTime(a.lastActiveAt);
+    const bTime = getTime(b.lastLoginAt) || getTime(b.lastActiveAt);
+    return bTime - aTime;
+  });
 
   if (result.length > 0) {
     safeWriteLocal(CACHE_KEY_ADMIN_USERS, result);

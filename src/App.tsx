@@ -37,6 +37,7 @@ import { HamsterPaintball } from "./views/HamsterPaintball";
 import { SleepingHamster } from "./views/SleepingHamster";
 import { MySlides } from "./views/MySlides";
 import { useAuth } from "./contexts/AuthContext";
+import { useLanguage } from "./contexts/LanguageContext";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db, isFirestoreQuotaExhausted, ensureServerQuotaChecked } from "./lib/firebase";
 import {
@@ -142,8 +143,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState(false);
   const [googleAuthFeature, setGoogleAuthFeature] = useState<string>("Account Area");
-  const [initialRoomCode, setInitialRoomCode] = useState<string>('');
-  const [joinData, setJoinData] = useState<{code: string, nickname: string, gameType: string} | null>(null);
+  const [joinData] = useState<{code: string, nickname: string, gameType: string} | null>(null);
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
     try {
       const cached = localStorage.getItem('publishedGamesV2');
@@ -153,6 +153,7 @@ export default function App() {
   });
   const prevUserRef = useRef<any>(null);
   const { user, loading, isAuthenticating, authError, signInWithGoogle } = useAuth();
+  const { t } = useLanguage();
   
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
 
@@ -395,9 +396,13 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('joinCode');
       if (code) {
-        setInitialRoomCode(code);
-        setIsAuthModalOpen(true);
+        const cleanJoinCode = code.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
+        if (cleanJoinCode) {
+          setSelectedGame({ roomCode: cleanJoinCode, isStudentJoin: true });
+          setCurrentView('tic-tac-toe');
+        }
         window.history.replaceState({}, document.title, window.location.pathname);
+        return;
       }
       const slideIdParam = params.get('slideId');
       if (slideIdParam) {
@@ -428,12 +433,13 @@ export default function App() {
 
   // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {
-    if (!loading && !user && currentView !== "home" && !isPublicStudentView(currentView)) {
+    const isJoiningStudentRoom = currentView === "tic-tac-toe" && Boolean(selectedGame?.isStudentJoin);
+    if (!loading && !user && currentView !== "home" && !isPublicStudentView(currentView) && !isJoiningStudentRoom) {
       setPendingAction({ view: currentView, data: selectedGame });
       setCurrentView("home");
       setIsAuthModalOpen(true);
     }
-  }, [loading, user, currentView]);
+  }, [loading, user, currentView, selectedGame]);
 
   const handleViewChange = (view: ViewState, data?: any) => {
     // Players on a shared homework link can ONLY access the homework window given within the link
@@ -514,29 +520,29 @@ export default function App() {
         switch (currentView) {
           case "games":
             return {
-              title: "My Games",
-              desc: "Create, customize, and save your personal games and custom library."
+              title: t("nav.myGames"),
+              desc: t("auth.myGamesDesc")
             };
           case "homework":
             return {
-              title: "Homework",
-              desc: "Assign, track, and review homework assignments for your students."
+              title: t("nav.homework"),
+              desc: t("auth.homeworkDesc")
             };
           case "class-rewards":
           case "class-record":
             return {
-              title: "Class Rewards",
-              desc: "Manage class vaults, student points, and reward systems across devices."
+              title: t("auth.classRewardsTitle"),
+              desc: t("auth.classRewardsDesc")
             };
           case "generator":
             return {
-              title: "Create Game",
-              desc: "Create and publish customized ESL learning games."
+              title: t("auth.createGameTitle"),
+              desc: t("auth.createGameDesc")
             };
           default:
             return {
-              title: "Account Area",
-              desc: "Sign in or create an account to save your progress."
+              title: t("auth.accountTitle"),
+              desc: t("auth.accountDesc")
             };
         }
       };
@@ -575,7 +581,7 @@ export default function App() {
                 className="w-10 h-10 rounded-xl object-cover border-2 border-white dark:border-slate-700 shadow-xs shrink-0"
               />
               <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-snug font-semibold">
-                Hi, I'm <strong className="font-extrabold text-slate-900 dark:text-white">Teacher Jan</strong>! Sign in with Google to save your work and custom games.
+                {t("auth.teacherJanPrefix")} <strong className="font-extrabold text-slate-900 dark:text-white">Teacher Jan</strong>{t("auth.teacherJanSuffix")}
               </p>
             </div>
 
@@ -605,14 +611,7 @@ export default function App() {
                     </svg>
                   </div>
                 )}
-                <span>{isAuthenticating ? "Signing in..." : "Sign in with Google"}</span>
-              </button>
-
-              <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="w-full text-center h-11 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm"
-              >
-                <span>Enter 6-Digit Room Code →</span>
+                <span>{isAuthenticating ? t("header.signingIn") : t("auth.signInGoogle")}</span>
               </button>
             </div>
           </div>
@@ -688,14 +687,14 @@ export default function App() {
           <div className="min-h-[60vh] flex items-center justify-center">
             <div className="text-center">
               <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">
-                Coming Soon
+                {t("app.comingSoon")}
               </h2>
-              <p className="text-slate-500">This view is under construction.</p>
+              <p className="text-slate-500">{t("app.underConstruction")}</p>
               <button
                 onClick={() => setCurrentView("home")}
                 className="mt-6 px-6 py-2 bg-brand-purple text-white rounded-full font-medium"
               >
-                Back to Home
+                {t("app.backHome")}
               </button>
             </div>
           </div>
@@ -718,7 +717,6 @@ export default function App() {
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 font-sans text-slate-800 dark:text-slate-200 overflow-hidden">
       <AuthSliderModal 
         isOpen={isAuthModalOpen} 
-        initialRoomCode={initialRoomCode}
         onClose={() => setIsAuthModalOpen(false)} 
         onSuccess={() => {
           if (pendingAction) {
@@ -727,26 +725,11 @@ export default function App() {
             setPendingAction(null);
           }
         }}
-        onJoinRoom={(code, name, type) => {
-          setJoinData({code, nickname: name, gameType: type});
-          if (type === 'hamster-paintball') {
-            setSelectedGame({ roomCode: code, playerName: name });
-          }
-          setCurrentView(type as ViewState);
-        }}
       />
       <GoogleAuthModal
         isOpen={isGoogleAuthModalOpen}
         onClose={() => setIsGoogleAuthModalOpen(false)}
         featureName={googleAuthFeature}
-        onViewChange={handleViewChange}
-        onJoinRoom={(code, name, type) => {
-          setJoinData({code, nickname: name, gameType: type});
-          if (type === 'hamster-paintball') {
-            setSelectedGame({ roomCode: code, playerName: name });
-          }
-          setCurrentView(type as ViewState);
-        }}
         onSuccess={() => {
           if (pendingAction) {
             setCurrentView(pendingAction.view);

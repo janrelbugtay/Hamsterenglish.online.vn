@@ -251,9 +251,16 @@ export function CreateHomeworkModal({
                   : 'Create Homework Assignment'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {createdAssignment
-                  ? 'Share the PIN or QR code with your students on hamsterenglish.online'
-                  : `Assign "${normalizedGame.topic || normalizedGame.name}" (${questionsCount} Qs) to students`}
+                {createdAssignment ? (
+                  'Share the PIN or QR code with your students on hamsterenglish.online'
+                ) : (
+                  <>
+                    <span data-no-translate="true" data-game-topic="true" className="font-semibold text-slate-700 dark:text-slate-200">
+                      {normalizedGame.topic || normalizedGame.name}
+                    </span>
+                    <span> ({questionsCount} Qs)</span>
+                  </>
+                )}
               </p>
             </div>
           </div>

@@ -62,7 +62,13 @@ export function examineUserThreat(user: { email?: string; displayName?: string; 
   }
 
   // 2. Anonymous / Guest account check
-  if (user.isAnonymous || !rawEmail || rawEmail === 'user' || rawEmail === 'no email') {
+  if (
+    user.isAnonymous ||
+    !rawEmail ||
+    rawEmail === 'user' ||
+    rawEmail === 'guest' ||
+    rawEmail === 'no email'
+  ) {
     return {
       level: 'low',
       score: 10,
@@ -71,7 +77,7 @@ export function examineUserThreat(user: { email?: string; displayName?: string; 
       recommendation: 'Safe to keep or prune periodically during maintenance.',
       isSuperAdmin: false,
       domain: '',
-      localPart: ''
+      localPart: rawEmail
     };
   }
 
@@ -146,7 +152,14 @@ export function examineUserThreat(user: { email?: string; displayName?: string; 
   }
 
   // --- THREAT CHECK 6: Bot-like Random Hex or High-Entropy Username ---
-  const isHighEntropy = /^[a-z0-9]{16,}$/i.test(localPart) || /^[0-9a-f]{10,}$/i.test(localPart) || /^[bcdfghjklmnpqrstvwxyz]{7,}$/i.test(localPart);
+  const isHexString = /^[0-9a-f]{12,}$/i.test(localPart) && /\d/.test(localPart);
+  const isConsonantMash = /^[bcdfghjklmnpqrstvwxz]{7,}$/i.test(localPart);
+  const digitCount = (localPart.match(/\d/g) || []).length;
+  const isAlternatingBotString =
+    localPart.length >= 16 &&
+    digitCount >= 6 &&
+    !/^(?:[a-z]+\d{2,4})$/i.test(localPart);
+  const isHighEntropy = isHexString || isConsonantMash || isAlternatingBotString;
   if (isHighEntropy) {
     score += 30;
     flags.push('Suspicious Pattern: High entropy or randomized character string resembling automated bot generation');

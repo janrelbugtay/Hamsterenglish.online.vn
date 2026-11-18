@@ -28,11 +28,13 @@ import {
 import { db, safeFirestoreWrite, isFirestoreQuotaExhausted } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, deleteDoc, writeBatch, addDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { GameCategoryId, ViewState } from '../types';
 import { GameThumbnail } from '../components/GameThumbnail';
 import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '../components/GameModeModal';
 import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
 import { logUserActivity } from '../utils/activityTracker';
+import noiseControlCardImg from '../assets/images/noise_control_card_1795022921714.jpg';
 import {
   getSavedGames,
   mergeAllFolders,
@@ -146,6 +148,7 @@ export const GamesLibrary = ({
   isAdmin?: boolean;
 }) => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [games, setGames] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -236,7 +239,7 @@ export const GamesLibrary = ({
     { id: "flashcards-match", title: "Flashcard", icon: "/images/flashcards-card-v3.jpg?v=3", color: "bg-indigo-100 text-indigo-600", category: "classroom-tools" },
     { id: "hamster-pop-quiz", title: "Video Quiz", icon: "/images/video-quiz-card-v3.jpg?v=3", color: "bg-yellow-100 text-yellow-600", category: "classroom-tools" },
     { id: "phonemic-master", title: "Phonemic Master", icon: "/images/phonemic-master-card-v3.jpg?v=3", color: "bg-emerald-100 text-emerald-600", category: "classroom-tools" },
-    { id: "sleeping-hamster", title: "Sleeping Hamster", icon: "/images/sleeping-hamster-card.jpg?v=1", color: "bg-purple-100 text-purple-600", category: "classroom-tools" },
+    { id: "sleeping-hamster", title: "Noise Control", icon: noiseControlCardImg, color: "bg-purple-100 text-purple-600", category: "classroom-tools" },
     // AR Camera Games
     { id: "slap-and-chop", title: "Mosquito Slap", icon: mosquitoSlapCardImg, color: "bg-purple-100 text-purple-600", category: "ar-camera" },
     { id: "bubble-pop", title: "Bubble Pop", icon: "/images/bubble-pop-card.jpg?v=3", color: "bg-blue-100 text-blue-600", category: "ar-camera" },
@@ -960,7 +963,7 @@ export const GamesLibrary = ({
                   setSelectedFolderId(currentFolder?.parentId || null);
                 }}
                 className="w-11 h-11 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
-                title="Back to parent folder"
+                title={t('gamesLib.backToParent')}
               >
                 <ArrowLeft className="w-5 h-5 text-slate-700 dark:text-slate-300" />
               </button>
@@ -978,13 +981,14 @@ export const GamesLibrary = ({
                     onClick={() => setSelectedFolderId(null)}
                     className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
                   >
-                    My Games Folder
+                    {t('gamesLib.title')}
                   </button>
                   {breadcrumbTrail.map((crumb) => (
                     <React.Fragment key={crumb.id}>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <button
                         onClick={() => setSelectedFolderId(crumb.id)}
+                        data-no-translate
                         className={`truncate max-w-[180px] cursor-pointer ${
                           crumb.id === selectedFolderId
                             ? 'text-slate-900 dark:text-white font-bold'
@@ -998,33 +1002,52 @@ export const GamesLibrary = ({
                 </div>
               )}
 
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight truncate">
-                {selectedFolderObj ? selectedFolderObj.name : 'My Games Folder'}
+              <h1
+                className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight truncate"
+                {...(selectedFolderObj ? { 'data-no-translate': true } : {})}
+              >
+                {selectedFolderObj ? selectedFolderObj.name : t('gamesLib.title')}
               </h1>
 
               {/* Clean unboxed metadata with typographic separators & tabular-nums */}
               <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium mt-0.5 flex-wrap tabular-nums">
                 {selectedFolderObj ? (
                   <>
-                    <span>{displayedGames.length} {displayedGames.length === 1 ? 'game' : 'games'} in this folder</span>
+                    <span>
+                      {displayedGames.length}{' '}
+                      {displayedGames.length === 1
+                        ? t('gamesLib.gameInFolder')
+                        : t('gamesLib.gamesInFolderPlural')}
+                    </span>
                     {currentLevelFolders.length > 0 && (
                       <>
                         <span aria-hidden="true">·</span>
-                        <span>{currentLevelFolders.length} {currentLevelFolders.length === 1 ? 'subfolder' : 'subfolders'}</span>
+                        <span>
+                          {currentLevelFolders.length}{' '}
+                          {currentLevelFolders.length === 1
+                            ? t('gamesLib.subfolderWord')
+                            : t('gamesLib.subfoldersWord')}
+                        </span>
                       </>
                     )}
                   </>
                 ) : (
                   <>
-                    <span>Manage your custom vocabulary games</span>
+                    <span>{t('gamesLib.subtitle')}</span>
                     <span aria-hidden="true">·</span>
-                    <span className="text-slate-700 dark:text-slate-300 font-semibold">{folders.length} folders</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                      {folders.length} {t('gamesLib.foldersWord')}
+                    </span>
                     <span aria-hidden="true">·</span>
-                    <span className="text-slate-700 dark:text-slate-300 font-semibold">{allAllowedGames.length} saved games</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                      {allAllowedGames.length} {t('gamesLib.savedGamesWord')}
+                    </span>
                     {publishedCount > 0 && (
                       <>
                         <span aria-hidden="true">·</span>
-                        <span className="text-emerald-700 dark:text-emerald-400 font-semibold">{publishedCount} public</span>
+                        <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                          {publishedCount} {t('gamesLib.publicWord')}
+                        </span>
                       </>
                     )}
                   </>
@@ -1038,24 +1061,24 @@ export const GamesLibrary = ({
             <button
               onClick={() => onViewChange("my-slides")}
               className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-bold text-sm rounded-xl border border-purple-200/90 dark:border-purple-800/70 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition cursor-pointer whitespace-nowrap shrink-0"
-              title="Open My Slides classroom presentations"
+              title={t('gamesLib.mySlidesTitle')}
             >
               <Presentation className="w-4 h-4 shrink-0" />
-              <span>My Slides</span>
+              <span>{t('gamesLib.mySlides')}</span>
             </button>
             <button
               onClick={() => setShowNewFolderModal(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-sm rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
             >
               <FolderPlus className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
-              <span>New Folder</span>
+              <span>{t('gamesLib.newFolder')}</span>
             </button>
             <button
               onClick={() => setShowNewGameModal(true)}
               className="flex items-center gap-2 px-5 py-2.5 bg-brand-purple hover:bg-purple-700 text-white font-bold text-sm rounded-xl shadow-sm transition cursor-pointer whitespace-nowrap shrink-0"
             >
               <Plus className="w-4 h-4 shrink-0" />
-              <span>New Game</span>
+              <span>{t('gamesLib.newGame')}</span>
             </button>
           </div>
         </div>
@@ -1072,7 +1095,7 @@ export const GamesLibrary = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              All Items
+              {t('gamesLib.allItems')}
             </button>
             <button
               onClick={() => setLibraryFilterTab('folders')}
@@ -1082,7 +1105,7 @@ export const GamesLibrary = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Folders ({currentLevelFolders.length})
+              {t('gamesLib.tabFolders')} ({currentLevelFolders.length})
             </button>
             <button
               onClick={() => setLibraryFilterTab('games')}
@@ -1092,7 +1115,7 @@ export const GamesLibrary = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              All Saved Games ({selectedFolderId ? getFolderGames(selectedFolderObj).length : allAllowedGames.length})
+              {t('gamesLib.tabAllSavedGames')} ({selectedFolderId ? getFolderGames(selectedFolderObj).length : allAllowedGames.length})
             </button>
             <button
               onClick={() => setLibraryFilterTab('published')}
@@ -1102,7 +1125,7 @@ export const GamesLibrary = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Published ({publishedCount})
+              {t('gamesLib.tabPublished')} ({publishedCount})
             </button>
           </div>
 
@@ -1113,14 +1136,14 @@ export const GamesLibrary = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search folders, games, topics..."
+              placeholder={t('gamesLib.searchPlaceholder')}
               className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/90 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-colors"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                title="Clear search"
+                title={t('gamesLib.clearSearch')}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1137,7 +1160,7 @@ export const GamesLibrary = ({
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-                  {selectedFolderObj ? 'Subfolders' : 'Folders'}
+                  {selectedFolderObj ? t('gamesLib.subfolders') : t('gamesLib.folders')}
                 </h2>
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
                   · {displayedFolders.length}
@@ -1148,7 +1171,9 @@ export const GamesLibrary = ({
                   onClick={() => setLibraryFilterTab('games')}
                   className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
                 >
-                  <span>View all {allAllowedGames.length} saved games</span>
+                  <span>
+                    {t('gamesLib.viewAll')} {allAllowedGames.length} {t('gamesLib.savedGamesWord')}
+                  </span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -1228,7 +1253,7 @@ export const GamesLibrary = ({
                           <button
                             onClick={() => setOpenMenuId(openMenuId === folder.id ? null : folder.id)}
                             className="w-8 h-8 rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
-                            title="Folder options"
+                            title={t('gamesLib.folderOptions')}
                           >
                             <MoreVertical size={16} />
                           </button>
@@ -1248,7 +1273,7 @@ export const GamesLibrary = ({
                                   className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center gap-2 cursor-pointer"
                                 >
                                   <Edit2 size={14} className="text-indigo-500" />
-                                  <span>Rename Folder</span>
+                                  <span>{t('gamesLib.renameFolder')}</span>
                                 </button>
                                 <button
                                   onClick={() => {
@@ -1258,7 +1283,7 @@ export const GamesLibrary = ({
                                   className="w-full text-left px-3.5 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2 cursor-pointer"
                                 >
                                   <Trash2 size={14} />
-                                  <span>Delete Folder</span>
+                                  <span>{t('gamesLib.deleteFolder')}</span>
                                 </button>
                               </div>
                             </>
@@ -1269,20 +1294,28 @@ export const GamesLibrary = ({
 
                     {/* Bottom Row: Folder Name & Live Item Count */}
                     <div>
-                      <h3 className="font-extrabold text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1">
+                      <h3
+                        data-no-translate
+                        className="font-extrabold text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1"
+                      >
                         {folder.name}
                       </h3>
                       <div className="flex items-center justify-between gap-2 mt-1 text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
                         <div className="flex items-center gap-1.5">
                           <span className={totalInside > 0 ? 'text-slate-700 dark:text-slate-300 font-semibold' : ''}>
                             {totalInside === 0
-                              ? 'Empty folder'
-                              : `${totalInside} ${totalInside === 1 ? 'game' : 'games'}`}
+                              ? t('gamesLib.emptyFolder')
+                              : `${totalInside} ${totalInside === 1 ? t('gamesLib.gameUnit') : t('gamesLib.gamesUnit')}`}
                           </span>
                           {childSubfolders.length > 0 && (
                             <>
                               <span aria-hidden="true">·</span>
-                              <span>{childSubfolders.length} {childSubfolders.length === 1 ? 'subfolder' : 'subfolders'}</span>
+                              <span>
+                                {childSubfolders.length}{' '}
+                                {childSubfolders.length === 1
+                                  ? t('gamesLib.subfolderWord')
+                                  : t('gamesLib.subfoldersWord')}
+                              </span>
                             </>
                           )}
                         </div>
@@ -1303,13 +1336,18 @@ export const GamesLibrary = ({
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-                    {libraryFilterTab === 'published'
-                      ? 'Published Community Games'
-                      : selectedFolderObj
-                      ? `Games in ${selectedFolderObj.name}`
-                      : libraryFilterTab === 'games' || isSearching
-                      ? 'All Saved Games'
-                      : 'Unfiled Games'}
+                    {libraryFilterTab === 'published' ? (
+                      t('gamesLib.publishedCommunityGames')
+                    ) : selectedFolderObj ? (
+                      <>
+                        {t('gamesLib.gamesInPrefix')}{' '}
+                        <span data-no-translate>{selectedFolderObj.name}</span>
+                      </>
+                    ) : libraryFilterTab === 'games' || isSearching ? (
+                      t('gamesLib.allSavedGames')
+                    ) : (
+                      t('gamesLib.unfiledGames')
+                    )}
                   </h2>
                   <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
                     · {displayedGames.length}
@@ -1357,8 +1395,13 @@ export const GamesLibrary = ({
                         {/* Card Top: Title + 3D Game Thumbnail */}
                         <div className="flex justify-between items-start gap-3 mb-3.5">
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-extrabold text-base text-slate-900 dark:text-white line-clamp-2 leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                              {game.topic || game.name || game.title || "Untitled Game"}
+                            <h3
+                              className="font-extrabold text-base text-slate-900 dark:text-white line-clamp-2 leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
+                              {...(game.topic || game.name || game.title
+                                ? { 'data-no-translate': true, 'data-game-topic': true }
+                                : {})}
+                            >
+                              {game.topic || game.name || game.title || t('gamesLib.untitledGame')}
                             </h3>
 
                             {/* Clean Unboxed Status & Folder Metadata */}
@@ -1366,12 +1409,12 @@ export const GamesLibrary = ({
                               {game.isPublic ? (
                                 <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
                                   <Globe size={12} className="shrink-0" />
-                                  <span>Public</span>
+                                  <span>{t('gamesLib.public')}</span>
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
                                   <Lock size={12} className="shrink-0" />
-                                  <span>Private</span>
+                                  <span>{t('gamesLib.private')}</span>
                                 </span>
                               )}
 
@@ -1380,7 +1423,7 @@ export const GamesLibrary = ({
                                   <span aria-hidden="true">·</span>
                                   <span className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold truncate max-w-[120px]">
                                     <Folder size={11} className="shrink-0" />
-                                    <span className="truncate">{folderLabel}</span>
+                                    <span className="truncate" data-no-translate>{folderLabel}</span>
                                   </span>
                                 </>
                               )}
@@ -1401,23 +1444,26 @@ export const GamesLibrary = ({
                         <div className="space-y-1.5 mb-4 p-3 bg-slate-50/90 dark:bg-slate-800/60 rounded-xl border border-slate-200/70 dark:border-slate-700/70 mt-auto text-xs">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-slate-500 dark:text-slate-400">
-                              Game Mode
+                              {t('gamesLib.gameMode')}
                             </span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                            <span className="font-bold text-slate-800 dark:text-slate-200 truncate" data-no-translate>
                               {templateTitle}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-slate-500 dark:text-slate-400">
-                              Class / Level
+                              {t('gamesLib.classLevel')}
                             </span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
-                              {game.className || game.classLevel || "General"}
+                            <span
+                              className="font-bold text-slate-800 dark:text-slate-200 truncate"
+                              {...(game.className || game.classLevel ? { 'data-no-translate': true } : {})}
+                            >
+                              {game.className || game.classLevel || t('gamesLib.general')}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 tabular-nums">
                             <span className="font-semibold text-slate-500 dark:text-slate-400">
-                              Questions / Items
+                              {t('gamesLib.questionsItems')}
                             </span>
                             <span className="font-bold text-slate-800 dark:text-slate-200">
                               {itemCount}
@@ -1440,7 +1486,7 @@ export const GamesLibrary = ({
                             className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-3.5 rounded-xl shadow-2xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <Play className="w-4 h-4 fill-current shrink-0" />
-                            <span>Play</span>
+                            <span>{t('gamesLib.play')}</span>
                           </button>
 
                           <button
@@ -1449,7 +1495,7 @@ export const GamesLibrary = ({
                               onViewChange((game.gameType as any) || "mystery-box", { ...game, editMode: true });
                             }}
                             className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors shrink-0 cursor-pointer"
-                            title="Edit Game"
+                            title={t('gamesLib.editGame')}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -1470,7 +1516,7 @@ export const GamesLibrary = ({
                                   ? 'bg-slate-200 border-slate-300 text-slate-900 dark:bg-slate-700 dark:border-slate-600 dark:text-white'
                                   : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                               }`}
-                              title="More Options"
+                              title={t('gamesLib.moreOptions')}
                             >
                               <MoreHorizontal className="w-4 h-4" />
                             </button>
@@ -1493,7 +1539,7 @@ export const GamesLibrary = ({
                                     <>
                                       <div className="p-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                                         <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                                          Move to Folder
+                                          {t('gamesLib.moveToFolder')}
                                         </span>
                                         <button
                                           onClick={(e) => {
@@ -1515,7 +1561,7 @@ export const GamesLibrary = ({
                                           className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2 cursor-pointer"
                                         >
                                           <Gamepad2 className="w-4 h-4 text-slate-400" />
-                                          <span>My Games Folder (Root)</span>
+                                          <span>{t('gamesLib.myGamesFolderRoot')}</span>
                                         </button>
                                         {folderTree.map(({ folder: f, depth }) => (
                                           <button
@@ -1529,7 +1575,7 @@ export const GamesLibrary = ({
                                             style={{ paddingLeft: `${0.875 + depth * 1.25}rem`, paddingRight: '0.875rem' }}
                                           >
                                             <Folder className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                                            <span className="truncate">{f.name}</span>
+                                            <span className="truncate" data-no-translate>{f.name}</span>
                                           </button>
                                         ))}
                                       </div>
@@ -1545,7 +1591,7 @@ export const GamesLibrary = ({
                                         className="w-full text-left px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2.5 transition-colors cursor-pointer"
                                       >
                                         <Edit2 className="w-3.5 h-3.5 text-blue-500" />
-                                        <span>Edit Game</span>
+                                        <span>{t('gamesLib.editGame')}</span>
                                       </button>
                                       <button
                                         onClick={(e) => {
@@ -1555,7 +1601,7 @@ export const GamesLibrary = ({
                                         className="w-full text-left px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2.5 transition-colors cursor-pointer"
                                       >
                                         <FolderOpen className="w-3.5 h-3.5 text-brand-purple" />
-                                        <span>Move to Folder...</span>
+                                        <span>{t('gamesLib.moveToFolderDots')}</span>
                                       </button>
                                       <button
                                         onClick={(e) => {
@@ -1568,12 +1614,12 @@ export const GamesLibrary = ({
                                         {game.isPublic ? (
                                           <>
                                             <GlobeLock className="w-3.5 h-3.5 text-amber-500" />
-                                            <span>Unpublish Game</span>
+                                            <span>{t('gamesLib.unpublishGame')}</span>
                                           </>
                                         ) : (
                                           <>
                                             <Globe className="w-3.5 h-3.5 text-emerald-600" />
-                                            <span>Publish to Community</span>
+                                            <span>{t('gamesLib.publishToCommunity')}</span>
                                           </>
                                         )}
                                       </button>
@@ -1586,7 +1632,7 @@ export const GamesLibrary = ({
                                         className="w-full text-left px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2.5 transition-colors cursor-pointer"
                                       >
                                         <Copy className="w-3.5 h-3.5 text-indigo-500" />
-                                        <span>Duplicate</span>
+                                        <span>{t('gamesLib.duplicate')}</span>
                                       </button>
                                       <button
                                         onClick={(e) => {
@@ -1597,7 +1643,7 @@ export const GamesLibrary = ({
                                         className="w-full text-left px-3.5 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-2.5 transition-colors cursor-pointer"
                                       >
                                         <BookOpen className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                                        <span>Create Homework</span>
+                                        <span>{t('gamesLib.createHomework')}</span>
                                       </button>
                                       <div className="h-px bg-slate-200/80 dark:bg-slate-700 my-1" />
                                       <button
@@ -1609,7 +1655,7 @@ export const GamesLibrary = ({
                                         className="w-full text-left px-3.5 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs font-semibold text-red-600 dark:text-red-400 flex items-center gap-2.5 transition-colors cursor-pointer"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
-                                        <span>Delete Game</span>
+                                        <span>{t('gamesLib.deleteGame')}</span>
                                       </button>
                                     </div>
                                   )}
@@ -1634,20 +1680,26 @@ export const GamesLibrary = ({
               <Gamepad2 size={30} />
             </div>
             <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1.5">
-              {isSearching
-                ? `No matches for "${searchQuery}"`
-                : selectedFolderObj
-                ? `"${selectedFolderObj.name}" is Empty`
-                : libraryFilterTab === 'published'
-                ? 'No Published Games Yet'
-                : 'No Saved Games Yet'}
+              {isSearching ? (
+                <>
+                  {t('gamesLib.noMatchesFor')} &quot;<span data-no-translate>{searchQuery}</span>&quot;
+                </>
+              ) : selectedFolderObj ? (
+                <>
+                  &quot;<span data-no-translate>{selectedFolderObj.name}</span>&quot; {t('gamesLib.isEmptySuffix')}
+                </>
+              ) : libraryFilterTab === 'published' ? (
+                t('gamesLib.noPublishedYet')
+              ) : (
+                t('gamesLib.noSavedYet')
+              )}
             </h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm max-w-md mb-6 leading-relaxed">
               {isSearching
-                ? 'Try searching for a different folder name, topic, or class level.'
+                ? t('gamesLib.noSearchHint')
                 : selectedFolderObj
-                ? 'Create a new custom game inside this folder or move existing games here from All Saved Games.'
-                : 'Start creating custom vocabulary and grammar games for your classroom.'}
+                ? t('gamesLib.emptyFolderHint')
+                : t('gamesLib.emptyLibraryHint')}
             </p>
             <div className="flex items-center gap-3 flex-wrap justify-center">
               {isSearching ? (
@@ -1655,7 +1707,7 @@ export const GamesLibrary = ({
                   onClick={() => setSearchQuery('')}
                   className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-sm rounded-xl transition cursor-pointer"
                 >
-                  Clear Search
+                  {t('gamesLib.clearSearchBtn')}
                 </button>
               ) : (
                 <>
@@ -1667,7 +1719,7 @@ export const GamesLibrary = ({
                       }}
                       className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-200 font-bold text-sm rounded-xl transition cursor-pointer"
                     >
-                      Browse All Saved Games
+                      {t('gamesLib.browseAllSaved')}
                     </button>
                   )}
                   <button
@@ -1675,7 +1727,7 @@ export const GamesLibrary = ({
                     className="flex items-center gap-2 px-5 py-2.5 bg-brand-purple hover:bg-purple-700 text-white font-bold text-sm rounded-xl shadow-sm transition cursor-pointer"
                   >
                     <Plus size={18} />
-                    <span>Create a Game</span>
+                    <span>{t('gamesLib.createAGame')}</span>
                   </button>
                 </>
               )}
@@ -1697,7 +1749,7 @@ export const GamesLibrary = ({
             <div className="px-6 sm:px-8 py-4 flex flex-col gap-3.5 shrink-0 border-b border-slate-100 dark:border-slate-800/80">
               <div className="flex items-center justify-between gap-4">
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                  Select Game
+                  {t('gamesLib.selectGame')}
                 </h2>
                 <button
                   onClick={() => setShowNewGameModal(false)}
@@ -1711,11 +1763,11 @@ export const GamesLibrary = ({
               <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar">
                 <div className="inline-flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/70 dark:border-slate-700">
                   {[
-                    { id: 'all', title: 'All Games', icon: LayoutGrid, accentText: '', count: gameTemplates.length },
-                    { id: 'classroom-tools', title: 'Classroom Tools', icon: Wrench, accentText: 'text-emerald-600 dark:text-emerald-400', count: gameTemplates.filter(t => t.category === 'classroom-tools').length },
-                    { id: 'ar-camera', title: 'AR Camera Games', icon: Camera, accentText: 'text-sky-600 dark:text-sky-400', count: gameTemplates.filter(t => t.category === 'ar-camera').length },
-                    { id: 'board-trivia', title: 'Board Trivia & Team Games', icon: Gamepad2, accentText: 'text-amber-600 dark:text-amber-400', count: gameTemplates.filter(t => t.category === 'board-trivia').length },
-                    { id: 'multiplayer-games', title: 'Multiplayer Games', icon: Users, accentText: 'text-purple-600 dark:text-purple-400', count: gameTemplates.filter(t => t.category === 'multiplayer-games').length },
+                    { id: 'all', title: t('home.allGames'), icon: LayoutGrid, accentText: '', count: gameTemplates.length },
+                    { id: 'classroom-tools', title: t('home.cat.classroom-tools'), icon: Wrench, accentText: 'text-emerald-600 dark:text-emerald-400', count: gameTemplates.filter(t => t.category === 'classroom-tools').length },
+                    { id: 'ar-camera', title: t('home.cat.ar-camera'), icon: Camera, accentText: 'text-sky-600 dark:text-sky-400', count: gameTemplates.filter(t => t.category === 'ar-camera').length },
+                    { id: 'board-trivia', title: t('home.cat.board-trivia'), icon: Gamepad2, accentText: 'text-amber-600 dark:text-amber-400', count: gameTemplates.filter(t => t.category === 'board-trivia').length },
+                    { id: 'multiplayer-games', title: t('home.cat.multiplayer-games'), icon: Users, accentText: 'text-purple-600 dark:text-purple-400', count: gameTemplates.filter(t => t.category === 'multiplayer-games').length },
                   ].map((tab) => {
                     if (tab.id !== 'all' && tab.count === 0) return null;
                     const Icon = tab.icon;
@@ -1743,10 +1795,10 @@ export const GamesLibrary = ({
 
             <div className="p-6 sm:p-8 overflow-y-auto custom-scrollbar flex flex-col gap-10">
               {[
-                { id: 'classroom-tools' as GameCategoryId, title: 'Classroom Tools', icon: Wrench, accentText: 'text-emerald-600 dark:text-emerald-400' },
-                { id: 'ar-camera' as GameCategoryId, title: 'AR Camera Games', icon: Camera, accentText: 'text-sky-600 dark:text-sky-400' },
-                { id: 'board-trivia' as GameCategoryId, title: 'Board Trivia & Team Games', icon: Gamepad2, accentText: 'text-amber-600 dark:text-amber-400' },
-                { id: 'multiplayer-games' as GameCategoryId, title: 'Multiplayer Games', icon: Users, accentText: 'text-purple-600 dark:text-purple-400' },
+                { id: 'classroom-tools' as GameCategoryId, title: t('home.cat.classroom-tools'), icon: Wrench, accentText: 'text-emerald-600 dark:text-emerald-400' },
+                { id: 'ar-camera' as GameCategoryId, title: t('home.cat.ar-camera'), icon: Camera, accentText: 'text-sky-600 dark:text-sky-400' },
+                { id: 'board-trivia' as GameCategoryId, title: t('home.cat.board-trivia'), icon: Gamepad2, accentText: 'text-amber-600 dark:text-amber-400' },
+                { id: 'multiplayer-games' as GameCategoryId, title: t('home.cat.multiplayer-games'), icon: Users, accentText: 'text-purple-600 dark:text-purple-400' },
               ]
                 .map((section) => ({
                   ...section,
@@ -1812,16 +1864,16 @@ export const GamesLibrary = ({
               <X className="w-4 h-4" />
             </button>
             <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1">
-              Rename Folder
+              {t('gamesLib.renameFolder')}
             </h2>
             <p className="text-slate-500 dark:text-slate-400 text-xs font-medium mb-4">
-              Enter a new name for "{folderToRename.name}".
+              {t('gamesLib.renamePromptPrefix')} &quot;<span data-no-translate>{folderToRename.name}</span>&quot;.
             </p>
             <input
               type="text"
               value={renameFolderInput}
               onChange={(e) => setRenameFolderInput(e.target.value)}
-              placeholder="Folder name"
+              placeholder={t('gamesLib.folderNamePlaceholder')}
               className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl mb-4 font-bold text-sm text-slate-800 dark:text-white focus:outline-none focus:border-indigo-500"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleRenameFolder()}
@@ -1834,14 +1886,14 @@ export const GamesLibrary = ({
                 }}
                 className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
               >
-                Cancel
+                {t('gamesLib.cancel')}
               </button>
               <button
                 onClick={handleRenameFolder}
                 disabled={!renameFolderInput.trim()}
                 className="px-4 py-2 bg-brand-purple hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
               >
-                Save Name
+                {t('gamesLib.saveName')}
               </button>
             </div>
           </div>
@@ -1855,22 +1907,22 @@ export const GamesLibrary = ({
             <div className="w-12 h-12 bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 text-red-600 rounded-xl flex items-center justify-center mx-auto mb-3.5">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1.5">Delete Game?</h2>
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1.5">{t('gamesLib.deleteGameTitle')}</h2>
             <p className="text-slate-500 dark:text-slate-400 text-xs font-medium mb-5">
-              Are you sure you want to delete this game? This action cannot be undone.
+              {t('gamesLib.deleteGameConfirm')}
             </p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setGameToDelete(null)}
                 className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
               >
-                Cancel
+                {t('gamesLib.cancel')}
               </button>
               <button
                 onClick={() => confirmDelete(gameToDelete)}
                 className="px-5 py-2.5 bg-red-600 text-white font-bold text-xs rounded-xl hover:bg-red-700 transition-colors cursor-pointer"
               >
-                Delete Game
+                {t('gamesLib.deleteGame')}
               </button>
             </div>
           </div>
@@ -1884,22 +1936,22 @@ export const GamesLibrary = ({
             <div className="w-12 h-12 bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 text-red-600 rounded-xl flex items-center justify-center mx-auto mb-3.5">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1.5">Delete Folder?</h2>
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1.5">{t('gamesLib.deleteFolderTitle')}</h2>
             <p className="text-slate-500 dark:text-slate-400 text-xs font-medium mb-5">
-              Are you sure you want to delete this folder? Any games inside will be safely moved to My Games Folder.
+              {t('gamesLib.deleteFolderConfirm')}
             </p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setFolderToDelete(null)}
                 className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
               >
-                Cancel
+                {t('gamesLib.cancel')}
               </button>
               <button
                 onClick={() => confirmDeleteFolder(folderToDelete)}
                 className="px-5 py-2.5 bg-red-600 text-white font-bold text-xs rounded-xl hover:bg-red-700 transition-colors cursor-pointer"
               >
-                Delete Folder
+                {t('gamesLib.deleteFolder')}
               </button>
             </div>
           </div>
@@ -1916,16 +1968,16 @@ export const GamesLibrary = ({
             >
               <X className="w-4 h-4" />
             </button>
-            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1">New Folder</h2>
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-1">{t('gamesLib.newFolder')}</h2>
             <p className="text-slate-500 dark:text-slate-400 text-xs font-medium mb-4">
-              Create a folder to organize your custom games by level or class.
+              {t('gamesLib.newFolderDesc')}
             </p>
             
             <input 
               type="text" 
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
-              placeholder="e.g. Unit 5 Review"
+              placeholder={t('gamesLib.newFolderPlaceholder')}
               className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl mb-4 font-bold text-sm text-slate-800 dark:text-white focus:outline-none focus:border-indigo-500"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
@@ -1936,7 +1988,7 @@ export const GamesLibrary = ({
               disabled={!newFolderName.trim()}
               className="w-full py-2.5 bg-brand-purple hover:bg-purple-700 text-white font-bold text-sm rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer"
             >
-              Create Folder
+              {t('gamesLib.createFolder')}
             </button>
           </div>
         </div>

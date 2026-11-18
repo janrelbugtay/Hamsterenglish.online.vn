@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { ViewState } from '../types';
+import noiseControlCardImg from '../assets/images/noise_control_card_1795022921714.jpg';
 
 type SleepState =
   | 'DEEP_SLEEP'
@@ -26,6 +27,8 @@ type SleepState =
   | 'ALMOST_AWAKE'
   | 'AWAKE'
   | 'RECOVERING';
+
+type NoiseControlMode = 'sleeping' | 'cage';
 
 type NoiseAlertMode = 'hamster' | 'beep' | 'shush' | 'none';
 
@@ -357,6 +360,49 @@ interface FloatingParticle {
   durationSec: number;
 }
 
+interface CageSlot {
+  x: number;
+  y: number;
+  scale: number;
+  flip?: boolean;
+  accessory?: 'bow' | 'pacifier' | 'tuft';
+}
+
+// 10 cozy slots for Adult Hamsters (1..10) inside the terrarium cage
+const CAGE_ADULT_SLOTS: CageSlot[] = [
+  { x: 465, y: 386, scale: 0.35 },
+  { x: 575, y: 394, scale: 0.34, flip: true },
+  { x: 365, y: 394, scale: 0.33 },
+  { x: 185, y: 392, scale: 0.33 },
+  { x: 892, y: 392, scale: 0.33, flip: true },
+  { x: 746, y: 368, scale: 0.30, flip: true },
+  { x: 295, y: 296, scale: 0.29 },
+  { x: 686, y: 224, scale: 0.28 },
+  { x: 792, y: 224, scale: 0.28, flip: true },
+  { x: 938, y: 332, scale: 0.31, flip: true },
+];
+
+// 10 cozy slots for Baby Hamsters (11..20) inside the terrarium cage
+const CAGE_BABY_SLOTS: CageSlot[] = [
+  { x: 412, y: 422, scale: 0.22, accessory: 'bow' },
+  { x: 516, y: 424, scale: 0.22, flip: true, accessory: 'pacifier' },
+  { x: 618, y: 420, scale: 0.21, accessory: 'tuft' },
+  { x: 248, y: 420, scale: 0.22, accessory: 'pacifier' },
+  { x: 122, y: 418, scale: 0.21, flip: true, accessory: 'bow' },
+  { x: 842, y: 422, scale: 0.22, flip: true, accessory: 'tuft' },
+  { x: 928, y: 416, scale: 0.21, accessory: 'bow' },
+  { x: 318, y: 426, scale: 0.20, flip: true, accessory: 'tuft' },
+  { x: 572, y: 426, scale: 0.20, accessory: 'pacifier' },
+  { x: 668, y: 392, scale: 0.21, flip: true, accessory: 'bow' },
+];
+
+interface LeavingHamsterState {
+  slotIndex: number;
+  isBaby: boolean;
+  coatIndex: number;
+  startedAt: number;
+}
+
 const AMBIENT_DUST_MOTES = [
   { left: '14%', top: '24%', size: 5, delay: '0s', dur: '5.5s' },
   { left: '24%', top: '52%', size: 4, delay: '1.1s', dur: '6.2s' },
@@ -422,6 +468,13 @@ export function SleepingHamster({
   const [timerEndPhase, setTimerEndPhase] = useState<'idle' | 'awake_10s' | 'eating'>('idle');
   const [wakeSoundSecondsLeft, setWakeSoundSecondsLeft] = useState(0);
 
+  // Game Mode: Sleeping Hamster (original) vs Hamster Cage (3 start, angry leave, 20s quiet appear up to 10+10 babies)
+  const [gameMode, setGameMode] = useState<NoiseControlMode>('sleeping');
+  const [cageCount, setCageCount] = useState<number>(3);
+  const [cageQuietSeconds, setCageQuietSeconds] = useState<number>(0);
+  const [leavingHamster, setLeavingHamster] = useState<LeavingHamsterState | null>(null);
+  const [justArrivedSlot, setJustArrivedSlot] = useState<number | null>(null);
+
   const [starPoints, setStarPoints] = useState(3.0);
   const [starSlots, setStarSlots] = useState(3);
 
@@ -450,6 +503,18 @@ export function SleepingHamster({
   const quietMinuteAccumRef = useRef(0);
   const lastFrameTimeRef = useRef(performance.now());
 
+  // Hamster Cage mutable refs for real-time noise / quiet tracking
+  const gameModeRef = useRef<NoiseControlMode>('sleeping');
+  const cageCountRef = useRef<number>(3);
+  const cageQuietSecRef = useRef<number>(0);
+  const cageNoiseAccumRef = useRef<number>(0);
+  const cageLeaveCooldownUntilRef = useRef<number>(0);
+  const leavingHamsterRef = useRef<LeavingHamsterState | null>(null);
+  const leavingTimeoutRef = useRef<number | null>(null);
+  const arriveTimeoutRef = useRef<number | null>(null);
+
+  gameModeRef.current = gameMode;
+
   const stateSnapshotRef = useRef({
     hasStarted,
     isMicMuted,
@@ -457,6 +522,8 @@ export function SleepingHamster({
     noiseAlert,
     timerMode,
     isTimerPaused,
+    gameMode,
+    coatIndex,
   });
   stateSnapshotRef.current = {
     hasStarted,
@@ -465,6 +532,8 @@ export function SleepingHamster({
     noiseAlert,
     timerMode,
     isTimerPaused,
+    gameMode,
+    coatIndex,
   };
 
   const currentTheme = HABITAT_THEMES[themeIndex];
@@ -493,6 +562,8 @@ export function SleepingHamster({
         window.clearTimeout(id);
         window.clearInterval(id);
       });
+      if (leavingTimeoutRef.current) window.clearTimeout(leavingTimeoutRef.current);
+      if (arriveTimeoutRef.current) window.clearTimeout(arriveTimeoutRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -1048,16 +1119,61 @@ export function SleepingHamster({
           }
         }
 
-        // Live Star Portion Draining when noisy (DISTURBED / ALMOST_AWAKE / AWAKE)
+        // Live Star Portion Draining (Sleeping Mode) OR Angry Hamster Leaving (Cage Mode)
         const activeState = sleepStateRef.current;
         if (
           !snap.isMicMuted &&
           timerEndPhaseRef.current === 'idle' &&
           (activeState === 'DISTURBED' || activeState === 'ALMOST_AWAKE' || activeState === 'AWAKE')
         ) {
-          const drainPerSec =
-            activeState === 'AWAKE' ? 0.28 : activeState === 'ALMOST_AWAKE' ? 0.17 : 0.085;
-          starPointsRef.current = Math.max(0, starPointsRef.current - drainPerSec * dtSec);
+          if (snap.gameMode === 'sleeping') {
+            const drainPerSec =
+              activeState === 'AWAKE' ? 0.28 : activeState === 'ALMOST_AWAKE' ? 0.17 : 0.085;
+            starPointsRef.current = Math.max(0, starPointsRef.current - drainPerSec * dtSec);
+          } else if (snap.gameMode === 'cage') {
+            // Reset 20s quiet streak while noisy
+            if (cageQuietSecRef.current > 0) {
+              cageQuietSecRef.current = 0;
+              setCageQuietSeconds(0);
+            }
+            if (
+              cageCountRef.current > 0 &&
+              !leavingHamsterRef.current &&
+              nowPerf >= cageLeaveCooldownUntilRef.current
+            ) {
+              const noiseSpeed =
+                activeState === 'AWAKE' ? 1.35 : activeState === 'ALMOST_AWAKE' ? 0.9 : 0.5;
+              cageNoiseAccumRef.current += noiseSpeed * dtSec;
+              if (cageNoiseAccumRef.current >= 1.0) {
+                cageNoiseAccumRef.current = 0;
+                const slotIndex = cageCountRef.current - 1;
+                const isBaby = slotIndex >= 10;
+                const coatIdx = (snap.coatIndex + slotIndex) % COAT_STYLES.length;
+                const leavingInfo: LeavingHamsterState = {
+                  slotIndex,
+                  isBaby,
+                  coatIndex: coatIdx,
+                  startedAt: nowPerf,
+                };
+                cageCountRef.current = Math.max(0, cageCountRef.current - 1);
+                setCageCount(cageCountRef.current);
+                leavingHamsterRef.current = leavingInfo;
+                setLeavingHamster(leavingInfo);
+                cageLeaveCooldownUntilRef.current = nowPerf + 1450;
+
+                playAlertSound('awake');
+                spawnParticle('star', isBaby ? '💢 🍼' : '💢 😡', 1.55);
+
+                if (leavingTimeoutRef.current) window.clearTimeout(leavingTimeoutRef.current);
+                leavingTimeoutRef.current = window.setTimeout(() => {
+                  leavingHamsterRef.current = null;
+                  setLeavingHamster(null);
+                }, 1150);
+              }
+            }
+          }
+        } else if (snap.gameMode === 'cage' && cageNoiseAccumRef.current > 0) {
+          cageNoiseAccumRef.current = Math.max(0, cageNoiseAccumRef.current - 0.65 * dtSec);
         }
 
         // Throttle React UI updates cleanly (~20fps for meter, live star drain & spectrum)
@@ -1084,9 +1200,9 @@ export function SleepingHamster({
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [hasStarted, applySleepState]);
+  }, [hasStarted, applySleepState, playAlertSound, spawnParticle]);
 
-  // 1-second Quiet Clock / Countdown Timer & 1-Minute Quiet Star Additions
+  // 1-second Quiet Clock / Countdown Timer & Mode Quiet Rewards (1-Min Star OR 20s Hamster Cage Appear)
   useEffect(() => {
     if (!hasStarted) return;
 
@@ -1109,31 +1225,73 @@ export function SleepingHamster({
         return prev + 1;
       });
 
-      // Accumulate quiet seconds when calm; add +1 star every 60 quiet seconds!
-      if (!snap.isMicMuted && (st === 'DEEP_SLEEP' || st === 'LIGHT_SLEEP' || st === 'RECOVERING')) {
-        quietMinuteAccumRef.current += 1;
-        if (quietMinuteAccumRef.current >= 60) {
-          quietMinuteAccumRef.current = 0;
-          const nextStars = Math.min(6, Math.round((starPointsRef.current + 1) * 100) / 100);
-          if (nextStars > starPointsRef.current) {
-            starPointsRef.current = nextStars;
-            setStarPoints(nextStars);
-            setStarSlots((slots) => Math.max(slots, Math.ceil(nextStars)));
-            playAlertSound('star');
-            spawnParticle('star', '+1 ⭐', 1.5);
+      const isQuietNow =
+        !snap.isMicMuted &&
+        timerEndPhaseRef.current === 'idle' &&
+        (st === 'DEEP_SLEEP' || st === 'LIGHT_SLEEP' || st === 'RECOVERING');
+
+      if (snap.gameMode === 'sleeping') {
+        // Accumulate quiet seconds when calm; add +1 star every 60 quiet seconds!
+        if (isQuietNow) {
+          quietMinuteAccumRef.current += 1;
+          if (quietMinuteAccumRef.current >= 60) {
+            quietMinuteAccumRef.current = 0;
+            const nextStars = Math.min(6, Math.round((starPointsRef.current + 1) * 100) / 100);
+            if (nextStars > starPointsRef.current) {
+              starPointsRef.current = nextStars;
+              setStarPoints(nextStars);
+              setStarSlots((slots) => Math.max(slots, Math.ceil(nextStars)));
+              playAlertSound('star');
+              spawnParticle('star', '+1 ⭐', 1.5);
+            }
           }
+        } else if (st === 'AWAKE') {
+          quietMinuteAccumRef.current = 0;
         }
-      } else if (st === 'AWAKE') {
-        quietMinuteAccumRef.current = 0;
+      } else if (snap.gameMode === 'cage') {
+        // Every 20 quiet seconds, 1 new hamster appears (1..10 adults, 11..20 baby hamsters)
+        if (isQuietNow && !leavingHamsterRef.current) {
+          if (cageCountRef.current < 20) {
+            cageQuietSecRef.current += 1;
+            if (cageQuietSecRef.current >= 20) {
+              cageQuietSecRef.current = 0;
+              setCageQuietSeconds(0);
+              const arrivedSlot = cageCountRef.current;
+              const nextCount = Math.min(20, cageCountRef.current + 1);
+              cageCountRef.current = nextCount;
+              setCageCount(nextCount);
+              setJustArrivedSlot(arrivedSlot);
+              if (arriveTimeoutRef.current) window.clearTimeout(arriveTimeoutRef.current);
+              arriveTimeoutRef.current = window.setTimeout(() => {
+                setJustArrivedSlot(null);
+              }, 1150);
+
+              playAlertSound('star');
+              spawnParticle(
+                'star',
+                nextCount > 10 ? '+1 🍼 Baby!' : '+1 🐹',
+                1.6
+              );
+            } else {
+              setCageQuietSeconds(cageQuietSecRef.current);
+            }
+          } else if (cageQuietSecRef.current !== 0) {
+            cageQuietSecRef.current = 0;
+            setCageQuietSeconds(0);
+          }
+        } else if (st === 'DISTURBED' || st === 'ALMOST_AWAKE' || st === 'AWAKE') {
+          cageQuietSecRef.current = 0;
+          setCageQuietSeconds(0);
+        }
       }
     }, 1000);
 
     return () => clearInterval(id);
   }, [hasStarted, playAlertSound, spawnParticle, startTimerOverSequence]);
 
-  // Floating Zzz generator while sleeping peacefully
+  // Floating Zzz generator while sleeping peacefully (Sleeping Hamster mode)
   useEffect(() => {
-    if (!hasStarted) return;
+    if (!hasStarted || gameMode !== 'sleeping') return;
     const id = window.setInterval(() => {
       if (timerEndPhaseRef.current !== 'idle') return;
       const st = sleepStateRef.current;
@@ -1144,7 +1302,7 @@ export function SleepingHamster({
       }
     }, 950);
     return () => clearInterval(id);
-  }, [hasStarted, spawnParticle]);
+  }, [hasStarted, gameMode, spawnParticle]);
 
   const connectMicrophoneStream = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -1206,6 +1364,15 @@ export function SleepingHamster({
       lastStateChangeRef.current = performance.now();
       starPointsRef.current = 3.0;
       quietMinuteAccumRef.current = 0;
+      cageCountRef.current = 3;
+      cageQuietSecRef.current = 0;
+      cageNoiseAccumRef.current = 0;
+      cageLeaveCooldownUntilRef.current = 0;
+      leavingHamsterRef.current = null;
+      setLeavingHamster(null);
+      setJustArrivedSlot(null);
+      setCageCount(3);
+      setCageQuietSeconds(0);
       setSleepState('DEEP_SLEEP');
       setSustainedEnergy(8);
       setTimerMode('up');
@@ -1236,6 +1403,17 @@ export function SleepingHamster({
     lastStateChangeRef.current = performance.now();
     starPointsRef.current = 3.0;
     quietMinuteAccumRef.current = 0;
+    cageCountRef.current = 3;
+    cageQuietSecRef.current = 0;
+    cageNoiseAccumRef.current = 0;
+    cageLeaveCooldownUntilRef.current = 0;
+    leavingHamsterRef.current = null;
+    if (leavingTimeoutRef.current) window.clearTimeout(leavingTimeoutRef.current);
+    if (arriveTimeoutRef.current) window.clearTimeout(arriveTimeoutRef.current);
+    setLeavingHamster(null);
+    setJustArrivedSlot(null);
+    setCageCount(3);
+    setCageQuietSeconds(0);
     setSleepState('DEEP_SLEEP');
     setSustainedEnergy(8);
     setStarPoints(3.0);
@@ -1243,6 +1421,19 @@ export function SleepingHamster({
     setTimerFinished(false);
     setIsTimerPaused(false);
     setTimerSeconds(timerMode === 'countdown' ? countdownDuration : 0);
+  };
+
+  const handleSwitchGameMode = (mode: NoiseControlMode) => {
+    if (mode === gameMode) return;
+    setGameMode(mode);
+    gameModeRef.current = mode;
+    cageQuietSecRef.current = 0;
+    cageNoiseAccumRef.current = 0;
+    setCageQuietSeconds(0);
+    if (mode === 'cage' && cageCountRef.current === 0 && !leavingHamsterRef.current) {
+      cageCountRef.current = 3;
+      setCageCount(3);
+    }
   };
 
   const syncEditFieldsFromSeconds = (baseSeconds: number) => {
@@ -1471,14 +1662,38 @@ export function SleepingHamster({
           25% { transform: scale(1.09) rotate(-6deg); }
           75% { transform: scale(1.06) rotate(6deg); }
         }
+        @keyframes shHamsterLeave {
+          0% { transform: translate(0px, 0px) scale(1) rotate(0deg); opacity: 1; }
+          22% { transform: translate(12px, -16px) scale(1.08) rotate(-6deg); opacity: 1; }
+          55% { transform: translate(70px, -10px) scale(1.02) rotate(8deg); opacity: 0.95; }
+          100% { transform: translate(165px, -34px) scale(0.7) rotate(14deg); opacity: 0; }
+        }
+        @keyframes shHamsterArrive {
+          0% { transform: scale(0.2) translateY(20px); opacity: 0; }
+          65% { transform: scale(1.16) translateY(-10px); opacity: 1; }
+          100% { transform: scale(1) translateY(0px); opacity: 1; }
+        }
+        @keyframes shCageBob {
+          0%, 100% { transform: translateY(0px) scale(1, 1); }
+          50% { transform: translateY(-4px) scale(1.02, 0.98); }
+        }
+        @keyframes shAngryShake {
+          0%, 100% { transform: translateX(0px); }
+          25% { transform: translateX(-4px); }
+          75% { transform: translateX(4px); }
+        }
         .sh-star-drain { animation: shStarDrainShake 0.45s ease-in-out infinite; }
+        .sh-hamster-leave { animation: shHamsterLeave 1.15s ease-in forwards; }
+        .sh-hamster-arrive { animation: shHamsterArrive 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .sh-cage-bob { animation: shCageBob 2.6s ease-in-out infinite; }
+        .sh-angry-shake { animation: shAngryShake 0.18s linear infinite; }
       `}</style>
 
-      {/* CLEAN TOP HEADER: Left navigation & Themes/Options | Center Time & Individual Stars */}
+      {/* CLEAN TOP HEADER: Left navigation, Mode & Themes | Center Time & Stars / Cage HUD */}
       {hasStarted && (
         <header className="relative z-40 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 md:px-6 pt-3 pb-2 shrink-0">
-          {/* Left Navigation, Theme & Coat Color Click Triggers */}
-          <div className="flex items-center gap-2 justify-self-start">
+          {/* Left Navigation, Game Mode Switcher, Theme & Coat Color */}
+          <div className="flex items-center flex-wrap gap-2 justify-self-start">
             <button
               type="button"
               onClick={() => onViewChange('home')}
@@ -1487,6 +1702,36 @@ export function SleepingHamster({
               <ArrowLeft size={16} />
               <span className="hidden sm:inline">Back</span>
             </button>
+
+            {/* In-Game Mode Switcher: Sleeping Hamster | Hamster Cage */}
+            <div
+              className="inline-flex items-center gap-1 bg-black/35 border border-white/15 rounded-xl p-1 shrink-0"
+              role="group"
+              aria-label="Noise Control Mode"
+            >
+              <button
+                type="button"
+                onClick={() => handleSwitchGameMode('sleeping')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+                  gameMode === 'sleeping'
+                    ? 'bg-purple-500 text-white shadow-sm'
+                    : 'text-purple-200/75 hover:text-white'
+                }`}
+              >
+                Sleeping Hamster
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchGameMode('cage')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+                  gameMode === 'cage'
+                    ? 'bg-amber-400 text-purple-950 shadow-sm'
+                    : 'text-purple-200/75 hover:text-white'
+                }`}
+              >
+                Hamster Cage
+              </button>
+            </div>
 
             <button
               type="button"
@@ -1498,8 +1743,8 @@ export function SleepingHamster({
                 className="w-3.5 h-3.5 rounded-full border border-white/65 shrink-0"
                 style={{ backgroundColor: currentTheme.swatch }}
               />
-              <span className="hidden md:inline">{currentTheme.name}</span>
-              <Palette size={14} className="md:hidden" />
+              <span className="hidden xl:inline">{currentTheme.name}</span>
+              <Palette size={14} className="xl:hidden" />
             </button>
 
             <button
@@ -1512,8 +1757,8 @@ export function SleepingHamster({
                 className="w-3.5 h-3.5 rounded-full border border-white/60 shrink-0"
                 style={{ backgroundColor: currentCoat.swatch }}
               />
-              <span className="hidden xl:inline">{currentCoat.name}</span>
-              <Palette size={14} className="xl:hidden" />
+              <span className="hidden 2xl:inline">{currentCoat.name}</span>
+              <Palette size={14} className="2xl:hidden" />
             </button>
 
             <button
@@ -1526,7 +1771,7 @@ export function SleepingHamster({
             </button>
           </div>
 
-          {/* CENTER HUD: Bigger Stopwatch/Editable Timer + Bigger Individual Stars */}
+          {/* CENTER HUD: Bigger Stopwatch/Editable Timer + Mode Progress (Stars OR Hamster Cage) */}
           <div className={`relative justify-self-center ${currentTheme.panelBg} backdrop-blur-md border border-white/15 px-6 sm:px-7 py-3.5 rounded-3xl flex flex-wrap sm:flex-nowrap items-center justify-center gap-6 sm:gap-7 shadow-2xl`}>
             {/* Time + Mode Options (Stopwatch / Timer), Pause, Reset & Edit Timer Controls */}
             <div className="flex items-center gap-4">
@@ -1596,7 +1841,7 @@ export function SleepingHamster({
                   type="button"
                   onClick={handleResetTimerAndStars}
                   className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-purple-100 transition cursor-pointer"
-                  title="Reset Time & Stars"
+                  title={gameMode === 'cage' ? 'Reset Time & Cage (3 Hamsters)' : 'Reset Time & Stars'}
                 >
                   <RotateCcw size={16} />
                 </button>
@@ -1623,76 +1868,126 @@ export function SleepingHamster({
 
             <div className="hidden sm:block h-12 w-px bg-white/15" />
 
-            {/* Bigger Individual Stars (Default 3, No Numeric Count, Live Portion Draining when Noisy) */}
-            <div
-              className="flex items-center gap-2.5 sm:gap-3"
-              title="Quiet for 1 minute adds a star. Noise drains the active star live!"
-            >
-              {Array.from({ length: starSlots }).map((_, idx) => {
-                const fill = Math.max(0, Math.min(1, starPoints - idx));
-                const isNoisyNow =
-                  !isMicMuted &&
-                  timerEndPhase === 'idle' &&
-                  (sleepState === 'DISTURBED' ||
-                    sleepState === 'ALMOST_AWAKE' ||
-                    sleepState === 'AWAKE');
-                const isActiveDrain =
-                  isNoisyNow &&
-                  fill > 0 &&
-                  idx === Math.max(0, Math.ceil(starPoints) - 1);
+            {gameMode === 'sleeping' ? (
+              /* Bigger Individual Stars (Default 3, No Numeric Count, Live Portion Draining when Noisy) */
+              <div
+                className="flex items-center gap-2.5 sm:gap-3"
+                title="Quiet for 1 minute adds a star. Noise drains the active star live!"
+              >
+                {Array.from({ length: starSlots }).map((_, idx) => {
+                  const fill = Math.max(0, Math.min(1, starPoints - idx));
+                  const isNoisyNow =
+                    !isMicMuted &&
+                    timerEndPhase === 'idle' &&
+                    (sleepState === 'DISTURBED' ||
+                      sleepState === 'ALMOST_AWAKE' ||
+                      sleepState === 'AWAKE');
+                  const isActiveDrain =
+                    isNoisyNow &&
+                    fill > 0 &&
+                    idx === Math.max(0, Math.ceil(starPoints) - 1);
 
-                return (
-                  <div
-                    key={idx}
-                    className={`relative w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center transition-transform duration-200 ${
-                      isActiveDrain ? 'sh-star-drain' : ''
-                    }`}
-                  >
-                    {isActiveDrain && (
-                      <span className="absolute -top-2.5 right-0 text-xs font-black text-rose-400 animate-bounce pointer-events-none">
-                        −
-                      </span>
-                    )}
-                    <svg viewBox="0 0 24 24" className="w-full h-full overflow-visible">
-                      <defs>
-                        <clipPath id={`shStarFillClip-${idx}`}>
-                          <rect
-                            x="0"
-                            y={24 * (1 - fill)}
-                            width="24"
-                            height={24 * fill}
-                          />
-                        </clipPath>
-                      </defs>
-                      {/* Empty / Drained Star Base */}
-                      <path
-                        d="M12 2.2l2.92 5.92 6.53.95-4.72 4.6 1.11 6.5L12 17.1l-5.84 3.07 1.11-6.5-4.72-4.6 6.53-.95L12 2.2z"
-                        fill="rgba(255,255,255,0.08)"
-                        stroke={isActiveDrain ? 'rgba(251,113,133,0.75)' : 'rgba(251,191,36,0.35)'}
-                        strokeWidth="1.6"
-                        strokeLinejoin="round"
-                      />
-                      {/* Live Golden Portion Fill */}
-                      {fill > 0 && (
+                  return (
+                    <div
+                      key={idx}
+                      className={`relative w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center transition-transform duration-200 ${
+                        isActiveDrain ? 'sh-star-drain' : ''
+                      }`}
+                    >
+                      {isActiveDrain && (
+                        <span className="absolute -top-2.5 right-0 text-xs font-black text-rose-400 animate-bounce pointer-events-none">
+                          −
+                        </span>
+                      )}
+                      <svg viewBox="0 0 24 24" className="w-full h-full overflow-visible">
+                        <defs>
+                          <clipPath id={`shStarFillClip-${idx}`}>
+                            <rect
+                              x="0"
+                              y={24 * (1 - fill)}
+                              width="24"
+                              height={24 * fill}
+                            />
+                          </clipPath>
+                        </defs>
+                        {/* Empty / Drained Star Base */}
                         <path
                           d="M12 2.2l2.92 5.92 6.53.95-4.72 4.6 1.11 6.5L12 17.1l-5.84 3.07 1.11-6.5-4.72-4.6 6.53-.95L12 2.2z"
-                          fill={isActiveDrain ? '#fb923c' : '#fbbf24'}
-                          stroke={isActiveDrain ? '#fecdd3' : '#fef08a'}
-                          strokeWidth="1.4"
+                          fill="rgba(255,255,255,0.08)"
+                          stroke={isActiveDrain ? 'rgba(251,113,133,0.75)' : 'rgba(251,191,36,0.35)'}
+                          strokeWidth="1.6"
                           strokeLinejoin="round"
-                          clipPath={`url(#shStarFillClip-${idx})`}
-                          style={{
-                            filter: isActiveDrain
-                              ? 'drop-shadow(0 0 8px rgba(251,113,133,0.7))'
-                              : 'drop-shadow(0 0 7px rgba(251,191,36,0.55))',
-                          }}
                         />
-                      )}
-                    </svg>
+                        {/* Live Golden Portion Fill */}
+                        {fill > 0 && (
+                          <path
+                            d="M12 2.2l2.92 5.92 6.53.95-4.72 4.6 1.11 6.5L12 17.1l-5.84 3.07 1.11-6.5-4.72-4.6 6.53-.95L12 2.2z"
+                            fill={isActiveDrain ? '#fb923c' : '#fbbf24'}
+                            stroke={isActiveDrain ? '#fecdd3' : '#fef08a'}
+                            strokeWidth="1.4"
+                            strokeLinejoin="round"
+                            clipPath={`url(#shStarFillClip-${idx})`}
+                            style={{
+                              filter: isActiveDrain
+                                ? 'drop-shadow(0 0 8px rgba(251,113,133,0.7))'
+                                : 'drop-shadow(0 0 7px rgba(251,191,36,0.55))',
+                            }}
+                          />
+                        )}
+                      </svg>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Hamster Cage Counter & 20s Quiet Progress HUD */
+              <div className="flex flex-col gap-1.5 min-w-[205px]">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    <span className="text-lg">🐹</span>
+                    <span className="text-sm sm:text-base font-black text-white tabular-nums">
+                      {Math.min(10, cageCount)}/10
+                    </span>
+                    <span className="text-[11px] font-bold text-purple-200/75 uppercase">
+                      Adults
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-base">🍼</span>
+                    <span
+                      className={`text-sm sm:text-base font-black tabular-nums ${
+                        cageCount > 10 ? 'text-pink-300' : 'text-purple-200/55'
+                      }`}
+                    >
+                      {Math.max(0, cageCount - 10)}/10
+                    </span>
+                    <span className="text-[11px] font-bold text-pink-200/80 uppercase">
+                      Babies
+                    </span>
+                  </div>
+                </div>
+
+                {/* 20-Second Quiet Progress Bar */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2.5 bg-black/45 rounded-full overflow-hidden border border-white/10">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 to-amber-300 transition-[width] duration-300"
+                      style={{
+                        width:
+                          cageCount >= 20
+                            ? '100%'
+                            : `${Math.min(100, (cageQuietSeconds / 20) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono tabular-nums font-extrabold text-emerald-300 whitespace-nowrap">
+                    {cageCount >= 20
+                      ? 'MAX 20/20'
+                      : `Quiet ${cageQuietSeconds}/20s`}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Stopwatch / Editable Custom Timer Popover */}
             {isTimerMenuOpen && (
@@ -1889,6 +2184,15 @@ export function SleepingHamster({
                           <span>🌻 Yum! Eating a snack before going back to sleep...</span>
                         </>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Hamster Cage Mode Empty / Status Banner */}
+                {hasStarted && gameMode === 'cage' && timerEndPhase === 'idle' && cageCount === 0 && !leavingHamster && (
+                  <div className="absolute top-5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                    <div className="px-5 py-2.5 rounded-2xl bg-rose-500/85 border border-rose-200/70 backdrop-blur-md shadow-xl text-white text-xs sm:text-sm font-black tracking-wide whitespace-nowrap">
+                      😡 Cage Empty! Stay quiet for 20s to bring a hamster back ({cageQuietSeconds}/20s)
                     </div>
                   </div>
                 )}
@@ -2239,7 +2543,251 @@ export function SleepingHamster({
                     />
                   )}
 
-                  {/* LIVING HAMSTER CHARACTER (Click to Pet / Soothe) */}
+                  {/* LIVING CHARACTER LAYER: Original Sleeping Hamster OR Hamster Cage (10 Adults + 10 Babies) */}
+                  {gameMode === 'cage' ? (
+                    <g filter="url(#shSoftShadow)">
+                      {(() => {
+                        const renderMiniHamster = (
+                          slotIdx: number,
+                          slot: CageSlot,
+                          isBaby: boolean,
+                          coatIdx: number,
+                          isLeavingAngry: boolean,
+                          isArriving: boolean
+                        ) => {
+                          const coat = COAT_STYLES[coatIdx % COAT_STYLES.length];
+                          const isNoisyCage =
+                            !isLeavingAngry &&
+                            (isDisturbedFace || isAlmostAwakeFace || sleepState === 'AWAKE');
+                          const flipX = slot.flip ? -1 : 1;
+                          const bodyRx = isBaby ? 84 : 96;
+                          const bodyRy = isBaby ? 78 : 88;
+
+                          return (
+                            <g
+                              key={`cage-hamster-${slotIdx}-${isLeavingAngry ? 'leave' : 'stay'}`}
+                              transform={`translate(${slot.x}, ${slot.y})`}
+                              onClick={isLeavingAngry ? undefined : handlePetHamster}
+                              className={isLeavingAngry ? 'pointer-events-none' : 'cursor-pointer'}
+                            >
+                              <title>
+                                {isBaby
+                                  ? `Baby Hamster #${slotIdx + 1}`
+                                  : `Hamster #${slotIdx + 1}`}
+                              </title>
+                              <g
+                                className={
+                                  isLeavingAngry
+                                    ? 'sh-hamster-leave'
+                                    : isArriving
+                                    ? 'sh-hamster-arrive'
+                                    : 'sh-cage-bob'
+                                }
+                                style={
+                                  !isLeavingAngry && !isArriving
+                                    ? { animationDelay: `${(slotIdx % 7) * 0.28}s` }
+                                    : undefined
+                                }
+                              >
+                                <g
+                                  transform={`scale(${slot.scale * flipX}, ${slot.scale})`}
+                                  className={isLeavingAngry ? 'sh-angry-shake' : undefined}
+                                >
+                                  {/* Ground Shadow */}
+                                  <ellipse cx="0" cy="86" rx="88" ry="18" fill="rgba(16,6,38,0.45)" />
+
+                                  {/* Cute Round Ears */}
+                                  <circle cx="-62" cy="-68" r={isBaby ? 28 : 24} fill={coat.head[1]} stroke="#5c1f08" strokeWidth="5" />
+                                  <circle cx="-61" cy="-66" r={isBaby ? 17 : 14} fill="#f48fb1" />
+                                  <circle cx="62" cy="-68" r={isBaby ? 28 : 24} fill={coat.head[1]} stroke="#5c1f08" strokeWidth="5" />
+                                  <circle cx="61" cy="-66" r={isBaby ? 17 : 14} fill="#f48fb1" />
+
+                                  {/* Chubby Fur Body */}
+                                  <ellipse
+                                    cx="0"
+                                    cy="4"
+                                    rx={bodyRx}
+                                    ry={bodyRy}
+                                    fill={coat.body[1]}
+                                    stroke="#5c1f08"
+                                    strokeWidth="5.5"
+                                  />
+                                  {/* Highlight Belly & Cheek Fur */}
+                                  <ellipse cx="0" cy="24" rx={bodyRx * 0.74} ry={bodyRy * 0.66} fill="#fdf2e9" />
+                                  <ellipse cx="-26" cy="-22" rx="34" ry="20" fill={coat.body[0]} opacity="0.5" />
+
+                                  {/* Baby Hamster Cute Head Accessories (Slots 11..20) */}
+                                  {isBaby && slot.accessory === 'bow' && (
+                                    <g transform="translate(0, -82)">
+                                      <polygon points="-24,-10 0,0 -24,10" fill="#f472b6" stroke="#9d174d" strokeWidth="3.5" strokeLinejoin="round" />
+                                      <polygon points="24,-10 0,0 24,10" fill="#f472b6" stroke="#9d174d" strokeWidth="3.5" strokeLinejoin="round" />
+                                      <circle cx="0" cy="0" r="8" fill="#fbcfe8" stroke="#9d174d" strokeWidth="3" />
+                                    </g>
+                                  )}
+                                  {isBaby && slot.accessory === 'tuft' && (
+                                    <path
+                                      d="M -6 -84 Q 0 -114 14 -92 Q 22 -108 26 -82"
+                                      fill={coat.head[0]}
+                                      stroke="#5c1f08"
+                                      strokeWidth="4.5"
+                                      strokeLinecap="round"
+                                    />
+                                  )}
+
+                                  {/* Rosy Cheeks (Bright Red-Pink when Angry!) */}
+                                  <ellipse
+                                    cx="-52"
+                                    cy="6"
+                                    rx="18"
+                                    ry="11"
+                                    fill={isLeavingAngry ? '#f43f5e' : '#fda4af'}
+                                    opacity={isLeavingAngry ? 0.9 : 0.78}
+                                  />
+                                  <ellipse
+                                    cx="52"
+                                    cy="6"
+                                    rx="18"
+                                    ry="11"
+                                    fill={isLeavingAngry ? '#f43f5e' : '#fda4af'}
+                                    opacity={isLeavingAngry ? 0.9 : 0.78}
+                                  />
+
+                                  {/* Whiskers */}
+                                  <g stroke="#78350f" strokeWidth="3" strokeLinecap="round" opacity="0.6">
+                                    <line x1="-68" y1="0" x2="-98" y2="-8" />
+                                    <line x1="-68" y1="12" x2="-98" y2="16" />
+                                    <line x1="68" y1="0" x2="98" y2="-8" />
+                                    <line x1="68" y1="12" x2="98" y2="16" />
+                                  </g>
+
+                                  {/* FACIAL EXPRESSIONS */}
+                                  {isLeavingAngry ? (
+                                    /* ANGRY FACE BEFORE LEAVING */
+                                    <g>
+                                      {/* Furrowed Angry Eyebrows */}
+                                      <line x1="-52" y1="-40" x2="-16" y2="-22" stroke="#450a0a" strokeWidth="8.5" strokeLinecap="round" />
+                                      <line x1="52" y1="-40" x2="16" y2="-22" stroke="#450a0a" strokeWidth="8.5" strokeLinecap="round" />
+                                      {/* Glaring Eyes */}
+                                      <circle cx="-32" cy="-16" r="11.5" fill="#1c0a00" />
+                                      <circle cx="-36" cy="-20" r="3.8" fill="#ffffff" />
+                                      <circle cx="32" cy="-16" r="11.5" fill="#1c0a00" />
+                                      <circle cx="28" cy="-20" r="3.8" fill="#ffffff" />
+                                      {/* Nose & Scowling Grumpy Mouth */}
+                                      <ellipse cx="0" cy="-2" rx="8" ry="6" fill="#f43f5e" />
+                                      <path
+                                        d="M -20 24 Q 0 8 20 24"
+                                        fill="none"
+                                        stroke="#450a0a"
+                                        strokeWidth="6.5"
+                                        strokeLinecap="round"
+                                      />
+                                      {/* Comic Anger Mark 💢 */}
+                                      <g transform="translate(56, -86) scale(1.25)">
+                                        <path
+                                          d="M -14 -4 Q -4 -4 -4 -14 M 14 -4 Q 4 -4 4 -14 M -14 14 Q -4 14 -4 4 M 14 14 Q 4 14 4 4"
+                                          fill="none"
+                                          stroke="#ef4444"
+                                          strokeWidth="5.5"
+                                          strokeLinecap="round"
+                                        />
+                                      </g>
+                                    </g>
+                                  ) : isNoisyCage ? (
+                                    /* NERVOUS / WORRIED FACE WHEN NOISY */
+                                    <g>
+                                      <line x1="-48" y1="-36" x2="-20" y2="-26" stroke="#5c1f08" strokeWidth="6" strokeLinecap="round" />
+                                      <line x1="48" y1="-36" x2="20" y2="-26" stroke="#5c1f08" strokeWidth="6" strokeLinecap="round" />
+                                      <circle cx="-30" cy="-14" r="12" fill="#2d1206" />
+                                      <circle cx="-34" cy="-19" r="4" fill="#ffffff" />
+                                      <circle cx="30" cy="-14" r="12" fill="#2d1206" />
+                                      <circle cx="26" cy="-19" r="4" fill="#ffffff" />
+                                      <ellipse cx="0" cy="-1" rx="8" ry="6" fill="#f472b6" />
+                                      <ellipse cx="0" cy="18" rx="9" ry="7" fill="#7f1d1d" stroke="#451a03" strokeWidth="3.5" />
+                                      {/* Sweatdrop */}
+                                      <path d="M 62 -46 C 56 -32, 54 -22, 62 -20 C 70 -22, 68 -32, 62 -46 Z" fill="#7dd3fc" stroke="#e0f2fe" strokeWidth="2" />
+                                    </g>
+                                  ) : (
+                                    /* CUTE HAPPY CALM FACE */
+                                    <g>
+                                      <circle cx="-30" cy="-16" r={isBaby ? 13 : 11.5} fill="#2d1206" />
+                                      <circle cx="-34" cy="-21" r="4.5" fill="#ffffff" />
+                                      <circle cx="-26" cy="-12" r="2" fill="#ffffff" opacity="0.8" />
+                                      <circle cx="30" cy="-16" r={isBaby ? 13 : 11.5} fill="#2d1206" />
+                                      <circle cx="26" cy="-21" r="4.5" fill="#ffffff" />
+                                      <circle cx="34" cy="-12" r="2" fill="#ffffff" opacity="0.8" />
+                                      <ellipse cx="0" cy="-2" rx="8" ry="5.5" fill="#f472b6" />
+                                      {isBaby && slot.accessory === 'pacifier' ? (
+                                        <g transform="translate(0, 14)">
+                                          <circle cx="0" cy="0" r="13" fill="#7dd3fc" stroke="#0284c7" strokeWidth="3.5" />
+                                          <circle cx="0" cy="2" r="6" fill="none" stroke="#e0f2fe" strokeWidth="3.5" />
+                                        </g>
+                                      ) : (
+                                        <path
+                                          d="M -16 10 Q -8 18 0 6 Q 8 18 16 10"
+                                          fill="none"
+                                          stroke="#451a03"
+                                          strokeWidth="5"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                      )}
+                                    </g>
+                                  )}
+
+                                  {/* Little Paws */}
+                                  <ellipse cx="-34" cy="58" rx="16" ry="12" fill="#fda4af" stroke="#881337" strokeWidth="3.5" />
+                                  <ellipse cx="34" cy="58" rx="16" ry="12" fill="#fda4af" stroke="#881337" strokeWidth="3.5" />
+                                </g>
+                              </g>
+                            </g>
+                          );
+                        };
+
+                        const adultsCount = Math.min(10, cageCount);
+                        const babiesCount = Math.max(0, cageCount - 10);
+
+                        return (
+                          <g>
+                            {CAGE_ADULT_SLOTS.slice(0, adultsCount).map((slot, idx) =>
+                              renderMiniHamster(
+                                idx,
+                                slot,
+                                false,
+                                coatIndex + idx,
+                                false,
+                                justArrivedSlot === idx
+                              )
+                            )}
+                            {CAGE_BABY_SLOTS.slice(0, babiesCount).map((slot, bIdx) => {
+                              const slotIdx = 10 + bIdx;
+                              return renderMiniHamster(
+                                slotIdx,
+                                slot,
+                                true,
+                                coatIndex + slotIdx,
+                                false,
+                                justArrivedSlot === slotIdx
+                              );
+                            })}
+                            {leavingHamster && (() => {
+                              const slot = leavingHamster.isBaby
+                                ? CAGE_BABY_SLOTS[leavingHamster.slotIndex - 10] || CAGE_BABY_SLOTS[0]
+                                : CAGE_ADULT_SLOTS[leavingHamster.slotIndex] || CAGE_ADULT_SLOTS[0];
+                              return renderMiniHamster(
+                                leavingHamster.slotIndex,
+                                slot,
+                                leavingHamster.isBaby,
+                                leavingHamster.coatIndex,
+                                true,
+                                false
+                              );
+                            })()}
+                          </g>
+                        );
+                      })()}
+                    </g>
+                  ) : (
+                  /* ORIGINAL LIVING SLEEPING HAMSTER CHARACTER (Click to Pet / Soothe) */
                   <g
                     onClick={handlePetHamster}
                     className={`${
@@ -2566,6 +3114,7 @@ export function SleepingHamster({
                       </g>
                     )}
                   </g>
+                  )}
 
                   {/* Edge-to-Edge Foreground Bedding Puffs & Ceramic Food Bowl */}
                   <g>
@@ -2872,19 +3421,48 @@ export function SleepingHamster({
           <div className="bg-[#23144a]/95 border border-purple-300/25 rounded-[2rem] p-7 sm:p-8 max-w-md w-full text-center shadow-[0_30px_80px_rgba(0,0,0,0.7)] relative overflow-hidden">
             <div className="w-44 aspect-[4/3] mx-auto mb-5 rounded-2xl overflow-hidden border-2 border-purple-300/40 shadow-xl">
               <img
-                src="/images/sleeping-hamster-card.jpg?v=1"
-                alt="Sleeping Hamster"
+                src={noiseControlCardImg}
+                alt="Noise Control"
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-cover"
               />
             </div>
 
-            <h1 className="text-3xl font-black text-white tracking-tight mb-2">
-              Sleeping Hamster
+            <h1 className="text-3xl font-black text-white tracking-tight mb-5">
+              Noise Control
             </h1>
-            <p className="text-sm text-purple-200/85 font-medium mb-6 leading-relaxed">
-              Keep your classroom calm and quiet so the little hamster stays fast asleep!
-            </p>
+
+            {/* Choose Game Mode Before Starting */}
+            <div className="grid grid-cols-2 gap-2.5 mb-5">
+              <button
+                type="button"
+                onClick={() => handleSwitchGameMode('sleeping')}
+                className={`py-3 px-3 rounded-2xl border text-center transition cursor-pointer ${
+                  gameMode === 'sleeping'
+                    ? 'bg-purple-500/35 border-purple-300 text-white shadow-md'
+                    : 'bg-white/5 border-white/10 text-purple-200/75 hover:bg-white/10'
+                }`}
+              >
+                <div className="text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 whitespace-nowrap">
+                  <span>😴</span>
+                  <span>Sleeping Hamster</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchGameMode('cage')}
+                className={`py-3 px-3 rounded-2xl border text-center transition cursor-pointer ${
+                  gameMode === 'cage'
+                    ? 'bg-amber-400/25 border-amber-300 text-white shadow-md'
+                    : 'bg-white/5 border-white/10 text-purple-200/75 hover:bg-white/10'
+                }`}
+              >
+                <div className="text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 whitespace-nowrap">
+                  <span>🐹</span>
+                  <span>Hamster Cage</span>
+                </div>
+              </button>
+            </div>
 
             {micError && (
               <div className="mb-4 p-3 rounded-2xl bg-rose-500/20 border border-rose-400/45 text-rose-100 text-xs font-bold flex items-start gap-2 text-left">
@@ -2985,7 +3563,7 @@ export function SleepingHamster({
             <iframe
               key={track.id}
               ref={musicIframeRef}
-              title={`Sleeping Hamster Music ${track.label}`}
+              title={`Noise Control Music ${track.label}`}
               width="320"
               height="240"
               src={embedUrl}

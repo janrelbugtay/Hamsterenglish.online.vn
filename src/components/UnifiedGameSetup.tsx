@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Edit3, Play, Timer, Camera, RefreshCw } from 'lucide-react';
 import { FullscreenButton } from './FullscreenButton';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export interface PlayerModeOption {
   id: string | number;
@@ -94,6 +95,7 @@ const COLOR_SCHEMES = {
 };
 
 export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig }> = ({ config }) => {
+  const { t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -148,7 +150,7 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
         <div className="flex items-center gap-2">
           <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950 flex items-center gap-1.5">
             <Camera size={18} className="text-sky-600 shrink-0" />
-            <span>{config.label || 'AR CAMERA & MOTION TRACKER'}</span>
+            <span>{config.label || t('setup.arCameraTitle')}</span>
           </span>
           <button
             type="button"
@@ -163,10 +165,10 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
                 ? 'bg-emerald-100 hover:bg-emerald-200 border-emerald-300 text-emerald-900'
                 : 'bg-blue-600 hover:bg-blue-500 border-blue-700 text-white'
             }`}
-            title="Retrieve or reconnect your webcam for AR tracking"
+            title={t('setup.retrieveCamera')}
           >
             <RefreshCw size={12} className={cameraLoading ? 'animate-spin' : ''} />
-            <span>{cameraActive ? 'Camera Ready (Refresh)' : 'Retrieve Camera'}</span>
+            <span>{cameraActive ? t('setup.cameraReady') : t('setup.retrieveCamera')}</span>
           </button>
         </div>
 
@@ -186,7 +188,7 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
                   : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
               }`}
             >
-              {isEnabled ? 'CAMERA ON' : 'MOUSE ONLY'}
+              {isEnabled ? t('setup.cameraOn') : t('setup.mouseOnly')}
             </button>
           )}
         </div>
@@ -206,8 +208,8 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
               <span className="text-xs font-bold text-sky-200">
                 {cameraLoading
-                  ? 'Connecting to webcam...'
-                  : 'Click "Retrieve Camera" above to preview live AR tracking (or play with Mouse/Touch)'}
+                  ? t('setup.connectingWebcam')
+                  : t('setup.cameraHelper')}
               </span>
               {!cameraLoading && (
                 <button
@@ -215,7 +217,7 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
                   onClick={retrieveCamera}
                   className="px-3.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-black shadow cursor-pointer"
                 >
-                  📷 Retrieve Camera Now
+                  📷 {t('setup.retrieveCameraNow')}
                 </button>
               )}
             </div>
@@ -263,6 +265,10 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
   onStudy,
   studyLabel = 'STUDY'
 }) => {
+  const { t } = useLanguage();
+  const resolvedTimerTitle = timerTitle === 'Timer (Minutes)' ? t('setup.timerTitle') : timerTitle;
+  const resolvedStartLabel = startLabel === 'START ARENA' ? t('setup.startArena') : startLabel;
+  const resolvedStudyLabel = studyLabel === 'STUDY' ? t('setup.study') : studyLabel;
   const currentMinutes = typeof timerValue === 'number' ? Math.max(1, Math.round(timerValue / 60)) : 3;
   const maxMinutes = Math.max(
     10,
@@ -286,7 +292,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
           className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-sky-50 border-2 border-sky-200 border-b-4 border-b-sky-300 text-slate-900 font-black text-sm shadow-md active:translate-y-0.5 transition-all cursor-pointer whitespace-nowrap"
         >
           <ArrowLeft size={18} className="text-sky-600 shrink-0" />
-          <span>Back</span>
+          <span>{t('setup.back')}</span>
         </button>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -297,7 +303,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
               onClick={onOpenSettings}
               className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 border-t border-amber-200 border-b-4 border-b-amber-600 text-slate-900 font-black text-sm shadow-md active:translate-y-0.5 transition-all cursor-pointer whitespace-nowrap"
             >
-              <span>⚙️ Settings</span>
+              <span>⚙️ {t('setup.settings')}</span>
             </button>
           )}
           {onOpenGameSwitcher && (
@@ -306,7 +312,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
               onClick={onOpenGameSwitcher}
               className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-sky-500 hover:bg-sky-400 border-t border-sky-200 border-b-4 border-b-sky-700 text-white font-black text-sm shadow-md active:translate-y-0.5 transition-all cursor-pointer whitespace-nowrap"
             >
-              <span>🎮 Games</span>
+              <span>🎮 {t('setup.games')}</span>
             </button>
           )}
           {onOpenQuizEditor && (
@@ -316,7 +322,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
               className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-sky-50 border-2 border-sky-200 border-b-4 border-b-sky-300 text-slate-900 font-black text-sm shadow-md active:translate-y-0.5 transition-all cursor-pointer whitespace-nowrap"
             >
               <Edit3 size={16} className="text-sky-600 shrink-0" />
-              <span>Edit Questions{typeof questionCount === 'number' ? ` (${questionCount})` : ''}</span>
+              <span>{t('setup.editQuestions')}{typeof questionCount === 'number' ? ` (${questionCount})` : ''}</span>
             </button>
           )}
           {containerId && (
@@ -330,8 +336,12 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
 
       {/* Centered Minimalist Immersive Setup Stage */}
       <div className="relative z-10 flex flex-col items-center w-full max-w-4xl my-auto">
-        {/* Hero Title */}
-        <h2 className="text-3xl sm:text-5xl font-black text-sky-950 drop-shadow-[0_3px_0_rgba(255,255,255,1)] tracking-tight text-center mb-3.5 uppercase">
+        {/* Hero Title (protected so custom game topics never translate) */}
+        <h2
+          data-no-translate="true"
+          data-game-topic="true"
+          className="text-3xl sm:text-5xl font-black text-sky-950 drop-shadow-[0_3px_0_rgba(255,255,255,1)] tracking-tight text-center mb-3.5 uppercase"
+        >
           {title}
         </h2>
 
@@ -430,17 +440,17 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-sm sm:text-base font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
                   <Timer size={18} className="text-emerald-600 shrink-0" />
-                  <span>{timerTitle}</span>
+                  <span>{resolvedTimerTitle}</span>
                 </span>
                 <span className="px-3.5 py-1 rounded-xl bg-emerald-600 text-white text-xs sm:text-sm font-black tabular-nums shadow-xs">
-                  {timerLabelDisplay || `${currentMinutes} ${currentMinutes === 1 ? 'Minute' : 'Minutes'}`}
+                  {timerLabelDisplay || `${currentMinutes} ${currentMinutes === 1 ? t('setup.minute') : t('setup.minutes')}`}
                 </span>
               </div>
 
               {/* Interactive Minutes Slider */}
               <div className="space-y-1.5 pt-0.5">
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-black text-emerald-800 whitespace-nowrap">1 Min</span>
+                  <span className="text-xs font-black text-emerald-800 whitespace-nowrap">1 {t('setup.minShort')}</span>
                   <input
                     type="range"
                     min={1}
@@ -450,7 +460,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
                     onChange={(e) => onTimerChange(Number(e.target.value) * 60)}
                     className="w-full h-2.5 bg-emerald-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
                   />
-                  <span className="text-xs font-black text-emerald-800 whitespace-nowrap">{maxMinutes} Minutes</span>
+                  <span className="text-xs font-black text-emerald-800 whitespace-nowrap">{maxMinutes} {t('setup.minutes')}</span>
                 </div>
               </div>
 
@@ -478,7 +488,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
                           : 'bg-white hover:bg-emerald-100/70 border-emerald-200 border-b-emerald-300 text-emerald-950'
                       }`}
                     >
-                      {mins} {mins === 1 ? 'Minute' : 'Minutes'}
+                      {mins} {mins === 1 ? t('setup.minute') : t('setup.minutes')}
                     </button>
                   );
                 })}
@@ -497,7 +507,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
               } py-4 bg-gradient-to-b from-emerald-400 via-green-500 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 disabled:opacity-50 text-white font-black text-xl sm:text-2xl rounded-2xl border-t-2 border-emerald-200 border-b-[7px] border-b-emerald-800 shadow-[0_12px_26px_rgba(16,185,129,0.32)] active:translate-y-1 transition-all cursor-pointer flex items-center justify-center gap-3 tracking-wide uppercase`}
             >
               <Play size={26} fill="currentColor" className="drop-shadow shrink-0" />
-              <span>{startLabel}</span>
+              <span>{resolvedStartLabel}</span>
             </button>
 
             {onStudy && (
@@ -507,7 +517,7 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
                 className="sm:col-span-4 py-4 bg-gradient-to-b from-amber-300 via-amber-400 to-orange-400 hover:from-amber-200 hover:to-orange-300 text-slate-950 font-black text-lg sm:text-xl rounded-2xl border-t-2 border-white border-b-[7px] border-b-orange-600 shadow-lg active:translate-y-1 transition-all cursor-pointer flex items-center justify-center gap-2 uppercase"
               >
                 <span>📖</span>
-                <span>{studyLabel}</span>
+                <span>{resolvedStudyLabel}</span>
               </button>
             )}
           </div>

@@ -3,6 +3,7 @@ import { X, Wrench, Camera, Gamepad2, Users, LayoutGrid } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { GameCategoryId } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const mosquitoSlapCardImg = '/images/mosquito-slap-card.jpg?v=3';
 const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg?v=3';
@@ -403,6 +404,7 @@ export function GameModeModal({
   onSelectMode,
   publishedGames: propPublishedGames,
 }: GameModeSelectionModalProps) {
+  const { t } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<'all' | GameCategoryId>('all');
 
   useEffect(() => {
@@ -476,6 +478,7 @@ export function GameModeModal({
 
   if (!isOpen || !gameData) return null;
 
+  const hasCustomTitle = Boolean(gameData.topic || gameData.name || gameData.title);
   const gameTitle = gameData.topic || gameData.name || gameData.title || 'Custom Quiz';
   const originalGameOption =
     publishedOptions.find((opt) => opt.id === originalModeId) ||
@@ -807,7 +810,7 @@ export function GameModeModal({
       />
       {isPrimaryBuiltFor && (
         <div className="absolute top-3.5 left-3.5 z-10 px-3 py-1 rounded-full bg-emerald-600/95 text-white text-xs font-extrabold tracking-tight shadow-md flex items-center gap-1.5">
-          <span>★ Built For This Game</span>
+          <span>★ {t('modal.builtForGame')}</span>
         </div>
       )}
       <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),inset_0_-8px_16px_rgba(15,23,42,0.25)]" />
@@ -834,12 +837,15 @@ export function GameModeModal({
         <div className="px-6 sm:px-8 py-4 flex flex-col gap-3.5 shrink-0 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight truncate">
+              <h2
+                {...(hasCustomTitle ? { 'data-no-translate': 'true', 'data-game-topic': 'true' } : {})}
+                className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight truncate"
+              >
                 {gameTitle}
               </h2>
               {originalGameOption && (
                 <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold whitespace-nowrap shrink-0">
-                  Built for {originalGameOption.title}
+                  {t('modal.builtFor')} <span data-no-translate="true">{originalGameOption.title}</span>
                 </span>
               )}
             </div>
@@ -866,7 +872,7 @@ export function GameModeModal({
                 }`}
               >
                 <LayoutGrid size={15} />
-                <span>All Games</span>
+                <span>{t('home.allGames')}</span>
                 <span className="text-xs opacity-75 tabular-nums">({publishedOptions.length})</span>
               </button>
 
@@ -887,7 +893,7 @@ export function GameModeModal({
                     }`}
                   >
                     <Icon size={15} className={isActive ? 'text-current' : cat.accentText} />
-                    <span>{cat.title}</span>
+                    <span>{t(`home.cat.${cat.id}`, cat.title)}</span>
                     <span className="text-xs opacity-75 tabular-nums">({count})</span>
                   </button>
                 );
@@ -903,7 +909,7 @@ export function GameModeModal({
               <div className="flex items-center gap-2.5">
                 <Gamepad2 size={22} className="text-emerald-600 dark:text-emerald-400" />
                 <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                  Built For This Game · {originalGameOption.title}
+                  {t('modal.builtForGame')} · <span data-no-translate="true">{originalGameOption.title}</span>
                 </h3>
               </div>
 
@@ -920,7 +926,7 @@ export function GameModeModal({
                 <div className="flex items-center gap-2.5">
                   <SectionIcon size={22} className={section.accentText} />
                   <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                    {section.title}
+                    {t(`home.cat.${section.id}`, section.title)}
                   </h3>
                 </div>
 

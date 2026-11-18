@@ -463,11 +463,13 @@ async function startServer() {
           if (!key || deletedUserIds.has(key)) return;
           const prev = usersMap.get(key) || {};
           const bestLogin = Math.max(getTimeMs(prev.lastLoginAt), getTimeMs(u.lastLoginAt));
+          const bestActive = Math.max(getTimeMs(prev.lastActiveAt), getTimeMs(u.lastActiveAt), bestLogin);
           usersMap.set(key, {
             ...prev,
             ...u,
             photoURL: u.photoURL || prev.photoURL || null,
-            lastLoginAt: bestLogin > 0 ? bestLogin : prev.lastLoginAt || u.lastLoginAt || Date.now(),
+            lastLoginAt: bestLogin > 0 ? bestLogin : prev.lastLoginAt || u.lastLoginAt || null,
+            ...(bestActive > 0 ? { lastActiveAt: bestActive } : {}),
           });
         });
       }
@@ -4958,12 +4960,34 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
     }
   >();
 
-  function getOrCreatePaintballRoom(rawCode: string) {
-    const cleanCode = String(rawCode || "")
+  const ROOM_ACTIVE_TTL_MS = 30 * 60 * 1000;
+
+  function normalizeRoomCodeParam(rawCode: string) {
+    return String(rawCode || "")
       .trim()
       .toUpperCase()
       .replace(/[^0-9A-Z]/g, "")
       .slice(0, 6);
+  }
+
+  function isPaintballRoomActive(entry: { room: Record<string, any> } | undefined): boolean {
+    if (!entry || !entry.room) return false;
+    if (entry.room.isUninitialized || entry.room.hostClosed) return false;
+    const lastHeartbeat = Number(entry.room.hostHeartbeatAt || entry.room.updatedAt || 0);
+    if (!lastHeartbeat || Date.now() - lastHeartbeat > ROOM_ACTIVE_TTL_MS) return false;
+    return true;
+  }
+
+  function getExistingPaintballRoom(rawCode: string) {
+    const cleanCode = normalizeRoomCodeParam(rawCode);
+    if (!cleanCode) return null;
+    const entry = paintballRoomsMemory.get(cleanCode);
+    if (!isPaintballRoomActive(entry)) return null;
+    return entry!;
+  }
+
+  function getOrCreatePaintballRoom(rawCode: string) {
+    const cleanCode = normalizeRoomCodeParam(rawCode);
     if (!cleanCode) return null;
     let entry = paintballRoomsMemory.get(cleanCode);
     if (!entry) {
@@ -4981,6 +5005,8 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
           ballsPerQuestion: 10,
           matchEpoch: 0,
           isUninitialized: true,
+          hostClosed: false,
+          hostHeartbeatAt: 0,
           updatedAt: Date.now()
         },
         players: new Map(),
@@ -5065,11 +5091,21 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
     };
   }
 
-  // GET /api/paintball/room/:code -> Fetch room configuration, all joined players & combat ring buffer
+  // GET /api/paintball/room/:code -> Fetch room configuration, all joined players & combat ring buffer (only if actively hosted!)
   app.get("/api/paintball/room/:code", (req, res) => {
-    const entry = getOrCreatePaintballRoom(req.params.code);
-    if (!entry) return res.status(400).json({ error: "Invalid room code" });
-    res.json(serializePaintballRoom(entry));
+    const cleanCode = normalizeRoomCodeParam(req.params.code);
+    if (!cleanCode) return res.status(400).json({ error: "Invalid room code", exists: false });
+    const entry = getExistingPaintballRoom(cleanCode);
+    if (!entry) {
+      return res.json({
+        exists: false,
+        serverNow: Date.now(),
+        room: { roomCode: cleanCode, isUninitialized: true, hostClosed: false },
+        players: [],
+        events: []
+      });
+    }
+    res.json({ exists: true, ...serializePaintballRoom(entry) });
   });
 
   // POST /api/paintball/room/:code/room -> Host updates room settings, status, timer, or bulk player spawn positions
@@ -5080,6 +5116,18 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
     const now = Date.now();
     const { room: roomPatch, players: playersPatch, combatEvents, events } = req.body || {};
     if (roomPatch && typeof roomPatch === "object") {
+      if (roomPatch.hostClosed === true) {
+        entry.room = {
+          ...entry.room,
+          ...roomPatch,
+          roomCode: entry.room.roomCode,
+          isUninitialized: true,
+          hostClosed: true,
+          updatedAt: now
+        };
+        return res.json({ exists: false, ...serializePaintballRoom(entry) });
+      }
+
       const nextEpoch =
         typeof roomPatch.matchEpoch === "number" && roomPatch.matchEpoch > 0
           ? roomPatch.matchEpoch
@@ -5103,6 +5151,8 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         matchEpoch: Math.max(entry.room.matchEpoch || 0, nextEpoch),
         roomCode: entry.room.roomCode,
         isUninitialized: false,
+        hostClosed: false,
+        hostHeartbeatAt: now,
         updatedAt: now
       };
     }
@@ -5133,15 +5183,29 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       appendPaintballRoomEvents(entry, incomingRoomEvents);
     }
 
-    res.json(serializePaintballRoom(entry));
+    res.json({ exists: isPaintballRoomActive(entry), ...serializePaintballRoom(entry) });
   });
 
   // POST /api/paintball/room/:code/player -> Student joins/heartbeats state OR Host updates/moves/kicks a player
   app.post("/api/paintball/room/:code/player", (req, res) => {
-    const entry = getOrCreatePaintballRoom(req.params.code);
-    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+    const cleanCode = normalizeRoomCodeParam(req.params.code);
+    if (!cleanCode) return res.status(400).json({ error: "Invalid room code" });
 
     const body = req.body || {};
+    const isHostAction = Boolean(body.isHostAction);
+    const verifiedFirestoreHost = Boolean(body.verifiedFirestoreHost && body.roomState);
+
+    let entry = getExistingPaintballRoom(cleanCode);
+    if (!entry && (isHostAction || verifiedFirestoreHost)) {
+      entry = getOrCreatePaintballRoom(cleanCode);
+    }
+    if (!entry) {
+      return res.status(404).json({
+        error: "Room not found or host is not active",
+        roomNotFound: true
+      });
+    }
+
     const playerData = body.player || body;
     const playerId = String(playerData.id || "").trim();
     if (!playerId) {
@@ -5150,7 +5214,6 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
 
     const now = Date.now();
     const existing = entry.players.get(playerId) || {};
-    const isHostAction = Boolean(body.isHostAction);
 
     // Preserve Host's team override or kick state until acknowledged
     const hostOverrideAt = isHostAction
@@ -5352,13 +5415,53 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
   });
   // Support sendBeacon POST leave on mobile tab close
   app.post("/api/paintball/room/:code/player/:playerId/leave", (req, res) => {
-    const entry = getOrCreatePaintballRoom(req.params.code);
-    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+    const entry = getExistingPaintballRoom(req.params.code);
+    if (!entry) return res.json({ ok: true });
     const playerId = String(req.params.playerId || "").trim();
     if (playerId) {
       entry.players.delete(playerId);
     }
     res.json({ ok: true });
+  });
+
+  // Tic-Tac-Toe hosted room validation registry (authoritative check alongside Firestore `ttt_rooms`)
+  const tttRoomsMemory = new Map<
+    string,
+    { roomCode: string; status: string; closed: boolean; updatedAt: number }
+  >();
+
+  app.get("/api/tictactoe/room/:code", (req, res) => {
+    const cleanCode = normalizeRoomCodeParam(req.params.code);
+    if (!cleanCode) return res.status(400).json({ exists: false, error: "Invalid room code" });
+    const entry = tttRoomsMemory.get(cleanCode);
+    const isFresh =
+      entry &&
+      !entry.closed &&
+      entry.status &&
+      entry.status !== "SETUP" &&
+      Date.now() - entry.updatedAt < ROOM_ACTIVE_TTL_MS;
+    if (!isFresh) {
+      return res.json({ exists: false, roomCode: cleanCode });
+    }
+    return res.json({ exists: true, roomCode: entry.roomCode, status: entry.status });
+  });
+
+  app.post("/api/tictactoe/room/:code", (req, res) => {
+    const cleanCode = normalizeRoomCodeParam(req.params.code);
+    if (!cleanCode) return res.status(400).json({ error: "Invalid room code" });
+    const { status, closed } = req.body || {};
+    if (closed) {
+      tttRoomsMemory.delete(cleanCode);
+      return res.json({ exists: false, roomCode: cleanCode });
+    }
+    const nextStatus = String(status || "LOBBY");
+    tttRoomsMemory.set(cleanCode, {
+      roomCode: cleanCode,
+      status: nextStatus,
+      closed: nextStatus === "SETUP",
+      updatedAt: Date.now(),
+    });
+    return res.json({ exists: nextStatus !== "SETUP", roomCode: cleanCode, status: nextStatus });
   });
 
   // Vite middleware for development

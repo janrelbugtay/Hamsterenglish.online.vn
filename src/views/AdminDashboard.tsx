@@ -13,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { examineUserThreat, categorizeThreats, SUPER_ADMIN_EMAIL, ThreatReport } from '../utils/threatDetector';
 import { UserActivityModal } from '../components/UserActivityModal';
 import { AdminActivityGamesView } from '../components/AdminActivityGamesView';
-import { UserActivityEvent } from '../utils/activityTracker';
+import { UserActivityEvent, formatRelativeTime } from '../utils/activityTracker';
 import {
   isRegisteredUser,
   mergePlatformUsers,
@@ -26,27 +26,43 @@ import {
   getUserCreatedGames,
   markUserDeleted,
 } from '../utils/platformCache';
+import noiseControlCardImg from '../assets/images/noise_control_card_1795022921714.jpg';
+
+// Helper to safely parse timestamps into epoch milliseconds
+const getTimestampMillis = (val: any): number => {
+  if (!val) return 0;
+  try {
+    if (typeof val.toMillis === 'function') return val.toMillis();
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      const parsed = new Date(val).getTime();
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    if (val?.seconds) return val.seconds * 1000;
+    if (val instanceof Date) return val.getTime();
+  } catch {}
+  return 0;
+};
 
 // Helper to safely format last login timestamps
 const formatLastLogin = (lastLoginAt: any) => {
-  if (!lastLoginAt) return 'N/A';
+  const ms = getTimestampMillis(lastLoginAt);
+  if (!ms) return 'No login recorded';
   try {
-    if (lastLoginAt.toMillis) {
-      return new Date(lastLoginAt.toMillis()).toLocaleString();
-    }
-    if (typeof lastLoginAt === 'number') {
-      return new Date(lastLoginAt).toLocaleString();
-    }
-    if (typeof lastLoginAt === 'string') {
-      return new Date(lastLoginAt).toLocaleString();
-    }
-    if (lastLoginAt?.seconds) {
-      return new Date(lastLoginAt.seconds * 1000).toLocaleString();
-    }
+    return new Date(ms).toLocaleString();
   } catch (e) {
     console.error("Date formatting error:", e);
   }
   return 'Recently';
+};
+
+const getAuthProviderBadgeLabel = (user: any, isAdminUser: boolean) => {
+  if (isAdminUser) return 'Google · Admin';
+  if (!isRegisteredUser(user)) return 'Guest';
+  const p = String(user?.authProvider || '').toLowerCase();
+  if (p === 'email' || p === 'password') return 'Email';
+  if (p === 'facebook') return 'Facebook';
+  return 'Google';
 };
 
 // --- UI COMPONENTS ---
@@ -122,15 +138,60 @@ const StatCard = ({ title, value, subtitle, trend, icon: Icon, tone = 'blue', hi
   );
 };
 
+const AVATAR_TONES = [
+  'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300',
+  'bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300',
+  'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
+  'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300',
+  'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
+];
+
+const getInitials = (label: string) => {
+  const clean = String(label || 'User').trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase() || 'U';
+};
+
 const Avatar = ({ src, alt, size = 'md' }: any) => {
-  const sizes: any = { sm: 'w-8 h-8', md: 'w-10 h-10', lg: 'w-16 h-16', xl: 'w-24 h-24' };
+  const [imgError, setImgError] = useState(false);
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
+  const sizes: any = {
+    sm: 'w-8 h-8 text-xs',
+    md: 'w-10 h-10 text-sm',
+    lg: 'w-16 h-16 text-xl',
+    xl: 'w-24 h-24 text-2xl',
+  };
+
+  const label = String(alt || 'User');
+  const toneIndex =
+    label.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % AVATAR_TONES.length;
+
+  if (!src || imgError) {
+    return (
+      <div
+        aria-label={label}
+        title={label}
+        className={`${sizes[size]} rounded-full border-2 border-white dark:border-slate-700 shadow-sm flex items-center justify-center font-bold shrink-0 select-none ${AVATAR_TONES[toneIndex]}`}
+      >
+        {getInitials(label)}
+      </div>
+    );
+  }
+
   return (
     <img 
       src={src} 
       alt={alt} 
       referrerPolicy="no-referrer"
       className={`${sizes[size]} rounded-full border-2 border-white dark:border-slate-700 shadow-sm object-cover bg-slate-100 dark:bg-slate-700 shrink-0`}
-      onError={(e: any) => { e.target.src = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(alt || 'User'); }}
+      onError={() => setImgError(true)}
     />
   );
 };
@@ -142,7 +203,7 @@ const APP_GAMES = [
   { id: "flashcards-match", title: "Flashcard", category: "Classroom Tools", imageUrl: "/images/flashcards-card-v3.jpg?v=3", icon: "🃏" },
   { id: "hamster-pop-quiz", title: "Video Quiz", category: "Classroom Tools", imageUrl: "/images/video-quiz-card-v3.jpg?v=3", icon: "🎬" },
   { id: "phonemic-master", title: "Phonemic Master", category: "Classroom Tools", imageUrl: "/images/phonemic-master-card-v3.jpg?v=3", icon: "🗣️" },
-  { id: "sleeping-hamster", title: "Sleeping Hamster", category: "Classroom Tools", imageUrl: "/images/sleeping-hamster-card.jpg?v=1", icon: "🐹" },
+  { id: "sleeping-hamster", title: "Noise Control", category: "Classroom Tools", imageUrl: noiseControlCardImg, icon: "🐹" },
   // AR Camera Games
   { id: "slap-and-chop", title: "Mosquito Slap", category: "AR Camera Games", imageUrl: "/images/mosquito-slap-card.jpg?v=3", icon: "🦟" },
   { id: "bubble-pop", title: "Bubble Pop", category: "AR Camera Games", imageUrl: "/images/bubble-pop-card.jpg?v=3", icon: "🫧" },
@@ -176,6 +237,7 @@ const DashboardOverview = ({
   onNavigateToRoute
 }: any) => {
   const [showGuestModal, setShowGuestModal] = React.useState(false);
+  const [recentFilter, setRecentFilter] = React.useState<'all' | 'registered' | 'guests' | 'threats'>('all');
   const registeredUsersList = users.filter((u: any) => isRegisteredUser(u));
   const registeredUsers = registeredUsersList.length;
   const guestUsersList = users.filter((u: any) => !isRegisteredUser(u));
@@ -186,6 +248,40 @@ const DashboardOverview = ({
 
   const threatStats = useMemo(() => categorizeThreats(users), [users]);
   const highThreatExample = threatStats.critical[0]?.user;
+
+  const sortedRecentPool = useMemo(() => {
+    return [...users].sort((a: any, b: any) => {
+      const aTime = getTimestampMillis(a.lastLoginAt) || getTimestampMillis(a.lastActiveAt);
+      const bTime = getTimestampMillis(b.lastLoginAt) || getTimestampMillis(b.lastActiveAt);
+      return bTime - aTime;
+    });
+  }, [users]);
+
+  const filteredRecentUsers = useMemo(() => {
+    return sortedRecentPool.filter((u: any) => {
+      if (recentFilter === 'registered') return isRegisteredUser(u);
+      if (recentFilter === 'guests') return !isRegisteredUser(u);
+      if (recentFilter === 'threats') {
+        const lvl = examineUserThreat(u).level;
+        return lvl === 'critical' || lvl === 'high' || lvl === 'medium';
+      }
+      return true;
+    });
+  }, [sortedRecentPool, recentFilter]);
+
+  const visibleRecentUsers = useMemo(
+    () => filteredRecentUsers.slice(0, 10),
+    [filteredRecentUsers]
+  );
+
+  const recentThreatCount = useMemo(
+    () =>
+      sortedRecentPool.filter((u: any) => {
+        const lvl = examineUserThreat(u).level;
+        return lvl === 'critical' || lvl === 'high' || lvl === 'medium';
+      }).length,
+    [sortedRecentPool]
+  );
 
   const appCategories = [
     'Classroom Tools',
@@ -431,109 +527,177 @@ const DashboardOverview = ({
       {/* Mini Live Users Table */}
       <Card 
         title="Recent Users" 
+        subtitle={`Showing ${visibleRecentUsers.length} of ${filteredRecentUsers.length} · ${registeredUsers} registered · ${guestUsers} guest${guestUsers === 1 ? '' : 's'} · Sorted by latest login`}
         action={
           <div className="flex items-center gap-3">
             <button 
               onClick={onSync}
               disabled={isSyncing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw size={14} className={isSyncing ? "animate-spin text-indigo-600" : ""} />
               <span>{isSyncing ? "Syncing..." : "Sync Users"}</span>
             </button>
             <button 
               onClick={onViewAll}
-              className="text-sm text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+              className="text-sm text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
             >
               View All
             </button>
           </div>
         }
       >
+        {/* Quick Filter Bar */}
+        <div className="flex flex-wrap items-center gap-1.5 pb-4 mb-2 border-b border-slate-100 dark:border-slate-700/60">
+          {[
+            { id: 'all', label: `All (${users.length})` },
+            { id: 'registered', label: `Registered (${registeredUsers})` },
+            { id: 'guests', label: `Guests (${guestUsers})` },
+            { id: 'threats', label: `Flagged (${recentThreatCount})` },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setRecentFilter(tab.id as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                recentFilter === tab.id
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 dark:bg-slate-700/60 dark:text-slate-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="overflow-x-auto -mx-6">
-          <table className="w-full text-left text-sm min-w-[700px]">
+          <table className="w-full text-left text-sm min-w-[740px]">
             <thead className="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50">
               <tr>
                 <th className="py-3 px-6 font-medium">User</th>
-                <th className="py-3 px-6 font-medium">Email & Threat Status</th>
+                <th className="py-3 px-6 font-medium">Email & Account Status</th>
                 <th className="py-3 px-6 font-medium text-center">My Games</th>
                 <th className="py-3 px-6 font-medium text-right">Last Login</th>
                 <th className="py-3 px-6 font-medium text-right">Admin Inspection</th>
               </tr>
             </thead>
             <tbody>
-              {users.slice(0, 10).map((user: any) => {
+              {visibleRecentUsers.map((user: any) => {
                 const threat = examineUserThreat(user);
                 const uid = user.uid || user.id;
+                const registered = isRegisteredUser(user);
                 const userCreatedGames = getUserCreatedGames(user, games, activities);
+                const loginMs = getTimestampMillis(user.lastLoginAt);
+                const activeMs = getTimestampMillis(user.lastActiveAt);
+                const providerLabel = getAuthProviderBadgeLabel(user, threat.isSuperAdmin);
 
                 return (
                   <tr 
                     key={uid} 
                     onClick={() => onInspectUserActivity && onInspectUserActivity(user)}
-                    className="border-b border-slate-50 dark:border-slate-700/40 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
+                    className="border-b border-slate-100 dark:border-slate-700/40 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
                   >
-                    <td className="py-3 px-6">
+                    <td className="py-3.5 px-6">
                       <div className="flex items-center gap-3">
-                        <Avatar src={user.photoURL} alt={user.displayName || user.email} size="sm" />
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <p className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{user.displayName || 'User'}</p>
+                        <Avatar src={user.photoURL} alt={user.displayName || user.email || 'Guest'} size="sm" />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate max-w-[180px]">
+                              {user.displayName || (registered ? 'Teacher' : 'Guest Player')}
+                            </p>
                             {threat.isSuperAdmin && (
-                              <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-bold">Admin</span>
+                              <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-bold shrink-0">Admin</span>
+                            )}
+                            {!registered && (
+                              <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded font-bold shrink-0">Guest</span>
                             )}
                           </div>
-                          {!isRegisteredUser(user) && (
-                            <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">Guest</span>
-                          )}
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                            {providerLabel}
+                          </p>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-6 text-slate-600 dark:text-slate-400">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate max-w-[200px]">{user.email || 'No email'}</span>
+                    <td className="py-3.5 px-6 text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="truncate max-w-[210px] font-medium text-slate-700 dark:text-slate-300">
+                          {registered ? (user.email || 'No email') : 'Guest session (no email)'}
+                        </span>
                         {threat.level === 'critical' || threat.level === 'high' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 flex items-center gap-1 whitespace-nowrap">
                             <ShieldAlert size={12} /> Threat: {threat.primaryThreat}
                           </span>
                         ) : threat.level === 'medium' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 flex items-center gap-1 whitespace-nowrap">
                             <AlertTriangle size={12} /> Suspicious
                           </span>
                         ) : threat.isSuperAdmin ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 flex items-center gap-1 whitespace-nowrap">
                             <ShieldCheck size={12} /> Protected
                           </span>
+                        ) : !registered ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/50 whitespace-nowrap">
+                            Guest Session
+                          </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                            Clean
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 flex items-center gap-1 whitespace-nowrap">
+                            <CheckCircle2 size={11} /> Verified Clean
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="py-3 px-6 text-center">
+                    <td className="py-3.5 px-6 text-center whitespace-nowrap">
                       {userCreatedGames.length > 0 ? (
                         <span 
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 whitespace-nowrap"
                           title={`${userCreatedGames.length} games created by this user`}
                         >
                           <Gamepad2 size={12} />
                           <span>{userCreatedGames.length} Game{userCreatedGames.length === 1 ? '' : 's'}</span>
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-400 font-medium">0 games</span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs text-slate-500 dark:text-slate-400 bg-slate-100/80 dark:bg-slate-800 font-medium whitespace-nowrap">
+                          0 games
+                        </span>
                       )}
                     </td>
-                    <td className="py-3 px-6 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {formatLastLogin(user.lastLoginAt)}
+                    <td className="py-3.5 px-6 text-right whitespace-nowrap">
+                      {loginMs > 0 ? (
+                        <div className="inline-flex flex-col items-end">
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                            {formatRelativeTime(loginMs)}
+                          </span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
+                            {formatLastLogin(loginMs)}
+                          </span>
+                          {activeMs > loginMs + 60000 && (
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                              Active {formatRelativeTime(activeMs)}
+                            </span>
+                          )}
+                        </div>
+                      ) : activeMs > 0 ? (
+                        <div className="inline-flex flex-col items-end">
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                            Active {formatRelativeTime(activeMs)}
+                          </span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                            No direct login recorded
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">
+                          No login recorded
+                        </span>
+                      )}
                     </td>
-                    <td className="py-3 px-6 text-right whitespace-nowrap">
+                    <td className="py-3.5 px-6 text-right whitespace-nowrap">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onInspectUserActivity) onInspectUserActivity(user);
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all border border-indigo-200 dark:border-indigo-800 shadow-sm"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all border border-indigo-200 dark:border-indigo-800 shadow-sm cursor-pointer"
                         title="View user activity & created games"
                       >
                         <Eye size={13} />
@@ -543,10 +707,16 @@ const DashboardOverview = ({
                   </tr>
                 );
               })}
-              {users.length === 0 && (
+              {visibleRecentUsers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-slate-500 dark:text-slate-400">
-                    No users found. Click <span className="font-semibold text-indigo-600 dark:text-indigo-400">Sync Users</span> to refresh.
+                  <td colSpan={5} className="py-8 text-center text-slate-500 dark:text-slate-400">
+                    {users.length === 0 ? (
+                      <>
+                        No users found. Click <span className="font-semibold text-indigo-600 dark:text-indigo-400">Sync Users</span> to refresh.
+                      </>
+                    ) : (
+                      <>No users match this filter.</>
+                    )}
                   </td>
                 </tr>
               )}
@@ -565,24 +735,51 @@ const DashboardOverview = ({
             >
               <X size={20} />
             </button>
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-3 mb-5">
               <div className="p-3 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl">
                 <User size={24} />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">Guest Players</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{guestUsers} anonymous accounts</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{guestUsers} guest session{guestUsers === 1 ? '' : 's'} recorded</p>
               </div>
             </div>
             
-            <div className="max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-              <div className="flex flex-wrap gap-2">
-                {guestUsersList.map((u: any, i: number) => (
-                  <span key={i} className="px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm font-medium rounded-lg border border-amber-100 dark:border-amber-500/20">
-                    {u.displayName || 'Guest Player'}
-                  </span>
-                ))}
-              </div>
+            <div className="max-h-[60vh] overflow-y-auto custom-scrollbar pr-1 space-y-2">
+              {guestUsersList.length > 0 ? guestUsersList.map((u: any, i: number) => {
+                const guestGamesCount = getUserCreatedGames(u, games, activities).length;
+                const guestLoginMs = getTimestampMillis(u.lastLoginAt) || getTimestampMillis(u.lastActiveAt);
+                return (
+                  <button
+                    key={u.uid || u.id || i}
+                    type="button"
+                    onClick={() => {
+                      setShowGuestModal(false);
+                      if (onInspectUserActivity) onInspectUserActivity(u);
+                    }}
+                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-500/10 hover:bg-amber-100/80 dark:hover:bg-amber-500/20 border border-amber-200/70 dark:border-amber-500/20 text-left transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar src={u.photoURL} alt={u.displayName || 'Guest'} size="sm" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                          {u.displayName || 'Guest Player'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {guestLoginMs > 0 ? `Seen ${formatRelativeTime(guestLoginMs)}` : 'Guest session'}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
+                      {guestGamesCount} game{guestGamesCount === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                );
+              }) : (
+                <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-6">
+                  No guest sessions recorded yet.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -1124,13 +1321,15 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
                                 Super Admin
                               </span>
                             )}
-                            {user.isAnonymous && (
+                            {!isRegisteredUser(user) && (
                               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] font-bold tracking-wide uppercase">
                                 Guest
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400 font-mono truncate max-w-[140px]">{uid}</p>
+                          <p className="text-[11px] text-slate-400 font-mono truncate max-w-[160px]">
+                            {getAuthProviderBadgeLabel(user, isSuperAdmin)} · {uid}
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -1140,9 +1339,9 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                            {user.email || 'No email attached'}
+                            {isRegisteredUser(user) ? (user.email || 'No email attached') : 'Guest session (no email)'}
                           </span>
-                          {user.email && (
+                          {user.email && isRegisteredUser(user) && (
                             <button
                               onClick={() => handleCopy(user.email)}
                               className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
@@ -1177,6 +1376,10 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-medium">
                             <ShieldCheck size={13} /> Protected Account
                           </span>
+                        ) : !isRegisteredUser(user) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-semibold">
+                            Guest Session
+                          </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-xs text-slate-400 font-medium">
                             <CheckCircle2 size={13} className="text-emerald-500" /> Verified Clean
@@ -1204,24 +1407,42 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
                     </td>
 
                     {/* User's Created Games */}
-                    <td className="py-3.5 px-4 text-center">
+                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
                       {userCreatedGames.length > 0 ? (
                         <button
                           onClick={() => onInspectUserActivity && onInspectUserActivity(user)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 transition-colors shadow-sm"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 transition-colors shadow-sm whitespace-nowrap"
                           title="Click to view user's created games and activity"
                         >
                           <Gamepad2 size={12} />
                           <span>{userCreatedGames.length} Game{userCreatedGames.length === 1 ? '' : 's'}</span>
                         </button>
                       ) : (
-                        <span className="text-xs text-slate-400 font-medium">0</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">0</span>
                       )}
                     </td>
 
                     {/* Last Login */}
                     <td className="py-3.5 px-4 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap text-xs">
-                      {formatLastLogin(user.lastLoginAt)}
+                      {getTimestampMillis(user.lastLoginAt) > 0 ? (
+                        <div className="inline-flex flex-col items-end">
+                          <span className="font-semibold text-slate-700 dark:text-slate-200">
+                            {formatRelativeTime(user.lastLoginAt)}
+                          </span>
+                          <span className="text-[11px] text-slate-400 tabular-nums">
+                            {formatLastLogin(user.lastLoginAt)}
+                          </span>
+                        </div>
+                      ) : getTimestampMillis(user.lastActiveAt) > 0 ? (
+                        <div className="inline-flex flex-col items-end">
+                          <span className="font-semibold text-slate-600 dark:text-slate-300">
+                            Active {formatRelativeTime(user.lastActiveAt)}
+                          </span>
+                          <span className="text-[11px] text-slate-400">No login recorded</span>
+                        </div>
+                      ) : (
+                        <span>No login recorded</span>
+                      )}
                     </td>
 
                     {/* Actions */}
@@ -1573,10 +1794,13 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
     setIsSyncing(true);
     setSyncMessage(null);
     try {
-      // Ensure currentUser document exists and is up to date if signed in
+      // Ensure currentUser profile exists in Firestore without overwriting real lastLoginAt with Sync time
       if (currentUser) {
         try {
           const userRef = doc(db, 'users', currentUser.uid);
+          const realSignInMs = currentUser.metadata?.lastSignInTime
+            ? new Date(currentUser.metadata.lastSignInTime).getTime()
+            : 0;
           await safeFirestoreWrite(() =>
             setDoc(userRef, {
               uid: currentUser.uid,
@@ -1584,7 +1808,7 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
               displayName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
               photoURL: currentUser.photoURL || null,
               isAnonymous: currentUser.isAnonymous,
-              lastLoginAt: serverTimestamp(),
+              ...(realSignInMs > 0 && !isNaN(realSignInMs) ? { lastLoginAt: realSignInMs } : {}),
             }, { merge: true })
           );
         } catch (profileErr: any) {
@@ -1611,13 +1835,14 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       const fetchedUsers: any[] = [];
       usersSnap.forEach((docSnap: any) => {
         const data = docSnap.data();
+        const signInFallback =
+          currentUser && docSnap.id === currentUser.uid && currentUser.metadata?.lastSignInTime
+            ? new Date(currentUser.metadata.lastSignInTime).getTime()
+            : null;
         fetchedUsers.push({
           id: docSnap.id,
           ...data,
-          // If serverTimestamp() in memoryLocalCache hasn't resolved yet, preserve current time for currentUser
-          lastLoginAt:
-            data.lastLoginAt ||
-            (currentUser && docSnap.id === currentUser.uid ? Date.now() : null),
+          lastLoginAt: data.lastLoginAt || signInFallback,
         });
       });
 
@@ -1722,12 +1947,14 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
       const usersData: any[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        const signInFallback =
+          currentUser && docSnap.id === currentUser.uid && currentUser.metadata?.lastSignInTime
+            ? new Date(currentUser.metadata.lastSignInTime).getTime()
+            : null;
         usersData.push({
           id: docSnap.id,
           ...data,
-          lastLoginAt:
-            data.lastLoginAt ||
-            (currentUser && docSnap.id === currentUser.uid ? Date.now() : null),
+          lastLoginAt: data.lastLoginAt || signInFallback,
         });
       });
 

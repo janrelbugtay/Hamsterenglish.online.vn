@@ -1,6 +1,8 @@
 import React from 'react';
 import { Gamepad2, Sparkles, HelpCircle, CheckCircle2, Gift, Trophy, Zap, Play } from 'lucide-react';
 
+import noiseControlCardImg from '../assets/images/noise_control_card_1795022921714.jpg';
+
 const hamsterPaintballCardImg = '/images/hamster-paintball-card.jpg';
 
 export interface GameThumbnailProps {
@@ -430,7 +432,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
     'sumo-tags': '/images/sumo-tags-card.jpg?v=3',
     'hamster-paintball': '/images/hamster-paintball-card.jpg?v=3',
     'tic-tac-toe': '/images/tic-tac-toe-card.jpg?v=3',
-    'sleeping-hamster': '/images/sleeping-hamster-card.jpg?v=1',
+    'sleeping-hamster': noiseControlCardImg,
   };
 
   const resolvedCardImg =
@@ -518,14 +520,14 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         {/* If MCQ mode, show the real question prompt cloud */}
         {isMcq && (
           <div className="relative z-10 mx-auto w-full bg-white/95 rounded-xl px-2.5 py-1.5 shadow-xs border border-white/80 text-center">
-            <p className="text-[11px] font-extrabold text-slate-800 line-clamp-1 leading-tight">
+            <p data-quiz-question="true" className="text-[11px] font-extrabold text-slate-800 line-clamp-1 leading-tight">
               {firstQuestion}
             </p>
           </div>
         )}
 
         {/* Floating Glossy Word Bubbles showing exact words/options from the game */}
-        <div className="relative flex-1 my-1">
+        <div data-quiz-question="true" className="relative flex-1 my-1">
           {displayBubbles.map((word, idx) => (
             <div
               key={idx}
@@ -541,13 +543,13 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         {/* Sandy Island Wave & Sentence Tray at Bottom showing exact sentence */}
         <div className="relative z-10 w-full bg-white/90 rounded-2xl p-2 border border-white/90 shadow-xs">
           <div className="flex items-center justify-between gap-1.5 mb-1">
-            <span className="text-[9px] font-black uppercase tracking-wider text-sky-800/80 truncate">
+            <span data-no-translate="true" data-game-topic="true" className="text-[9px] font-black uppercase tracking-wider text-sky-800/80 truncate">
               {cleanTitle}
             </span>
             <span className="text-xs leading-none">{emojis[1]}</span>
           </div>
           <div className="bg-sky-950/10 rounded-lg px-2 py-1 flex items-center gap-1 overflow-hidden">
-            <span className="text-[11px] font-bold text-slate-800 truncate">
+            <span data-quiz-question="true" className="text-[11px] font-bold text-slate-800 truncate">
               "{isMcq ? (secondQuestion || firstQuestion) : firstSentenceText}"
             </span>
           </div>
@@ -595,17 +597,17 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-cyan-300 truncate">
+            <div data-no-translate="true" data-game-topic="true" className="text-[9px] font-bold uppercase tracking-wider text-cyan-300 truncate">
               {cleanTitle}
             </div>
-            <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
+            <p data-quiz-question="true" className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
               {firstQuestion}
             </p>
           </div>
         </div>
 
         {/* Floating Answer Bubbles with exact options from the game */}
-        <div className="relative z-10 grid grid-cols-2 gap-1.5 pt-0.5">
+        <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-1.5 pt-0.5">
           {options.slice(0, 4).map((opt, idx) => {
             const isCorrect = idx === answerIndex;
             return (
@@ -650,17 +652,17 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
             🧤
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-purple-300 truncate">
+            <div data-no-translate="true" data-game-topic="true" className="text-[9px] font-bold uppercase tracking-wider text-purple-300 truncate">
               {cleanTitle}
             </div>
-            <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
+            <p data-quiz-question="true" className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
               {firstQuestion}
             </p>
           </div>
         </div>
 
         {/* Floating Mosquito Answer Options */}
-        <div className="relative z-10 grid grid-cols-2 gap-1.5 pt-0.5">
+        <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-1.5 pt-0.5">
           {options.slice(0, 4).map((opt, idx) => {
             const isCorrect = idx === answerIndex;
             return (
@@ -706,10 +708,10 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         {/* Question Banner */}
         <div className="relative z-10 bg-white/95 border-2 border-sky-400 rounded-xl px-2.5 py-1.5">
           <div className="flex items-center justify-between gap-1 text-[9px] font-black text-sky-700 uppercase tracking-wider">
-            <span className="truncate">{cleanTitle}</span>
+            <span data-no-translate="true" data-game-topic="true" className="truncate">{cleanTitle}</span>
             <span>🦈</span>
           </div>
-          <p className="text-[11px] font-black text-slate-900 line-clamp-1 leading-snug">
+          <p data-quiz-question="true" className="text-[11px] font-black text-slate-900 line-clamp-1 leading-snug">
             {firstQuestion}
           </p>
         </div>
@@ -728,7 +730,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         </div>
 
         {/* Blue & Red Team Answer Key Preview */}
-        <div className="relative z-10 grid grid-cols-2 gap-1.5">
+        <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-1.5">
           <div className="bg-[#0055fe] rounded-lg p-1 border-b-2 border-[#0038b3] flex items-center gap-1.5">
             <span className="w-4 h-4 rounded bg-blue-100 text-[#0055fe] font-black text-[9px] flex items-center justify-center shrink-0">
               W
@@ -767,10 +769,10 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         {/* Exact Question Scroll Banner */}
         <div className="relative z-10 bg-amber-50 border-2 border-amber-500 rounded-xl px-2.5 py-1.5">
           <div className="flex items-center justify-between gap-1 text-[9px] font-black text-amber-900/70 uppercase tracking-wider">
-            <span className="truncate">{cleanTitle}</span>
+            <span data-no-translate="true" data-game-topic="true" className="truncate">{cleanTitle}</span>
             <span>{emojis[0]}</span>
           </div>
-          <p className="text-[11px] font-black text-stone-900 line-clamp-1 leading-snug">
+          <p data-quiz-question="true" className="text-[11px] font-black text-stone-900 line-clamp-1 leading-snug">
             {firstQuestion}
           </p>
         </div>
@@ -799,7 +801,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         </div>
 
         {/* Bottom Team Option Clash Bars showing exact game options */}
-        <div className="relative z-10 grid grid-cols-2 gap-2">
+        <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-2">
           <div className="bg-blue-600 border-b-2 border-blue-800 rounded-lg px-2 py-1 text-center">
             <span className="block text-[11px] font-black text-white truncate">{leftOpt}</span>
           </div>
@@ -842,18 +844,18 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         {/* Center Question Card with Exact Content */}
         <div className="relative z-10 bg-white/95 rounded-2xl p-2.5 border border-emerald-200/80">
           <div className="flex items-center justify-between gap-1 mb-0.5">
-            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 truncate">
+            <span data-no-translate="true" data-game-topic="true" className="text-[9px] font-black uppercase tracking-wider text-emerald-700 truncate">
               {cleanTitle}
             </span>
             <span className="text-xs leading-none">{emojis[1]}</span>
           </div>
-          <p className="text-[11px] font-extrabold text-slate-800 line-clamp-2 leading-tight">
+          <p data-quiz-question="true" className="text-[11px] font-extrabold text-slate-800 line-clamp-2 leading-tight">
             {firstQuestion}
           </p>
         </div>
 
         {/* Bottom Options Row */}
-        <div className="relative z-10 grid grid-cols-2 gap-1.5">
+        <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-1.5">
           {options.slice(0, 4).map((opt, idx) => {
             const isCorrect = idx === answerIndex;
             return (
@@ -907,15 +909,15 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         {/* Exact Question & Options Preview Card */}
         <div className="relative z-10 bg-white/95 rounded-xl p-2 border border-white/80">
           <div className="flex items-center justify-between gap-1 mb-0.5">
-            <span className="text-[9px] font-black uppercase tracking-wider text-indigo-700 truncate">
+            <span data-no-translate="true" data-game-topic="true" className="text-[9px] font-black uppercase tracking-wider text-indigo-700 truncate">
               {cleanTitle}
             </span>
             <span className="text-xs leading-none">{emojis[0]}</span>
           </div>
-          <p className="text-[11px] font-extrabold text-slate-900 line-clamp-1 leading-tight mb-1">
+          <p data-quiz-question="true" className="text-[11px] font-extrabold text-slate-900 line-clamp-1 leading-tight mb-1">
             {firstQuestion}
           </p>
-          <div className="flex items-center gap-1 overflow-hidden">
+          <div data-quiz-question="true" className="flex items-center gap-1 overflow-hidden">
             {options.slice(0, 3).map((opt, idx) => (
               <span
                 key={idx}
@@ -975,13 +977,13 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
 
         {/* Survey Question Prompt */}
         <div className="relative z-10 bg-blue-900/90 border border-amber-400/60 rounded-xl px-2.5 py-1.5 text-center">
-          <p className="text-[11px] font-black text-white line-clamp-1">
+          <p data-quiz-question="true" className="text-[11px] font-black text-white line-clamp-1">
             {firstQuestion}
           </p>
         </div>
 
         {/* 4 Survey Flip Slots with Exact Answers & Points */}
-        <div className="relative z-10 grid grid-cols-2 gap-1.5">
+        <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-1.5">
           {displayAnswers.map((ans, idx) => (
             <div
               key={idx}
@@ -1032,7 +1034,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
 
         <div className="relative z-10 bg-slate-900/55 border border-white/20 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <span className="text-[9px] font-black text-indigo-300 uppercase tracking-wider block truncate">
+            <span data-no-translate="true" data-game-topic="true" className="text-[9px] font-black text-indigo-300 uppercase tracking-wider block truncate">
               {cleanTitle}
             </span>
             <p className="text-[11px] font-extrabold text-white truncate">
@@ -1042,7 +1044,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
           <span className="text-base leading-none shrink-0">{emojis[0]}</span>
         </div>
 
-        <div className="relative z-10 grid grid-cols-2 gap-1.5">
+        <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-1.5">
           {cardItems.map((item: string, idx: number) => (
             <div
               key={idx}
@@ -1074,15 +1076,15 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         </div>
 
         <div className="bg-[#161229]/95 rounded-2xl p-2.5 border border-white/15">
-          <div className="text-[9px] font-black text-amber-400 uppercase tracking-wider truncate mb-0.5">
+          <div data-no-translate="true" data-game-topic="true" className="text-[9px] font-black text-amber-400 uppercase tracking-wider truncate mb-0.5">
             {cleanTitle}
           </div>
-          <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
+          <p data-quiz-question="true" className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
             {firstQuestion}
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-1.5">
+        <div data-quiz-question="true" className="grid grid-cols-2 gap-1.5">
           {options.slice(0, 2).map((opt, idx) => (
             <div key={idx} className="bg-white/10 text-slate-100 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-bold truncate text-center">
               {opt}
@@ -1108,15 +1110,15 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
         </div>
 
         <div className="bg-slate-900/95 rounded-2xl p-2.5 border border-lime-400/30">
-          <div className="text-[9px] font-black text-lime-400 uppercase tracking-wider truncate mb-0.5">
+          <div data-no-translate="true" data-game-topic="true" className="text-[9px] font-black text-lime-400 uppercase tracking-wider truncate mb-0.5">
             {cleanTitle}
           </div>
-          <p className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
+          <p data-quiz-question="true" className="text-[11px] font-extrabold text-white line-clamp-2 leading-tight">
             {firstQuestion}
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-1.5">
+        <div data-quiz-question="true" className="grid grid-cols-2 gap-1.5">
           {options.slice(0, 2).map((opt, idx) => (
             <div key={idx} className="bg-lime-500/20 border border-lime-400/40 text-lime-200 rounded-lg px-2 py-1 text-[10px] font-bold truncate text-center">
               {opt}
@@ -1135,9 +1137,9 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
           <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider bg-cyan-950/80 border border-cyan-500/40 px-2 py-0.5 rounded-full">
             ❌⭕ Tic Tac Toe
           </span>
-          <span className="text-[10px] font-bold text-slate-300 truncate max-w-[110px]">{cleanTitle}</span>
+          <span data-no-translate="true" data-game-topic="true" className="text-[10px] font-bold text-slate-300 truncate max-w-[110px]">{cleanTitle}</span>
         </div>
-        <div className="grid grid-cols-3 gap-1 w-28 aspect-square mx-auto bg-slate-700 p-1 rounded-xl">
+        <div data-quiz-question="true" className="grid grid-cols-3 gap-1 w-28 aspect-square mx-auto bg-slate-700 p-1 rounded-xl">
           <div className="bg-slate-800 rounded flex items-center justify-center text-blue-400 font-black text-base">X</div>
           <div className="bg-slate-800 rounded flex items-center justify-center text-rose-400 font-black text-base">O</div>
           <div className="bg-slate-800 rounded flex items-center justify-center text-[9px] text-slate-300 font-bold truncate px-0.5">{options[0] || 'Q1'}</div>
@@ -1162,7 +1164,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
           <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">⚡ Neon Chain</span>
           <span className="text-xs">{emojis[0]}</span>
         </div>
-        <div className="flex flex-col items-center gap-1.5 my-auto">
+        <div data-quiz-question="true" className="flex flex-col items-center gap-1.5 my-auto">
           <div className="px-3 py-1 rounded-full border border-cyan-400 bg-cyan-950/90 text-xs text-cyan-300 font-black tracking-widest">
             {w1}
           </div>
@@ -1171,7 +1173,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
             {w2}
           </div>
         </div>
-        <div className="text-[10px] font-bold text-slate-400 text-center truncate">{cleanTitle}</div>
+        <div data-no-translate="true" data-game-topic="true" className="text-[10px] font-bold text-slate-400 text-center truncate">{cleanTitle}</div>
       </div>
     );
   }
@@ -1207,15 +1209,15 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
       </div>
 
       <div className="relative z-10 bg-white/95 rounded-xl p-2.5">
-        <div className="text-[9px] font-black uppercase tracking-wider text-indigo-700 truncate mb-0.5">
+        <div data-no-translate="true" data-game-topic="true" className="text-[9px] font-black uppercase tracking-wider text-indigo-700 truncate mb-0.5">
           {cleanTitle}
         </div>
-        <p className="text-[11px] font-extrabold text-slate-900 line-clamp-2 leading-tight">
+        <p data-quiz-question="true" className="text-[11px] font-extrabold text-slate-900 line-clamp-2 leading-tight">
           {firstQuestion}
         </p>
       </div>
 
-      <div className="relative z-10 grid grid-cols-2 gap-1.5">
+      <div data-quiz-question="true" className="relative z-10 grid grid-cols-2 gap-1.5">
         {options.slice(0, 4).map((opt, idx) => (
           <div
             key={idx}

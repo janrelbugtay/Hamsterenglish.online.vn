@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
-import { Settings, Play, Plus, Trash2, Edit2, Volume2, VolumeX, AlertCircle, CheckCircle2, XCircle, RotateCcw, Trophy, Users, MonitorUp, Smartphone, QrCode, LogOut, Crown, Zap, Clock, ArrowLeft } from 'lucide-react';
+import { Settings, Play, Plus, Trash2, Edit2, Volume2, VolumeX, AlertCircle, CheckCircle2, XCircle, RotateCcw, Trophy, Users, MonitorUp, Smartphone, QrCode, LogOut, Crown, Zap, Clock, ArrowLeft, Loader2 } from 'lucide-react';
 import { ViewState } from '../types';
-import { db, safeFirestoreWrite, isFirestoreQuotaError, markFirestoreQuotaExhausted } from '../lib/firebase';
+import { db, safeFirestoreWrite, isFirestoreQuotaError, isFirestoreQuotaExhausted, markFirestoreQuotaExhausted } from '../lib/firebase';
 import { doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, orderBy, deleteDoc } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
 import { UnifiedGameSetup } from '../components/UnifiedGameSetup';
@@ -92,9 +92,17 @@ const NetworkManager = {
         } else {
             const roomRef = doc(db, 'ttt_rooms', room);
             NetworkManager.unsubscribeState = onSnapshot(roomRef, (docSnap) => {
-                if (docSnap.exists() && NetworkManager.messageCallback) {
-                    NetworkManager.messageCallback({ type: 'STATE_UPDATE', state: docSnap.data().state });
+                if (!NetworkManager.messageCallback) return;
+                if (!docSnap.exists()) {
+                    NetworkManager.messageCallback({ type: 'ROOM_NOT_FOUND' });
+                    return;
                 }
+                const data = docSnap.data();
+                if (!data?.state || data.state.status === 'SETUP' || data.closed) {
+                    NetworkManager.messageCallback({ type: 'ROOM_NOT_FOUND' });
+                    return;
+                }
+                NetworkManager.messageCallback({ type: 'STATE_UPDATE', state: data.state });
             }, (err) => {
                 if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
                 console.warn("TicTacToe state listener notice:", err?.message || err);
@@ -104,26 +112,51 @@ const NetworkManager = {
     // Host broadcasts state to all players
     broadcastState: (state: any) => {
         if (!NetworkManager.isHost || !NetworkManager.roomId) return;
-        
+        const activeRoomId = NetworkManager.roomId;
+        const nextStatus = state?.status || 'LOBBY';
+        const isClosed = nextStatus === 'SETUP';
+
+        fetch(`/api/tictactoe/room/${encodeURIComponent(activeRoomId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: nextStatus, closed: isClosed })
+        }).catch(() => {});
+
         const now = Date.now();
         const timeSinceLast = now - (NetworkManager.lastBroadcastTime || 0);
         const THROTTLE_MS = 500; // max 2 updates per second
 
         if (timeSinceLast >= THROTTLE_MS) {
             NetworkManager.lastBroadcastTime = now;
-            const roomRef = doc(db, 'ttt_rooms', NetworkManager.roomId);
-            safeFirestoreWrite(() => setDoc(roomRef, { state, updatedAt: now }));
+            const roomRef = doc(db, 'ttt_rooms', activeRoomId);
+            safeFirestoreWrite(() => setDoc(roomRef, { state, closed: isClosed, updatedAt: now }));
         } else {
             NetworkManager.pendingState = state;
             if (!NetworkManager.broadcastTimeout) {
                 NetworkManager.broadcastTimeout = setTimeout(() => {
                     NetworkManager.lastBroadcastTime = Date.now();
-                    const roomRef = doc(db, 'ttt_rooms', NetworkManager.roomId!);
-                    safeFirestoreWrite(() => setDoc(roomRef, { state: NetworkManager.pendingState, updatedAt: Date.now() }));
+                    const roomRef = doc(db, 'ttt_rooms', activeRoomId);
+                    const pendingStatus = NetworkManager.pendingState?.status || 'LOBBY';
+                    safeFirestoreWrite(() => setDoc(roomRef, {
+                        state: NetworkManager.pendingState,
+                        closed: pendingStatus === 'SETUP',
+                        updatedAt: Date.now()
+                    }));
                     NetworkManager.broadcastTimeout = null;
                 }, THROTTLE_MS - timeSinceLast);
             }
         }
+    },
+    closeRoom: (room?: string | null) => {
+        const target = String(room || NetworkManager.roomId || '').trim().toUpperCase();
+        if (!target) return;
+        fetch(`/api/tictactoe/room/${encodeURIComponent(target)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'SETUP', closed: true })
+        }).catch(() => {});
+        const roomRef = doc(db, 'ttt_rooms', target);
+        safeFirestoreWrite(() => setDoc(roomRef, { state: { roomId: target, status: 'SETUP' }, closed: true, updatedAt: Date.now() }));
     },
     // Player sends action to host
     sendActionToHost: (action: any) => {
@@ -497,14 +530,83 @@ const ModeSelection = ({ onSelectMode, onViewChange }: { onSelectMode: (mode: st
     );
 };
 
-const JoinScreen = ({ onJoin, onBack }: { onJoin: (code: string, name: string) => void, onBack: () => void }) => {
-    const [code, setCode] = useState('');
+const JoinScreen = ({
+    onJoin,
+    onBack,
+    initialCode = '',
+}: {
+    onJoin: (code: string, name: string) => void;
+    onBack: () => void;
+    initialCode?: string;
+}) => {
+    const [code, setCode] = useState(initialCode);
     const [name, setName] = useState('');
+    const [isChecking, setIsChecking] = useState(false);
+    const [joinError, setJoinError] = useState<string | null>(null);
 
-    const handleJoin = (e: any) => {
+    useEffect(() => {
+        if (initialCode) {
+            setCode(initialCode.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6));
+            setJoinError(null);
+        }
+    }, [initialCode]);
+
+    const handleJoin = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (code.trim().length === 6 && name.trim().length > 0) {
-            onJoin(code.toUpperCase(), name.trim());
+        const cleanCode = code.replace(/[^0-9A-Za-z]/g, '').toUpperCase().trim().slice(0, 6);
+        const cleanName = name.trim();
+        if (cleanCode.length !== 6) {
+            setJoinError('Please enter the 6-character code from your host.');
+            return;
+        }
+        if (!cleanName) {
+            setJoinError('Please enter a nickname.');
+            return;
+        }
+
+        setIsChecking(true);
+        setJoinError(null);
+
+        try {
+            let isHosted = false;
+
+            try {
+                const res = await fetch(`/api/tictactoe/room/${encodeURIComponent(cleanCode)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data?.exists) {
+                        isHosted = true;
+                    }
+                }
+            } catch {}
+
+            if (!isHosted && !isFirestoreQuotaExhausted()) {
+                try {
+                    const snap = await getDoc(doc(db, 'ttt_rooms', cleanCode));
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (
+                            data?.state?.roomId === cleanCode &&
+                            data?.state?.status &&
+                            data.state.status !== 'SETUP' &&
+                            !data.closed
+                        ) {
+                            isHosted = true;
+                        }
+                    }
+                } catch (err) {
+                    if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+                }
+            }
+
+            if (!isHosted) {
+                setJoinError(`Incorrect room code "${cleanCode}". No host is currently hosting a Tic-Tac-Toe room with this code.`);
+                return;
+            }
+
+            onJoin(cleanCode, cleanName);
+        } finally {
+            setIsChecking(false);
         }
     };
 
@@ -512,6 +614,7 @@ const JoinScreen = ({ onJoin, onBack }: { onJoin: (code: string, name: string) =
         <div className="min-h-screen bg-emerald-100 flex items-center justify-center p-6 text-gray-900 font-sans relative">
              <div className="absolute top-4 left-4 z-[60]">
                  <button 
+                     type="button"
                      onClick={onBack}
                      className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border border-gray-800 text-gray-400 hover:text-white bg-gray-900/50 hover:bg-gray-800 shadow-sm"
                  >
@@ -520,23 +623,59 @@ const JoinScreen = ({ onJoin, onBack }: { onJoin: (code: string, name: string) =
              </div>
              <div className="max-w-md w-full bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl">
                 <div className="flex justify-center mb-8"><Smartphone size={64} className="text-blue-500"/></div>
-                <h2 className="text-3xl font-black text-center mb-8">Join the Battle</h2>
+                <h2 className="text-3xl font-black text-center text-white mb-8">Join the Battle</h2>
                 <form onSubmit={handleJoin} className="space-y-6">
                     <div>
                         <label className="block text-gray-500 font-bold uppercase tracking-widest text-sm mb-2">Game Code</label>
-                        <input type="text" maxLength={6} value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                            className="w-full bg-gray-950 border-2 border-gray-800 rounded-xl p-4 text-center text-3xl font-black text-white focus:border-blue-500 focus:outline-none uppercase tracking-[0.2em]"
-                            placeholder="A7K92P" required />
+                        <input
+                            type="text"
+                            maxLength={6}
+                            value={code}
+                            onChange={e => {
+                                setCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6));
+                                if (joinError) setJoinError(null);
+                            }}
+                            className={`w-full bg-gray-950 border-2 rounded-xl p-4 text-center text-3xl font-black text-white focus:outline-none uppercase tracking-[0.2em] ${
+                                joinError ? 'border-rose-500 focus:border-rose-400' : 'border-gray-800 focus:border-blue-500'
+                            }`}
+                            placeholder="A7K92P"
+                            required
+                        />
                     </div>
                     <div>
                         <label className="block text-gray-500 font-bold uppercase tracking-widest text-sm mb-2">Nickname</label>
-                        <input type="text" maxLength={15} value={name} onChange={e => setName(e.target.value)}
+                        <input
+                            type="text"
+                            maxLength={15}
+                            value={name}
+                            onChange={e => {
+                                setName(e.target.value);
+                                if (joinError) setJoinError(null);
+                            }}
                             className="w-full bg-gray-950 border-2 border-gray-800 rounded-xl p-4 text-xl font-bold text-white focus:border-blue-500 focus:outline-none"
-                            placeholder="Enter your name" required />
+                            placeholder="Enter your name"
+                            required
+                        />
                     </div>
-                    <button type="submit" disabled={code.length < 6 || !name} 
-                        className="w-full bg-blue-600 disabled:bg-gray-800 disabled:text-gray-500 hover:bg-blue-500 text-white font-black text-xl py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)] disabled:shadow-none">
-                        JOIN GAME
+                    {joinError && (
+                        <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-950/60 px-3.5 py-2.5 text-xs font-semibold text-rose-200">
+                            <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-400" />
+                            <span>{joinError}</span>
+                        </div>
+                    )}
+                    <button
+                        type="submit"
+                        disabled={code.length < 6 || !name.trim() || isChecking}
+                        className="w-full bg-blue-600 disabled:bg-gray-800 disabled:text-gray-500 hover:bg-blue-500 text-white font-black text-xl py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)] disabled:shadow-none flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                        {isChecking ? (
+                            <>
+                                <Loader2 size={20} className="animate-spin" />
+                                <span>CHECKING ROOM...</span>
+                            </>
+                        ) : (
+                            <span>JOIN GAME</span>
+                        )}
                     </button>
                 </form>
              </div>
@@ -559,6 +698,11 @@ const HostSetupScreen = ({
 }) => {
     const startMultiplayerRoom = () => {
         const code = generateRoomCode();
+        fetch(`/api/tictactoe/room/${encodeURIComponent(code)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'LOBBY', closed: false })
+        }).catch(() => {});
         dispatch({ type: 'CREATE_ROOM', payload: code });
         NetworkManager.init(code, true, 'HOST');
     };
@@ -671,8 +815,17 @@ const HostLobby = ({ state, dispatch }: { state: any, dispatch: any }) => {
 };
 
 
-const PlayerApp = ({ roomId, initialNickname }: { roomId: string, initialNickname: string }) => {
+const PlayerApp = ({
+    roomId,
+    initialNickname,
+    onBack,
+}: {
+    roomId: string;
+    initialNickname: string;
+    onBack?: () => void;
+}) => {
     const [clientState, setClientState] = useState<any>(null);
+    const [roomMissing, setRoomMissing] = useState(false);
     const [playerId] = useState(() => {
         const stored = localStorage.getItem('ttt_player_id');
         if (stored) return stored;
@@ -682,8 +835,9 @@ const PlayerApp = ({ roomId, initialNickname }: { roomId: string, initialNicknam
     });
 
     useEffect(() => {
+        setRoomMissing(false);
         NetworkManager.init(roomId, false, playerId);
-        
+
         // Join Request
         NetworkManager.sendActionToHost({ 
             type: 'PLAYER_JOINED', 
@@ -691,7 +845,10 @@ const PlayerApp = ({ roomId, initialNickname }: { roomId: string, initialNicknam
         });
 
         NetworkManager.onMessage((msg: any) => {
-            if (msg.type === 'STATE_UPDATE') {
+            if (msg.type === 'ROOM_NOT_FOUND') {
+                setRoomMissing(true);
+            } else if (msg.type === 'STATE_UPDATE') {
+                setRoomMissing(false);
                 setClientState(msg.state);
             }
         });
@@ -701,6 +858,31 @@ const PlayerApp = ({ roomId, initialNickname }: { roomId: string, initialNicknam
             NetworkManager.messageCallback = null;
         };
     }, [roomId, playerId, initialNickname]);
+
+    if (roomMissing) {
+        return (
+            <div className="min-h-screen bg-emerald-100 flex items-center justify-center p-6 text-gray-900">
+                <div className="max-w-md w-full bg-white border border-rose-200 rounded-3xl p-8 shadow-xl text-center space-y-4">
+                    <div className="mx-auto w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                        <AlertCircle size={32} />
+                    </div>
+                    <h3 className="text-xl font-black text-slate-900">Room Not Hosted</h3>
+                    <p className="text-sm font-medium text-slate-600">
+                        No active host was found for room <span className="font-mono font-bold text-slate-900">{roomId}</span>, or the host closed this game.
+                    </p>
+                    {onBack && (
+                        <button
+                            type="button"
+                            onClick={onBack}
+                            className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition cursor-pointer"
+                        >
+                            Back to Room Code
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     if (!clientState) return <div className="min-h-screen bg-emerald-100 flex items-center justify-center text-gray-900"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
 
@@ -1178,12 +1360,20 @@ export const TicTacToe = ({
     initialJoinData?: { code: string; nickname: string } | null;
     initialGame?: any;
 }) => {
-    const [appMode, setAppMode] = useState<string | null>(initialGame && !initialGame.editMode ? 'LOCAL' : null); // 'LOCAL', 'HOST', 'JOIN', 'PLAYER_APP'
+    const isIncomingStudentJoin = Boolean(initialGame?.roomCode || initialGame?.isStudentJoin);
+    const [appMode, setAppMode] = useState<string | null>(
+        isIncomingStudentJoin ? 'JOIN' : initialGame && !initialGame.editMode ? 'LOCAL' : null
+    ); // 'LOCAL', 'HOST', 'JOIN', 'PLAYER_APP'
+    const [joinedNickname, setJoinedNickname] = useState<string>(initialJoinData?.nickname || "");
     const [state, dispatch] = useReducer(gameReducer, initialState);
 
-    // Load custom questions when launched via Choose How to Play
+    // Load custom questions or student join intent when launched
     useEffect(() => {
         if (initialGame) {
+            if (initialGame.roomCode || initialGame.isStudentJoin) {
+                setAppMode('JOIN');
+                return;
+            }
             const rawQuestions = initialGame.customQuestions || initialGame.questions || [];
             if (Array.isArray(rawQuestions) && rawQuestions.length > 0) {
                 const mapped = rawQuestions.map((q: any, idx: number) => ({
@@ -1204,6 +1394,7 @@ export const TicTacToe = ({
     // Automatically join if initialJoinData is provided
     useEffect(() => {
         if (initialJoinData) {
+            setJoinedNickname(initialJoinData.nickname);
             dispatch({ type: 'CREATE_ROOM', payload: initialJoinData.code });
             setAppMode('PLAYER_APP');
         }
@@ -1233,15 +1424,36 @@ export const TicTacToe = ({
 
     if (appMode === 'JOIN') {
         const handleJoin = (code: string, name: string) => {
-            dispatch({ type: 'CREATE_ROOM', payload: code }); // Set local state minimal for join
+            setJoinedNickname(name);
+            dispatch({ type: 'CREATE_ROOM', payload: code });
             setAppMode('PLAYER_APP');
-            // We pass name via component props
         };
-        return <JoinScreen onJoin={handleJoin} onBack={() => setAppMode(null)} />;
+        const prefillCode = initialGame?.roomCode
+            ? String(initialGame.roomCode).replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6)
+            : '';
+        return (
+            <JoinScreen
+                initialCode={prefillCode}
+                onJoin={handleJoin}
+                onBack={() => {
+                    if (isIncomingStudentJoin) {
+                        onViewChange("games");
+                    } else {
+                        setAppMode(null);
+                    }
+                }}
+            />
+        );
     }
 
     if (appMode === 'PLAYER_APP') {
-        return <PlayerApp roomId={state.roomId || ""} initialNickname={initialJoinData?.nickname || "Player"} />;
+        return (
+            <PlayerApp
+                roomId={state.roomId || ""}
+                initialNickname={joinedNickname || initialJoinData?.nickname || "Player"}
+                onBack={() => setAppMode('JOIN')}
+            />
+        );
     }
 
     // Host or Local Flow
@@ -1250,6 +1462,9 @@ export const TicTacToe = ({
             <div className="absolute top-4 left-4 z-[60]">
                 <button 
                     onClick={() => {
+                        if (appMode === 'HOST' && state.roomId) {
+                            NetworkManager.closeRoom(state.roomId);
+                        }
                         setAppMode(null);
                         dispatch({type: 'RETURN_TO_SETUP'});
                         NetworkManager.cleanup();
@@ -1268,6 +1483,9 @@ export const TicTacToe = ({
                     isMultiplayer={appMode === 'HOST'}
                     onChangeMode={(m) => setAppMode(m)}
                     onBack={() => {
+                        if (appMode === 'HOST' && state.roomId) {
+                            NetworkManager.closeRoom(state.roomId);
+                        }
                         setAppMode(null);
                         dispatch({ type: 'RETURN_TO_SETUP' });
                         NetworkManager.cleanup();

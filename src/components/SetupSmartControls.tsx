@@ -136,6 +136,8 @@ export function SetupCurriculumHeader({
           </label>
           <input
             type="text"
+            data-no-translate="true"
+            data-game-topic="true"
             placeholder="e.g. Animals, Present Simple..."
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
@@ -150,6 +152,7 @@ export function SetupCurriculumHeader({
           </label>
           <input
             type="text"
+            data-no-translate="true"
             placeholder="e.g. Kindergarten, Grade 3, Starters..."
             value={classLevel}
             onChange={(e) => setClassLevel(e.target.value)}
@@ -176,6 +179,7 @@ export function SetupCurriculumHeader({
             <div className="flex gap-1.5">
               <input
                 type="text"
+                data-no-translate="true"
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
                 placeholder="New folder name..."
@@ -199,7 +203,7 @@ export function SetupCurriculumHeader({
               >
                 <option value="">No Folder (Root Library)</option>
                 {allFolders.map((f) => (
-                  <option key={f.id} value={f.id}>
+                  <option key={f.id} value={f.id} data-no-translate="true" data-game-topic="true">
                     {f.name}
                   </option>
                 ))}

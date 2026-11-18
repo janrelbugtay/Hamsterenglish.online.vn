@@ -34,6 +34,41 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
+const GUEST_SESSION_STORAGE_KEY = 'hamster_guest_session_v1';
+
+function getProviderLabel(u: User | null): string {
+  if (!u) return 'unknown';
+  if (u.isAnonymous) return 'guest';
+  const pid = u.providerData?.[0]?.providerId || '';
+  if (pid.includes('google')) return 'google';
+  if (pid.includes('facebook')) return 'facebook';
+  if (pid.includes('password')) return 'email';
+  return 'google';
+}
+
+function getSignInMillis(u: User | null): number {
+  try {
+    const t = u?.metadata?.lastSignInTime;
+    if (t) {
+      const ms = new Date(t).getTime();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+  } catch {}
+  return Date.now();
+}
+
+function readStoredLocalGuest(): User | null {
+  try {
+    const raw = sessionStorage.getItem(GUEST_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.uid && parsed.isAnonymous) {
+      return parsed as User;
+    }
+  } catch {}
+  return null;
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,56 +76,98 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [authError, setAuthError] = useState<string | null>(null);
   const isAuthenticatingRef = useRef(false);
 
+  const syncUserSessionRecord = async (currentUser: User, explicitMethod?: string) => {
+    const isGuest = Boolean(currentUser.isAnonymous);
+    const signInMs = getSignInMillis(currentUser);
+    const sessionKey = `hamster_session_auth_synced_${currentUser.uid}_${signInMs}`;
+    let alreadySynced = false;
+    try {
+      alreadySynced = sessionStorage.getItem(sessionKey) === '1';
+    } catch {}
+    if (alreadySynced) return;
+
+    const authProvider = explicitMethod || getProviderLabel(currentUser);
+    const resolvedEmail = isGuest ? 'Guest' : (currentUser.email || 'User');
+    const resolvedName =
+      currentUser.displayName ||
+      (isGuest ? 'Guest Player' : currentUser.email ? currentUser.email.split('@')[0] : 'Teacher');
+
+    try {
+      sessionStorage.setItem(sessionKey, '1');
+    } catch {}
+
+    // Always push accurate login info to server platform cache so Admin Recent Users stays accurate even under quota limits
+    fetch('/api/platform-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        users: [
+          {
+            id: currentUser.uid,
+            uid: currentUser.uid,
+            email: resolvedEmail,
+            displayName: resolvedName,
+            photoURL: currentUser.photoURL || null,
+            isAnonymous: isGuest,
+            authProvider,
+            lastLoginAt: signInMs,
+          },
+        ],
+      }),
+    }).catch(() => {});
+
+    // Log login activity event (works for both registered users and guests)
+    logUserActivity({
+      userId: currentUser.uid,
+      userEmail: resolvedEmail,
+      userName: resolvedName,
+      userPhoto: currentUser.photoURL || null,
+      isAnonymous: isGuest,
+      action: 'login',
+      title: isGuest ? 'Signed in as Guest' : 'Signed in to account',
+      details: `Auth provider: ${authProvider}`,
+      timestamp: signInMs,
+    });
+
+    // Sync to Firestore `users/{uid}` when backed by a real Firebase Auth session
+    if (!(currentUser as any).isLocalGuestSession) {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await safeFirestoreWrite(() =>
+        setDoc(
+          userRef,
+          {
+            uid: currentUser.uid,
+            email: resolvedEmail,
+            displayName: resolvedName,
+            photoURL: currentUser.photoURL || null,
+            isAnonymous: isGuest,
+            authProvider,
+            lastLoginAt: serverTimestamp(),
+          },
+          { merge: true }
+        )
+      );
+    }
+  };
+
   useEffect(() => {
     // Listen for auth state changes immediately from local cache / network
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-
       if (currentUser) {
+        try {
+          sessionStorage.removeItem(GUEST_SESSION_STORAGE_KEY);
+        } catch {}
+        setUser(currentUser);
+        setLoading(false);
         setAuthError(null);
         // Sync any privately saved local games on the user's computer to platform cache & cloud
         syncLocalComputerGamesForUser(currentUser, db).catch(() => {});
-
-        // Sync user profile in background at most once every 8 hours per device to avoid unnecessary Firestore writes on every page reload
-        if (!currentUser.isAnonymous) {
-          const syncKey = `hamster_last_auth_cloud_sync_${currentUser.uid}`;
-          let lastSynced = 0;
-          try {
-            lastSynced = Number(localStorage.getItem(syncKey) || '0');
-          } catch {}
-          if (Date.now() - lastSynced > 8 * 60 * 60 * 1000) {
-            const userRef = doc(db, 'users', currentUser.uid);
-            safeFirestoreWrite(() =>
-              setDoc(
-                userRef,
-                {
-                  uid: currentUser.uid,
-                  email: currentUser.email || 'User',
-                  displayName: currentUser.displayName || 'User',
-                  photoURL: currentUser.photoURL || null,
-                  isAnonymous: false,
-                  lastLoginAt: serverTimestamp(),
-                },
-                { merge: true }
-              )
-            ).then((res) => {
-              if (res.ok) {
-                try {
-                  localStorage.setItem(syncKey, String(Date.now()));
-                } catch {}
-                logUserActivity({
-                  userId: currentUser.uid,
-                  userEmail: currentUser.email || undefined,
-                  userName: currentUser.displayName || undefined,
-                  userPhoto: currentUser.photoURL || null,
-                  action: 'login',
-                  title: 'Signed in to account'
-                });
-              }
-            });
-          }
-        }
+        // Record accurate login timestamp & provider once per Firebase sign-in session
+        syncUserSessionRecord(currentUser).catch(() => {});
+      } else {
+        const localGuest = readStoredLocalGuest();
+        setUser(localGuest);
+        setLoading(false);
       }
     });
 
@@ -338,36 +415,57 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signInAsGuest = async (guestName?: string) => {
     setIsAuthenticating(true);
     setAuthError(null);
+    const displayName = guestName?.trim() || 'Guest Player';
+    const nowMs = Date.now();
     try {
       let currentUser = auth.currentUser;
       if (!currentUser || !currentUser.isAnonymous) {
         const cred = await signInAnonymously(auth);
         currentUser = cred.user;
       }
-      const displayName = guestName?.trim() || 'Guest Player';
       if (currentUser) {
         try {
           await updateProfile(currentUser, { displayName });
-          const userRef = doc(db, 'users', currentUser.uid);
-          await safeFirestoreWrite(() =>
-            setDoc(userRef, {
-              uid: currentUser.uid,
-              displayName,
-              isAnonymous: true,
-              email: 'Guest',
-              photoURL: null,
-              lastLoginAt: serverTimestamp(),
-            }, { merge: true })
-          );
-        } catch (e) {
-          console.warn('Guest profile write notice:', e);
+        } catch (pErr) {
+          console.warn('Guest displayName update notice:', pErr);
         }
-        setUser(currentUser);
+        try {
+          // Clear previous session cache key so fresh guest sign-in always records updated name/timestamp
+          sessionStorage.removeItem(
+            `hamster_session_auth_synced_${currentUser.uid}_${getSignInMillis(currentUser)}`
+          );
+        } catch {}
+        await syncUserSessionRecord(
+          { ...currentUser, displayName, isAnonymous: true } as User,
+          'guest'
+        );
+        setUser({ ...currentUser, displayName, isAnonymous: true } as User);
       }
       return currentUser;
     } catch (error: any) {
-      console.warn('Guest session notice:', error);
+      console.warn('Firebase anonymous auth unavailable, activating guest session:', error?.code || error?.message);
+      // Graceful fallback guest session when Anonymous provider is disabled in Firebase Console or offline
+      const guestUid = `guest-${nowMs.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      const fallbackGuest = {
+        uid: guestUid,
+        displayName,
+        email: 'Guest',
+        photoURL: null,
+        isAnonymous: true,
+        isLocalGuestSession: true,
+        providerData: [],
+        metadata: {
+          creationTime: new Date(nowMs).toUTCString(),
+          lastSignInTime: new Date(nowMs).toUTCString(),
+        },
+      } as unknown as User;
+      try {
+        sessionStorage.setItem(GUEST_SESSION_STORAGE_KEY, JSON.stringify(fallbackGuest));
+      } catch {}
+      setUser(fallbackGuest);
+      await syncUserSessionRecord(fallbackGuest, 'guest');
       setAuthError(null);
+      return fallbackGuest;
     } finally {
       setIsAuthenticating(false);
     }
@@ -375,10 +473,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const logout = async () => {
     try {
-      await signOut(auth);
+      try {
+        sessionStorage.removeItem(GUEST_SESSION_STORAGE_KEY);
+      } catch {}
+      if (auth.currentUser) {
+        await signOut(auth);
+      }
       setUser(null);
     } catch (error) {
       console.error('Error signing out', error);
+      setUser(null);
     }
   };
 

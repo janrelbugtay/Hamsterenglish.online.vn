@@ -39,7 +39,9 @@ import {
   Settings,
   Sliders,
   HelpCircle,
-  Flag
+  Flag,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { FullscreenButton } from '../components/FullscreenButton';
@@ -2287,6 +2289,11 @@ export default function HamsterPaintball({
   const [roomPlayers, setRoomPlayers] = useState<PlayerNetworkState[]>([]);
   const seenNetworkEventsRef = useRef<Set<string>>(new Set());
   const hasJoinedRoomRef = useRef<boolean>(false);
+  const verifiedFirestoreHostRef = useRef<boolean>(false);
+  const verifiedFirestoreRoomDataRef = useRef<Record<string, any> | null>(null);
+  const [isValidatingJoinRoom, setIsValidatingJoinRoom] = useState<boolean>(false);
+  const [joinRoomError, setJoinRoomError] = useState<string | null>(null);
+  const [joinRoomStatus, setJoinRoomStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   // Trivia Question State + 15-Second Per-Question Countdown Timer
   const QUESTION_TIME_LIMIT_SEC = 15;
@@ -2374,74 +2381,69 @@ export default function HamsterPaintball({
     preset: 'stadium' | 'trampoline' | 'obstacle' | 'skyfortress' | 'speedball'
   ): number => {
     if (preset === 'stadium') {
-      // 1. Two Prominent Grand Front Staircases (z: 23.6 -> 11.6, x centered at -8.2 and +8.2, climbing 0m -> 4.6m)
+      // 1. Two Prominent Grand Front Staircases (z: 20.6 -> 10.8, x centered at -7.8 and +7.8, climbing 0m -> 4.6m)
       if (
-        wz >= 11.6 &&
-        wz <= 23.6 &&
-        ((wx >= -11.2 && wx <= -5.2) || (wx >= 5.2 && wx <= 11.2))
+        wz >= 10.8 &&
+        wz <= 20.6 &&
+        ((wx >= -10.4 && wx <= -5.2) || (wx >= 5.2 && wx <= 10.4))
       ) {
-        const t = THREE.MathUtils.clamp((23.6 - wz) / 12.0, 0, 1);
+        const t = THREE.MathUtils.clamp((20.6 - wz) / 9.8, 0, 1);
         return t * 4.6;
       }
-      // 2. Left Grand Staircase (West / Red Side access: x: -27.8 -> -16.6, z: -4.0..4.0, climbing 0m -> 4.6m)
-      if (wx >= -27.8 && wx <= -16.6 && Math.abs(wz) <= 4.0) {
-        const t = THREE.MathUtils.clamp((wx + 27.8) / 11.2, 0, 1);
+      // 2. Left Grand Staircase (West / Red Side access: x: -24.8 -> -15.8, z: -3.4..3.4, climbing 0m -> 4.6m)
+      if (wx >= -24.8 && wx <= -15.8 && Math.abs(wz) <= 3.45) {
+        const t = THREE.MathUtils.clamp((wx + 24.8) / 9.0, 0, 1);
         return t * 4.6;
       }
-      // 3. Right Sloped Climbing Ramp (East / Blue Side access: x: 27.8 -> 16.6, z: -4.0..4.0, climbing 0m -> 4.6m)
-      if (wx >= 16.6 && wx <= 27.8 && Math.abs(wz) <= 4.0) {
-        const t = THREE.MathUtils.clamp((27.8 - wx) / 11.2, 0, 1);
+      // 3. Right Sloped Climbing Ramp (East / Blue Side access: x: 24.8 -> 15.8, z: -3.4..3.4, climbing 0m -> 4.6m)
+      if (wx >= 15.8 && wx <= 24.8 && Math.abs(wz) <= 3.45) {
+        const t = THREE.MathUtils.clamp((24.8 - wx) / 9.0, 0, 1);
         return t * 4.6;
       }
-      // 4. North Dual Jumping Platforms & High Side Bridges (z: -21.8 -> -11.6, x centered at ±8.2, climbing 1.8m -> 4.6m)
-      if (
-        wz >= -21.8 &&
-        wz <= -11.6 &&
-        ((wx >= -11.0 && wx <= -5.4) || (wx >= 5.4 && wx <= 11.0))
-      ) {
-        const t = THREE.MathUtils.clamp((wz + 21.8) / 10.2, 0, 1);
-        return 1.8 + t * 2.8;
+      // 4. North Jumping Platforms (z = -17.2, r = 2.7, h = 1.85m) & Side Bridges (z: -17.0 -> -10.8, climbing 1.85m -> 4.6m)
+      for (const bx of [-7.8, 7.8]) {
+        if (Math.abs(wx - bx) <= 2.35 && wz >= -17.0 && wz <= -10.8) {
+          const t = THREE.MathUtils.clamp((wz + 17.0) / 6.2, 0, 1);
+          return 1.85 + t * (4.6 - 1.85);
+        }
+        if (Math.hypot(wx - bx, wz + 17.2) <= 2.75) {
+          return 1.85;
+        }
       }
-      // 5. Tier-2 Upper "Sky Citadel" Penthouse Deck (x: -7.8..7.8, z: -5.8..5.8, y = 8.6m) + Sky Ramp (z: 10.2 -> 5.8, x: -2.8..2.8)
-      if (Math.abs(wx) <= 2.9 && wz >= 5.6 && wz <= 10.4 && curY >= 3.8) {
+      // 5. Tier-2 Upper "Sky Citadel" Penthouse Deck (x: -7.8..7.8, z: -5.8..5.8, y = 8.6m) + Sky Ramp (z: 10.4 -> 5.6, x: -2.6..2.6)
+      if (Math.abs(wx) <= 2.65 && wz >= 5.6 && wz <= 10.4 && curY >= 3.8) {
         const t = THREE.MathUtils.clamp((10.4 - wz) / 4.8, 0, 1);
         return 4.6 + t * 4.0;
       }
       if (Math.abs(wx) <= 7.8 && Math.abs(wz) <= 5.8 && curY >= 6.8) {
         return 8.6;
       }
-      // 6. Tier-1 Central Elevated Battle Platform Deck (x: -16.8..16.8, z: -11.8..11.8, y = 4.6m)
-      // Players with curY >= 3.0 walk on the elevated castle platform; players with curY < 3.0 walk underneath in the spacious 4.2m-tall Underground Combat Hall (y = 0)!
-      if (Math.abs(wx) <= 16.8 && Math.abs(wz) <= 11.8) {
+      // 6. Tier-1 Central Elevated Battle Platform Deck (x: -15.8..15.8, z: -10.8..10.8, y = 4.6m)
+      // Players with curY >= 3.0 walk on the elevated castle platform; players with curY < 3.0 walk underneath in the spacious Underground Combat Hall (y = 0)!
+      if (Math.abs(wx) <= 15.8 && Math.abs(wz) <= 10.8) {
         return curY >= 3.0 ? 4.6 : 0;
       }
       return 0;
     }
 
     if (preset === 'trampoline') {
-      const distCenter = Math.hypot(wx, wz);
-      // Top Apex Crown Deck (radius 5.2m, y = 9.2m)
-      if (distCenter <= 5.2 && curY >= 7.2) {
+      // Top Apex Crown Deck (10.4m x 8.4m box, y = 9.2m)
+      if (Math.abs(wx) <= 5.2 && Math.abs(wz) <= 4.2 && curY >= 7.2) {
         return 9.2;
       }
-      // Central Sky Bounce Island (radius 11.2m, y = 5.0m)
-      if (distCenter <= 11.2 && curY >= 3.4) {
+      // Central Sky Bounce Island (19.6m x 15.6m box, y = 5.0m)
+      if (Math.abs(wx) <= 9.8 && Math.abs(wz) <= 7.8 && curY >= 3.4) {
         return 5.0;
       }
-      // North & South Sky Bridges connecting to Central Island (x: -3.2..3.2, |z|: 11.0 -> 21.0)
-      if (Math.abs(wx) <= 3.2 && Math.abs(wz) >= 11.0 && Math.abs(wz) <= 21.0 && curY >= 1.8) {
-        const t = THREE.MathUtils.clamp((21.0 - Math.abs(wz)) / 10.0, 0, 1);
-        return 2.2 + t * 2.8;
-      }
-      // 4 Quadrant Elevated Bounce Islands (±22, ±16, radius 6.4m, y = 4.4m)
+      // 4 Quadrant Elevated Bounce Islands (±20, ±15, radius 5.65m, y = 4.4m)
       const bounceIslands: Array<[number, number]> = [
-        [-22, -16],
-        [22, -16],
-        [-22, 16],
-        [22, 16]
+        [-20, -15],
+        [20, -15],
+        [-20, 15],
+        [20, 15]
       ];
       for (const [ix, iz] of bounceIslands) {
-        if (Math.hypot(wx - ix, wz - iz) <= 6.4 && curY >= 2.8) {
+        if (Math.hypot(wx - ix, wz - iz) <= 5.65 && curY >= 2.8) {
           return 4.4;
         }
       }
@@ -2449,15 +2451,15 @@ export default function HamsterPaintball({
     }
 
     if (preset === 'obstacle') {
-      // Central Elevated Crossover Bridge & Ramps in Wipeout Obstacle Course (x: -20.5..20.5, z: -4.6..4.6, y = 3.8m)
-      if (Math.abs(wz) <= 4.6) {
-        if (wx >= -20.5 && wx <= -11.5) {
-          return THREE.MathUtils.clamp((wx + 20.5) / 9.0, 0, 1) * 3.8;
+      // Central Elevated Crossover Bridge & Ramps in Wipeout Obstacle Course (x: -17.5..17.5, z: -4.2..4.2, y = 3.8m)
+      if (Math.abs(wz) <= 4.25) {
+        if (wx >= -17.5 && wx <= -9.5) {
+          return THREE.MathUtils.clamp((wx + 17.5) / 8.0, 0, 1) * 3.8;
         }
-        if (wx >= 11.5 && wx <= 20.5) {
-          return THREE.MathUtils.clamp((20.5 - wx) / 9.0, 0, 1) * 3.8;
+        if (wx >= 9.5 && wx <= 17.5) {
+          return THREE.MathUtils.clamp((17.5 - wx) / 8.0, 0, 1) * 3.8;
         }
-        if (Math.abs(wx) <= 11.5) {
+        if (Math.abs(wx) <= 9.5) {
           return curY >= 2.3 ? 3.8 : 0;
         }
       }
@@ -2477,15 +2479,15 @@ export default function HamsterPaintball({
     }
 
     if (preset === 'skyfortress') {
-      // Twin 3-Story Sky Fortresses on West (x = -20) & East (x = +20), z: -9.5..9.5
+      // Twin 3-Story Sky Fortresses on West (x = -20) & East (x = +20), deck1: 16.8x16.8 (y=4.6m), deck2: 10.8x10.8 (y=8.6m)
       for (const fx of [-20, 20]) {
-        // South & North Ramps onto each Fortress (|x - fx| <= 3.6, |z|: 9.5 -> 19.5, climbing 0m -> 4.6m)
-        if (Math.abs(wx - fx) <= 3.6 && Math.abs(wz) >= 9.5 && Math.abs(wz) <= 19.5) {
-          const t = THREE.MathUtils.clamp((19.5 - Math.abs(wz)) / 10.0, 0, 1);
+        // South & North Ramps onto each Fortress (|x - fx| <= 3.2, |z|: 16.4 -> 8.4, climbing 0m -> 4.6m)
+        if (Math.abs(wx - fx) <= 3.25 && Math.abs(wz) >= 8.4 && Math.abs(wz) <= 16.4) {
+          const t = THREE.MathUtils.clamp((16.4 - Math.abs(wz)) / 8.0, 0, 1);
           return t * 4.6;
         }
-        if (Math.abs(wx - fx) <= 8.6 && Math.abs(wz) <= 9.5) {
-          if (Math.abs(wx - fx) <= 4.8 && Math.abs(wz) <= 5.2 && curY >= 6.8) {
+        if (Math.abs(wx - fx) <= 8.4 && Math.abs(wz) <= 8.4) {
+          if (Math.abs(wx - fx) <= 5.4 && Math.abs(wz) <= 5.4 && curY >= 6.8) {
             return 8.6;
           }
           if (curY >= 3.0) {
@@ -2493,14 +2495,12 @@ export default function HamsterPaintball({
           }
         }
       }
-      // Twin High-Altitude Skybridges connecting West & East Fortresses (x: -11.5..11.5)
-      if (Math.abs(wx) <= 11.6) {
-        if (Math.abs(wz - 4.5) <= 2.6 && curY >= 6.8) {
-          return 8.6;
-        }
-        if (Math.abs(wz + 4.5) <= 2.6 && curY >= 3.0) {
-          return 4.6;
-        }
+      // Double-Decker Central Skybridge Catwalks connecting West & East Fortresses at z = 0
+      if (Math.abs(wx) <= 14.6 && Math.abs(wz) <= 2.4 && curY >= 6.8) {
+        return 8.6;
+      }
+      if (Math.abs(wx) <= 11.6 && Math.abs(wz) <= 3.6 && curY >= 3.0) {
+        return 4.6;
       }
       return 0;
     }
@@ -2778,8 +2778,29 @@ export default function HamsterPaintball({
     setTimeout(() => setCopiedType(null), 2200);
   };
 
+  const markHostedRoomClosed = (targetCode: string) => {
+    const clean = normalizeCode(targetCode);
+    if (!clean) return;
+    const closedPatch = {
+      roomCode: clean,
+      hostClosed: true,
+      isUninitialized: true,
+      updatedAt: getServerNow()
+    };
+    syncPaintballRoomApi(clean, closedPatch);
+    if (!isFirestoreQuotaExhausted()) {
+      safeFirestoreWrite(() =>
+        setDoc(getRoomDocRef(clean), closedPatch, { merge: true })
+      );
+    }
+  };
+
   const handleGenerateNewRoomCode = () => {
+    const oldCode = roomCode;
     const newCode = String(Math.floor(100000 + Math.random() * 900000));
+    if (oldCode && role === 'host' && screen !== 'editor') {
+      markHostedRoomClosed(oldCode);
+    }
     setRoomCode(newCode);
     sfx.playCorrect();
   };
@@ -3651,6 +3672,14 @@ export default function HamsterPaintball({
             startedAt: lastStartedAtRef.current,
             ballsPerQuestion: snap.ballsPerQuestion
           }
+        : verifiedFirestoreHostRef.current
+        ? {
+            ...(verifiedFirestoreRoomDataRef.current || {}),
+            matchStatus: snap.matchStatus || 'lobby',
+            matchMode: snap.matchMode,
+            teamCount: snap.teamCount,
+            ballsPerQuestion: snap.ballsPerQuestion
+          }
         : undefined;
     const queuedEvents = pendingCombatEventsRef.current.splice(0, 16);
     let primaryResult: any = null;
@@ -3664,6 +3693,7 @@ export default function HamsterPaintball({
             body: JSON.stringify({
               player: playerPayload,
               isHostAction: Boolean(options?.isHostAction),
+              verifiedFirestoreHost: verifiedFirestoreHostRef.current,
               ackHostOverrideAt: ackHostOverrideAtRef.current,
               roomState: roomStatePatch,
               latestEvent: options?.latestEvent,
@@ -3682,6 +3712,118 @@ export default function HamsterPaintball({
     }
     return primaryResult;
   };
+
+  const pingSameBrowserHost = (cleanCode: string): Promise<boolean> => {
+    return new Promise(resolve => {
+      if (typeof BroadcastChannel === 'undefined') {
+        resolve(false);
+        return;
+      }
+      let settled = false;
+      let bc: BroadcastChannel | null = null;
+      const done = (found: boolean) => {
+        if (settled) return;
+        settled = true;
+        try {
+          bc?.close();
+        } catch {}
+        resolve(found);
+      };
+      const timer = window.setTimeout(() => done(false), 280);
+      try {
+        bc = new BroadcastChannel(`hamster_paintball_net_${cleanCode}`);
+        bc.onmessage = ev => {
+          const m = ev?.data;
+          if (m && m.type === 'pong_host' && m.id !== clientIdRef.current) {
+            window.clearTimeout(timer);
+            done(true);
+          }
+        };
+        bc.postMessage({ type: 'ping_host', id: clientIdRef.current, roomCode: cleanCode });
+      } catch {
+        window.clearTimeout(timer);
+        done(false);
+      }
+    });
+  };
+
+  const verifyHostedPaintballRoom = async (
+    targetCode: string
+  ): Promise<{ valid: boolean; reason?: string; roomData?: Record<string, any> }> => {
+    const clean = normalizeCode(targetCode)
+      .replace(/[^0-9A-Za-z]/g, '')
+      .slice(0, 6);
+    if (!clean || clean.length < 6) {
+      return {
+        valid: false,
+        reason: 'Please enter the complete 6-character code shown on your host screen.'
+      };
+    }
+
+    // 1. Check active room on Server API
+    const apiRes = await fetchPaintballRoomApi(clean);
+    if (
+      apiRes &&
+      (apiRes.exists === true ||
+        (apiRes.room && apiRes.room.isUninitialized === false && !apiRes.room.hostClosed))
+    ) {
+      return { valid: true, roomData: apiRes.room };
+    }
+
+    // 2. Check active room in Firestore
+    if (!isFirestoreQuotaExhausted()) {
+      try {
+        const fsSnap = await getDoc(getRoomDocRef(clean));
+        if (fsSnap.exists()) {
+          const fsData = fsSnap.data();
+          if (fsData && fsData.isUninitialized !== true && fsData.hostClosed !== true) {
+            verifiedFirestoreHostRef.current = true;
+            verifiedFirestoreRoomDataRef.current = fsData;
+            return { valid: true, roomData: fsData };
+          }
+        }
+      } catch (err) {
+        if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
+      }
+    }
+
+    // 3. Check same-browser BroadcastChannel host tab
+    if (await pingSameBrowserHost(clean)) {
+      return { valid: true };
+    }
+
+    return {
+      valid: false,
+      reason: `Incorrect room code "${clean}". No host is currently hosting a game with this code.`
+    };
+  };
+
+  useEffect(() => {
+    if (screen !== 'join') return;
+    const clean = roomCode
+      .replace(/[^0-9A-Za-z]/g, '')
+      .toUpperCase()
+      .slice(0, 6);
+    setJoinRoomError(null);
+    verifiedFirestoreHostRef.current = false;
+    verifiedFirestoreRoomDataRef.current = null;
+    if (clean.length < 6) {
+      setJoinRoomStatus('idle');
+      return;
+    }
+    let cancelled = false;
+    setJoinRoomStatus('checking');
+    verifyHostedPaintballRoom(clean).then(res => {
+      if (cancelled) return;
+      setJoinRoomStatus(res.valid ? 'valid' : 'invalid');
+      if (!res.valid && res.reason) {
+        setJoinRoomError(res.reason);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, roomCode]);
 
   const fetchPaintballRoomApi = async (code: string) => {
     const clean = normalizeCode(code);
@@ -3939,7 +4081,7 @@ export default function HamsterPaintball({
   // Host Room Configuration Publisher (separated from the real-time sync loop so editing settings never tears down sockets/intervals!)
   useEffect(() => {
     const cleanCode = normalizeCode(roomCode);
-    if (!cleanCode || role !== 'host') return;
+    if (!cleanCode || role !== 'host' || screen === 'editor') return;
     const hostStatus =
       stateSnapRef.current.matchStatus === 'playing'
         ? 'playing'
@@ -3965,6 +4107,9 @@ export default function HamsterPaintball({
       matchStatus: hostStatus,
       configuredDurationSec,
       ballsPerQuestion,
+      isUninitialized: false,
+      hostClosed: false,
+      hostHeartbeatAt: nowServer,
       ...(hostStatus === 'playing' && lastStartedAtRef.current > 1000
         ? {
             matchEpoch: lastStartedAtRef.current,
@@ -3978,7 +4123,7 @@ export default function HamsterPaintball({
     };
     syncPaintballRoomApi(cleanCode, roomConfigPayload);
     if (isFirestoreQuotaExhausted()) return;
-    const fsPublishDelayMs = hostStatus === 'playing' || hostStatus === 'results' ? 150 : 1200;
+    const fsPublishDelayMs = hostStatus === 'playing' || hostStatus === 'results' ? 150 : 400;
     const fsTimer = window.setTimeout(() => {
       safeFirestoreWrite(() =>
         setDoc(getRoomDocRef(cleanCode), stripUndefinedFields(roomConfigPayload), {
@@ -4665,6 +4810,22 @@ export default function HamsterPaintball({
       bc.onmessage = ev => {
         const msg = ev.data;
         if (!msg || msg.id === clientIdRef.current) return;
+        if (msg.type === 'ping_host') {
+          if (
+            stateSnapRef.current.role === 'host' &&
+            stateSnapRef.current.screen !== 'editor' &&
+            bc
+          ) {
+            try {
+              bc.postMessage({
+                type: 'pong_host',
+                id: clientIdRef.current,
+                roomCode: cleanCode
+              });
+            } catch {}
+          }
+          return;
+        }
         if (msg.type === 'player_update') {
           const pState = msg.payload as PlayerNetworkState;
           if (pState && pState.role === 'player' && !pState.kicked) {
@@ -4901,11 +5062,15 @@ export default function HamsterPaintball({
 
       try {
         if (snapState.role === 'host') {
+          if (snapState.screen === 'editor') return;
           if (snapState.matchStatus === 'playing' && pollTickCount % 7 === 0) {
             const nowServer = getServerNow();
             const liveTimerPatch = {
               matchStatus: 'playing',
               hostApiOrigin: currentOrigin,
+              isUninitialized: false,
+              hostClosed: false,
+              hostHeartbeatAt: nowServer,
               timerSyncSeconds: snapState.matchSeconds,
               timerSyncedAt: nowServer,
               isTimerPaused: snapState.isTimerPaused,
@@ -4916,6 +5081,17 @@ export default function HamsterPaintball({
             const resData = await syncPaintballRoomApi(cleanCode, liveTimerPatch);
             if (resData?.room) {
               lastApiHealthyAt = Date.now();
+              processRoomData(resData.room);
+            }
+            if (Array.isArray(resData?.players)) processPlayersList(resData.players);
+          } else if (pollTickCount % 25 === 0) {
+            const resData = await syncPaintballRoomApi(cleanCode, {
+              hostHeartbeatAt: getServerNow(),
+              isUninitialized: false,
+              hostClosed: false
+            });
+            if (resData?.room) {
+              if (!resData.room.isUninitialized) lastApiHealthyAt = Date.now();
               processRoomData(resData.room);
             }
             if (Array.isArray(resData?.players)) processPlayersList(resData.players);
@@ -11480,8 +11656,8 @@ export default function HamsterPaintball({
           // Underground ceiling headroom under multi-story elevated stadium decks
           if (
             activeArenaPreset === 'stadium' &&
-            Math.abs(g.x) < 16.4 &&
-            Math.abs(g.z) < 11.4 &&
+            Math.abs(g.x) < 15.6 &&
+            Math.abs(g.z) < 10.6 &&
             prevY < 3.0 &&
             g.y > 2.95
           ) {
@@ -11499,16 +11675,27 @@ export default function HamsterPaintball({
             if (g.jumpVy > 0) g.jumpVy = -1.2;
           } else if (
             activeArenaPreset === 'trampoline' &&
-            Math.hypot(g.x, g.z) < 10.8 &&
-            prevY < 3.3 &&
-            g.y > 3.25
+            Math.abs(g.x) < 9.8 &&
+            Math.abs(g.z) < 7.8 &&
+            prevY < 3.4 &&
+            g.y > 3.35
           ) {
-            g.y = 3.25;
+            g.y = 3.35;
+            if (g.jumpVy > 0) g.jumpVy = -1.2;
+          } else if (
+            activeArenaPreset === 'trampoline' &&
+            Math.abs(g.x) < 5.2 &&
+            Math.abs(g.z) < 4.2 &&
+            prevY >= 4.5 &&
+            prevY < 7.2 &&
+            g.y > 7.15
+          ) {
+            g.y = 7.15;
             if (g.jumpVy > 0) g.jumpVy = -1.2;
           } else if (
             activeArenaPreset === 'skyfortress' &&
             (Math.abs(g.x + 20) < 8.4 || Math.abs(g.x - 20) < 8.4) &&
-            Math.abs(g.z) < 9.2 &&
+            Math.abs(g.z) < 8.4 &&
             prevY < 3.0 &&
             g.y > 2.95
           ) {
@@ -12102,35 +12289,41 @@ export default function HamsterPaintball({
           if (Math.abs(nextX) <= 7.8 && Math.abs(nextZ) <= 5.8 && prevY >= 8.45 && nextY <= 8.7) {
             elevatedDeckY = 8.65;
           } else if (
-            Math.abs(nextX) <= 16.8 &&
-            Math.abs(nextZ) <= 11.8 &&
+            Math.abs(nextX) <= 15.8 &&
+            Math.abs(nextZ) <= 10.8 &&
             prevY >= 4.45 &&
             nextY <= 4.7
           ) {
             elevatedDeckY = 4.65;
           }
         } else if (projPreset === 'trampoline') {
-          const dC = Math.hypot(nextX, nextZ);
-          if (dC <= 5.2 && prevY >= 9.05 && nextY <= 9.3) {
+          if (Math.abs(nextX) <= 5.2 && Math.abs(nextZ) <= 4.2 && prevY >= 9.05 && nextY <= 9.3) {
             elevatedDeckY = 9.25;
-          } else if (dC <= 11.2 && prevY >= 4.85 && nextY <= 5.1) {
+          } else if (
+            Math.abs(nextX) <= 9.8 &&
+            Math.abs(nextZ) <= 7.8 &&
+            prevY >= 4.85 &&
+            nextY <= 5.1
+          ) {
             elevatedDeckY = 5.05;
           }
         } else if (projPreset === 'obstacle') {
-          if (Math.abs(nextX) <= 11.5 && Math.abs(nextZ) <= 4.6 && prevY >= 3.65 && nextY <= 3.9) {
+          if (Math.abs(nextX) <= 9.5 && Math.abs(nextZ) <= 4.25 && prevY >= 3.65 && nextY <= 3.9) {
             elevatedDeckY = 3.85;
           }
         } else if (projPreset === 'skyfortress') {
           if (
-            (Math.abs(nextX + 20) <= 4.8 || Math.abs(nextX - 20) <= 4.8) &&
-            Math.abs(nextZ) <= 5.2 &&
+            ((Math.abs(nextX + 20) <= 5.4 || Math.abs(nextX - 20) <= 5.4) &&
+              Math.abs(nextZ) <= 5.4 ||
+              (Math.abs(nextX) <= 14.6 && Math.abs(nextZ) <= 2.4)) &&
             prevY >= 8.45 &&
             nextY <= 8.7
           ) {
             elevatedDeckY = 8.65;
           } else if (
-            (Math.abs(nextX + 20) <= 8.6 || Math.abs(nextX - 20) <= 8.6) &&
-            Math.abs(nextZ) <= 9.5 &&
+            ((Math.abs(nextX + 20) <= 8.4 || Math.abs(nextX - 20) <= 8.4) &&
+              Math.abs(nextZ) <= 8.4 ||
+              (Math.abs(nextX) <= 11.6 && Math.abs(nextZ) <= 3.6)) &&
             prevY >= 4.45 &&
             nextY <= 4.7
           ) {
@@ -13580,6 +13773,8 @@ export default function HamsterPaintball({
               safeFirestoreWrite(() =>
                 deleteDoc(getPlayerDocRef(roomCode, clientIdRef.current))
               );
+            } else if (role === 'host' && roomCode && screen !== 'editor') {
+              markHostedRoomClosed(roomCode);
             }
             onViewChange('games');
           }}
@@ -14002,12 +14197,20 @@ export default function HamsterPaintball({
                   <h1 className="font-['Poppins',sans-serif] font-bold text-lg sm:text-xl tracking-tight text-slate-900 truncate">
                     {selectedHeroSkin.name}
                   </h1>
-                  <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mt-0.5 tabular-nums">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 mt-0.5 tabular-nums">
                     {roomCode && <span>Room {roomCode}</span>}
                     <span>·</span>
                     <span>{roomPlayers.length} Online</span>
-                    {matchStatus === 'playing' && (
-                      <span className="text-emerald-600 font-semibold">· Live</span>
+                    {joinRoomStatus === 'checking' && (
+                      <span className="text-slate-500 font-semibold">· Checking host...</span>
+                    )}
+                    {joinRoomStatus === 'valid' && (
+                      <span className="text-emerald-600 font-semibold">
+                        · {matchStatus === 'playing' ? 'Live' : 'Host Active'}
+                      </span>
+                    )}
+                    {joinRoomStatus === 'invalid' && (
+                      <span className="text-rose-600 font-semibold">· Room Not Found</span>
                     )}
                   </div>
                 </div>
@@ -14122,40 +14325,114 @@ export default function HamsterPaintball({
                 type="text"
                 maxLength={6}
                 value={roomCode}
-                onChange={e =>
-                  setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6))
-                }
+                onChange={e => {
+                  setJoinRoomError(null);
+                  setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6));
+                }}
                 placeholder="CODE"
-                className="h-11 px-2 text-center font-mono tabular-nums text-base font-bold tracking-widest text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-900 focus:bg-white"
+                className={`h-11 px-2 text-center font-mono tabular-nums text-base font-bold tracking-widest text-slate-900 bg-slate-50 border rounded-xl focus:outline-none focus:bg-white ${
+                  joinRoomError
+                    ? 'border-rose-400 focus:border-rose-500'
+                    : 'border-slate-200 focus:border-slate-900'
+                }`}
               />
             </div>
+
+            {joinRoomError && (
+              <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-600" />
+                <span>{joinRoomError}</span>
+              </div>
+            )}
 
             {/* Join Arena Button */}
             <button
               type="button"
-              onClick={() => {
+              disabled={isValidatingJoinRoom}
+              onClick={async () => {
                 const cleanCode = roomCode.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
-                if (!cleanCode) return;
+                if (cleanCode.length < 6) {
+                  sfx.playWrong();
+                  setJoinRoomStatus('invalid');
+                  setJoinRoomError('Please enter the complete 6-character code shown on your host screen.');
+                  return;
+                }
                 if (document.activeElement instanceof HTMLElement) {
                   document.activeElement.blur();
                 }
                 window.scrollTo(0, 0);
 
+                setIsValidatingJoinRoom(true);
+                setJoinRoomError(null);
+                let verifiedRoomData: Record<string, any> | undefined;
+                try {
+                  const verification = await verifyHostedPaintballRoom(cleanCode);
+                  if (!verification.valid) {
+                    sfx.playWrong();
+                    setJoinRoomStatus('invalid');
+                    setJoinRoomError(
+                      verification.reason ||
+                        `Incorrect room code "${cleanCode}". No host is currently hosting a game with this code.`
+                    );
+                    return;
+                  }
+                  setJoinRoomStatus('valid');
+                  verifiedRoomData = verification.roomData;
+                } finally {
+                  setIsValidatingJoinRoom(false);
+                }
+
+                const resolvedMatchMode: 'solo' | 'teams' =
+                  verifiedRoomData?.matchMode === 'solo'
+                    ? 'solo'
+                    : verifiedRoomData?.matchMode === 'teams'
+                    ? 'teams'
+                    : matchMode;
+                const resolvedTeamCountNum =
+                  typeof verifiedRoomData?.teamCount === 'number' && verifiedRoomData.teamCount >= 2
+                    ? Math.min(ALL_TEAM_ORDER.length, Math.round(verifiedRoomData.teamCount))
+                    : teamCount;
+                const resolvedBallsPerQ =
+                  typeof verifiedRoomData?.ballsPerQuestion === 'number' &&
+                  verifiedRoomData.ballsPerQuestion > 0
+                    ? verifiedRoomData.ballsPerQuestion
+                    : ballsPerQuestion;
+                const resolvedDurationSec =
+                  typeof verifiedRoomData?.configuredDurationSec === 'number' &&
+                  verifiedRoomData.configuredDurationSec > 0
+                    ? verifiedRoomData.configuredDurationSec
+                    : configuredDurationSec || 180;
+                const resolvedStartedAt =
+                  typeof verifiedRoomData?.startedAt === 'number' && verifiedRoomData.startedAt > 1000
+                    ? verifiedRoomData.startedAt
+                    : typeof verifiedRoomData?.matchEpoch === 'number' &&
+                      verifiedRoomData.matchEpoch > 1000
+                    ? verifiedRoomData.matchEpoch
+                    : lastStartedAtRef.current || getServerNow();
+                const resolvedIsPaused =
+                  typeof verifiedRoomData?.isTimerPaused === 'boolean'
+                    ? verifiedRoomData.isTimerPaused
+                    : isTimerPaused;
+
                 const cleanName =
                   playerName.trim() && playerName.trim() !== 'Teacher Jan'
                     ? playerName.trim()
                     : `Hamster${Math.floor(10 + Math.random() * 89)}`;
-                const joinTeam = normalizeTeamForMatch(myTeam, matchMode, teamCount);
-                const isAlreadyPlaying = stateSnapRef.current.matchStatus === 'playing';
+                const joinTeam = normalizeTeamForMatch(myTeam, resolvedMatchMode, resolvedTeamCountNum);
+                const isAlreadyPlaying =
+                  stateSnapRef.current.matchStatus === 'playing' ||
+                  verifiedRoomData?.matchStatus === 'playing';
 
                 // Synchronously prime stateSnapRef so triggerStudentMatchStart keeps exact chosen nickname & squad
                 stateSnapRef.current.role = 'player';
                 stateSnapRef.current.playerName = cleanName;
                 stateSnapRef.current.myTeam = joinTeam;
                 stateSnapRef.current.selectedSkinIdx = selectedSkinIdx;
-                stateSnapRef.current.matchMode = matchMode;
-                stateSnapRef.current.teamCount = teamCount;
+                stateSnapRef.current.matchMode = resolvedMatchMode;
+                stateSnapRef.current.teamCount = resolvedTeamCountNum;
 
+                setMatchMode(resolvedMatchMode);
+                setTeamCount(resolvedTeamCountNum);
                 setRoomCode(cleanCode);
                 setPlayerName(cleanName);
                 setMyTeam(joinTeam);
@@ -14166,16 +14443,21 @@ export default function HamsterPaintball({
 
                 if (isAlreadyPlaying) {
                   triggerStudentMatchStart(
-                    configuredDurationSec || 180,
-                    matchMode,
-                    lastStartedAtRef.current || getServerNow(),
-                    isTimerPaused,
-                    ballsPerQuestion,
-                    teamCount
+                    resolvedDurationSec,
+                    resolvedMatchMode,
+                    resolvedStartedAt,
+                    resolvedIsPaused,
+                    resolvedBallsPerQ,
+                    resolvedTeamCountNum
                   );
                 } else {
                   const g = gameRef.current;
-                  const sp = getTeamSpawnPosition(joinTeam, matchMode, undefined, teamCount);
+                  const sp = getTeamSpawnPosition(
+                    joinTeam,
+                    resolvedMatchMode,
+                    undefined,
+                    resolvedTeamCountNum
+                  );
                   if (g) {
                     g.x = sp.x;
                     g.z = sp.z;
@@ -14227,10 +14509,19 @@ export default function HamsterPaintball({
 
                 handleForceResyncRoom(cleanCode);
               }}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-['Poppins',sans-serif] font-semibold text-sm sm:text-base rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/70 active:scale-[0.99] text-white font-['Poppins',sans-serif] font-semibold text-sm sm:text-base rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
             >
-              <Play size={16} fill="currentColor" />
-              <span>{matchStatus === 'playing' ? 'Join Match' : 'Join Lobby'}</span>
+              {isValidatingJoinRoom ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Checking Room...</span>
+                </>
+              ) : (
+                <>
+                  <Play size={16} fill="currentColor" />
+                  <span>{matchStatus === 'playing' ? 'Join Match' : 'Join Lobby'}</span>
+                </>
+              )}
             </button>
           </div>
         </div>

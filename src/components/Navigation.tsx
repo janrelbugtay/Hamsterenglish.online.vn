@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../contexts/AuthContext";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageSelector } from "./LanguageSelector";
 
 interface NavigationProps {
   currentView: ViewState;
@@ -40,16 +42,17 @@ export function Navigation({
   openGoogleAuthModal 
 }: NavigationProps) {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
 
   const navItems = [
-    { id: "home", label: "Home", icon: Home, view: "home" as ViewState },
-    { id: "public-dashboard", label: "Community", icon: Users, view: "public-dashboard" as ViewState },
-    { id: "games", label: "My Games", icon: Gamepad2, view: "games" as ViewState },
-    { id: "my-slides", label: "My Slides", icon: Presentation, view: "my-slides" as ViewState },
-    { id: "homework", label: "Homework", icon: BookOpen, view: "homework" as ViewState },
-    { id: "class-rewards", label: "Class rewards", icon: Award, view: "class-rewards" as ViewState },
-    ...(isAdmin ? [{ id: "admin-dashboard", label: "Admin Dashboard", icon: Shield, view: "admin-dashboard" as ViewState }] : []),
+    { id: "home", label: t("nav.home"), icon: Home, view: "home" as ViewState },
+    { id: "public-dashboard", label: t("nav.community"), icon: Users, view: "public-dashboard" as ViewState },
+    { id: "games", label: t("nav.myGames"), icon: Gamepad2, view: "games" as ViewState },
+    { id: "my-slides", label: t("nav.mySlides"), icon: Presentation, view: "my-slides" as ViewState },
+    { id: "homework", label: t("nav.homework"), icon: BookOpen, view: "homework" as ViewState },
+    { id: "class-rewards", label: t("nav.classRewards"), icon: Award, view: "class-rewards" as ViewState },
+    ...(isAdmin ? [{ id: "admin-dashboard", label: t("nav.adminDashboard"), icon: Shield, view: "admin-dashboard" as ViewState }] : []),
   ];
 
   return (
@@ -157,6 +160,7 @@ export function Header({
   openAuthModal?: () => void;
 }) {
   const { user, linkWithGoogle, logout, loading, isAuthenticating } = useAuth();
+  const { t } = useLanguage();
   const [showDropdown, setShowDropdown] = React.useState(false);
   const [isDarkMode, setIsDarkMode] = React.useState(() => {
     const saved = localStorage.getItem('hamster_theme');
@@ -212,19 +216,25 @@ export function Header({
           />
           <input
             type="text"
-            placeholder="Search games..."
+            placeholder={t("header.searchGames")}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple transition-all"
           />
         </div>
       </div>
 
-      <div className="flex items-center gap-2 md:gap-6">
-        <button 
-          onClick={toggleDarkMode}
-          className="text-slate-400 hover:text-brand-purple transition-colors bg-slate-100 hover:bg-slate-200 p-2 rounded-full dark:bg-slate-800 dark:hover:bg-slate-700"
-        >
-          {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
+      <div className="flex items-center gap-2 md:gap-4">
+        <div className="flex items-center gap-2">
+          <LanguageSelector />
+          <button
+            type="button"
+            onClick={toggleDarkMode}
+            aria-label={t("header.toggleTheme")}
+            title={t("header.toggleTheme")}
+            className="text-slate-400 hover:text-brand-purple transition-colors bg-slate-100 hover:bg-slate-200 p-2 rounded-full dark:bg-slate-800 dark:hover:bg-slate-700 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple"
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+        </div>
 
         {!loading &&
           (user ? (
@@ -259,10 +269,10 @@ export function Header({
                   <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                     <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/60 dark:bg-slate-800/80">
                       <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
-                        {user.displayName || "User"}
+                        {user.displayName || t("header.userFallback")}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        {user.email || (user.isAnonymous ? "Guest Account" : "")}
+                        {user.email || (user.isAnonymous ? t("header.guestAccount") : "")}
                       </p>
                     </div>
                     <div className="py-1.5">
@@ -274,7 +284,7 @@ export function Header({
                           }}
                           className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-brand-purple transition-colors flex items-center justify-between"
                         >
-                          Sign In / Register
+                          {t("header.signInRegister")}
                         </button>
                       )}
                       {isAdmin && (
@@ -283,7 +293,7 @@ export function Header({
                           className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-slate-700 hover:text-brand-purple transition-colors flex items-center gap-2.5"
                         >
                           <Shield size={16} className="text-brand-purple" />
-                          <span>Admin Dashboard</span>
+                          <span>{t("nav.adminDashboard")}</span>
                         </button>
                       )}
                       <button
@@ -293,7 +303,7 @@ export function Header({
                         }}
                         className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-red-50 dark:hover:bg-slate-700 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center justify-between"
                       >
-                        <span>Sign Out</span>
+                        <span>{t("header.signOut")}</span>
                         <LogOut size={16} />
                       </button>
                     </div>
@@ -308,7 +318,7 @@ export function Header({
               className="bg-brand-purple hover:bg-brand-purple/90 text-white font-semibold py-1.5 px-3 md:px-4 rounded-full text-sm transition-colors shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
               {isAuthenticating && <Loader2 className="animate-spin" size={14} />}
-              <span>{isAuthenticating ? "Signing In..." : "Sign In"}</span>
+              <span>{isAuthenticating ? t("header.signingIn") : t("header.signIn")}</span>
             </button>
           ))}
       </div>

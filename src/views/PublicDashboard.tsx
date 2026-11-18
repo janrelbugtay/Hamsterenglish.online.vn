@@ -41,6 +41,8 @@ import {
   withSaveTimeout,
 } from "../utils/platformCache";
 
+import noiseControlCardImg from "../assets/images/noise_control_card_1795022921714.jpg";
+
 const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg";
 
 export type CambridgeType = 'Starters' | 'Movers' | 'Flyers' | 'KET' | 'PET' | 'IELTS';
@@ -514,7 +516,7 @@ export function PublicDashboard({
     { id: "neon-chain", title: "Neon Chain", color: "text-cyan-600", icon: "/images/neon-chain-card.jpg?v=3" },
     { id: "tic-tac-toe", title: "Tic Tac Toe Battle", color: "text-gray-800", icon: "/images/tic-tac-toe-card.jpg?v=3" },
     { id: "phonemic-master", title: "Phonemic Master", color: "text-emerald-600", icon: "/images/phonemic-master-card-v3.jpg?v=3" },
-    { id: "sleeping-hamster", title: "Sleeping Hamster", color: "text-purple-600", icon: "/images/sleeping-hamster-card.jpg?v=1" }
+    { id: "sleeping-hamster", title: "Noise Control", color: "text-purple-600", icon: noiseControlCardImg }
   ];
 
   const normalizeGameType = (type: string | undefined): string => {
@@ -1160,6 +1162,9 @@ export function PublicDashboard({
 
                     {/* Row 2: Full 2-line readable Game Title */}
                     <h3
+                      {...(game.topic || game.name || game.title
+                        ? { "data-no-translate": "true", "data-game-topic": "true" }
+                        : {})}
                       className="font-extrabold text-[15px] sm:text-base text-slate-900 dark:text-white leading-snug line-clamp-2 min-h-[2.6rem] group-hover:text-brand-purple dark:group-hover:text-purple-400 transition-colors"
                       title={game.topic || game.name || game.title}
                     >
@@ -1180,6 +1185,7 @@ export function PublicDashboard({
                         {creatorInitial}
                       </div>
                       <span
+                        data-no-translate="true"
                         className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate"
                         title={`Published by ${creatorLabel}`}
                       >
@@ -1258,13 +1264,18 @@ export function PublicDashboard({
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-900/70 rounded-2xl p-3.5 border border-slate-200/70 dark:border-slate-700/70 flex flex-col gap-1">
-              <div className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
+              <div
+                {...(gameToDelete.topic || gameToDelete.name || gameToDelete.title
+                  ? { "data-no-translate": "true", "data-game-topic": "true" }
+                  : {})}
+                className="text-sm font-extrabold text-slate-900 dark:text-white truncate"
+              >
                 {gameToDelete.topic || gameToDelete.name || gameToDelete.title || "Untitled Game"}
               </div>
               <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 <span>{getTemplateInfo(gameToDelete.gameType).title}</span>
                 <span>·</span>
-                <span>Published by {gameToDelete.creatorName || "Community User"}</span>
+                <span data-no-translate="true">Published by {gameToDelete.creatorName || "Community User"}</span>
               </div>
             </div>
 
@@ -1319,7 +1330,12 @@ export function PublicDashboard({
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-900/70 rounded-2xl p-3.5 border border-slate-200/70 dark:border-slate-700/70 flex flex-col gap-1">
-              <div className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
+              <div
+                {...(gameToUnpublish.topic || gameToUnpublish.name || gameToUnpublish.title
+                  ? { "data-no-translate": "true", "data-game-topic": "true" }
+                  : {})}
+                className="text-sm font-extrabold text-slate-900 dark:text-white truncate"
+              >
                 {gameToUnpublish.topic || gameToUnpublish.name || gameToUnpublish.title || "Untitled Game"}
               </div>
               <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">

@@ -102,18 +102,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     bomb: boolean;
     x2: boolean;
     x3: boolean;
-    gold: boolean;
-    ice: boolean;
-    zap: boolean;
+    plus5: boolean;
+    plus10: boolean;
   }>({
     bomb: true,
     x2: true,
     x3: true,
-    gold: true,
-    ice: true,
-    zap: true
+    plus5: true,
+    plus10: true
   });
-  const [multiSpawnRate, setMultiSpawnRate] = useState<'normal' | 'frenzy' | 'chaos'>('frenzy');
+  const [multiSpawnRate, setMultiSpawnRate] = useState<'normal' | 'frenzy' | 'chaos'>('normal');
 
   // In-Game Live HUD States
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
@@ -132,6 +130,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const [nextQCountdown, setNextQCountdown] = useState<number | null>(null);
   const [nextQProgressPct, setNextQProgressPct] = useState<number>(100);
   const [upcomingQNumber, setUpcomingQNumber] = useState<number>(1);
+  const [hudReadingQuestion, setHudReadingQuestion] = useState<boolean>(false);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -220,11 +219,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   const multiAnswerCountRef = useRef<number>(multiAnswerCount);
   const multiItemsRef = useRef(multiItems);
   const multiSpawnRateRef = useRef<'normal' | 'frenzy' | 'chaos'>(multiSpawnRate);
+  const nextSpecialSpawnMsRef = useRef<number>(0);
+  const lastSpecialTypeRef = useRef<string | null>(null);
   const lastHudMultsSigRef = useRef<string>('1-1-0');
   const nextQTimerRef = useRef<number | null>(null);
   const lastHudSecRef = useRef<number>(playingTime);
   const lastHudHandsRef = useRef<string>('0000');
   const lastHudArmedRef = useRef<string>('00');
+  const questionReadingRef = useRef<boolean>(false);
+  const questionReadTokenRef = useRef<number>(0);
+  const questionReadFallbackTimerRef = useRef<number | null>(null);
   const cameraLastSendMsRef = useRef<number>(0);
   const onHandsResultsRef = useRef<((results: any) => void) | null>(null);
   const onFaceResultsRef = useRef<((results: any) => void) | null>(null);
@@ -286,8 +290,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         handsRef.current.setOptions({
           maxNumHands: numPlayers === 2 ? 4 : 2,
           modelComplexity: 1,
-          minDetectionConfidence: 0.56,
-          minTrackingConfidence: 0.50
+          minDetectionConfidence: 0.52,
+          minTrackingConfidence: 0.44
         });
       } catch (e) {}
     }
@@ -889,17 +893,29 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
   };
 
-  // Realistic human-like TTS narration
-  const speakText = (text: string) => {
-    if (!voiceEnabledRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  // Realistic human-like TTS narration with reliable completion callback
+  const speakText = (text: string, opts?: { onComplete?: () => void }) => {
+    const notifyDone = () => {
+      opts?.onComplete?.();
+    };
+    const cleanText = String(text || '')
+      .replace(/_+/g, " blank ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleanText || !voiceEnabledRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      notifyDone();
+      return;
+    }
+    let finished = false;
+    const finishOnce = () => {
+      if (finished) return;
+      finished = true;
+      notifyDone();
+    };
     try {
-      window.speechSynthesis.cancel();
-      const cleanText = text
-        .replace(/_+/g, " blank ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (!cleanText) return;
-
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel();
+      }
       const utterance = new SpeechSynthesisUtterance(cleanText);
       const voices = window.speechSynthesis.getVoices();
       if (!preferredVoiceRef.current && voices.length > 0) {
@@ -916,8 +932,101 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       utterance.rate = 0.96;
       utterance.pitch = 1.02;
       utterance.volume = 1.0;
+      utterance.onend = () => finishOnce();
+      utterance.onerror = () => finishOnce();
       window.speechSynthesis.speak(utterance);
-    } catch (e) {}
+    } catch (e) {
+      finishOnce();
+    }
+  };
+
+  // Clear question-reading slap lock & cancel any pending speech/watchdog timers
+  const clearQuestionReadingLock = (cancelSpeech: boolean = false) => {
+    questionReadTokenRef.current += 1;
+    if (questionReadFallbackTimerRef.current !== null) {
+      window.clearTimeout(questionReadFallbackTimerRef.current);
+      questionReadFallbackTimerRef.current = null;
+    }
+    questionReadingRef.current = false;
+    setHudReadingQuestion(false);
+    if (cancelSpeech && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+    }
+  };
+
+  // Read the active question aloud and unlock Mosquito Slap only after reading completes
+  const beginQuestionReadingPhase = (rawQuestionText: string) => {
+    clearQuestionReadingLock(true);
+    const token = questionReadTokenRef.current;
+    const parsed = parseOptionContent(rawQuestionText || '');
+    const cleanText = (parsed.text || rawQuestionText || '')
+      .replace(/_+/g, " blank ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const activateSlap = () => {
+      if (token !== questionReadTokenRef.current) return;
+      if (questionReadFallbackTimerRef.current !== null) {
+        window.clearTimeout(questionReadFallbackTimerRef.current);
+        questionReadFallbackTimerRef.current = null;
+      }
+      const wasLocked = questionReadingRef.current;
+      questionReadingRef.current = false;
+      setHudReadingQuestion(false);
+
+      const eng = engineRef.current;
+      eng.players.forEach(pl => {
+        if (!pl) return;
+        pl.pendingClap = null;
+        pl.lastSlapSelectTime = 0;
+      });
+
+      if (eng.isActive && !eng.resolved) {
+        if (eng.roundMode === 'mosquito') {
+          startMosquitoBuzz();
+        }
+        if (wasLocked) {
+          playSoundEffect('countdown');
+          const cw = containerRef.current?.clientWidth || 960;
+          const ch = containerRef.current?.clientHeight || 540;
+          spawnFloatingText(
+            cw * 0.5,
+            Math.max(120, ch * 0.22),
+            slapModeRef.current === 'swat' ? '🖐️ SWAT NOW!' : '👏 SLAP NOW!',
+            '#10b981'
+          );
+        }
+      }
+    };
+
+    if (!cleanText) {
+      activateSlap();
+      return;
+    }
+
+    questionReadingRef.current = true;
+    setHudReadingQuestion(true);
+    engineRef.current.players.forEach(pl => {
+      if (pl) pl.pendingClap = null;
+    });
+
+    const hasSpeech = voiceEnabledRef.current && typeof window !== 'undefined' && 'speechSynthesis' in window;
+    const wordCount = cleanText.split(/\s+/).filter(Boolean).length;
+
+    if (hasSpeech) {
+      const safetyTimeoutMs = Math.max(2400, Math.min(8500, cleanText.length * 85 + 1500));
+      questionReadFallbackTimerRef.current = window.setTimeout(() => {
+        activateSlap();
+      }, safetyTimeoutMs);
+      speakText(cleanText, { onComplete: activateSlap });
+    } else {
+      const readDelayMs = Math.max(950, Math.min(2200, wordCount * 165));
+      questionReadFallbackTimerRef.current = window.setTimeout(() => {
+        activateSlap();
+      }, readDelayMs);
+    }
   };
 
   // Keyboard navigation in Study Mode
@@ -1023,10 +1132,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       lastClosingSpeedPx: 0,
       lastTwoHandSepDist: 1,
       lastTwoHandSepDistPx: 9999,
+      lastRawSepPx: 9999,
+      prevRawSepPx: 9999,
+      minPostClapSepPx: 9999,
       lastTrueTwoHandsTime: 0,
       lastSeparatedHandsTime: 0,
       lastSlapSelectTime: 0,
       lastClapImpulseMs: 0,
+      lastEarlyClapHintMs: 0,
       needsReopenSinceMs: 0,
       clapImpulseId: 0,
       consumedClapId: 0,
@@ -1040,6 +1153,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         y: 0.58,
         prevX: baseX - 0.13,
         prevY: 0.58,
+        rawX: baseX - 0.13,
+        rawY: 0.58,
+        prevRawX: baseX - 0.13,
+        prevRawY: 0.58,
         vx: 0,
         vy: 0,
         vxPx: 0,
@@ -1062,6 +1179,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         y: 0.58,
         prevX: baseX + 0.13,
         prevY: 0.58,
+        rawX: baseX + 0.13,
+        rawY: 0.58,
+        prevRawX: baseX + 0.13,
+        prevRawY: 0.58,
         vx: 0,
         vy: 0,
         vxPx: 0,
@@ -1176,28 +1297,31 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const courtMult = is2P ? 0.74 : 0.90;
       if (sens === 'easy') {
         return {
-          armDistPx: Math.max(68, combinedGloveRadiusPx * 1.08 * courtMult),
-          touchDistPx: Math.max(76, combinedGloveRadiusPx * 1.12),
-          minCloseDeltaPx: Math.max(18, 24 * courtMult),
-          minInwardSpeedPx: 68,
-          swatSpeedPx: 220
+          armDistPx: Math.max(62, combinedGloveRadiusPx * 1.02 * courtMult),
+          touchDistPx: Math.max(78, combinedGloveRadiusPx * 1.15),
+          reopenDeltaPx: Math.max(14, combinedGloveRadiusPx * 0.16),
+          minCloseDeltaPx: Math.max(14, 20 * courtMult),
+          minInwardSpeedPx: 62,
+          swatSpeedPx: 205
         };
       }
       if (sens === 'precise') {
         return {
-          armDistPx: Math.max(96, combinedGloveRadiusPx * 1.35 * courtMult),
-          touchDistPx: Math.max(62, combinedGloveRadiusPx * 0.90),
-          minCloseDeltaPx: Math.max(30, 42 * courtMult),
-          minInwardSpeedPx: 145,
-          swatSpeedPx: 390
+          armDistPx: Math.max(92, combinedGloveRadiusPx * 1.30 * courtMult),
+          touchDistPx: Math.max(64, combinedGloveRadiusPx * 0.92),
+          reopenDeltaPx: Math.max(26, combinedGloveRadiusPx * 0.28),
+          minCloseDeltaPx: Math.max(24, 34 * courtMult),
+          minInwardSpeedPx: 130,
+          swatSpeedPx: 360
         };
       }
       return {
-        armDistPx: Math.max(80, combinedGloveRadiusPx * 1.18 * courtMult),
-        touchDistPx: Math.max(70, combinedGloveRadiusPx * 1.02),
-        minCloseDeltaPx: Math.max(22, 30 * courtMult),
-        minInwardSpeedPx: 95,
-        swatSpeedPx: 295
+        armDistPx: Math.max(76, combinedGloveRadiusPx * 1.12 * courtMult),
+        touchDistPx: Math.max(72, combinedGloveRadiusPx * 1.04),
+        reopenDeltaPx: Math.max(19, combinedGloveRadiusPx * 0.21),
+        minCloseDeltaPx: Math.max(18, 25 * courtMult),
+        minInwardSpeedPx: 88,
+        swatSpeedPx: 270
       };
     };
 
@@ -1215,11 +1339,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         isSwat
       };
       player.isClapping = true;
-      player.clapTimer = 0.22;
+      player.clapTimer = 0.14;
       player.clapArmed = false;
       player.sepFrames = 0;
       player.peakArmedSep = 0;
       player.peakArmedSepPx = 0;
+      player.minPostClapSepPx = isSwat ? 9999 : 0;
       player.needsReopenSinceMs = now;
       player.slapAnim = 1.0;
       player.swordLunge = 1.0;
@@ -1239,9 +1364,36 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       });
     };
 
+    // Ballistic blur completion: catches 1-frame MediaPipe dropouts right on impact during rapid claps
+    const tryBallisticBlurClap = (player: any, combinedRadiusPx: number) => {
+      if (slapModeRef.current === 'swat') return false;
+      if (!player || !player.clapArmed) return false;
+      if (now - (player.lastClapImpulseMs || 0) < 115) return false;
+      const sinceTwoHandsMs = now - (player.lastTrueTwoHandsTime || 0);
+      if (sinceTwoHandsMs <= 0 || sinceTwoHandsMs > 95) return false;
+
+      const { touchDistPx, minInwardSpeedPx } = getSensParams(combinedRadiusPx);
+      const lastSepPx = Math.min(player.lastRawSepPx || 9999, player.lastTwoHandSepDistPx || 9999);
+      const closingSpd = player.lastClosingSpeedPx || 0;
+      if (closingSpd < minInwardSpeedPx * 1.30 || lastSepPx > touchDistPx * 2.1) return false;
+
+      const timeToTouchSec = Math.max(0, lastSepPx - touchDistPx) / Math.max(1, closingSpd);
+      if (timeToTouchSec <= 0.095) {
+        const mx = ((player.leftHand?.x ?? player.clapMidX ?? 0.5) + (player.rightHand?.x ?? player.clapMidX ?? 0.5)) * 0.5;
+        const my = ((player.leftHand?.y ?? player.clapMidY ?? 0.5) + (player.rightHand?.y ?? player.clapMidY ?? 0.5)) * 0.5;
+        triggerClapImpulse(player, mx, my, mx, my, false);
+        return true;
+      }
+      return false;
+    };
+
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+      const userSizeMultEmpty = gloveSizeRef.current || 1.0;
       eng.players.forEach(p => {
         if (!p) return;
+        const estRadiusPx = (46 * Math.max(0.75, p.leftHand?.scale || 0.95) + 46 * Math.max(0.75, p.rightHand?.scale || 0.95)) * userSizeMultEmpty;
+        tryBallisticBlurClap(p, estRadiusPx);
+
         const graceMs = (now - (p.lastTrueTwoHandsTime || 0) < 1400 || (p.clapTimer && p.clapTimer > 0)) ? 850 : 380;
         if (now - (p.leftHand.lastSeenTime || 0) > graceMs) {
           p.leftHand.detected = false;
@@ -1269,6 +1421,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           p.sepFrames = 0;
           p.peakArmedSep = 0;
           p.peakArmedSepPx = 0;
+          p.minPostClapSepPx = 9999;
+          p.lastRawSepPx = 9999;
+          p.prevRawSepPx = 9999;
           p.needsReopenSinceMs = 0;
           if (!p.clapTimer || p.clapTimer <= 0) {
             p.isClapping = false;
@@ -1512,6 +1667,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const HAND_GRACE_MS = (hadTwoHandsRecently || (player.clapTimer && player.clapTimer > 0)) ? 950 : 480;
 
       if (handsForPlayer.length === 0) {
+        const estRadiusPxZero = (46 * Math.max(0.75, lh.scale || 0.95) + 46 * Math.max(0.75, rh.scale || 0.95)) * (gloveSizeRef.current || 1.0);
+        tryBallisticBlurClap(player, estRadiusPxZero);
+
         if (now - (lh.lastSeenTime || 0) > HAND_GRACE_MS) {
           lh.detected = false;
           lh.landmarks = null;
@@ -1539,6 +1697,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           player.sepFrames = 0;
           player.peakArmedSep = 0;
           player.peakArmedSepPx = 0;
+          player.minPostClapSepPx = 9999;
+          player.lastRawSepPx = 9999;
+          player.prevRawSepPx = 9999;
           player.needsReopenSinceMs = 0;
           if (!player.clapTimer || player.clapTimer <= 0) {
             player.isClapping = false;
@@ -1550,12 +1711,17 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       player.hasDetectedHands = true;
       player.lastHandTime = now;
 
-      // Adaptive velocity-aware hand state updater (rock-steady when hovering, instant 1:1 when swinging)
+      // Adaptive velocity-aware hand state updater (rock-steady when hovering, instant 1:1 during rapid claps)
       const applySmoothedHand = (handSlot: any, data: any) => {
-        const freshlyTracked = handSlot.detected && (now - (handSlot.lastSeenTime || 0) <= 150);
+        const freshlyTracked = handSlot.detected && (now - (handSlot.lastSeenTime || 0) <= 180);
         const rawStep = freshlyTracked ? Math.hypot(data.clampedX - handSlot.x, data.clampedY - handSlot.y) : 999;
 
-        if (!freshlyTracked || rawStep > 0.30) {
+        handSlot.prevRawX = freshlyTracked ? (handSlot.rawX ?? data.clampedX) : data.clampedX;
+        handSlot.prevRawY = freshlyTracked ? (handSlot.rawY ?? data.clampedY) : data.clampedY;
+        handSlot.rawX = data.clampedX;
+        handSlot.rawY = data.clampedY;
+
+        if (!freshlyTracked || rawStep > 0.34) {
           // Fresh hand entry or jump recovery: snap cleanly with zero fake velocity spike
           handSlot.prevX = data.clampedX;
           handSlot.prevY = data.clampedY;
@@ -1571,8 +1737,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           handSlot.knifeAngle = data.pointingAngle;
           handSlot.scale = data.scale;
         } else {
-          // Adaptive One-Euro style filter: 0.42 when nearly still to kill webcam jitter, up to 0.90 during fast swings
-          const posAlpha = Math.max(0.42, Math.min(0.92, 0.38 + rawStep * 14.0));
+          // Adaptive One-Euro style filter: 0.40 when nearly still to kill webcam jitter, up to 0.98 during fast swings/claps
+          const posAlpha = Math.max(0.40, Math.min(0.98, 0.40 + rawStep * 18.0));
           const nextX = handSlot.x + (data.clampedX - handSlot.x) * posAlpha;
           const nextY = handSlot.y + (data.clampedY - handSlot.y) * posAlpha;
           handSlot.prevX = handSlot.x;
@@ -1582,18 +1748,21 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
           const instVx = nextX - handSlot.prevX;
           const instVy = nextY - handSlot.prevY;
-          handSlot.vx = instVx * 0.62 + (handSlot.vx || 0) * 0.38;
-          handSlot.vy = instVy * 0.62 + (handSlot.vy || 0) * 0.38;
+          handSlot.vx = instVx * 0.72 + (handSlot.vx || 0) * 0.28;
+          handSlot.vy = instVy * 0.72 + (handSlot.vy || 0) * 0.28;
           handSlot.speed = Math.hypot(handSlot.vx, handSlot.vy);
 
+          const rawVxPx = ((data.clampedX - handSlot.prevRawX) * cw) / dtHandsSec;
+          const rawVyPx = ((data.clampedY - handSlot.prevRawY) * ch) / dtHandsSec;
           const instVxPx = ((nextX - handSlot.prevX) * cw) / dtHandsSec;
           const instVyPx = ((nextY - handSlot.prevY) * ch) / dtHandsSec;
-          handSlot.vxPx = instVxPx * 0.60 + (handSlot.vxPx || 0) * 0.40;
-          handSlot.vyPx = instVyPx * 0.60 + (handSlot.vyPx || 0) * 0.40;
-          handSlot.speedPx = Math.hypot(handSlot.vxPx, handSlot.vyPx);
+          // Use un-dampened instantaneous velocity during reversals so rapid claps never get canceled by prior outward EMA!
+          handSlot.vxPx = Math.abs(rawVxPx) > Math.abs(instVxPx) ? rawVxPx : (instVxPx * 0.80 + (handSlot.vxPx || 0) * 0.20);
+          handSlot.vyPx = Math.abs(rawVyPx) > Math.abs(instVyPx) ? rawVyPx : (instVyPx * 0.80 + (handSlot.vyPx || 0) * 0.20);
+          handSlot.speedPx = Math.max(Math.hypot(rawVxPx, rawVyPx), Math.hypot(handSlot.vxPx, handSlot.vyPx));
 
-          handSlot.angle = smoothAngle(handSlot.angle, data.gloveAngle, 0.55);
-          handSlot.knifeAngle = smoothAngle(handSlot.knifeAngle, data.pointingAngle, 0.62);
+          handSlot.angle = smoothAngle(handSlot.angle, data.gloveAngle, 0.58);
+          handSlot.knifeAngle = smoothAngle(handSlot.knifeAngle, data.pointingAngle, 0.65);
           handSlot.scale = handSlot.scale + (data.scale - handSlot.scale) * 0.45;
         }
 
@@ -1651,10 +1820,14 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
         const sepDist = Math.hypot(rh.x - lh.x, rh.y - lh.y);
         const sepDistPx = Math.hypot((rh.x - lh.x) * cw, (rh.y - lh.y) * ch);
+        // Zero-lag raw separation directly from MediaPipe positions so fast claps aren't delayed by smoothing
+        const rawSepPx = Math.hypot((rightData.clampedX - leftData.clampedX) * cw, (rightData.clampedY - leftData.clampedY) * ch);
+        const prevRawSepPx = (player.lastRawSepPx ?? 9999) < 9000 ? player.lastRawSepPx : rawSepPx;
 
         let minLandmarkDistPx = sepDistPx;
+        let rawMinLandmarkDistPx = rawSepPx;
+        const palmProbe = [0, 1, 4, 5, 8, 9, 12, 13, 16, 17, 20];
         if (lh.landmarks && rh.landmarks) {
-          const palmProbe = [0, 1, 4, 5, 8, 9, 12, 13, 16, 17, 20];
           for (let i = 0; i < palmProbe.length; i++) {
             const lmL = lh.landmarks[palmProbe[i]];
             if (!lmL) continue;
@@ -1666,35 +1839,74 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             }
           }
         }
+        if (leftData.landmarks && rightData.landmarks) {
+          for (let i = 0; i < palmProbe.length; i++) {
+            const lmL = leftData.landmarks[palmProbe[i]];
+            if (!lmL) continue;
+            for (let j = 0; j < palmProbe.length; j++) {
+              const lmR = rightData.landmarks[palmProbe[j]];
+              if (!lmR) continue;
+              const dRawLmPx = Math.hypot((lmR.x - lmL.x) * cw, (lmR.y - lmL.y) * ch);
+              if (dRawLmPx < rawMinLandmarkDistPx) rawMinLandmarkDistPx = dRawLmPx;
+            }
+          }
+        }
 
         // Compute TRUE radial inward closing speed (px/sec) along the inter-hand axis:
         // Positive ONLY when Left & Right hands move TOWARD each other; ~0 when both hands move sideways together!
-        const axisDxPx = (rh.x - lh.x) * cw;
-        const axisDyPx = (rh.y - lh.y) * ch;
+        const axisDxPx = (rightData.clampedX - leftData.clampedX) * cw;
+        const axisDyPx = (rightData.clampedY - leftData.clampedY) * ch;
         const axisLenPx = Math.max(1, Math.hypot(axisDxPx, axisDyPx));
         const unitX = axisDxPx / axisLenPx;
         const unitY = axisDyPx / axisLenPx;
         const relVelX = (lh.vxPx || 0) - (rh.vxPx || 0);
         const relVelY = (lh.vyPx || 0) - (rh.vyPx || 0);
         const radialInwardSpeedPx = Math.max(0, relVelX * unitX + relVelY * unitY);
+        const rawRelVx = (((leftData.clampedX - (lh.prevRawX ?? leftData.clampedX)) - (rightData.clampedX - (rh.prevRawX ?? rightData.clampedX))) * cw) / dtHandsSec;
+        const rawRelVy = (((leftData.clampedY - (lh.prevRawY ?? leftData.clampedY)) - (rightData.clampedY - (rh.prevRawY ?? rightData.clampedY))) * ch) / dtHandsSec;
+        const rawRadialInwardSpeedPx = Math.max(0, rawRelVx * unitX + rawRelVy * unitY);
+
         const prevSepPx = player.lastTwoHandSepDistPx < 9000 ? player.lastTwoHandSepDistPx : sepDistPx;
         const frameDropSpeedPx = Math.max(0, (prevSepPx - sepDistPx) / dtHandsSec);
-        const closingSpeedPx = Math.max(radialInwardSpeedPx, frameDropSpeedPx * 0.85);
+        const rawFrameDropSpeedPx = Math.max(0, (prevRawSepPx - rawSepPx) / dtHandsSec);
+        const closingSpeedPx = Math.max(radialInwardSpeedPx, frameDropSpeedPx * 0.90, rawRadialInwardSpeedPx, rawFrameDropSpeedPx);
+
+        const effectiveSepPx = Math.min(sepDistPx, rawSepPx);
+        const effectiveLandmarkDistPx = Math.min(minLandmarkDistPx, rawMinLandmarkDistPx);
+        const maxObservedSepPx = Math.max(sepDistPx, rawSepPx);
 
         const leftGloveRadiusPx = 46 * Math.max(0.75, Math.min(1.48, lh.scale)) * userSizeMult;
         const rightGloveRadiusPx = 46 * Math.max(0.75, Math.min(1.48, rh.scale)) * userSizeMult;
         const combinedGloveRadiusPx = leftGloveRadiusPx + rightGloveRadiusPx;
-        const { armDistPx, touchDistPx, minCloseDeltaPx, minInwardSpeedPx, swatSpeedPx } = getSensParams(combinedGloveRadiusPx);
+        const { armDistPx, touchDistPx, reopenDeltaPx, minCloseDeltaPx, minInwardSpeedPx, swatSpeedPx } = getSensParams(combinedGloveRadiusPx);
+
+        const prevFrameClosingSpeed = player.lastClosingSpeedPx || 0;
 
         player.dualHandsArmed = true;
         player.lastTrueTwoHandsTime = now;
         player.lastTwoHandSepDist = sepDist;
         player.lastTwoHandSepDistPx = sepDistPx;
+        player.prevRawSepPx = prevRawSepPx;
+        player.lastRawSepPx = rawSepPx;
         player.lastClosingVel = Math.max(0, sepDist);
         player.lastClosingSpeedPx = closingSpeedPx;
 
-        // STEP 1: ARMING & RE-OPEN HYSTERESIS
-        const canReArm = sepDistPx >= armDistPx || (sepDistPx >= touchDistPx * 1.15 && (now - (player.lastClapImpulseMs || 0) > 320));
+        // STEP 1: ARMING & FAST-REBOUND RE-OPEN HYSTERESIS
+        // Re-arms immediately when hands open wide OR make a crisp outward bounce after a clap!
+        if (!player.clapArmed) {
+          player.minPostClapSepPx = Math.min(player.minPostClapSepPx ?? effectiveSepPx, effectiveSepPx);
+        }
+        const reboundGainPx = maxObservedSepPx - (player.minPostClapSepPx ?? 0);
+        const fastReboundArm =
+          (now - (player.lastClapImpulseMs || 0) >= 55) &&
+          reboundGainPx >= reopenDeltaPx &&
+          maxObservedSepPx >= touchDistPx * 0.54;
+        const canReArm =
+          sepDistPx >= armDistPx ||
+          rawSepPx >= armDistPx ||
+          fastReboundArm ||
+          (maxObservedSepPx >= touchDistPx * 1.10 && (now - (player.lastClapImpulseMs || 0) > 220));
+
         if (canReArm) {
           player.sepFrames = Math.min(10, (player.sepFrames || 0) + 1);
           player.lastSeparatedHandsTime = now;
@@ -1702,36 +1914,48 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           player.clapArmed = true;
           player.lastArmedTime = now;
           player.peakArmedSep = Math.max(player.peakArmedSep || 0, sepDist);
-          player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, sepDistPx);
+          player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, maxObservedSepPx);
           if (!player.clapTimer || player.clapTimer <= 0) {
             player.isClapping = false;
           }
         } else if (player.clapArmed) {
-          player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, sepDistPx);
+          player.peakArmedSepPx = Math.max(player.peakArmedSepPx || 0, maxObservedSepPx);
         }
 
-        // STEP 2: PHYSICAL CLAP IMPULSE DETECTION (Fires ONCE per real clap, then requires re-opening hands!)
-        const closeDeltaPx = (player.peakArmedSepPx || 0) - sepDistPx;
-        const cooldownReady = (now - (player.lastClapImpulseMs || 0)) >= 280;
+        // STEP 2: PHYSICAL CLAP IMPULSE DETECTION (Fires ONCE per clap; handles fast bounces & sub-frame impacts!)
+        const closeDeltaPx = (player.peakArmedSepPx || 0) - effectiveSepPx;
+        const cooldownReady = (now - (player.lastClapImpulseMs || 0)) >= 115;
+        const requiredCloseDeltaPx = closingSpeedPx >= minInwardSpeedPx * 1.15
+          ? Math.min(minCloseDeltaPx * 0.80, reopenDeltaPx * 0.85)
+          : minCloseDeltaPx * 0.82;
         const isGloveContact =
-          sepDistPx <= touchDistPx ||
-          (minLandmarkDistPx <= 28 && sepDistPx <= touchDistPx * 1.22);
+          effectiveSepPx <= touchDistPx * 1.06 ||
+          (effectiveLandmarkDistPx <= 32 && effectiveSepPx <= touchDistPx * 1.30);
         const isDynamicCatch =
-          closingSpeedPx >= minInwardSpeedPx * 1.85 &&
-          sepDistPx <= touchDistPx * 1.24 &&
-          closeDeltaPx >= minCloseDeltaPx;
+          closingSpeedPx >= minInwardSpeedPx * 1.50 &&
+          effectiveSepPx <= touchDistPx * 1.38 &&
+          closeDeltaPx >= requiredCloseDeltaPx * 0.70;
+        const isSubframeCrossing =
+          prevRawSepPx < 9000 &&
+          prevRawSepPx <= touchDistPx * 1.55 &&
+          rawSepPx > prevRawSepPx + 6 &&
+          prevFrameClosingSpeed >= minInwardSpeedPx * 1.75 &&
+          ((player.peakArmedSepPx || 0) - prevRawSepPx) >= requiredCloseDeltaPx * 0.65;
 
         if (
           !isSwatMode &&
           player.clapArmed &&
           cooldownReady &&
-          closeDeltaPx >= minCloseDeltaPx * 0.85 &&
-          ((isGloveContact && closingSpeedPx >= minInwardSpeedPx * 0.80) ||
-            (sepDistPx <= touchDistPx * 0.84 && closeDeltaPx >= minCloseDeltaPx) ||
-            isDynamicCatch)
+          (
+            (closeDeltaPx >= requiredCloseDeltaPx &&
+              ((isGloveContact && closingSpeedPx >= minInwardSpeedPx * 0.65) ||
+                (effectiveSepPx <= touchDistPx * 0.86) ||
+                isDynamicCatch)) ||
+            isSubframeCrossing
+          )
         ) {
-          const midX = (lh.x + rh.x) * 0.5;
-          const midY = (lh.y + rh.y) * 0.5;
+          const midX = (leftData.clampedX + rightData.clampedX) * 0.5;
+          const midY = (leftData.clampedY + rightData.clampedY) * 0.5;
           triggerClapImpulse(player, midX, midY, prevMidNormX, prevMidNormY, false);
 
           // Keep both gloves visibly side-by-side on impact so neither glove ever disappears
@@ -1741,10 +1965,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         } else if (isSwatMode && cooldownReady) {
           // One-Hand Swat Mode with 2 hands visible: trigger on brisk swat motion from either hand
-          if (lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 340) {
+          if (lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 155) {
             lh.lastSwatMs = now;
             triggerClapImpulse(player, lh.x, lh.y, lh.prevX, lh.prevY, true);
-          } else if (rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 340) {
+          } else if (rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 155) {
             rh.lastSwatMs = now;
             triggerClapImpulse(player, rh.x, rh.y, rh.prevX, rh.prevY, true);
           }
@@ -1757,9 +1981,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           : { ...leftData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y, scale: meanScale };
       } else {
         // ONLY 1 HAND RETURNED BY MEDIAPIPE IN THIS FRAME:
-        // When slapping, one hand frequently occludes the other hand on camera!
-        // We MUST keep both gloves visible when slapping or when 2 hands were recently tracked,
-        // and fire the clap impulse whenever the visible hand meets the other hand's position!
+        // When clapping fast, one hand frequently occludes the other hand on camera!
+        // Keep both gloves visible and fire the clap impulse whenever the merged palm meets the other hand!
         const hData = handsForPlayer[0];
         const prevMidX = (lh.x + rh.x) * 0.5;
         const prevMidY = (lh.y + rh.y) * 0.5;
@@ -1774,25 +1997,31 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           46 * Math.max(0.75, lh.scale || 0.95) +
           46 * Math.max(0.75, rh.scale || 0.95)
         ) * userSizeMult;
-        const { touchDistPx, swatSpeedPx } = getSensParams(combinedRadiusPx);
+        const { touchDistPx, reopenDeltaPx, swatSpeedPx } = getSensParams(combinedRadiusPx);
 
         const isSwatModeSingle = slapModeRef.current === 'swat';
         const recentTwoHands = (now - (player.lastTrueTwoHandsTime || 0) <= 950);
+        const lastKnownSepPx = Math.max(player.lastRawSepPx || 0, player.lastTwoHandSepDistPx || 0);
+        const reboundedBeforeMerge =
+          (now - (player.lastTrueTwoHandsTime || 0) <= 320) &&
+          (now - (player.lastClapImpulseMs || 0) >= 65) &&
+          lastKnownSepPx >= (player.minPostClapSepPx || 0) + reopenDeltaPx &&
+          lastKnownSepPx >= touchDistPx * 0.54;
 
         // If 2 hands were tracked recently and the single visible hand is near the midpoint or the other hand,
         // MediaPipe merged the two palms into 1 silhouette during a clap/slap!
         const trueClapOcclusionMerge = Boolean(
           !isSwatModeSingle &&
           recentTwoHands &&
-          (player.clapArmed || (player.lastTwoHandSepDistPx || 0) >= touchDistPx * 0.95) &&
-          (now - (player.lastClapImpulseMs || 0) >= 280) &&
-          (maxDistToEitherHandPx <= touchDistPx * 1.55 ||
-            distToPrevMidPx <= Math.max(92, combinedRadiusPx * 1.12))
+          (player.clapArmed || reboundedBeforeMerge || lastKnownSepPx >= touchDistPx * 0.88) &&
+          (now - (player.lastClapImpulseMs || 0) >= 115) &&
+          (maxDistToEitherHandPx <= touchDistPx * 1.65 ||
+            distToPrevMidPx <= Math.max(98, combinedRadiusPx * 1.18))
         );
 
         const sustainRecentMergedClap = Boolean(
           !isSwatModeSingle &&
-          (player.isClapping || (player.clapTimer && player.clapTimer > 0) || (now - (player.lastClapImpulseMs || 0) <= 360)) &&
+          (player.isClapping || (player.clapTimer && player.clapTimer > 0) || (now - (player.lastClapImpulseMs || 0) <= 220)) &&
           distToPrevMidPx <= Math.max(115, combinedRadiusPx * 1.35)
         );
 
@@ -1807,6 +2036,10 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           lh.y = hData.clampedY;
           rh.x = hData.clampedX + contactHalfGap;
           rh.y = hData.clampedY;
+          lh.rawX = lh.x;
+          lh.rawY = lh.y;
+          rh.rawX = rh.x;
+          rh.rawY = rh.y;
           lh.vx = lh.x - lh.prevX;
           lh.vy = lh.y - lh.prevY;
           rh.vx = rh.x - rh.prevX;
@@ -1825,6 +2058,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           rh.detected = true;
           lh.lastSeenTime = now;
           rh.lastSeenTime = now;
+          player.lastRawSepPx = 0;
 
           if (trueClapOcclusionMerge) {
             triggerClapImpulse(player, hData.clampedX, hData.clampedY, prevMidX, prevMidY, false);
@@ -1845,6 +2079,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             player.sepFrames = 0;
             player.peakArmedSep = 0;
             player.peakArmedSepPx = 0;
+            player.minPostClapSepPx = 9999;
             player.needsReopenSinceMs = 0;
           }
 
@@ -1860,7 +2095,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
           if (isLeftHand) {
             applySmoothedHand(lh, hData);
-            if (isSwatModeSingle && lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 340 && now - (player.lastClapImpulseMs || 0) >= 280) {
+            if (isSwatModeSingle && lh.speedPx >= swatSpeedPx && now - (lh.lastSwatMs || 0) >= 155 && now - (player.lastClapImpulseMs || 0) >= 115) {
               lh.lastSwatMs = now;
               triggerClapImpulse(player, lh.x, lh.y, lh.prevX, lh.prevY, true);
             }
@@ -1880,7 +2115,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             fastestHand = { ...hData, speed: lh.speed, vx: lh.vx, vy: lh.vy, x: lh.x, y: lh.y, scale: lh.scale };
           } else {
             applySmoothedHand(rh, hData);
-            if (isSwatModeSingle && rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 340 && now - (player.lastClapImpulseMs || 0) >= 280) {
+            if (isSwatModeSingle && rh.speedPx >= swatSpeedPx && now - (rh.lastSwatMs || 0) >= 155 && now - (player.lastClapImpulseMs || 0) >= 115) {
               rh.lastSwatMs = now;
               triggerClapImpulse(player, rh.x, rh.y, rh.prevX, rh.prevY, true);
             }
@@ -2417,8 +2652,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             hands.setOptions({
               maxNumHands: targetPlayers === 2 ? 4 : 2,
               modelComplexity: 1,
-              minDetectionConfidence: 0.56,
-              minTrackingConfidence: 0.50
+              minDetectionConfidence: 0.52,
+              minTrackingConfidence: 0.44
             });
             hands.onResults((res: any) => {
               if (onHandsResultsRef.current) {
@@ -2434,8 +2669,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             handsRef.current.setOptions({
               maxNumHands: (engineRef.current.numPlayers || targetPlayers) === 2 ? 4 : 2,
               modelComplexity: 1,
-              minDetectionConfidence: 0.56,
-              minTrackingConfidence: 0.50
+              minDetectionConfidence: 0.52,
+              minTrackingConfidence: 0.44
             });
           } catch (e) {}
         }
@@ -2561,6 +2796,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     }
 
     const initialPlaySeconds = playingTimeRef.current || playingTime || 120;
+    clearQuestionReadingLock(true);
+    nextSpecialSpawnMsRef.current = performance.now() + 2800;
+    lastSpecialTypeRef.current = null;
     if (nextQTimerRef.current) {
       window.clearInterval(nextQTimerRef.current);
       nextQTimerRef.current = null;
@@ -2634,6 +2872,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   // 3-Second Countdown Timer before the next question appears
   const startNextQuestionCountdown = (overrideTargetIdx?: number) => {
     clearNextQuestionTimer();
+    clearQuestionReadingLock(true);
     stopMosquitoBuzz();
 
     const totalQs = Math.max(1, engineRef.current.questions.length);
@@ -2690,84 +2929,43 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         engineRef.current.roundMode = nextRoundMode;
         setActiveRoundMode(nextRoundMode);
         activeRoundModeRef.current = nextRoundMode;
+        if (engineRef.current.questions[targetIdx]) {
+          questionReadingRef.current = true;
+        }
         spawnRoundTargets(targetIdx, nextRoundMode);
         if (engineRef.current.questions[targetIdx]) {
-          speakText(engineRef.current.questions[targetIdx].text);
+          beginQuestionReadingPhase(engineRef.current.questions[targetIdx].text);
         }
       }
     }, 100);
   };
 
-  // Helper: Pick a random power-up/hazard badge for an option card in Multiple Answer Mode
-  const pickRandomMultiBadge = (isCorrectTarget: boolean): 'x2' | 'x3' | 'gold' | 'bomb' | null => {
-    if (answerModeRef.current !== 'multiple') return null;
-    const cfg = multiItemsRef.current;
-    const rate = multiSpawnRateRef.current;
-    const chance = rate === 'chaos' ? 0.62 : rate === 'frenzy' ? 0.42 : 0.25;
-    if (Math.random() > chance) return null;
+  // Power-ups & bombs appear strictly as standalone falling icons (never attached to mosquito answer cards)
+  const pickRandomMultiBadge = (_isCorrectTarget: boolean): null => null;
 
-    if (isCorrectTarget) {
-      const pool: ('x2' | 'x3' | 'gold')[] = [];
-      if (cfg.x2) pool.push('x2', 'x2');
-      if (cfg.x3) pool.push('x3');
-      if (cfg.gold) pool.push('gold');
-      if (pool.length === 0) return null;
-      return pool[Math.floor(Math.random() * pool.length)];
-    } else {
-      if (cfg.bomb && Math.random() < 0.55) return 'bomb';
-      return null;
-    }
-  };
-
-  // Helper: Create an independent flying 3D Power-Up or Bomb Mosquito/Orb in Multiple Answer Mode
+  // Helper: Create a pure standalone 3D Falling Power-Up or Bomb Icon (NO mosquito, NO word card)
   const createSpecialArenaTarget = (
-    specialType: 'bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap',
+    specialType: 'bomb' | 'x2' | 'x3' | 'plus5' | 'plus10',
     team: 'all' | 'p1' | 'p2',
     cw: number,
     ch: number,
     curSpd: number
   ) => {
-    const safeTopY = Math.max(135, Math.min(ch * 0.34, ch * 0.30));
-    const safeBotY = Math.max(safeTopY + 115, Math.min(ch - 155, ch * 0.62));
-    const minX = team === 'p1' ? cw * 0.14 : team === 'p2' ? cw * 0.62 : cw * 0.18;
-    const maxX = team === 'p1' ? cw * 0.38 : team === 'p2' ? cw * 0.86 : cw * 0.82;
+    const padTop = Math.max(96, Math.min(124, ch * 0.15));
+    const minX = team === 'p1' ? Math.max(58, cw * 0.10) : team === 'p2' ? cw * 0.56 : Math.max(72, cw * 0.12);
+    const maxX = team === 'p1' ? cw * 0.44 : team === 'p2' ? Math.min(cw - 58, cw * 0.90) : Math.min(cw - 72, cw * 0.88);
     const startX = minX + Math.random() * Math.max(40, maxX - minX);
-    const startY = safeTopY + Math.random() * Math.max(40, safeBotY - safeTopY);
-    const angle = Math.random() * Math.PI * 2;
-    const spdMult = specialType === 'gold' ? 1.28 : specialType === 'bomb' ? 1.05 : 1.12;
-    const baseSpeed = (team === 'all' ? 2.2 : 2.0) * curSpd * spdMult;
+    const startY = padTop - 28;
+    const fallSpeedMult = specialType === 'plus10' ? 1.18 : specialType === 'x3' ? 1.12 : specialType === 'bomb' ? 0.98 : 1.04;
+    const clampedSpd = Math.max(0.75, Math.min(1.45, curSpd));
+    const fallVy = (1.95 + Math.random() * 0.65) * clampedSpd * fallSpeedMult;
 
-    const metaMap: Record<typeof specialType, { letter: string; text: string; color: { main: string; light: string; dark: string; rim: string } }> = {
-      bomb: {
-        letter: '💣',
-        text: 'BOMB (-3)',
-        color: { main: '#dc2626', light: '#fca5a5', dark: '#7f1d1d', rim: '#fecaca' }
-      },
-      x2: {
-        letter: 'x2',
-        text: 'DOUBLE PTS',
-        color: { main: '#0284c7', light: '#7dd3fc', dark: '#0369a1', rim: '#e0f2fe' }
-      },
-      x3: {
-        letter: 'x3',
-        text: 'TRIPLE PTS',
-        color: { main: '#9333ea', light: '#d8b4fe', dark: '#581c87', rim: '#f3e8ff' }
-      },
-      gold: {
-        letter: '👑',
-        text: 'GOLD (+5)',
-        color: { main: '#d97706', light: '#fde047', dark: '#92400e', rim: '#fef9c3' }
-      },
-      ice: {
-        letter: '❄️',
-        text: '+5s & SLOW',
-        color: { main: '#0891b2', light: '#67e8f9', dark: '#155e75', rim: '#cffafe' }
-      },
-      zap: {
-        letter: '⚡',
-        text: 'AUTO-ZAP',
-        color: { main: '#4f46e5', light: '#a5b4fc', dark: '#312e81', rim: '#e0e7ff' }
-      }
+    const metaMap: Record<typeof specialType, { color: { main: string; light: string; dark: string; rim: string } }> = {
+      bomb: { color: { main: '#dc2626', light: '#fca5a5', dark: '#7f1d1d', rim: '#fecaca' } },
+      x2: { color: { main: '#0284c7', light: '#7dd3fc', dark: '#0369a1', rim: '#e0f2fe' } },
+      x3: { color: { main: '#9333ea', light: '#d8b4fe', dark: '#581c87', rim: '#f3e8ff' } },
+      plus5: { color: { main: '#d97706', light: '#fde047', dark: '#92400e', rim: '#fef9c3' } },
+      plus10: { color: { main: '#059669', light: '#6ee7b7', dark: '#065f46', rim: '#d1fae5' } }
     };
 
     const meta = metaMap[specialType];
@@ -2775,23 +2973,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       optionIndex: 90 + Math.floor(Math.random() * 10),
       isSpecialItem: true,
       specialType,
-      letter: meta.letter,
-      text: meta.text,
+      letter: '',
+      text: '',
       isCorrect: specialType !== 'bomb',
       team,
       homeX: startX,
       x: startX,
       y: startY,
-      vx: Math.cos(angle) * baseSpeed,
-      vy: Math.sin(angle) * baseSpeed * 0.85,
-      wobblePhase: Math.random() * 10,
+      vx: 0,
+      vy: fallVy,
+      swayAmp: 0.45 + Math.random() * 0.45,
+      wobblePhase: Math.random() * Math.PI * 2,
       wingPhase: Math.random() * 10,
       rotation: 0,
       rotSpeed: 0,
-      radius: 54,
+      radius: 36,
+      cardW: 72,
+      cardH: 72,
       color: meta.color,
       alive: true,
-      cooldown: 10,
+      cooldown: 6,
       frozen: false,
       frozenTimer: 0,
       leftKnifeHitTime: 0,
@@ -2799,18 +3000,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     };
   };
 
-  // Pick a random enabled special item type from multiItemsRef
-  const pickEnabledSpecialType = (): 'bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap' | null => {
+  // Balanced weighted picker from enabled items: bomb (-3), x2, x3, +5, +10 only
+  const pickEnabledSpecialType = (): 'bomb' | 'x2' | 'x3' | 'plus5' | 'plus10' | null => {
     const cfg = multiItemsRef.current;
-    const pool: ('bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap')[] = [];
-    if (cfg.bomb) pool.push('bomb', 'bomb');
-    if (cfg.x2) pool.push('x2', 'x2');
-    if (cfg.x3) pool.push('x3');
-    if (cfg.gold) pool.push('gold');
-    if (cfg.ice) pool.push('ice');
-    if (cfg.zap) pool.push('zap');
+    const pool: ('bomb' | 'x2' | 'x3' | 'plus5' | 'plus10')[] = [];
+    const hasPositive = Boolean(cfg.x2 || cfg.x3 || cfg.plus5 || cfg.plus10);
+    // Avoid back-to-back bombs when positive power-ups are enabled for balanced gameplay
+    if (cfg.bomb && (lastSpecialTypeRef.current !== 'bomb' || !hasPositive)) {
+      pool.push('bomb', 'bomb');
+    }
+    if (cfg.x2) pool.push('x2', 'x2', 'x2');
+    if (cfg.x3) pool.push('x3', 'x3');
+    if (cfg.plus5) pool.push('plus5', 'plus5', 'plus5');
+    if (cfg.plus10) pool.push('plus10');
     if (pool.length === 0) return null;
-    return pool[Math.floor(Math.random() * pool.length)];
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    lastSpecialTypeRef.current = chosen;
+    return chosen;
   };
 
   // Target spawning:
@@ -2844,7 +3050,9 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const curSpd = speedRef.current || speed || 1.0;
 
     if (mode === 'mosquito') {
-      startMosquitoBuzz();
+      if (!questionReadingRef.current) {
+        startMosquitoBuzz();
+      }
     } else {
       stopMosquitoBuzz();
       playSoundEffect('launch');
@@ -3099,20 +3307,15 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       }
     }
 
-    // In Multiple Answer Mode: Also spawn independent flying 3D Power-Up & Bomb targets!
+    // Schedule the first balanced top-down falling power-up/bomb after slapping activates (do not flood on round start)
     if (answerModeRef.current === 'multiple') {
       const rate = multiSpawnRateRef.current;
-      const countPerCourt = rate === 'chaos' ? 3 : rate === 'frenzy' ? 2 : 1;
-      for (let s = 0; s < countPerCourt; s++) {
-        const sType = pickEnabledSpecialType();
-        if (!sType) break;
-        if (!is2P) {
-          targets.push(createSpecialArenaTarget(sType, 'all', width, height, curSpd));
-        } else {
-          targets.push(createSpecialArenaTarget(sType, 'p1', width, height, curSpd));
-          targets.push(createSpecialArenaTarget(sType, 'p2', width, height, curSpd));
-        }
-      }
+      const initialWaitMs = rate === 'chaos'
+        ? 1400 + Math.random() * 900
+        : rate === 'frenzy'
+        ? 2200 + Math.random() * 1400
+        : 3200 + Math.random() * 2000;
+      nextSpecialSpawnMsRef.current = performance.now() + initialWaitMs;
     }
 
     engineRef.current.targets = targets;
@@ -3120,7 +3323,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
   // Handle interaction hit (Mosquito Slap or Hand-Blade Fruit Slice)
   const handleTargetHit = (playerIdx: number, target: any, sliceAngle: number = -0.35) => {
-    if (engineRef.current.resolved || !target.alive || target.frozen) return;
+    if (engineRef.current.resolved || questionReadingRef.current || !target.alive || target.frozen) return;
     const eng = engineRef.current;
     const p = eng.players[playerIdx];
     if (!p || p.sideFrozen) return;
@@ -3153,21 +3356,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const teamPrefix = eng.numPlayers === 2 ? `${playerIdx === 0 ? p1Name : p2Name}: ` : '';
 
     // =========================================================================
-    // SPECIAL ARENA POWER-UPS & HAZARDS IN MULTIPLE ANSWER MODE
-    // (💣 BOMB, ⚡ x2, 🔥 x3, 👑 GOLD, ❄️ ICE +5s, ⚡ AUTO-ZAP)
+    // FALLING POWER-UP & BOMB ICONS IN MULTIPLE ANSWER MODE
+    // (💣 BOMB -3, ⚡ x2, 🔥 x3, 🪙 +5, 💎 +10 ONLY — falls top to bottom)
     // =========================================================================
     if (target.isSpecialItem) {
-      const sType = target.specialType as 'bomb' | 'x2' | 'x3' | 'gold' | 'ice' | 'zap';
+      const sType = target.specialType as 'bomb' | 'x2' | 'x3' | 'plus5' | 'plus10';
       target.alive = false;
-
-      // Schedule a replacement special item after a short delay if round is still active
-      setTimeout(() => {
-        if (!eng.isActive || eng.resolved || answerModeRef.current !== 'multiple') return;
-        const nextType = pickEnabledSpecialType();
-        if (!nextType) return;
-        const curSpdNow = speedRef.current || 1.0;
-        eng.targets.push(createSpecialArenaTarget(nextType, target.team, cw, ch, curSpdNow));
-      }, 1600);
 
       if (sType === 'bomb') {
         // 💣 BOMB DETONATION: -3 PTS + Massive Fiery Blast Shockwave + Screen Shake!
@@ -3269,42 +3463,41 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         return;
       }
 
-      if (sType === 'gold') {
+      if (sType === 'plus5' || sType === 'plus10') {
         const curMult = Math.max(1, p.activeMult || 1);
-        const goldPts = 5 * curMult;
-        p.score += goldPts;
+        const baseBonus = sType === 'plus10' ? 10 : 5;
+        const bonusPts = baseBonus * curMult;
+        p.score += bonusPts;
         p.hits++;
         p.correctHits = (p.correctHits || 0) + 1;
         p.streak = Math.min(15, p.streak + 1);
         p.bestStreak = Math.max(p.bestStreak || 1, p.streak);
-        eng.screenShake = 18;
+        eng.screenShake = sType === 'plus10' ? 20 : 15;
 
-        // Golden mosquito also counts as +1 progress toward the current question!
-        const hitsNow = ((eng as any).roundHitsCollected || 0) + 1;
-        (eng as any).roundHitsCollected = hitsNow;
-        setHudMultiProgress(hitsNow);
+        const mainCol = sType === 'plus10' ? '#10b981' : '#facc15';
+        const secCol = sType === 'plus10' ? '#6ee7b7' : '#ffffff';
 
         eng.shockwaves.push({
           x: target.x,
           y: target.y,
-          radius: 30,
-          maxRadius: 165,
-          color: '#facc15',
-          secondaryColor: '#ffffff',
+          radius: 28,
+          maxRadius: sType === 'plus10' ? 175 : 155,
+          color: mainCol,
+          secondaryColor: secCol,
           life: 1.0
         });
 
         playSoundEffect('slap');
         setTimeout(() => playSoundEffect('powerup'), 40);
 
-        spawnBurstParticles(target.x, target.y, '#facc15', 42);
-        spawnBurstParticles(target.x, target.y, '#fef08a', 24);
+        spawnBurstParticles(target.x, target.y, mainCol, sType === 'plus10' ? 44 : 34);
+        spawnBurstParticles(target.x, target.y, '#fef08a', 22);
 
         setHudScores([eng.players[0].score, eng.players[1].score]);
         setHudStreaks([eng.players[0].streak, eng.players[1].streak]);
         setHudScorePops(prev => {
           const next = [...prev] as [string | null, string | null];
-          next[playerIdx] = `👑 GOLD! +${goldPts} PTS`;
+          next[playerIdx] = sType === 'plus10' ? `💎 +${bonusPts} PTS!` : `🪙 +${bonusPts} PTS!`;
           return next;
         });
         setTimeout(() => setHudScorePops([null, null]), 1200);
@@ -3318,91 +3511,17 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           targetX: eng.numPlayers === 2 ? (playerIdx === 0 ? cw * 0.42 : cw * 0.58) : cw * 0.46,
           targetY: 50,
           progress: 0,
-          color: '#eab308',
-          points: `+${goldPts}`,
+          color: sType === 'plus10' ? '#10b981' : '#eab308',
+          points: `+${bonusPts}`,
           streak: p.streak
         });
 
-        spawnFloatingText(target.x, target.y - 24, `${teamPrefix}👑 GOLDEN JACKPOT! +${goldPts} PTS`, '#facc15');
-
-        if (hitsNow >= requiredHits) {
-          eng.resolved = true;
-          stopMosquitoBuzz();
-          startNextQuestionCountdown();
-        }
-        return;
-      }
-
-      if (sType === 'ice') {
-        // ❄️ ICE CLOCK: +5s Timer Bonus + 6s Slow-Motion on all mosquitoes + 1 PT!
-        eng.timer = Math.min(eng.maxTimer + 30, eng.timer + 5);
-        (eng as any).slowMoTimer = 6.0;
-        setHudSlowMo(true);
-        const ceilSec = Math.ceil(eng.timer);
-        lastHudSecRef.current = ceilSec;
-        setHudTimeLeft(ceilSec);
-
-        const icePts = 1 * Math.max(1, p.activeMult || 1);
-        p.score += icePts;
-        p.hits++;
-        p.correctHits = (p.correctHits || 0) + 1;
-
-        eng.shockwaves.push({
-          x: target.x,
-          y: target.y,
-          radius: 26,
-          maxRadius: 155,
-          color: '#06b6d4',
-          secondaryColor: '#cffafe',
-          life: 1.0
-        });
-
-        playSoundEffect('slap');
-        setTimeout(() => playSoundEffect('freeze'), 40);
-
-        spawnBurstParticles(target.x, target.y, '#22d3ee', 30);
-        spawnBurstParticles(target.x, target.y, '#ffffff', 18);
-
-        setHudScores([eng.players[0].score, eng.players[1].score]);
-        setHudScorePops(prev => {
-          const next = [...prev] as [string | null, string | null];
-          next[playerIdx] = `❄️ +5s & SLOW-MO! (+${icePts})`;
-          return next;
-        });
-        setTimeout(() => setHudScorePops([null, null]), 1200);
-
-        spawnFloatingText(target.x, target.y - 24, `${teamPrefix}❄️ +5s TIME & SLOW-MO!`, '#22d3ee');
-        return;
-      }
-
-      if (sType === 'zap') {
-        // ⚡ AUTO-ZAP: Strikes the correct answer mosquito on this player's court with a 3D Sky Lightning Bolt!
-        playSoundEffect('slap');
-        setTimeout(() => playSoundEffect('zap'), 35);
-
-        const myCourtCorrect = eng.targets.find(
-          t => t.alive && !t.isSpecialItem && t.isCorrect && (eng.numPlayers === 1 || (playerIdx === 0 ? t.team === 'p1' : t.team === 'p2'))
+        spawnFloatingText(
+          target.x,
+          target.y - 24,
+          sType === 'plus10' ? `${teamPrefix}💎 JACKPOT +${bonusPts} PTS!` : `${teamPrefix}🪙 BONUS +${bonusPts} PTS!`,
+          mainCol
         );
-
-        if (myCourtCorrect) {
-          (eng as any).lightningBolts = (eng as any).lightningBolts || [];
-          (eng as any).lightningBolts.push({
-            startX: target.x,
-            startY: target.y,
-            endX: myCourtCorrect.x,
-            endY: myCourtCorrect.y,
-            life: 1.0,
-            color: '#facc15'
-          });
-          spawnFloatingText(target.x, target.y - 24, `${teamPrefix}⚡ LIGHTNING AUTO-ZAP!`, '#a855f7');
-          myCourtCorrect.cooldown = 0;
-          handleTargetHit(playerIdx, myCourtCorrect, 0);
-        } else {
-          const zapPts = 2 * Math.max(1, p.activeMult || 1);
-          p.score += zapPts;
-          setHudScores([eng.players[0].score, eng.players[1].score]);
-          spawnFloatingText(target.x, target.y - 24, `${teamPrefix}⚡ ZAP BONUS +${zapPts}!`, '#a855f7');
-        }
         return;
       }
     }
@@ -3412,24 +3531,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       (eng as any).roundHitsCollected = hitsNow;
       setHudMultiProgress(hitsNow);
 
-      // Check if this correct mosquito carried a bonus badge in Multiple Answer Mode
-      const badge = isMultiMode ? (target.powerBadge as 'x2' | 'x3' | 'gold' | null) : null;
-      if (badge === 'x2') {
-        p.activeMult = Math.max(p.activeMult || 1, 2);
-        p.multTimer = 10.0;
-        setHudActiveMults([eng.players[0]?.activeMult || 1, eng.players[1]?.activeMult || 1]);
-        setTimeout(() => playSoundEffect('powerup'), 55);
-      } else if (badge === 'x3') {
-        p.activeMult = 3;
-        p.multTimer = 8.0;
-        setHudActiveMults([eng.players[0]?.activeMult || 1, eng.players[1]?.activeMult || 1]);
-        setTimeout(() => playSoundEffect('powerup'), 55);
-      } else if (badge === 'gold') {
-        setTimeout(() => playSoundEffect('powerup'), 55);
-      }
-
       const activeMult = isMultiMode ? Math.max(1, p.activeMult || 1) : 1;
-      const basePts = isMultiMode ? (badge === 'gold' ? 5 : 1) : 5;
+      const basePts = isMultiMode ? 1 : 5;
       const addedPoints = basePts * activeMult;
 
       const roundCompleted = !isMultiMode || hitsNow >= requiredHits;
@@ -3476,7 +3579,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         y: target.y,
         radius: 26,
         maxRadius: 138,
-        color: badge === 'gold' ? '#facc15' : activeMult >= 3 ? '#a855f7' : activeMult === 2 ? '#0ea5e9' : '#10b981',
+        color: activeMult >= 3 ? '#a855f7' : activeMult === 2 ? '#0ea5e9' : '#10b981',
         secondaryColor: '#facc15',
         life: 1.0
       });
@@ -3521,7 +3624,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         isMultiMode
           ? `${teamPrefix}+${addedPoints} PT${addedPoints > 1 ? 'S' : ''}!${multTag} (${hitsNow}/${requiredHits})`
           : `${teamPrefix}+5 PTS!`,
-        badge === 'gold' ? '#facc15' : '#10b981'
+        '#10b981'
       );
 
       // Launch a glowing 3D Score Orb from the slapped mosquito straight into the Center Scoreboard!
@@ -3704,18 +3807,24 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
   const finishGame = () => {
     clearNextQuestionTimer();
+    clearQuestionReadingLock(true);
     stopMosquitoBuzz();
     engineRef.current.isActive = false;
     setScreen('results');
     setTimeout(() => playSoundEffect('victory'), 120);
   };
 
-  // Helper: Shortest distance from a segment [v, w] to the visual Mosquito/Fruit + 3D Option Card bounding box!
+  // Helper: Shortest distance from a segment [v, w] to either a compact falling Power-Up icon OR a Mosquito + Option Card box
   const distToTargetOrOptionCard = (
     t: any,
     v: { x: number; y: number },
     w: { x: number; y: number }
   ) => {
+    if (t.isSpecialItem) {
+      const iconR = Math.max(18, (t.radius || 36) * 0.62);
+      return Math.max(0, distToSegment(t, v, w) - iconR);
+    }
+
     const halfCardW = Math.max(78, (t.cardW || 190) * 0.51);
     const minX = t.x - halfCardW;
     const maxX = t.x + halfCardW;
@@ -3794,6 +3903,31 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     const avgScale = (leftScale + rightScale) * 0.5;
     const userSizeMult = gloveSizeRef.current || 1.0;
 
+    // Block all slapping/chopping until the active question finishes reading
+    if (questionReadingRef.current) {
+      eng.targets.forEach(t => {
+        if (eng.numPlayers === 1 || (pIdx === 0 && t.team === 'p1') || (pIdx === 1 && t.team === 'p2')) {
+          t.isTargeted = false;
+        }
+      });
+      if (p.pendingClap && p.pendingClap.id !== p.consumedClapId) {
+        const earlyClap = p.pendingClap;
+        p.consumedClapId = earlyClap.id;
+        p.pendingClap = null;
+        if (now - (p.lastEarlyClapHintMs || 0) > 750) {
+          p.lastEarlyClapHintMs = now;
+          spawnFloatingText(
+            earlyClap.x * cw,
+            Math.max(120, earlyClap.y * ch - 24),
+            '🔊 Listen to the question!',
+            '#f59e0b'
+          );
+          playSoundEffect('whoosh');
+        }
+      }
+      return;
+    }
+
     // =========================================================================
     // MOSQUITO SLAP MODE: PINPOINT ONE-SHOT CLAP / SWAT IMPULSE CONSUMER
     // =========================================================================
@@ -3850,8 +3984,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         }
       });
 
-      // 2. Expire stale unconsumed impulse (> 165ms old)
-      if (p.pendingClap && (now - p.pendingClap.time > 165)) {
+      // 2. Expire stale unconsumed impulse (> 220ms old)
+      if (p.pendingClap && (now - p.pendingClap.time > 220)) {
         p.pendingClap = null;
       }
 
@@ -3863,7 +3997,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       p.consumedClapId = pending.id;
       p.pendingClap = null;
 
-      if (now - (p.lastSlapSelectTime || 0) < 230) return;
+      if (now - (p.lastSlapSelectTime || 0) < 110) return;
 
       const impX = pending.x * cw;
       const impY = pending.y * ch;
@@ -3905,7 +4039,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       if (bestTarget) {
         p.lastSlapSelectTime = now;
         p.isClapping = true;
-        p.clapTimer = 0.22;
+        p.clapTimer = 0.14;
         p.clapArmed = false;
         p.peakArmedSep = 0;
         p.clapMidX = pending.x;
@@ -4207,8 +4341,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
         const eng = engineRef.current;
 
-        // Playing Time Countdown Update (Paused when Settings Modal is open or during 3s inter-question countdown)
-        if (!eng.resolved && !showSettingsModalRef.current && nextQTimerRef.current === null) {
+        // Playing Time Countdown Update (Paused when Settings Modal is open, during 3s countdown, or while question is being read)
+        if (!eng.resolved && !showSettingsModalRef.current && nextQTimerRef.current === null && !questionReadingRef.current) {
           eng.timer = Math.max(0, eng.timer - dt);
           const ceilSec = Math.ceil(eng.timer);
           if (ceilSec !== lastHudSecRef.current) {
@@ -4398,9 +4532,79 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         const is2P = eng.numPlayers === 2;
         const curSpd = speedRef.current || 1.0;
 
+        // 4a. Balanced Top-to-Bottom Falling Power-Up & Bomb Spawner (Multiple Answer Mode only)
+        if (answerModeRef.current === 'multiple' && !eng.resolved && nextQTimerRef.current === null) {
+          if (questionReadingRef.current || showSettingsModalRef.current) {
+            // Pause spawn countdown while reading question or adjusting settings
+            nextSpecialSpawnMsRef.current += dt * 1000;
+          } else {
+            const cfg = multiItemsRef.current;
+            const anyEnabled = Boolean(cfg.bomb || cfg.x2 || cfg.x3 || cfg.plus5 || cfg.plus10);
+            if (anyEnabled && now >= nextSpecialSpawnMsRef.current) {
+              const rate = multiSpawnRateRef.current;
+              const maxPerCourt = rate === 'chaos' ? 2 : 1;
+              const spawnChance = rate === 'chaos' ? 0.88 : rate === 'frenzy' ? 0.72 : 0.58;
+              const nextDelayMs = rate === 'chaos'
+                ? 2400 + Math.random() * 1500
+                : rate === 'frenzy'
+                ? 4200 + Math.random() * 2200
+                : 6400 + Math.random() * 3200;
+              nextSpecialSpawnMsRef.current = now + nextDelayMs;
+
+              if (Math.random() <= spawnChance) {
+                if (!is2P) {
+                  const activeCount = eng.targets.filter(t => t.alive && t.isSpecialItem).length;
+                  if (activeCount < maxPerCourt) {
+                    const sType = pickEnabledSpecialType();
+                    if (sType) eng.targets.push(createSpecialArenaTarget(sType, 'all', cw, ch, curSpd));
+                  }
+                } else {
+                  const p1Count = eng.targets.filter(t => t.alive && t.isSpecialItem && t.team === 'p1').length;
+                  const p2Count = eng.targets.filter(t => t.alive && t.isSpecialItem && t.team === 'p2').length;
+                  const sType1 = p1Count < maxPerCourt ? pickEnabledSpecialType() : null;
+                  const sType2 = p2Count < maxPerCourt ? (sType1 || pickEnabledSpecialType()) : null;
+                  if (sType1) eng.targets.push(createSpecialArenaTarget(sType1, 'p1', cw, ch, curSpd));
+                  if (sType2) eng.targets.push(createSpecialArenaTarget(sType2, 'p2', cw, ch, curSpd));
+                }
+              }
+            }
+          }
+        }
+
+        // Remove expired falling special icons so they never linger in targets array
+        for (let ti = eng.targets.length - 1; ti >= 0; ti--) {
+          const item = eng.targets[ti];
+          if (item.isSpecialItem && !item.alive) {
+            eng.targets.splice(ti, 1);
+          }
+        }
+
         eng.targets.forEach(t => {
           if (t.cooldown > 0) t.cooldown--;
           if (!t.alive) return;
+
+          // Pure falling physics for Power-Ups & Bombs: top to bottom, does NOT bounce or stay!
+          if (t.isSpecialItem) {
+            if (!t.frozen && !showSettingsModalRef.current && !questionReadingRef.current) {
+              t.y += (t.vy || 2.2) * Math.max(0.65, slowMoFactor);
+              t.x += Math.sin(now * 0.0032 + (t.wobblePhase || 0)) * (t.swayAmp || 0.65);
+
+              const rPad = (t.radius || 36) + 12;
+              if (t.team === 'p1') {
+                t.x = Math.max(rPad, Math.min((cw / 2) - rPad, t.x));
+              } else if (t.team === 'p2') {
+                t.x = Math.max((cw / 2) + rPad, Math.min(cw - rPad, t.x));
+              } else {
+                t.x = Math.max(rPad, Math.min(cw - rPad, t.x));
+              }
+
+              // Disappear cleanly once it falls past the bottom of the screen
+              if (t.y > ch + 44) {
+                t.alive = false;
+              }
+            }
+            return;
+          }
 
           const isTeamSideFrozen =
             eng.numPlayers === 2 &&
@@ -4504,16 +4708,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         });
 
-        // 4b. Strict Anti-Overlap Physics: Options in the same court push apart so they NEVER overlap!
+        // 4b. Strict Anti-Overlap Physics: Answer options in the same court push apart (falling power-ups glide cleanly past)
         for (let i = 0; i < eng.targets.length; i++) {
           const t1 = eng.targets[i];
-          if (!t1.alive) continue;
+          if (!t1.alive || t1.isSpecialItem) continue;
           const w1 = t1.cardW || (is2P ? 165 : 210);
           const h1 = t1.cardH || 48;
 
           for (let j = i + 1; j < eng.targets.length; j++) {
             const t2 = eng.targets[j];
-            if (!t2.alive) continue;
+            if (!t2.alive || t2.isSpecialItem) continue;
             if (t1.team !== t2.team) continue;
 
             const w2 = t2.cardW || (is2P ? 165 : 210);
@@ -4564,10 +4768,12 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           }
         });
 
-        // Draw all active targets
+        // Draw all active targets (falling power-ups render purely as standalone 3D icons — never mosquitoes!)
         eng.targets.forEach(t => {
           if (!t.alive) return;
-          if (eng.roundMode === 'mosquito') {
+          if (t.isSpecialItem) {
+            drawSpecialPowerUpTarget(ctx, t, now);
+          } else if (eng.roundMode === 'mosquito') {
             drawMosquitoTarget(ctx, t, now);
           } else {
             drawFruitTarget(ctx, t, now);
@@ -5046,6 +5252,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      clearQuestionReadingLock(true);
       stopCamera();
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
@@ -6300,6 +6507,187 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     ctx.restore();
   };
 
+  // Standalone 3D Falling Power-Up & Bomb Icon Renderer (Pure Icon ONLY — no mosquito body or word card!)
+  const drawSpecialPowerUpTarget = (ctx: CanvasRenderingContext2D, t: any, time: number) => {
+    const sType = t.specialType as 'bomb' | 'x2' | 'x3' | 'plus5' | 'plus10';
+    const r = 28;
+    const swayRot = Math.sin(time * 0.005 + (t.wobblePhase || 0)) * 0.12;
+    const isLocked = Boolean(t.isTargeted && !t.frozen);
+
+    ctx.save();
+    ctx.translate(t.x, t.y);
+
+    // Subtle vertical falling speed streaks above the falling icon
+    ctx.save();
+    ctx.strokeStyle = sType === 'bomb' ? 'rgba(248, 113, 113, 0.45)' : 'rgba(255, 255, 255, 0.55)';
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    [-14, 0, 14].forEach((sx, idx) => {
+      const len = 14 + (idx % 2) * 8;
+      ctx.beginPath();
+      ctx.moveTo(sx, -r - 8);
+      ctx.lineTo(sx, -r - 8 - len);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    // Target lock reticle if aimed at by player clap/swat
+    if (isLocked) {
+      ctx.save();
+      const lockR = r + 11 + Math.sin(time * 0.02) * 2.5;
+      ctx.strokeStyle = sType === 'bomb' ? '#ef4444' : '#facc15';
+      ctx.lineWidth = 3.5;
+      ctx.setLineDash([7, 4]);
+      ctx.beginPath();
+      ctx.arc(0, 0, lockR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    ctx.rotate(swayRot);
+
+    if (sType === 'bomb') {
+      // 💣 Pure 3D Cartoon Bomb Icon (NO mosquito!)
+      const pulse = 0.72 + Math.sin(time * 0.016) * 0.28;
+      ctx.save();
+      ctx.strokeStyle = `rgba(239, 68, 68, ${pulse * 0.75})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 2, r + 7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // Fuse rope curving upward-right
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(6, -r + 2);
+      ctx.quadraticCurveTo(16, -r - 14, 24, -r - 12);
+      ctx.stroke();
+
+      // Metallic Fuse Cap
+      ctx.fillStyle = '#64748b';
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 2;
+      roundRect(ctx, -7, -r - 3, 14, 8, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      // Flickering Fiery Fuse Spark
+      const sparkR = 5.5 + Math.sin(time * 0.05) * 2.5;
+      ctx.fillStyle = '#f97316';
+      ctx.beginPath();
+      ctx.arc(24, -r - 12, sparkR + 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(24, -r - 12, sparkR * 0.72, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Glossy 3D Dark Iron Bomb Sphere
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.45)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 6;
+      const bombGrad = ctx.createRadialGradient(-9, -8, 4, 0, 2, r);
+      bombGrad.addColorStop(0, '#64748b');
+      bombGrad.addColorStop(0.28, '#1e293b');
+      bombGrad.addColorStop(0.78, '#0f172a');
+      bombGrad.addColorStop(1, '#020617');
+      ctx.fillStyle = bombGrad;
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.arc(0, 2, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowColor = 'transparent';
+
+      // Specular Glossy Glint
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(-10, -9, 7, 4, -0.65, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Crisp "-3" Danger Label on Bomb Belly
+      ctx.fillStyle = '#ef4444';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.font = '900 18px Fredoka, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeText('-3', 0, 5);
+      ctx.fillText('-3', 0, 5);
+    } else {
+      // Glowing 3D Power-Up Medallion Icon (x2, x3, +5, +10)
+      const palette = sType === 'x3'
+        ? { c1: '#f0abfc', c2: '#a855f7', c3: '#581c87', rim: '#fae8ff', label: 'x3', sub: '🔥' }
+        : sType === 'x2'
+        ? { c1: '#7dd3fc', c2: '#0284c7', c3: '#0c4a6e', rim: '#e0f2fe', label: 'x2', sub: '⚡' }
+        : sType === 'plus10'
+        ? { c1: '#6ee7b7', c2: '#10b981', c3: '#064e3b', rim: '#fef08a', label: '+10', sub: '💎' }
+        : { c1: '#fef08a', c2: '#f59e0b', c3: '#92400e', rim: '#ffffff', label: '+5', sub: '🪙' };
+
+      // Outer radiant halo
+      const haloPulse = 0.65 + Math.sin(time * 0.012 + (t.wobblePhase || 0)) * 0.25;
+      ctx.strokeStyle = palette.rim;
+      ctx.globalAlpha = haloPulse;
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Main 3D Orb Body
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.35)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 5;
+      const orbGrad = ctx.createRadialGradient(-9, -9, 3, 0, 0, r);
+      orbGrad.addColorStop(0, '#ffffff');
+      orbGrad.addColorStop(0.25, palette.c1);
+      orbGrad.addColorStop(0.68, palette.c2);
+      orbGrad.addColorStop(1, palette.c3);
+      ctx.fillStyle = orbGrad;
+      ctx.strokeStyle = palette.rim;
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowColor = 'transparent';
+
+      // Inner Coin Ring
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.78, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Glossy top highlight
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.beginPath();
+      ctx.ellipse(-8, -11, 10, 5, -0.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Crisp Center Value (x2, x3, +5, +10)
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = palette.c3;
+      ctx.lineWidth = 4;
+      ctx.font = `900 ${sType === 'plus10' ? 20 : 22}px Fredoka, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeText(palette.label, 0, 2);
+      ctx.fillText(palette.label, 0, 2);
+
+      // Small corner accent icon at top
+      ctx.font = '14px sans-serif';
+      ctx.fillText(palette.sub, 0, -r + 4);
+    }
+
+    ctx.restore();
+  };
+
   // True 3D Volumetric Mosquito + Bright Light 3D Extruded Answer Capsule (Scaled by textSize + Freeze Support)
   const drawMosquitoTarget = (ctx: CanvasRenderingContext2D, t: any, time: number) => {
     ctx.save();
@@ -6413,80 +6801,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
 
     // High-Contrast Dark Slate Option Answer Text Perfectly Contained Inside Capsule
     if (displayStr) {
-      ctx.fillStyle = t.frozen ? '#0369a1' : (t.specialType === 'bomb' ? '#991b1b' : '#0f172a');
+      ctx.fillStyle = t.frozen ? '#0369a1' : '#0f172a';
       ctx.font = `800 ${fitFontPx}px "Plus Jakarta Sans", Inter, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(displayStr, textStartX, cardY + cardH / 2 + 0.5);
-    }
-
-    // 1b. Draw 3D Power-Up / Bomb Corner Pill Badge on Regular Option Capsules in Multiple Answer Mode!
-    if (t.powerBadge && !t.isSpecialItem && !t.frozen) {
-      const pb = t.powerBadge as 'x2' | 'x3' | 'gold' | 'bomb';
-      const pbMeta = pb === 'bomb'
-        ? { label: '💣 -3', bg: '#dc2626', border: '#fecaca' }
-        : pb === 'x3'
-        ? { label: '🔥 x3', bg: '#9333ea', border: '#f3e8ff' }
-        : pb === 'gold'
-        ? { label: '👑 +5', bg: '#d97706', border: '#fef08a' }
-        : { label: '⚡ x2', bg: '#0284c7', border: '#bae6fd' };
-
-      ctx.save();
-      const pw = 56;
-      const ph = 22;
-      const px = cardW / 2 - pw + 8;
-      const py = cardY - 12;
-      ctx.fillStyle = pbMeta.bg;
-      ctx.strokeStyle = pbMeta.border;
-      ctx.lineWidth = 2;
-      roundRect(ctx, px, py, pw, ph, 11);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 11px Fredoka, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(pbMeta.label, px + pw / 2, py + ph / 2 + 0.5);
-      ctx.restore();
-    }
-
-    // 1c. Special 3D Aura & Burning Bomb Fuse for Independent Power-Up / Hazard Mosquitoes!
-    if (t.isSpecialItem && !t.frozen) {
-      ctx.save();
-      const pulseR = 38 + Math.sin(time * 0.018) * 5;
-      if (t.specialType === 'bomb') {
-        // Pulsing Red Danger Ring + Sizzling Bomb Fuse Spark above the mosquito!
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        ctx.arc(0, -4, pulseR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Sizzling Fuse & Flickering Spark
-        ctx.strokeStyle = '#78350f';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(0, -18);
-        ctx.quadraticCurveTo(8, -34, 18, -38);
-        ctx.stroke();
-
-        const sparkR = 5 + Math.sin(time * 0.05) * 2.5;
-        ctx.fillStyle = '#fde047';
-        ctx.beginPath();
-        ctx.arc(18, -38, sparkR, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Radiant Power-Up Halo Ring (Gold / Cyan / Purple)
-        ctx.strokeStyle = t.color?.light || '#fde047';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, -4, pulseR, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
     }
 
     // ---------------------------------------------
@@ -7208,8 +7527,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         icon: '⚡',
                         title: 'x2 DOUBLE',
                         tag: '2X PTS',
-                        activeCls: 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
-                        tagCls: 'bg-slate-950/15 text-slate-950'
+                        activeCls: 'bg-gradient-to-b from-sky-400 to-blue-600 border-sky-200 border-b-blue-900 text-white shadow-sm -translate-y-0.5',
+                        tagCls: 'bg-black/25 text-white'
                       },
                       {
                         key: 'x3' as const,
@@ -7220,27 +7539,19 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                         tagCls: 'bg-black/25 text-white'
                       },
                       {
-                        key: 'gold' as const,
-                        icon: '👑',
-                        title: 'GOLD BUG',
+                        key: 'plus5' as const,
+                        icon: '🪙',
+                        title: '+5 BONUS',
                         tag: '+5 PTS',
                         activeCls: 'bg-gradient-to-b from-yellow-400 to-amber-500 border-yellow-200 border-b-amber-700 text-slate-950 shadow-sm -translate-y-0.5',
                         tagCls: 'bg-slate-950/15 text-slate-950'
                       },
                       {
-                        key: 'ice' as const,
-                        icon: '❄️',
-                        title: 'ICE TIME',
-                        tag: '+5S SLOW',
-                        activeCls: 'bg-gradient-to-b from-sky-400 to-cyan-600 border-sky-200 border-b-cyan-900 text-white shadow-sm -translate-y-0.5',
-                        tagCls: 'bg-black/25 text-white'
-                      },
-                      {
-                        key: 'zap' as const,
-                        icon: '⚡',
-                        title: 'AUTO-ZAP',
-                        tag: '1-HIT ZAP',
-                        activeCls: 'bg-gradient-to-b from-indigo-500 to-violet-600 border-indigo-300 border-b-violet-950 text-white shadow-sm -translate-y-0.5',
+                        key: 'plus10' as const,
+                        icon: '💎',
+                        title: '+10 BONUS',
+                        tag: '+10 PTS',
+                        activeCls: 'bg-gradient-to-b from-emerald-400 to-teal-600 border-emerald-200 border-b-emerald-900 text-white shadow-sm -translate-y-0.5',
                         tagCls: 'bg-black/25 text-white'
                       }
                     ]).map(item => {
@@ -7420,6 +7731,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   type="button"
                   onClick={() => {
                     clearNextQuestionTimer();
+                    clearQuestionReadingLock(true);
                     stopMosquitoBuzz();
                     stopBgMusic();
                     engineRef.current.isActive = false;
@@ -7604,6 +7916,16 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
             </div>
           )}
 
+          {/* QUESTION READING STATUS BANNER: Slap unlocks right after question narration finishes */}
+          {hudReadingQuestion && nextQCountdown === null && (
+            <div className="pointer-events-none absolute top-20 sm:top-24 left-0 right-0 z-30 flex justify-center px-4">
+              <div className="px-4 py-1.5 rounded-2xl bg-amber-400/95 text-slate-950 border-2 border-white shadow-lg flex items-center gap-2 text-xs sm:text-sm font-black tracking-wide animate-pulse">
+                <Volume2 size={16} className="shrink-0" />
+                <span>READING QUESTION... SLAP ACTIVATES AFTER!</span>
+              </div>
+            </div>
+          )}
+
           {/* High-Resolution Full-Screen 3D AR & Live Camera Canvas */}
           <div className="absolute inset-0 w-full h-full overflow-hidden z-10">
             <canvas
@@ -7617,11 +7939,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           {/* BIGGER MINIMALIST BOTTOM QUESTION BAR */}
           <div className="absolute bottom-3.5 left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none">
             <div className="max-w-5xl mx-auto w-full pointer-events-auto">
-              <div className="relative overflow-hidden rounded-3xl bg-white/95 backdrop-blur-xl px-5 py-3.5 sm:px-8 sm:py-5 shadow-[0_14px_40px_rgba(15,23,42,0.28)] border-2 border-slate-200/95 flex items-center justify-between gap-4 sm:gap-5">
+              <div className={`relative overflow-hidden rounded-3xl bg-white/95 backdrop-blur-xl px-5 py-3.5 sm:px-8 sm:py-5 shadow-[0_14px_40px_rgba(15,23,42,0.28)] border-2 flex items-center justify-between gap-4 sm:gap-5 transition-all ${
+                hudReadingQuestion ? 'border-amber-400 ring-2 ring-amber-300/60' : 'border-slate-200/95'
+              }`}>
                 {/* Progress Line along bottom edge */}
                 <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-100">
                   <div
-                    className="h-full bg-sky-500 transition-all duration-150"
+                    className={`h-full transition-all duration-150 ${hudReadingQuestion ? 'bg-amber-400' : 'bg-sky-500'}`}
                     style={{ width: `${nextQCountdown !== null ? nextQProgressPct : timerPct}%` }}
                   />
                 </div>
@@ -7631,6 +7955,11 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                   <span className="px-3 py-1 rounded-xl bg-slate-100 text-sm sm:text-base font-black text-slate-700 tabular-nums whitespace-nowrap">
                     Q{currentQIndex + 1}<span className="text-slate-400 mx-0.5">/</span>{activeQuiz.questions.length}
                   </span>
+                  {hudReadingQuestion && nextQCountdown === null && (
+                    <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800 text-xs font-black whitespace-nowrap border border-amber-300">
+                      🔊 Listening...
+                    </span>
+                  )}
                   {answerMode === 'multiple' && (
                     <span className="px-3 py-1 rounded-xl bg-purple-600 text-white text-xs sm:text-sm font-black tabular-nums whitespace-nowrap shadow-xs">
                       🎯 {hudMultiProgress}/{multiAnswerCount}
@@ -7668,9 +7997,20 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                 {/* Audio Read-Aloud Button */}
                 <button
                   type="button"
-                  onClick={() => currentQ?.text && speakText(currentQ.text)}
+                  onClick={() => {
+                    if (!currentQ?.text) return;
+                    if (questionReadingRef.current) {
+                      beginQuestionReadingPhase(currentQ.text);
+                    } else {
+                      speakText(parseOptionContent(currentQ.text).text || currentQ.text);
+                    }
+                  }}
                   title="Read Question Aloud"
-                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 cursor-pointer transition"
+                  className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center shrink-0 cursor-pointer transition ${
+                    hudReadingQuestion
+                      ? 'bg-amber-400 text-slate-950 animate-pulse shadow-sm'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
                 >
                   <Volume2 size={20} />
                 </button>
@@ -7820,14 +8160,13 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {([
                         { key: 'bomb' as const, label: '💣 Bombs (-3)' },
                         { key: 'x2' as const, label: '⚡ x2 Double' },
                         { key: 'x3' as const, label: '🔥 x3 Triple' },
-                        { key: 'gold' as const, label: '👑 Gold (+5)' },
-                        { key: 'ice' as const, label: '❄️ Ice (+5s)' },
-                        { key: 'zap' as const, label: '⚡ Auto-Zap' }
+                        { key: 'plus5' as const, label: '🪙 +5 Bonus' },
+                        { key: 'plus10' as const, label: '💎 +10 Bonus' }
                       ]).map(it => {
                         const active = multiItems[it.key];
                         return (

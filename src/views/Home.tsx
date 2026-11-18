@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { PlusCircle, QrCode, LogIn, Camera, Gamepad2, Wrench, Users, LayoutGrid } from "lucide-react";
+import { PlusCircle, QrCode, LogIn, Camera, Gamepad2, Wrench, Users, LayoutGrid, Loader2, AlertCircle } from "lucide-react";
 import { Game, GameCategoryId, ViewState } from "../types";
 import { cn } from "../lib/utils";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { db, isFirestoreQuotaExhausted } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
+import { useLanguage } from "../contexts/LanguageContext";
+
+import noiseControlCardImg from "../assets/images/noise_control_card_1795022921714.jpg";
 
 const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg?v=3";
 const hamsterPaintballCardImg = "/images/hamster-paintball-card.jpg?v=3";
@@ -42,6 +45,39 @@ const GAME_CATEGORY_SECTIONS: {
   },
 ];
 
+function pingSameBrowserPaintballHost(code: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof BroadcastChannel === "undefined") {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    let bc: BroadcastChannel | null = null;
+    const done = (found: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        bc?.close();
+      } catch {}
+      resolve(found);
+    };
+    const timer = window.setTimeout(() => done(false), 280);
+    try {
+      bc = new BroadcastChannel(`hamster_paintball_net_${code}`);
+      bc.onmessage = (ev) => {
+        if (ev?.data?.type === "pong_host") {
+          window.clearTimeout(timer);
+          done(true);
+        }
+      };
+      bc.postMessage({ type: "ping_host", roomCode: code });
+    } catch {
+      window.clearTimeout(timer);
+      done(false);
+    }
+  });
+}
+
 export function Home({
   onViewChange,
 }: {
@@ -50,12 +86,84 @@ export function Home({
   openGoogleAuthModal?: (feature?: string) => void;
 }) {
   const [joinRoomInput, setJoinRoomInput] = useState("");
+  const [isCheckingRoom, setIsCheckingRoom] = useState(false);
+  const [joinRoomError, setJoinRoomError] = useState<string | null>(null);
+  const { t } = useLanguage();
 
-  const handleQuickJoinRoom = (e: React.FormEvent) => {
+  const handleQuickJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleaned = joinRoomInput.replace(/[^0-9A-Za-z]/g, "").trim();
+    const cleaned = joinRoomInput.replace(/[^0-9A-Za-z]/g, "").toUpperCase().trim().slice(0, 6);
     if (!cleaned || !onViewChange) return;
-    onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
+    if (cleaned.length < 6) {
+      setJoinRoomError("Please enter the complete 6-character code from your host.");
+      return;
+    }
+
+    setIsCheckingRoom(true);
+    setJoinRoomError(null);
+
+    try {
+      // 1. Check active Hamster Paintball hosted room on Server API
+      try {
+        const res = await fetch(`/api/paintball/room/${encodeURIComponent(cleaned)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.exists === true || (data?.room && data.room.isUninitialized === false && !data.room.hostClosed)) {
+            onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
+            return;
+          }
+        }
+      } catch {}
+
+      // 2. Check active Hamster Paintball hosted room in Firestore
+      if (!isFirestoreQuotaExhausted()) {
+        try {
+          const pbSnap = await getDoc(doc(db, "ttt_rooms", `pb_room_${cleaned}`));
+          if (pbSnap.exists()) {
+            const pbData = pbSnap.data();
+            if (pbData && pbData.isUninitialized !== true && pbData.hostClosed !== true) {
+              onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 3. Check same-browser BroadcastChannel Paintball Host tab
+      if (await pingSameBrowserPaintballHost(cleaned)) {
+        onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
+        return;
+      }
+
+      // 4. Check active Tic-Tac-Toe hosted room on Server API or Firestore
+      try {
+        const tttRes = await fetch(`/api/tictactoe/room/${encodeURIComponent(cleaned)}`);
+        if (tttRes.ok) {
+          const tttData = await tttRes.json();
+          if (tttData?.exists) {
+            onViewChange("tic-tac-toe", { roomCode: cleaned, isStudentJoin: true });
+            return;
+          }
+        }
+      } catch {}
+
+      if (!isFirestoreQuotaExhausted()) {
+        try {
+          const tttSnap = await getDoc(doc(db, "ttt_rooms", cleaned));
+          if (tttSnap.exists()) {
+            const tttDoc = tttSnap.data();
+            if (tttDoc?.state?.roomId === cleaned && tttDoc?.state?.status && tttDoc.state.status !== "SETUP") {
+              onViewChange("tic-tac-toe", { roomCode: cleaned, isStudentJoin: true });
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      setJoinRoomError(`Incorrect room code "${cleaned}". No host is currently hosting a game with this code.`);
+    } finally {
+      setIsCheckingRoom(false);
+    }
   };
 
   return (
@@ -64,49 +172,62 @@ export function Home({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
         <div>
           <h2 className="text-2xl font-black text-slate-800 dark:text-white">
-            Welcome to the Studio
+            {t("home.welcomeTitle")}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">
-            Play, create, and share amazing learning games
+            {t("home.welcomeSubtitle")}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Student Quick Join Multiplayer Lobby by 6-Digit Code */}
-          <form
-            onSubmit={handleQuickJoinRoom}
-            className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/90 p-1.5 pl-3.5 rounded-2xl border-2 border-lime-400/70 shadow-sm"
-          >
-            <QrCode size={18} className="text-lime-600 dark:text-lime-400 shrink-0" />
-            <input
-              type="text"
-              maxLength={6}
-              value={joinRoomInput}
-              onChange={(e) => setJoinRoomInput(e.target.value.replace(/[^0-9A-Za-z]/g, "").slice(0, 6))}
-              placeholder="Enter 6-Digit Room Code..."
-              className="w-40 sm:w-44 bg-transparent text-xs sm:text-sm font-black font-mono tracking-wider text-slate-800 dark:text-white placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={!joinRoomInput.trim()}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 disabled:opacity-40 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer whitespace-nowrap shrink-0"
+        <div className="flex flex-col items-stretch sm:items-end gap-1.5">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Student Quick Join Multiplayer Lobby by 6-Digit Code */}
+            <form
+              onSubmit={handleQuickJoinRoom}
+              className={`flex items-center gap-2 bg-slate-100 dark:bg-slate-900/90 p-1.5 pl-3.5 rounded-2xl border-2 shadow-sm transition-colors ${
+                joinRoomError ? "border-rose-400" : "border-lime-400/70"
+              }`}
             >
-              <LogIn size={14} />
-              <span>Join Lobby</span>
-            </button>
-          </form>
+              <QrCode size={18} className="text-lime-600 dark:text-lime-400 shrink-0" />
+              <input
+                type="text"
+                maxLength={6}
+                value={joinRoomInput}
+                onChange={(e) => {
+                  setJoinRoomInput(e.target.value.replace(/[^0-9A-Za-z]/g, "").toUpperCase().slice(0, 6));
+                  if (joinRoomError) setJoinRoomError(null);
+                }}
+                placeholder={t("home.roomCodePlaceholder")}
+                className="w-40 sm:w-44 bg-transparent text-xs sm:text-sm font-black font-mono tracking-wider uppercase text-slate-800 dark:text-white placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:normal-case placeholder:text-slate-400 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!joinRoomInput.trim() || isCheckingRoom}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 disabled:opacity-40 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {isCheckingRoom ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
+                <span>{isCheckingRoom ? "..." : t("home.joinLobby")}</span>
+              </button>
+            </form>
 
-          <button 
-            type="button"
-            onClick={() => {
-              if (onViewChange) {
-                onViewChange("generator");
-              }
-            }}
-            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-purple-700 hover:to-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none transition-all cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <PlusCircle size={22} />
-            <span>Create a Game</span>
-          </button>
+            <button 
+              type="button"
+              onClick={() => {
+                if (onViewChange) {
+                  onViewChange("generator");
+                }
+              }}
+              className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-purple-700 hover:to-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none transition-all cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <PlusCircle size={22} />
+              <span>{t("home.createGame")}</span>
+            </button>
+          </div>
+          {joinRoomError && (
+            <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5 px-1">
+              <AlertCircle size={13} className="shrink-0" />
+              <span>{joinRoomError}</span>
+            </p>
+          )}
         </div>
       </div>
 
@@ -121,6 +242,7 @@ function FeaturedGamesSection({
   onViewChange?: (view: ViewState, data?: any) => void;
 }) {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
   const [selectedCategory, setSelectedCategory] = useState<"all" | GameCategoryId>("all");
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
@@ -215,14 +337,14 @@ function FeaturedGamesSection({
     },
     {
       id: "sleeping-hamster",
-      title: "Sleeping Hamster",
-      description: "Smart classroom noise monitor! Keep your class quiet so the cozy hamster stays fast asleep.",
+      title: "Noise Control",
+      description: "Smart classroom noise monitor with Sleeping Hamster & Hamster Cage modes! Keep your class quiet to keep hamsters happy.",
       difficulty: "Easy",
       players: "Classroom",
       time: "3-30m",
       subject: "Classroom Management",
       grade: "All",
-      imageUrl: "/images/sleeping-hamster-card.jpg?v=1",
+      imageUrl: noiseControlCardImg,
       isNew: true,
       isAI: false,
       color: "from-purple-700 to-indigo-900",
@@ -458,7 +580,7 @@ function FeaturedGamesSection({
           )}
         >
           <LayoutGrid size={16} />
-          <span>All Games</span>
+          <span>{t("home.allGames")}</span>
           <span className="text-xs opacity-75 tabular-nums">({games.length})</span>
         </button>
 
@@ -479,7 +601,7 @@ function FeaturedGamesSection({
               )}
             >
               <Icon size={16} className={isActive ? "text-current" : cat.accentText} />
-              <span>{cat.title}</span>
+              <span>{t(`home.cat.${cat.id}`, cat.title)}</span>
               <span className="text-xs opacity-75 tabular-nums">({count})</span>
             </button>
           );
@@ -495,7 +617,7 @@ function FeaturedGamesSection({
               <div className="flex items-center gap-2.5">
                 <SectionIcon size={24} className={section.accentText} />
                 <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                  {section.title}
+                  {t(`home.cat.${section.id}`, section.title)}
                 </h3>
               </div>
 
