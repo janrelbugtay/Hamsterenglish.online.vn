@@ -245,15 +245,15 @@ const COAT_STYLES: CoatStyle[] = [
   {
     id: 'cocoa',
     name: 'Cocoa Bear',
-    body: ['#d6bcfa', '#78350f', '#451a03'],
-    head: ['#a78bfa', '#78350f', '#3f1d0b'],
+    body: ['#e6b88a', '#8c4a1c', '#451a03'],
+    head: ['#d49b6a', '#78350f', '#3b1506'],
     swatch: '#92400e',
   },
   {
     id: 'panda',
     name: 'Panda Oreo',
-    body: ['#71717a', '#3f3f46', '#18181b'],
-    head: ['#52525b', '#27272a', '#09090b'],
+    body: ['#a1a1aa', '#3f3f46', '#18181b'],
+    head: ['#71717a', '#27272a', '#09090b'],
     swatch: '#3f3f46',
   },
   {
@@ -370,30 +370,30 @@ interface CageSlot {
 
 // 10 cozy slots for Adult Hamsters (1..10) inside the terrarium cage
 const CAGE_ADULT_SLOTS: CageSlot[] = [
-  { x: 465, y: 386, scale: 0.35 },
-  { x: 575, y: 394, scale: 0.34, flip: true },
-  { x: 365, y: 394, scale: 0.33 },
-  { x: 185, y: 392, scale: 0.33 },
-  { x: 892, y: 392, scale: 0.33, flip: true },
-  { x: 746, y: 368, scale: 0.30, flip: true },
-  { x: 295, y: 296, scale: 0.29 },
-  { x: 686, y: 224, scale: 0.28 },
-  { x: 792, y: 224, scale: 0.28, flip: true },
-  { x: 938, y: 332, scale: 0.31, flip: true },
+  { x: 465, y: 382, scale: 0.39 },
+  { x: 582, y: 390, scale: 0.38, flip: true },
+  { x: 354, y: 390, scale: 0.37 },
+  { x: 185, y: 388, scale: 0.37 },
+  { x: 892, y: 388, scale: 0.37, flip: true },
+  { x: 746, y: 365, scale: 0.34, flip: true },
+  { x: 295, y: 292, scale: 0.33 },
+  { x: 686, y: 222, scale: 0.31 },
+  { x: 792, y: 222, scale: 0.31, flip: true },
+  { x: 938, y: 328, scale: 0.34, flip: true },
 ];
 
 // 10 cozy slots for Baby Hamsters (11..20) inside the terrarium cage
 const CAGE_BABY_SLOTS: CageSlot[] = [
-  { x: 412, y: 422, scale: 0.22, accessory: 'bow' },
-  { x: 516, y: 424, scale: 0.22, flip: true, accessory: 'pacifier' },
-  { x: 618, y: 420, scale: 0.21, accessory: 'tuft' },
-  { x: 248, y: 420, scale: 0.22, accessory: 'pacifier' },
-  { x: 122, y: 418, scale: 0.21, flip: true, accessory: 'bow' },
-  { x: 842, y: 422, scale: 0.22, flip: true, accessory: 'tuft' },
-  { x: 928, y: 416, scale: 0.21, accessory: 'bow' },
-  { x: 318, y: 426, scale: 0.20, flip: true, accessory: 'tuft' },
-  { x: 572, y: 426, scale: 0.20, accessory: 'pacifier' },
-  { x: 668, y: 392, scale: 0.21, flip: true, accessory: 'bow' },
+  { x: 412, y: 422, scale: 0.25, accessory: 'bow' },
+  { x: 516, y: 424, scale: 0.25, flip: true, accessory: 'pacifier' },
+  { x: 618, y: 420, scale: 0.24, accessory: 'tuft' },
+  { x: 248, y: 420, scale: 0.25, accessory: 'pacifier' },
+  { x: 122, y: 418, scale: 0.24, flip: true, accessory: 'bow' },
+  { x: 842, y: 422, scale: 0.25, flip: true, accessory: 'tuft' },
+  { x: 928, y: 416, scale: 0.24, accessory: 'bow' },
+  { x: 318, y: 426, scale: 0.23, flip: true, accessory: 'tuft' },
+  { x: 572, y: 426, scale: 0.23, accessory: 'pacifier' },
+  { x: 668, y: 392, scale: 0.24, flip: true, accessory: 'bow' },
 ];
 
 interface LeavingHamsterState {
@@ -2234,6 +2234,20 @@ export function SleepingHamster({
                       <stop offset="65%" stopColor={currentCoat.head[1]} />
                       <stop offset="100%" stopColor={currentCoat.head[2]} />
                     </radialGradient>
+                    {COAT_STYLES.map((cStyle, cIdx) => (
+                      <React.Fragment key={`coat-defs-${cStyle.id}`}>
+                        <radialGradient id={`shCoatBodyGrad-${cIdx}`} cx="42%" cy="28%" r="68%">
+                          <stop offset="0%" stopColor={cStyle.body[0]} />
+                          <stop offset="52%" stopColor={cStyle.body[1]} />
+                          <stop offset="100%" stopColor={cStyle.body[2]} />
+                        </radialGradient>
+                        <radialGradient id={`shCoatHeadGrad-${cIdx}`} cx="45%" cy="35%" r="65%">
+                          <stop offset="0%" stopColor={cStyle.head[0]} />
+                          <stop offset="62%" stopColor={cStyle.head[1]} />
+                          <stop offset="100%" stopColor={cStyle.head[2]} />
+                        </radialGradient>
+                      </React.Fragment>
+                    ))}
                     <radialGradient id="shCheekGrad" cx="45%" cy="40%" r="60%">
                       <stop offset="0%" stopColor="#ffffff" />
                       <stop offset="75%" stopColor="#fdf2e9" />
@@ -2555,13 +2569,22 @@ export function SleepingHamster({
                           isLeavingAngry: boolean,
                           isArriving: boolean
                         ) => {
-                          const coat = COAT_STYLES[coatIdx % COAT_STYLES.length];
+                          const resolvedCoatIdx = coatIdx % COAT_STYLES.length;
+                          const coat = COAT_STYLES[resolvedCoatIdx];
+                          const bodyGradUrl = `url(#shCoatBodyGrad-${resolvedCoatIdx})`;
+                          const headGradUrl = `url(#shCoatHeadGrad-${resolvedCoatIdx})`;
                           const isNoisyCage =
                             !isLeavingAngry &&
                             (isDisturbedFace || isAlmostAwakeFace || sleepState === 'AWAKE');
                           const flipX = slot.flip ? -1 : 1;
-                          const bodyRx = isBaby ? 84 : 96;
-                          const bodyRy = isBaby ? 78 : 88;
+                          const strokeCol =
+                            coat.id === 'pearl'
+                              ? '#64748b'
+                              : coat.id === 'panda'
+                              ? '#18181b'
+                              : '#5c1f08';
+                          const holdsSunflowerSeed = !isBaby && !isLeavingAngry && !isNoisyCage && slotIdx % 3 === 1;
+                          const holdsMiniCarrot = !isBaby && !isLeavingAngry && !isNoisyCage && slotIdx % 4 === 2;
 
                           return (
                             <g
@@ -2572,8 +2595,8 @@ export function SleepingHamster({
                             >
                               <title>
                                 {isBaby
-                                  ? `Baby Hamster #${slotIdx + 1}`
-                                  : `Hamster #${slotIdx + 1}`}
+                                  ? `Baby Hamster #${slotIdx - 9} (Click to pet!)`
+                                  : `Hamster #${slotIdx + 1} (Click to pet!)`}
                               </title>
                               <g
                                 className={
@@ -2593,71 +2616,239 @@ export function SleepingHamster({
                                   transform={`scale(${slot.scale * flipX}, ${slot.scale})`}
                                   className={isLeavingAngry ? 'sh-angry-shake' : undefined}
                                 >
-                                  {/* Ground Shadow */}
-                                  <ellipse cx="0" cy="86" rx="88" ry="18" fill="rgba(16,6,38,0.45)" />
+                                  {/* Soft Ground Shadow */}
+                                  <ellipse cx="0" cy="92" rx="92" ry="20" fill="rgba(16, 6, 38, 0.52)" />
 
-                                  {/* Cute Round Ears */}
-                                  <circle cx="-62" cy="-68" r={isBaby ? 28 : 24} fill={coat.head[1]} stroke="#5c1f08" strokeWidth="5" />
-                                  <circle cx="-61" cy="-66" r={isBaby ? 17 : 14} fill="#f48fb1" />
-                                  <circle cx="62" cy="-68" r={isBaby ? 28 : 24} fill={coat.head[1]} stroke="#5c1f08" strokeWidth="5" />
-                                  <circle cx="61" cy="-66" r={isBaby ? 17 : 14} fill="#f48fb1" />
-
-                                  {/* Chubby Fur Body */}
-                                  <ellipse
-                                    cx="0"
-                                    cy="4"
-                                    rx={bodyRx}
-                                    ry={bodyRy}
-                                    fill={coat.body[1]}
-                                    stroke="#5c1f08"
-                                    strokeWidth="5.5"
+                                  {/* Little Round Tail Peeking Behind */}
+                                  <circle
+                                    cx="78"
+                                    cy="54"
+                                    r="14"
+                                    fill="#fbcfe8"
+                                    stroke={strokeCol}
+                                    strokeWidth="4"
                                   />
-                                  {/* Highlight Belly & Cheek Fur */}
-                                  <ellipse cx="0" cy="24" rx={bodyRx * 0.74} ry={bodyRy * 0.66} fill="#fdf2e9" />
-                                  <ellipse cx="-26" cy="-22" rx="34" ry="20" fill={coat.body[0]} opacity="0.5" />
+
+                                  {/* Detailed Plush Hamster Ears with Inner Ear Crease */}
+                                  <g transform="translate(-58, -68) rotate(-18)">
+                                    <ellipse
+                                      cx="0"
+                                      cy="0"
+                                      rx={isBaby ? 28 : 26}
+                                      ry={isBaby ? 30 : 28}
+                                      fill={headGradUrl}
+                                      stroke={strokeCol}
+                                      strokeWidth="4.8"
+                                    />
+                                    <ellipse cx="2" cy="3" rx={isBaby ? 18 : 16.5} ry={isBaby ? 19 : 17.5} fill="#f48fb1" />
+                                    <path
+                                      d="M -7 2 Q 2 -10 10 3"
+                                      fill="none"
+                                      stroke="#fbcfe8"
+                                      strokeWidth="3.2"
+                                      strokeLinecap="round"
+                                      opacity="0.75"
+                                    />
+                                  </g>
+                                  <g transform="translate(58, -68) rotate(18)">
+                                    <ellipse
+                                      cx="0"
+                                      cy="0"
+                                      rx={isBaby ? 28 : 26}
+                                      ry={isBaby ? 30 : 28}
+                                      fill={headGradUrl}
+                                      stroke={strokeCol}
+                                      strokeWidth="4.8"
+                                    />
+                                    <ellipse cx="-2" cy="3" rx={isBaby ? 18 : 16.5} ry={isBaby ? 19 : 17.5} fill="#f48fb1" />
+                                    <path
+                                      d="M -10 3 Q -2 -10 7 2"
+                                      fill="none"
+                                      stroke="#fbcfe8"
+                                      strokeWidth="3.2"
+                                      strokeLinecap="round"
+                                      opacity="0.75"
+                                    />
+                                  </g>
+
+                                  {/* Little Chubby Hind Feet at Bottom */}
+                                  <g transform="translate(-52, 82) rotate(-10)">
+                                    <ellipse
+                                      cx="0"
+                                      cy="0"
+                                      rx="22"
+                                      ry="13"
+                                      fill="#fda4af"
+                                      stroke="#881337"
+                                      strokeWidth="3.6"
+                                    />
+                                    <circle cx="-8" cy="-2" r="3.2" fill="#f43f5e" opacity="0.7" />
+                                    <circle cx="0" cy="-4" r="3.2" fill="#f43f5e" opacity="0.7" />
+                                    <circle cx="8" cy="-2" r="3.2" fill="#f43f5e" opacity="0.7" />
+                                  </g>
+                                  <g transform="translate(52, 82) rotate(10)">
+                                    <ellipse
+                                      cx="0"
+                                      cy="0"
+                                      rx="22"
+                                      ry="13"
+                                      fill="#fda4af"
+                                      stroke="#881337"
+                                      strokeWidth="3.6"
+                                    />
+                                    <circle cx="-8" cy="-2" r="3.2" fill="#f43f5e" opacity="0.7" />
+                                    <circle cx="0" cy="-4" r="3.2" fill="#f43f5e" opacity="0.7" />
+                                    <circle cx="8" cy="-2" r="3.2" fill="#f43f5e" opacity="0.7" />
+                                  </g>
+
+                                  {/* Organic Pear-Shaped Chubby Hamster Silhouette with Puffed Cheek Pouches */}
+                                  <path
+                                    d="M -78 -24 C -84 -62, -52 -90, 0 -90 C 52 -90, 84 -62, 78 -24 C 98 -6, 102 34, 88 64 C 74 88, 38 92, 0 92 C -38 92, -74 88, -88 64 C -102 34, -98 -6, -78 -24 Z"
+                                    fill={bodyGradUrl}
+                                    stroke={strokeCol}
+                                    strokeWidth="5"
+                                    strokeLinejoin="round"
+                                  />
+
+                                  {/* Forehead Cap / Blaze Fur Marking */}
+                                  <path
+                                    d="M -66 -40 C -58 -76, -30 -88, 0 -88 C 30 -88, 58 -76, 66 -40 C 44 -50, 22 -42, 0 -24 C -22 -42, -44 -50, -66 -40 Z"
+                                    fill={headGradUrl}
+                                    opacity="0.88"
+                                  />
+
+                                  {/* Cute Fluffy Head Tuft */}
+                                  <path
+                                    d="M -14 -88 Q -4 -105 4 -90 Q 15 -103 18 -87"
+                                    fill={coat.head[0]}
+                                    stroke={strokeCol}
+                                    strokeWidth="4.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+
+                                  {/* Soft Cream Cheek Pouches & Snowy Belly Contour */}
+                                  <path
+                                    d="M -82 14 C -88 -8, -62 -20, -34 -12 C -14 -6, 14 -6, 34 -12 C 62 -20, 88 -8, 82 14 C 90 46, 68 86, 0 88 C -68 86, -90 46, -82 14 Z"
+                                    fill="url(#shCheekGrad)"
+                                  />
+
+                                  {/* Extra Puffy Snack Pouches on Both Sides */}
+                                  <circle cx="-56" cy="8" r="24" fill="url(#shCheekGrad)" />
+                                  <circle cx="56" cy="8" r="24" fill="url(#shCheekGrad)" />
+
+                                  {/* Top Soft Specular Fur Highlight */}
+                                  <ellipse
+                                    cx="-20"
+                                    cy="-62"
+                                    rx="26"
+                                    ry="12"
+                                    transform="rotate(-12 -20 -62)"
+                                    fill="#ffffff"
+                                    opacity="0.28"
+                                  />
 
                                   {/* Baby Hamster Cute Head Accessories (Slots 11..20) */}
                                   {isBaby && slot.accessory === 'bow' && (
-                                    <g transform="translate(0, -82)">
-                                      <polygon points="-24,-10 0,0 -24,10" fill="#f472b6" stroke="#9d174d" strokeWidth="3.5" strokeLinejoin="round" />
-                                      <polygon points="24,-10 0,0 24,10" fill="#f472b6" stroke="#9d174d" strokeWidth="3.5" strokeLinejoin="round" />
-                                      <circle cx="0" cy="0" r="8" fill="#fbcfe8" stroke="#9d174d" strokeWidth="3" />
+                                    <g transform="translate(0, -88)">
+                                      <polygon
+                                        points="-26,-12 0,0 -26,12"
+                                        fill="#f472b6"
+                                        stroke="#9d174d"
+                                        strokeWidth="3.5"
+                                        strokeLinejoin="round"
+                                      />
+                                      <polygon
+                                        points="26,-12 0,0 26,12"
+                                        fill="#f472b6"
+                                        stroke="#9d174d"
+                                        strokeWidth="3.5"
+                                        strokeLinejoin="round"
+                                      />
+                                      <circle cx="0" cy="0" r="8.5" fill="#fbcfe8" stroke="#9d174d" strokeWidth="3" />
                                     </g>
                                   )}
                                   {isBaby && slot.accessory === 'tuft' && (
-                                    <path
-                                      d="M -6 -84 Q 0 -114 14 -92 Q 22 -108 26 -82"
-                                      fill={coat.head[0]}
-                                      stroke="#5c1f08"
-                                      strokeWidth="4.5"
-                                      strokeLinecap="round"
-                                    />
+                                    <g transform="translate(0, -90)">
+                                      <polygon
+                                        points="0,-24 7,-9 23,-6 11,6 14,22 0,14 -14,22 -11,6 -23,-6 -7,-9"
+                                        fill="#fbbf24"
+                                        stroke="#92400e"
+                                        strokeWidth="3"
+                                        strokeLinejoin="round"
+                                      />
+                                    </g>
                                   )}
 
-                                  {/* Rosy Cheeks (Bright Red-Pink when Angry!) */}
-                                  <ellipse
-                                    cx="-52"
-                                    cy="6"
-                                    rx="18"
-                                    ry="11"
-                                    fill={isLeavingAngry ? '#f43f5e' : '#fda4af'}
-                                    opacity={isLeavingAngry ? 0.9 : 0.78}
-                                  />
-                                  <ellipse
-                                    cx="52"
-                                    cy="6"
-                                    rx="18"
-                                    ry="11"
-                                    fill={isLeavingAngry ? '#f43f5e' : '#fda4af'}
-                                    opacity={isLeavingAngry ? 0.9 : 0.78}
-                                  />
+                                  {/* Rosy Cheeks + Kawaii Blush Slash Marks (//) */}
+                                  <g>
+                                    <ellipse
+                                      cx="-55"
+                                      cy="6"
+                                      rx="19"
+                                      ry="11.5"
+                                      transform="rotate(-8 -55 6)"
+                                      fill={isLeavingAngry ? '#f43f5e' : '#fda4af'}
+                                      opacity={isLeavingAngry ? 0.92 : 0.82}
+                                    />
+                                    <line
+                                      x1="-61"
+                                      y1="10"
+                                      x2="-55"
+                                      y2="2"
+                                      stroke="#e11d48"
+                                      strokeWidth="2.4"
+                                      strokeLinecap="round"
+                                      opacity="0.65"
+                                    />
+                                    <line
+                                      x1="-53"
+                                      y1="11"
+                                      x2="-47"
+                                      y2="3"
+                                      stroke="#e11d48"
+                                      strokeWidth="2.4"
+                                      strokeLinecap="round"
+                                      opacity="0.65"
+                                    />
 
-                                  {/* Whiskers */}
-                                  <g stroke="#78350f" strokeWidth="3" strokeLinecap="round" opacity="0.6">
-                                    <line x1="-68" y1="0" x2="-98" y2="-8" />
-                                    <line x1="-68" y1="12" x2="-98" y2="16" />
-                                    <line x1="68" y1="0" x2="98" y2="-8" />
-                                    <line x1="68" y1="12" x2="98" y2="16" />
+                                    <ellipse
+                                      cx="55"
+                                      cy="6"
+                                      rx="19"
+                                      ry="11.5"
+                                      transform="rotate(8 55 6)"
+                                      fill={isLeavingAngry ? '#f43f5e' : '#fda4af'}
+                                      opacity={isLeavingAngry ? 0.92 : 0.82}
+                                    />
+                                    <line
+                                      x1="47"
+                                      y1="10"
+                                      x2="53"
+                                      y2="2"
+                                      stroke="#e11d48"
+                                      strokeWidth="2.4"
+                                      strokeLinecap="round"
+                                      opacity="0.65"
+                                    />
+                                    <line
+                                      x1="55"
+                                      y1="11"
+                                      x2="61"
+                                      y2="3"
+                                      stroke="#e11d48"
+                                      strokeWidth="2.4"
+                                      strokeLinecap="round"
+                                      opacity="0.65"
+                                    />
+                                  </g>
+
+                                  {/* Soft Curved Whiskers */}
+                                  <g stroke="#78350f" strokeWidth="2.6" strokeLinecap="round" opacity="0.58">
+                                    <path d="M -72 2 Q -88 -3 -104 -8" fill="none" />
+                                    <path d="M -72 12 Q -88 14 -104 18" fill="none" />
+                                    <path d="M 72 2 Q 88 -3 104 -8" fill="none" />
+                                    <path d="M 72 12 Q 88 14 104 18" fill="none" />
                                   </g>
 
                                   {/* FACIAL EXPRESSIONS */}
@@ -2665,24 +2856,41 @@ export function SleepingHamster({
                                     /* ANGRY FACE BEFORE LEAVING */
                                     <g>
                                       {/* Furrowed Angry Eyebrows */}
-                                      <line x1="-52" y1="-40" x2="-16" y2="-22" stroke="#450a0a" strokeWidth="8.5" strokeLinecap="round" />
-                                      <line x1="52" y1="-40" x2="16" y2="-22" stroke="#450a0a" strokeWidth="8.5" strokeLinecap="round" />
-                                      {/* Glaring Eyes */}
-                                      <circle cx="-32" cy="-16" r="11.5" fill="#1c0a00" />
-                                      <circle cx="-36" cy="-20" r="3.8" fill="#ffffff" />
-                                      <circle cx="32" cy="-16" r="11.5" fill="#1c0a00" />
-                                      <circle cx="28" cy="-20" r="3.8" fill="#ffffff" />
-                                      {/* Nose & Scowling Grumpy Mouth */}
-                                      <ellipse cx="0" cy="-2" rx="8" ry="6" fill="#f43f5e" />
                                       <path
-                                        d="M -20 24 Q 0 8 20 24"
-                                        fill="none"
+                                        d="M -54 -40 L -16 -22"
                                         stroke="#450a0a"
-                                        strokeWidth="6.5"
+                                        strokeWidth="8.5"
                                         strokeLinecap="round"
                                       />
-                                      {/* Comic Anger Mark 💢 */}
-                                      <g transform="translate(56, -86) scale(1.25)">
+                                      <path
+                                        d="M 54 -40 L 16 -22"
+                                        stroke="#450a0a"
+                                        strokeWidth="8.5"
+                                        strokeLinecap="round"
+                                      />
+                                      {/* Glaring Glossy Eyes */}
+                                      <circle cx="-33" cy="-18" r="13" fill="#1c0a00" />
+                                      <circle cx="-37" cy="-22" r="4.5" fill="#ffffff" />
+                                      <circle cx="-28" cy="-13" r="2" fill="#fda4af" />
+                                      <circle cx="33" cy="-18" r="13" fill="#1c0a00" />
+                                      <circle cx="29" cy="-22" r="4.5" fill="#ffffff" />
+                                      <circle cx="38" cy="-13" r="2" fill="#fda4af" />
+                                      {/* 3D Pink Heart Nose */}
+                                      <path
+                                        d="M -8 -4 C -8 -9, 8 -9, 8 -4 C 8 1, 3 5, 0 5 C -3 5, -8 1, -8 -4 Z"
+                                        fill="url(#shPinkNose)"
+                                      />
+                                      {/* Grumpy Open Scowling Mouth with Little Hamster Teeth */}
+                                      <path
+                                        d="M -18 22 C -14 6, 14 6, 18 22 C 10 26, -10 26, -18 22 Z"
+                                        fill="#7f1d1d"
+                                        stroke="#450a0a"
+                                        strokeWidth="3.8"
+                                        strokeLinejoin="round"
+                                      />
+                                      <rect x="-5" y="10" width="10" height="6" rx="1.5" fill="#ffffff" />
+                                      {/* Comic Anger Vein Mark 💢 */}
+                                      <g transform="translate(58, -88) scale(1.3)">
                                         <path
                                           d="M -14 -4 Q -4 -4 -4 -14 M 14 -4 Q 4 -4 4 -14 M -14 14 Q -4 14 -4 4 M 14 14 Q 4 14 4 4"
                                           fill="none"
@@ -2695,48 +2903,196 @@ export function SleepingHamster({
                                   ) : isNoisyCage ? (
                                     /* NERVOUS / WORRIED FACE WHEN NOISY */
                                     <g>
-                                      <line x1="-48" y1="-36" x2="-20" y2="-26" stroke="#5c1f08" strokeWidth="6" strokeLinecap="round" />
-                                      <line x1="48" y1="-36" x2="20" y2="-26" stroke="#5c1f08" strokeWidth="6" strokeLinecap="round" />
-                                      <circle cx="-30" cy="-14" r="12" fill="#2d1206" />
-                                      <circle cx="-34" cy="-19" r="4" fill="#ffffff" />
-                                      <circle cx="30" cy="-14" r="12" fill="#2d1206" />
-                                      <circle cx="26" cy="-19" r="4" fill="#ffffff" />
-                                      <ellipse cx="0" cy="-1" rx="8" ry="6" fill="#f472b6" />
-                                      <ellipse cx="0" cy="18" rx="9" ry="7" fill="#7f1d1d" stroke="#451a03" strokeWidth="3.5" />
+                                      <line
+                                        x1="-48"
+                                        y1="-36"
+                                        x2="-20"
+                                        y2="-27"
+                                        stroke={strokeCol}
+                                        strokeWidth="5.5"
+                                        strokeLinecap="round"
+                                      />
+                                      <line
+                                        x1="48"
+                                        y1="-36"
+                                        x2="20"
+                                        y2="-27"
+                                        stroke={strokeCol}
+                                        strokeWidth="5.5"
+                                        strokeLinecap="round"
+                                      />
+                                      <circle cx="-33" cy="-16" r="13.5" fill="#230d04" />
+                                      <circle cx="-38" cy="-21" r="4.8" fill="#ffffff" />
+                                      <circle cx="-28" cy="-11" r="2.2" fill="#ffffff" opacity="0.85" />
+                                      <circle cx="33" cy="-16" r="13.5" fill="#230d04" />
+                                      <circle cx="28" cy="-21" r="4.8" fill="#ffffff" />
+                                      <circle cx="38" cy="-11" r="2.2" fill="#ffffff" opacity="0.85" />
+                                      <path
+                                        d="M -8 -3 C -8 -8, 8 -8, 8 -3 C 8 2, 3 6, 0 6 C -3 6, -8 2, -8 -3 Z"
+                                        fill="url(#shPinkNose)"
+                                      />
+                                      <ellipse
+                                        cx="0"
+                                        cy="17"
+                                        rx="9.5"
+                                        ry="7.5"
+                                        fill="#7f1d1d"
+                                        stroke="#451a03"
+                                        strokeWidth="3.5"
+                                      />
+                                      <rect x="-4.5" y="10" width="9" height="5" rx="1.5" fill="#ffffff" />
                                       {/* Sweatdrop */}
-                                      <path d="M 62 -46 C 56 -32, 54 -22, 62 -20 C 70 -22, 68 -32, 62 -46 Z" fill="#7dd3fc" stroke="#e0f2fe" strokeWidth="2" />
+                                      <path
+                                        d="M 64 -48 C 58 -34, 56 -24, 64 -22 C 72 -24, 70 -34, 64 -48 Z"
+                                        fill="#7dd3fc"
+                                        stroke="#e0f2fe"
+                                        strokeWidth="2.2"
+                                      />
                                     </g>
                                   ) : (
-                                    /* CUTE HAPPY CALM FACE */
+                                    /* CUTE KAWAII HAPPY CALM FACE */
                                     <g>
-                                      <circle cx="-30" cy="-16" r={isBaby ? 13 : 11.5} fill="#2d1206" />
-                                      <circle cx="-34" cy="-21" r="4.5" fill="#ffffff" />
-                                      <circle cx="-26" cy="-12" r="2" fill="#ffffff" opacity="0.8" />
-                                      <circle cx="30" cy="-16" r={isBaby ? 13 : 11.5} fill="#2d1206" />
-                                      <circle cx="26" cy="-21" r="4.5" fill="#ffffff" />
-                                      <circle cx="34" cy="-12" r="2" fill="#ffffff" opacity="0.8" />
-                                      <ellipse cx="0" cy="-2" rx="8" ry="5.5" fill="#f472b6" />
+                                      {/* Subtle Cute Brow Dots */}
+                                      <ellipse cx="-28" cy="-38" rx="6" ry="3.5" fill={coat.body[0]} opacity="0.85" />
+                                      <ellipse cx="28" cy="-38" rx="6" ry="3.5" fill={coat.body[0]} opacity="0.85" />
+
+                                      {/* Glossy Kawaii Left Eye */}
+                                      <circle cx="-33" cy="-18" r={isBaby ? 15 : 13.8} fill="#230d04" />
+                                      <path
+                                        d="M -42 -12 A 11 11 0 0 0 -24 -12"
+                                        fill="none"
+                                        stroke="#92400e"
+                                        strokeWidth="3.2"
+                                        strokeLinecap="round"
+                                        opacity="0.75"
+                                      />
+                                      <circle cx="-38" cy="-23" r={isBaby ? 5.6 : 5} fill="#ffffff" />
+                                      <circle cx="-27" cy="-13" r="2.4" fill="#ffffff" opacity="0.9" />
+
+                                      {/* Glossy Kawaii Right Eye */}
+                                      <circle cx="33" cy="-18" r={isBaby ? 15 : 13.8} fill="#230d04" />
+                                      <path
+                                        d="M 24 -12 A 11 11 0 0 0 42 -12"
+                                        fill="none"
+                                        stroke="#92400e"
+                                        strokeWidth="3.2"
+                                        strokeLinecap="round"
+                                        opacity="0.75"
+                                      />
+                                      <circle cx="28" cy="-23" r={isBaby ? 5.6 : 5} fill="#ffffff" />
+                                      <circle cx="39" cy="-13" r="2.4" fill="#ffffff" opacity="0.9" />
+
+                                      {/* 3D Heart-Shaped Pink Nose */}
+                                      <path
+                                        d="M -8.5 -3 C -8.5 -8.5, 8.5 -8.5, 8.5 -3 C 8.5 2.5, 3.5 6.5, 0 6.5 C -3.5 6.5, -8.5 2.5, -8.5 -3 Z"
+                                        fill="url(#shPinkNose)"
+                                      />
+
                                       {isBaby && slot.accessory === 'pacifier' ? (
                                         <g transform="translate(0, 14)">
-                                          <circle cx="0" cy="0" r="13" fill="#7dd3fc" stroke="#0284c7" strokeWidth="3.5" />
-                                          <circle cx="0" cy="2" r="6" fill="none" stroke="#e0f2fe" strokeWidth="3.5" />
+                                          <ellipse cx="0" cy="0" rx="15" ry="12" fill="#7dd3fc" stroke="#0284c7" strokeWidth="3.5" />
+                                          <circle cx="0" cy="-1" r="6" fill="#38bdf8" stroke="#0284c7" strokeWidth="2.5" />
+                                          <path
+                                            d="M -7 3 A 7 7 0 0 0 7 3"
+                                            fill="none"
+                                            stroke="#ffffff"
+                                            strokeWidth="3.2"
+                                            strokeLinecap="round"
+                                          />
                                         </g>
                                       ) : (
-                                        <path
-                                          d="M -16 10 Q -8 18 0 6 Q 8 18 16 10"
-                                          fill="none"
-                                          stroke="#451a03"
-                                          strokeWidth="5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
+                                        <g>
+                                          {/* Cute Pink Mouth + Tiny Hamster Tooth + ω Cat-Smile */}
+                                          <path
+                                            d="M -11 11 Q 0 24 11 11 Z"
+                                            fill="#fb7185"
+                                            stroke="#881337"
+                                            strokeWidth="2.5"
+                                            strokeLinejoin="round"
+                                          />
+                                          <rect x="-3.5" y="10" width="7" height="4.5" rx="1.2" fill="#ffffff" />
+                                          <path
+                                            d="M -16 9 Q -8 17 0 6.5 Q 8 17 16 9"
+                                            fill="none"
+                                            stroke="#451a03"
+                                            strokeWidth="4.4"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          />
+                                        </g>
                                       )}
                                     </g>
                                   )}
 
-                                  {/* Little Paws */}
-                                  <ellipse cx="-34" cy="58" rx="16" ry="12" fill="#fda4af" stroke="#881337" strokeWidth="3.5" />
-                                  <ellipse cx="34" cy="58" rx="16" ry="12" fill="#fda4af" stroke="#881337" strokeWidth="3.5" />
+                                  {/* Cute Front Paws + Optional Treats */}
+                                  {isLeavingAngry ? (
+                                    /* Raised Angry Paws */
+                                    <g>
+                                      <g transform="translate(-44, 24) rotate(-28)">
+                                        <ellipse cx="0" cy="0" rx="15" ry="18" fill="#fda4af" stroke="#881337" strokeWidth="3.5" />
+                                        <path d="M -5 -10 L -5 -3 M 0 -11 L 0 -3 M 5 -10 L 5 -3" stroke="#9f1239" strokeWidth="2.4" strokeLinecap="round" />
+                                      </g>
+                                      <g transform="translate(44, 24) rotate(28)">
+                                        <ellipse cx="0" cy="0" rx="15" ry="18" fill="#fda4af" stroke="#881337" strokeWidth="3.5" />
+                                        <path d="M -5 -10 L -5 -3 M 0 -11 L 0 -3 M 5 -10 L 5 -3" stroke="#9f1239" strokeWidth="2.4" strokeLinecap="round" />
+                                      </g>
+                                    </g>
+                                  ) : holdsSunflowerSeed ? (
+                                    /* Holding a Striped Sunflower Seed */
+                                    <g>
+                                      <g transform="translate(0, 38)">
+                                        <path
+                                          d="M 0 -16 C 12 -14, 15 4, 0 16 C -15 4, -12 -14, 0 -16 Z"
+                                          fill="#27272a"
+                                          stroke="#fef08a"
+                                          strokeWidth="2.8"
+                                        />
+                                        <line x1="0" y1="-12" x2="0" y2="12" stroke="#fef08a" strokeWidth="2.2" strokeLinecap="round" />
+                                      </g>
+                                      <g transform="translate(-22, 42) rotate(25)">
+                                        <ellipse cx="0" cy="0" rx="14" ry="17" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
+                                        <path d="M -4 -9 L -4 -2 M 0 -10 L 0 -2 M 4 -9 L 4 -2" stroke="#9f1239" strokeWidth="2.2" strokeLinecap="round" />
+                                      </g>
+                                      <g transform="translate(22, 42) rotate(-25)">
+                                        <ellipse cx="0" cy="0" rx="14" ry="17" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
+                                        <path d="M -4 -9 L -4 -2 M 0 -10 L 0 -2 M 4 -9 L 4 -2" stroke="#9f1239" strokeWidth="2.2" strokeLinecap="round" />
+                                      </g>
+                                    </g>
+                                  ) : holdsMiniCarrot ? (
+                                    /* Holding a Crunchy Mini Carrot */
+                                    <g>
+                                      <g transform="translate(0, 38) rotate(-14)">
+                                        <path d="M 8 -14 C 14 -22, 20 -18, 12 -10" fill="none" stroke="#22c55e" strokeWidth="4.5" strokeLinecap="round" />
+                                        <path
+                                          d="M -16 4 L 10 -12 C 16 -8, 16 4, 8 8 L -14 10 Z"
+                                          fill="#f97316"
+                                          stroke="#c2410c"
+                                          strokeWidth="3"
+                                          strokeLinejoin="round"
+                                        />
+                                      </g>
+                                      <g transform="translate(-22, 44) rotate(22)">
+                                        <ellipse cx="0" cy="0" rx="14" ry="17" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
+                                        <path d="M -4 -9 L -4 -2 M 0 -10 L 0 -2 M 4 -9 L 4 -2" stroke="#9f1239" strokeWidth="2.2" strokeLinecap="round" />
+                                      </g>
+                                      <g transform="translate(22, 44) rotate(-22)">
+                                        <ellipse cx="0" cy="0" rx="14" ry="17" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
+                                        <path d="M -4 -9 L -4 -2 M 0 -10 L 0 -2 M 4 -9 L 4 -2" stroke="#9f1239" strokeWidth="2.2" strokeLinecap="round" />
+                                      </g>
+                                    </g>
+                                  ) : (
+                                    /* Cozy Tucked Front Paws on Chest */
+                                    <g>
+                                      <g transform="translate(-26, 44) rotate(18)">
+                                        <ellipse cx="0" cy="0" rx="15" ry="18" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
+                                        <path d="M -5 -10 L -5 -3 M 0 -11 L 0 -3 M 5 -10 L 5 -3" stroke="#9f1239" strokeWidth="2.3" strokeLinecap="round" />
+                                      </g>
+                                      <g transform="translate(26, 44) rotate(-18)">
+                                        <ellipse cx="0" cy="0" rx="15" ry="18" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
+                                        <path d="M -5 -10 L -5 -3 M 0 -11 L 0 -3 M 5 -10 L 5 -3" stroke="#9f1239" strokeWidth="2.3" strokeLinecap="round" />
+                                      </g>
+                                    </g>
+                                  )}
                                 </g>
                               </g>
                             </g>

@@ -28,7 +28,11 @@ import {
   CheckCircle2,
   RefreshCw,
   Play,
-  Check
+  Check,
+  Volume2,
+  VolumeX,
+  Snowflake,
+  Trophy
 } from 'lucide-react';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
@@ -211,65 +215,197 @@ function StandingPoseFigure({
   );
 }
 
+// Shared pre-warmed MediaPipe Hands singleton for zero-wait camera startup
+let sharedYogaHandsInstance: any = null;
+let sharedYogaHandsInitPromise: Promise<any> | null = null;
+let sharedYogaHandsResultsListener: ((results: any) => void) | null = null;
+
+function getOrPrewarmYogaHands(): Promise<any> {
+  if (sharedYogaHandsInstance) {
+    return Promise.resolve(sharedYogaHandsInstance);
+  }
+  if (sharedYogaHandsInitPromise) {
+    return sharedYogaHandsInitPromise;
+  }
+
+  sharedYogaHandsInitPromise = new Promise((resolve, reject) => {
+    const tryInit = (attempt = 0) => {
+      const win = typeof window !== 'undefined' ? (window as any) : null;
+      if (!win || !win.Hands) {
+        if (attempt < 25) {
+          setTimeout(() => tryInit(attempt + 1), 120);
+          return;
+        }
+        sharedYogaHandsInitPromise = null;
+        reject(new Error('Camera AI module is still loading. Please try again in a moment.'));
+        return;
+      }
+
+      try {
+        const hands = new win.Hands({
+          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        });
+
+        hands.setOptions({
+          maxNumHands: 2,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.45,
+          minTrackingConfidence: 0.45,
+        });
+
+        hands.onResults((results: any) => {
+          if (sharedYogaHandsResultsListener) {
+            sharedYogaHandsResultsListener(results);
+          }
+        });
+
+        sharedYogaHandsInstance = hands;
+        if (typeof hands.initialize === 'function') {
+          Promise.resolve(hands.initialize())
+            .then(() => resolve(hands))
+            .catch(() => resolve(hands));
+        } else {
+          resolve(hands);
+        }
+      } catch (err) {
+        sharedYogaHandsInitPromise = null;
+        reject(err);
+      }
+    };
+
+    tryInit();
+  });
+
+  return sharedYogaHandsInitPromise;
+}
+
 /**
- * Scale-invariant anatomical hand gesture detector.
- * Evaluates MediaPipe 21-point hand landmarks:
+ * Scale-invariant & aspect-corrected biomechanical hand gesture detector.
+ * Evaluates MediaPipe 21-point hand landmarks using phalanx joint angles (PIP cosine curl),
+ * tip-to-wrist vs PIP/DIP distances, tip-to-MCP span, and relative finger dominance.
  * Supports: 1 Finger, 2 Fingers, 3 Fingers, Fist, Rock, 5 Fingers, Thumbs Up, OK Sign, 4 Fingers, Shaka.
  */
 function detectStandingPoseFromHands(
   hands: Array<Array<{ x: number; y: number; z?: number }>>,
-  candidatePoseIds: string[]
+  candidatePoseIds: string[],
+  videoAspect = 1.5
 ): { poseId: string | null; confidence: number } {
   if (!hands || hands.length === 0) {
     return { poseId: null, confidence: 0 };
   }
 
-  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-    Math.hypot(a.x - b.x, a.y - b.y);
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+  const normRange = (v: number, min: number, max: number) =>
+    clamp01((v - min) / Math.max(1e-5, max - min));
 
-  const analyzeSingleHand = (lm: Array<{ x: number; y: number }>) => {
+  // Aspect-corrected 3D-aware distance so tilted hands have consistent geometry
+  const dist = (
+    a: { x: number; y: number; z?: number },
+    b: { x: number; y: number; z?: number }
+  ) => {
+    const dx = (a.x - b.x) * videoAspect;
+    const dy = a.y - b.y;
+    const dz = ((a.z ?? 0) - (b.z ?? 0)) * 0.35;
+    return Math.hypot(dx, dy, dz);
+  };
+
+  // Joint straightness cosine between (mcp -> pip) and (pip -> tip):
+  // +1.0 = straight extended finger, < 0.25 = curled/folded finger
+  const fingerStraightCos = (
+    mcp: { x: number; y: number; z?: number },
+    pip: { x: number; y: number; z?: number },
+    tip: { x: number; y: number; z?: number }
+  ) => {
+    const v1x = (pip.x - mcp.x) * videoAspect;
+    const v1y = pip.y - mcp.y;
+    const v2x = (tip.x - pip.x) * videoAspect;
+    const v2y = tip.y - pip.y;
+    const mag1 = Math.hypot(v1x, v1y);
+    const mag2 = Math.hypot(v2x, v2y);
+    if (mag1 < 1e-4 || mag2 < 1e-4) return 0;
+    return (v1x * v2x + v1y * v2y) / (mag1 * mag2);
+  };
+
+  const analyzeSingleHand = (lm: Array<{ x: number; y: number; z?: number }>) => {
     const wrist = lm[0];
-    const palmCenter = lm[9];
-    const palmSize = Math.max(0.035, dist(palmCenter, wrist));
+    const palmLength = dist(lm[9], wrist);
+    const knuckleWidth = dist(lm[5], lm[17]);
+    const palmSize = Math.max(0.04, Math.max(palmLength, knuckleWidth * 1.15));
 
-    // Distance of finger tips and PIP joints from wrist
-    const dIndexTip = dist(lm[8], wrist);
-    const dIndexPip = Math.max(0.01, dist(lm[6], wrist));
-    const dMiddleTip = dist(lm[12], wrist);
-    const dMiddlePip = Math.max(0.01, dist(lm[10], wrist));
-    const dRingTip = dist(lm[16], wrist);
-    const dRingPip = Math.max(0.01, dist(lm[14], wrist));
-    const dPinkyTip = dist(lm[20], wrist);
-    const dPinkyPip = Math.max(0.01, dist(lm[18], wrist));
+    const computeFingerScore = (
+      mcpIdx: number,
+      pipIdx: number,
+      dipIdx: number,
+      tipIdx: number,
+      isPinky = false
+    ) => {
+      const mcp = lm[mcpIdx];
+      const pip = lm[pipIdx];
+      const dip = lm[dipIdx];
+      const tip = lm[tipIdx];
 
-    const indexRatio = dIndexTip / dIndexPip;
-    const middleRatio = dMiddleTip / dMiddlePip;
-    const ringRatio = dRingTip / dRingPip;
-    const pinkyRatio = dPinkyTip / dPinkyPip;
+      const dTipWrist = dist(tip, wrist);
+      const dDipWrist = Math.max(0.01, dist(dip, wrist));
+      const dPipWrist = Math.max(0.01, dist(pip, wrist));
+      const dMcpWrist = Math.max(0.01, dist(mcp, wrist));
 
-    const indexTipToMcp = dist(lm[8], lm[5]);
-    const indexPipToMcp = Math.max(0.005, dist(lm[6], lm[5]));
-    const middleTipToMcp = dist(lm[12], lm[9]);
-    const middlePipToMcp = Math.max(0.005, dist(lm[10], lm[9]));
-    const ringTipToMcp = dist(lm[16], lm[13]);
-    const ringPipToMcp = Math.max(0.005, dist(lm[14], lm[13]));
-    const pinkyTipToMcp = dist(lm[20], lm[17]);
-    const pinkyPipToMcp = Math.max(0.005, dist(lm[18], lm[17]));
+      const wristRatio = dTipWrist / dPipWrist;
+      const dipRatio = dTipWrist / dDipWrist;
+      const mcpRatio = dTipWrist / dMcpWrist;
+      const mcpSpan = dist(tip, mcp) / palmSize;
+      const cosStraight = fingerStraightCos(mcp, pip, tip);
 
-    // Multi-criteria scale-invariant finger extension (ratio + knuckle geometry + wrist distance)
-    const indexExtended = (indexRatio > 1.05 && (indexTipToMcp > indexPipToMcp * 1.15 || dist(lm[8], lm[5]) > palmSize * 0.44)) || (dist(lm[8], wrist) > dist(lm[6], wrist) * 1.08);
-    const middleExtended = (middleRatio > 1.05 && (middleTipToMcp > middlePipToMcp * 1.15 || dist(lm[12], lm[9]) > palmSize * 0.44)) || (dist(lm[12], wrist) > dist(lm[10], wrist) * 1.08);
-    const ringExtended = (ringRatio > 1.04 && (ringTipToMcp > ringPipToMcp * 1.12 || dist(lm[16], lm[13]) > palmSize * 0.40)) || (dist(lm[16], wrist) > dist(lm[14], wrist) * 1.06);
-    const pinkyExtended = (pinkyRatio > 1.04 && (pinkyTipToMcp > pinkyPipToMcp * 1.10 || dist(lm[20], lm[17]) > palmSize * 0.36)) || (dist(lm[20], wrist) > dist(lm[18], wrist) * 1.06);
+      // If fingertip is closer to wrist than DIP/PIP or folded back sharply, it is definitely curled
+      if (dipRatio < 0.96 || wristRatio < 1.02 || cosStraight < 0.05) {
+        return {
+          score: clamp01(normRange(wristRatio, 0.85, 1.05) * 0.25),
+          wristRatio,
+          cosStraight,
+          mcpSpan,
+        };
+      }
+
+      const cosPart = normRange(cosStraight, 0.12, 0.82);
+      const ratioPart = normRange(wristRatio, 1.04, isPinky ? 1.24 : 1.28);
+      const spanPart = normRange(mcpSpan, isPinky ? 0.34 : 0.42, isPinky ? 0.72 : 0.82);
+      const mcpPart = normRange(mcpRatio, 1.12, isPinky ? 1.50 : 1.62);
+
+      const score = clamp01(cosPart * 0.38 + ratioPart * 0.30 + spanPart * 0.18 + mcpPart * 0.14);
+      return { score, wristRatio, cosStraight, mcpSpan };
+    };
+
+    const idxF = computeFingerScore(5, 6, 7, 8, false);
+    const midF = computeFingerScore(9, 10, 11, 12, false);
+    const rngF = computeFingerScore(13, 14, 15, 16, false);
+    const pnkF = computeFingerScore(17, 18, 19, 20, true);
+
+    const indexScore = idxF.score;
+    const middleScore = midF.score;
+    const ringScore = rngF.score;
+    const pinkyScore = pnkF.score;
+
+    const indexExtended = indexScore >= 0.52;
+    const middleExtended = middleScore >= 0.52;
+    const ringExtended = ringScore >= 0.50;
+    const pinkyExtended = pinkyScore >= 0.48;
 
     // Thumb metrics
     const thumbTip = lm[4];
-    const thumbMcp = lm[2];
     const thumbIp = lm[3];
-    const thumbSpread = dist(thumbTip, lm[5]) > palmSize * 0.48 && dist(thumbTip, lm[17]) > dist(thumbMcp, lm[17]) * 1.12;
-    const thumbUpVertical = (thumbTip.y < thumbIp.y - palmSize * 0.05) && (thumbTip.y < lm[5].y - palmSize * 0.05);
+    const thumbMcp = lm[2];
+    const thumbToIndexMcp = dist(thumbTip, lm[5]) / palmSize;
+    const thumbToMiddlePip = dist(thumbTip, lm[10]) / palmSize;
+    const thumbSpread =
+      thumbToIndexMcp > 0.52 &&
+      dist(thumbTip, lm[17]) > dist(thumbMcp, lm[17]) * 1.14 &&
+      thumbToMiddlePip > 0.45;
 
-    // Number of extended fingers (index, middle, ring, pinky)
+    // Distinct vertical thumbs-up (thumb extended well above curled knuckles)
+    const thumbUpVertical =
+      thumbTip.y < thumbIp.y - palmSize * 0.08 &&
+      thumbTip.y < lm[5].y - palmSize * 0.12 &&
+      thumbToIndexMcp > 0.48;
+
     const fourFingersCount =
       (indexExtended ? 1 : 0) +
       (middleExtended ? 1 : 0) +
@@ -277,27 +413,33 @@ function detectStandingPoseFromHands(
       (pinkyExtended ? 1 : 0);
 
     const totalOpenCount = fourFingersCount + (thumbSpread ? 1 : 0);
+    const maxFourScore = Math.max(indexScore, middleScore, ringScore, pinkyScore);
+    const avgFourScore = (indexScore + middleScore + ringScore + pinkyScore) * 0.25;
 
-    // Closed fist: all 4 fingers curled down tightly
-    const fingersCurled = !indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
+    // Closed fist: all 4 fingers curled down
+    const fingersCurled =
+      (fourFingersCount === 0 && maxFourScore < 0.52) ||
+      (maxFourScore < 0.46 && avgFourScore < 0.36);
 
     // Pinch distance for OK sign
     const pinchDist = dist(thumbTip, lm[8]) / palmSize;
-    const isOkPinch = pinchDist < 0.55 && (middleExtended || ringExtended || pinkyExtended);
+    const isOkPinch =
+      pinchDist < 0.42 &&
+      middleScore > 0.52 &&
+      ringScore > 0.48 &&
+      indexScore < 0.65;
 
-    // Relative extension dominances
-    const peaceDominance = Math.min(indexRatio, middleRatio) - Math.max(ringRatio, pinkyRatio);
-    const pointDominance = indexRatio - Math.max(middleRatio, ringRatio, pinkyRatio);
-    const rockDominance = Math.min(indexRatio, pinkyRatio) - Math.max(middleRatio, ringRatio);
+    // Relative extension dominances using continuous scores
+    const pointDominance = indexScore - Math.max(middleScore, ringScore, pinkyScore);
+    const peaceDominance = Math.min(indexScore, middleScore) - Math.max(ringScore, pinkyScore);
+    const rockDominance = Math.min(indexScore, pinkyScore) - Math.max(middleScore, ringScore);
+    const classic3Dominance = Math.min(indexScore, middleScore, ringScore) - pinkyScore;
 
     return {
-      wrist,
-      palmCenter,
-      palmSize,
-      indexRatio,
-      middleRatio,
-      ringRatio,
-      pinkyRatio,
+      indexScore,
+      middleScore,
+      ringScore,
+      pinkyScore,
       indexExtended,
       middleExtended,
       ringExtended,
@@ -306,116 +448,144 @@ function detectStandingPoseFromHands(
       thumbUpVertical,
       fourFingersCount,
       totalOpenCount,
+      maxFourScore,
+      avgFourScore,
       fingersCurled,
       isOkPinch,
-      peaceDominance,
       pointDominance,
+      peaceDominance,
       rockDominance,
+      classic3Dominance,
     };
   };
 
   const analyzed = hands.map(analyzeSingleHand);
   const scores: Record<string, number> = {};
+  const expectsThumbsUp = candidatePoseIds.includes('thumbs-up');
 
   for (const h of analyzed) {
-    // 1. Closed Fist (✊) - all 4 fingers curled down
-    if (h.fingersCurled && !h.thumbUpVertical && !h.isOkPinch) {
-      scores['fist'] = Math.max(scores['fist'] || 0, 0.99);
-      scores['power-fist'] = Math.max(scores['power-fist'] || 0, 0.95);
+    // 1. Closed Fist (✊) - all 4 fingers curled
+    if (h.fingersCurled && !h.isOkPinch && (!expectsThumbsUp || !h.thumbUpVertical)) {
+      const fistConf = clamp01(0.88 + (0.48 - h.avgFourScore) * 0.25);
+      scores['fist'] = Math.max(scores['fist'] || 0, fistConf);
+      scores['power-fist'] = Math.max(scores['power-fist'] || 0, fistConf * 0.98);
     }
 
-    // 2. 1 Finger / Point Up (☝️) - ONLY index extended, middle, ring, and pinky MUST be curled
-    const otherThreeCurled = !h.middleExtended && !h.ringExtended && !h.pinkyExtended && h.pinkyRatio < 1.08 && h.middleRatio < 1.08;
+    // 2. 1 Finger / Point Up (☝️) - index extended, middle/ring/pinky curled
+    const othersMaxFor1 = Math.max(h.middleScore, h.ringScore, h.pinkyScore);
     if (
-      h.indexExtended && otherThreeCurled && !h.isOkPinch &&
-      (h.fourFingersCount === 1 || h.pointDominance > 0.15)
+      !h.isOkPinch &&
+      h.indexScore >= 0.50 &&
+      ((othersMaxFor1 < 0.48 && h.pointDominance >= 0.16) ||
+        (h.indexScore >= 0.62 && othersMaxFor1 < 0.53 && h.pointDominance >= 0.24))
     ) {
-      scores['1-finger'] = Math.max(scores['1-finger'] || 0, 0.99);
-      scores['point-up'] = Math.max(scores['point-up'] || 0, 0.99);
+      const oneConf = clamp01(0.86 + h.pointDominance * 0.22);
+      scores['1-finger'] = Math.max(scores['1-finger'] || 0, oneConf);
+      scores['point-up'] = Math.max(scores['point-up'] || 0, oneConf);
     }
 
-    // 3. 2 Fingers / Peace (✌️) - index and middle extended, ring and pinky curled
+    // 3. 2 Fingers / Peace (✌️) - index & middle extended, ring & pinky curled
+    const minIdxMid = Math.min(h.indexScore, h.middleScore);
+    const maxRingPinky = Math.max(h.ringScore, h.pinkyScore);
     if (
-      (h.indexExtended && h.middleExtended && !h.ringExtended && !h.pinkyExtended) ||
-      (h.fourFingersCount === 2 && h.indexExtended && h.middleExtended && !h.pinkyExtended) ||
-      (h.peaceDominance > 0.12 && !h.pinkyExtended)
+      minIdxMid >= 0.50 &&
+      ((maxRingPinky < 0.48 && h.peaceDominance >= 0.14) ||
+        (minIdxMid >= 0.60 && maxRingPinky < 0.53 && h.peaceDominance >= 0.22))
     ) {
-      scores['2-finger'] = Math.max(scores['2-finger'] || 0, 0.99);
-      scores['peace'] = Math.max(scores['peace'] || 0, 0.99);
+      const twoConf = clamp01(0.86 + h.peaceDominance * 0.22);
+      scores['2-finger'] = Math.max(scores['2-finger'] || 0, twoConf);
+      scores['peace'] = Math.max(scores['peace'] || 0, twoConf);
     }
 
-    // 4. 3 Fingers / Sign (🤟) - accepts:
-    //    a) Index + Pinky extended (with thumb either extended or tucked, middle/ring curled) -> ASL 🤟 or 🤘
-    //    b) Index + Middle + Ring extended (classic 3 fingers)
-    //    c) Thumb + Index + Middle extended (European 3)
-    //    d) Exactly 3 fingers extended
-    const isRockOrIly = (h.indexExtended && h.pinkyExtended && !h.middleExtended && !h.ringExtended) || (h.rockDominance > 0.10);
-    const isClassic3 = (h.indexExtended && h.middleExtended && h.ringExtended && !h.pinkyExtended);
-    const isEuro3 = (h.thumbSpread && h.indexExtended && h.middleExtended && !h.ringExtended && !h.pinkyExtended);
-    const isAny3 = h.fourFingersCount === 3 || (h.totalOpenCount === 3 && h.indexExtended);
+    // 4. 3 Fingers / Sign (🤟) - supports:
+    //    a) ASL 🤟 / Rock 🤘: Index + Pinky extended, Middle + Ring curled
+    //    b) Classic 3 Fingers: Index + Middle + Ring extended, Pinky curled
+    //    c) Middle + Ring + Pinky extended, Index curled (non-pinch 3 fingers)
+    const isRockOrIly =
+      Math.min(h.indexScore, h.pinkyScore) >= 0.48 &&
+      Math.max(h.middleScore, h.ringScore) < 0.49 &&
+      h.rockDominance >= 0.12;
+    const isClassic3 =
+      Math.min(h.indexScore, h.middleScore, h.ringScore) >= 0.50 &&
+      h.pinkyScore < 0.47 &&
+      h.classic3Dominance >= 0.14;
+    const isOuter3 =
+      !h.isOkPinch &&
+      Math.min(h.middleScore, h.ringScore, h.pinkyScore) >= 0.50 &&
+      h.indexScore < 0.45;
 
-    if (isRockOrIly || isClassic3 || isEuro3 || isAny3) {
-      scores['3-finger'] = Math.max(scores['3-finger'] || 0, 0.99);
+    if (isRockOrIly || isClassic3 || isOuter3) {
+      const dom3 = Math.max(
+        isRockOrIly ? h.rockDominance : 0,
+        isClassic3 ? h.classic3Dominance : 0,
+        isOuter3 ? Math.min(h.middleScore, h.ringScore, h.pinkyScore) - h.indexScore : 0
+      );
+      const threeConf = clamp01(0.86 + dom3 * 0.22);
+      scores['3-finger'] = Math.max(scores['3-finger'] || 0, threeConf);
       if (isRockOrIly) {
-        scores['rock'] = Math.max(scores['rock'] || 0, 0.99);
-        scores['rock-on'] = Math.max(scores['rock-on'] || 0, 0.99);
+        scores['rock'] = Math.max(scores['rock'] || 0, threeConf);
+        scores['rock-on'] = Math.max(scores['rock-on'] || 0, threeConf);
       }
     }
 
-    // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb curled
-    if (h.fourFingersCount === 4 && !h.thumbSpread) {
-      scores['4-finger'] = Math.max(scores['4-finger'] || 0, 0.97);
+    // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb tucked
+    const minAll4 = Math.min(h.indexScore, h.middleScore, h.ringScore, h.pinkyScore);
+    if (minAll4 >= 0.52 && !h.thumbSpread) {
+      scores['4-finger'] = Math.max(scores['4-finger'] || 0, clamp01(0.85 + minAll4 * 0.14));
     }
 
-    // 6. 5 Fingers / Open Palm (🖐️) - all fingers open wide
-    if (h.fourFingersCount >= 4 && (h.thumbSpread || h.totalOpenCount >= 5)) {
-      scores['5-finger'] = Math.max(scores['5-finger'] || 0, 0.99);
-      scores['star-hands'] = Math.max(scores['star-hands'] || 0, 0.99);
-      scores['hands-up'] = Math.max(scores['hands-up'] || 0, 0.95);
+    // 6. 5 Fingers / Open Palm (🖐️) - all 4 fingers + thumb open wide
+    if (minAll4 >= 0.50 && (h.thumbSpread || h.totalOpenCount >= 5)) {
+      const fiveConf = clamp01(0.87 + h.avgFourScore * 0.12);
+      scores['5-finger'] = Math.max(scores['5-finger'] || 0, fiveConf);
+      scores['star-hands'] = Math.max(scores['star-hands'] || 0, fiveConf);
+      scores['hands-up'] = Math.max(scores['hands-up'] || 0, fiveConf * 0.96);
     }
 
-    // 7. Rock On (🤘) - index and pinky extended, middle and ring curled
-    if (isRockOrIly) {
-      scores['rock'] = Math.max(scores['rock'] || 0, 0.99);
-      scores['rock-on'] = Math.max(scores['rock-on'] || 0, 0.99);
+    // 7. Thumbs Up (👍) - thumb pointing up and fingers curled
+    if (h.thumbUpVertical && h.maxFourScore < 0.50) {
+      scores['thumbs-up'] = Math.max(scores['thumbs-up'] || 0, 0.94);
     }
 
-    // 8. Thumbs Up (👍) - thumb pointing up and fingers curled
-    if (h.thumbUpVertical && (h.fingersCurled || h.fourFingersCount <= 1)) {
-      scores['thumbs-up'] = Math.max(scores['thumbs-up'] || 0, 0.98);
-    }
-
-    // 9. OK Sign (👌) - thumb and index pinched into circle
+    // 8. OK Sign (👌) - thumb and index pinched into circle with outer fingers extended
     if (h.isOkPinch) {
-      scores['ok-sign'] = Math.max(scores['ok-sign'] || 0, 0.97);
-      scores['ok-pose'] = Math.max(scores['ok-pose'] || 0, 0.97);
+      scores['ok-sign'] = Math.max(scores['ok-sign'] || 0, 0.94);
+      scores['ok-pose'] = Math.max(scores['ok-pose'] || 0, 0.94);
     }
 
-    // 10. Shaka / Call Me (🤙) - thumb and pinky extended, middle 3 curled
-    if (h.thumbSpread && h.pinkyExtended && !h.indexExtended && !h.middleExtended && !h.ringExtended) {
-      scores['shaka'] = Math.max(scores['shaka'] || 0, 0.97);
+    // 9. Shaka / Call Me (🤙) - thumb and pinky extended, index/middle/ring curled
+    if (
+      h.thumbSpread &&
+      h.pinkyScore >= 0.50 &&
+      Math.max(h.indexScore, h.middleScore, h.ringScore) < 0.46
+    ) {
+      scores['shaka'] = Math.max(scores['shaka'] || 0, 0.94);
     }
   }
 
-  // Match against candidate poses on screen with robust alias resolution
+  // Match against candidate poses on screen with highest graded score winning
   let bestCandidate: string | null = null;
   let bestCandidateScore = 0;
 
   for (const cid of candidatePoseIds) {
-    const s = scores[cid] ||
+    const s =
+      scores[cid] ||
       (cid === '1-finger' ? scores['point-up'] : 0) ||
       (cid === 'point-up' ? scores['1-finger'] : 0) ||
       (cid === '2-finger' ? scores['peace'] : 0) ||
       (cid === 'peace' ? scores['2-finger'] : 0) ||
-      (cid === '3-finger' ? Math.max(scores['3-finger'] || 0, scores['rock'] || 0, scores['rock-on'] || 0) : 0) ||
+      (cid === '3-finger'
+        ? Math.max(scores['3-finger'] || 0, scores['rock'] || 0, scores['rock-on'] || 0)
+        : 0) ||
       (cid === 'rock' ? Math.max(scores['rock'] || 0, scores['3-finger'] || 0) : 0) ||
       (cid === 'rock-on' ? Math.max(scores['rock-on'] || 0, scores['3-finger'] || 0) : 0) ||
-      (cid === '5-finger' ? (scores['star-hands'] || scores['hands-up']) : 0) ||
+      (cid === '5-finger' ? scores['star-hands'] || scores['hands-up'] : 0) ||
       (cid === 'star-hands' ? scores['5-finger'] : 0) ||
       (cid === 'fist' ? scores['power-fist'] : 0) ||
       (cid === 'power-fist' ? scores['fist'] : 0) ||
       (cid === 'ok-sign' ? scores['ok-pose'] : 0) ||
-      (cid === 'ok-pose' ? scores['ok-sign'] : 0);
+      (cid === 'ok-pose' ? scores['ok-sign'] : 0) ||
+      0;
 
     if (s > bestCandidateScore) {
       bestCandidateScore = s;
@@ -423,7 +593,7 @@ function detectStandingPoseFromHands(
     }
   }
 
-  if (bestCandidate && bestCandidateScore >= 0.70) {
+  if (bestCandidate && bestCandidateScore >= 0.72) {
     return { poseId: bestCandidate, confidence: bestCandidateScore };
   }
 
@@ -436,7 +606,7 @@ function detectStandingPoseFromHands(
     }
   }
 
-  return { poseId: bestOverallScore >= 0.74 ? bestOverall : null, confidence: bestOverallScore };
+  return { poseId: bestOverallScore >= 0.75 ? bestOverall : null, confidence: bestOverallScore };
 }
 
 
@@ -1462,6 +1632,97 @@ interface PlayerCameraDetectionState {
   matchedOptionIdx: number | null;
   holdProgress: number; // 0 to 100
   wrongFeedbackText: string | null;
+  frozenUntil: number;
+  frozenRemainingSec: number;
+  lastWrongOptionIdx: number | null;
+}
+
+interface RoundWinnerInfo {
+  playerIdx: number | null;
+  playerName: string;
+  heroTitle: string;
+  heroIcon: string;
+  themeColor: 'rose' | 'amber' | 'teal';
+  answerText: string;
+  streak: number;
+  isCorrect: boolean;
+}
+
+const YOGA_FREEZE_DURATION_MS = 3000;
+
+function playYogaArenaSfx(type: 'correct' | 'freeze' | 'win') {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    if (type === 'correct') {
+      // Radiant ascending major 9th victory chord chime
+      const notes = [523.25, 659.25, 783.99, 1046.5, 1174.66];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = i % 2 === 0 ? 'triangle' : 'sine';
+        const start = now + i * 0.055;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.45);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.46);
+      });
+    } else if (type === 'freeze') {
+      // Crystalline icy shatter + deep freeze hum
+      const crystalFreqs = [1480, 1174.66, 880, 622.25, 440];
+      crystalFreqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        const start = now + i * 0.045;
+        osc.frequency.setValueAtTime(freq, start);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.72, start + 0.18);
+        gain.gain.setValueAtTime(0.13, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.22);
+      });
+    } else if (type === 'win') {
+      // Grand Championship Fanfare
+      const fanfare = [
+        { f: 523.25, t: 0, d: 0.16 },
+        { f: 659.25, t: 0.14, d: 0.16 },
+        { f: 783.99, t: 0.28, d: 0.18 },
+        { f: 1046.5, t: 0.46, d: 0.55 },
+        { f: 783.99, t: 0.46, d: 0.55 },
+      ];
+      fanfare.forEach(n => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(n.f, now + n.t);
+        gain.gain.setValueAtTime(0.2, now + n.t);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + n.t);
+        osc.stop(now + n.t + n.d + 0.02);
+      });
+    }
+  } catch (e) {}
+}
+
+function formatQuestionForNaturalSpeech(rawText: string, filledAnswer?: string): string {
+  if (!rawText) return '';
+  const cleanReplacement = filledAnswer ? ` ${filledAnswer} ` : ', blank, ';
+  return rawText
+    .replace(/_{2,}|\.\.\.+|\[\s*blank\s*\]|\(\s*\)/gi, cleanReplacement)
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function getInitialClassicPoses(): string[] {
@@ -1576,6 +1837,105 @@ function YogaGame({
   const [chaseSpeedMultiplier, setChaseSpeedMultiplier] = useState<number>(1.0);
   const [chaseVoiceEnabled, setChaseVoiceEnabled] = useState<boolean>(true);
 
+  // Natural Question Reading (TTS) State & Voice Selection
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('yogaNaturalVoiceEnabled');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+  const [isSpeakingQuestion, setIsSpeakingQuestion] = useState(false);
+  const voiceEnabledRef = useRef(voiceEnabled);
+  voiceEnabledRef.current = voiceEnabled;
+  const preferredVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('yogaNaturalVoiceEnabled', String(voiceEnabled));
+    } catch {}
+    if (!voiceEnabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeakingQuestion(false);
+    }
+  }, [voiceEnabled]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const pickBestNaturalVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices.length) return;
+      const englishVoices = voices.filter(v => /^en(-|_|$)/i.test(v.lang));
+      const pool = englishVoices.length ? englishVoices : voices;
+      const priorityPatterns = [
+        /Natural/i,
+        /Online/i,
+        /Aria/i,
+        /Jenny/i,
+        /Sonia/i,
+        /Libby/i,
+        /Ryan/i,
+        /Google US English/i,
+        /Google UK English Female/i,
+        /Samantha/i,
+        /Ava/i,
+        /Victoria/i,
+        /Karen/i,
+        /Daniel/i,
+        /Moira/i,
+      ];
+      for (const pat of priorityPatterns) {
+        const match = pool.find(v => pat.test(v.name));
+        if (match) {
+          preferredVoiceRef.current = match;
+          return;
+        }
+      }
+      preferredVoiceRef.current = pool.find(v => !v.localService) || pool[0] || null;
+    };
+    pickBestNaturalVoice();
+    window.speechSynthesis.addEventListener?.('voiceschanged', pickBestNaturalVoice);
+    return () => {
+      window.speechSynthesis.removeEventListener?.('voiceschanged', pickBestNaturalVoice);
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const speakNaturalText = useCallback((textToSpeak: string, forceSpeak: boolean = false) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (!forceSpeak && !voiceEnabledRef.current) return;
+    const cleaned = textToSpeak.trim();
+    if (!cleaned) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(cleaned);
+      if (preferredVoiceRef.current) {
+        utterance.voice = preferredVoiceRef.current;
+      }
+      utterance.lang = preferredVoiceRef.current?.lang || 'en-US';
+      utterance.rate = 0.96;
+      utterance.pitch = 1.04;
+      utterance.volume = 1.0;
+      utterance.onstart = () => setIsSpeakingQuestion(true);
+      utterance.onend = () => setIsSpeakingQuestion(false);
+      utterance.onerror = () => setIsSpeakingQuestion(false);
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      setIsSpeakingQuestion(false);
+    }
+  }, []);
+
+  const speakQuestionByIndex = useCallback(
+    (qIdx: number, forceSpeak: boolean = false) => {
+      const q = quiz.questions[qIdx];
+      if (!q?.text) return;
+      const naturalPrompt = formatQuestionForNaturalSpeech(q.text);
+      speakNaturalText(naturalPrompt, forceSpeak);
+    },
+    [quiz.questions, speakNaturalText]
+  );
+
   const teamColors = [
     { bg: 'bg-blue-500', border: 'border-blue-600', borderLight: 'border-blue-200', text: 'text-blue-600', hex: '#3b82f6' },
     { bg: 'bg-rose-500', border: 'border-rose-600', borderLight: 'border-rose-200', text: 'text-rose-600', hex: '#f43f5e' },
@@ -1608,6 +1968,8 @@ function YogaGame({
 
   const [scorePops, setScorePops] = useState<Record<string, { delta: number; key: number }>>({});
   const [teamStreaks, setTeamStreaks] = useState<Record<string, number>>({});
+  const teamStreaksRef = useRef(teamStreaks);
+  teamStreaksRef.current = teamStreaks;
 
   const updateTeamScore = (id: string, delta: number) => {
     setTeams(prev => prev.map(t => t.id === id ? { ...t, score: Math.max(0, t.score + delta) } : t));
@@ -1624,6 +1986,8 @@ function YogaGame({
 
   const [isAnswering, setIsAnswering] = useState(false);
   const [roundWinnerBanner, setRoundWinnerBanner] = useState<string | null>(null);
+  const [roundWinnerInfo, setRoundWinnerInfo] = useState<RoundWinnerInfo | null>(null);
+  const [winningPlayerIdx, setWinningPlayerIdx] = useState<number | null>(null);
   const [shuffledOptions, setShuffledOptions] = useState<{
     text: string;
     image?: string;
@@ -1661,8 +2025,8 @@ function YogaGame({
 
   // Per-player live camera pose detection state (Index 0 = Player 1, Index 1 = Player 2)
   const [playerDetections, setPlayerDetections] = useState<[PlayerCameraDetectionState, PlayerCameraDetectionState]>([
-    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null },
-    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null },
+    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
+    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
   ]);
 
   const holdStateRef = useRef<
@@ -1675,10 +2039,11 @@ function YogaGame({
       recentPoses: Array<string | null>;
       cooldownUntil: number;
       wrongBannerUntil: number;
+      lastWrongOptionIdx: number | null;
     }>
   >([
-    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0 },
-    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0 },
+    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
+    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
   ]);
 
   // Keep latest state in refs for MediaPipe callback
@@ -1692,6 +2057,81 @@ function YogaGame({
   shuffledOptionsRef.current = shuffledOptions;
   const teamsRef = useRef(teams);
   teamsRef.current = teams;
+  const currentIdxRef = useRef(currentIdx);
+  currentIdxRef.current = currentIdx;
+
+  // Trigger a 3-second icy freeze penalty on a player when they lock in or click a wrong answer
+  const triggerPlayerFreeze = useCallback((pIdx: number, wrongOptionIdx: number | null) => {
+    const now = performance.now();
+    const freezeUntil = now + YOGA_FREEZE_DURATION_MS;
+    const pHold = holdStateRef.current[pIdx];
+    if (pHold) {
+      pHold.progress = 0;
+      pHold.optionIdx = null;
+      pHold.poseId = null;
+      pHold.recentPoses = [];
+      pHold.cooldownUntil = freezeUntil;
+      pHold.wrongBannerUntil = freezeUntil;
+      pHold.lastWrongOptionIdx = wrongOptionIdx;
+    }
+
+    const team = teamsRef.current[pIdx];
+    if (team) {
+      setTeamStreaks(prev => ({ ...prev, [team.id]: 0 }));
+    }
+
+    playSound('incorrect');
+    playYogaArenaSfx('freeze');
+
+    setPlayerDetections(prev => {
+      const next: [PlayerCameraDetectionState, PlayerCameraDetectionState] = [{ ...prev[0] }, { ...prev[1] }];
+      next[pIdx] = {
+        detectedPoseId: null,
+        matchedOptionIdx: null,
+        holdProgress: 0,
+        wrongFeedbackText: '🥶 FROZEN! Wrong answer!',
+        frozenUntil: freezeUntil,
+        frozenRemainingSec: Number((YOGA_FREEZE_DURATION_MS / 1000).toFixed(1)),
+        lastWrongOptionIdx: wrongOptionIdx,
+      };
+      return next;
+    });
+  }, []);
+  const triggerPlayerFreezeRef = useRef(triggerPlayerFreeze);
+  triggerPlayerFreezeRef.current = triggerPlayerFreeze;
+
+  // Smoothly tick down frozenRemainingSec every 100ms even if the frozen player lowers their hands
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+    const interval = setInterval(() => {
+      const now = performance.now();
+      const h0 = holdStateRef.current[0];
+      const h1 = holdStateRef.current[1];
+      const rem0 = h0 && now < h0.cooldownUntil ? Number(((h0.cooldownUntil - now) / 1000).toFixed(1)) : 0;
+      const rem1 = h1 && now < h1.cooldownUntil ? Number(((h1.cooldownUntil - now) / 1000).toFixed(1)) : 0;
+
+      setPlayerDetections(prev => {
+        if (prev[0].frozenRemainingSec === rem0 && prev[1].frozenRemainingSec === rem1) {
+          return prev;
+        }
+        return [
+          {
+            ...prev[0],
+            frozenRemainingSec: rem0,
+            wrongFeedbackText: rem0 > 0 ? '🥶 FROZEN! Wrong answer!' : null,
+            lastWrongOptionIdx: rem0 > 0 ? h0.lastWrongOptionIdx : null,
+          },
+          {
+            ...prev[1],
+            frozenRemainingSec: rem1,
+            wrongFeedbackText: rem1 > 0 ? '🥶 FROZEN! Wrong answer!' : null,
+            lastWrongOptionIdx: rem1 > 0 ? h1.lastWrongOptionIdx : null,
+          },
+        ];
+      });
+    }, 100);
+    return () => clearInterval(interval);
+  }, [gameState]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -1712,16 +2152,19 @@ function YogaGame({
 
   const loadQuestion = useCallback((idx: number, retrievePreviousIfCached: boolean = false) => {
     setIsAnswering(false);
+    isAnsweringRef.current = false;
     setSelectedOption(null);
     setRoundWinnerBanner(null);
+    setRoundWinnerInfo(null);
+    setWinningPlayerIdx(null);
     const now = performance.now();
     holdStateRef.current = [
-      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0 },
-      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0 },
+      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
+      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
     ];
     setPlayerDetections([
-      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null },
-      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null },
+      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
+      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
     ]);
 
     const currentItem = quiz.questions[idx];
@@ -1760,9 +2203,6 @@ function YogaGame({
 
     const correctIndex = typeof currentItem.answerIndex === 'number' ? currentItem.answerIndex : 0;
 
-    // Build mode-appropriate pose assignments:
-    // - Camera Mode: ONLY USE HANDS (1 finger, 2 finger, 3 finger, fist, rock, etc.)
-    // - Classic Studio Mode: Retrieve previous classic yoga poses (Tree, Warrior, Star, etc.)
     let opts = validOpts.map((opt) => ({
       text: opt.text,
       image: opt.image,
@@ -1774,13 +2214,6 @@ function YogaGame({
 
     let computedOptions;
     if (playMode === 'camera') {
-      // Pure hand gestures in clear ordered priority for intuitive answering:
-      // Choice A: 1 Finger (☝️)
-      // Choice B: 2 Fingers (✌️)
-      // Choice C: 3 Fingers (🤟)
-      // Choice D: Fist (✊)
-      // Choice E: Rock On (🤘)
-      // Choice F: 5 Fingers (🖐️)
       const handPriorityOrder = ['1-finger', '2-finger', '3-finger', 'fist', 'rock', '5-finger', 'thumbs-up', 'ok-sign', '4-finger', 'shaka'];
       const activeHandCatalog = CAMERA_HAND_POSES.filter(p => cameraHandPoses.includes(p.value));
       const sourceCatalog = activeHandCatalog.length >= opts.length ? activeHandCatalog : CAMERA_HAND_POSES;
@@ -1837,7 +2270,54 @@ function YogaGame({
 
     questionOptionsCacheRef.current[cacheKey] = computedOptions;
     setShuffledOptions(computedOptions);
-  }, [quiz.questions, activePoses, playMode]);
+  }, [quiz.questions, activePoses, playMode, cameraHandPoses, classicPoses]);
+
+  // Automatically read the current question naturally when a question loads during gameplay
+  useEffect(() => {
+    if (gameState === 'playing') {
+      const timerId = setTimeout(() => {
+        speakQuestionByIndex(currentIdx, false);
+      }, 220);
+      return () => clearTimeout(timerId);
+    }
+  }, [gameState, currentIdx, speakQuestionByIndex]);
+
+  // Announce the grand winner naturally when the game ends
+  const announceGrandWinner = useCallback((forceSpeak: boolean = false) => {
+    const sorted = [...teamsRef.current].sort((a, b) => b.score - a.score);
+    if (!sorted.length) return;
+    const isTwoP = sorted.length >= 2;
+    const isTie = isTwoP && sorted[0].score === sorted[1].score;
+    if (isTie) {
+      speakNaturalText(
+        `What an incredible match! It is a tie at ${sorted[0].score} ${sorted[0].score === 1 ? 'point' : 'points'} each!`,
+        forceSpeak
+      );
+    } else {
+      const winTeam = sorted[0];
+      const originalIdx = teamsRef.current.findIndex(t => t.id === winTeam.id);
+      const heroName = isTwoP
+        ? originalIdx === 0
+          ? 'Spider-Man'
+          : 'Thanos Gauntlet'
+        : 'Yoga Champion';
+      speakNaturalText(
+        `Congratulations ${winTeam.name}! ${heroName} wins the championship with ${winTeam.score} ${winTeam.score === 1 ? 'point' : 'points'}!`,
+        forceSpeak
+      );
+    }
+  }, [speakNaturalText]);
+
+  useEffect(() => {
+    if (gameState === 'end') {
+      setShowConfetti(true);
+      playYogaArenaSfx('win');
+      const t = setTimeout(() => {
+        announceGrandWinner(false);
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [gameState, announceGrandWinner]);
 
   // When switching between Classic Mode and Camera Mode during gameplay, reload current question's mode-specific poses
   useEffect(() => {
@@ -1856,6 +2336,8 @@ function YogaGame({
     setTimer(null);
     setShowConfetti(false);
     setRoundWinnerBanner(null);
+    setRoundWinnerInfo(null);
+    setWinningPlayerIdx(null);
     const nextIdx = fromIdx + 1;
     if (nextIdx < quiz.questions.length) {
       setCurrentIdx(nextIdx);
@@ -1875,6 +2357,8 @@ function YogaGame({
     setTimer(null);
     setShowConfetti(false);
     setRoundWinnerBanner(null);
+    setRoundWinnerInfo(null);
+    setWinningPlayerIdx(null);
     const prevIdx = currentIdx - 1;
     setCurrentIdx(prevIdx);
     // Retrieve the exact previous pose & options from cache
@@ -1883,35 +2367,74 @@ function YogaGame({
 
   const handleAnswer = useCallback((index: number, isCorrect: boolean, winningPlayerIndex?: number) => {
     if (isAnsweringRef.current) return;
+
+    // If a player clicks a wrong option on screen, freeze that player for 3 seconds instead of skipping the question!
+    if (!isCorrect) {
+      const targetPlayer = typeof winningPlayerIndex === 'number' ? winningPlayerIndex : 0;
+      triggerPlayerFreezeRef.current(targetPlayer, index);
+      return;
+    }
+
     setIsAnswering(true);
     isAnsweringRef.current = true;
     setSelectedOption(index);
 
-    if (isCorrect) {
-      playSound('correct');
-      setShowConfetti(true);
-      if (typeof winningPlayerIndex === 'number' && teamsRef.current[winningPlayerIndex]) {
-        const winningTeam = teamsRef.current[winningPlayerIndex];
-        const teamId = winningTeam.id;
-        setTeams(prev => prev.map((t, idx) => idx === winningPlayerIndex ? { ...t, score: t.score + 1 } : t));
-        setRoundWinnerBanner(`🎉 ${winningTeam.name} matched the pose! +1 Point!`);
-        setScorePops(prev => ({ ...prev, [teamId]: { delta: 1, key: Date.now() + Math.random() } }));
-        setTeamStreaks(prev => ({ ...prev, [teamId]: (prev[teamId] || 0) + 1 }));
-      } else if (teamsRef.current.length === 1) {
-        const teamId = teamsRef.current[0].id;
-        setTeams(prev => prev.map((t, idx) => idx === 0 ? { ...t, score: t.score + 1 } : t));
-        setRoundWinnerBanner(`🎉 Awesome Pose! +1 Point!`);
-        setScorePops(prev => ({ ...prev, [teamId]: { delta: 1, key: Date.now() + Math.random() } }));
-        setTeamStreaks(prev => ({ ...prev, [teamId]: (prev[teamId] || 0) + 1 }));
-      } else {
-        setRoundWinnerBanner(`🎉 Correct Pose!`);
-      }
-    } else {
-      playSound('incorrect');
-      setRoundWinnerBanner(`❌ Not quite! Look at the green pose!`);
-      if (typeof winningPlayerIndex === 'number' && teamsRef.current[winningPlayerIndex]) {
-        const teamId = teamsRef.current[winningPlayerIndex].id;
-        setTeamStreaks(prev => ({ ...prev, [teamId]: 0 }));
+    const matchedOpt = shuffledOptionsRef.current[index];
+    const winningAnswerWord = matchedOpt?.text || 'Correct';
+    const currentQ = quiz.questions[currentIdxRef.current];
+
+    playSound('correct');
+    playYogaArenaSfx('correct');
+    setShowConfetti(true);
+
+    const isTwoP = teamsRef.current.length >= 2;
+    const resolvedPlayerIdx =
+      typeof winningPlayerIndex === 'number' && teamsRef.current[winningPlayerIndex]
+        ? winningPlayerIndex
+        : 0;
+    const winningTeam = teamsRef.current[resolvedPlayerIdx] || teamsRef.current[0];
+
+    if (winningTeam) {
+      const teamId = winningTeam.id;
+      const newStreak = (teamStreaksRef.current[teamId] || 0) + 1;
+      setWinningPlayerIdx(resolvedPlayerIdx);
+      setTeams(prev => prev.map((t, idx) => idx === resolvedPlayerIdx ? { ...t, score: t.score + 1 } : t));
+      setScorePops(prev => ({ ...prev, [teamId]: { delta: 1, key: Date.now() + Math.random() } }));
+      setTeamStreaks(prev => ({ ...prev, [teamId]: newStreak }));
+
+      const heroTitle = isTwoP
+        ? resolvedPlayerIdx === 0
+          ? 'Spider-Man'
+          : 'Thanos Gauntlet'
+        : 'Yoga Champion';
+      const heroIcon = isTwoP ? (resolvedPlayerIdx === 0 ? '🕷️' : '🥊') : '⚡';
+      const themeColor: 'rose' | 'amber' | 'teal' = isTwoP
+        ? resolvedPlayerIdx === 0
+          ? 'rose'
+          : 'amber'
+        : 'teal';
+
+      setRoundWinnerBanner(`🎉 ${winningTeam.name} (${heroTitle}) scored +1 Point!`);
+      setRoundWinnerInfo({
+        playerIdx: resolvedPlayerIdx,
+        playerName: winningTeam.name,
+        heroTitle,
+        heroIcon,
+        themeColor,
+        answerText: winningAnswerWord,
+        streak: newStreak,
+        isCorrect: true,
+      });
+    }
+
+    // Read the completed sentence or answer naturally!
+    if (voiceEnabledRef.current && currentQ?.text) {
+      const hasBlank = /_{2,}|\.\.\.+|\[\s*blank\s*\]|\(\s*\)/i.test(currentQ.text);
+      if (hasBlank && winningAnswerWord) {
+        const completedSentence = formatQuestionForNaturalSpeech(currentQ.text, winningAnswerWord);
+        speakNaturalText(`Correct! ${completedSentence}`);
+      } else if (winningAnswerWord) {
+        speakNaturalText(`Correct! ${winningAnswerWord}`);
       }
     }
 
@@ -1933,21 +2456,21 @@ function YogaGame({
         advanceToNextQuestion(currentIdx);
       }
     }, 1000);
-  }, [autoAdvanceDelay, currentIdx, advanceToNextQuestion]);
+  }, [autoAdvanceDelay, currentIdx, advanceToNextQuestion, quiz.questions, speakNaturalText]);
 
   const handleAnswerRef = useRef(handleAnswer);
   handleAnswerRef.current = handleAnswer;
 
+  // Pre-warm MediaPipe Hands in the background as soon as YogaGame mounts for instant camera startup
+  useEffect(() => {
+    getOrPrewarmYogaHands().catch(() => {});
+  }, []);
+
   const stopCamera = useCallback(() => {
+    sharedYogaHandsResultsListener = null;
     if (cameraRunnerRef.current) {
       cameraRunnerRef.current.stop();
       cameraRunnerRef.current = null;
-    }
-    if (handsInstanceRef.current && handsInstanceRef.current.close) {
-      try {
-        handsInstanceRef.current.close();
-      } catch (e) {}
-      handsInstanceRef.current = null;
     }
     setIsCameraReady(false);
   }, []);
@@ -1957,25 +2480,62 @@ function YogaGame({
       setCameraError(null);
       stopCamera();
 
-      const win = window as any;
-      if (!win.Hands) {
-        setCameraError("Camera AI module is still loading. Please try again in a moment.");
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        setCameraError("Camera is not supported on this browser. You can play using click-based choices!");
+        setIsCameraReady(false);
         return;
       }
 
-      const hands = new win.Hands({
-        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-      });
+      // Start camera stream and pre-warmed MediaPipe Hands in parallel for ultra-low loading time
+      const streamPromise = (async (): Promise<MediaStream | null> => {
+        try {
+          return await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              frameRate: { ideal: 30 },
+            },
+          });
+        } catch (e1) {
+          try {
+            return await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'user' },
+            });
+          } catch (e2) {
+            return await navigator.mediaDevices.getUserMedia({
+              video: true,
+            });
+          }
+        }
+      })();
 
-      // Use modelComplexity: 0 and maxNumHands: 2 for lightning-fast tracking with minimal CPU load
-      hands.setOptions({
-        maxNumHands: 2,
-        modelComplexity: 0,
-        minDetectionConfidence: 0.40,
-        minTrackingConfidence: 0.40
-      });
+      let stream: MediaStream | null = null;
+      try {
+        stream = await streamPromise;
+      } catch (camErr: any) {
+        console.warn("Yoga camera unavailable:", camErr?.name || camErr?.message);
+        setCameraError("Camera not found or permission denied. You can play directly using click/tap mode!");
+        setIsCameraReady(false);
+        return;
+      }
 
-      hands.onResults((results: any) => {
+      if (!stream) {
+        setIsCameraReady(false);
+        return;
+      }
+
+      // Attach video stream immediately so player sees live camera right away without waiting for AI init
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+        setIsCameraReady(true);
+      }
+
+      const hands = await getOrPrewarmYogaHands();
+      handsInstanceRef.current = hands;
+
+      sharedYogaHandsResultsListener = (results: any) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -2007,8 +2567,9 @@ function YogaGame({
         );
 
         const videoEl = videoRef.current;
-        const videoW = videoEl?.videoWidth || 1280;
-        const videoH = videoEl?.videoHeight || 720;
+        const videoW = videoEl?.videoWidth || 640;
+        const videoH = videoEl?.videoHeight || 480;
+        const videoAspect = videoW / Math.max(1, videoH);
 
         // Render Spider-Man's hand on the left side and Thanos's Infinity Gauntlet on the right side!
         drawSuperheroHands({
@@ -2047,8 +2608,24 @@ function YogaGame({
 
         const numActiveZones = isTwoPlayers ? 2 : 1;
         const nextUiStates: [PlayerCameraDetectionState, PlayerCameraDetectionState] = [
-          { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null },
-          { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null },
+          {
+            detectedPoseId: null,
+            matchedOptionIdx: null,
+            holdProgress: 0,
+            wrongFeedbackText: null,
+            frozenUntil: 0,
+            frozenRemainingSec: 0,
+            lastWrongOptionIdx: null,
+          },
+          {
+            detectedPoseId: null,
+            matchedOptionIdx: null,
+            holdProgress: 0,
+            wrongFeedbackText: null,
+            frozenUntil: 0,
+            frozenRemainingSec: 0,
+            lastWrongOptionIdx: null,
+          },
         ];
 
         for (let pIdx = 0; pIdx < numActiveZones; pIdx++) {
@@ -2057,18 +2634,25 @@ function YogaGame({
           pHold.lastUpdateTime = now;
 
           if (now < pHold.cooldownUntil) {
+            const remSec = Number(((pHold.cooldownUntil - now) / 1000).toFixed(1));
             nextUiStates[pIdx] = {
               detectedPoseId: null,
               matchedOptionIdx: null,
               holdProgress: 0,
-              wrongFeedbackText: now < pHold.wrongBannerUntil ? 'Wrong pose! Try another pose!' : null,
+              wrongFeedbackText: `🥶 FROZEN! ${remSec}s`,
+              frozenUntil: pHold.cooldownUntil,
+              frozenRemainingSec: remSec,
+              lastWrongOptionIdx: pHold.lastWrongOptionIdx,
             };
             continue;
+          } else if (pHold.lastWrongOptionIdx !== null) {
+            pHold.lastWrongOptionIdx = null;
           }
 
           const { poseId, confidence } = detectStandingPoseFromHands(
             playerHandGroups[pIdx],
-            candidatePoseIds
+            candidatePoseIds,
+            videoAspect
           );
 
           // Push into 3-frame rolling smoothing buffer for instantaneous response without lag
@@ -2105,17 +2689,17 @@ function YogaGame({
           if (smoothedPoseId && matchedIdx !== -1) {
             pHold.lastMatchedTime = now;
             if (pHold.optionIdx === matchedIdx) {
-              // Ultra-fast ~0.32s responsive lock-in (starts at 42% and adds ~190% per second)
-              pHold.progress = Math.min(100, Math.round(pHold.progress + (dtMs / 1000) * 190));
+              // Ultra-fast ~0.16s lock-in (starts at 56% and adds ~280% per second)
+              pHold.progress = Math.min(100, Math.round(pHold.progress + (dtMs / 1000) * 280));
             } else {
               pHold.optionIdx = matchedIdx;
               pHold.poseId = smoothedPoseId;
-              pHold.progress = 42;
+              pHold.progress = 56;
             }
           } else {
-            // Generous 220ms grace period so rapid micro-movements don't drop progress
-            if (now - pHold.lastMatchedTime > 220) {
-              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 110));
+            // Generous 260ms grace period so rapid micro-movements don't drop progress
+            if (now - pHold.lastMatchedTime > 260) {
+              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 140));
               if (pHold.progress === 0) {
                 pHold.optionIdx = null;
                 pHold.poseId = null;
@@ -2127,7 +2711,10 @@ function YogaGame({
             detectedPoseId: smoothedPoseId || poseId,
             matchedOptionIdx: pHold.optionIdx,
             holdProgress: pHold.progress,
-            wrongFeedbackText: now < pHold.wrongBannerUntil ? 'Wrong pose! Try another!' : null,
+            wrongFeedbackText: null,
+            frozenUntil: 0,
+            frozenRemainingSec: 0,
+            lastWrongOptionIdx: null,
           };
 
           // Check if player completed holding the pose (100%)
@@ -2139,75 +2726,31 @@ function YogaGame({
             pHold.recentPoses = [];
 
             if (chosenOpt) {
-              if (chosenOpt.isCorrect || !isTwoPlayers) {
-                handleAnswerRef.current(chosenIdx, chosenOpt.isCorrect, pIdx);
+              if (chosenOpt.isCorrect) {
+                handleAnswerRef.current(chosenIdx, true, pIdx);
                 break;
               } else {
-                playSound('incorrect');
-                pHold.cooldownUntil = now + 950;
-                pHold.wrongBannerUntil = now + 1300;
-                nextUiStates[pIdx].wrongFeedbackText = 'Wrong pose! Try another!';
+                // Wrong answer freezes the player in ice for 3.0 seconds!
+                triggerPlayerFreezeRef.current(pIdx, chosenIdx);
+                const freezeRem = Number((YOGA_FREEZE_DURATION_MS / 1000).toFixed(1));
+                nextUiStates[pIdx] = {
+                  detectedPoseId: null,
+                  matchedOptionIdx: null,
+                  holdProgress: 0,
+                  wrongFeedbackText: `🥶 FROZEN! ${freezeRem}s`,
+                  frozenUntil: pHold.cooldownUntil,
+                  frozenRemainingSec: freezeRem,
+                  lastWrongOptionIdx: chosenIdx,
+                };
               }
             }
           }
         }
 
         setPlayerDetections(nextUiStates);
-      });
-
-      handsInstanceRef.current = hands;
-
-      if (!navigator?.mediaDevices?.getUserMedia) {
-        setCameraError("Camera is not supported on this browser. You can play using click-based choices!");
-        setIsCameraReady(false);
-        return;
-      }
-
-      let stream: MediaStream | null = null;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 960 },
-            height: { ideal: 540 },
-            frameRate: { ideal: 30 }
-          }
-        });
-      } catch (e1) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' }
-          });
-        } catch (e2) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: true
-            });
-          } catch (e3: any) {
-            console.warn("Yoga camera unavailable:", e3?.name || e3?.message);
-            setCameraError("Camera not found or permission denied. You can play directly using click/tap mode!");
-            setIsCameraReady(false);
-            return;
-          }
-        }
-      }
-
-      if (!stream) {
-        setIsCameraReady(false);
-        return;
-      }
+      };
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await new Promise((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => resolve(null);
-          } else {
-            resolve(null);
-          }
-        });
-        await videoRef.current.play();
-
         let active = true;
         let isProcessing = false;
         let lastFrameTime = 0;
@@ -2271,6 +2814,7 @@ function YogaGame({
     questionOptionsCacheRef.current = {};
     setCurrentIdx(0);
     setTeams(teams.map(t => ({ ...t, score: 0 })));
+    setTeamStreaks({});
     setGameState('playing');
     loadQuestion(0, false);
   };
@@ -2285,36 +2829,75 @@ function YogaGame({
   const getQuestionFontSizeClass = (text: string) => {
     const len = text.length;
     if (uiScale === 'small') {
-      if (len > 80) return 'text-sm sm:text-base md:text-lg';
-      if (len > 40) return 'text-base sm:text-lg md:text-xl';
-      return 'text-lg sm:text-xl md:text-2xl';
+      if (len > 85) return 'text-lg sm:text-xl md:text-2xl';
+      if (len > 45) return 'text-xl sm:text-2xl md:text-3xl';
+      return 'text-2xl sm:text-3xl md:text-4xl';
     }
     if (uiScale === 'big') { // Large
-      if (len > 80) return 'text-xl sm:text-2xl md:text-3xl';
-      if (len > 40) return 'text-2xl sm:text-3xl md:text-4xl';
-      return 'text-3xl sm:text-4xl md:text-5xl';
+      if (len > 85) return 'text-2xl sm:text-3xl md:text-4xl';
+      if (len > 45) return 'text-3xl sm:text-4xl md:text-5xl';
+      return 'text-4xl sm:text-5xl md:text-6xl';
     }
-    // Medium (default)
-    if (len > 80) return 'text-base sm:text-lg md:text-xl';
-    if (len > 40) return 'text-lg sm:text-xl md:text-2xl';
-    return 'text-xl sm:text-2xl md:text-3xl';
+    // Medium (default) — prominently sized for classroom visibility
+    if (len > 85) return 'text-xl sm:text-2xl md:text-3xl';
+    if (len > 45) return 'text-2xl sm:text-3xl md:text-4xl';
+    return 'text-3xl sm:text-4xl md:text-5xl';
   };
 
   const getOptionFontSizeClass = (text: string, isMany: boolean) => {
     const len = text.length;
     if (uiScale === 'small') {
-      if (len > 40 || isMany) return 'text-xs sm:text-sm md:text-base';
-      return 'text-sm sm:text-base md:text-lg';
+      if (len > 40 || isMany) return 'text-sm sm:text-base md:text-lg';
+      return 'text-base sm:text-lg md:text-xl';
     }
     if (uiScale === 'big') { // Large
-      if (len > 40 || isMany) return 'text-lg sm:text-xl md:text-2xl';
-      if (len > 20) return 'text-xl sm:text-2xl md:text-3xl';
-      return 'text-2xl sm:text-3xl md:text-4xl';
+      if (len > 40 || isMany) return 'text-xl sm:text-2xl md:text-3xl';
+      if (len > 20) return 'text-2xl sm:text-3xl md:text-4xl';
+      return 'text-3xl sm:text-4xl md:text-5xl';
     }
     // Medium (default)
-    if (len > 40 || isMany) return 'text-sm sm:text-base md:text-lg';
-    if (len > 20) return 'text-base sm:text-lg md:text-xl';
-    return 'text-lg sm:text-xl md:text-2xl';
+    if (len > 40 || isMany) return 'text-base sm:text-lg md:text-xl';
+    if (len > 20) return 'text-lg sm:text-xl md:text-2xl';
+    return 'text-xl sm:text-2xl md:text-3xl';
+  };
+
+  // Render Question Text with glowing filled-in blank when answered correctly
+  const correctOptionText = shuffledOptions.find(o => o.isCorrect)?.text || '';
+  const renderFormattedQuestionContent = (rawText: string) => {
+    if (!isAnswering || !correctOptionText) {
+      return rawText;
+    }
+    const blankRegex = /(_{2,}|\.\.\.+|\[\s*blank\s*\]|\(\s*\))/i;
+    if (!blankRegex.test(rawText)) {
+      return (
+        <>
+          <span>{rawText}</span>
+          <span className="inline-flex items-center gap-1 bg-emerald-500 text-white px-3 py-0.5 rounded-xl shadow-md ml-2 text-[0.85em] align-middle animate-bounce">
+            ✓ {correctOptionText}
+          </span>
+        </>
+      );
+    }
+    const parts = rawText.split(blankRegex);
+    let replacedFirst = false;
+    return (
+      <>
+        {parts.map((part, i) => {
+          if (!replacedFirst && blankRegex.test(part)) {
+            replacedFirst = true;
+            return (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-3.5 py-0.5 rounded-xl shadow-lg mx-1.5 border-2 border-emerald-300 align-baseline animate-bounce"
+              >
+                <span>{correctOptionText}</span>
+              </span>
+            );
+          }
+          return <React.Fragment key={i}>{part}</React.Fragment>;
+        })}
+      </>
+    );
   };
 
   const isTwoPlayerCamera = playMode === 'camera' && teams.length >= 2;
@@ -2322,7 +2905,15 @@ function YogaGame({
 
   return (
     <div className={`flex-1 flex items-center justify-center p-1.5 md:p-3 mx-auto animate-fade-in ${isFullscreen ? 'fixed inset-0 z-50 bg-teal-50 w-full h-full max-w-none' : 'w-full max-w-[1480px]'}`}>
-      {showConfetti && <Confetti width={width} height={height} numberOfPieces={280} recycle={false} style={{ position: 'fixed', zIndex: 100, top: 0, left: 0 }} />}
+      {showConfetti && (
+        <Confetti
+          width={width}
+          height={height}
+          numberOfPieces={gameState === 'end' ? 360 : 300}
+          recycle={gameState === 'end'}
+          style={{ position: 'fixed', zIndex: 100, top: 0, left: 0 }}
+        />
+      )}
 
       <style>{`
         @keyframes scoreFloat {
@@ -2342,6 +2933,13 @@ function YogaGame({
         .animate-score-pulse {
           animation: scorePopPulse 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
+        @keyframes icePulseGlow {
+          0%, 100% { box-shadow: inset 0 0 55px rgba(34, 211, 238, 0.75), 0 0 25px rgba(6, 182, 212, 0.55); }
+          50% { box-shadow: inset 0 0 85px rgba(103, 232, 249, 0.95), 0 0 40px rgba(34, 211, 238, 0.85); }
+        }
+        .animate-ice-glow {
+          animation: icePulseGlow 1.1s ease-in-out infinite;
+        }
       `}</style>
 
       {/* Settings Modal */}
@@ -2354,45 +2952,6 @@ function YogaGame({
             <h2 className="text-3xl md:text-4xl font-black text-teal-900 mb-6 tracking-tight">⚙️ Yoga Studio Settings</h2>
 
             <div className="space-y-6">
-              {/* Game Mode Selector */}
-              <div>
-                <label className="block text-teal-800 font-black mb-3 text-lg">Gameplay Mode</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setPlayMode('camera')}
-                    className={`p-4 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
-                      playMode === 'camera'
-                        ? 'bg-teal-500 text-white border-teal-600 shadow-lg'
-                        : 'bg-teal-50 text-teal-800 border-teal-100 hover:bg-teal-100'
-                    }`}
-                  >
-                    <Camera size={28} className="shrink-0" />
-                    <div>
-                      <div className="font-black text-lg">📷 AI Camera Hand Mode</div>
-                      <div className={`text-xs font-semibold ${playMode === 'camera' ? 'text-teal-50' : 'text-teal-600'}`}>
-                        Only hand gestures! 1 finger, 2 fingers, 3 fingers, fist, rock & more.
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setPlayMode('studio')}
-                    className={`p-4 rounded-2xl border-4 text-left transition-all cursor-pointer flex items-center gap-3 ${
-                      playMode === 'studio'
-                        ? 'bg-teal-500 text-white border-teal-600 shadow-lg'
-                        : 'bg-teal-50 text-teal-800 border-teal-100 hover:bg-teal-100'
-                    }`}
-                  >
-                    <Sparkles size={28} className="shrink-0" />
-                    <div>
-                      <div className="font-black text-lg">🧘 Classic Studio Mode</div>
-                      <div className={`text-xs font-semibold ${playMode === 'studio' ? 'text-teal-50' : 'text-teal-600'}`}>
-                        Retrieves classic yoga poses (Tree, Warrior, Star, Chair, Airplane, etc.).
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
               {/* Font & Interface Scale */}
               <div>
                 <label className="block text-teal-800 font-black mb-3 text-lg">Question & Option Font Size</label>
@@ -2413,19 +2972,39 @@ function YogaGame({
                 </div>
               </div>
 
-              {/* Mode-Specific Pose Selection */}
+              {/* Natural Voice Question Reading Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-teal-50 border-2 border-teal-200">
+                <div>
+                  <div className="text-teal-900 font-black text-lg flex items-center gap-2">
+                    <Volume2 size={22} className="text-teal-600" />
+                    <span>Read Questions Naturally (Voice Narration)</span>
+                  </div>
+                  <p className="text-xs text-slate-600 font-semibold mt-0.5">
+                    Automatically reads each question aloud with natural phrasing and speaks completed sentences when answered.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setVoiceEnabled(v => !v)}
+                  className={`px-5 py-2.5 rounded-2xl font-black text-sm transition-all border-3 cursor-pointer flex items-center gap-2 ${
+                    voiceEnabled
+                      ? 'bg-teal-600 text-white border-teal-700 shadow-sm'
+                      : 'bg-slate-200 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                  <span>{voiceEnabled ? 'Voice ON' : 'Voice OFF'}</span>
+                </button>
+              </div>
+
+              {/* Hand Gesture Selection */}
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                   <div>
                     <label className="block text-teal-800 font-black text-lg">
-                      {playMode === 'studio'
-                        ? '🧘 Classic Yoga Poses (Classic Mode)'
-                        : '✋ Hand Gestures for Camera Mode (1 Finger, 2 Fingers, 3 Fingers, Fist, Rock...)'}
+                      ✋ Hand Gestures for Camera Mode (1 Finger, 2 Fingers, 3 Fingers, Fist, Rock...)
                     </label>
                     <p className="text-xs text-slate-500 font-semibold">
-                      {playMode === 'studio'
-                        ? 'Classic Studio Mode retrieves the previous full-body yoga poses.'
-                        : 'Camera Mode uses only hand gestures for fast, accurate AI detection.'}
+                      Camera Mode uses hand gestures for fast, accurate AI detection.
                     </p>
                   </div>
                   <span className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
@@ -2433,27 +3012,18 @@ function YogaGame({
                   </span>
                 </div>
 
-                {/* Quick Preset Filters */}
+                {/* Quick Preset Filter */}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {playMode === 'camera' ? (
-                    <button
-                      onClick={() => applyPosePreset('hand')}
-                      className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs cursor-pointer shadow-xs"
-                    >
-                      ✋ Restore All Hand Gestures (1, 2, 3, Fist, Rock...)
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => applyPosePreset('classic')}
-                      className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs cursor-pointer shadow-xs"
-                    >
-                      🔄 Restore All Classic Yoga Poses
-                    </button>
-                  )}
+                  <button
+                    onClick={() => applyPosePreset('hand')}
+                    className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs cursor-pointer shadow-xs"
+                  >
+                    ✋ Restore All Hand Gestures (1, 2, 3, Fist, Rock...)
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
-                  {posesForCurrentModeSettings.map((pose) => {
+                  {CAMERA_HAND_POSES.map((pose) => {
                     const isSelected = activePoses.includes(pose.value);
                     return (
                       <button
@@ -2573,113 +3143,38 @@ function YogaGame({
             ]}
             onTimerChange={(sec: number) => setYogaTimerMinutes(Math.max(1, Math.round(sec / 60)))}
             arCameraConfig={{
-              enabled: playMode !== 'studio',
+              enabled: true,
               label: 'AR Camera Tracker',
-              helperText: 'Show your hand or body in front of the camera to select answers!'
+              helperText: 'Show your hand gesture in front of the camera to select answers!'
             }}
             startLabel="START YOGA STUDIO"
             onStart={startGame}
           >
-            {/* 1. YOGA ARENA MODE SELECTOR */}
+            {/* 1. HAND AI GESTURE PREVIEW */}
             <div className="p-4 rounded-3xl bg-teal-50/90 border-2 border-teal-200 border-b-4 border-b-teal-300 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-sm sm:text-base font-black uppercase tracking-wider text-teal-950">
-                  🧘 MOTION MODE
+                  📷 HAND AI GESTURES
                 </span>
-                <div className="flex items-center gap-2">
-                  {playMode === 'studio' && (
-                    <button
-                      type="button"
-                      onClick={addTeam}
-                      className="px-3 py-1 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-black text-xs border-b-2 border-sky-700 cursor-pointer"
-                    >
-                      + ADD PLAYER
-                    </button>
-                  )}
-                  <span className="px-2.5 py-1 rounded-xl bg-teal-600 text-white font-black text-xs uppercase">
-                    POSES ({activePoses.length})
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setPlayMode('camera')}
-                  className={`py-3 px-4 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer flex items-center justify-center gap-2 ${
-                    playMode === 'camera'
-                      ? 'bg-teal-600 border-teal-400 border-b-teal-900 text-white shadow-sm -translate-y-0.5'
-                      : 'bg-white border-teal-200 border-b-teal-300 text-teal-950'
-                  }`}
-                >
-                  <span>📷 HAND AI</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPlayMode('pose-chase')}
-                  className={`py-3 px-4 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer flex items-center justify-center gap-2 ${
-                    playMode === 'pose-chase'
-                      ? 'bg-gradient-to-b from-amber-500 to-rose-600 border-amber-300 border-b-rose-900 text-white shadow-sm -translate-y-0.5'
-                      : 'bg-white border-teal-200 border-b-teal-300 text-teal-950'
-                  }`}
-                >
-                  <span>🏃‍♂️ 3D POSE CHASE</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPlayMode('studio')}
-                  className={`py-3 px-4 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer flex items-center justify-center gap-2 ${
-                    playMode === 'studio'
-                      ? 'bg-emerald-600 border-emerald-400 border-b-emerald-900 text-white shadow-sm -translate-y-0.5'
-                      : 'bg-white border-teal-200 border-b-teal-300 text-teal-950'
-                  }`}
-                >
-                  <span>🧘 STUDIO POSES</span>
-                </button>
+                <span className="px-2.5 py-1 rounded-xl bg-teal-600 text-white font-black text-xs uppercase">
+                  POSES ({activePoses.length})
+                </span>
               </div>
 
               {/* Active Pose Preview Strip */}
               <div className="flex items-center justify-center gap-3 sm:gap-5 bg-white/90 px-4 py-2.5 rounded-2xl border-2 border-teal-200">
-                {playMode === 'studio' ? (
-                  <>
-                    <StandingPoseFigure poseId="tree-pose" emoji="🌳" size="sm" />
-                    <StandingPoseFigure poseId="warrior-pose" emoji="⚔️" size="sm" />
-                    <StandingPoseFigure poseId="star-pose" emoji="⭐" size="sm" />
-                    <StandingPoseFigure poseId="chair-pose" emoji="🪑" size="sm" />
-                  </>
-                ) : (
-                  <>
-                    <StandingPoseFigure poseId="1-finger" emoji="☝️" size="sm" />
-                    <StandingPoseFigure poseId="2-finger" emoji="✌️" size="sm" />
-                    <StandingPoseFigure poseId="3-finger" emoji="🤟" size="sm" />
-                    <StandingPoseFigure poseId="fist" emoji="✊" size="sm" />
-                    <StandingPoseFigure poseId="rock" emoji="🤘" size="sm" />
-                  </>
-                )}
+                <StandingPoseFigure poseId="1-finger" emoji="☝️" size="sm" />
+                <StandingPoseFigure poseId="2-finger" emoji="✌️" size="sm" />
+                <StandingPoseFigure poseId="3-finger" emoji="🤟" size="sm" />
+                <StandingPoseFigure poseId="fist" emoji="✊" size="sm" />
+                <StandingPoseFigure poseId="rock" emoji="🤘" size="sm" />
               </div>
             </div>
-
-            {playMode === 'pose-chase' && <BodyHeadToFeetSetupScanner compact />}
           </UnifiedGameSetup>
         )}
 
-        {/* PLAYING SCREEN: 3D POSE & ACTION CHASE */}
-        {gameState === 'playing' && playMode === 'pose-chase' && (
-          <CityPoseChase3DGameplay
-            questions={normalizeChaseQuestions(quiz.questions)}
-            riderName={teams[0]?.name || 'Player 1'}
-            speedMultiplier={chaseSpeedMultiplier}
-            onChangeSpeedMultiplier={setChaseSpeedMultiplier}
-            timerMinutes={3}
-            initialLives={3}
-            voiceEnabled={chaseVoiceEnabled}
-            onChangeVoiceEnabled={setChaseVoiceEnabled}
-            onExitToSetup={() => setGameState('start')}
-          />
-        )}
-
         {/* PLAYING SCREEN */}
-        {gameState === 'playing' && playMode !== 'pose-chase' && (
+        {gameState === 'playing' && (
           <div className="flex flex-col h-full flex-grow relative animate-fade-in min-h-0 overflow-hidden z-10 justify-between">
             {/* Fullscreen Camera Backdrop for Camera Mode */}
             {playMode === 'camera' && (
@@ -2702,9 +3197,17 @@ function YogaGame({
                 {isTwoPlayerCamera ? (
                   <div className="absolute inset-0 grid grid-cols-2 pointer-events-none">
                     {/* Player 1 Zone (Left: Spider-Man) */}
-                    <div className="relative border-r-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44">
+                    <div
+                      className={`relative border-r-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44 transition-all duration-300 ${
+                        playerDetections[0].frozenRemainingSec > 0
+                          ? 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
+                          : isAnswering && winningPlayerIdx === 0
+                          ? 'bg-emerald-500/20 ring-4 ring-inset ring-emerald-400 shadow-[inset_0_0_80px_rgba(16,185,129,0.55)]'
+                          : ''
+                      }`}
+                    >
                       <div className="flex items-center justify-end gap-2">
-                        {playerDetections[0].matchedOptionIdx !== null && (
+                        {playerDetections[0].matchedOptionIdx !== null && playerDetections[0].frozenRemainingSec <= 0 && (
                           <span className="bg-white/95 text-rose-950 font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-rose-400 animate-pulse">
                             <span className="text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
                             <span>Locking Answer</span>
@@ -2712,20 +3215,53 @@ function YogaGame({
                         )}
                       </div>
 
-                      {playerDetections[0].wrongFeedbackText && (
-                        <div className="self-center bg-rose-600/95 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg animate-bounce">
-                          {playerDetections[0].wrongFeedbackText}
+                      {/* Icy Freeze Overlay for Player 1 */}
+                      {playerDetections[0].frozenRemainingSec > 0 && (
+                        <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-6 py-4 shadow-[0_0_35px_rgba(34,211,238,0.85)] max-w-xs animate-bounce">
+                          <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
+                            <span>❄️</span>
+                            <span>🥶</span>
+                            <span>🧊</span>
+                          </div>
+                          <div className="text-cyan-200 font-black text-base sm:text-xl uppercase tracking-wider">
+                            {teams[0]?.name || 'Player 1'} FROZEN!
+                          </div>
+                          <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
+                            {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                          </div>
+                          <p className="text-cyan-200/90 text-[11px] sm:text-xs font-bold">
+                            Wrong answer! Wait for ice to thaw!
+                          </p>
+                          <div className="w-full bg-cyan-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-cyan-400/50">
+                            <div
+                              className="bg-gradient-to-r from-cyan-300 to-sky-400 h-full transition-all duration-100"
+                              style={{
+                                width: `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`,
+                              }}
+                            />
+                          </div>
                         </div>
                       )}
 
                       {/* Hold Progress Bar for Player 1 */}
                       <div className="w-full max-w-sm mx-auto bg-black/60 backdrop-blur-md rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                         <div
-                          className="bg-gradient-to-r from-rose-500 to-red-400 h-full rounded-full transition-all duration-75"
-                          style={{ width: `${playerDetections[0].holdProgress}%` }}
+                          className={`h-full rounded-full transition-all duration-75 ${
+                            playerDetections[0].frozenRemainingSec > 0
+                              ? 'bg-gradient-to-r from-cyan-400 to-sky-300'
+                              : 'bg-gradient-to-r from-rose-500 to-red-400'
+                          }`}
+                          style={{
+                            width:
+                              playerDetections[0].frozenRemainingSec > 0
+                                ? `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`
+                                : `${playerDetections[0].holdProgress}%`,
+                          }}
                         />
                         <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
-                          {playerDetections[0].holdProgress > 0
+                          {playerDetections[0].frozenRemainingSec > 0
+                            ? `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                            : playerDetections[0].holdProgress > 0
                             ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
                             : 'Stand on Left & Shoot Web Pose'}
                         </span>
@@ -2733,9 +3269,17 @@ function YogaGame({
                     </div>
 
                     {/* Player 2 Zone (Right: Thanos) */}
-                    <div className="relative border-l-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44">
+                    <div
+                      className={`relative border-l-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44 transition-all duration-300 ${
+                        playerDetections[1].frozenRemainingSec > 0
+                          ? 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
+                          : isAnswering && winningPlayerIdx === 1
+                          ? 'bg-emerald-500/20 ring-4 ring-inset ring-emerald-400 shadow-[inset_0_0_80px_rgba(16,185,129,0.55)]'
+                          : ''
+                      }`}
+                    >
                       <div className="flex items-center justify-start gap-2">
-                        {playerDetections[1].matchedOptionIdx !== null && (
+                        {playerDetections[1].matchedOptionIdx !== null && playerDetections[1].frozenRemainingSec <= 0 && (
                           <span className="bg-white/95 text-amber-950 font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-amber-400 animate-pulse">
                             <span className="text-xl leading-none">{shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}</span>
                             <span>Locking Answer</span>
@@ -2743,20 +3287,53 @@ function YogaGame({
                         )}
                       </div>
 
-                      {playerDetections[1].wrongFeedbackText && (
-                        <div className="self-center bg-rose-600/95 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg animate-bounce">
-                          {playerDetections[1].wrongFeedbackText}
+                      {/* Icy Freeze Overlay for Player 2 */}
+                      {playerDetections[1].frozenRemainingSec > 0 && (
+                        <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-6 py-4 shadow-[0_0_35px_rgba(34,211,238,0.85)] max-w-xs animate-bounce">
+                          <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
+                            <span>❄️</span>
+                            <span>🥶</span>
+                            <span>🧊</span>
+                          </div>
+                          <div className="text-cyan-200 font-black text-base sm:text-xl uppercase tracking-wider">
+                            {teams[1]?.name || 'Player 2'} FROZEN!
+                          </div>
+                          <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
+                            {playerDetections[1].frozenRemainingSec.toFixed(1)}s
+                          </div>
+                          <p className="text-cyan-200/90 text-[11px] sm:text-xs font-bold">
+                            Wrong answer! Wait for ice to thaw!
+                          </p>
+                          <div className="w-full bg-cyan-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-cyan-400/50">
+                            <div
+                              className="bg-gradient-to-r from-cyan-300 to-sky-400 h-full transition-all duration-100"
+                              style={{
+                                width: `${Math.min(100, (playerDetections[1].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`,
+                              }}
+                            />
+                          </div>
                         </div>
                       )}
 
                       {/* Hold Progress Bar for Player 2 */}
                       <div className="w-full max-w-sm mx-auto bg-black/60 backdrop-blur-md rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                         <div
-                          className="bg-gradient-to-r from-amber-500 to-yellow-300 h-full rounded-full transition-all duration-75"
-                          style={{ width: `${playerDetections[1].holdProgress}%` }}
+                          className={`h-full rounded-full transition-all duration-75 ${
+                            playerDetections[1].frozenRemainingSec > 0
+                              ? 'bg-gradient-to-r from-cyan-400 to-sky-300'
+                              : 'bg-gradient-to-r from-amber-500 to-yellow-300'
+                          }`}
+                          style={{
+                            width:
+                              playerDetections[1].frozenRemainingSec > 0
+                                ? `${Math.min(100, (playerDetections[1].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`
+                                : `${playerDetections[1].holdProgress}%`,
+                          }}
                         />
                         <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
-                          {playerDetections[1].holdProgress > 0
+                          {playerDetections[1].frozenRemainingSec > 0
+                            ? `❄️ FROZEN (${playerDetections[1].frozenRemainingSec.toFixed(1)}s)`
+                            : playerDetections[1].holdProgress > 0
                             ? `Locking ${shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[1].holdProgress}%`
                             : 'Stand on Right & Use Infinity Gauntlet'}
                         </span>
@@ -2765,14 +3342,22 @@ function YogaGame({
                   </div>
                 ) : (
                   /* 1-Player Camera Overlay */
-                  <div className="absolute inset-0 p-4 pt-16 pb-44 flex flex-col justify-between pointer-events-none">
+                  <div
+                    className={`absolute inset-0 p-4 pt-16 pb-44 flex flex-col justify-between pointer-events-none transition-all duration-300 ${
+                      playerDetections[0].frozenRemainingSec > 0
+                        ? 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
+                        : isAnswering
+                        ? 'bg-emerald-500/15 ring-4 ring-inset ring-emerald-400'
+                        : ''
+                    }`}
+                  >
                     <div className="flex items-center justify-between px-2">
                       <span className="bg-slate-900/85 backdrop-blur-md text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-md border border-teal-300 flex items-center gap-2">
                         <span>🕷️ Left: Spider-Man</span>
                         <span className="text-slate-400">|</span>
                         <span>🥊 Right: Thanos Gauntlet</span>
                       </span>
-                      {playerDetections[0].matchedOptionIdx !== null && (
+                      {playerDetections[0].matchedOptionIdx !== null && playerDetections[0].frozenRemainingSec <= 0 && (
                         <span className="bg-white/95 text-teal-950 font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border-2 border-teal-400 animate-pulse">
                           <span className="text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
                           <span>Locking Answer</span>
@@ -2780,13 +3365,43 @@ function YogaGame({
                       )}
                     </div>
 
+                    {playerDetections[0].frozenRemainingSec > 0 && (
+                      <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-7 py-5 shadow-[0_0_40px_rgba(34,211,238,0.85)] max-w-sm animate-bounce">
+                        <div className="flex items-center gap-2 text-3xl mb-1">
+                          <span>❄️</span>
+                          <span>🥶</span>
+                          <span>🧊</span>
+                        </div>
+                        <div className="text-cyan-200 font-black text-lg sm:text-2xl uppercase tracking-wider">
+                          PLAYER FROZEN!
+                        </div>
+                        <div className="text-white font-black text-3xl sm:text-4xl tabular-nums my-0.5">
+                          {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                        </div>
+                        <p className="text-cyan-200/90 text-xs sm:text-sm font-bold">
+                          Wrong gesture! Wait for the ice to thaw & try another pose!
+                        </p>
+                      </div>
+                    )}
+
                     <div className="w-full max-w-md mx-auto bg-black/60 backdrop-blur-md rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                       <div
-                        className="bg-gradient-to-r from-teal-400 to-emerald-300 h-full rounded-full transition-all duration-75"
-                        style={{ width: `${playerDetections[0].holdProgress}%` }}
+                        className={`h-full rounded-full transition-all duration-75 ${
+                          playerDetections[0].frozenRemainingSec > 0
+                            ? 'bg-gradient-to-r from-cyan-400 to-sky-300'
+                            : 'bg-gradient-to-r from-teal-400 to-emerald-300'
+                        }`}
+                        style={{
+                          width:
+                            playerDetections[0].frozenRemainingSec > 0
+                              ? `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`
+                              : `${playerDetections[0].holdProgress}%`,
+                        }}
                       />
                       <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
-                        {playerDetections[0].holdProgress > 0
+                        {playerDetections[0].frozenRemainingSec > 0
+                          ? `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                          : playerDetections[0].holdProgress > 0
                           ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
                           : 'Stand in front of camera & copy the pose of the right answer!'}
                       </span>
@@ -2820,7 +3435,7 @@ function YogaGame({
             {/* Top Navigation, Interactive Scoreboards & Question Header (Docked at the TOP) */}
             <div className="w-full flex flex-col z-30 shrink-0">
               <div className="w-full px-3 md:px-5 pt-2 pb-1.5 flex flex-wrap justify-between items-center gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={onBack}
                     className="px-3 py-1.5 text-teal-900 hover:bg-white rounded-2xl transition-colors font-black cursor-pointer bg-white/90 backdrop-blur-md shadow-sm border border-teal-200 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
@@ -2838,18 +3453,31 @@ function YogaGame({
                     </button>
                   )}
 
-                  {/* Quick Toggle: Camera Mode vs Classic Studio Mode */}
+                  {/* Read Question Naturally Button + Auto-Voice Toggle */}
                   <button
-                    onClick={() => setPlayMode(prev => prev === 'camera' ? 'studio' : 'camera')}
-                    className={`px-3 py-1.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5 shadow-sm border transition-all cursor-pointer ${
-                      playMode === 'camera'
-                        ? 'bg-emerald-600 text-white border-emerald-700'
-                        : 'bg-white/90 text-teal-900 border-teal-200 hover:bg-white'
+                    onClick={() => speakQuestionByIndex(currentIdx, true)}
+                    className={`px-3 py-1.5 rounded-2xl font-black text-xs sm:text-sm border shadow-sm cursor-pointer flex items-center gap-1.5 transition-all ${
+                      isSpeakingQuestion
+                        ? 'bg-emerald-500 text-white border-emerald-300 ring-2 ring-emerald-300 animate-pulse'
+                        : 'bg-white/95 hover:bg-white text-teal-900 border-teal-200'
                     }`}
-                    title="Toggle between AI Camera Mode and Classic Studio Mode"
+                    title="Read this question aloud naturally"
                   >
-                    {playMode === 'camera' ? <Camera size={15} /> : <CameraOff size={15} />}
-                    <span>{playMode === 'camera' ? 'Camera Mode' : 'Classic Mode'}</span>
+                    <Volume2 size={15} className={isSpeakingQuestion ? 'text-white' : 'text-teal-600'} />
+                    <span>{isSpeakingQuestion ? 'Reading...' : 'Read Question'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setVoiceEnabled(v => !v)}
+                    className={`px-2.5 py-1.5 rounded-2xl font-black text-xs border shadow-sm cursor-pointer flex items-center gap-1 transition-all ${
+                      voiceEnabled
+                        ? 'bg-teal-600/95 hover:bg-teal-600 text-white border-teal-400'
+                        : 'bg-white/85 hover:bg-white text-slate-600 border-slate-300'
+                    }`}
+                    title={voiceEnabled ? 'Auto-read questions ON (Click to mute)' : 'Auto-read questions OFF (Click to enable)'}
+                  >
+                    {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                    <span className="hidden md:inline">{voiceEnabled ? 'Voice ON' : 'Voice OFF'}</span>
                   </button>
 
                   {/* Retrieve Previous Question / Pose button */}
@@ -2912,15 +3540,29 @@ function YogaGame({
 
               {/* TOP HUD ROW: Interactive Superhero Scoreboards + Question Banner (DOUBLES AS LIVE SCORE DASHBOARD) */}
               {playMode === 'camera' && isTwoPlayerCamera ? (
-                <div className="w-full px-3 md:px-5 py-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-center">
+                <div className="w-full px-3 md:px-5 py-1.5 flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5">
                   {/* Player 1 (Spider-Man) Interactive Scoreboard */}
-                  <div className="lg:col-span-3 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.35)] p-2.5 flex items-center justify-between gap-2.5 relative transition-all hover:scale-[1.01] pointer-events-auto">
+                  <div
+                    className={`w-full lg:w-auto lg:min-w-[215px] lg:max-w-[245px] shrink-0 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 p-2.5 flex items-center justify-between gap-2 relative transition-all hover:scale-[1.01] pointer-events-auto ${
+                      playerDetections[0].frozenRemainingSec > 0
+                        ? 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
+                        : isAnswering && winningPlayerIdx === 0
+                        ? 'border-emerald-400 shadow-[0_0_28px_rgba(16,185,129,0.85)] scale-[1.03]'
+                        : 'border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.35)]'
+                    }`}
+                  >
                     {scorePops[teams[0]?.id]?.key && (
                       <FloatingScoreBadge delta={scorePops[teams[0]?.id].delta} idKey={scorePops[teams[0]?.id].key} />
                     )}
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-red-700 flex items-center justify-center text-xl shadow-md shrink-0 border border-rose-400">
-                        🕷️
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shadow-md shrink-0 border ${
+                          playerDetections[0].frozenRemainingSec > 0
+                            ? 'bg-cyan-500 border-cyan-200 animate-pulse'
+                            : 'bg-gradient-to-tr from-rose-600 to-red-700 border-rose-400'
+                        }`}
+                      >
+                        {playerDetections[0].frozenRemainingSec > 0 ? '🥶' : '🕷️'}
                       </div>
                       <div className="flex flex-col min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -2928,7 +3570,11 @@ function YogaGame({
                             {teams[0]?.name || 'Player 1'}
                           </span>
                         </div>
-                        {teamStreaks[teams[0]?.id] >= 2 ? (
+                        {playerDetections[0].frozenRemainingSec > 0 ? (
+                          <span className="text-[10px] font-black text-cyan-300 flex items-center gap-0.5 animate-pulse">
+                            ❄️ FROZEN {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                          </span>
+                        ) : teamStreaks[teams[0]?.id] >= 2 ? (
                           <span className="text-[10px] font-black text-amber-300 flex items-center gap-0.5 animate-pulse">
                             🔥 {teamStreaks[teams[0]?.id]}x STREAK!
                           </span>
@@ -2975,40 +3621,67 @@ function YogaGame({
                     </div>
                   </div>
 
-                  {/* Question Prompt Banner (TOP OF SCREEN, NOT MIDDLE) */}
-                  <div className="lg:col-span-6 flex items-center justify-center gap-2">
+                  {/* Question Prompt Banner (TOP OF SCREEN, LARGE & PROMINENT, CLICK TO READ NATURALLY) */}
+                  <div className="flex-1 min-w-0 flex items-center justify-center gap-3">
                     {quiz.questions[currentIdx]?.image && (
-                      <div className="h-12 sm:h-14 rounded-xl overflow-hidden border-2 border-teal-300 shadow-md bg-white p-0.5 shrink-0">
+                      <div className="h-14 sm:h-16 md:h-20 rounded-2xl overflow-hidden border-2 border-teal-300 shadow-lg bg-white p-0.5 shrink-0">
                         <img
                           src={quiz.questions[currentIdx]?.image}
                           alt="Question Clue"
-                          className="h-full w-auto object-contain rounded-lg"
+                          className="h-full w-auto object-contain rounded-xl"
                         />
                       </div>
                     )}
                     {currentQuestionText && (
-                      <h2
-                        className={`w-full font-black text-slate-950 bg-white/95 backdrop-blur-md py-2 sm:py-2.5 px-4 sm:px-6 rounded-2xl border-2 sm:border-3 border-teal-400 shadow-xl text-center leading-snug mx-auto ${
-                          uiScale === 'small'
-                            ? (currentQuestionText.length > 80 ? 'text-xs sm:text-sm md:text-base' : currentQuestionText.length > 40 ? 'text-sm sm:text-base md:text-lg' : 'text-base sm:text-lg md:text-xl')
-                            : uiScale === 'big'
-                            ? (currentQuestionText.length > 80 ? 'text-base sm:text-lg md:text-xl' : currentQuestionText.length > 40 ? 'text-lg sm:text-xl md:text-2xl' : 'text-xl sm:text-2xl md:text-3xl')
-                            : (currentQuestionText.length > 80 ? 'text-sm sm:text-base md:text-lg' : currentQuestionText.length > 40 ? 'text-base sm:text-lg md:text-xl' : 'text-lg sm:text-xl md:text-2xl')
+                      <div
+                        onClick={() => speakQuestionByIndex(currentIdx, true)}
+                        title="Click to hear question read naturally"
+                        className={`w-full relative group cursor-pointer bg-white/95 backdrop-blur-md py-3 sm:py-3.5 px-5 sm:px-7 rounded-2xl sm:rounded-3xl border-3 sm:border-4 transition-all shadow-2xl text-center mx-auto ${
+                          isAnswering
+                            ? 'border-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.45)]'
+                            : 'border-teal-400 hover:border-teal-500'
                         }`}
                       >
-                        {currentQuestionText}
-                      </h2>
+                        <h2
+                          className={`font-black text-slate-950 leading-snug ${getQuestionFontSizeClass(currentQuestionText)}`}
+                        >
+                          {renderFormattedQuestionContent(currentQuestionText)}
+                        </h2>
+                        <span
+                          className={`absolute top-2 right-2.5 p-1.5 rounded-full transition-all ${
+                            isSpeakingQuestion
+                              ? 'bg-emerald-500 text-white animate-pulse opacity-100'
+                              : 'bg-teal-50 text-teal-600 opacity-70 group-hover:opacity-100'
+                          }`}
+                        >
+                          <Volume2 size={16} />
+                        </span>
+                      </div>
                     )}
                   </div>
 
                   {/* Player 2 (Thanos) Interactive Scoreboard */}
-                  <div className="lg:col-span-3 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)] p-2.5 flex items-center justify-between gap-2.5 relative transition-all hover:scale-[1.01] pointer-events-auto">
+                  <div
+                    className={`w-full lg:w-auto lg:min-w-[215px] lg:max-w-[245px] shrink-0 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 p-2.5 flex items-center justify-between gap-2 relative transition-all hover:scale-[1.01] pointer-events-auto ${
+                      playerDetections[1].frozenRemainingSec > 0
+                        ? 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
+                        : isAnswering && winningPlayerIdx === 1
+                        ? 'border-emerald-400 shadow-[0_0_28px_rgba(16,185,129,0.85)] scale-[1.03]'
+                        : 'border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
+                    }`}
+                  >
                     {scorePops[teams[1]?.id]?.key && (
                       <FloatingScoreBadge delta={scorePops[teams[1]?.id].delta} idKey={scorePops[teams[1]?.id].key} />
                     )}
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-600 flex items-center justify-center text-xl shadow-md shrink-0 border border-amber-300">
-                        🥊
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shadow-md shrink-0 border ${
+                          playerDetections[1].frozenRemainingSec > 0
+                            ? 'bg-cyan-500 border-cyan-200 animate-pulse'
+                            : 'bg-gradient-to-tr from-amber-500 to-yellow-600 border-amber-300'
+                        }`}
+                      >
+                        {playerDetections[1].frozenRemainingSec > 0 ? '🥶' : '🥊'}
                       </div>
                       <div className="flex flex-col min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -3016,7 +3689,11 @@ function YogaGame({
                             {teams[1]?.name || 'Player 2'}
                           </span>
                         </div>
-                        {teamStreaks[teams[1]?.id] >= 2 ? (
+                        {playerDetections[1].frozenRemainingSec > 0 ? (
+                          <span className="text-[10px] font-black text-cyan-300 flex items-center gap-0.5 animate-pulse">
+                            ❄️ FROZEN {playerDetections[1].frozenRemainingSec.toFixed(1)}s
+                          </span>
+                        ) : teamStreaks[teams[1]?.id] >= 2 ? (
                           <span className="text-[10px] font-black text-yellow-300 flex items-center gap-0.5 animate-pulse">
                             👑 {teamStreaks[teams[1]?.id]}x TITAN!
                           </span>
@@ -3065,23 +3742,35 @@ function YogaGame({
                 </div>
               ) : playMode === 'camera' ? (
                 /* 1-Player Camera Mode Top HUD */
-                <div className="w-full px-3 md:px-5 py-1 flex flex-col sm:flex-row items-center gap-3">
-                  <div className="bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 border-teal-400 shadow-[0_0_20px_rgba(45,212,191,0.35)] p-2.5 flex items-center justify-between gap-3 relative transition-all hover:scale-[1.01] pointer-events-auto shrink-0 w-full sm:w-auto min-w-[240px]">
+                <div className="w-full px-3 md:px-5 py-1.5 flex flex-col sm:flex-row items-center gap-3">
+                  <div
+                    className={`bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 p-2.5 flex items-center justify-between gap-3 relative transition-all hover:scale-[1.01] pointer-events-auto shrink-0 w-full sm:w-auto min-w-[220px] ${
+                      playerDetections[0].frozenRemainingSec > 0
+                        ? 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
+                        : 'border-teal-400 shadow-[0_0_20px_rgba(45,212,191,0.35)]'
+                    }`}
+                  >
                     {scorePops[teams[0]?.id]?.key && (
                       <FloatingScoreBadge delta={scorePops[teams[0]?.id].delta} idKey={scorePops[teams[0]?.id].key} />
                     )}
                     <div className="flex items-center gap-2.5">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-600 flex items-center justify-center text-xl shadow-md border border-teal-300">
-                        ⚡
+                        {playerDetections[0].frozenRemainingSec > 0 ? '🥶' : '⚡'}
                       </div>
                       <div className="flex flex-col">
                         <span className="font-black text-xs uppercase tracking-wider text-teal-300">
                           {teams[0]?.name || 'Player 1'}
                         </span>
-                        {teamStreaks[teams[0]?.id] >= 2 && (
-                          <span className="text-[10px] font-black text-amber-300 animate-pulse">
-                            🔥 {teamStreaks[teams[0]?.id]}x STREAK!
+                        {playerDetections[0].frozenRemainingSec > 0 ? (
+                          <span className="text-[10px] font-black text-cyan-300 animate-pulse">
+                            ❄️ FROZEN {playerDetections[0].frozenRemainingSec.toFixed(1)}s
                           </span>
+                        ) : (
+                          teamStreaks[teams[0]?.id] >= 2 && (
+                            <span className="text-[10px] font-black text-amber-300 animate-pulse">
+                              🔥 {teamStreaks[teams[0]?.id]}x STREAK!
+                            </span>
+                          )
                         )}
                       </div>
                     </div>
@@ -3106,24 +3795,41 @@ function YogaGame({
 
                   {/* Question Banner */}
                   {(currentQuestionText || quiz.questions[currentIdx]?.image) && (
-                    <div className="flex-1 w-full flex items-center justify-center gap-2">
+                    <div className="flex-1 w-full flex items-center justify-center gap-3">
                       {quiz.questions[currentIdx]?.image && (
-                        <div className="h-12 sm:h-14 rounded-xl overflow-hidden border-2 border-teal-300 shadow-md bg-white p-0.5 shrink-0">
+                        <div className="h-14 sm:h-16 md:h-20 rounded-2xl overflow-hidden border-2 border-teal-300 shadow-lg bg-white p-0.5 shrink-0">
                           <img
                             src={quiz.questions[currentIdx]?.image}
                             alt="Question Clue"
-                            className="h-full w-auto object-contain rounded-lg"
+                            className="h-full w-auto object-contain rounded-xl"
                           />
                         </div>
                       )}
                       {currentQuestionText && (
-                        <h2
-                          className={`w-full font-black text-slate-950 bg-white/95 backdrop-blur-md py-2 sm:py-2.5 px-4 sm:px-6 rounded-2xl border-2 sm:border-3 border-teal-400 shadow-xl text-center leading-snug mx-auto ${
-                            uiScale === 'small' ? 'text-sm sm:text-base md:text-lg' : uiScale === 'big' ? 'text-lg sm:text-xl md:text-2xl' : 'text-base sm:text-lg md:text-xl'
+                        <div
+                          onClick={() => speakQuestionByIndex(currentIdx, true)}
+                          title="Click to hear question read naturally"
+                          className={`w-full relative group cursor-pointer bg-white/95 backdrop-blur-md py-3 sm:py-3.5 px-5 sm:px-7 rounded-2xl sm:rounded-3xl border-3 sm:border-4 transition-all shadow-2xl text-center mx-auto ${
+                            isAnswering
+                              ? 'border-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.45)]'
+                              : 'border-teal-400 hover:border-teal-500'
                           }`}
                         >
-                          {currentQuestionText}
-                        </h2>
+                          <h2
+                            className={`font-black text-slate-950 leading-snug ${getQuestionFontSizeClass(currentQuestionText)}`}
+                          >
+                            {renderFormattedQuestionContent(currentQuestionText)}
+                          </h2>
+                          <span
+                            className={`absolute top-2 right-2.5 p-1.5 rounded-full transition-all ${
+                              isSpeakingQuestion
+                                ? 'bg-emerald-500 text-white animate-pulse opacity-100'
+                                : 'bg-teal-50 text-teal-600 opacity-70 group-hover:opacity-100'
+                            }`}
+                          >
+                            <Volume2 size={16} />
+                          </span>
+                        </div>
                       )}
                     </div>
                   )}
@@ -3168,15 +3874,61 @@ function YogaGame({
               )}
             </div>
 
-            {/* Clear Middle Camera Viewport (Face & Upper Body completely unblocked!) */}
-            <div className="flex-1 min-h-[100px] pointer-events-none flex flex-col items-center justify-center relative z-20">
-              {roundWinnerBanner && (
-                <div className="px-6 py-2.5 rounded-full bg-slate-950/90 text-white font-black text-sm sm:text-base shadow-2xl border-2 border-teal-400 animate-bounce">
-                  {roundWinnerBanner}
+            {/* Clear Middle Camera Viewport + Superhero Round Winner Announcement Card */}
+            <div className="flex-1 min-h-[100px] pointer-events-none flex flex-col items-center justify-center relative z-20 px-4">
+              {roundWinnerInfo ? (
+                <div
+                  className={`px-6 py-4 rounded-3xl bg-slate-950/92 backdrop-blur-md text-white shadow-[0_0_45px_rgba(16,185,129,0.65)] border-3 flex flex-col sm:flex-row items-center gap-3 sm:gap-4 animate-bounce ${
+                    roundWinnerInfo.themeColor === 'rose'
+                      ? 'border-rose-400'
+                      : roundWinnerInfo.themeColor === 'amber'
+                      ? 'border-amber-400'
+                      : 'border-emerald-400'
+                  }`}
+                >
+                  <div
+                    className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shadow-lg border-2 ${
+                      roundWinnerInfo.themeColor === 'rose'
+                        ? 'bg-gradient-to-tr from-rose-600 to-red-500 border-rose-300'
+                        : roundWinnerInfo.themeColor === 'amber'
+                        ? 'bg-gradient-to-tr from-amber-500 to-yellow-500 border-amber-200'
+                        : 'bg-gradient-to-tr from-emerald-500 to-teal-500 border-emerald-200'
+                    }`}
+                  >
+                    {roundWinnerInfo.heroIcon}
+                  </div>
+                  <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
+                    <div className="flex items-center gap-2 flex-wrap justify-center">
+                      <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-emerald-300">
+                        🏆 ROUND WINNER
+                      </span>
+                      {roundWinnerInfo.streak >= 2 && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase">
+                          🔥 {roundWinnerInfo.streak}x STREAK!
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-lg sm:text-2xl font-black tracking-tight text-white">
+                      {roundWinnerInfo.playerName} <span className="text-teal-300">({roundWinnerInfo.heroTitle})</span>
+                    </div>
+                    {roundWinnerInfo.answerText && (
+                      <div className="text-xs sm:text-sm font-bold text-slate-300 mt-0.5">
+                        Correct Answer: <span className="text-emerald-300 font-black">“{roundWinnerInfo.answerText}”</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-base sm:text-xl shadow-md border border-emerald-300">
+                    +1 PT!
+                  </div>
                 </div>
+              ) : (
+                roundWinnerBanner && (
+                  <div className="px-6 py-2.5 rounded-full bg-slate-950/90 text-white font-black text-sm sm:text-base shadow-2xl border-2 border-teal-400 animate-bounce">
+                    {roundWinnerBanner}
+                  </div>
+                )
               )}
             </div>
-
 
             {/* Question & Options Stage */}
             <div
@@ -3202,9 +3954,10 @@ function YogaGame({
                   {currentQuestionText && (
                     <div>
                       <h2
-                        className={`font-black text-slate-900 bg-white/95 backdrop-blur-md py-2.5 sm:py-3.5 px-5 sm:px-8 rounded-2xl sm:rounded-3xl border-4 border-teal-400 shadow-lg inline-block min-w-[45%] max-w-[95%] leading-snug ${getQuestionFontSizeClass(currentQuestionText)}`}
+                        onClick={() => speakQuestionByIndex(currentIdx, true)}
+                        className={`font-black text-slate-900 bg-white/95 backdrop-blur-md py-2.5 sm:py-3.5 px-5 sm:px-8 rounded-2xl sm:rounded-3xl border-4 border-teal-400 shadow-lg inline-block min-w-[45%] max-w-[95%] leading-snug cursor-pointer ${getQuestionFontSizeClass(currentQuestionText)}`}
                       >
-                        {currentQuestionText}
+                        {renderFormattedQuestionContent(currentQuestionText)}
                       </h2>
                     </div>
                   )}
@@ -3227,21 +3980,23 @@ function YogaGame({
 
                   const p1Locking = playMode === 'camera' && playerDetections[0].matchedOptionIdx === index && !isAnswering;
                   const p2Locking = isTwoPlayerCamera && playerDetections[1].matchedOptionIdx === index && !isAnswering;
+                  const isFrozenWrongCard =
+                    !isAnswering &&
+                    ((playerDetections[0].frozenRemainingSec > 0 && playerDetections[0].lastWrongOptionIdx === index) ||
+                      (playerDetections[1].frozenRemainingSec > 0 && playerDetections[1].lastWrongOptionIdx === index));
 
                   let btnClasses = `flex-1 min-w-0 bg-white/95 border-3 sm:border-4 border-teal-100 text-slate-800 font-bold p-3 sm:p-4 rounded-3xl transition-all duration-200 flex flex-col items-center justify-between text-center shadow-lg relative group outline-none overflow-hidden min-h-[92px] sm:min-h-[112px] `;
 
                   if (isAnswering) {
-                    if (index === selectedOption) {
-                      if (opt.isCorrect) {
-                        btnClasses += "bg-emerald-100 border-emerald-600 text-emerald-950 scale-[1.02] z-10 shadow-2xl";
-                      } else {
-                        btnClasses += "bg-rose-100 border-rose-600 text-rose-950";
-                      }
-                    } else if (opt.isCorrect) {
-                      btnClasses += "bg-emerald-100 border-emerald-600 text-emerald-950 scale-[1.02] z-10 shadow-2xl";
+                    if (opt.isCorrect) {
+                      btnClasses += "bg-gradient-to-b from-emerald-50 to-emerald-100 border-emerald-500 text-emerald-950 scale-[1.04] z-10 shadow-[0_0_35px_rgba(16,185,129,0.75)] ring-4 ring-emerald-400";
+                    } else if (index === selectedOption) {
+                      btnClasses += "bg-rose-100 border-rose-600 text-rose-950";
                     } else {
-                      btnClasses += "opacity-55 scale-95";
+                      btnClasses += "opacity-50 scale-95";
                     }
+                  } else if (isFrozenWrongCard) {
+                    btnClasses += "bg-cyan-50/95 border-cyan-400 text-cyan-950 ring-4 ring-cyan-300/70 shadow-[0_0_25px_rgba(34,211,238,0.6)]";
                   } else if (p1Locking || p2Locking) {
                     btnClasses += "border-teal-500 bg-teal-50/95 scale-[1.02] shadow-2xl ring-4 ring-teal-400/50 cursor-pointer";
                   } else {
@@ -3255,14 +4010,17 @@ function YogaGame({
                       onClick={() => handleAnswer(index, opt.isCorrect)}
                       className={btnClasses}
                     >
-                      {/* Correct / Incorrect Indicator */}
-                      {isAnswering && (index === selectedOption || opt.isCorrect) && (
-                        <div
-                          className={`absolute top-2 right-2 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white text-base sm:text-xl font-black shadow-md z-30 animate-bounce ${
-                            opt.isCorrect ? 'bg-emerald-500' : 'bg-rose-500'
-                          }`}
-                        >
-                          {opt.isCorrect ? '✓' : '✗'}
+                      {/* Correct / Incorrect / Frozen Wrong Indicator */}
+                      {isAnswering && opt.isCorrect && (
+                        <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-emerald-500 text-white text-xs sm:text-sm font-black shadow-md z-30 flex items-center gap-1 animate-bounce">
+                          <span>✓</span>
+                          <span>CORRECT!</span>
+                        </div>
+                      )}
+                      {isFrozenWrongCard && (
+                        <div className="absolute top-2 right-2 px-2.5 py-0.5 rounded-full bg-cyan-600 text-white text-[11px] sm:text-xs font-black shadow-md z-30 flex items-center gap-1 animate-pulse">
+                          <span>❄️</span>
+                          <span>WRONG</span>
                         </div>
                       )}
 
@@ -3298,17 +4056,17 @@ function YogaGame({
                       {(p1Locking || p2Locking) && (
                         <div className="w-full mt-2 space-y-1">
                           {p1Locking && (
-                            <div className="w-full bg-blue-100 h-2.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-rose-100 h-2.5 rounded-full overflow-hidden">
                               <div
-                                className="bg-blue-600 h-full transition-all duration-75"
+                                className="bg-rose-600 h-full transition-all duration-75"
                                 style={{ width: `${playerDetections[0].holdProgress}%` }}
                               />
                             </div>
                           )}
                           {p2Locking && (
-                            <div className="w-full bg-rose-100 h-2.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-amber-100 h-2.5 rounded-full overflow-hidden">
                               <div
-                                className="bg-rose-600 h-full transition-all duration-75"
+                                className="bg-amber-500 h-full transition-all duration-75"
                                 style={{ width: `${playerDetections[1].holdProgress}%` }}
                               />
                             </div>
@@ -3331,56 +4089,130 @@ function YogaGame({
           </div>
         )}
 
-        {/* END / RESULTS SCREEN */}
+        {/* END / GRAND CHAMPIONSHIP WINNER ANNOUNCEMENT SCREEN */}
         {gameState === 'end' && (
-          <div className="p-8 md:p-16 text-center flex flex-col items-center justify-center flex-grow animate-fade-in z-10">
-            <div className="text-[5rem] md:text-[8rem] mb-6 drop-shadow-xl animate-bounce">🏆</div>
+          <div className="p-6 md:p-12 text-center flex flex-col items-center justify-center flex-grow animate-fade-in z-10">
             {(() => {
               const sortedTeams = [...teams].sort((a, b) => b.score - a.score);
               const winner = sortedTeams[0];
+              const isTwoP = teams.length >= 2;
               const isTie = sortedTeams.length > 1 && sortedTeams[0].score === sortedTeams[1].score;
+              const winnerOriginalIdx = teams.findIndex(t => t.id === winner?.id);
+              const winnerHeroTitle = isTwoP
+                ? winnerOriginalIdx === 0
+                  ? 'Spider-Man'
+                  : 'Thanos Gauntlet'
+                : 'Grand Yoga Champion';
+              const winnerHeroIcon = isTwoP ? (winnerOriginalIdx === 0 ? '🕷️' : '🥊') : '⚡';
 
-              if (isTie) {
-                return <h1 className="text-4xl md:text-6xl font-black text-teal-900 mb-8">It's a Tie!</h1>;
-              } else {
-                return <h1 className="text-4xl md:text-6xl font-black text-teal-900 mb-8">{winner.name} Wins!</h1>;
-              }
-            })()}
+              return (
+                <>
+                  {/* Grand Champion Banner Card */}
+                  <div className="relative bg-gradient-to-b from-slate-900 via-teal-950 to-slate-950 text-white border-4 border-amber-400 rounded-[2.5rem] p-6 md:p-10 mb-8 w-full max-w-3xl shadow-[0_20px_60px_rgba(15,118,110,0.45)] mx-auto overflow-hidden">
+                    <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-48 bg-amber-400/20 blur-3xl pointer-events-none" />
 
-            <div className="bg-white/90 border-4 border-teal-200 rounded-[2.5rem] p-6 md:p-10 mb-8 w-full max-w-3xl shadow-xl mx-auto">
-              <p className="text-teal-600 font-black text-xl md:text-2xl uppercase tracking-widest mb-6">Final Scores</p>
-              <div className="flex flex-wrap justify-center gap-4 md:gap-6">
-                {[...teams].sort((a, b) => b.score - a.score).map((team, idx) => (
-                  <div
-                    key={team.id}
-                    className={`flex flex-col items-center bg-teal-50/70 p-4 md:p-6 rounded-2xl border-4 min-w-[130px] ${
-                      idx === 0 ? 'border-amber-400 scale-105 shadow-md bg-amber-50/60' : 'border-teal-100'
-                    }`}
-                  >
-                    {idx === 0 && <span className="text-3xl mb-1">👑</span>}
-                    <span className="font-bold text-base md:text-lg mb-1 text-slate-700">{team.name}</span>
-                    <span className={`text-3xl md:text-5xl font-black ${teamColors[team.colorIdx].text}`}>
-                      {team.score}
-                    </span>
+                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-400/20 border border-amber-300/60 text-amber-300 font-black text-xs sm:text-sm uppercase tracking-widest mb-4">
+                      <Trophy size={16} />
+                      <span>{isTie ? 'CHAMPIONSHIP DRAW' : 'GRAND CHAMPIONSHIP WINNER'}</span>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-4 mb-3">
+                      <div className="text-5xl md:text-7xl animate-bounce">🏆</div>
+                      {!isTie && (
+                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-4xl md:text-5xl shadow-xl border-3 border-white">
+                          {winnerHeroIcon}
+                        </div>
+                      )}
+                      <div className="text-5xl md:text-7xl animate-bounce">👑</div>
+                    </div>
+
+                    {isTie ? (
+                      <>
+                        <h1 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tight">
+                          It&apos;s an Epic Tie!
+                        </h1>
+                        <p className="text-teal-200 font-bold text-base md:text-xl mb-6">
+                          Both heroes matched pose for pose with {winner?.score || 0} points!
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 mb-2 tracking-tight">
+                          {winner?.name} Wins!
+                        </h1>
+                        <p className="text-teal-200 font-black text-lg md:text-2xl mb-6 flex items-center justify-center gap-2">
+                          <span>{winnerHeroIcon}</span>
+                          <span>{winnerHeroTitle} Champion</span>
+                          <span>•</span>
+                          <span className="text-amber-300">{winner?.score || 0} Points</span>
+                        </p>
+                      </>
+                    )}
+
+                    {/* Podium Cards */}
+                    <div className="flex flex-wrap justify-center items-end gap-4 md:gap-6 mt-2">
+                      {sortedTeams.map((team, idx) => {
+                        const origIdx = teams.findIndex(t => t.id === team.id);
+                        const heroIcon = isTwoP ? (origIdx === 0 ? '🕷️' : '🥊') : '⚡';
+                        const heroLabel = isTwoP ? (origIdx === 0 ? 'Spider-Man' : 'Thanos Gauntlet') : 'Yoga Hero';
+                        const isFirst = idx === 0;
+                        return (
+                          <div
+                            key={team.id}
+                            className={`flex flex-col items-center rounded-3xl border-3 p-5 md:p-6 min-w-[165px] transition-all ${
+                              isFirst
+                                ? 'bg-gradient-to-b from-amber-400/25 to-amber-500/10 border-amber-300 scale-105 shadow-[0_0_30px_rgba(251,191,36,0.35)]'
+                                : 'bg-white/10 border-teal-400/40'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-2xl">{isFirst ? '🥇' : '🥈'}</span>
+                              <span className="text-2xl">{heroIcon}</span>
+                            </div>
+                            <span className="font-black text-lg md:text-xl text-white">{team.name}</span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-teal-200 mb-2">
+                              {heroLabel}
+                            </span>
+                            <div className="px-4 py-1.5 rounded-2xl bg-black/40 border border-white/15">
+                              <span className="text-3xl md:text-5xl font-black text-amber-300 tabular-nums">
+                                {team.score}
+                              </span>
+                              <span className="text-xs font-black text-slate-300 ml-1 uppercase">pts</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Replay Voice Winner Announcement Button */}
+                    <div className="mt-6 flex justify-center">
+                      <button
+                        onClick={() => announceGrandWinner(true)}
+                        className="px-5 py-2 rounded-full bg-white/15 hover:bg-white/25 text-amber-200 border border-amber-300/50 font-black text-xs sm:text-sm flex items-center gap-2 cursor-pointer transition-all"
+                      >
+                        <Volume2 size={16} />
+                        <span>Announce Winner Aloud</span>
+                      </button>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            <div className="flex gap-4 w-full max-w-xl mx-auto">
-              <button
-                onClick={onBack}
-                className="bg-white hover:bg-teal-50 text-teal-800 border-3 border-teal-300 font-black py-4 px-8 rounded-full text-xl transition transform hover:scale-105 shadow-md cursor-pointer flex items-center gap-2"
-              >
-                <ArrowLeft size={24} /> Exit
-              </button>
-              <button
-                onClick={startGame}
-                className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-black py-4 px-10 rounded-full text-2xl md:text-3xl transition transform hover:scale-105 shadow-[0_8px_0_#0f766e] active:translate-y-1 active:shadow-none cursor-pointer"
-              >
-                PLAY AGAIN
-              </button>
-            </div>
+                  <div className="flex flex-wrap gap-4 w-full max-w-xl mx-auto">
+                    <button
+                      onClick={onBack}
+                      className="bg-white hover:bg-teal-50 text-teal-800 border-3 border-teal-300 font-black py-4 px-8 rounded-full text-xl transition transform hover:scale-105 shadow-md cursor-pointer flex items-center gap-2"
+                    >
+                      <ArrowLeft size={24} /> Exit
+                    </button>
+                    <button
+                      onClick={startGame}
+                      className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-black py-4 px-10 rounded-full text-2xl md:text-3xl transition transform hover:scale-105 shadow-[0_8px_0_#0f766e] active:translate-y-1 active:shadow-none cursor-pointer"
+                    >
+                      PLAY AGAIN
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
       </div>

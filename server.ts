@@ -1908,10 +1908,14 @@ async function startServer() {
     videoTitleRaw?: string,
     videoDescRaw?: string,
     chaptersRaw?: Array<{ title: string; sec: number }>,
-    subject: string = "He"
+    subject: string = "He",
+    videoTranscriptRaw?: string,
+    videoKeywordsRaw?: string[]
   ): ScannedVideoScene[] => {
     const combinedText = `${videoTitleRaw || ""} ${videoDescRaw || ""} ${
       Array.isArray(chaptersRaw) ? chaptersRaw.map((c) => c.title).join(" ") : ""
+    } ${Array.isArray(videoKeywordsRaw) ? videoKeywordsRaw.join(" ") : ""} ${
+      (videoTranscriptRaw || "").slice(0, 3500)
     }`.toLowerCase();
 
     const scenes: ScannedVideoScene[] = [];
@@ -2256,141 +2260,252 @@ async function startServer() {
 
     // 6. Add any explicit chapters from the scanned YouTube video
     if (Array.isArray(chaptersRaw) && chaptersRaw.length > 0) {
-      chaptersRaw.slice(0, 8).forEach((ch) => {
+      chaptersRaw.slice(0, 12).forEach((ch, cIdx) => {
         const cleanChap = ch.title.replace(/[^\w\s'-]/g, "").trim();
         if (cleanChap.length > 2) {
+          const verbPool = [
+            { b: "watch", p: "watched", v3: "watched", ing: "watching", s: "watches", pSubj: "The scene", pV3: "shown" },
+            { b: "check", p: "checked", v3: "checked", ing: "checking", s: "checks", pSubj: "The plan", pV3: "checked" },
+            { b: "Start".toLowerCase(), p: "started", v3: "started", ing: "starting", s: "starts", pSubj: "The action", pV3: "started" },
+            { b: "follow", p: "followed", v3: "followed", ing: "following", s: "follows", pSubj: "The rule", pV3: "followed" },
+          ];
+          const vp = verbPool[cIdx % verbPool.length];
           scenes.push({
             sceneLabel: `in "${cleanChap}"`,
-            location: `in this part`,
-            mustRule: `follow the rules`,
-            mustntRule: `cause trouble for others`,
-            shouldAction: `stay calm and be polite`,
-            shouldntAction: `make the problem worse`,
-            canAction: `see what happens next`,
-            cantAction: `break the rules`,
-            haveToAction: `be careful in this scene`,
-            dontHaveToAction: `make a big mess`,
-            verbBase: "watch",
-            verbPast: "watched",
-            verbV3: "watched",
-            verbIng: "watching",
-            verbS: "watches",
+            location: `in "${cleanChap}"`,
+            mustRule: `pay attention in "${cleanChap}"`,
+            mustntRule: `cause trouble in "${cleanChap}"`,
+            shouldAction: `be careful during "${cleanChap}"`,
+            shouldntAction: `make a mistake in "${cleanChap}"`,
+            canAction: `see what happens in "${cleanChap}"`,
+            cantAction: `break the rules in "${cleanChap}"`,
+            haveToAction: `stay focused in "${cleanChap}"`,
+            dontHaveToAction: `make a mess in "${cleanChap}"`,
+            verbBase: vp.b,
+            verbPast: vp.p,
+            verbV3: vp.v3,
+            verbIng: vp.ing,
+            verbS: vp.s,
             obj: `what happens in "${cleanChap}"`,
-            passiveSubject: `The scene`,
-            passiveVerbV3: "shown",
+            passiveSubject: vp.pSubj,
+            passiveVerbV3: vp.pV3,
             passiveWasOrIs: "is",
-            adjBase: "funny",
-            adjComp: "funnier",
-            adjSuper: "funniest",
+            adjBase: "careful",
+            adjComp: "more careful",
+            adjSuper: "most careful",
           });
         }
       });
     }
 
-    // 7. Universal easy video-title-specific scenes if no specialized category matched
-    const cleanTitle = (videoTitleRaw || "").replace(/\s*\|.*$/, "").trim() || "the video";
-    if (scenes.length < 6) {
-      const genericAdditions: ScannedVideoScene[] = [
-        {
-          sceneLabel: "at the start of the video",
-          location: "at the start",
-          mustRule: "follow the rules",
-          mustntRule: "break the rules",
-          shouldAction: "look carefully before acting",
-          shouldntAction: "make a silly mistake",
-          canAction: "see what the problem is",
-          cantAction: "ignore the rules",
-          haveToAction: "solve the problem",
-          dontHaveToAction: "make a big mess",
-          verbBase: "arrive",
-          verbPast: "arrived",
-          verbV3: "arrived",
-          verbIng: "arriving",
-          verbS: "arrives",
-          obj: `at the place in "${cleanTitle}"`,
-          passiveSubject: "The problem",
-          passiveVerbV3: "started",
-          passiveWasOrIs: "was",
-          adjBase: "careful",
-          adjComp: "more careful",
-          adjSuper: "most careful",
-        },
-        {
-          sceneLabel: "when the problem starts",
-          location: "in this scene",
-          mustRule: "be polite to other people",
-          mustntRule: "push or bother other people",
-          shouldAction: "ask for help politely",
-          shouldntAction: "blame someone else",
-          canAction: "ask another person for help",
-          cantAction: "fix it by making more trouble",
-          haveToAction: "wait his turn",
-          dontHaveToAction: "push ahead of others",
-          verbBase: "try",
-          verbPast: "tried",
-          verbV3: "tried",
-          verbIng: "trying",
-          verbS: "tries",
-          obj: "to fix the problem",
-          passiveSubject: "A plan",
-          passiveVerbV3: "tried",
-          passiveWasOrIs: "was",
-          adjBase: "patient",
-          adjComp: "more patient",
-          adjSuper: "most patient",
-        },
-        {
-          sceneLabel: "in the middle of the video",
-          location: "in the room",
-          mustRule: "keep everyone safe",
-          mustntRule: "touch other people's things",
-          shouldAction: "use things safely",
-          shouldntAction: "do something dangerous",
-          canAction: "see how people react",
-          cantAction: "hide what happened",
-          haveToAction: "follow the instructions",
-          dontHaveToAction: "cause trouble for others",
-          verbBase: "look",
-          verbPast: "looked",
-          verbV3: "looked",
-          verbIng: "looking",
-          verbS: "looks",
-          obj: "around the room",
-          passiveSubject: "The rules",
-          passiveVerbV3: "followed",
-          passiveWasOrIs: "were" as any,
-          adjBase: "safe",
-          adjComp: "safer",
-          adjSuper: "safest",
-        },
-        {
-          sceneLabel: "near the end of the video",
-          location: "at the end",
-          mustRule: "follow the right rules",
-          mustntRule: "make the same mistake again",
-          shouldAction: "say sorry and clean up",
-          shouldntAction: "leave a mess behind",
-          canAction: "see the funny ending",
-          cantAction: "break the rules without trouble",
-          haveToAction: "learn from the mistake",
-          dontHaveToAction: "do it the wrong way again",
-          verbBase: "finish",
-          verbPast: "finished",
-          verbV3: "finished",
-          verbIng: "finishing",
-          verbS: "finishes",
-          obj: "what he was doing",
-          passiveSubject: "The lesson",
-          passiveVerbV3: "learned",
-          passiveWasOrIs: "was",
-          adjBase: "good",
-          adjComp: "better",
-          adjSuper: "best",
-        },
+    // 6b. Extract timestamped transcript moments so questions directly match real spoken lines
+    if (typeof videoTranscriptRaw === "string" && videoTranscriptRaw.trim()) {
+      const lines = videoTranscriptRaw
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const actionCycles = [
+        { b: "listen", p: "listened", v3: "listened", ing: "listening", s: "listens", adjB: "careful", adjC: "more careful", adjS: "most careful" },
+        { b: "explain", p: "explained", v3: "explained", ing: "explaining", s: "explains", adjB: "clear", adjC: "clearer", adjS: "clearest" },
+        { b: "learn", p: "learned", v3: "learned", ing: "learning", s: "learns", adjB: "good", adjC: "better", adjS: "best" },
+        { b: "answer", p: "answered", v3: "answered", ing: "answering", s: "answers", adjB: "quick", adjC: "quicker", adjS: "quickest" },
+        { b: "help", p: "helped", v3: "helped", ing: "helping", s: "helps", adjB: "kind", adjC: "kinder", adjS: "kindest" },
+        { b: "walk", p: "walked", v3: "walked", ing: "walking", s: "walks", adjB: "fast", adjC: "faster", adjS: "fastest" },
+        { b: "look", p: "looked", v3: "looked", ing: "looking", s: "looks", adjB: "quiet", adjC: "quieter", adjS: "quietest" },
+        { b: "share", p: "shared", v3: "shared", ing: "sharing", s: "shares", adjB: "polite", adjC: "more polite", adjS: "most polite" },
       ];
-      for (const add of genericAdditions) {
-        if (scenes.length < 6) scenes.push(add);
+      const maxTranscriptScenes = 16;
+      const step = Math.max(1, Math.floor(lines.length / maxTranscriptScenes));
+      for (let i = 0; i < lines.length && scenes.length < 24; i += step) {
+        const line = lines[i];
+        const m = line.match(/^\[([0-9:]+)\s*\/\s*(\d+)s\]\s*(.+)$/);
+        const timeTag = m?.[1] || "";
+        const rawPhrase = (m?.[3] || line)
+          .replace(/[^\w\s'-]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        const words = rawPhrase.split(" ").filter((w) => w.length > 2);
+        if (words.length < 2) continue;
+        const snippetWords = words.slice(0, 5).join(" ");
+        const ac = actionCycles[scenes.length % actionCycles.length];
+        const tagLabel = timeTag ? `at ${timeTag}` : `in part ${scenes.length + 1}`;
+        scenes.push({
+          sceneLabel: `${tagLabel} ("${snippetWords}")`,
+          location: tagLabel,
+          mustRule: `listen carefully ${tagLabel}`,
+          mustntRule: `forget the lesson about "${snippetWords}"`,
+          shouldAction: `pay attention to "${snippetWords}"`,
+          shouldntAction: `ignore what happens ${tagLabel}`,
+          canAction: `understand "${snippetWords}" ${tagLabel}`,
+          cantAction: `skip the rule ${tagLabel}`,
+          haveToAction: `remember what is shown ${tagLabel}`,
+          dontHaveToAction: `make a mistake ${tagLabel}`,
+          verbBase: ac.b,
+          verbPast: ac.p,
+          verbV3: ac.v3,
+          verbIng: ac.ing,
+          verbS: ac.s,
+          obj: `about "${snippetWords}" ${tagLabel}`,
+          passiveSubject: `The idea "${snippetWords}"`,
+          passiveVerbV3: "shown",
+          passiveWasOrIs: "is",
+          adjBase: ac.adjB,
+          adjComp: ac.adjC,
+          adjSuper: ac.adjS,
+        });
       }
+    }
+
+    // 7. Universal easy video-title-specific scenes so up to 30+ questions are always distinct
+    const cleanTitle = (videoTitleRaw || "").replace(/\s*\|.*$/, "").trim() || "the video";
+    const genericAdditions: ScannedVideoScene[] = [
+      {
+        sceneLabel: "at the start of the video",
+        location: "at the start",
+        mustRule: "follow the rules",
+        mustntRule: "break the rules",
+        shouldAction: "look carefully before acting",
+        shouldntAction: "make a silly mistake",
+        canAction: "see what the problem is",
+        cantAction: "ignore the rules",
+        haveToAction: "solve the problem",
+        dontHaveToAction: "make a big mess",
+        verbBase: "arrive",
+        verbPast: "arrived",
+        verbV3: "arrived",
+        verbIng: "arriving",
+        verbS: "arrives",
+        obj: `at the place in "${cleanTitle}"`,
+        passiveSubject: "The problem",
+        passiveVerbV3: "started",
+        passiveWasOrIs: "was",
+        adjBase: "careful",
+        adjComp: "more careful",
+        adjSuper: "most careful",
+      },
+      {
+        sceneLabel: "when the problem starts",
+        location: "in this scene",
+        mustRule: "be polite to other people",
+        mustntRule: "push or bother other people",
+        shouldAction: "ask for help politely",
+        shouldntAction: "blame someone else",
+        canAction: "ask another person for help",
+        cantAction: "fix it by making more trouble",
+        haveToAction: "wait his turn",
+        dontHaveToAction: "push ahead of others",
+        verbBase: "try",
+        verbPast: "tried",
+        verbV3: "tried",
+        verbIng: "trying",
+        verbS: "tries",
+        obj: "to fix the problem",
+        passiveSubject: "A plan",
+        passiveVerbV3: "tried",
+        passiveWasOrIs: "was",
+        adjBase: "patient",
+        adjComp: "more patient",
+        adjSuper: "most patient",
+      },
+      {
+        sceneLabel: "in the middle of the video",
+        location: "in the room",
+        mustRule: "keep everyone safe",
+        mustntRule: "touch other people's things",
+        shouldAction: "use things safely",
+        shouldntAction: "do something dangerous",
+        canAction: "see how people react",
+        cantAction: "hide what happened",
+        haveToAction: "follow the instructions",
+        dontHaveToAction: "cause trouble for others",
+        verbBase: "look",
+        verbPast: "looked",
+        verbV3: "looked",
+        verbIng: "looking",
+        verbS: "looks",
+        obj: "around the room",
+        passiveSubject: "The rules",
+        passiveVerbV3: "followed",
+        passiveWasOrIs: "were" as any,
+        adjBase: "safe",
+        adjComp: "safer",
+        adjSuper: "safest",
+      },
+      {
+        sceneLabel: "when someone comes to help",
+        location: "nearby",
+        mustRule: "listen to good advice",
+        mustntRule: "shout at people nearby",
+        shouldAction: "work together calmly",
+        shouldntAction: "run away with someone's things",
+        canAction: "find a smart way to help",
+        cantAction: "be rude to other people",
+        haveToAction: "check what happens next",
+        dontHaveToAction: "panic in this moment",
+        verbBase: "help",
+        verbPast: "helped",
+        verbV3: "helped",
+        verbIng: "helping",
+        verbS: "helps",
+        obj: "with the situation",
+        passiveSubject: "The problem",
+        passiveVerbV3: "solved",
+        passiveWasOrIs: "was",
+        adjBase: "helpful",
+        adjComp: "more helpful",
+        adjSuper: "most helpful",
+      },
+      {
+        sceneLabel: "during the next part",
+        location: "in the next scene",
+        mustRule: "wait patiently for his turn",
+        mustntRule: "interrupt other people",
+        shouldAction: "check the signs around the room",
+        shouldntAction: "drop things on the floor",
+        canAction: "notice what is on the wall",
+        cantAction: "make loud noise here",
+        haveToAction: "stay in the right place",
+        dontHaveToAction: "hurry without looking",
+        verbBase: "walk",
+        verbPast: "walked",
+        verbV3: "walked",
+        verbIng: "walking",
+        verbS: "walks",
+        obj: "across the room carefully",
+        passiveSubject: "The door",
+        passiveVerbV3: "opened",
+        passiveWasOrIs: "was",
+        adjBase: "calm",
+        adjComp: "calmer",
+        adjSuper: "calmest",
+      },
+      {
+        sceneLabel: "near the end of the video",
+        location: "at the end",
+        mustRule: "follow the right rules",
+        mustntRule: "make the same mistake again",
+        shouldAction: "say sorry and clean up",
+        shouldntAction: "leave a mess behind",
+        canAction: "see the funny ending",
+        cantAction: "break the rules without trouble",
+        haveToAction: "learn from the mistake",
+        dontHaveToAction: "do it the wrong way again",
+        verbBase: "finish",
+        verbPast: "finished",
+        verbV3: "finished",
+        verbIng: "finishing",
+        verbS: "finishes",
+        obj: "what he was doing",
+        passiveSubject: "The lesson",
+        passiveVerbV3: "learned",
+        passiveWasOrIs: "was",
+        adjBase: "good",
+        adjComp: "better",
+        adjSuper: "best",
+      },
+    ];
+    for (const add of genericAdditions) {
+      if (scenes.length < 10) scenes.push(add);
     }
 
     return scenes;
@@ -2404,7 +2519,9 @@ async function startServer() {
     videoTitleRaw?: string,
     videoDurationRaw?: number,
     videoDescriptionRaw?: string,
-    chaptersRaw?: Array<{ title: string; sec: number }>
+    chaptersRaw?: Array<{ title: string; sec: number }>,
+    videoTranscriptRaw?: string,
+    videoKeywordsRaw?: string[]
   ) => {
     const rawTopicClean = (topicRaw || "").trim();
     const topicLower = rawTopicClean.toLowerCase();
@@ -2454,7 +2571,9 @@ async function startServer() {
       videoTitleRaw,
       videoDescriptionRaw,
       chaptersRaw,
-      subject
+      subject,
+      videoTranscriptRaw,
+      videoKeywordsRaw
     );
 
     type QuizTemplate = {
@@ -3964,13 +4083,6 @@ async function startServer() {
 
     const targetCount = Math.max(1, Math.min(100, Number(count) || 5));
 
-    if (!hasValidGeminiKey()) {
-      return res.status(503).json({
-        error:
-          "Gemini API key is not configured in Settings > Secrets. Please configure GEMINI_API_KEY so the video scenes can be analyzed accurately.",
-      });
-    }
-
     const scanned = await scanYouTubeVideoDeepContext(
       typeof videoUrl === "string" ? videoUrl : ""
     );
@@ -3986,6 +4098,64 @@ async function startServer() {
       10,
       Number(scanned.durationSec) || Number(videoDuration) || 240
     );
+
+    const normalizeAscendingTimestamps = (rawQuestions: any[]) => {
+      const minAllowedSec = Math.min(4, Math.max(2, Math.floor(resolvedDuration * 0.04)));
+      const maxAllowedSec = Math.max(minAllowedSec + 4, resolvedDuration - 2);
+      let prevTrigger = 0;
+      return [...rawQuestions]
+        .slice(0, targetCount)
+        .sort((a: any, b: any) => (Number(a.timeTrigger) || 0) - (Number(b.timeTrigger) || 0))
+        .map((item: any, idx: number, arr: any[]) => {
+          const rawTrig = Number(item.timeTrigger) || 0;
+          const spreadTrig = Math.max(
+            minAllowedSec,
+            Math.round(((idx + 1) / (arr.length + 1)) * maxAllowedSec)
+          );
+          let trig = rawTrig >= minAllowedSec && rawTrig <= maxAllowedSec ? rawTrig : spreadTrig;
+          if (trig <= prevTrigger) {
+            const stepRoom = Math.max(
+              1,
+              Math.floor((maxAllowedSec - prevTrigger) / Math.max(1, arr.length - idx))
+            );
+            trig = Math.min(maxAllowedSec, prevTrigger + Math.min(3, stepRoom));
+          }
+          prevTrigger = trig;
+          return {
+            ...item,
+            id: idx + 1,
+            timeTrigger: trig,
+          };
+        });
+    };
+
+    const generateBuiltInVideoQuestions = () =>
+      normalizeAscendingTimestamps(
+        buildFallbackVideoQuizQuestions(
+          cleanTopic,
+          cleanLevel,
+          requestedTypes,
+          targetCount,
+          resolvedVideoTitle,
+          resolvedDuration,
+          scanned.description,
+          scanned.chapters,
+          scanned.transcript,
+          scanned.keywords
+        )
+      );
+
+    if (!hasValidGeminiKey()) {
+      return res.json({
+        questions: generateBuiltInVideoQuestions(),
+        videoTitle: resolvedVideoTitle,
+        videoDuration: resolvedDuration,
+        hasTranscript: Boolean(scanned.transcript),
+        usedStoryboard: false,
+        usedVisualFramesCount: 0,
+        usedBuiltInGenerator: true,
+      });
+    }
 
     // Collect timestamped visual frames from uploaded/direct video OR YouTube storyboard sheets
     const parsedClientFrames: Array<{
@@ -4459,24 +4629,26 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         let lastErr: any = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            return await runModel("gemini-4-hydrogen", primaryParts, true);
+            // Try free-tier lightweight model first
+            return await runModel("gemini-3.1-flash-lite", primaryParts, false);
           } catch (err: any) {
             lastErr = err;
             const info = extractCleanGeminiError(err);
-            if (info.status === 402 || info.status === 429 || info.status === 404) {
-              // Automatically try lighter flash-lite model in case only the primary tier/quota is exhausted
-              try {
-                return await runModel("gemini-3.1-flash-lite", primaryParts, false);
-              } catch (liteErr: any) {
-                lastErr = liteErr;
-                break;
+            if (info.status === 402 || info.status === 401 || info.status === 403) {
+              // Project prepayment credits or auth unavailable — fall back immediately to built-in video generator
+              break;
+            }
+            try {
+              return await runModel("gemini-4-hydrogen", primaryParts, false);
+            } catch (hydErr: any) {
+              lastErr = hydErr;
+              const hydInfo = extractCleanGeminiError(hydErr);
+              if (attempt === 0 && hydInfo.status >= 500) {
+                await new Promise((r) => setTimeout(r, 800));
+                continue;
               }
+              break;
             }
-            if (attempt === 0 && info.status >= 500) {
-              await new Promise((r) => setTimeout(r, 1200));
-              continue;
-            }
-            throw err;
           }
         }
         throw lastErr;
@@ -4520,7 +4692,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         });
       }
 
-      // Top up any shortfall with another scene-grounded Gemini pass (never unrelated hardcoded fallback templates)
+      // Top up any shortfall with another Gemini pass, then built-in video generator if still short
       if (sanitized.length > 0 && sanitized.length < targetCount) {
         try {
           const remainingNeeded = Math.min(20, targetCount - sanitized.length);
@@ -4533,45 +4705,19 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         } catch {}
       }
 
-      if (sanitized.length === 0) {
-        return res.status(502).json({
-          error:
-            "Gemini could not generate scene-matched questions from this video. Please verify the video has clear frames or captions and try again.",
-        });
+      if (sanitized.length < targetCount) {
+        const builtInList = generateBuiltInVideoQuestions();
+        for (const bItem of builtInList) {
+          if (sanitized.length >= targetCount) break;
+          if (!isNearDuplicateQuestion(bItem.question, sanitized)) {
+            sanitized.push(bItem);
+          }
+        }
       }
 
-      const rawFinal = sanitized.slice(0, targetCount).map((item: any, idx: number) => ({
-        ...item,
-        id: idx + 1,
-      }));
-
-      // Ensure timestamps are strictly within bounds, ascending, and never colliding on the exact same second
-      const minAllowedSec = Math.min(4, Math.max(2, Math.floor(durationSec * 0.04)));
-      const maxAllowedSec = Math.max(minAllowedSec + 4, durationSec - 2);
-      let prevTrigger = 0;
-      const finalQuestions = [...rawFinal]
-        .sort((a: any, b: any) => (Number(a.timeTrigger) || 0) - (Number(b.timeTrigger) || 0))
-        .map((item: any, idx: number, arr: any[]) => {
-          const rawTrig = Number(item.timeTrigger) || 0;
-          const spreadTrig = Math.max(
-            minAllowedSec,
-            Math.round(((idx + 1) / (arr.length + 1)) * maxAllowedSec)
-          );
-          let trig = rawTrig >= minAllowedSec && rawTrig <= maxAllowedSec ? rawTrig : spreadTrig;
-          if (trig <= prevTrigger) {
-            const stepRoom = Math.max(
-              1,
-              Math.floor((maxAllowedSec - prevTrigger) / Math.max(1, arr.length - idx))
-            );
-            trig = Math.min(maxAllowedSec, prevTrigger + Math.min(3, stepRoom));
-          }
-          prevTrigger = trig;
-          return {
-            ...item,
-            id: idx + 1,
-            timeTrigger: trig,
-          };
-        });
+      const finalQuestions = normalizeAscendingTimestamps(
+        sanitized.length > 0 ? sanitized : generateBuiltInVideoQuestions()
+      );
 
       return res.json({
         questions: finalQuestions,
@@ -4585,31 +4731,23 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
             : parsedClientFrames.length || scanned.frameParts.length,
       });
     } catch (err: any) {
-      console.error("Video quiz generation error:", err);
-      const rawMsg = String(err?.message || err || "");
-      let status = Number(err?.status || err?.code || 500);
-      let cleanMsg = rawMsg;
-      const jsonStart = rawMsg.indexOf("{");
-      if (jsonStart >= 0) {
-        try {
-          const parsed = JSON.parse(rawMsg.slice(jsonStart));
-          const eObj = parsed?.error || parsed;
-          if (typeof eObj?.code === "number") status = eObj.code;
-          if (typeof eObj?.message === "string" && eObj.message.trim()) {
-            cleanMsg = eObj.message.trim();
-          }
-        } catch {}
-      }
-      const safeStatus = status >= 400 && status < 600 ? status : 500;
-      const msg =
-        safeStatus === 402 || /prepayment credits|billing#prepay/i.test(cleanMsg)
-          ? "Gemini API prepayment credits are depleted on this project. Top up billing at ai.studio/projects or select an active GEMINI_API_KEY in Settings > Secrets."
-          : safeStatus === 403 || safeStatus === 401
-          ? "Gemini API authentication failed. Please check your GEMINI_API_KEY in Settings > Secrets."
-          : safeStatus === 429
-          ? "Gemini API rate limit reached. Please wait a moment and try again, or switch keys in Settings > Secrets."
-          : cleanMsg || "Failed to analyze the video and generate scene-matched questions.";
-      return res.status(safeStatus).json({ error: msg });
+      console.warn(
+        "Gemini API unavailable for Video Quiz (falling back to built-in video generator):",
+        err?.message || err
+      );
+      const builtInQuestions = generateBuiltInVideoQuestions();
+      return res.json({
+        questions: builtInQuestions,
+        videoTitle: resolvedVideoTitle,
+        videoDuration: resolvedDuration,
+        hasTranscript: Boolean(scanned.transcript),
+        usedStoryboard: scanned.storyboardSheets.length > 0,
+        usedVisualFramesCount:
+          scanned.storyboardSheets.length > 0
+            ? scanned.storyboardSheets.length
+            : parsedClientFrames.length || scanned.frameParts.length,
+        usedBuiltInGenerator: true,
+      });
     }
   });
 
