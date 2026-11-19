@@ -50,6 +50,13 @@ import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay, normalizeChaseQues
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import { FullscreenButton } from "../components/FullscreenButton";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
+import {
+  acquireSharedHands,
+  releaseSharedHands,
+  sendHandsFrameSafe,
+  waitForVideoReady,
+  prewarmSharedHands,
+} from "../utils/mediapipeHandsManager";
 
 export interface Question {
   id: number | string;
@@ -260,69 +267,12 @@ function StandingPoseFigure({
   );
 }
 
-// Shared pre-warmed MediaPipe Hands singleton for zero-wait camera startup
-let sharedYogaHandsInstance: any = null;
-let sharedYogaHandsInitPromise: Promise<any> | null = null;
-let sharedYogaHandsResultsListener: ((results: any) => void) | null = null;
-
-function getOrPrewarmYogaHands(): Promise<any> {
-  if (sharedYogaHandsInstance) {
-    return Promise.resolve(sharedYogaHandsInstance);
-  }
-  if (sharedYogaHandsInitPromise) {
-    return sharedYogaHandsInitPromise;
-  }
-
-  sharedYogaHandsInitPromise = new Promise((resolve, reject) => {
-    const tryInit = (attempt = 0) => {
-      const win = typeof window !== 'undefined' ? (window as any) : null;
-      if (!win || !win.Hands) {
-        if (attempt < 25) {
-          setTimeout(() => tryInit(attempt + 1), 120);
-          return;
-        }
-        sharedYogaHandsInitPromise = null;
-        reject(new Error('Camera AI module is still loading. Please try again in a moment.'));
-        return;
-      }
-
-      try {
-        const hands = new win.Hands({
-          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-        });
-
-        hands.setOptions({
-          maxNumHands: 4,
-          modelComplexity: 1,
-          minDetectionConfidence: 0.50,
-          minTrackingConfidence: 0.45,
-        });
-
-        hands.onResults((results: any) => {
-          if (sharedYogaHandsResultsListener) {
-            sharedYogaHandsResultsListener(results);
-          }
-        });
-
-        sharedYogaHandsInstance = hands;
-        if (typeof hands.initialize === 'function') {
-          Promise.resolve(hands.initialize())
-            .then(() => resolve(hands))
-            .catch(() => resolve(hands));
-        } else {
-          resolve(hands);
-        }
-      } catch (err) {
-        sharedYogaHandsInitPromise = null;
-        reject(err);
-      }
-    };
-
-    tryInit();
-  });
-
-  return sharedYogaHandsInitPromise;
-}
+const YOGA_HANDS_OPTIONS = {
+  maxNumHands: 4,
+  modelComplexity: 1 as const,
+  minDetectionConfidence: 0.45,
+  minTrackingConfidence: 0.45,
+};
 
 /**
  * Scale-invariant & aspect-corrected biomechanical hand gesture detector.
@@ -2516,6 +2466,8 @@ function YogaGame({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRunnerRef = useRef<{ stop: () => void } | null>(null);
   const handsInstanceRef = useRef<any>(null);
+  const handsSessionTokenRef = useRef<number>(0);
+  const cameraStartSeqRef = useRef<number>(0);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -3206,11 +3158,15 @@ function YogaGame({
 
   // Pre-warm MediaPipe Hands in the background as soon as YogaGame mounts for instant camera startup
   useEffect(() => {
-    getOrPrewarmYogaHands().catch(() => {});
+    prewarmSharedHands(YOGA_HANDS_OPTIONS);
   }, []);
 
   const stopCamera = useCallback(() => {
-    sharedYogaHandsResultsListener = null;
+    cameraStartSeqRef.current++;
+    if (handsSessionTokenRef.current) {
+      releaseSharedHands(handsSessionTokenRef.current);
+      handsSessionTokenRef.current = 0;
+    }
     if (cameraRunnerRef.current) {
       cameraRunnerRef.current.stop();
       cameraRunnerRef.current = null;
@@ -3219,9 +3175,17 @@ function YogaGame({
   }, []);
 
   const startCamera = useCallback(async () => {
+    const startSeq = ++cameraStartSeqRef.current;
     try {
       setCameraError(null);
-      stopCamera();
+      if (handsSessionTokenRef.current) {
+        releaseSharedHands(handsSessionTokenRef.current);
+        handsSessionTokenRef.current = 0;
+      }
+      if (cameraRunnerRef.current) {
+        cameraRunnerRef.current.stop();
+        cameraRunnerRef.current = null;
+      }
 
       if (!navigator?.mediaDevices?.getUserMedia) {
         setCameraError("Camera is not supported on this browser. You can play using click-based choices!");
@@ -3229,25 +3193,21 @@ function YogaGame({
         return;
       }
 
-      // Start camera stream and pre-warmed MediaPipe Hands in parallel for ultra-low loading time
+      // Start camera stream using reliable 640x480 webcam profile for maximum compatibility & speed
       const streamPromise = (async (): Promise<MediaStream | null> => {
         try {
           return await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: 'user',
-              width: { ideal: 960 },
-              height: { ideal: 540 },
+              width: { ideal: 640 },
+              height: { ideal: 480 },
               frameRate: { ideal: 30 },
             },
           });
         } catch (e1) {
           try {
             return await navigator.mediaDevices.getUserMedia({
-              video: {
-                facingMode: 'user',
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-              },
+              video: { facingMode: 'user' },
             });
           } catch (e2) {
             return await navigator.mediaDevices.getUserMedia({
@@ -3261,28 +3221,32 @@ function YogaGame({
       try {
         stream = await streamPromise;
       } catch (camErr: any) {
+        if (startSeq !== cameraStartSeqRef.current) return;
         console.warn("Yoga camera unavailable:", camErr?.name || camErr?.message);
         setCameraError("Camera not found or permission denied. You can play directly using click/tap mode!");
         setIsCameraReady(false);
         return;
       }
 
-      if (!stream) {
-        setIsCameraReady(false);
+      if (startSeq !== cameraStartSeqRef.current || !stream) {
+        stream?.getTracks().forEach(t => t.stop());
+        if (startSeq === cameraStartSeqRef.current) setIsCameraReady(false);
         return;
       }
 
-      // Attach video stream immediately so player sees live camera right away without waiting for AI init
+      // Attach video stream immediately and wait for non-zero video frame dimensions
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
+        await videoRef.current.play().catch(() => {});
+        await waitForVideoReady(videoRef.current, 2500);
+        if (startSeq !== cameraStartSeqRef.current) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
         setIsCameraReady(true);
       }
 
-      const hands = await getOrPrewarmYogaHands();
-      handsInstanceRef.current = hands;
-
-      sharedYogaHandsResultsListener = (results: any) => {
+      const handleYogaHandsResults = (results: any) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -3650,31 +3614,49 @@ function YogaGame({
         setPlayerDetections(nextUiStates);
       };
 
+      const { sessionToken, hands } = await acquireSharedHands(
+        YOGA_HANDS_OPTIONS,
+        handleYogaHandsResults
+      );
+
+      if (startSeq !== cameraStartSeqRef.current) {
+        releaseSharedHands(sessionToken);
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
+      handsSessionTokenRef.current = sessionToken;
+      handsInstanceRef.current = hands;
+
       if (videoRef.current) {
         let active = true;
         let isProcessing = false;
         let lastFrameTime = 0;
         let animId: number | null = null;
-        const TARGET_INTERVAL_MS = 16;
+        const TARGET_INTERVAL_MS = 20;
 
         const sendFrames = async (time: number) => {
-          if (!active || !videoRef.current) return;
+          if (!active || !videoRef.current || startSeq !== cameraStartSeqRef.current) return;
+          const vid = videoRef.current;
           if (
-            videoRef.current.readyState >= 2 &&
+            vid.readyState >= 2 &&
+            vid.videoWidth > 0 &&
+            vid.videoHeight > 0 &&
+            !vid.paused &&
             !isProcessing &&
             time - lastFrameTime >= TARGET_INTERVAL_MS
           ) {
             isProcessing = true;
             lastFrameTime = time;
             try {
-              await hands.send({ image: videoRef.current });
-            } catch (e) {
-              // ignore dropped frames
+              await sendHandsFrameSafe(vid, sessionToken, YOGA_HANDS_OPTIONS);
+            } catch {
+              // Recovery handled automatically by sendHandsFrameSafe
             } finally {
               isProcessing = false;
             }
           }
-          if (active) {
+          if (active && startSeq === cameraStartSeqRef.current) {
             animId = requestAnimationFrame(sendFrames);
           }
         };
@@ -3685,19 +3667,22 @@ function YogaGame({
           stop: () => {
             active = false;
             if (animId) cancelAnimationFrame(animId);
-            stream.getTracks().forEach(t => t.stop());
-            if (videoRef.current) videoRef.current.srcObject = null;
+            stream?.getTracks().forEach(t => t.stop());
+            if (videoRef.current && videoRef.current.srcObject === stream) {
+              videoRef.current.srcObject = null;
+            }
           }
         };
 
         setIsCameraReady(true);
       }
     } catch (err: any) {
+      if (startSeq !== cameraStartSeqRef.current) return;
       console.warn("Yoga camera setup notice:", err?.name || err?.message);
       setCameraError(err?.message || "Camera access unavailable. You can still click choices or retry camera.");
       setIsCameraReady(false);
     }
-  }, [stopCamera]);
+  }, []);
 
   useEffect(() => {
     if (gameState === 'playing' && playMode === 'camera') {

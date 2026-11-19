@@ -15,6 +15,13 @@ import { GameModeModal } from "../components/GameModeModal";
 import { drawCharacterHand, HandCharacterType, toPx, distPx } from "../utils/superheroHands";
 import { drawAnimatedNose, NoseStyle } from "../utils/animatedNose";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
+import {
+  acquireSharedHands,
+  releaseSharedHands,
+  sendHandsFrameSafe,
+  waitForVideoReady,
+  prewarmSharedHands,
+} from "../utils/mediapipeHandsManager";
 
 type GameScreen = 'intro' | 'lobby' | 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
 
@@ -228,6 +235,8 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const animationRef = useRef<number | null>(null);
   const cameraRef = useRef<any>(null);
   const handsRef = useRef<any>(null);
+  const handsSessionTokenRef = useRef<number>(0);
+  const cameraSetupSeqRef = useRef<number>(0);
   const faceMeshRef = useRef<any>(null);
   const detectedHandsRef = useRef<any[]>([]);
   const detectedFacesRef = useRef<any[]>([]);
@@ -546,7 +555,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     
     setScreen('loading');
     
-    if (!videoRef.current?.srcObject && !isCameraActive) {
+    if (
+      !videoRef.current?.srcObject ||
+      !isCameraActive ||
+      (trackerModeRef.current !== 'nose' && !handsSessionTokenRef.current)
+    ) {
        try {
            await setupCamera();
        } catch (err) {
@@ -1666,164 +1679,202 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     }
   };
 
+  const onHandsResultsRef = useRef(onHandsResults);
+  onHandsResultsRef.current = onHandsResults;
+  const onFaceResultsRef = useRef(onFaceResults);
+  onFaceResultsRef.current = onFaceResults;
+
+  const ensureFaceMeshInitialized = () => {
+    if (faceMeshRef.current) return faceMeshRef.current;
+    const win = window as any;
+    if (!win.FaceMesh) return null;
+    try {
+      const faceMesh = new win.FaceMesh({
+        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+      });
+      faceMesh.setOptions({
+        maxNumFaces: 2,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+      faceMesh.onResults((res: any) => onFaceResultsRef.current(res));
+      faceMeshRef.current = faceMesh;
+      return faceMesh;
+    } catch (err) {
+      console.warn("FaceMesh init notice:", err);
+      return null;
+    }
+  };
+
+  const BUBBLE_HANDS_OPTIONS = {
+    maxNumHands: 4,
+    modelComplexity: 1 as const,
+    minDetectionConfidence: 0.45,
+    minTrackingConfidence: 0.45,
+  };
+
   const setupCamera = async () => {
+    const setupSeq = ++cameraSetupSeqRef.current;
     try {
         setCameraError("");
-        const win = window as any;
 
-        // Safely stop any previous camera stream or MediaPipe instances
+        // Safely stop any previous camera stream and detach previous hands listener (do NOT close shared WASM)
         if (cameraRef.current && cameraRef.current.stop) {
             cameraRef.current.stop();
             cameraRef.current = null;
         }
-        if (handsRef.current && handsRef.current.close) {
-            try { handsRef.current.close(); } catch(e) {}
-            handsRef.current = null;
-        }
-        if (faceMeshRef.current && faceMeshRef.current.close) {
-            try { faceMeshRef.current.close(); } catch(e) {}
-            faceMeshRef.current = null;
+        if (handsSessionTokenRef.current) {
+            releaseSharedHands(handsSessionTokenRef.current);
+            handsSessionTokenRef.current = 0;
         }
 
-        // Initialize MediaPipe Hands
-        if (win.Hands) {
-            const hands = new win.Hands({
-                locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-            });
-            hands.setOptions({ 
-                maxNumHands: 2, 
-                modelComplexity: 1, 
-                minDetectionConfidence: 0.6, 
-                minTrackingConfidence: 0.6 
-            });
-            hands.onResults(onHandsResults);
-            handsRef.current = hands;
+        if (!videoRef.current) {
+            return;
         }
 
-        // Initialize MediaPipe FaceMesh
-        if (win.FaceMesh) {
-            const faceMesh = new win.FaceMesh({
-                locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-            });
-            faceMesh.setOptions({
-                maxNumFaces: 2,
-                refineLandmarks: true,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-            faceMesh.onResults(onFaceResults);
-            faceMeshRef.current = faceMesh;
+        if (!navigator?.mediaDevices?.getUserMedia) {
+            setCameraError("Camera API not supported in this browser. Mouse/touch pointer mode is active.");
+            setIsCameraActive(false);
+            return;
         }
-        
-        if (videoRef.current) {
-            let stream: MediaStream | null = null;
-            if (navigator?.mediaDevices?.getUserMedia) {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { 
-                            facingMode: 'user',
-                            width: { ideal: 640 },
-                            height: { ideal: 480 },
-                            frameRate: { ideal: 30 }
-                        } 
-                    });
-                } catch (prefErr: any) {
-                    try {
-                        stream = await navigator.mediaDevices.getUserMedia({
-                            video: { facingMode: 'user' }
-                        });
-                    } catch (fallback1Err: any) {
-                        try {
-                            stream = await navigator.mediaDevices.getUserMedia({
-                                video: true
-                            });
-                        } catch (finalErr: any) {
-                            console.warn("Webcam not detected or access denied:", finalErr?.name || finalErr?.message);
-                            setCameraError("Webcam not detected on this device. Mouse and touch pointer mode are enabled automatically!");
-                            setIsCameraActive(false);
-                            return;
-                        }
-                    }
-                }
-            } else {
-                setCameraError("Camera API not supported in this browser. Mouse/touch pointer mode is active.");
-                setIsCameraActive(false);
-                return;
-            }
 
-            if (!stream) {
-                setIsCameraActive(false);
-                return;
-            }
+        // Start webcam capture and shared MediaPipe Hands acquisition in parallel
+        const handsPromise = acquireSharedHands(
+            BUBBLE_HANDS_OPTIONS,
+            (results: any) => onHandsResultsRef.current(results)
+        ).catch((handsErr) => {
+            console.warn("BubblePop Hand AI init notice:", handsErr);
+            return null;
+        });
 
-            videoRef.current.srcObject = stream;
-            
-            await new Promise((resolve) => {
-                if (videoRef.current) {
-                    videoRef.current.onloadedmetadata = () => resolve(null);
-                } else {
-                    resolve(null);
-                }
+        let stream: MediaStream | null = null;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'user',
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 30 }
+                } 
             });
-            
+        } catch (prefErr: any) {
             try {
-                await videoRef.current.play();
-            } catch (playErr) {
-                // Autoplay will proceed on user gesture
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' }
+                });
+            } catch (fallback1Err: any) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: true
+                    });
+                } catch (finalErr: any) {
+                    console.warn("Webcam not detected or access denied:", finalErr?.name || finalErr?.message);
+                    setCameraError("Webcam not detected on this device. Mouse and touch pointer mode are enabled automatically!");
+                    setIsCameraActive(false);
+                    return;
+                }
             }
-            
-            let active = true;
-            let isProcessing = false;
-            let lastFrameTime = 0;
-            let animId: number | null = null;
-            const TARGET_INTERVAL_MS = 20; // ~50 FPS low-latency hand & face tracking
-
-            const sendFrames = async (time: number) => {
-                if (!active || !videoRef.current) return;
-                
-                if (
-                    videoRef.current.readyState >= 2 && 
-                    !isProcessing && 
-                    (time - lastFrameTime >= TARGET_INTERVAL_MS)
-                ) {
-                    isProcessing = true;
-                    lastFrameTime = time;
-                    try {
-                        const currentMode = trackerModeRef.current;
-                        if (currentMode === 'nose') {
-                            if (faceMeshRef.current) {
-                                await faceMeshRef.current.send({ image: videoRef.current });
-                            }
-                        } else {
-                            if (handsRef.current) {
-                                await handsRef.current.send({ image: videoRef.current });
-                            }
-                        }
-                    } catch (err) {
-                        // ignore dropped frames
-                    } finally {
-                        isProcessing = false;
-                    }
-                }
-                if (active) {
-                    animId = requestAnimationFrame(sendFrames);
-                }
-            };
-            animId = requestAnimationFrame(sendFrames);
-            
-            cameraRef.current = {
-                stop: () => {
-                    active = false;
-                    if (animId) cancelAnimationFrame(animId);
-                    stream.getTracks().forEach(t => t.stop());
-                    if (videoRef.current) videoRef.current.srcObject = null;
-                }
-            };
-            
-            setIsCameraActive(true);
-            setCameraError("");
         }
+
+        // If another setupCamera/stopCamera ran while awaiting permissions, release this stale stream immediately
+        if (setupSeq !== cameraSetupSeqRef.current || !videoRef.current) {
+            stream?.getTracks().forEach(t => t.stop());
+            return;
+        }
+
+        if (!stream) {
+            setIsCameraActive(false);
+            return;
+        }
+
+        const videoEl = videoRef.current;
+        videoEl.srcObject = stream;
+        try {
+            await videoEl.play();
+        } catch {
+            // Autoplay will proceed on user gesture
+        }
+        await waitForVideoReady(videoEl, 2500);
+
+        if (setupSeq !== cameraSetupSeqRef.current || !videoRef.current) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+        }
+
+        setIsCameraActive(true);
+        setCameraError("");
+
+        const acquired = await handsPromise;
+        if (setupSeq !== cameraSetupSeqRef.current || !videoRef.current) {
+            if (acquired?.sessionToken) releaseSharedHands(acquired.sessionToken);
+            stream.getTracks().forEach(t => t.stop());
+            return;
+        }
+
+        const sessionToken = acquired?.sessionToken || 0;
+        handsSessionTokenRef.current = sessionToken;
+        handsRef.current = acquired?.hands || null;
+
+        // Only initialize FaceMesh lazily if currently in nose mode (prevents simultaneous WASM heap collisions)
+        if (trackerModeRef.current === 'nose') {
+            ensureFaceMeshInitialized();
+        }
+
+        let active = true;
+        let isProcessing = false;
+        let lastFrameTime = 0;
+        let animId: number | null = null;
+        const TARGET_INTERVAL_MS = 20;
+
+        const sendFrames = async (time: number) => {
+            if (!active || !videoRef.current || setupSeq !== cameraSetupSeqRef.current) return;
+
+            const vid = videoRef.current;
+            if (
+                vid.readyState >= 2 &&
+                vid.videoWidth > 0 &&
+                vid.videoHeight > 0 &&
+                !vid.paused &&
+                !isProcessing &&
+                (time - lastFrameTime >= TARGET_INTERVAL_MS)
+            ) {
+                isProcessing = true;
+                lastFrameTime = time;
+                try {
+                    const currentMode = trackerModeRef.current;
+                    if (currentMode === 'nose') {
+                        const fm = ensureFaceMeshInitialized();
+                        if (fm) {
+                            await fm.send({ image: vid });
+                        }
+                    } else if (handsSessionTokenRef.current) {
+                        await sendHandsFrameSafe(vid, handsSessionTokenRef.current, BUBBLE_HANDS_OPTIONS);
+                    }
+                } catch {
+                    // Errors handled inside sendHandsFrameSafe with automatic canvas & lite-model recovery
+                } finally {
+                    isProcessing = false;
+                }
+            }
+            if (active && setupSeq === cameraSetupSeqRef.current) {
+                animId = requestAnimationFrame(sendFrames);
+            }
+        };
+        animId = requestAnimationFrame(sendFrames);
+
+        cameraRef.current = {
+            stop: () => {
+                active = false;
+                if (animId) cancelAnimationFrame(animId);
+                stream?.getTracks().forEach(t => t.stop());
+                if (videoRef.current && videoRef.current.srcObject === stream) {
+                    videoRef.current.srcObject = null;
+                }
+            }
+        };
     } catch (e: any) {
+        if (setupSeq !== cameraSetupSeqRef.current) return;
         console.warn("Camera setup notice:", e?.message || e);
         setCameraError("Camera unavailable. Mouse and touch controls are ready!");
         setIsCameraActive(false);
@@ -1832,15 +1883,17 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
   
   const stopCameraCleanly = () => {
+    cameraSetupSeqRef.current++;
     if (cameraRef.current && cameraRef.current.stop) {
       cameraRef.current.stop();
       cameraRef.current = null;
     }
     setIsCameraActive(false);
-    if (handsRef.current && handsRef.current.close) {
-      try { handsRef.current.close(); } catch (e) {}
-      handsRef.current = null;
+    if (handsSessionTokenRef.current) {
+      releaseSharedHands(handsSessionTokenRef.current);
+      handsSessionTokenRef.current = 0;
     }
+    handsRef.current = null;
     if (faceMeshRef.current && faceMeshRef.current.close) {
       try { faceMeshRef.current.close(); } catch (e) {}
       faceMeshRef.current = null;
@@ -1899,6 +1952,14 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     (window as any).__activeViewStepBack = () => handleStepBackRef.current();
     return () => {
       delete (window as any).__activeViewStepBack;
+    };
+  }, []);
+
+  // Pre-warm shared Hand AI on mount and clean up camera on unmount
+  useEffect(() => {
+    prewarmSharedHands(BUBBLE_HANDS_OPTIONS);
+    return () => {
+      stopCameraCleanly();
     };
   }, []);
 
