@@ -431,9 +431,24 @@ function detectStandingPoseFromHands(
 
     // Relative extension dominances using continuous scores
     const pointDominance = indexScore - Math.max(middleScore, ringScore, pinkyScore);
+    const middleDominance = middleScore - Math.max(indexScore, ringScore, pinkyScore);
     const peaceDominance = Math.min(indexScore, middleScore) - Math.max(ringScore, pinkyScore);
     const rockDominance = Math.min(indexScore, pinkyScore) - Math.max(middleScore, ringScore);
     const classic3Dominance = Math.min(indexScore, middleScore, ringScore) - pinkyScore;
+
+    // Middle finger ("dirty finger") check: middle finger distinctly extended while index, ring, and pinky are curled down
+    const dMidTip = dist(lm[12], wrist);
+    const dIdxTip = dist(lm[8], wrist);
+    const dRngTip = dist(lm[16], wrist);
+    const dPnkTip = dist(lm[20], wrist);
+    const isMiddleFingerOnly =
+      !isOkPinch &&
+      middleScore >= 0.58 &&
+      Math.max(indexScore, ringScore, pinkyScore) < 0.42 &&
+      middleDominance >= 0.24 &&
+      dMidTip > dIdxTip * 1.15 &&
+      dMidTip > dRngTip * 1.15 &&
+      dMidTip > dPnkTip * 1.18;
 
     return {
       indexScore,
@@ -453,6 +468,8 @@ function detectStandingPoseFromHands(
       fingersCurled,
       isOkPinch,
       pointDominance,
+      middleDominance,
+      isMiddleFingerOnly,
       peaceDominance,
       rockDominance,
       classic3Dominance,
@@ -460,6 +477,14 @@ function detectStandingPoseFromHands(
   };
 
   const analyzed = hands.map(analyzeSingleHand);
+
+  // Immediate priority check for bad action (middle finger gesture)
+  for (const h of analyzed) {
+    if (h.isMiddleFingerOnly) {
+      return { poseId: 'dirty-finger', confidence: 0.96 };
+    }
+  }
+
   const scores: Record<string, number> = {};
   const expectsThumbsUp = candidatePoseIds.includes('thumbs-up');
 
@@ -1635,6 +1660,7 @@ interface PlayerCameraDetectionState {
   frozenUntil: number;
   frozenRemainingSec: number;
   lastWrongOptionIdx: number | null;
+  penaltyType?: 'freeze' | 'bad-action' | null;
 }
 
 interface RoundWinnerInfo {
@@ -1649,8 +1675,9 @@ interface RoundWinnerInfo {
 }
 
 const YOGA_FREEZE_DURATION_MS = 3000;
+const YOGA_BAD_ACTION_PENALTY_MS = 3500;
 
-function playYogaArenaSfx(type: 'correct' | 'freeze' | 'win') {
+function playYogaArenaSfx(type: 'correct' | 'freeze' | 'win' | 'bad-penalty') {
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return;
@@ -1690,6 +1717,38 @@ function playYogaArenaSfx(type: 'correct' | 'freeze' | 'win') {
         gain.connect(ctx.destination);
         osc.start(start);
         osc.stop(start + 0.22);
+      });
+    } else if (type === 'bad-penalty') {
+      // Two-cycle penalty siren sweep + serene zen temple bell resonance
+      const sirenOsc = ctx.createOscillator();
+      const sirenGain = ctx.createGain();
+      sirenOsc.type = 'triangle';
+      sirenOsc.frequency.setValueAtTime(540, now);
+      sirenOsc.frequency.linearRampToValueAtTime(880, now + 0.24);
+      sirenOsc.frequency.linearRampToValueAtTime(520, now + 0.48);
+      sirenOsc.frequency.linearRampToValueAtTime(880, now + 0.72);
+      sirenOsc.frequency.linearRampToValueAtTime(480, now + 1.0);
+      sirenGain.gain.setValueAtTime(0.22, now);
+      sirenGain.gain.exponentialRampToValueAtTime(0.001, now + 1.05);
+      sirenOsc.connect(sirenGain);
+      sirenGain.connect(ctx.destination);
+      sirenOsc.start(now);
+      sirenOsc.stop(now + 1.08);
+
+      // Serene singing-bowl / zen chime harmonics
+      const sereneBowlFreqs = [432, 648, 864];
+      sereneBowlFreqs.forEach((freq, idx) => {
+        const bellOsc = ctx.createOscillator();
+        const bellGain = ctx.createGain();
+        bellOsc.type = 'sine';
+        bellOsc.frequency.setValueAtTime(freq, now + 0.08);
+        bellGain.gain.setValueAtTime(0.001, now + 0.08);
+        bellGain.gain.linearRampToValueAtTime(0.14 / (idx + 1), now + 0.14);
+        bellGain.gain.exponentialRampToValueAtTime(0.0008, now + 1.65);
+        bellOsc.connect(bellGain);
+        bellGain.connect(ctx.destination);
+        bellOsc.start(now + 0.08);
+        bellOsc.stop(now + 1.68);
       });
     } else if (type === 'win') {
       // Grand Championship Fanfare
@@ -2025,8 +2084,8 @@ function YogaGame({
 
   // Per-player live camera pose detection state (Index 0 = Player 1, Index 1 = Player 2)
   const [playerDetections, setPlayerDetections] = useState<[PlayerCameraDetectionState, PlayerCameraDetectionState]>([
-    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
-    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
+    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null },
+    { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null },
   ]);
 
   const holdStateRef = useRef<
@@ -2040,10 +2099,11 @@ function YogaGame({
       cooldownUntil: number;
       wrongBannerUntil: number;
       lastWrongOptionIdx: number | null;
+      penaltyType: 'freeze' | 'bad-action' | null;
     }>
   >([
-    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
-    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
+    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
+    { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: 0, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
   ]);
 
   // Keep latest state in refs for MediaPipe callback
@@ -2073,6 +2133,7 @@ function YogaGame({
       pHold.cooldownUntil = freezeUntil;
       pHold.wrongBannerUntil = freezeUntil;
       pHold.lastWrongOptionIdx = wrongOptionIdx;
+      pHold.penaltyType = 'freeze';
     }
 
     const team = teamsRef.current[pIdx];
@@ -2093,6 +2154,7 @@ function YogaGame({
         frozenUntil: freezeUntil,
         frozenRemainingSec: Number((YOGA_FREEZE_DURATION_MS / 1000).toFixed(1)),
         lastWrongOptionIdx: wrongOptionIdx,
+        penaltyType: 'freeze',
       };
       return next;
     });
@@ -2100,7 +2162,58 @@ function YogaGame({
   const triggerPlayerFreezeRef = useRef(triggerPlayerFreeze);
   triggerPlayerFreezeRef.current = triggerPlayerFreeze;
 
-  // Smoothly tick down frozenRemainingSec every 100ms even if the frozen player lowers their hands
+  // Trigger a Bad Action Penalty when a player makes a middle finger ("dirty finger") gesture:
+  // Resets their score to 0, plays a serene/siren penalty sound, and shows BAD ACTION PENALTY on screen!
+  const triggerBadActionPenalty = useCallback((pIdx: number) => {
+    const now = performance.now();
+    const penaltyUntil = now + YOGA_BAD_ACTION_PENALTY_MS;
+    const pHold = holdStateRef.current[pIdx];
+    if (pHold) {
+      pHold.progress = 0;
+      pHold.optionIdx = null;
+      pHold.poseId = null;
+      pHold.recentPoses = [];
+      pHold.cooldownUntil = penaltyUntil;
+      pHold.wrongBannerUntil = penaltyUntil;
+      pHold.lastWrongOptionIdx = null;
+      pHold.penaltyType = 'bad-action';
+    }
+
+    const team = teamsRef.current[pIdx];
+    if (team) {
+      const prevScore = team.score || 0;
+      setTeams(prev => prev.map((t, idx) => (idx === pIdx ? { ...t, score: 0 } : t)));
+      setTeamStreaks(prev => ({ ...prev, [team.id]: 0 }));
+      if (prevScore > 0) {
+        setScorePops(prev => ({ ...prev, [team.id]: { delta: -prevScore, key: Date.now() + Math.random() } }));
+      }
+    }
+
+    playYogaArenaSfx('bad-penalty');
+    if (voiceEnabledRef.current) {
+      const pName = team?.name || `Player ${pIdx + 1}`;
+      speakNaturalText(`Bad action penalty! ${pName} score reset to zero!`);
+    }
+
+    setPlayerDetections(prev => {
+      const next: [PlayerCameraDetectionState, PlayerCameraDetectionState] = [{ ...prev[0] }, { ...prev[1] }];
+      next[pIdx] = {
+        detectedPoseId: null,
+        matchedOptionIdx: null,
+        holdProgress: 0,
+        wrongFeedbackText: '🚨 BAD ACTION PENALTY! Score Reset to 0!',
+        frozenUntil: penaltyUntil,
+        frozenRemainingSec: Number((YOGA_BAD_ACTION_PENALTY_MS / 1000).toFixed(1)),
+        lastWrongOptionIdx: null,
+        penaltyType: 'bad-action',
+      };
+      return next;
+    });
+  }, [speakNaturalText]);
+  const triggerBadActionPenaltyRef = useRef(triggerBadActionPenalty);
+  triggerBadActionPenaltyRef.current = triggerBadActionPenalty;
+
+  // Smoothly tick down frozenRemainingSec every 100ms even if the frozen/penalized player lowers their hands
   useEffect(() => {
     if (gameState !== 'playing') return;
     const interval = setInterval(() => {
@@ -2118,13 +2231,25 @@ function YogaGame({
           {
             ...prev[0],
             frozenRemainingSec: rem0,
-            wrongFeedbackText: rem0 > 0 ? '🥶 FROZEN! Wrong answer!' : null,
+            penaltyType: rem0 > 0 ? h0.penaltyType : null,
+            wrongFeedbackText:
+              rem0 > 0
+                ? h0.penaltyType === 'bad-action'
+                  ? '🚨 BAD ACTION PENALTY! Score Reset to 0!'
+                  : '🥶 FROZEN! Wrong answer!'
+                : null,
             lastWrongOptionIdx: rem0 > 0 ? h0.lastWrongOptionIdx : null,
           },
           {
             ...prev[1],
             frozenRemainingSec: rem1,
-            wrongFeedbackText: rem1 > 0 ? '🥶 FROZEN! Wrong answer!' : null,
+            penaltyType: rem1 > 0 ? h1.penaltyType : null,
+            wrongFeedbackText:
+              rem1 > 0
+                ? h1.penaltyType === 'bad-action'
+                  ? '🚨 BAD ACTION PENALTY! Score Reset to 0!'
+                  : '🥶 FROZEN! Wrong answer!'
+                : null,
             lastWrongOptionIdx: rem1 > 0 ? h1.lastWrongOptionIdx : null,
           },
         ];
@@ -2159,12 +2284,12 @@ function YogaGame({
     setWinningPlayerIdx(null);
     const now = performance.now();
     holdStateRef.current = [
-      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
-      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null },
+      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
+      { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
     ];
     setPlayerDetections([
-      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
-      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null },
+      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null },
+      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null },
     ]);
 
     const currentItem = quiz.questions[idx];
@@ -2616,6 +2741,7 @@ function YogaGame({
             frozenUntil: 0,
             frozenRemainingSec: 0,
             lastWrongOptionIdx: null,
+            penaltyType: null,
           },
           {
             detectedPoseId: null,
@@ -2625,6 +2751,7 @@ function YogaGame({
             frozenUntil: 0,
             frozenRemainingSec: 0,
             lastWrongOptionIdx: null,
+            penaltyType: null,
           },
         ];
 
@@ -2639,14 +2766,19 @@ function YogaGame({
               detectedPoseId: null,
               matchedOptionIdx: null,
               holdProgress: 0,
-              wrongFeedbackText: `🥶 FROZEN! ${remSec}s`,
+              wrongFeedbackText:
+                pHold.penaltyType === 'bad-action'
+                  ? `🚨 BAD ACTION PENALTY! Score Reset to 0!`
+                  : `🥶 FROZEN! ${remSec}s`,
               frozenUntil: pHold.cooldownUntil,
               frozenRemainingSec: remSec,
               lastWrongOptionIdx: pHold.lastWrongOptionIdx,
+              penaltyType: pHold.penaltyType,
             };
             continue;
-          } else if (pHold.lastWrongOptionIdx !== null) {
+          } else if (pHold.lastWrongOptionIdx !== null || pHold.penaltyType !== null) {
             pHold.lastWrongOptionIdx = null;
+            pHold.penaltyType = null;
           }
 
           const { poseId, confidence } = detectStandingPoseFromHands(
@@ -2660,6 +2792,24 @@ function YogaGame({
           pHold.recentPoses.push(validFramePose);
           if (pHold.recentPoses.length > 3) {
             pHold.recentPoses.shift();
+          }
+
+          // Check for Bad Action (middle finger / dirty finger): 2 frames in buffer triggers immediate score reset penalty!
+          const dirtyFingerCount = pHold.recentPoses.filter(p => p === 'dirty-finger').length;
+          if (validFramePose === 'dirty-finger' && dirtyFingerCount >= 2) {
+            triggerBadActionPenaltyRef.current(pIdx);
+            const penaltyRem = Number((YOGA_BAD_ACTION_PENALTY_MS / 1000).toFixed(1));
+            nextUiStates[pIdx] = {
+              detectedPoseId: 'dirty-finger',
+              matchedOptionIdx: null,
+              holdProgress: 0,
+              wrongFeedbackText: '🚨 BAD ACTION PENALTY! Score Reset to 0!',
+              frozenUntil: pHold.cooldownUntil,
+              frozenRemainingSec: penaltyRem,
+              lastWrongOptionIdx: null,
+              penaltyType: 'bad-action',
+            };
+            continue;
           }
 
           // Determine smoothed pose: prefer current valid pose immediately
@@ -2715,6 +2865,7 @@ function YogaGame({
             frozenUntil: 0,
             frozenRemainingSec: 0,
             lastWrongOptionIdx: null,
+            penaltyType: null,
           };
 
           // Check if player completed holding the pose (100%)
@@ -2741,6 +2892,7 @@ function YogaGame({
                   frozenUntil: pHold.cooldownUntil,
                   frozenRemainingSec: freezeRem,
                   lastWrongOptionIdx: chosenIdx,
+                  penaltyType: 'freeze',
                 };
               }
             }
@@ -3200,7 +3352,9 @@ function YogaGame({
                     <div
                       className={`relative border-r-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44 transition-all duration-300 ${
                         playerDetections[0].frozenRemainingSec > 0
-                          ? 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
+                          ? playerDetections[0].penaltyType === 'bad-action'
+                            ? 'bg-rose-600/35 backdrop-blur-[3px] border-4 border-rose-400 shadow-[inset_0_0_90px_rgba(225,29,72,0.75)]'
+                            : 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
                           : isAnswering && winningPlayerIdx === 0
                           ? 'bg-emerald-500/20 ring-4 ring-inset ring-emerald-400 shadow-[inset_0_0_80px_rgba(16,185,129,0.55)]'
                           : ''
@@ -3215,32 +3369,62 @@ function YogaGame({
                         )}
                       </div>
 
-                      {/* Icy Freeze Overlay for Player 1 */}
+                      {/* Icy Freeze or Bad Action Penalty Overlay for Player 1 */}
                       {playerDetections[0].frozenRemainingSec > 0 && (
-                        <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-6 py-4 shadow-[0_0_35px_rgba(34,211,238,0.85)] max-w-xs animate-bounce">
-                          <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
-                            <span>❄️</span>
-                            <span>🥶</span>
-                            <span>🧊</span>
+                        playerDetections[0].penaltyType === 'bad-action' ? (
+                          <div className="self-center my-auto flex flex-col items-center text-center bg-gradient-to-b from-rose-950/95 via-red-950/95 to-slate-950/95 border-4 border-rose-400 rounded-3xl px-6 py-4 shadow-[0_0_45px_rgba(244,63,94,0.95)] max-w-xs animate-bounce">
+                            <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
+                              <span>🚨</span>
+                              <span>🚫</span>
+                              <span>🔔</span>
+                            </div>
+                            <div className="text-rose-200 font-black text-base sm:text-xl uppercase tracking-wider">
+                              BAD ACTION PENALTY!
+                            </div>
+                            <div className="text-amber-300 font-black text-sm sm:text-base uppercase tracking-wide mt-0.5">
+                              {teams[0]?.name || 'Player 1'} Score Reset to 0!
+                            </div>
+                            <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
+                              {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                            </div>
+                            <p className="text-rose-200/90 text-[11px] sm:text-xs font-bold">
+                              Keep gestures respectful & positive!
+                            </p>
+                            <div className="w-full bg-rose-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-rose-400/60">
+                              <div
+                                className="bg-gradient-to-r from-rose-400 via-amber-400 to-red-500 h-full transition-all duration-100"
+                                style={{
+                                  width: `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_BAD_ACTION_PENALTY_MS / 1000)) * 100)}%`,
+                                }}
+                              />
+                            </div>
                           </div>
-                          <div className="text-cyan-200 font-black text-base sm:text-xl uppercase tracking-wider">
-                            {teams[0]?.name || 'Player 1'} FROZEN!
+                        ) : (
+                          <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-6 py-4 shadow-[0_0_35px_rgba(34,211,238,0.85)] max-w-xs animate-bounce">
+                            <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
+                              <span>❄️</span>
+                              <span>🥶</span>
+                              <span>🧊</span>
+                            </div>
+                            <div className="text-cyan-200 font-black text-base sm:text-xl uppercase tracking-wider">
+                              {teams[0]?.name || 'Player 1'} FROZEN!
+                            </div>
+                            <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
+                              {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                            </div>
+                            <p className="text-cyan-200/90 text-[11px] sm:text-xs font-bold">
+                              Wrong answer! Wait for ice to thaw!
+                            </p>
+                            <div className="w-full bg-cyan-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-cyan-400/50">
+                              <div
+                                className="bg-gradient-to-r from-cyan-300 to-sky-400 h-full transition-all duration-100"
+                                style={{
+                                  width: `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`,
+                                }}
+                              />
+                            </div>
                           </div>
-                          <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
-                            {playerDetections[0].frozenRemainingSec.toFixed(1)}s
-                          </div>
-                          <p className="text-cyan-200/90 text-[11px] sm:text-xs font-bold">
-                            Wrong answer! Wait for ice to thaw!
-                          </p>
-                          <div className="w-full bg-cyan-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-cyan-400/50">
-                            <div
-                              className="bg-gradient-to-r from-cyan-300 to-sky-400 h-full transition-all duration-100"
-                              style={{
-                                width: `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
+                        )
                       )}
 
                       {/* Hold Progress Bar for Player 1 */}
@@ -3248,19 +3432,31 @@ function YogaGame({
                         <div
                           className={`h-full rounded-full transition-all duration-75 ${
                             playerDetections[0].frozenRemainingSec > 0
-                              ? 'bg-gradient-to-r from-cyan-400 to-sky-300'
+                              ? playerDetections[0].penaltyType === 'bad-action'
+                                ? 'bg-gradient-to-r from-rose-500 via-amber-400 to-red-500'
+                                : 'bg-gradient-to-r from-cyan-400 to-sky-300'
                               : 'bg-gradient-to-r from-rose-500 to-red-400'
                           }`}
                           style={{
                             width:
                               playerDetections[0].frozenRemainingSec > 0
-                                ? `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`
+                                ? `${Math.min(
+                                    100,
+                                    (playerDetections[0].frozenRemainingSec /
+                                      ((playerDetections[0].penaltyType === 'bad-action'
+                                        ? YOGA_BAD_ACTION_PENALTY_MS
+                                        : YOGA_FREEZE_DURATION_MS) /
+                                        1000)) *
+                                      100
+                                  )}%`
                                 : `${playerDetections[0].holdProgress}%`,
                           }}
                         />
                         <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
                           {playerDetections[0].frozenRemainingSec > 0
-                            ? `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                            ? playerDetections[0].penaltyType === 'bad-action'
+                              ? `🚨 BAD ACTION PENALTY • SCORE = 0 (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                              : `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
                             : playerDetections[0].holdProgress > 0
                             ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
                             : 'Stand on Left & Shoot Web Pose'}
@@ -3272,7 +3468,9 @@ function YogaGame({
                     <div
                       className={`relative border-l-2 border-dashed border-white/40 flex flex-col justify-between p-4 pt-24 pb-44 transition-all duration-300 ${
                         playerDetections[1].frozenRemainingSec > 0
-                          ? 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
+                          ? playerDetections[1].penaltyType === 'bad-action'
+                            ? 'bg-rose-600/35 backdrop-blur-[3px] border-4 border-rose-400 shadow-[inset_0_0_90px_rgba(225,29,72,0.75)]'
+                            : 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
                           : isAnswering && winningPlayerIdx === 1
                           ? 'bg-emerald-500/20 ring-4 ring-inset ring-emerald-400 shadow-[inset_0_0_80px_rgba(16,185,129,0.55)]'
                           : ''
@@ -3287,32 +3485,62 @@ function YogaGame({
                         )}
                       </div>
 
-                      {/* Icy Freeze Overlay for Player 2 */}
+                      {/* Icy Freeze or Bad Action Penalty Overlay for Player 2 */}
                       {playerDetections[1].frozenRemainingSec > 0 && (
-                        <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-6 py-4 shadow-[0_0_35px_rgba(34,211,238,0.85)] max-w-xs animate-bounce">
-                          <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
-                            <span>❄️</span>
-                            <span>🥶</span>
-                            <span>🧊</span>
+                        playerDetections[1].penaltyType === 'bad-action' ? (
+                          <div className="self-center my-auto flex flex-col items-center text-center bg-gradient-to-b from-rose-950/95 via-red-950/95 to-slate-950/95 border-4 border-rose-400 rounded-3xl px-6 py-4 shadow-[0_0_45px_rgba(244,63,94,0.95)] max-w-xs animate-bounce">
+                            <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
+                              <span>🚨</span>
+                              <span>🚫</span>
+                              <span>🔔</span>
+                            </div>
+                            <div className="text-rose-200 font-black text-base sm:text-xl uppercase tracking-wider">
+                              BAD ACTION PENALTY!
+                            </div>
+                            <div className="text-amber-300 font-black text-sm sm:text-base uppercase tracking-wide mt-0.5">
+                              {teams[1]?.name || 'Player 2'} Score Reset to 0!
+                            </div>
+                            <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
+                              {playerDetections[1].frozenRemainingSec.toFixed(1)}s
+                            </div>
+                            <p className="text-rose-200/90 text-[11px] sm:text-xs font-bold">
+                              Keep gestures respectful & positive!
+                            </p>
+                            <div className="w-full bg-rose-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-rose-400/60">
+                              <div
+                                className="bg-gradient-to-r from-rose-400 via-amber-400 to-red-500 h-full transition-all duration-100"
+                                style={{
+                                  width: `${Math.min(100, (playerDetections[1].frozenRemainingSec / (YOGA_BAD_ACTION_PENALTY_MS / 1000)) * 100)}%`,
+                                }}
+                              />
+                            </div>
                           </div>
-                          <div className="text-cyan-200 font-black text-base sm:text-xl uppercase tracking-wider">
-                            {teams[1]?.name || 'Player 2'} FROZEN!
+                        ) : (
+                          <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-6 py-4 shadow-[0_0_35px_rgba(34,211,238,0.85)] max-w-xs animate-bounce">
+                            <div className="flex items-center gap-2 text-2xl sm:text-3xl mb-1">
+                              <span>❄️</span>
+                              <span>🥶</span>
+                              <span>🧊</span>
+                            </div>
+                            <div className="text-cyan-200 font-black text-base sm:text-xl uppercase tracking-wider">
+                              {teams[1]?.name || 'Player 2'} FROZEN!
+                            </div>
+                            <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
+                              {playerDetections[1].frozenRemainingSec.toFixed(1)}s
+                            </div>
+                            <p className="text-cyan-200/90 text-[11px] sm:text-xs font-bold">
+                              Wrong answer! Wait for ice to thaw!
+                            </p>
+                            <div className="w-full bg-cyan-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-cyan-400/50">
+                              <div
+                                className="bg-gradient-to-r from-cyan-300 to-sky-400 h-full transition-all duration-100"
+                                style={{
+                                  width: `${Math.min(100, (playerDetections[1].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`,
+                                }}
+                              />
+                            </div>
                           </div>
-                          <div className="text-white font-black text-2xl sm:text-3xl tabular-nums my-0.5">
-                            {playerDetections[1].frozenRemainingSec.toFixed(1)}s
-                          </div>
-                          <p className="text-cyan-200/90 text-[11px] sm:text-xs font-bold">
-                            Wrong answer! Wait for ice to thaw!
-                          </p>
-                          <div className="w-full bg-cyan-900/90 h-2.5 rounded-full mt-2.5 overflow-hidden border border-cyan-400/50">
-                            <div
-                              className="bg-gradient-to-r from-cyan-300 to-sky-400 h-full transition-all duration-100"
-                              style={{
-                                width: `${Math.min(100, (playerDetections[1].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
+                        )
                       )}
 
                       {/* Hold Progress Bar for Player 2 */}
@@ -3320,19 +3548,31 @@ function YogaGame({
                         <div
                           className={`h-full rounded-full transition-all duration-75 ${
                             playerDetections[1].frozenRemainingSec > 0
-                              ? 'bg-gradient-to-r from-cyan-400 to-sky-300'
+                              ? playerDetections[1].penaltyType === 'bad-action'
+                                ? 'bg-gradient-to-r from-rose-500 via-amber-400 to-red-500'
+                                : 'bg-gradient-to-r from-cyan-400 to-sky-300'
                               : 'bg-gradient-to-r from-amber-500 to-yellow-300'
                           }`}
                           style={{
                             width:
                               playerDetections[1].frozenRemainingSec > 0
-                                ? `${Math.min(100, (playerDetections[1].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`
+                                ? `${Math.min(
+                                    100,
+                                    (playerDetections[1].frozenRemainingSec /
+                                      ((playerDetections[1].penaltyType === 'bad-action'
+                                        ? YOGA_BAD_ACTION_PENALTY_MS
+                                        : YOGA_FREEZE_DURATION_MS) /
+                                        1000)) *
+                                      100
+                                  )}%`
                                 : `${playerDetections[1].holdProgress}%`,
                           }}
                         />
                         <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
                           {playerDetections[1].frozenRemainingSec > 0
-                            ? `❄️ FROZEN (${playerDetections[1].frozenRemainingSec.toFixed(1)}s)`
+                            ? playerDetections[1].penaltyType === 'bad-action'
+                              ? `🚨 BAD ACTION PENALTY • SCORE = 0 (${playerDetections[1].frozenRemainingSec.toFixed(1)}s)`
+                              : `❄️ FROZEN (${playerDetections[1].frozenRemainingSec.toFixed(1)}s)`
                             : playerDetections[1].holdProgress > 0
                             ? `Locking ${shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[1].holdProgress}%`
                             : 'Stand on Right & Use Infinity Gauntlet'}
@@ -3345,7 +3585,9 @@ function YogaGame({
                   <div
                     className={`absolute inset-0 p-4 pt-16 pb-44 flex flex-col justify-between pointer-events-none transition-all duration-300 ${
                       playerDetections[0].frozenRemainingSec > 0
-                        ? 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
+                        ? playerDetections[0].penaltyType === 'bad-action'
+                          ? 'bg-rose-600/35 backdrop-blur-[3px] border-4 border-rose-400 shadow-[inset_0_0_90px_rgba(225,29,72,0.75)]'
+                          : 'bg-cyan-500/30 backdrop-blur-[3px] border-4 border-cyan-300 animate-ice-glow'
                         : isAnswering
                         ? 'bg-emerald-500/15 ring-4 ring-inset ring-emerald-400'
                         : ''
@@ -3366,41 +3608,75 @@ function YogaGame({
                     </div>
 
                     {playerDetections[0].frozenRemainingSec > 0 && (
-                      <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-7 py-5 shadow-[0_0_40px_rgba(34,211,238,0.85)] max-w-sm animate-bounce">
-                        <div className="flex items-center gap-2 text-3xl mb-1">
-                          <span>❄️</span>
-                          <span>🥶</span>
-                          <span>🧊</span>
+                      playerDetections[0].penaltyType === 'bad-action' ? (
+                        <div className="self-center my-auto flex flex-col items-center text-center bg-gradient-to-b from-rose-950/95 via-red-950/95 to-slate-950/95 border-4 border-rose-400 rounded-3xl px-7 py-5 shadow-[0_0_45px_rgba(244,63,94,0.95)] max-w-sm animate-bounce">
+                          <div className="flex items-center gap-2 text-3xl mb-1">
+                            <span>🚨</span>
+                            <span>🚫</span>
+                            <span>🔔</span>
+                          </div>
+                          <div className="text-rose-200 font-black text-lg sm:text-2xl uppercase tracking-wider">
+                            BAD ACTION PENALTY!
+                          </div>
+                          <div className="text-amber-300 font-black text-sm sm:text-lg uppercase tracking-wide mt-0.5">
+                            Score Reset to 0!
+                          </div>
+                          <div className="text-white font-black text-3xl sm:text-4xl tabular-nums my-0.5">
+                            {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                          </div>
+                          <p className="text-rose-200/90 text-xs sm:text-sm font-bold">
+                            Bad finger action detected! Keep gestures positive!
+                          </p>
                         </div>
-                        <div className="text-cyan-200 font-black text-lg sm:text-2xl uppercase tracking-wider">
-                          PLAYER FROZEN!
+                      ) : (
+                        <div className="self-center my-auto flex flex-col items-center text-center bg-cyan-950/90 border-3 border-cyan-300 rounded-3xl px-7 py-5 shadow-[0_0_40px_rgba(34,211,238,0.85)] max-w-sm animate-bounce">
+                          <div className="flex items-center gap-2 text-3xl mb-1">
+                            <span>❄️</span>
+                            <span>🥶</span>
+                            <span>🧊</span>
+                          </div>
+                          <div className="text-cyan-200 font-black text-lg sm:text-2xl uppercase tracking-wider">
+                            PLAYER FROZEN!
+                          </div>
+                          <div className="text-white font-black text-3xl sm:text-4xl tabular-nums my-0.5">
+                            {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                          </div>
+                          <p className="text-cyan-200/90 text-xs sm:text-sm font-bold">
+                            Wrong gesture! Wait for the ice to thaw & try another pose!
+                          </p>
                         </div>
-                        <div className="text-white font-black text-3xl sm:text-4xl tabular-nums my-0.5">
-                          {playerDetections[0].frozenRemainingSec.toFixed(1)}s
-                        </div>
-                        <p className="text-cyan-200/90 text-xs sm:text-sm font-bold">
-                          Wrong gesture! Wait for the ice to thaw & try another pose!
-                        </p>
-                      </div>
+                      )
                     )}
 
                     <div className="w-full max-w-md mx-auto bg-black/60 backdrop-blur-md rounded-full h-6 p-0.5 border border-white/40 overflow-hidden relative flex items-center">
                       <div
                         className={`h-full rounded-full transition-all duration-75 ${
                           playerDetections[0].frozenRemainingSec > 0
-                            ? 'bg-gradient-to-r from-cyan-400 to-sky-300'
+                            ? playerDetections[0].penaltyType === 'bad-action'
+                              ? 'bg-gradient-to-r from-rose-500 via-amber-400 to-red-500'
+                              : 'bg-gradient-to-r from-cyan-400 to-sky-300'
                             : 'bg-gradient-to-r from-teal-400 to-emerald-300'
                         }`}
                         style={{
                           width:
                             playerDetections[0].frozenRemainingSec > 0
-                              ? `${Math.min(100, (playerDetections[0].frozenRemainingSec / (YOGA_FREEZE_DURATION_MS / 1000)) * 100)}%`
+                              ? `${Math.min(
+                                  100,
+                                  (playerDetections[0].frozenRemainingSec /
+                                    ((playerDetections[0].penaltyType === 'bad-action'
+                                      ? YOGA_BAD_ACTION_PENALTY_MS
+                                      : YOGA_FREEZE_DURATION_MS) /
+                                      1000)) *
+                                    100
+                                )}%`
                               : `${playerDetections[0].holdProgress}%`,
                         }}
                       />
                       <span className="absolute inset-x-0 text-center text-xs font-black text-white drop-shadow">
                         {playerDetections[0].frozenRemainingSec > 0
-                          ? `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                          ? playerDetections[0].penaltyType === 'bad-action'
+                            ? `🚨 BAD ACTION PENALTY • SCORE = 0 (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                            : `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
                           : playerDetections[0].holdProgress > 0
                           ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
                           : 'Stand in front of camera & copy the pose of the right answer!'}
@@ -3545,7 +3821,9 @@ function YogaGame({
                   <div
                     className={`w-full lg:w-auto lg:min-w-[215px] lg:max-w-[245px] shrink-0 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 p-2.5 flex items-center justify-between gap-2 relative transition-all hover:scale-[1.01] pointer-events-auto ${
                       playerDetections[0].frozenRemainingSec > 0
-                        ? 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
+                        ? playerDetections[0].penaltyType === 'bad-action'
+                          ? 'border-rose-400 shadow-[0_0_28px_rgba(244,63,94,0.9)]'
+                          : 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
                         : isAnswering && winningPlayerIdx === 0
                         ? 'border-emerald-400 shadow-[0_0_28px_rgba(16,185,129,0.85)] scale-[1.03]'
                         : 'border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.35)]'
@@ -3558,11 +3836,17 @@ function YogaGame({
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shadow-md shrink-0 border ${
                           playerDetections[0].frozenRemainingSec > 0
-                            ? 'bg-cyan-500 border-cyan-200 animate-pulse'
+                            ? playerDetections[0].penaltyType === 'bad-action'
+                              ? 'bg-rose-600 border-rose-200 animate-pulse'
+                              : 'bg-cyan-500 border-cyan-200 animate-pulse'
                             : 'bg-gradient-to-tr from-rose-600 to-red-700 border-rose-400'
                         }`}
                       >
-                        {playerDetections[0].frozenRemainingSec > 0 ? '🥶' : '🕷️'}
+                        {playerDetections[0].frozenRemainingSec > 0
+                          ? playerDetections[0].penaltyType === 'bad-action'
+                            ? '🚨'
+                            : '🥶'
+                          : '🕷️'}
                       </div>
                       <div className="flex flex-col min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -3571,9 +3855,15 @@ function YogaGame({
                           </span>
                         </div>
                         {playerDetections[0].frozenRemainingSec > 0 ? (
-                          <span className="text-[10px] font-black text-cyan-300 flex items-center gap-0.5 animate-pulse">
-                            ❄️ FROZEN {playerDetections[0].frozenRemainingSec.toFixed(1)}s
-                          </span>
+                          playerDetections[0].penaltyType === 'bad-action' ? (
+                            <span className="text-[10px] font-black text-rose-300 flex items-center gap-0.5 animate-pulse">
+                              🚨 BAD ACTION (0 PTS)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black text-cyan-300 flex items-center gap-0.5 animate-pulse">
+                              ❄️ FROZEN {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                            </span>
+                          )
                         ) : teamStreaks[teams[0]?.id] >= 2 ? (
                           <span className="text-[10px] font-black text-amber-300 flex items-center gap-0.5 animate-pulse">
                             🔥 {teamStreaks[teams[0]?.id]}x STREAK!
@@ -3664,7 +3954,9 @@ function YogaGame({
                   <div
                     className={`w-full lg:w-auto lg:min-w-[215px] lg:max-w-[245px] shrink-0 bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 p-2.5 flex items-center justify-between gap-2 relative transition-all hover:scale-[1.01] pointer-events-auto ${
                       playerDetections[1].frozenRemainingSec > 0
-                        ? 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
+                        ? playerDetections[1].penaltyType === 'bad-action'
+                          ? 'border-rose-400 shadow-[0_0_28px_rgba(244,63,94,0.9)]'
+                          : 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
                         : isAnswering && winningPlayerIdx === 1
                         ? 'border-emerald-400 shadow-[0_0_28px_rgba(16,185,129,0.85)] scale-[1.03]'
                         : 'border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
@@ -3677,11 +3969,17 @@ function YogaGame({
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shadow-md shrink-0 border ${
                           playerDetections[1].frozenRemainingSec > 0
-                            ? 'bg-cyan-500 border-cyan-200 animate-pulse'
+                            ? playerDetections[1].penaltyType === 'bad-action'
+                              ? 'bg-rose-600 border-rose-200 animate-pulse'
+                              : 'bg-cyan-500 border-cyan-200 animate-pulse'
                             : 'bg-gradient-to-tr from-amber-500 to-yellow-600 border-amber-300'
                         }`}
                       >
-                        {playerDetections[1].frozenRemainingSec > 0 ? '🥶' : '🥊'}
+                        {playerDetections[1].frozenRemainingSec > 0
+                          ? playerDetections[1].penaltyType === 'bad-action'
+                            ? '🚨'
+                            : '🥶'
+                          : '🥊'}
                       </div>
                       <div className="flex flex-col min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -3690,9 +3988,15 @@ function YogaGame({
                           </span>
                         </div>
                         {playerDetections[1].frozenRemainingSec > 0 ? (
-                          <span className="text-[10px] font-black text-cyan-300 flex items-center gap-0.5 animate-pulse">
-                            ❄️ FROZEN {playerDetections[1].frozenRemainingSec.toFixed(1)}s
-                          </span>
+                          playerDetections[1].penaltyType === 'bad-action' ? (
+                            <span className="text-[10px] font-black text-rose-300 flex items-center gap-0.5 animate-pulse">
+                              🚨 BAD ACTION (0 PTS)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black text-cyan-300 flex items-center gap-0.5 animate-pulse">
+                              ❄️ FROZEN {playerDetections[1].frozenRemainingSec.toFixed(1)}s
+                            </span>
+                          )
                         ) : teamStreaks[teams[1]?.id] >= 2 ? (
                           <span className="text-[10px] font-black text-yellow-300 flex items-center gap-0.5 animate-pulse">
                             👑 {teamStreaks[teams[1]?.id]}x TITAN!
@@ -3746,7 +4050,9 @@ function YogaGame({
                   <div
                     className={`bg-slate-950/85 backdrop-blur-md rounded-2xl border-2 p-2.5 flex items-center justify-between gap-3 relative transition-all hover:scale-[1.01] pointer-events-auto shrink-0 w-full sm:w-auto min-w-[220px] ${
                       playerDetections[0].frozenRemainingSec > 0
-                        ? 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
+                        ? playerDetections[0].penaltyType === 'bad-action'
+                          ? 'border-rose-400 shadow-[0_0_28px_rgba(244,63,94,0.9)]'
+                          : 'border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.75)]'
                         : 'border-teal-400 shadow-[0_0_20px_rgba(45,212,191,0.35)]'
                     }`}
                   >
@@ -3755,16 +4061,26 @@ function YogaGame({
                     )}
                     <div className="flex items-center gap-2.5">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-600 flex items-center justify-center text-xl shadow-md border border-teal-300">
-                        {playerDetections[0].frozenRemainingSec > 0 ? '🥶' : '⚡'}
+                        {playerDetections[0].frozenRemainingSec > 0
+                          ? playerDetections[0].penaltyType === 'bad-action'
+                            ? '🚨'
+                            : '🥶'
+                          : '⚡'}
                       </div>
                       <div className="flex flex-col">
                         <span className="font-black text-xs uppercase tracking-wider text-teal-300">
                           {teams[0]?.name || 'Player 1'}
                         </span>
                         {playerDetections[0].frozenRemainingSec > 0 ? (
-                          <span className="text-[10px] font-black text-cyan-300 animate-pulse">
-                            ❄️ FROZEN {playerDetections[0].frozenRemainingSec.toFixed(1)}s
-                          </span>
+                          playerDetections[0].penaltyType === 'bad-action' ? (
+                            <span className="text-[10px] font-black text-rose-300 animate-pulse">
+                              🚨 BAD ACTION PENALTY (0 PTS)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black text-cyan-300 animate-pulse">
+                              ❄️ FROZEN {playerDetections[0].frozenRemainingSec.toFixed(1)}s
+                            </span>
+                          )
                         ) : (
                           teamStreaks[teams[0]?.id] >= 2 && (
                             <span className="text-[10px] font-black text-amber-300 animate-pulse">
