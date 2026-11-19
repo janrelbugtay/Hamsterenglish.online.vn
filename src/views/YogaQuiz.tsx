@@ -270,20 +270,21 @@ function StandingPoseFigure({
 const YOGA_HANDS_OPTIONS = {
   maxNumHands: 4,
   modelComplexity: 1 as const,
-  minDetectionConfidence: 0.45,
-  minTrackingConfidence: 0.45,
+  minDetectionConfidence: 0.42,
+  minTrackingConfidence: 0.42,
 };
 
 /**
  * Scale-invariant & aspect-corrected biomechanical hand gesture detector.
  * Evaluates MediaPipe 21-point hand landmarks using phalanx joint angles (PIP cosine curl),
- * tip-to-wrist vs PIP/DIP distances, tip-to-MCP span, relative finger dominance, and two-hand geometry.
- * Supports 11 single-hand poses + 9 two-hand poses (🙌, 🙏, 🫶, ✌️✌️, ✊✊, 👍👍, ☝️☝️, 🤘🤘, 👌👌) + middle-finger penalty.
+ * tip-to-wrist vs PIP/DIP distances, tip-to-MCP span, relative finger dominance, edge-on aspect,
+ * handedness-aware deduplication, and two-hand geometry.
  */
 function detectStandingPoseFromHands(
   hands: Array<Array<{ x: number; y: number; z?: number }>>,
   candidatePoseIds: string[],
-  videoAspect = 1.5
+  videoAspect = 1.5,
+  handednessList?: Array<string | undefined>
 ): { poseId: string | null; confidence: number; needsSecondHandFor?: string | null } {
   if (!hands || hands.length === 0) {
     return { poseId: null, confidence: 0, needsSecondHandFor: null };
@@ -292,6 +293,12 @@ function detectStandingPoseFromHands(
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
   const normRange = (v: number, min: number, max: number) =>
     clamp01((v - min) / Math.max(1e-5, max - min));
+
+  // Aspect-corrected 2D distance (ignores noisy depth estimates when palms press edge-on)
+  const dist2D = (
+    a: { x: number; y: number },
+    b: { x: number; y: number }
+  ) => Math.hypot((a.x - b.x) * videoAspect, a.y - b.y);
 
   // Aspect-corrected 3D-aware distance so tilted hands have consistent geometry
   const dist = (
@@ -323,23 +330,56 @@ function detectStandingPoseFromHands(
     return (v1x * v2x + v1y * v2y + v1z * v2z) / (mag1 * mag2);
   };
 
-  // Deduplicate ghost overlapping detections of the same physical hand (stops false 2-hand triggers)
-  const dedupedHands: Array<Array<{ x: number; y: number; z?: number }>> = [];
-  for (const h of hands) {
+  // Handedness-aware deduplication: NEVER merge opposite hands (Left vs Right) pressed together in Prayer Pose!
+  const dedupedEntries: Array<{
+    lm: Array<{ x: number; y: number; z?: number }>;
+    label?: string;
+  }> = [];
+
+  for (let i = 0; i < hands.length; i++) {
+    const h = hands[i];
     if (!h || h.length < 21) continue;
-    const palmSz = Math.max(0.04, dist(h[9], h[0]));
-    const isGhostDuplicate = dedupedHands.some(existing => {
-      const exPalm = Math.max(0.04, dist(existing[9], existing[0]));
+    const label = handednessList?.[i];
+    const palmSz = Math.max(0.04, dist2D(h[9], h[0]));
+
+    const isGhostDuplicate = dedupedEntries.some(existing => {
+      const exPalm = Math.max(0.04, dist2D(existing.lm[9], existing.lm[0]));
       const avgP = (palmSz + exPalm) * 0.5;
+      const oppositeHandedness = Boolean(label && existing.label && label !== existing.label);
+
+      const wristGap = dist2D(h[0], existing.lm[0]) / avgP;
+      const mcpGap = dist2D(h[9], existing.lm[9]) / avgP;
+      const idxTipGap = dist2D(h[8], existing.lm[8]) / avgP;
+      const midTipGap = dist2D(h[12], existing.lm[12]) / avgP;
+      const pnkTipGap = dist2D(h[20], existing.lm[20]) / avgP;
+
+      if (oppositeHandedness) {
+        // Opposite Left/Right hands pressed together in Prayer Hands have small wrist/MCP gaps;
+        // only treat as ghost duplicate if ALL landmarks are nearly 1:1 identical pixels.
+        return (
+          wristGap < 0.08 &&
+          mcpGap < 0.08 &&
+          idxTipGap < 0.08 &&
+          midTipGap < 0.08 &&
+          pnkTipGap < 0.08
+        );
+      }
+
+      // Same or unknown handedness: require close overlap across wrist, MCP, AND fingertips
       return (
-        dist(h[9], existing[9]) / avgP < 0.32 &&
-        dist(h[0], existing[0]) / avgP < 0.32
+        wristGap < 0.24 &&
+        mcpGap < 0.24 &&
+        idxTipGap < 0.26 &&
+        pnkTipGap < 0.26
       );
     });
+
     if (!isGhostDuplicate) {
-      dedupedHands.push(h);
+      dedupedEntries.push({ lm: h, label });
     }
   }
+
+  const dedupedHands = dedupedEntries.map(e => e.lm);
   if (dedupedHands.length === 0) {
     return { poseId: null, confidence: 0, needsSecondHandFor: null };
   }
@@ -348,6 +388,9 @@ function detectStandingPoseFromHands(
     const wrist = lm[0];
     const palmLength = dist(lm[9], wrist);
     const knuckleWidth = dist(lm[5], lm[17]);
+    const palmLength2D = Math.max(0.04, dist2D(lm[9], wrist));
+    const knuckleWidth2D = dist2D(lm[5], lm[17]);
+    const edgeAspect = knuckleWidth2D / palmLength2D;
     const palmSize = Math.max(0.04, Math.max(palmLength, knuckleWidth * 1.15));
     const palmCenter = {
       x: (wrist.x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) * 0.2,
@@ -382,7 +425,7 @@ function detectStandingPoseFromHands(
       const cosStraight = overallCos * 0.55 + pipCos * 0.25 + dipCos * 0.20;
 
       // If fingertip is closer to wrist than DIP/PIP or folded back sharply, it is definitely curled
-      if (dipRatio < 0.95 || wristRatio < 1.01 || cosStraight < 0.04) {
+      if (dipRatio < 0.94 || wristRatio < 1.00 || cosStraight < 0.02) {
         return {
           score: clamp01(normRange(wristRatio, 0.85, 1.04) * 0.25),
           wristRatio,
@@ -391,10 +434,10 @@ function detectStandingPoseFromHands(
         };
       }
 
-      const cosPart = normRange(cosStraight, 0.12, 0.84);
-      const ratioPart = normRange(wristRatio, 1.03, isPinky ? 1.22 : 1.26);
-      const spanPart = normRange(mcpSpan, isPinky ? 0.32 : 0.40, isPinky ? 0.70 : 0.80);
-      const mcpPart = normRange(mcpRatio, 1.10, isPinky ? 1.48 : 1.60);
+      const cosPart = normRange(cosStraight, 0.10, 0.82);
+      const ratioPart = normRange(wristRatio, 1.02, isPinky ? 1.20 : 1.25);
+      const spanPart = normRange(mcpSpan, isPinky ? 0.30 : 0.38, isPinky ? 0.68 : 0.78);
+      const mcpPart = normRange(mcpRatio, 1.08, isPinky ? 1.45 : 1.56);
 
       const score = clamp01(cosPart * 0.40 + ratioPart * 0.28 + spanPart * 0.18 + mcpPart * 0.14);
       return { score, wristRatio, cosStraight, mcpSpan };
@@ -410,10 +453,10 @@ function detectStandingPoseFromHands(
     const ringScore = rngF.score;
     const pinkyScore = pnkF.score;
 
-    const indexExtended = indexScore >= 0.52;
-    const middleExtended = middleScore >= 0.52;
-    const ringExtended = ringScore >= 0.50;
-    const pinkyExtended = pinkyScore >= 0.48;
+    const indexExtended = indexScore >= 0.48;
+    const middleExtended = middleScore >= 0.48;
+    const ringExtended = ringScore >= 0.46;
+    const pinkyExtended = pinkyScore >= 0.42;
 
     // Thumb metrics
     const thumbTip = lm[4];
@@ -422,21 +465,23 @@ function detectStandingPoseFromHands(
     const thumbToIndexMcp = dist(thumbTip, lm[5]) / palmSize;
     const thumbToMiddlePip = dist(thumbTip, lm[10]) / palmSize;
     const thumbSpread =
-      thumbToIndexMcp > 0.52 &&
-      dist(thumbTip, lm[17]) > dist(thumbMcp, lm[17]) * 1.14 &&
-      thumbToMiddlePip > 0.45;
+      thumbToIndexMcp > 0.48 &&
+      dist(thumbTip, lm[17]) > dist(thumbMcp, lm[17]) * 1.12 &&
+      thumbToMiddlePip > 0.42;
 
-    // Distinct vertical thumbs-up (thumb extended well above curled knuckles)
+    // Distinct vertical thumbs-up (thumb extended above curled knuckles)
     const thumbUpVertical =
-      thumbTip.y < thumbIp.y - palmSize * 0.08 &&
-      thumbTip.y < lm[5].y - palmSize * 0.12 &&
-      thumbToIndexMcp > 0.48;
+      thumbTip.y < thumbIp.y - palmSize * 0.06 &&
+      thumbTip.y < lm[5].y - palmSize * 0.08 &&
+      thumbTip.y < wrist.y - palmSize * 0.18 &&
+      thumbToIndexMcp > 0.42;
 
     // Distinct vertical thumbs-down (thumb pointing well below curled knuckles)
     const thumbDownVertical =
-      thumbTip.y > thumbIp.y + palmSize * 0.08 &&
-      thumbTip.y > lm[5].y + palmSize * 0.12 &&
-      thumbToIndexMcp > 0.45;
+      thumbTip.y > thumbIp.y + palmSize * 0.06 &&
+      thumbTip.y > lm[5].y + palmSize * 0.08 &&
+      thumbTip.y > wrist.y - palmSize * 0.05 &&
+      thumbToIndexMcp > 0.40;
 
     const fourFingersCount =
       (indexExtended ? 1 : 0) +
@@ -449,6 +494,14 @@ function detectStandingPoseFromHands(
     const minAll4 = Math.min(indexScore, middleScore, ringScore, pinkyScore);
     const avgFourScore = (indexScore + middleScore + ringScore + pinkyScore) * 0.25;
 
+    // Upright blade geometry (helpful for foreshortened edge-on Prayer Pose 🙏)
+    const middleToWristRatio2D = dist2D(lm[12], wrist) / palmLength2D;
+    const fingerBladeWidth2D = dist2D(lm[8], lm[20]) / Math.max(0.04, palmLength2D);
+    const isUprightStraightBlade =
+      lm[12].y < wrist.y - palmLength2D * 0.55 &&
+      lm[12].y < thumbTip.y - palmLength2D * 0.12 &&
+      middleToWristRatio2D > 1.25;
+
     // Closed fist: all 4 fingers curled down
     const fingersCurled =
       (fourFingersCount === 0 && maxFourScore < 0.52) ||
@@ -456,11 +509,12 @@ function detectStandingPoseFromHands(
 
     // Pinch distance for OK sign (generous for classroom webcams)
     const pinchDist = dist(thumbTip, lm[8]) / palmSize;
+    const outerThreeAvg = (middleScore + ringScore + pinkyScore) / 3;
     const isOkPinch =
-      pinchDist < 0.48 &&
-      middleScore > 0.46 &&
-      ringScore > 0.44 &&
-      indexScore < 0.68;
+      pinchDist < 0.55 &&
+      outerThreeAvg > 0.42 &&
+      Math.min(middleScore, ringScore) > 0.34 &&
+      indexScore < 0.78;
 
     // Relative extension dominances using continuous scores
     const pointDominance = indexScore - Math.max(middleScore, ringScore, pinkyScore);
@@ -487,38 +541,45 @@ function detectStandingPoseFromHands(
     const othersMaxFor1 = Math.max(middleScore, ringScore, pinkyScore);
     const isOneFinger =
       !isOkPinch &&
-      indexScore >= 0.50 &&
-      ((othersMaxFor1 < 0.48 && pointDominance >= 0.16) ||
-        (indexScore >= 0.62 && othersMaxFor1 < 0.53 && pointDominance >= 0.24));
+      indexScore >= 0.46 &&
+      ((othersMaxFor1 < 0.49 && pointDominance >= 0.14) ||
+        (indexScore >= 0.58 && othersMaxFor1 < 0.54 && pointDominance >= 0.20));
 
     const minIdxMid = Math.min(indexScore, middleScore);
     const maxRingPinky = Math.max(ringScore, pinkyScore);
     const isPeace =
-      minIdxMid >= 0.50 &&
-      ((maxRingPinky < 0.48 && peaceDominance >= 0.14) ||
-        (minIdxMid >= 0.60 && maxRingPinky < 0.53 && peaceDominance >= 0.22));
+      minIdxMid >= 0.46 &&
+      ((maxRingPinky < 0.49 && peaceDominance >= 0.12) ||
+        (minIdxMid >= 0.58 && maxRingPinky < 0.54 && peaceDominance >= 0.20));
 
     const isRockOrIly =
-      Math.min(indexScore, pinkyScore) >= 0.48 &&
-      Math.max(middleScore, ringScore) < 0.49 &&
-      rockDominance >= 0.12;
+      indexScore >= 0.44 &&
+      pinkyScore >= 0.38 &&
+      Math.max(middleScore, ringScore) < 0.50 &&
+      rockDominance >= 0.08;
 
-    const isThumbsUp = thumbUpVertical && maxFourScore < 0.50;
-    const isThumbsDown = thumbDownVertical && maxFourScore < 0.50;
-    const isOpenPalm = minAll4 >= 0.40 && (fourFingersCount >= 4 || avgFourScore >= 0.54);
-    const isFourFingers = minAll4 >= 0.46 && !thumbSpread;
     const isShaka =
-      (thumbSpread || thumbToIndexMcp > 0.46) &&
-      pinkyScore >= 0.45 &&
-      Math.max(indexScore, middleScore, ringScore) < 0.48;
+      (thumbSpread || thumbToIndexMcp > 0.42) &&
+      (pinkyScore >= 0.40 || (pinkyScore >= 0.32 && pinkyScore - Math.max(indexScore, middleScore, ringScore) >= 0.10)) &&
+      Math.max(indexScore, middleScore, ringScore) < 0.50;
+
+    const isThumbsUp = thumbUpVertical && maxFourScore < 0.56 && avgFourScore < 0.44 && !isShaka && !isOneFinger;
+    const isThumbsDown = thumbDownVertical && maxFourScore < 0.56 && avgFourScore < 0.44 && !isShaka;
+    const isOpenPalm = minAll4 >= 0.38 && (fourFingersCount >= 4 || avgFourScore >= 0.50);
+    const isFourFingers = minAll4 >= 0.42 && !thumbSpread;
 
     return {
       wrist,
       palmCenter,
       palmSize,
+      palmLength2D,
+      edgeAspect,
+      fingerBladeWidth2D,
+      isUprightStraightBlade,
       thumbTip,
       indexTip: lm[8],
       middleTip: lm[12],
+      pinkyTip: lm[20],
       indexScore,
       middleScore,
       ringScore,
@@ -570,7 +631,10 @@ function detectStandingPoseFromHands(
   const expectsFourFingers =
     candidatePoseIds.includes('4-finger') || candidatePoseIds.includes('two-4-finger');
   const expectsFiveFingers =
-    candidatePoseIds.includes('5-finger') || candidatePoseIds.includes('star-hands') || candidatePoseIds.includes('hands-up');
+    candidatePoseIds.includes('5-finger') ||
+    candidatePoseIds.includes('star-hands') ||
+    candidatePoseIds.includes('hands-up') ||
+    candidatePoseIds.includes('two-open-hands');
   const expectsNamaste = candidatePoseIds.includes('namaste-hands');
   const expectsHeart = candidatePoseIds.includes('heart-hands');
   const expectsXCross = candidatePoseIds.includes('x-hands');
@@ -583,62 +647,85 @@ function detectStandingPoseFromHands(
         const a = analyzed[i];
         const b = analyzed[j];
         const avgPalm = Math.max(0.04, (a.palmSize + b.palmSize) * 0.5);
-        const palmDist = dist(a.palmCenter, b.palmCenter) / avgPalm;
-        const wristDist = dist(a.wrist, b.wrist) / avgPalm;
-        const indexTipDist = dist(a.indexTip, b.indexTip) / avgPalm;
-        const thumbTipDist = dist(a.thumbTip, b.thumbTip) / avgPalm;
-        const middleTipDist = dist(a.middleTip, b.middleTip) / avgPalm;
+        const palmDist = dist2D(a.palmCenter, b.palmCenter) / avgPalm;
+        const wristDist = dist2D(a.wrist, b.wrist) / avgPalm;
+        const indexTipDist = dist2D(a.indexTip, b.indexTip) / avgPalm;
+        const thumbTipDist = dist2D(a.thumbTip, b.thumbTip) / avgPalm;
+        const middleTipDist = dist2D(a.middleTip, b.middleTip) / avgPalm;
 
-        // 1. Heart Hands (🫶): thumbs touching at bottom + index/middle tips touching above thumbs
+        // 1. Heart Hands (🫶): thumbs touching at bottom + index/middle tips arching together at top, space between palms
         const avgThumbY = (a.thumbTip.y + b.thumbTip.y) * 0.5;
         const avgIndexY = (a.indexTip.y + b.indexTip.y) * 0.5;
-        const topTipsClose = indexTipDist < 1.25 || middleTipDist < 1.25;
+        const topTipsClose = indexTipDist < 1.50 || middleTipDist < 1.50;
+        const palmsArchedApart = palmDist > 0.72 || wristDist > 0.85 || !expectsNamaste;
         const isHeartArch =
-          palmDist < 2.6 &&
-          thumbTipDist < 1.25 &&
+          palmDist < 3.10 &&
+          thumbTipDist < 1.55 &&
           topTipsClose &&
-          avgThumbY > avgIndexY + avgPalm * 0.04;
+          palmsArchedApart &&
+          avgThumbY > avgIndexY + avgPalm * 0.015;
         if (isHeartArch) {
           twoHandScores['heart-hands'] = Math.max(twoHandScores['heart-hands'] || 0, 0.97);
         }
 
-        // 2. X-Cross Hands (🙅): wrists crossed close together while fingertips fan wide apart
+        // 2. X-Cross Hands (🙅): wrists or palms crossed close together while fingertips fan wide apart
+        const wristsOrPalmsCrossed = wristDist < 1.65 || palmDist < 1.40;
+        const oppositeHorizontalFan =
+          (a.middleTip.x - a.wrist.x) * (b.middleTip.x - b.wrist.x) < -avgPalm * avgPalm * 0.05 &&
+          middleTipDist > 1.12;
         const isXCross =
-          wristDist < 1.35 &&
-          middleTipDist > Math.max(1.38, wristDist * 1.32) &&
-          a.avgFourScore >= 0.42 &&
-          b.avgFourScore >= 0.42;
+          wristsOrPalmsCrossed &&
+          (middleTipDist > Math.max(1.25, wristDist * 1.15) || oppositeHorizontalFan) &&
+          a.avgFourScore >= 0.32 &&
+          b.avgFourScore >= 0.32;
         if (isXCross) {
           twoHandScores['x-hands'] = Math.max(twoHandScores['x-hands'] || 0, 0.96);
         }
 
-        // 3. Prayer / Namaste Hands (🙏): both hands pressed close together upright
-        const handsClose = palmDist < 1.55 || wristDist < 1.65 || middleTipDist < 1.30;
-        const tipsAligned = middleTipDist < 1.35;
+        // 3. Prayer / Namaste Hands (🙏): both hands pressed close together upright (even edge-on foreshortened!)
+        const handsTightForPrayer =
+          palmDist < 1.30 && wristDist < 1.40 && middleTipDist < 1.30;
+        const handsCloseForPrayer =
+          palmDist < 1.68 || wristDist < 1.72 || middleTipDist < 1.48;
+        const tipsAlignedForPrayer = middleTipDist < 1.60 || indexTipDist < 1.55;
+        const avgMiddleTipY = (a.middleTip.y + b.middleTip.y) * 0.5;
+        const avgWristY = (a.wrist.y + b.wrist.y) * 0.5;
         const fingersPointingUp =
-          a.middleTip.y < a.wrist.y - avgPalm * 0.08 &&
-          b.middleTip.y < b.wrist.y - avgPalm * 0.08;
-        const notCurledFists = a.avgFourScore >= 0.25 && b.avgFourScore >= 0.25;
+          (a.middleTip.y < a.wrist.y - avgPalm * 0.04 &&
+            b.middleTip.y < b.wrist.y - avgPalm * 0.04) ||
+          avgMiddleTipY < avgWristY - avgPalm * 0.25;
+        const notFistsOrPinch =
+          !a.isOkPinch &&
+          !b.isOkPinch &&
+          !a.isThumbsUp &&
+          !b.isThumbsUp &&
+          (a.avgFourScore >= 0.16 || a.isUprightStraightBlade) &&
+          (b.avgFourScore >= 0.16 || b.isUprightStraightBlade);
+
         if (
-          handsClose &&
-          tipsAligned &&
+          handsCloseForPrayer &&
+          tipsAlignedForPrayer &&
           fingersPointingUp &&
-          notCurledFists &&
+          notFistsOrPinch &&
           (!expectsHeart || !isHeartArch) &&
           (!expectsXCross || !isXCross)
         ) {
-          twoHandScores['namaste-hands'] = Math.max(twoHandScores['namaste-hands'] || 0, 0.96);
+          const prayerConf = handsTightForPrayer ? 0.98 : 0.91;
+          twoHandScores['namaste-hands'] = Math.max(twoHandScores['namaste-hands'] || 0, prayerConf);
         }
 
-        // 4. Two Hands Up / Double Open Palms (🙌): both hands open with 4+ fingers extended
-        const separatedForHighFive = (!expectsNamaste || palmDist >= 1.15) && (!expectsXCross || !isXCross);
+        // 4. Two Hands Up / Double Open Palms (🙌): both hands open with 4+ fingers extended & separated
+        const separatedForHighFive =
+          (!expectsNamaste || (palmDist >= 1.35 && wristDist >= 1.35)) &&
+          (!expectsXCross || !isXCross);
         if (a.isOpenPalm && b.isOpenPalm && separatedForHighFive) {
-          twoHandScores['two-open-hands'] = Math.max(twoHandScores['two-open-hands'] || 0, 0.95);
+          const openHandsConf = palmDist >= 1.35 ? 0.96 : 0.92;
+          twoHandScores['two-open-hands'] = Math.max(twoHandScores['two-open-hands'] || 0, openHandsConf);
         }
 
         // 5. Double Peace (✌️✌️) - forgiving on non-dominant second hand
-        const aLoosePeace = a.isPeace || (Math.min(a.indexScore, a.middleScore) >= 0.46 && a.peaceDominance >= 0.12);
-        const bLoosePeace = b.isPeace || (Math.min(b.indexScore, b.middleScore) >= 0.46 && b.peaceDominance >= 0.12);
+        const aLoosePeace = a.isPeace || (Math.min(a.indexScore, a.middleScore) >= 0.42 && a.peaceDominance >= 0.10);
+        const bLoosePeace = b.isPeace || (Math.min(b.indexScore, b.middleScore) >= 0.42 && b.peaceDominance >= 0.10);
         if ((a.isPeace && bLoosePeace) || (b.isPeace && aLoosePeace)) {
           twoHandScores['two-peace'] = Math.max(twoHandScores['two-peace'] || 0, 0.96);
         }
@@ -659,29 +746,29 @@ function detectStandingPoseFromHands(
         }
 
         // 7. Double Thumbs Up (👍👍) - forgiving on non-dominant second hand
-        const aLooseUp = a.isThumbsUp || (a.thumbUpVertical && a.maxFourScore < 0.58);
-        const bLooseUp = b.isThumbsUp || (b.thumbUpVertical && b.maxFourScore < 0.58);
+        const aLooseUp = a.isThumbsUp || (a.thumbUpVertical && a.maxFourScore < 0.60);
+        const bLooseUp = b.isThumbsUp || (b.thumbUpVertical && b.maxFourScore < 0.60);
         if ((a.isThumbsUp && bLooseUp) || (b.isThumbsUp && aLooseUp)) {
           twoHandScores['two-thumbs-up'] = Math.max(twoHandScores['two-thumbs-up'] || 0, 0.97);
         }
 
         // 8. Double Thumbs Down (👎👎) - forgiving on non-dominant second hand
-        const aLooseDown = a.isThumbsDown || (a.thumbDownVertical && a.maxFourScore < 0.58);
-        const bLooseDown = b.isThumbsDown || (b.thumbDownVertical && b.maxFourScore < 0.58);
+        const aLooseDown = a.isThumbsDown || (a.thumbDownVertical && a.maxFourScore < 0.60);
+        const bLooseDown = b.isThumbsDown || (b.thumbDownVertical && b.maxFourScore < 0.60);
         if ((a.isThumbsDown && bLooseDown) || (b.isThumbsDown && aLooseDown)) {
           twoHandScores['two-thumbs-down'] = Math.max(twoHandScores['two-thumbs-down'] || 0, 0.97);
         }
 
         // 9. Double 1 Finger (☝️☝️) - forgiving on non-dominant second hand
-        const aLoose1 = a.isOneFinger || (!a.isOkPinch && a.indexScore >= 0.46 && a.pointDominance >= 0.14);
-        const bLoose1 = b.isOneFinger || (!b.isOkPinch && b.indexScore >= 0.46 && b.pointDominance >= 0.14);
+        const aLoose1 = a.isOneFinger || (!a.isOkPinch && a.indexScore >= 0.42 && a.pointDominance >= 0.12);
+        const bLoose1 = b.isOneFinger || (!b.isOkPinch && b.indexScore >= 0.42 && b.pointDominance >= 0.12);
         if ((a.isOneFinger && bLoose1) || (b.isOneFinger && aLoose1)) {
           twoHandScores['two-point-up'] = Math.max(twoHandScores['two-point-up'] || 0, 0.96);
         }
 
         // 10. Double Rock On / Double Web (🤘🤘)
-        const aLooseRock = a.isRockOrIly || (Math.min(a.indexScore, a.pinkyScore) >= 0.44 && a.rockDominance >= 0.10);
-        const bLooseRock = b.isRockOrIly || (Math.min(b.indexScore, b.pinkyScore) >= 0.44 && b.rockDominance >= 0.10);
+        const aLooseRock = a.isRockOrIly || (a.indexScore >= 0.40 && a.pinkyScore >= 0.36 && a.rockDominance >= 0.08);
+        const bLooseRock = b.isRockOrIly || (b.indexScore >= 0.40 && b.pinkyScore >= 0.36 && b.rockDominance >= 0.08);
         if ((a.isRockOrIly && bLooseRock) || (b.isRockOrIly && aLooseRock)) {
           twoHandScores['two-rock'] = Math.max(twoHandScores['two-rock'] || 0, 0.96);
         }
@@ -722,6 +809,25 @@ function detectStandingPoseFromHands(
   const scores: Record<string, number> = { ...twoHandScores };
 
   for (const h of analyzed) {
+    // 0. Merged Edge-On Prayer Pose (🙏) Fallback:
+    // When palms press edge-on toward the webcam, MediaPipe often outputs 1 narrow vertical blade hand.
+    const isMergedEdgePrayer =
+      analyzed.length === 1 &&
+      expectsNamaste &&
+      h.edgeAspect < 0.56 &&
+      h.fingerBladeWidth2D < 0.80 &&
+      h.isUprightStraightBlade &&
+      !h.isOneFinger &&
+      !h.isPeace &&
+      !h.isOkPinch &&
+      !h.isShaka &&
+      !h.isThumbsUp &&
+      !h.isThumbsDown;
+
+    if (isMergedEdgePrayer) {
+      scores['namaste-hands'] = Math.max(scores['namaste-hands'] || 0, 0.90);
+    }
+
     // 1. Closed Fist (✊) - all 4 fingers curled
     if (
       h.fingersCurled &&
@@ -750,13 +856,13 @@ function detectStandingPoseFromHands(
 
     // 4. 3 Fingers / Sign (🤟) & Rock On (🤘)
     const isClassic3 =
-      Math.min(h.indexScore, h.middleScore, h.ringScore) >= 0.50 &&
-      h.pinkyScore < 0.47 &&
-      h.classic3Dominance >= 0.14;
+      Math.min(h.indexScore, h.middleScore, h.ringScore) >= 0.44 &&
+      h.pinkyScore < 0.52 &&
+      h.classic3Dominance >= 0.10;
     const isOuter3 =
       !h.isOkPinch &&
-      Math.min(h.middleScore, h.ringScore, h.pinkyScore) >= 0.50 &&
-      h.indexScore < 0.45;
+      Math.min(h.middleScore, h.ringScore, h.pinkyScore) >= 0.44 &&
+      h.indexScore < 0.50;
 
     if (h.isRockOrIly || isClassic3 || isOuter3) {
       const dom3 = Math.max(
@@ -772,13 +878,17 @@ function detectStandingPoseFromHands(
       }
     }
 
-    // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb tucked (relaxed if 5-finger isn't on screen)
-    if (h.minAll4 >= 0.48 && (!h.thumbSpread || !expectsFiveFingers)) {
+    // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb tucked (suppressed if clearly edge-on Prayer Pose)
+    if (h.minAll4 >= 0.44 && (!h.thumbSpread || !expectsFiveFingers) && !isMergedEdgePrayer) {
       scores['4-finger'] = Math.max(scores['4-finger'] || 0, clamp01(0.86 + h.minAll4 * 0.13));
     }
 
-    // 6. 5 Fingers / Open Palm (🖐️) - all 4 fingers + thumb open wide (relaxed if 4-finger isn't on screen)
-    if (h.minAll4 >= 0.46 && (h.thumbSpread || h.totalOpenCount >= 5 || !expectsFourFingers)) {
+    // 6. 5 Fingers / Open Palm (🖐️) - all 4 fingers + thumb open wide (suppressed if clearly edge-on Prayer Pose)
+    if (
+      h.minAll4 >= 0.42 &&
+      (h.thumbSpread || h.totalOpenCount >= 5 || !expectsFourFingers) &&
+      !isMergedEdgePrayer
+    ) {
       const fiveConf = clamp01(0.87 + h.avgFourScore * 0.12);
       scores['5-finger'] = Math.max(scores['5-finger'] || 0, fiveConf);
       scores['star-hands'] = Math.max(scores['star-hands'] || 0, fiveConf);
@@ -837,7 +947,7 @@ function detectStandingPoseFromHands(
     }
   }
 
-  if (bestCandidate && bestCandidateScore >= 0.72) {
+  if (bestCandidate && bestCandidateScore >= 0.70) {
     return { poseId: bestCandidate, confidence: bestCandidateScore, needsSecondHandFor: null };
   }
 
@@ -857,7 +967,7 @@ function detectStandingPoseFromHands(
       ['two-shaka', h.isShaka],
       ['two-4-finger', h.isFourFingers],
       ['two-open-hands', h.isOpenPalm],
-      ['namaste-hands', h.isOpenPalm || h.isFourFingers],
+      ['namaste-hands', h.isOpenPalm || h.isFourFingers || h.isUprightStraightBlade],
     ];
     for (const [twoId, matchedHalf] of halfMatchMap) {
       if (matchedHalf && candidatePoseIds.includes(twoId)) {
@@ -877,7 +987,7 @@ function detectStandingPoseFromHands(
   }
 
   return {
-    poseId: bestOverallScore >= 0.75 ? bestOverall : null,
+    poseId: bestOverallScore >= 0.72 ? bestOverall : null,
     confidence: bestOverallScore,
     needsSecondHandFor,
   };
@@ -2198,6 +2308,9 @@ function YogaGame({
   const [showGoFlash, setShowGoFlash] = useState(false);
   const readFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameRunIdRef = useRef<number>(1);
+  const spokenQuestionKeysRef = useRef<Set<string>>(new Set());
+  const hasAnnouncedWinnerRef = useRef<boolean>(false);
 
   // Match Countdown Timer + End-Game Stats (connected to Setup Timer + End Flag button)
   const [gameTimeLeftSec, setGameTimeLeftSec] = useState<number>(() => yogaTimerMinutes * 60);
@@ -2674,7 +2787,10 @@ function YogaGame({
     const now = performance.now();
     questionReadyAtRef.current = now + 650;
     const currentItemForGate = quiz.questions[idx];
+    const speakKey = `${gameRunIdRef.current}-${idx}`;
+    const alreadySpokenThisQuestion = spokenQuestionKeysRef.current.has(speakKey);
     const willAutoRead =
+      !alreadySpokenThisQuestion &&
       voiceEnabledRef.current &&
       Boolean(currentItemForGate?.text?.trim()) &&
       typeof window !== 'undefined' &&
@@ -2882,20 +2998,25 @@ function YogaGame({
     loadQuestion(currentIdx, false);
   }, [playMode, currentIdx, loadQuestion]);
 
-  // Automatically read ONLY the question naturally when a question loads; unlock student hand detection only after reading completes
+  const speakQuestionByIndexRef = useRef(speakQuestionByIndex);
+  speakQuestionByIndexRef.current = speakQuestionByIndex;
+
+  // Automatically read ONLY the question ONCE per question; unlock student hand detection only after reading completes
   useEffect(() => {
-    if (gameState === 'playing') {
-      const timerId = setTimeout(() => {
-        speakQuestionByIndex(currentIdx, false, true);
-      }, 220);
-      return () => {
-        clearTimeout(timerId);
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-        }
-      };
+    if (gameState !== 'playing') return;
+    const speakKey = `${gameRunIdRef.current}-${currentIdx}`;
+    if (spokenQuestionKeysRef.current.has(speakKey)) {
+      unlockQuestionReadGate(false);
+      return;
     }
-  }, [gameState, currentIdx, speakQuestionByIndex]);
+    spokenQuestionKeysRef.current.add(speakKey);
+    const timerId = setTimeout(() => {
+      speakQuestionByIndexRef.current(currentIdx, false, true);
+    }, 200);
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [gameState, currentIdx, unlockQuestionReadGate]);
 
   // Announce the grand winner naturally when the game ends
   const announceGrandWinner = useCallback((forceSpeak: boolean = false) => {
@@ -2927,10 +3048,13 @@ function YogaGame({
     if (gameState === 'end') {
       setShowConfetti(true);
       playYogaArenaSfx('win');
-      const t = setTimeout(() => {
-        announceGrandWinner(false);
-      }, 350);
-      return () => clearTimeout(t);
+      if (!hasAnnouncedWinnerRef.current) {
+        hasAnnouncedWinnerRef.current = true;
+        const t = setTimeout(() => {
+          announceGrandWinner(true);
+        }, 350);
+        return () => clearTimeout(t);
+      }
     }
   }, [gameState, announceGrandWinner]);
 
@@ -2952,26 +3076,38 @@ function YogaGame({
     };
   }, []);
 
-  const finishGameNow = useCallback((reason: 'completed' | 'timer' | 'manual' = 'manual') => {
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
-    if (readFallbackTimerRef.current) {
-      clearTimeout(readFallbackTimerRef.current);
-      readFallbackTimerRef.current = null;
-    }
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    isWaitingForQuestionReadRef.current = false;
-    setIsWaitingForQuestionRead(false);
-    setTimer(null);
-    setTimerProgress(0);
-    setGameEndReason(reason);
-    setGameState('end');
-    playSound('win');
-  }, []);
+  const finishGameNow = useCallback(
+    (reason: 'completed' | 'timer' | 'manual' = 'manual') => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+      if (readFallbackTimerRef.current) {
+        clearTimeout(readFallbackTimerRef.current);
+        readFallbackTimerRef.current = null;
+      }
+      if (goFlashTimerRef.current) {
+        clearTimeout(goFlashTimerRef.current);
+        goFlashTimerRef.current = null;
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      isWaitingForQuestionReadRef.current = false;
+      setIsWaitingForQuestionRead(false);
+      setShowGoFlash(false);
+      setTimer(null);
+      setTimerProgress(0);
+      setGameEndReason(reason);
+      setGameState('end');
+      playSound('win');
+      if (reason === 'manual') {
+        hasAnnouncedWinnerRef.current = true;
+        announceGrandWinner(true);
+      }
+    },
+    [announceGrandWinner]
+  );
 
   // Live Match Countdown Timer (counts down yogaTimerMinutes and automatically finishes the match at 00:00)
   useEffect(() => {
@@ -3267,15 +3403,19 @@ function YogaGame({
         const isTwoPlayers = teamsRef.current.length >= 2;
         const rawLandmarks: Array<Array<{ x: number; y: number; z?: number }>> =
           results.multiHandLandmarks || [];
+        const rawHandedness: Array<string | undefined> =
+          (results.multiHandedness || []).map((m: any) => m?.label);
 
         // Convert to mirrored screen coordinates (x: 0..1 from left to right on mirrored screen)
-        const mirroredHands = rawLandmarks.map(lm =>
-          lm.map(pt => ({
+        const mirroredEntries = rawLandmarks.map((lm, idx) => ({
+          lm: lm.map(pt => ({
             x: 1.0 - pt.x,
             y: pt.y,
             z: pt.z
-          }))
-        );
+          })),
+          label: rawHandedness[idx],
+        }));
+        const mirroredHands = mirroredEntries.map(e => e.lm);
 
         const videoEl = videoRef.current;
         const videoW = videoEl?.videoWidth || 640;
@@ -3307,26 +3447,28 @@ function YogaGame({
         const candidatePoseIds = currentOptions.map(o => o.poseId);
 
         // Partition hands into Player 1 (left half) and Player 2 (right half) WITHOUT distorting aspect ratio!
-        // Keep up to the 2 largest hands (closest to camera) per player zone so two-hand poses stay super accurate.
-        const keepTopTwoHands = (group: Array<Array<{ x: number; y: number; z?: number }>>) => {
+        // Keep up to the 2 largest hands (closest to camera) per player zone while preserving handedness labels.
+        const keepTopTwoEntries = (
+          group: Array<{ lm: Array<{ x: number; y: number; z?: number }>; label?: string }>
+        ) => {
           if (group.length <= 2) return group;
           const handSize = (h: Array<{ x: number; y: number; z?: number }>) => {
             const dx = ((h[9]?.x ?? 0) - (h[0]?.x ?? 0)) * videoAspect;
             const dy = (h[9]?.y ?? 0) - (h[0]?.y ?? 0);
             return Math.hypot(dx, dy);
           };
-          return [...group].sort((a, b) => handSize(b) - handSize(a)).slice(0, 2);
+          return [...group].sort((a, b) => handSize(b.lm) - handSize(a.lm)).slice(0, 2);
         };
 
         const playerHandGroups: [
-          Array<Array<{ x: number; y: number; z?: number }>>,
-          Array<Array<{ x: number; y: number; z?: number }>>
+          Array<{ lm: Array<{ x: number; y: number; z?: number }>; label?: string }>,
+          Array<{ lm: Array<{ x: number; y: number; z?: number }>; label?: string }>
         ] = isTwoPlayers
           ? [
-              keepTopTwoHands(mirroredHands.filter(h => ((h[9]?.x ?? h[0]?.x ?? 0.5) < 0.5))),
-              keepTopTwoHands(mirroredHands.filter(h => ((h[9]?.x ?? h[0]?.x ?? 0.5) >= 0.5))),
+              keepTopTwoEntries(mirroredEntries.filter(e => ((e.lm[9]?.x ?? e.lm[0]?.x ?? 0.5) < 0.5))),
+              keepTopTwoEntries(mirroredEntries.filter(e => ((e.lm[9]?.x ?? e.lm[0]?.x ?? 0.5) >= 0.5))),
             ]
-          : [keepTopTwoHands(mirroredHands), []];
+          : [keepTopTwoEntries(mirroredEntries), []];
 
         const numActiveZones = isTwoPlayers ? 2 : 1;
         const nextUiStates: [PlayerCameraDetectionState, PlayerCameraDetectionState] = [
@@ -3384,14 +3526,16 @@ function YogaGame({
             pHold.penaltyType = null;
           }
 
+          const zoneEntries = playerHandGroups[pIdx];
           const { poseId, confidence, needsSecondHandFor } = detectStandingPoseFromHands(
-            playerHandGroups[pIdx],
+            zoneEntries.map(e => e.lm),
             candidatePoseIds,
-            videoAspect
+            videoAspect,
+            zoneEntries.map(e => e.label)
           );
 
           // Push into 4-frame rolling smoothing buffer for rock-solid accuracy without transitional misfires
-          const validFramePose = poseId && confidence >= 0.70 ? poseId : null;
+          const validFramePose = poseId && confidence >= 0.68 ? poseId : null;
           pHold.recentPoses.push(validFramePose);
           if (pHold.recentPoses.length > 4) {
             pHold.recentPoses.shift();
@@ -3422,7 +3566,7 @@ function YogaGame({
             pHold.optionIdx = null;
             pHold.poseId = null;
             nextUiStates[pIdx] = {
-              detectedPoseId: null,
+              detectedPoseId: validFramePose,
               matchedOptionIdx: null,
               holdProgress: 0,
               wrongFeedbackText: null,
@@ -3472,9 +3616,9 @@ function YogaGame({
               pHold.progress = 30;
             }
           } else {
-            // Generous 320ms grace period so natural hand jitter never drops lock progress
-            if (now - pHold.lastMatchedTime > 320) {
-              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 145));
+            // Generous 380ms grace period so brief occlusion in 2-hand poses (🙏, 🫶) never drops lock progress
+            if (now - pHold.lastMatchedTime > 380) {
+              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 140));
               if (pHold.progress === 0) {
                 pHold.optionIdx = null;
                 pHold.poseId = null;
@@ -3483,7 +3627,7 @@ function YogaGame({
           }
 
           // Draw live canvas Two-Hand Energy Beam & Radial Lock-In Ring right over the player's hands!
-          const pHands = playerHandGroups[pIdx];
+          const pHands = zoneEntries.map(e => e.lm);
           const primaryColor = isTwoPlayers
             ? pIdx === 0
               ? '#fb7185'
@@ -3701,6 +3845,9 @@ function YogaGame({
       countdownRef.current = null;
     }
     const totalSec = Math.max(60, yogaTimerMinutes * 60);
+    gameRunIdRef.current += 1;
+    spokenQuestionKeysRef.current.clear();
+    hasAnnouncedWinnerRef.current = false;
     setGameTotalTimeSec(totalSec);
     setGameTimeLeftSec(totalSec);
     setGameEndReason('completed');
@@ -4142,6 +4289,11 @@ function YogaGame({
                               {CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].needsSecondHandPoseId)?.value || '2-Hand Pose'}!
                             </span>
                           </span>
+                        ) : playerDetections[0].detectedPoseId && playerDetections[0].frozenRemainingSec <= 0 ? (
+                          <span className="bg-slate-900/85 text-slate-100 font-bold text-xs px-3 py-1 rounded-full shadow-md border border-white/25 flex items-center gap-1.5">
+                            <span>{CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].detectedPoseId)?.value || '✋'}</span>
+                            <span>Seeing: {getPoseName(playerDetections[0].detectedPoseId)}</span>
+                          </span>
                         ) : null}
                       </div>
 
@@ -4267,6 +4419,11 @@ function YogaGame({
                               Raise BOTH hands for{' '}
                               {CAMERA_HAND_POSES.find(p => p.id === playerDetections[1].needsSecondHandPoseId)?.value || '2-Hand Pose'}!
                             </span>
+                          </span>
+                        ) : playerDetections[1].detectedPoseId && playerDetections[1].frozenRemainingSec <= 0 ? (
+                          <span className="bg-slate-900/85 text-slate-100 font-bold text-xs px-3 py-1 rounded-full shadow-md border border-white/25 flex items-center gap-1.5">
+                            <span>{CAMERA_HAND_POSES.find(p => p.id === playerDetections[1].detectedPoseId)?.value || '✋'}</span>
+                            <span>Seeing: {getPoseName(playerDetections[1].detectedPoseId)}</span>
                           </span>
                         ) : null}
                       </div>
@@ -4399,6 +4556,11 @@ function YogaGame({
                             Raise BOTH hands for{' '}
                             {CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].needsSecondHandPoseId)?.value || '2-Hand Pose'}!
                           </span>
+                        </span>
+                      ) : playerDetections[0].detectedPoseId && playerDetections[0].frozenRemainingSec <= 0 ? (
+                        <span className="bg-slate-900/85 text-slate-100 font-bold text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-md border border-white/25 flex items-center gap-1.5">
+                          <span>{CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].detectedPoseId)?.value || '✋'}</span>
+                          <span>Seeing: {getPoseName(playerDetections[0].detectedPoseId)}</span>
                         </span>
                       ) : null}
                     </div>
@@ -4578,33 +4740,43 @@ function YogaGame({
                   )}
                 </div>
 
-                {/* Right Controls: Match Timer, End Flag Button, Progress, Font Size, Settings, Fullscreen */}
-                <div className="flex items-center gap-1.5 relative flex-wrap justify-end">
-                  {/* Live Match Countdown Timer */}
+                {/* Center In-Game Match Timer + End-Game Flag Button (Always Visible) */}
+                <div className="flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3 py-1 rounded-full border-2 border-teal-400/70 shadow-[0_6px_24px_rgba(15,23,42,0.45)]">
                   <div
-                    className={`px-3 py-1.5 rounded-2xl shadow-sm border-2 font-black text-xs sm:text-sm tabular-nums flex items-center gap-1.5 transition-all ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-black text-base sm:text-lg tabular-nums tracking-tight transition-all ${
                       gameTimeLeftSec <= 10
-                        ? 'bg-rose-600 text-white border-rose-300 animate-pulse shadow-[0_0_16px_rgba(244,63,94,0.7)]'
+                        ? 'bg-rose-600 text-white animate-pulse shadow-[0_0_16px_rgba(244,63,94,0.85)]'
                         : gameTimeLeftSec <= 30
-                        ? 'bg-amber-500 text-slate-950 border-amber-200'
-                        : 'bg-slate-900/90 text-teal-200 border-teal-400/60 backdrop-blur-md'
+                        ? 'bg-amber-400 text-slate-950'
+                        : 'text-teal-200'
                     }`}
-                    title="Match time remaining"
+                    title="In-game match countdown timer"
                   >
-                    <Clock size={14} className={gameTimeLeftSec <= 10 ? 'text-white' : gameTimeLeftSec <= 30 ? 'text-slate-950' : 'text-teal-300'} />
+                    <Clock
+                      size={18}
+                      className={
+                        gameTimeLeftSec <= 10
+                          ? 'text-white'
+                          : gameTimeLeftSec <= 30
+                          ? 'text-slate-950'
+                          : 'text-teal-300'
+                      }
+                    />
                     <span>{formatClockMMSS(gameTimeLeftSec)}</span>
                   </div>
 
-                  {/* End Game Flag Button */}
                   <button
                     onClick={() => finishGameNow('manual')}
-                    className="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white rounded-2xl transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-sm border border-rose-300/80 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
-                    title="Finish match now and go to Championship Winner screen"
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-rose-600 via-red-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white rounded-full transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-md border border-amber-200/80 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
+                    title="End match now and announce the winner"
                   >
-                    <Flag size={14} className="fill-current" />
-                    <span className="hidden sm:inline">End</span>
+                    <Flag size={16} className="fill-current" />
+                    <span>Finish</span>
                   </button>
+                </div>
 
+                {/* Right Controls: Progress, Font Size, Settings, Fullscreen */}
+                <div className="flex items-center gap-1.5 relative flex-wrap justify-end">
                   <div className="font-bold text-teal-950 bg-white/90 backdrop-blur-md px-3 py-1 rounded-2xl shadow-sm border border-teal-200 text-center flex items-center gap-1">
                     <span className="text-sm sm:text-base font-black">{currentIdx + 1}</span>
                     <span className="text-xs opacity-70">/ {quiz.questions.length}</span>

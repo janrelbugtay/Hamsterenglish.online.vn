@@ -8,6 +8,7 @@ import { ViewState } from "./types";
 import { Navigation, Header } from "./components/Navigation";
 import { Footer } from "./components/Footer";
 import { Home } from "./views/Home";
+import { recordRecentGame } from "./data/studioGames";
 import { AIGenerator } from "./views/AIGenerator";
 import { AdminDashboard } from "./views/AdminDashboard";
 import { UserDashboard } from "./views/UserDashboard";
@@ -143,6 +144,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState(false);
   const [googleAuthFeature, setGoogleAuthFeature] = useState<string>("Account Area");
+  const [headerSearchQuery, setHeaderSearchQuery] = useState("");
   const [joinData] = useState<{code: string, nickname: string, gameType: string} | null>(null);
   const [publishedGames, setPublishedGames] = useState<Record<string, boolean>>(() => {
     try {
@@ -481,6 +483,10 @@ export default function App() {
       } catch {}
     }
 
+    recordRecentGame(view);
+    if (view !== "home") {
+      setHeaderSearchQuery("");
+    }
     setCurrentView(view);
     if (data && !data.__stepBack) {
       setSelectedGame(data);
@@ -621,11 +627,29 @@ export default function App() {
 
     switch (currentView) {
       case "home":
-        return <Home onViewChange={handleViewChange} openAuthModal={() => setIsAuthModalOpen(true)} openGoogleAuthModal={openGoogleAuthModal} />;
+        return (
+          <Home
+            onViewChange={handleViewChange}
+            openAuthModal={() => setIsAuthModalOpen(true)}
+            openGoogleAuthModal={openGoogleAuthModal}
+            searchQuery={headerSearchQuery}
+            onClearSearch={() => setHeaderSearchQuery("")}
+          />
+        );
       case "generator":
         return <AIGenerator />;
       case "admin-dashboard":
-        return isAdmin ? <AdminDashboard onViewChange={handleViewChange} /> : <Home onViewChange={handleViewChange} openAuthModal={() => setIsAuthModalOpen(true)} openGoogleAuthModal={openGoogleAuthModal} />;
+        return isAdmin ? (
+          <AdminDashboard onViewChange={handleViewChange} />
+        ) : (
+          <Home
+            onViewChange={handleViewChange}
+            openAuthModal={() => setIsAuthModalOpen(true)}
+            openGoogleAuthModal={openGoogleAuthModal}
+            searchQuery={headerSearchQuery}
+            onClearSearch={() => setHeaderSearchQuery("")}
+          />
+        );
       case "user-dashboard":
         return <UserDashboard />;
       case "media-studio":
@@ -700,7 +724,15 @@ export default function App() {
           </div>
         );
       default:
-        return <Home onViewChange={handleViewChange} openAuthModal={() => setIsAuthModalOpen(true)} openGoogleAuthModal={openGoogleAuthModal} />;
+        return (
+          <Home
+            onViewChange={handleViewChange}
+            openAuthModal={() => setIsAuthModalOpen(true)}
+            openGoogleAuthModal={openGoogleAuthModal}
+            searchQuery={headerSearchQuery}
+            onClearSearch={() => setHeaderSearchQuery("")}
+          />
+        );
     }
   };
 
@@ -757,10 +789,14 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {!isLockedHomeworkLink && (
           <div className={isGame ? "hidden md:block shrink-0" : "shrink-0"}>
-            <Header 
-              onViewChange={handleViewChange} 
+            <Header
+              onViewChange={handleViewChange}
               setIsMobileMenuOpen={setIsMobileMenuOpen}
               openAuthModal={() => setIsAuthModalOpen(true)}
+              searchQuery={headerSearchQuery}
+              onSearchChange={setHeaderSearchQuery}
+              publishedGames={publishedGames}
+              isAdmin={isAdmin}
             />
           </div>
         )}
@@ -777,7 +813,9 @@ export default function App() {
           }`}
         >
           {renderView()}
-          {!isLockedHomeworkLink && !isGame && !isClass && !isAdminView && <Footer />}
+          {!isLockedHomeworkLink && !isGame && !isClass && !isAdminView && (
+            <Footer onViewChange={handleViewChange} />
+          )}
         </main>
       </div>
     </div>

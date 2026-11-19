@@ -5,7 +5,7 @@ import gsap from 'gsap';
 import {
     Users, Play, Check, MousePointerClick, Skull, UserRound, VolumeX,
     Volume2, Volume1, Power, Crown, RotateCcw, Square, Circle, Triangle, Gamepad2, ClipboardList,
-    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft, Eye, Crosshair, Camera
+    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft, Eye, Crosshair, Camera, AlertCircle
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { getSavedClasses, DojoClass } from './ClassRecord';
@@ -8161,9 +8161,16 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     const [muteUI, setMuteUI] = useState(false);
     const [volume, setVolume] = useState<number>(80);
     const [showVolumeSlider, setShowVolumeSlider] = useState<boolean>(false);
+    const [rosterNotice, setRosterNotice] = useState<string | null>(null);
     const gameVolumeRef = useRef<HTMLDivElement>(null);
     const homeVolumeRef = useRef<HTMLDivElement>(null);
     const nextRoundResolverRef = useRef<(() => void) | null>(null);
+
+    useEffect(() => {
+        if (!rosterNotice) return;
+        const timer = window.setTimeout(() => setRosterNotice(null), 3500);
+        return () => window.clearTimeout(timer);
+    }, [rosterNotice]);
 
     const handleVolumeChange = (newVal: number) => {
         setVolume(newVal);
@@ -8345,7 +8352,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         stopAnnounce();
         const currentMode = (activeGame === 'mingle' || activeGame === 'tag') ? 'picker' : gameMode;
         if (roster.length < 1) {
-            alert('Please add at least 1 player to the roster!');
+            setRosterNotice('Please add at least 1 player to the roster first.');
             setView('home');
             return;
         }
@@ -8990,6 +8997,24 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         >
             {/* Absolute positioning for the Three.js canvas so it stays under the UI layer and takes full space */}
             <div id="canvas-container" className="absolute inset-0 z-10" />
+
+            {rosterNotice && (
+                <div
+                    role="status"
+                    className="absolute top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-rose-950/95 border border-rose-500/70 text-rose-100 px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md text-sm font-bold animate-in fade-in slide-in-from-top-2 duration-150"
+                >
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{rosterNotice}</span>
+                    <button
+                        type="button"
+                        aria-label="Dismiss notice"
+                        onClick={() => setRosterNotice(null)}
+                        className="ml-1 p-1 rounded-lg hover:bg-rose-900/80 text-rose-300 hover:text-white transition cursor-pointer"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
 
             {/* YouTube Audio Player for Tag Game */}
             {activeGame === 'tag' && view === 'game' && (

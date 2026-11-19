@@ -1,49 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "motion/react";
-import { PlusCircle, QrCode, LogIn, Camera, Gamepad2, Wrench, Users, LayoutGrid, Loader2, AlertCircle } from "lucide-react";
+import { PlusCircle, QrCode, LogIn, LayoutGrid, Loader2, AlertCircle, History, SearchX, X, ArrowRight } from "lucide-react";
 import { Game, GameCategoryId, ViewState } from "../types";
 import { cn } from "../lib/utils";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db, isFirestoreQuotaExhausted } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
-
-import noiseControlCardImg from "../assets/images/noise_control_card_1795022921714.jpg";
-
-const mosquitoSlapCardImg = "/images/mosquito-slap-card.jpg?v=3";
-const hamsterPaintballCardImg = "/images/hamster-paintball-card.jpg?v=3";
-
-const GAME_CATEGORY_SECTIONS: {
-  id: GameCategoryId;
-  title: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  accentText: string;
-}[] = [
-  {
-    id: "classroom-tools",
-    title: "Classroom Tools",
-    icon: Wrench,
-    accentText: "text-emerald-600 dark:text-emerald-400",
-  },
-  {
-    id: "ar-camera",
-    title: "AR Camera Games",
-    icon: Camera,
-    accentText: "text-sky-600 dark:text-sky-400",
-  },
-  {
-    id: "board-trivia",
-    title: "Board Trivia & Team Games",
-    icon: Gamepad2,
-    accentText: "text-amber-600 dark:text-amber-400",
-  },
-  {
-    id: "multiplayer-games",
-    title: "Multiplayer Games",
-    icon: Users,
-    accentText: "text-purple-600 dark:text-purple-400",
-  },
-];
+import {
+  STUDIO_GAMES,
+  GAME_CATEGORY_SECTIONS,
+  getRecentGameIds,
+} from "../data/studioGames";
 
 function pingSameBrowserPaintballHost(code: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -80,10 +47,14 @@ function pingSameBrowserPaintballHost(code: string): Promise<boolean> {
 
 export function Home({
   onViewChange,
+  searchQuery = "",
+  onClearSearch,
 }: {
   onViewChange?: (view: ViewState, data?: any) => void;
   openAuthModal?: () => void;
   openGoogleAuthModal?: (feature?: string) => void;
+  searchQuery?: string;
+  onClearSearch?: () => void;
 }) {
   const [joinRoomInput, setJoinRoomInput] = useState("");
   const [isCheckingRoom, setIsCheckingRoom] = useState(false);
@@ -231,15 +202,23 @@ export function Home({
         </div>
       </div>
 
-      <FeaturedGamesSection onViewChange={onViewChange} />
+      <FeaturedGamesSection
+        onViewChange={onViewChange}
+        searchQuery={searchQuery}
+        onClearSearch={onClearSearch}
+      />
     </div>
   );
 }
 
 function FeaturedGamesSection({
   onViewChange,
+  searchQuery = "",
+  onClearSearch,
 }: {
   onViewChange?: (view: ViewState, data?: any) => void;
+  searchQuery?: string;
+  onClearSearch?: () => void;
 }) {
   const { user } = useAuth();
   const { t } = useLanguage();
@@ -272,290 +251,25 @@ function FeaturedGamesSection({
     return () => unsub();
   }, []);
 
-  const allGames: Game[] = [
-    // 1. Classroom Tools (4)
-    {
-      id: "squid-game-picker",
-      title: "NAME PICKER",
-      description: "Pick students randomly with Mingle Game, Tag, or Red Light, Green Light using a Squid Game theme.",
-      difficulty: "Medium",
-      players: "Classroom",
-      time: "5m",
-      subject: "Classroom Management",
-      grade: "All",
-      imageUrl: "/images/name-picker-card-v3.png?v=3",
-      isAI: false,
-      color: "from-rose-600 to-rose-400",
-      icon: "🎯",
-      category: "classroom-tools",
-    },
-    {
-      id: "flashcards-match",
-      title: "Flashcard",
-      description:
-        "Interactive 3D flashcards with 1-sided and 2-sided flip modes, media picker, audio reader, and card dealer stage!",
-      difficulty: "Easy",
-      players: "1 Player / Class",
-      time: "5-10m",
-      subject: "Vocabulary",
-      grade: "All",
-      imageUrl: "/images/flashcards-card-v3.jpg?v=3",
-      isAI: false,
-      color: "from-indigo-400 to-purple-500",
-      icon: "🎴",
-      category: "classroom-tools",
-    },
-    {
-      id: "hamster-pop-quiz",
-      title: "Video Quiz",
-      description: "Interactive video checkpoints and live pop-up quizzes.",
-      difficulty: "Medium",
-      players: "1 Player",
-      time: "10-15 mins",
-      subject: "Video Comprehension",
-      grade: "All",
-      imageUrl: "/images/video-quiz-card-v3.jpg?v=3",
-      isAI: true,
-      color: "from-amber-400 via-pink-500 to-purple-600",
-      icon: "🎬",
-      category: "classroom-tools",
-    },
-    {
-      id: "phonemic-master",
-      title: "Phonemic Master",
-      description: "Listen, speak, and master the 44 sounds of English.",
-      difficulty: "Hard",
-      players: "1 Player",
-      time: "10m",
-      subject: "ESL",
-      grade: "All",
-      imageUrl: "/images/phonemic-master-card-v3.jpg?v=3",
-      isAI: false,
-      color: "from-emerald-700 to-emerald-900",
-      icon: "🗣️",
-      category: "classroom-tools",
-    },
-    {
-      id: "sleeping-hamster",
-      title: "Noise Control",
-      description: "Smart classroom noise monitor with Sleeping Hamster & Hamster Cage modes! Keep your class quiet to keep hamsters happy.",
-      difficulty: "Easy",
-      players: "Classroom",
-      time: "3-30m",
-      subject: "Classroom Management",
-      grade: "All",
-      imageUrl: noiseControlCardImg,
-      isNew: true,
-      isAI: false,
-      color: "from-purple-700 to-indigo-900",
-      icon: "🐹",
-      category: "classroom-tools",
-    },
-
-    // 2. AR Camera Games (4)
-    {
-      id: "slap-and-chop",
-      title: "Mosquito Slap",
-      description:
-        "3D Motion AR game! Track both hands on camera and clap your 3D gloves together to slap buzzing mosquitoes!",
-      difficulty: "Easy",
-      players: "1-2 Players",
-      time: "5-10m",
-      subject: "ESL & Science",
-      grade: "All",
-      imageUrl: mosquitoSlapCardImg,
-      isAI: false,
-      color: "from-purple-500 to-indigo-600",
-      icon: "🦟",
-      category: "ar-camera",
-    },
-    {
-      id: "bubble-pop",
-      title: "Bubble Pop",
-      description:
-        "Use your finger on camera to pop the correct bubble!",
-      difficulty: "Easy",
-      players: "1-2 Players",
-      time: "5m",
-      subject: "Grammar",
-      grade: "A1-B1",
-      imageUrl: "/images/bubble-pop-card.jpg?v=3",
-      isAI: false,
-      color: "from-blue-400 to-cyan-400",
-      icon: "🫧",
-      category: "ar-camera",
-    },
-    {
-      id: "roller-coaster-quiz",
-      title: "Roller Coaster Quiz",
-      description:
-        "Ride a 3D theme park roller coaster with Captain Hammy! Lean or tap Left/Right at each 2-option track split!",
-      difficulty: "Medium",
-      players: "1 Player / Class",
-      time: "5-10m",
-      subject: "All Subjects",
-      grade: "All",
-      imageUrl: "/images/roller-coaster-quiz-card.jpg?v=3",
-      isNew: true,
-      isAI: false,
-      color: "from-red-500 to-amber-500",
-      icon: "🎢",
-      category: "ar-camera",
-    },
-    {
-      id: "yoga-quiz",
-      title: "Yoga Quiz",
-      description:
-        "Test your grammar with this relaxing yet challenging vocabulary quiz!",
-      difficulty: "Medium",
-      players: "1 Player",
-      time: "10m",
-      subject: "Grammar",
-      grade: "All",
-      imageUrl: "/images/yoga-quiz-card.jpg?v=3",
-      isAI: false,
-      color: "from-teal-400 to-emerald-500",
-      icon: "🧘‍♀️",
-      category: "ar-camera",
-    },
-
-    // 3. Board Trivia & Team Games (6)
-    {
-      id: "mystery-box",
-      title: "Mystery Box",
-      description:
-        "Answer questions to open mystery boxes containing points or penalties!",
-      difficulty: "Medium",
-      players: "2-4 Teams",
-      time: "15m",
-      subject: "Trivia",
-      grade: "A2-B1",
-      imageUrl: "/images/mystery-box-card.jpg?v=3",
-      isAI: false,
-      color: "from-orange-400 to-yellow-500",
-      icon: "🎁",
-      category: "board-trivia",
-    },
-    {
-      id: "neon-chain",
-      title: "Neon Chain",
-      description: "A fast-paced category word game with glowing visuals.",
-      difficulty: "Hard",
-      players: "2 Teams",
-      time: "10-15m",
-      subject: "Vocabulary",
-      grade: "B1-B2",
-      imageUrl: "/images/neon-chain-card.jpg?v=3",
-      isAI: false,
-      color: "from-cyan-400 to-blue-600",
-      icon: "⚡",
-      category: "board-trivia",
-    },
-    {
-      id: "bubble-sentence-pro",
-      title: "Bubble Island",
-      description:
-        "Pop bubbles in the correct order to form sentences. Includes a Teacher Studio!",
-      difficulty: "Medium",
-      players: "1 Player / Class",
-      time: "10m",
-      subject: "Grammar",
-      grade: "A1-B1",
-      imageUrl: "/images/bubble-island-card.jpg?v=3",
-      isAI: false,
-      color: "from-blue-500 to-sky-300",
-      icon: "🎈",
-      category: "board-trivia",
-    },
-    {
-      id: "shark-attack",
-      title: "Shark Attack",
-      description:
-        "2-player or vs AI staircase showdown! Answer right to stay safe or climb closer to the Megalodon jaws!",
-      difficulty: "Medium",
-      players: "1-2 Players",
-      time: "10m",
-      subject: "Trivia & ESL",
-      grade: "All",
-      imageUrl: "/images/shark-attack-card.jpg?v=3",
-      isAI: false,
-      color: "from-cyan-500 to-blue-900",
-      icon: "🦈",
-      category: "board-trivia",
-    },
-    {
-      id: "family-feud",
-      title: "Family Feud",
-      description: "Survey says! Compete to find the most popular answers to fun questions.",
-      difficulty: "Medium",
-      players: "2 Teams",
-      time: "15m",
-      subject: "Vocabulary",
-      grade: "All",
-      imageUrl: "/images/family-feud-card.jpg?v=3",
-      isAI: false,
-      color: "from-yellow-400 to-orange-500",
-      icon: "👨‍👩‍👧‍👦",
-      category: "board-trivia",
-    },
-    {
-      id: "sumo",
-      title: "Sumo Tags",
-      description: "Battle it out in a tug-of-war style question tags showdown!",
-      difficulty: "Medium",
-      players: "2 Teams",
-      time: "10m",
-      subject: "Grammar",
-      grade: "All",
-      imageUrl: "/images/sumo-tags-card.jpg?v=3",
-      isAI: false,
-      color: "from-indigo-600 to-red-600",
-      icon: "🤼",
-      category: "board-trivia",
-    },
-
-    // 4. Multiplayer Games (2)
-    {
-      id: "hamster-paintball",
-      title: "Hamster Paintball",
-      description:
-        "3D Outdoor Tactical Speedball Park Arena! Fire glossy paintballs, slide across the duck pond, deploy inflatable air bunkers, and earn ammo through trivia!",
-      difficulty: "Medium",
-      players: "Multiplayer Lobby (QR & Code)",
-      time: "5-15m",
-      subject: "ESL & Science Trivia",
-      grade: "All",
-      imageUrl: hamsterPaintballCardImg,
-      isNew: true,
-      isAI: false,
-      color: "from-lime-500 to-emerald-600",
-      icon: "🎯",
-      category: "multiplayer-games",
-    },
-    {
-      id: "tic-tac-toe",
-      title: "Tic Tac Toe Battle",
-      description: "Classic Tic Tac Toe with a multiplayer twist! Play locally or host a match.",
-      difficulty: "Medium",
-      players: "2 Players",
-      time: "5m",
-      subject: "Logic",
-      grade: "All",
-      imageUrl: "/images/tic-tac-toe-card.jpg?v=3",
-      isAI: false,
-      color: "from-gray-700 to-gray-900",
-      icon: "❌",
-      category: "multiplayer-games",
-    },
-  ];
-
-  const games = allGames.filter(
+  const games = STUDIO_GAMES.filter(
     (g) => g.id === "hamster-paintball" || isAdmin || publishedGames[g.id] !== false
   );
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredGames = normalizedQuery
+    ? games.filter((g) => {
+        const hay = `${g.title} ${g.description} ${g.subject} ${g.players} ${g.category || ""}`.toLowerCase();
+        return hay.includes(normalizedQuery);
+      })
+    : games;
+
+  const recentGames = getRecentGameIds()
+    .map((id) => games.find((g) => g.id === id))
+    .filter((g): g is Game => Boolean(g));
+
   const visibleSections = GAME_CATEGORY_SECTIONS.map((section) => ({
     ...section,
-    games: games.filter((g) => g.category === section.id),
+    games: filteredGames.filter((g) => g.category === section.id),
   })).filter(
     (section) =>
       section.games.length > 0 &&
@@ -563,17 +277,80 @@ function FeaturedGamesSection({
   );
 
   const countByCategory = (catId: GameCategoryId) =>
-    games.filter((g) => g.category === catId).length;
+    filteredGames.filter((g) => g.category === catId).length;
 
   return (
-    <section className="py-2 flex flex-col gap-8">
+    <section className="py-2 flex flex-col gap-7">
+      {/* Jump Back In — Recent Games Quick Resume */}
+      {recentGames.length > 0 && !normalizedQuery && (
+        <div className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700 p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <History size={14} className="text-brand-purple" />
+              <span>Jump Back In</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {recentGames.map((game) => (
+              <button
+                key={game.id}
+                type="button"
+                onClick={() => onViewChange && onViewChange(game.id as ViewState)}
+                className="group flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/70 dark:hover:bg-slate-700/70 border border-slate-200/70 dark:border-slate-700/80 transition-colors text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-9 h-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center text-lg shrink-0">
+                    {game.icon || "🎮"}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                      {game.title}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      {game.subject}
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight
+                  size={15}
+                  className="text-slate-400 group-hover:text-brand-purple group-hover:translate-x-0.5 transition-all shrink-0"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Active Search Indicator */}
+      {normalizedQuery && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/70 px-4 py-3 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Showing <span className="font-black tabular-nums">{filteredGames.length}</span>{" "}
+            {filteredGames.length === 1 ? "game" : "games"} matching{" "}
+            <span className="font-bold text-brand-purple dark:text-purple-300">
+              "{searchQuery.trim()}"
+            </span>
+          </p>
+          {onClearSearch && (
+            <button
+              type="button"
+              onClick={onClearSearch}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple"
+            >
+              <X size={13} />
+              <span>Clear search</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Interactive Top Category Filter Tabs */}
       <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm w-fit max-w-full">
         <button
           type="button"
           onClick={() => setSelectedCategory("all")}
           className={cn(
-            "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
+            "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple",
             selectedCategory === "all"
               ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
               : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
@@ -581,7 +358,7 @@ function FeaturedGamesSection({
         >
           <LayoutGrid size={16} />
           <span>{t("home.allGames")}</span>
-          <span className="text-xs opacity-75 tabular-nums">({games.length})</span>
+          <span className="text-xs opacity-75 tabular-nums">({filteredGames.length})</span>
         </button>
 
         {GAME_CATEGORY_SECTIONS.map((cat) => {
@@ -594,7 +371,7 @@ function FeaturedGamesSection({
               type="button"
               onClick={() => setSelectedCategory(cat.id)}
               className={cn(
-                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0",
+                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple",
                 isActive
                   ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
                   : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-700/50"
@@ -608,33 +385,67 @@ function FeaturedGamesSection({
         })}
       </div>
 
-      {/* Category Sections with Bold Minimalist Headers & 100% Clean 3D Model Cards */}
-      <div className="flex flex-col gap-12">
-        {visibleSections.map((section) => {
-          const SectionIcon = section.icon;
-          return (
-            <div key={section.id} className="flex flex-col gap-5">
-              <div className="flex items-center gap-2.5">
-                <SectionIcon size={24} className={section.accentText} />
-                <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                  {t(`home.cat.${section.id}`, section.title)}
-                </h3>
-              </div>
+      {/* Category Sections with Bold Minimalist Headers & Accessible 3D Cards */}
+      {visibleSections.length === 0 ? (
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-10 text-center flex flex-col items-center gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+            <SearchX size={28} />
+          </div>
+          <h3 className="text-lg font-black text-slate-900 dark:text-white">
+            No games match your current filter
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
+            Try clearing your search query or switching back to All Games to browse the full classroom catalog.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+            {normalizedQuery && onClearSearch && (
+              <button
+                type="button"
+                onClick={onClearSearch}
+                className="px-4 py-2 rounded-xl bg-brand-purple text-white text-sm font-bold hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                Clear search
+              </button>
+            )}
+            {selectedCategory !== "all" && (
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("all")}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
+              >
+                Show all categories
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-12">
+          {visibleSections.map((section) => {
+            const SectionIcon = section.icon;
+            return (
+              <div key={section.id} className="flex flex-col gap-5">
+                <div className="flex items-center gap-2.5">
+                  <SectionIcon size={24} className={section.accentText} />
+                  <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                    {t(`home.cat.${section.id}`, section.title)}
+                  </h3>
+                </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {section.games.map((game, idx) => (
-                  <GameCard
-                    key={game.id}
-                    game={game}
-                    delay={idx * 0.06}
-                    onViewChange={onViewChange}
-                  />
-                ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {section.games.map((game, idx) => (
+                    <GameCard
+                      key={game.id}
+                      game={game}
+                      delay={idx * 0.06}
+                      onViewChange={onViewChange}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
@@ -648,50 +459,76 @@ function GameCard({
   delay?: number;
   onViewChange?: (view: ViewState, data?: any) => void;
 }) {
+  const [imgSrc, setImgSrc] = useState(game.imageUrl || "");
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(game.imageUrl || "");
+    setImgFailed(false);
+  }, [game.imageUrl]);
+
+  const handleImgError = () => {
+    if (game.id === "hamster-paintball" && imgSrc !== "/images/hamster-paintball-card.png") {
+      setImgSrc("/images/hamster-paintball-card.png");
+      return;
+    }
+    setImgFailed(true);
+  };
+
   return (
-    <div
+    <button
+      type="button"
       onClick={() => onViewChange && onViewChange(game.id as ViewState)}
-      className="w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden shadow-lg hover:shadow-2xl group hover:-translate-y-2 transition-transform duration-200 cursor-pointer select-none"
+      aria-label={`Launch ${game.title}`}
+      className="w-full relative aspect-[4/3] bg-transparent rounded-[2.25rem] overflow-hidden shadow-lg hover:shadow-2xl group hover:-translate-y-1.5 transition-transform duration-200 cursor-pointer select-none text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-purple/70"
     >
-      {game.imageUrl ? (
+      {imgSrc && !imgFailed ? (
         <>
           <img
-            src={game.imageUrl}
+            src={imgSrc}
             alt={game.title}
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
-            onError={(e: any) => {
-              if (game.id === 'hamster-paintball') {
-                e.currentTarget.src = '/images/hamster-paintball-card.png';
-              }
-            }}
+            onError={handleImgError}
             className="w-full h-full object-cover scale-[1.01] group-hover:scale-[1.05] transition-transform duration-200"
           />
           <div className="pointer-events-none absolute inset-0 rounded-[2.25rem] ring-1 ring-inset ring-white/25" />
-          <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">
-            <div className="w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center text-slate-950 transform scale-90 group-hover:scale-100 transition-transform duration-150">
-              <svg className="w-8 h-8 ml-1 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/15 to-transparent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-150 flex flex-col justify-between p-5">
+            <div className="flex-1 flex items-center justify-center">
+              <div className="w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center text-slate-950 transform scale-90 group-hover:scale-100 group-focus-visible:scale-100 transition-transform duration-150">
+                <svg className="w-8 h-8 ml-1 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex items-end justify-between gap-2 text-white">
+              <div className="min-w-0">
+                <p className="text-base font-black leading-tight truncate">{game.title}</p>
+                <p className="text-xs font-semibold text-white/80 truncate">
+                  {game.subject} · {game.players}
+                </p>
+              </div>
             </div>
           </div>
         </>
       ) : (
         <div
           className={cn(
-            "w-full h-full flex items-center justify-center bg-gradient-to-br",
-            game.color,
+            "w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center bg-gradient-to-br text-white",
+            game.color || "from-indigo-600 to-purple-700"
           )}
         >
-          {game.icon?.startsWith("http") ? (
-            <img src={game.icon} loading="lazy" decoding="async" referrerPolicy="no-referrer" alt={game.title} className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-200" />
-          ) : (
-            <span className="text-7xl group-hover:scale-110 transition-transform duration-200">
-              {game.icon}
-            </span>
-          )}
+          <span className="text-6xl group-hover:scale-110 transition-transform duration-200">
+            {game.icon || "🎮"}
+          </span>
+          <div>
+            <p className="text-xl font-black tracking-tight">{game.title}</p>
+            <p className="text-xs font-semibold text-white/85 mt-0.5">{game.subject}</p>
+          </div>
         </div>
       )}
-    </div>
+    </button>
   );
 }
 
