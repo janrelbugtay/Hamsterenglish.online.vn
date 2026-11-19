@@ -32,7 +32,9 @@ import {
   Volume2,
   VolumeX,
   Snowflake,
-  Trophy
+  Trophy,
+  Flag,
+  Clock
 } from 'lucide-react';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
@@ -292,7 +294,7 @@ function getOrPrewarmYogaHands(): Promise<any> {
         hands.setOptions({
           maxNumHands: 4,
           modelComplexity: 1,
-          minDetectionConfidence: 0.45,
+          minDetectionConfidence: 0.50,
           minTrackingConfidence: 0.45,
         });
 
@@ -352,22 +354,45 @@ function detectStandingPoseFromHands(
     return Math.hypot(dx, dy, dz);
   };
 
-  // Joint straightness cosine between (mcp -> pip) and (pip -> tip):
+  // Joint straightness cosine between (a -> b) and (b -> c) with mild 3D depth awareness:
   // +1.0 = straight extended finger, < 0.25 = curled/folded finger
-  const fingerStraightCos = (
-    mcp: { x: number; y: number; z?: number },
-    pip: { x: number; y: number; z?: number },
-    tip: { x: number; y: number; z?: number }
+  const jointCos3D = (
+    a: { x: number; y: number; z?: number },
+    b: { x: number; y: number; z?: number },
+    c: { x: number; y: number; z?: number }
   ) => {
-    const v1x = (pip.x - mcp.x) * videoAspect;
-    const v1y = pip.y - mcp.y;
-    const v2x = (tip.x - pip.x) * videoAspect;
-    const v2y = tip.y - pip.y;
-    const mag1 = Math.hypot(v1x, v1y);
-    const mag2 = Math.hypot(v2x, v2y);
+    const v1x = (b.x - a.x) * videoAspect;
+    const v1y = b.y - a.y;
+    const v1z = ((b.z ?? 0) - (a.z ?? 0)) * 0.3;
+    const v2x = (c.x - b.x) * videoAspect;
+    const v2y = c.y - b.y;
+    const v2z = ((c.z ?? 0) - (b.z ?? 0)) * 0.3;
+    const mag1 = Math.hypot(v1x, v1y, v1z);
+    const mag2 = Math.hypot(v2x, v2y, v2z);
     if (mag1 < 1e-4 || mag2 < 1e-4) return 0;
-    return (v1x * v2x + v1y * v2y) / (mag1 * mag2);
+    return (v1x * v2x + v1y * v2y + v1z * v2z) / (mag1 * mag2);
   };
+
+  // Deduplicate ghost overlapping detections of the same physical hand (stops false 2-hand triggers)
+  const dedupedHands: Array<Array<{ x: number; y: number; z?: number }>> = [];
+  for (const h of hands) {
+    if (!h || h.length < 21) continue;
+    const palmSz = Math.max(0.04, dist(h[9], h[0]));
+    const isGhostDuplicate = dedupedHands.some(existing => {
+      const exPalm = Math.max(0.04, dist(existing[9], existing[0]));
+      const avgP = (palmSz + exPalm) * 0.5;
+      return (
+        dist(h[9], existing[9]) / avgP < 0.32 &&
+        dist(h[0], existing[0]) / avgP < 0.32
+      );
+    });
+    if (!isGhostDuplicate) {
+      dedupedHands.push(h);
+    }
+  }
+  if (dedupedHands.length === 0) {
+    return { poseId: null, confidence: 0, needsSecondHandFor: null };
+  }
 
   const analyzeSingleHand = (lm: Array<{ x: number; y: number; z?: number }>) => {
     const wrist = lm[0];
@@ -401,24 +426,27 @@ function detectStandingPoseFromHands(
       const dipRatio = dTipWrist / dDipWrist;
       const mcpRatio = dTipWrist / dMcpWrist;
       const mcpSpan = dist(tip, mcp) / palmSize;
-      const cosStraight = fingerStraightCos(mcp, pip, tip);
+      const pipCos = jointCos3D(mcp, pip, dip);
+      const dipCos = jointCos3D(pip, dip, tip);
+      const overallCos = jointCos3D(mcp, pip, tip);
+      const cosStraight = overallCos * 0.55 + pipCos * 0.25 + dipCos * 0.20;
 
       // If fingertip is closer to wrist than DIP/PIP or folded back sharply, it is definitely curled
-      if (dipRatio < 0.96 || wristRatio < 1.02 || cosStraight < 0.05) {
+      if (dipRatio < 0.95 || wristRatio < 1.01 || cosStraight < 0.04) {
         return {
-          score: clamp01(normRange(wristRatio, 0.85, 1.05) * 0.25),
+          score: clamp01(normRange(wristRatio, 0.85, 1.04) * 0.25),
           wristRatio,
           cosStraight,
           mcpSpan,
         };
       }
 
-      const cosPart = normRange(cosStraight, 0.12, 0.82);
-      const ratioPart = normRange(wristRatio, 1.04, isPinky ? 1.24 : 1.28);
-      const spanPart = normRange(mcpSpan, isPinky ? 0.34 : 0.42, isPinky ? 0.72 : 0.82);
-      const mcpPart = normRange(mcpRatio, 1.12, isPinky ? 1.50 : 1.62);
+      const cosPart = normRange(cosStraight, 0.12, 0.84);
+      const ratioPart = normRange(wristRatio, 1.03, isPinky ? 1.22 : 1.26);
+      const spanPart = normRange(mcpSpan, isPinky ? 0.32 : 0.40, isPinky ? 0.70 : 0.80);
+      const mcpPart = normRange(mcpRatio, 1.10, isPinky ? 1.48 : 1.60);
 
-      const score = clamp01(cosPart * 0.38 + ratioPart * 0.30 + spanPart * 0.18 + mcpPart * 0.14);
+      const score = clamp01(cosPart * 0.40 + ratioPart * 0.28 + spanPart * 0.18 + mcpPart * 0.14);
       return { score, wristRatio, cosStraight, mcpSpan };
     };
 
@@ -476,13 +504,13 @@ function detectStandingPoseFromHands(
       (fourFingersCount === 0 && maxFourScore < 0.52) ||
       (maxFourScore < 0.46 && avgFourScore < 0.36);
 
-    // Pinch distance for OK sign
+    // Pinch distance for OK sign (generous for classroom webcams)
     const pinchDist = dist(thumbTip, lm[8]) / palmSize;
     const isOkPinch =
-      pinchDist < 0.42 &&
-      middleScore > 0.52 &&
-      ringScore > 0.48 &&
-      indexScore < 0.65;
+      pinchDist < 0.48 &&
+      middleScore > 0.46 &&
+      ringScore > 0.44 &&
+      indexScore < 0.68;
 
     // Relative extension dominances using continuous scores
     const pointDominance = indexScore - Math.max(middleScore, ringScore, pinkyScore);
@@ -527,9 +555,12 @@ function detectStandingPoseFromHands(
 
     const isThumbsUp = thumbUpVertical && maxFourScore < 0.50;
     const isThumbsDown = thumbDownVertical && maxFourScore < 0.50;
-    const isOpenPalm = minAll4 >= 0.42 && (fourFingersCount >= 4 || avgFourScore >= 0.56);
-    const isFourFingers = minAll4 >= 0.48 && !thumbSpread;
-    const isShaka = thumbSpread && pinkyScore >= 0.48 && Math.max(indexScore, middleScore, ringScore) < 0.48;
+    const isOpenPalm = minAll4 >= 0.40 && (fourFingersCount >= 4 || avgFourScore >= 0.54);
+    const isFourFingers = minAll4 >= 0.46 && !thumbSpread;
+    const isShaka =
+      (thumbSpread || thumbToIndexMcp > 0.46) &&
+      pinkyScore >= 0.45 &&
+      Math.max(indexScore, middleScore, ringScore) < 0.48;
 
     return {
       wrist,
@@ -573,7 +604,7 @@ function detectStandingPoseFromHands(
     };
   };
 
-  const analyzed = hands.map(analyzeSingleHand);
+  const analyzed = dedupedHands.map(analyzeSingleHand);
 
   // Immediate priority check for bad action (middle finger gesture)
   for (const h of analyzed) {
@@ -586,6 +617,10 @@ function detectStandingPoseFromHands(
     candidatePoseIds.includes('thumbs-up') || candidatePoseIds.includes('two-thumbs-up');
   const expectsThumbsDown =
     candidatePoseIds.includes('thumbs-down') || candidatePoseIds.includes('two-thumbs-down');
+  const expectsFourFingers =
+    candidatePoseIds.includes('4-finger') || candidatePoseIds.includes('two-4-finger');
+  const expectsFiveFingers =
+    candidatePoseIds.includes('5-finger') || candidatePoseIds.includes('star-hands') || candidatePoseIds.includes('hands-up');
   const expectsNamaste = candidatePoseIds.includes('namaste-hands');
   const expectsHeart = candidatePoseIds.includes('heart-hands');
   const expectsXCross = candidatePoseIds.includes('x-hands');
@@ -673,13 +708,17 @@ function detectStandingPoseFromHands(
           twoHandScores['two-fists'] = Math.max(twoHandScores['two-fists'] || 0, 0.95);
         }
 
-        // 7. Double Thumbs Up (👍👍)
-        if (a.isThumbsUp && b.isThumbsUp) {
+        // 7. Double Thumbs Up (👍👍) - forgiving on non-dominant second hand
+        const aLooseUp = a.isThumbsUp || (a.thumbUpVertical && a.maxFourScore < 0.58);
+        const bLooseUp = b.isThumbsUp || (b.thumbUpVertical && b.maxFourScore < 0.58);
+        if ((a.isThumbsUp && bLooseUp) || (b.isThumbsUp && aLooseUp)) {
           twoHandScores['two-thumbs-up'] = Math.max(twoHandScores['two-thumbs-up'] || 0, 0.97);
         }
 
-        // 8. Double Thumbs Down (👎👎)
-        if (a.isThumbsDown && b.isThumbsDown) {
+        // 8. Double Thumbs Down (👎👎) - forgiving on non-dominant second hand
+        const aLooseDown = a.isThumbsDown || (a.thumbDownVertical && a.maxFourScore < 0.58);
+        const bLooseDown = b.isThumbsDown || (b.thumbDownVertical && b.maxFourScore < 0.58);
+        if ((a.isThumbsDown && bLooseDown) || (b.isThumbsDown && aLooseDown)) {
           twoHandScores['two-thumbs-down'] = Math.max(twoHandScores['two-thumbs-down'] || 0, 0.97);
         }
 
@@ -783,13 +822,13 @@ function detectStandingPoseFromHands(
       }
     }
 
-    // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb tucked
-    if (h.minAll4 >= 0.52 && !h.thumbSpread) {
-      scores['4-finger'] = Math.max(scores['4-finger'] || 0, clamp01(0.85 + h.minAll4 * 0.14));
+    // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb tucked (relaxed if 5-finger isn't on screen)
+    if (h.minAll4 >= 0.48 && (!h.thumbSpread || !expectsFiveFingers)) {
+      scores['4-finger'] = Math.max(scores['4-finger'] || 0, clamp01(0.86 + h.minAll4 * 0.13));
     }
 
-    // 6. 5 Fingers / Open Palm (🖐️) - all 4 fingers + thumb open wide
-    if (h.minAll4 >= 0.50 && (h.thumbSpread || h.totalOpenCount >= 5)) {
+    // 6. 5 Fingers / Open Palm (🖐️) - all 4 fingers + thumb open wide (relaxed if 4-finger isn't on screen)
+    if (h.minAll4 >= 0.46 && (h.thumbSpread || h.totalOpenCount >= 5 || !expectsFourFingers)) {
       const fiveConf = clamp01(0.87 + h.avgFourScore * 0.12);
       scores['5-finger'] = Math.max(scores['5-finger'] || 0, fiveConf);
       scores['star-hands'] = Math.max(scores['star-hands'] || 0, fiveConf);
@@ -813,11 +852,7 @@ function detectStandingPoseFromHands(
     }
 
     // 9. Shaka / Call Me (🤙) - thumb and pinky extended, index/middle/ring curled
-    if (
-      h.thumbSpread &&
-      h.pinkyScore >= 0.50 &&
-      Math.max(h.indexScore, h.middleScore, h.ringScore) < 0.46
-    ) {
+    if (h.isShaka) {
       scores['shaka'] = Math.max(scores['shaka'] || 0, 0.94);
     }
   }
@@ -1942,7 +1977,7 @@ interface RoundWinnerInfo {
 const YOGA_FREEZE_DURATION_MS = 3000;
 const YOGA_BAD_ACTION_PENALTY_MS = 3500;
 
-function playYogaArenaSfx(type: 'correct' | 'freeze' | 'win' | 'bad-penalty') {
+function playYogaArenaSfx(type: 'correct' | 'freeze' | 'win' | 'bad-penalty' | 'tick' | 'go', stepNumber?: number) {
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return;
@@ -2035,6 +2070,38 @@ function playYogaArenaSfx(type: 'correct' | 'freeze' | 'win' | 'bad-penalty') {
         gain.connect(ctx.destination);
         osc.start(now + n.t);
         osc.stop(now + n.t + n.d + 0.02);
+      });
+    } else if (type === 'tick') {
+      // Crisp rising countdown tick (pitch rises as 3 -> 2 -> 1)
+      const freq = stepNumber === 1 ? 880 : stepNumber === 2 ? 698.46 : 587.33;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.04, now + 0.09);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.16, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else if (type === 'go') {
+      // Bright two-note launch chime when the next question begins
+      const notes = [783.99, 1046.5];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        const start = now + idx * 0.06;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.linearRampToValueAtTime(0.15, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.24);
       });
     }
   } catch (e) {}
@@ -2175,9 +2242,54 @@ function YogaGame({
     }
   });
   const [isSpeakingQuestion, setIsSpeakingQuestion] = useState(false);
+  // Gate: students' hand detection unlocks ONLY AFTER the question finishes being read aloud
+  const [isWaitingForQuestionRead, setIsWaitingForQuestionRead] = useState(false);
+  const isWaitingForQuestionReadRef = useRef(false);
+  const [showGoFlash, setShowGoFlash] = useState(false);
+  const readFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Match Countdown Timer + End-Game Stats (connected to Setup Timer + End Flag button)
+  const [gameTimeLeftSec, setGameTimeLeftSec] = useState<number>(() => yogaTimerMinutes * 60);
+  const [gameTotalTimeSec, setGameTotalTimeSec] = useState<number>(() => yogaTimerMinutes * 60);
+  const [gameEndReason, setGameEndReason] = useState<'completed' | 'timer' | 'manual'>('completed');
+  const [questionsAnsweredCount, setQuestionsAnsweredCount] = useState<number>(0);
+
+  const formatClockMMSS = (totalSec: number) => {
+    const safe = Math.max(0, Math.floor(totalSec));
+    const mins = Math.floor(safe / 60);
+    const secs = safe % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   const voiceEnabledRef = useRef(voiceEnabled);
   voiceEnabledRef.current = voiceEnabled;
   const preferredVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+
+  const unlockQuestionReadGate = useCallback((playGoCue: boolean = true) => {
+    if (readFallbackTimerRef.current) {
+      clearTimeout(readFallbackTimerRef.current);
+      readFallbackTimerRef.current = null;
+    }
+    const wasLocked = isWaitingForQuestionReadRef.current;
+    isWaitingForQuestionReadRef.current = false;
+    setIsWaitingForQuestionRead(false);
+    const now = performance.now();
+    questionReadyAtRef.current = now + 180;
+    // Reset any lingering poses held while listening so students start cleanly from 0%
+    holdStateRef.current.forEach(h => {
+      h.progress = 0;
+      h.optionIdx = null;
+      h.poseId = null;
+      h.recentPoses = [];
+    });
+    if (wasLocked && playGoCue) {
+      playYogaArenaSfx('go');
+      setShowGoFlash(true);
+      if (goFlashTimerRef.current) clearTimeout(goFlashTimerRef.current);
+      goFlashTimerRef.current = setTimeout(() => setShowGoFlash(false), 1100);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -2186,8 +2298,9 @@ function YogaGame({
     if (!voiceEnabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       setIsSpeakingQuestion(false);
+      unlockQuestionReadGate(false);
     }
-  }, [voiceEnabled]);
+  }, [voiceEnabled, unlockQuestionReadGate]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -2227,41 +2340,88 @@ function YogaGame({
     return () => {
       window.speechSynthesis.removeEventListener?.('voiceschanged', pickBestNaturalVoice);
       window.speechSynthesis.cancel();
+      if (readFallbackTimerRef.current) clearTimeout(readFallbackTimerRef.current);
+      if (goFlashTimerRef.current) clearTimeout(goFlashTimerRef.current);
     };
   }, []);
 
-  const speakNaturalText = useCallback((textToSpeak: string, forceSpeak: boolean = false) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    if (!forceSpeak && !voiceEnabledRef.current) return;
-    const cleaned = textToSpeak.trim();
-    if (!cleaned) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(cleaned);
-      if (preferredVoiceRef.current) {
-        utterance.voice = preferredVoiceRef.current;
+  const speakNaturalText = useCallback(
+    (textToSpeak: string, forceSpeak: boolean = false, onFinished?: () => void) => {
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+        onFinished?.();
+        return;
       }
-      utterance.lang = preferredVoiceRef.current?.lang || 'en-US';
-      utterance.rate = 0.96;
-      utterance.pitch = 1.04;
-      utterance.volume = 1.0;
-      utterance.onstart = () => setIsSpeakingQuestion(true);
-      utterance.onend = () => setIsSpeakingQuestion(false);
-      utterance.onerror = () => setIsSpeakingQuestion(false);
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      setIsSpeakingQuestion(false);
-    }
-  }, []);
-
-  const speakQuestionByIndex = useCallback(
-    (qIdx: number, forceSpeak: boolean = false) => {
-      const q = quiz.questions[qIdx];
-      if (!q?.text) return;
-      const naturalPrompt = formatQuestionForNaturalSpeech(q.text);
-      speakNaturalText(naturalPrompt, forceSpeak);
+      if (!forceSpeak && !voiceEnabledRef.current) {
+        onFinished?.();
+        return;
+      }
+      const cleaned = textToSpeak.trim();
+      if (!cleaned) {
+        onFinished?.();
+        return;
+      }
+      let finishedCalled = false;
+      const safeFinish = () => {
+        if (finishedCalled) return;
+        finishedCalled = true;
+        setIsSpeakingQuestion(false);
+        onFinished?.();
+      };
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(cleaned);
+        if (preferredVoiceRef.current) {
+          utterance.voice = preferredVoiceRef.current;
+        }
+        utterance.lang = preferredVoiceRef.current?.lang || 'en-US';
+        utterance.rate = 0.96;
+        utterance.pitch = 1.04;
+        utterance.volume = 1.0;
+        utterance.onstart = () => setIsSpeakingQuestion(true);
+        utterance.onend = () => safeFinish();
+        utterance.onerror = () => safeFinish();
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        safeFinish();
+      }
     },
-    [quiz.questions, speakNaturalText]
+    []
+  );
+
+  // Read ONLY the question text before answering; when lockDetectionUntilDone is true, student hand detection triggers only after reading completes
+  const speakQuestionByIndex = useCallback(
+    (qIdx: number, forceSpeak: boolean = false, lockDetectionUntilDone: boolean = false) => {
+      const q = quiz.questions[qIdx];
+      const hasSpeechApi = typeof window !== 'undefined' && 'speechSynthesis' in window;
+      const shouldSpeak = Boolean(q?.text?.trim()) && hasSpeechApi && (forceSpeak || voiceEnabledRef.current);
+
+      if (!shouldSpeak) {
+        if (lockDetectionUntilDone) {
+          unlockQuestionReadGate(false);
+        }
+        return;
+      }
+
+      const naturalPrompt = formatQuestionForNaturalSpeech(q.text);
+      if (lockDetectionUntilDone) {
+        isWaitingForQuestionReadRef.current = true;
+        setIsWaitingForQuestionRead(true);
+        setShowGoFlash(false);
+        if (readFallbackTimerRef.current) clearTimeout(readFallbackTimerRef.current);
+        const wordCount = Math.max(1, naturalPrompt.split(/\s+/).filter(Boolean).length);
+        const maxWaitMs = Math.max(2600, Math.min(11500, wordCount * 580 + 1800));
+        readFallbackTimerRef.current = setTimeout(() => {
+          unlockQuestionReadGate(true);
+        }, maxWaitMs);
+      }
+
+      speakNaturalText(naturalPrompt, forceSpeak, () => {
+        if (lockDetectionUntilDone) {
+          unlockQuestionReadGate(true);
+        }
+      });
+    },
+    [quiz.questions, speakNaturalText, unlockQuestionReadGate]
   );
 
   const teamColors = [
@@ -2347,6 +2507,7 @@ function YogaGame({
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [timer, setTimer] = useState<number | null>(null);
+  const [timerProgress, setTimerProgress] = useState<number>(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const { width, height } = useWindowSize();
 
@@ -2560,6 +2721,23 @@ function YogaGame({
     setWinningPlayerIdx(null);
     const now = performance.now();
     questionReadyAtRef.current = now + 650;
+    const currentItemForGate = quiz.questions[idx];
+    const willAutoRead =
+      voiceEnabledRef.current &&
+      Boolean(currentItemForGate?.text?.trim()) &&
+      typeof window !== 'undefined' &&
+      'speechSynthesis' in window;
+    if (readFallbackTimerRef.current) {
+      clearTimeout(readFallbackTimerRef.current);
+      readFallbackTimerRef.current = null;
+    }
+    if (goFlashTimerRef.current) {
+      clearTimeout(goFlashTimerRef.current);
+      goFlashTimerRef.current = null;
+    }
+    setShowGoFlash(false);
+    isWaitingForQuestionReadRef.current = willAutoRead;
+    setIsWaitingForQuestionRead(willAutoRead);
     holdStateRef.current = [
       { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
       { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
@@ -2752,13 +2930,18 @@ function YogaGame({
     loadQuestion(currentIdx, false);
   }, [playMode, currentIdx, loadQuestion]);
 
-  // Automatically read the current question naturally when a question loads during gameplay
+  // Automatically read ONLY the question naturally when a question loads; unlock student hand detection only after reading completes
   useEffect(() => {
     if (gameState === 'playing') {
       const timerId = setTimeout(() => {
-        speakQuestionByIndex(currentIdx, false);
+        speakQuestionByIndex(currentIdx, false, true);
       }, 220);
-      return () => clearTimeout(timerId);
+      return () => {
+        clearTimeout(timerId);
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+      };
     }
   }, [gameState, currentIdx, speakQuestionByIndex]);
 
@@ -2808,12 +2991,63 @@ function YogaGame({
 
   const countdownRef = useRef<any>(null);
 
+  useEffect(() => {
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+    };
+  }, []);
+
+  const finishGameNow = useCallback((reason: 'completed' | 'timer' | 'manual' = 'manual') => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    if (readFallbackTimerRef.current) {
+      clearTimeout(readFallbackTimerRef.current);
+      readFallbackTimerRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    isWaitingForQuestionReadRef.current = false;
+    setIsWaitingForQuestionRead(false);
+    setTimer(null);
+    setTimerProgress(0);
+    setGameEndReason(reason);
+    setGameState('end');
+    playSound('win');
+  }, []);
+
+  // Live Match Countdown Timer (counts down yogaTimerMinutes and automatically finishes the match at 00:00)
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+    const matchTick = setInterval(() => {
+      setGameTimeLeftSec(prev => {
+        if (prev <= 1) {
+          clearInterval(matchTick);
+          finishGameNow('timer');
+          return 0;
+        }
+        const nextVal = prev - 1;
+        if (nextVal <= 5 && nextVal > 0) {
+          playYogaArenaSfx('tick', nextVal <= 3 ? nextVal : 3);
+        }
+        return nextVal;
+      });
+    }, 1000);
+    return () => clearInterval(matchTick);
+  }, [gameState, finishGameNow]);
+
   const advanceToNextQuestion = useCallback((fromIdx: number) => {
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
       countdownRef.current = null;
     }
     setTimer(null);
+    setTimerProgress(0);
     setShowConfetti(false);
     setRoundWinnerBanner(null);
     setRoundWinnerInfo(null);
@@ -2823,10 +3057,9 @@ function YogaGame({
       setCurrentIdx(nextIdx);
       loadQuestion(nextIdx, false);
     } else {
-      setGameState('end');
-      playSound('win');
+      finishGameNow('completed');
     }
-  }, [quiz.questions.length, loadQuestion]);
+  }, [quiz.questions.length, loadQuestion, finishGameNow]);
 
   const goToPreviousQuestion = useCallback(() => {
     if (currentIdx <= 0) return;
@@ -2835,6 +3068,7 @@ function YogaGame({
       countdownRef.current = null;
     }
     setTimer(null);
+    setTimerProgress(0);
     setShowConfetti(false);
     setRoundWinnerBanner(null);
     setRoundWinnerInfo(null);
@@ -2861,7 +3095,18 @@ function YogaGame({
 
     const matchedOpt = shuffledOptionsRef.current[index];
     const winningAnswerWord = matchedOpt?.text || 'Correct';
-    const currentQ = quiz.questions[currentIdxRef.current];
+
+    if (readFallbackTimerRef.current) {
+      clearTimeout(readFallbackTimerRef.current);
+      readFallbackTimerRef.current = null;
+    }
+    if (goFlashTimerRef.current) {
+      clearTimeout(goFlashTimerRef.current);
+      goFlashTimerRef.current = null;
+    }
+    isWaitingForQuestionReadRef.current = false;
+    setIsWaitingForQuestionRead(false);
+    setShowGoFlash(false);
 
     playSound('correct');
     playYogaArenaSfx('correct');
@@ -2907,36 +3152,54 @@ function YogaGame({
       });
     }
 
-    // Read the completed sentence or answer naturally!
-    if (voiceEnabledRef.current && currentQ?.text) {
-      const hasBlank = /_{2,}|\.\.\.+|\[\s*blank\s*\]|\(\s*\)/i.test(currentQ.text);
-      if (hasBlank && winningAnswerWord) {
-        const completedSentence = formatQuestionForNaturalSpeech(currentQ.text, winningAnswerWord);
-        speakNaturalText(`Correct! ${completedSentence}`);
-      } else if (winningAnswerWord) {
-        speakNaturalText(`Correct! ${winningAnswerWord}`);
-      }
+    setQuestionsAnsweredCount(prev => Math.min(quiz.questions.length, prev + 1));
+
+    // Read ONLY the question before answering — silence any lingering speech once answered
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeakingQuestion(false);
     }
 
     if (autoAdvanceDelay === 'manual') {
       return;
     }
 
-    let timeLeft = autoAdvanceDelay;
-    setTimer(timeLeft);
+    const totalSeconds: number = autoAdvanceDelay;
+    const totalMs = totalSeconds * 1000;
+    const countdownEndAt = performance.now() + totalMs;
+    let lastWholeSec: number = totalSeconds;
+    const answeredIdx = currentIdxRef.current;
+
+    setTimer(totalSeconds);
+    setTimerProgress(100);
 
     if (countdownRef.current) clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
-      timeLeft -= 1;
-      if (timeLeft > 0) {
-        setTimer(timeLeft);
+      const remainingMs = Math.max(0, countdownEndAt - performance.now());
+      const pct = Math.max(0, Math.min(100, (remainingMs / totalMs) * 100));
+      setTimerProgress(pct);
+
+      const wholeSec = Math.ceil(remainingMs / 1000);
+      if (wholeSec > 0) {
+        if (wholeSec !== lastWholeSec) {
+          lastWholeSec = wholeSec;
+          setTimer(wholeSec);
+          if (wholeSec <= 3) {
+            playYogaArenaSfx('tick', wholeSec);
+          }
+        }
       } else {
         if (countdownRef.current) clearInterval(countdownRef.current);
         countdownRef.current = null;
-        advanceToNextQuestion(currentIdx);
+        setTimer(null);
+        setTimerProgress(0);
+        if (answeredIdx + 1 < quiz.questions.length) {
+          playYogaArenaSfx('go');
+        }
+        advanceToNextQuestion(answeredIdx);
       }
-    }, 1000);
-  }, [autoAdvanceDelay, currentIdx, advanceToNextQuestion, quiz.questions, speakNaturalText]);
+    }, 50);
+  }, [autoAdvanceDelay, advanceToNextQuestion, quiz.questions, speakNaturalText]);
 
   const handleAnswerRef = useRef(handleAnswer);
   handleAnswerRef.current = handleAnswer;
@@ -2972,15 +3235,19 @@ function YogaGame({
           return await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: 'user',
-              width: { ideal: 640 },
-              height: { ideal: 480 },
+              width: { ideal: 960 },
+              height: { ideal: 540 },
               frameRate: { ideal: 30 },
             },
           });
         } catch (e1) {
           try {
             return await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: 'user' },
+              video: {
+                facingMode: 'user',
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+              },
             });
           } catch (e2) {
             return await navigator.mediaDevices.getUserMedia({
@@ -3123,7 +3390,8 @@ function YogaGame({
           },
         ];
 
-        const inQuestionReadyGate = now < questionReadyAtRef.current;
+        const waitingForQuestionRead = isWaitingForQuestionReadRef.current;
+        const inQuestionReadyGate = waitingForQuestionRead || now < questionReadyAtRef.current;
 
         for (let pIdx = 0; pIdx < numActiveZones; pIdx++) {
           const pHold = holdStateRef.current[pIdx];
@@ -3158,10 +3426,10 @@ function YogaGame({
             videoAspect
           );
 
-          // Push into 3-frame rolling smoothing buffer for instantaneous response without lag
-          const validFramePose = poseId && confidence >= 0.68 ? poseId : null;
+          // Push into 4-frame rolling smoothing buffer for rock-solid accuracy without transitional misfires
+          const validFramePose = poseId && confidence >= 0.70 ? poseId : null;
           pHold.recentPoses.push(validFramePose);
-          if (pHold.recentPoses.length > 3) {
+          if (pHold.recentPoses.length > 4) {
             pHold.recentPoses.shift();
           }
 
@@ -3184,13 +3452,13 @@ function YogaGame({
             continue;
           }
 
-          // During the 0.65s new-question grace gate, show detected pose smoothly but don't lock answers yet
+          // While the question is still being read aloud (or during the brief grace gate), do NOT lock answers yet
           if (inQuestionReadyGate) {
             pHold.progress = 0;
             pHold.optionIdx = null;
             pHold.poseId = null;
             nextUiStates[pIdx] = {
-              detectedPoseId: validFramePose,
+              detectedPoseId: null,
               matchedOptionIdx: null,
               holdProgress: 0,
               wrongFeedbackText: null,
@@ -3198,18 +3466,20 @@ function YogaGame({
               frozenRemainingSec: 0,
               lastWrongOptionIdx: null,
               penaltyType: null,
-              needsSecondHandPoseId: needsSecondHandFor || null,
+              needsSecondHandPoseId: null,
             };
             continue;
           }
 
-          // Determine smoothed pose: prefer current valid pose immediately
-          let smoothedPoseId: string | null = validFramePose;
-          if (!smoothedPoseId) {
-            const counts: Record<string, number> = {};
-            for (const rp of pHold.recentPoses) {
-              if (rp) counts[rp] = (counts[rp] || 0) + 1;
-            }
+          // Require at least 2 matching frames in the 4-frame buffer to eliminate brief transitional finger misfires
+          const counts: Record<string, number> = {};
+          for (const rp of pHold.recentPoses) {
+            if (rp) counts[rp] = (counts[rp] || 0) + 1;
+          }
+          let smoothedPoseId: string | null = null;
+          if (validFramePose && (counts[validFramePose] || 0) >= 2) {
+            smoothedPoseId = validFramePose;
+          } else {
             let topPose: string | null = null;
             let topCount = 0;
             for (const [k, c] of Object.entries(counts)) {
@@ -3230,17 +3500,17 @@ function YogaGame({
           if (smoothedPoseId && matchedIdx !== -1) {
             pHold.lastMatchedTime = now;
             if (pHold.optionIdx === matchedIdx) {
-              // Ultra-fast ~0.16s lock-in (starts at 56% and adds ~280% per second)
-              pHold.progress = Math.min(100, Math.round(pHold.progress + (dtMs / 1000) * 280));
+              // Crisp, reliable ~0.33s steady lock-in (starts at 30% and charges at +210%/sec)
+              pHold.progress = Math.min(100, Math.round(pHold.progress + (dtMs / 1000) * 210));
             } else {
               pHold.optionIdx = matchedIdx;
               pHold.poseId = smoothedPoseId;
-              pHold.progress = 56;
+              pHold.progress = 30;
             }
           } else {
-            // Generous 260ms grace period so rapid micro-movements don't drop progress
-            if (now - pHold.lastMatchedTime > 260) {
-              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 140));
+            // Generous 320ms grace period so natural hand jitter never drops lock progress
+            if (now - pHold.lastMatchedTime > 320) {
+              pHold.progress = Math.max(0, Math.round(pHold.progress - (dtMs / 1000) * 145));
               if (pHold.progress === 0) {
                 pHold.optionIdx = null;
                 pHold.poseId = null;
@@ -3441,6 +3711,17 @@ function YogaGame({
   }, [gameState, playMode, startCamera, stopCamera]);
 
   const startGame = () => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    const totalSec = Math.max(60, yogaTimerMinutes * 60);
+    setGameTotalTimeSec(totalSec);
+    setGameTimeLeftSec(totalSec);
+    setGameEndReason('completed');
+    setQuestionsAnsweredCount(0);
+    setTimer(null);
+    setTimerProgress(0);
     questionOptionsCacheRef.current = {};
     lastQuestionPoseIdsRef.current = new Set();
     poseUsageCountRef.current = {};
@@ -3967,6 +4248,8 @@ function YogaGame({
                             ? playerDetections[0].penaltyType === 'bad-action'
                               ? `🚨 BAD ACTION PENALTY • SCORE = 0 (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
                               : `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                            : isWaitingForQuestionRead
+                            ? '🔊 Listen to the question first...'
                             : playerDetections[0].holdProgress > 0
                             ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
                             : 'Stand on Left & Shoot Web Pose'}
@@ -4091,6 +4374,8 @@ function YogaGame({
                             ? playerDetections[1].penaltyType === 'bad-action'
                               ? `🚨 BAD ACTION PENALTY • SCORE = 0 (${playerDetections[1].frozenRemainingSec.toFixed(1)}s)`
                               : `❄️ FROZEN (${playerDetections[1].frozenRemainingSec.toFixed(1)}s)`
+                            : isWaitingForQuestionRead
+                            ? '🔊 Listen to the question first...'
                             : playerDetections[1].holdProgress > 0
                             ? `Locking ${shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[1].holdProgress}%`
                             : 'Stand on Right & Use Infinity Gauntlet'}
@@ -4203,6 +4488,8 @@ function YogaGame({
                           ? playerDetections[0].penaltyType === 'bad-action'
                             ? `🚨 BAD ACTION PENALTY • SCORE = 0 (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
                             : `❄️ FROZEN (${playerDetections[0].frozenRemainingSec.toFixed(1)}s)`
+                          : isWaitingForQuestionRead
+                          ? '🔊 Listen to the question — Hand detection unlocks when finished!'
                           : playerDetections[0].holdProgress > 0
                           ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || 'Answer'}... ${playerDetections[0].holdProgress}%`
                           : 'Stand in front of camera & copy the pose of the right answer!'}
@@ -4306,8 +4593,33 @@ function YogaGame({
                   )}
                 </div>
 
-                {/* Right Controls: Progress, Font Size Popover (Small / Medium / Large), Settings, Fullscreen */}
-                <div className="flex items-center gap-1.5 relative">
+                {/* Right Controls: Match Timer, End Flag Button, Progress, Font Size, Settings, Fullscreen */}
+                <div className="flex items-center gap-1.5 relative flex-wrap justify-end">
+                  {/* Live Match Countdown Timer */}
+                  <div
+                    className={`px-3 py-1.5 rounded-2xl shadow-sm border-2 font-black text-xs sm:text-sm tabular-nums flex items-center gap-1.5 transition-all ${
+                      gameTimeLeftSec <= 10
+                        ? 'bg-rose-600 text-white border-rose-300 animate-pulse shadow-[0_0_16px_rgba(244,63,94,0.7)]'
+                        : gameTimeLeftSec <= 30
+                        ? 'bg-amber-500 text-slate-950 border-amber-200'
+                        : 'bg-slate-900/90 text-teal-200 border-teal-400/60 backdrop-blur-md'
+                    }`}
+                    title="Match time remaining"
+                  >
+                    <Clock size={14} className={gameTimeLeftSec <= 10 ? 'text-white' : gameTimeLeftSec <= 30 ? 'text-slate-950' : 'text-teal-300'} />
+                    <span>{formatClockMMSS(gameTimeLeftSec)}</span>
+                  </div>
+
+                  {/* End Game Flag Button */}
+                  <button
+                    onClick={() => finishGameNow('manual')}
+                    className="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white rounded-2xl transition-all hover:scale-105 active:scale-95 font-black cursor-pointer shadow-sm border border-rose-300/80 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5"
+                    title="Finish match now and go to Championship Winner screen"
+                  >
+                    <Flag size={14} className="fill-current" />
+                    <span className="hidden sm:inline">End</span>
+                  </button>
+
                   <div className="font-bold text-teal-950 bg-white/90 backdrop-blur-md px-3 py-1 rounded-2xl shadow-sm border border-teal-200 text-center flex items-center gap-1">
                     <span className="text-sm sm:text-base font-black">{currentIdx + 1}</span>
                     <span className="text-xs opacity-70">/ {quiz.questions.length}</span>
@@ -4728,8 +5040,45 @@ function YogaGame({
               )}
             </div>
 
-            {/* Clear Middle Camera Viewport + Superhero Round Winner Announcement Card */}
-            <div className="flex-1 min-h-[100px] pointer-events-none flex flex-col items-center justify-center relative z-20 px-4">
+            {/* Clear Middle Camera Viewport + Listening Gate, GO Flash, Superhero Round Winner & 3-Second Countdown */}
+            <div className="flex-1 min-h-[100px] pointer-events-none flex flex-col items-center justify-center gap-3 relative z-20 px-4">
+              {/* Listening to Question Gate Banner — Hand detection unlocks only after question is read */}
+              {!isAnswering && isWaitingForQuestionRead && (
+                <div className="pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-full bg-slate-950/90 backdrop-blur-md text-white border-3 border-amber-400 shadow-[0_0_32px_rgba(251,191,36,0.55)]">
+                  <div className="w-9 h-9 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center animate-pulse shrink-0">
+                    <Volume2 size={20} />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-amber-300">
+                      🔊 Reading Question...
+                    </span>
+                    <span className="text-[11px] sm:text-xs font-bold text-slate-200">
+                      Listen carefully — hand detection starts after reading!
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                        window.speechSynthesis.cancel();
+                      }
+                      setIsSpeakingQuestion(false);
+                      unlockQuestionReadGate(true);
+                    }}
+                    className="ml-1 px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider cursor-pointer active:scale-95 transition-all shrink-0"
+                    title="Unlock hand detection right now"
+                  >
+                    Go Now ⚡
+                  </button>
+                </div>
+              )}
+
+              {/* Crisp GO! Flash the moment question reading finishes */}
+              {!isAnswering && !isWaitingForQuestionRead && showGoFlash && (
+                <div className="px-6 py-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-base sm:text-xl uppercase tracking-widest border-3 border-emerald-200 shadow-[0_0_35px_rgba(16,185,129,0.85)] animate-score-pulse">
+                  🟢 GO! STRIKE YOUR POSE!
+                </div>
+              )}
+
               {roundWinnerInfo ? (
                 <div
                   className={`px-6 py-4 rounded-3xl bg-slate-950/92 backdrop-blur-md text-white shadow-[0_0_45px_rgba(16,185,129,0.65)] border-3 flex flex-col sm:flex-row items-center gap-3 sm:gap-4 animate-bounce ${
@@ -4782,6 +5131,85 @@ function YogaGame({
                   </div>
                 )
               )}
+
+              {/* Visible 3-Second Countdown Ring Before Next Question Starts */}
+              {isAnswering && timer !== null && timer > 0 && (() => {
+                const isLastQuestion = currentIdx + 1 >= quiz.questions.length;
+                const radius = 26;
+                const circumference = 2 * Math.PI * radius;
+                const strokeOffset = circumference * (1 - timerProgress / 100);
+                const ringColor = timer === 1 ? '#34d399' : timer === 2 ? '#fbbf24' : '#2dd4bf';
+                const borderColor =
+                  timer === 1
+                    ? 'border-emerald-400 shadow-[0_0_35px_rgba(52,211,153,0.65)]'
+                    : timer === 2
+                    ? 'border-amber-400 shadow-[0_0_35px_rgba(251,191,36,0.6)]'
+                    : 'border-teal-400 shadow-[0_0_35px_rgba(45,212,191,0.55)]';
+                const statusHint = isLastQuestion
+                  ? 'Calculating championship podium...'
+                  : timer === 1
+                  ? 'Hands ready — new poses incoming!'
+                  : timer === 2
+                  ? 'Reset hands & get ready...'
+                  : 'Get ready for the next question!';
+
+                return (
+                  <div
+                    className={`pointer-events-auto flex items-center gap-3.5 sm:gap-4 px-5 py-2.5 sm:px-6 sm:py-3 rounded-full bg-slate-950/92 backdrop-blur-md border-3 transition-colors duration-200 ${borderColor}`}
+                  >
+                    {/* Animated Circular Progress Ring + Big Number */}
+                    <div className="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center shrink-0">
+                      <svg className="w-full h-full -rotate-90" viewBox="0 0 64 64">
+                        <circle
+                          cx="32"
+                          cy="32"
+                          r={radius}
+                          fill="rgba(15, 23, 42, 0.7)"
+                          stroke="rgba(255, 255, 255, 0.16)"
+                          strokeWidth="6"
+                        />
+                        <circle
+                          cx="32"
+                          cy="32"
+                          r={radius}
+                          fill="none"
+                          stroke={ringColor}
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={circumference}
+                          strokeDashoffset={strokeOffset}
+                          className="transition-[stroke-dashoffset] duration-75 ease-linear"
+                        />
+                      </svg>
+                      <span
+                        key={timer}
+                        className="absolute text-2xl sm:text-3xl font-black text-white tabular-nums drop-shadow-[0_0_12px_rgba(255,255,255,0.65)] animate-score-pulse"
+                      >
+                        {timer}
+                      </span>
+                    </div>
+
+                    {/* Countdown Text */}
+                    <div className="flex flex-col text-left">
+                      <span className="text-[11px] sm:text-xs font-black uppercase tracking-widest text-teal-300">
+                        {isLastQuestion ? `🏆 FINAL RESULTS IN ${timer}s` : `⏱️ NEXT QUESTION IN ${timer}s`}
+                      </span>
+                      <span className="text-xs sm:text-sm font-bold text-slate-200 leading-tight">
+                        {statusHint}
+                      </span>
+                    </div>
+
+                    {/* Optional Skip Button for Teacher Control */}
+                    <button
+                      onClick={() => advanceToNextQuestion(currentIdx)}
+                      className="ml-1 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white border border-white/25 font-black text-xs uppercase tracking-wider cursor-pointer active:scale-95 transition-all shrink-0"
+                      title="Skip countdown and jump straight to the next question"
+                    >
+                      Skip ⏭️
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Question & Options Stage */}
@@ -5013,11 +5441,23 @@ function YogaGame({
                     <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-48 bg-amber-400/20 blur-3xl pointer-events-none" />
 
                     <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-400/20 border border-amber-300/60 text-amber-300 font-black text-xs sm:text-sm uppercase tracking-widest mb-4">
+                      <Flag size={16} className="fill-current" />
+                      <span>
+                        {gameEndReason === 'timer'
+                          ? "TIME'S UP • CHAMPIONSHIP FINISH"
+                          : gameEndReason === 'manual'
+                          ? 'MATCH FINISHED • GRAND WINNER'
+                          : isTie
+                          ? 'CHAMPIONSHIP DRAW'
+                          : 'GRAND CHAMPIONSHIP WINNER'}
+                      </span>
                       <Trophy size={16} />
-                      <span>{isTie ? 'CHAMPIONSHIP DRAW' : 'GRAND CHAMPIONSHIP WINNER'}</span>
                     </div>
 
                     <div className="flex items-center justify-center gap-4 mb-3">
+                      <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-rose-500/20 border-2 border-rose-400/70 flex items-center justify-center text-rose-300 shadow-lg">
+                        <Flag size={32} className="fill-current" />
+                      </div>
                       <div className="text-5xl md:text-7xl animate-bounce">🏆</div>
                       {!isTie && (
                         <div className="w-16 h-16 md:w-20 md:h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-4xl md:text-5xl shadow-xl border-3 border-white">
@@ -5032,7 +5472,7 @@ function YogaGame({
                         <h1 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tight">
                           It&apos;s an Epic Tie!
                         </h1>
-                        <p className="text-teal-200 font-bold text-base md:text-xl mb-6">
+                        <p className="text-teal-200 font-bold text-base md:text-xl mb-5">
                           Both heroes matched pose for pose with {winner?.score || 0} points!
                         </p>
                       </>
@@ -5041,7 +5481,7 @@ function YogaGame({
                         <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 mb-2 tracking-tight">
                           {winner?.name} Wins!
                         </h1>
-                        <p className="text-teal-200 font-black text-lg md:text-2xl mb-6 flex items-center justify-center gap-2">
+                        <p className="text-teal-200 font-black text-lg md:text-2xl mb-5 flex items-center justify-center gap-2">
                           <span>{winnerHeroIcon}</span>
                           <span>{winnerHeroTitle} Champion</span>
                           <span>•</span>
@@ -5049,6 +5489,44 @@ function YogaGame({
                         </p>
                       </>
                     )}
+
+                    {/* End-Game Match Timer & Finish Flag Summary Bar */}
+                    <div className="grid grid-cols-3 gap-2.5 sm:gap-4 max-w-xl mx-auto mb-6">
+                      <div className="rounded-2xl bg-white/10 border border-teal-400/40 px-3 py-2.5 flex flex-col items-center">
+                        <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-teal-300 flex items-center gap-1">
+                          <Clock size={12} /> Time Played
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-white tabular-nums mt-0.5">
+                          {formatClockMMSS(Math.max(0, gameTotalTimeSec - gameTimeLeftSec))}
+                        </span>
+                      </div>
+                      <div
+                        className={`rounded-2xl border px-3 py-2.5 flex flex-col items-center ${
+                          gameTimeLeftSec === 0
+                            ? 'bg-rose-500/20 border-rose-400/60'
+                            : 'bg-white/10 border-amber-400/40'
+                        }`}
+                      >
+                        <span
+                          className={`text-[10px] sm:text-xs font-black uppercase tracking-wider flex items-center gap-1 ${
+                            gameTimeLeftSec === 0 ? 'text-rose-300' : 'text-amber-300'
+                          }`}
+                        >
+                          <Clock size={12} /> Time Left
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-white tabular-nums mt-0.5">
+                          {formatClockMMSS(gameTimeLeftSec)}
+                        </span>
+                      </div>
+                      <div className="rounded-2xl bg-white/10 border border-emerald-400/40 px-3 py-2.5 flex flex-col items-center">
+                        <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-emerald-300 flex items-center gap-1">
+                          <Flag size={12} className="fill-current" /> Questions
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-white tabular-nums mt-0.5">
+                          {questionsAnsweredCount} / {quiz.questions.length}
+                        </span>
+                      </div>
+                    </div>
 
                     {/* Podium Cards */}
                     <div className="flex flex-wrap justify-center items-end gap-4 md:gap-6 mt-2">
