@@ -70,8 +70,8 @@ function readStoredLocalGuest(): User | null {
 }
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => auth.currentUser || readStoredLocalGuest());
+  const [loading, setLoading] = useState<boolean>(() => !auth.currentUser);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const isAuthenticatingRef = useRef(false);
@@ -160,10 +160,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(currentUser);
         setLoading(false);
         setAuthError(null);
-        // Sync any privately saved local games on the user's computer to platform cache & cloud
-        syncLocalComputerGamesForUser(currentUser, db).catch(() => {});
-        // Record accurate login timestamp & provider once per Firebase sign-in session
-        syncUserSessionRecord(currentUser).catch(() => {});
+        // Defer non-critical background sync so login UI transition paints immediately
+        window.setTimeout(() => {
+          syncLocalComputerGamesForUser(currentUser, db).catch(() => {});
+          syncUserSessionRecord(currentUser).catch(() => {});
+        }, 120);
       } else {
         const localGuest = readStoredLocalGuest();
         setUser(localGuest);
@@ -194,7 +195,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, 30000);
 
     try {
-      await linkWithPopup(user, googleProvider);
+      const res = await linkWithPopup(user, googleProvider);
+      if (res?.user) {
+        setUser(res.user);
+      }
     } catch (error: any) {
       if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
         return;
@@ -204,7 +208,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const credential = GoogleAuthProvider.credentialFromError(error);
         if (credential) {
           try {
-            await signInWithCredential(auth, credential);
+            const credRes = await signInWithCredential(auth, credential);
+            if (credRes?.user) setUser(credRes.user);
             return;
           } catch(e: any) {
              if (e?.code !== 'auth/popup-closed-by-user' && e?.code !== 'auth/cancelled-popup-request') {
@@ -239,7 +244,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, 30000);
 
     try {
-      await signInWithPopup(auth, facebookProvider);
+      const res = await signInWithPopup(auth, facebookProvider);
+      if (res?.user) {
+        setUser(res.user);
+        setLoading(false);
+      }
     } catch (error: any) {
       if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
         return;
@@ -266,7 +275,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signInWithGoogle = async () => {
     if (isAuthenticatingRef.current) {
-      console.log('Authentication is already in progress.');
       return;
     }
 
@@ -274,59 +282,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsAuthenticating(true);
     setAuthError(null);
 
-    // 35-second safety timer so the state never hangs forever
     const safetyTimeout = setTimeout(() => {
       if (isAuthenticatingRef.current) {
-        console.warn('Google sign-in timed out. Resetting state.');
         isAuthenticatingRef.current = false;
         setIsAuthenticating(false);
         setAuthError('Sign in timed out. If the popup was blocked by your browser, please enable popups and try again.');
       }
-    }, 35000);
+    }, 25000);
 
     try {
-      googleProvider.setCustomParameters({ prompt: "select_account" });
-
-      // If user is currently anonymous, attempt to link account or sign in with credential
-      if (auth.currentUser && auth.currentUser.isAnonymous) {
+      // Direct single-roundtrip popup sign-in (avoids slow failed anonymous linkWithPopup roundtrips)
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result?.user) {
         try {
-          await linkWithPopup(auth.currentUser, googleProvider);
-          return;
-        } catch (linkError: any) {
-          if (
-            linkError?.code === 'auth/credential-already-in-use' || 
-            linkError?.code === 'auth/account-exists-with-different-credential' ||
-            linkError?.code === 'auth/email-already-in-use'
-          ) {
-            const credential = GoogleAuthProvider.credentialFromError(linkError);
-            if (credential) {
-              await signInWithCredential(auth, credential);
-              return;
-            }
-          }
-          if (linkError?.code === 'auth/popup-closed-by-user' || linkError?.code === 'auth/cancelled-popup-request') {
-            return;
-          }
-        }
-      }
-
-      // Standard direct popup sign-in
-      try {
-        await signInWithPopup(auth, googleProvider);
-      } catch (popupErr: any) {
-        if (
-          popupErr?.code === 'auth/credential-already-in-use' ||
-          popupErr?.code === 'auth/account-exists-with-different-credential'
-        ) {
-          const cred = GoogleAuthProvider.credentialFromError(popupErr);
-          if (cred) {
-            await signInWithCredential(auth, cred);
-            return;
-          }
-        }
-        throw popupErr;
+          sessionStorage.removeItem(GUEST_SESSION_STORAGE_KEY);
+        } catch {}
+        setUser(result.user);
+        setLoading(false);
+        setAuthError(null);
       }
     } catch (error: any) {
+      if (
+        error?.code === 'auth/credential-already-in-use' ||
+        error?.code === 'auth/account-exists-with-different-credential'
+      ) {
+        const cred = GoogleAuthProvider.credentialFromError(error);
+        if (cred) {
+          const credResult = await signInWithCredential(auth, cred);
+          if (credResult?.user) {
+            setUser(credResult.user);
+            setLoading(false);
+            setAuthError(null);
+          }
+          return;
+        }
+      }
+
       if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
         return;
       }

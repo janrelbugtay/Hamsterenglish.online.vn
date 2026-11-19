@@ -12,38 +12,7 @@ import {
   getRecentGameIds,
 } from "../data/studioGames";
 
-function pingSameBrowserPaintballHost(code: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof BroadcastChannel === "undefined") {
-      resolve(false);
-      return;
-    }
-    let settled = false;
-    let bc: BroadcastChannel | null = null;
-    const done = (found: boolean) => {
-      if (settled) return;
-      settled = true;
-      try {
-        bc?.close();
-      } catch {}
-      resolve(found);
-    };
-    const timer = window.setTimeout(() => done(false), 280);
-    try {
-      bc = new BroadcastChannel(`hamster_paintball_net_${code}`);
-      bc.onmessage = (ev) => {
-        if (ev?.data?.type === "pong_host") {
-          window.clearTimeout(timer);
-          done(true);
-        }
-      };
-      bc.postMessage({ type: "ping_host", roomCode: code });
-    } catch {
-      window.clearTimeout(timer);
-      done(false);
-    }
-  });
-}
+import { verifyMultiplayerRoomCode } from "../utils/roomCodeValidator";
 
 export function Home({
   onViewChange,
@@ -74,64 +43,14 @@ export function Home({
     setJoinRoomError(null);
 
     try {
-      // 1. Check active Hamster Paintball hosted room on Server API
-      try {
-        const res = await fetch(`/api/paintball/room/${encodeURIComponent(cleaned)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.exists === true || (data?.room && data.room.isUninitialized === false && !data.room.hostClosed)) {
-            onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
-            return;
-          }
-        }
-      } catch {}
-
-      // 2. Check active Hamster Paintball hosted room in Firestore
-      if (!isFirestoreQuotaExhausted()) {
-        try {
-          const pbSnap = await getDoc(doc(db, "ttt_rooms", `pb_room_${cleaned}`));
-          if (pbSnap.exists()) {
-            const pbData = pbSnap.data();
-            if (pbData && pbData.isUninitialized !== true && pbData.hostClosed !== true) {
-              onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
-              return;
-            }
-          }
-        } catch {}
-      }
-
-      // 3. Check same-browser BroadcastChannel Paintball Host tab
-      if (await pingSameBrowserPaintballHost(cleaned)) {
-        onViewChange("hamster-paintball", { roomCode: cleaned, isStudentJoin: true });
+      const result = await verifyMultiplayerRoomCode(cleaned);
+      if (result.valid && result.gameView) {
+        onViewChange(result.gameView, { roomCode: result.roomCode, isStudentJoin: true });
         return;
       }
-
-      // 4. Check active Tic-Tac-Toe hosted room on Server API or Firestore
-      try {
-        const tttRes = await fetch(`/api/tictactoe/room/${encodeURIComponent(cleaned)}`);
-        if (tttRes.ok) {
-          const tttData = await tttRes.json();
-          if (tttData?.exists) {
-            onViewChange("tic-tac-toe", { roomCode: cleaned, isStudentJoin: true });
-            return;
-          }
-        }
-      } catch {}
-
-      if (!isFirestoreQuotaExhausted()) {
-        try {
-          const tttSnap = await getDoc(doc(db, "ttt_rooms", cleaned));
-          if (tttSnap.exists()) {
-            const tttDoc = tttSnap.data();
-            if (tttDoc?.state?.roomId === cleaned && tttDoc?.state?.status && tttDoc.state.status !== "SETUP") {
-              onViewChange("tic-tac-toe", { roomCode: cleaned, isStudentJoin: true });
-              return;
-            }
-          }
-        } catch {}
-      }
-
-      setJoinRoomError(`Incorrect room code "${cleaned}". No host is currently hosting a game with this code.`);
+      setJoinRoomError(
+        result.error || `Incorrect room code "${cleaned}". No host is currently hosting a game with this code.`
+      );
     } finally {
       setIsCheckingRoom(false);
     }

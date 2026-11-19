@@ -1,33 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Loader2, User, Sparkles } from 'lucide-react';
+import { X, Loader2, QrCode, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { ViewState } from '../types';
+import { verifyMultiplayerRoomCode } from '../utils/roomCodeValidator';
 
 interface GoogleAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   featureName?: 'Create Game' | 'Homework' | 'Class Rewards' | 'My Games' | string;
   onSuccess?: () => void;
+  onJoinRoom?: (view: ViewState, data?: any) => void;
 }
 
 export function GoogleAuthModal({
   isOpen,
   onClose,
   onSuccess,
+  onJoinRoom,
 }: GoogleAuthModalProps) {
   const {
     user,
     signInWithGoogle,
-    signInAsGuest,
     isAuthenticating,
     authError,
     clearAuthError
   } = useAuth();
   const { t } = useLanguage();
 
-  const [guestName, setGuestName] = useState('');
-  const [isGuestSigningIn, setIsGuestSigningIn] = useState(false);
+  const [joinRoomInput, setJoinRoomInput] = useState('');
+  const [isCheckingRoom, setIsCheckingRoom] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,7 +43,8 @@ export function GoogleAuthModal({
   useEffect(() => {
     if (!isOpen) {
       setLocalError(null);
-      setIsGuestSigningIn(false);
+      setIsCheckingRoom(false);
+      setJoinRoomInput('');
       if (clearAuthError) clearAuthError();
     }
   }, [isOpen, clearAuthError]);
@@ -59,18 +63,32 @@ export function GoogleAuthModal({
     }
   };
 
-  const handleGuestSignIn = async (e?: React.FormEvent) => {
+  const handleRoomCodeSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setLocalError(null);
     if (clearAuthError) clearAuthError();
-    setIsGuestSigningIn(true);
+
+    const cleaned = joinRoomInput.replace(/[^0-9A-Za-z]/g, '').toUpperCase().trim().slice(0, 6);
+    if (cleaned.length < 6) {
+      setLocalError('Please enter the complete 6-character code from your host.');
+      return;
+    }
+
+    setIsCheckingRoom(true);
     try {
-      await signInAsGuest(guestName.trim() || 'Guest Player');
-      onClose();
-    } catch {
-      setLocalError('Could not start guest session. Please try again.');
+      const result = await verifyMultiplayerRoomCode(cleaned);
+      if (result.valid && result.gameView) {
+        onClose();
+        if (onJoinRoom) {
+          onJoinRoom(result.gameView, { roomCode: result.roomCode, isStudentJoin: true });
+        }
+      } else {
+        setLocalError(
+          result.error || `Incorrect room code "${cleaned}". No host is currently hosting a game with this code.`
+        );
+      }
     } finally {
-      setIsGuestSigningIn(false);
+      setIsCheckingRoom(false);
     }
   };
 
@@ -81,10 +99,10 @@ export function GoogleAuthModal({
         onClick={onClose}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 12 }}
+          initial={{ opacity: 0, scale: 0.96, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 12 }}
-          transition={{ duration: 0.18 }}
+          exit={{ opacity: 0, scale: 0.96, y: 10 }}
+          transition={{ duration: 0.14 }}
           onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-[420px] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-2 border-slate-200 dark:border-slate-800 p-6 sm:p-7 text-left my-auto overflow-hidden"
         >
@@ -142,10 +160,10 @@ export function GoogleAuthModal({
           <button
             type="button"
             onClick={handleGoogleSignIn}
-            disabled={isAuthenticating || isGuestSigningIn}
+            disabled={isAuthenticating || isCheckingRoom}
             className="w-full flex items-center justify-center gap-3 h-12 px-5 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-2xl font-extrabold text-sm sm:text-base transition-all shadow-md hover:shadow-lg cursor-pointer disabled:opacity-60 group"
           >
-            {isAuthenticating && !isGuestSigningIn ? (
+            {isAuthenticating ? (
               <Loader2 className="animate-spin text-indigo-400 dark:text-indigo-600" size={20} />
             ) : (
               <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-xs">
@@ -157,46 +175,48 @@ export function GoogleAuthModal({
                 </svg>
               </div>
             )}
-            <span>{isAuthenticating && !isGuestSigningIn ? t("header.signingIn") : t("auth.signInGoogle")}</span>
+            <span>{isAuthenticating ? t("header.signingIn") : t("auth.signInGoogle")}</span>
           </button>
 
-          {/* 2. CONTINUE AS GUEST (when not already signed in) */}
-          {!user && (
-            <>
-              <div className="relative my-5">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-200 dark:border-slate-700" />
-                </div>
-                <div className="relative flex justify-center">
-                  <span className="bg-white dark:bg-slate-900 px-3 font-extrabold text-slate-400 dark:text-slate-500 text-xs">
-                    {t("auth.or")}
-                  </span>
-                </div>
-              </div>
+          {/* 2. JOIN MULTIPLAYER LOBBY BY 6-DIGIT ROOM CODE */}
+          <div className="relative my-5">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200 dark:border-slate-700" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-white dark:bg-slate-900 px-3 font-extrabold text-slate-400 dark:text-slate-500 text-xs">
+                {t("auth.or")}
+              </span>
+            </div>
+          </div>
 
-              <form onSubmit={handleGuestSignIn} className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                  <input
-                    type="text"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    placeholder={t("auth.guestNamePlaceholder")}
-                    maxLength={24}
-                    className="w-full h-11 pl-9 pr-3 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold placeholder:text-slate-400 outline-none focus:border-indigo-500 transition-colors"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={isAuthenticating || isGuestSigningIn}
-                  className="h-11 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-700/70 text-amber-800 dark:text-amber-200 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60"
-                >
-                  {isGuestSigningIn ? <Loader2 className="animate-spin" size={15} /> : <Sparkles size={15} />}
-                  <span>{isGuestSigningIn ? t("auth.joiningGuest") : t("auth.continueAsGuest")}</span>
-                </button>
-              </form>
-            </>
-          )}
+          <form
+            onSubmit={handleRoomCodeSubmit}
+            className={`w-full flex items-center gap-2 bg-slate-100 dark:bg-slate-900/90 p-1.5 pl-3.5 rounded-2xl border-2 shadow-sm transition-colors ${
+              localError ? 'border-rose-400' : 'border-lime-400/80'
+            }`}
+          >
+            <QrCode size={18} className="text-lime-600 dark:text-lime-400 shrink-0" />
+            <input
+              type="text"
+              maxLength={6}
+              value={joinRoomInput}
+              onChange={(e) => {
+                setJoinRoomInput(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6));
+                if (localError) setLocalError(null);
+              }}
+              placeholder={t("home.roomCodePlaceholder")}
+              className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-black font-mono tracking-wider uppercase text-slate-800 dark:text-white placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:normal-case placeholder:text-slate-400 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!joinRoomInput.trim() || isCheckingRoom || isAuthenticating}
+              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 disabled:opacity-40 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer whitespace-nowrap shrink-0"
+            >
+              {isCheckingRoom ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
+              <span>{isCheckingRoom ? '...' : t("home.joinLobby")}</span>
+            </button>
+          </form>
         </motion.div>
       </div>
     </AnimatePresence>

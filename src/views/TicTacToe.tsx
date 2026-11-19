@@ -61,6 +61,7 @@ const NetworkManager = {
     playerId: null as string | null,
     unsubscribeState: null as any,
     unsubscribeActions: null as any,
+    hostBroadcastChannel: null as BroadcastChannel | null,
     messageCallback: null as any,
     broadcastTimeout: null as any,
     pendingState: null as any,
@@ -72,6 +73,18 @@ const NetworkManager = {
         NetworkManager.cleanup();
 
         if (isHostRole) {
+            if (typeof BroadcastChannel !== 'undefined') {
+                try {
+                    const bc = new BroadcastChannel(`ttt_room_net_${room}`);
+                    bc.onmessage = (ev) => {
+                        if (ev?.data?.type === 'ping_host' && NetworkManager.isHost && NetworkManager.roomId === room) {
+                            bc.postMessage({ type: 'pong_host', roomCode: room });
+                        }
+                    };
+                    NetworkManager.hostBroadcastChannel = bc;
+                } catch {}
+            }
+
             const actionsRef = collection(db, 'ttt_rooms', room, 'actions');
             const q = query(actionsRef, orderBy('timestamp', 'asc'));
             
@@ -172,6 +185,12 @@ const NetworkManager = {
         if (NetworkManager.broadcastTimeout) {
             clearTimeout(NetworkManager.broadcastTimeout);
             NetworkManager.broadcastTimeout = null;
+        }
+        if (NetworkManager.hostBroadcastChannel) {
+            try {
+                NetworkManager.hostBroadcastChannel.close();
+            } catch {}
+            NetworkManager.hostBroadcastChannel = null;
         }
         if (NetworkManager.unsubscribeState) {
             NetworkManager.unsubscribeState();
@@ -1437,7 +1456,7 @@ export const TicTacToe = ({
                 onJoin={handleJoin}
                 onBack={() => {
                     if (isIncomingStudentJoin) {
-                        onViewChange("games");
+                        onViewChange("home");
                     } else {
                         setAppMode(null);
                     }

@@ -54,9 +54,10 @@ import {
   syncClassSnapshotToFirestore,
   pickBestClassSnapshot,
 } from "./lib/classPersistence";
-import { Loader2 } from "lucide-react";
+import { Loader2, QrCode, LogIn } from "lucide-react";
 import { AuthSliderModal } from "./components/AuthSliderModal";
 import { GoogleAuthModal } from "./components/GoogleAuthModal";
+import { verifyMultiplayerRoomCode } from "./utils/roomCodeValidator";
 
 export default function App() {
   // Synchronously detect direct student homework links (?hwPin=... or #homework-...)
@@ -443,6 +444,10 @@ export default function App() {
     }
   }, [loading, user, currentView, selectedGame]);
 
+  const [inlineRoomCode, setInlineRoomCode] = useState("");
+  const [isInlineCheckingRoom, setIsInlineCheckingRoom] = useState(false);
+  const [inlineRoomError, setInlineRoomError] = useState<string | null>(null);
+
   const handleViewChange = (view: ViewState, data?: any) => {
     // Players on a shared homework link can ONLY access the homework window given within the link
     if (isLockedHomeworkLink) {
@@ -454,8 +459,8 @@ export default function App() {
       return;
     }
 
-    // Name Picker, Homework, and Hamster Paintball are accessible for students without signing in
-    const isFreeAccess = view === "home" || isPublicStudentView(view);
+    // Name Picker, Homework, Hamster Paintball, and verified host multiplayer room joins are accessible without signing in
+    const isFreeAccess = view === "home" || isPublicStudentView(view) || Boolean(data?.isStudentJoin);
     if (!user && !isFreeAccess) {
       setPendingAction({ view, data });
       setIsAuthModalOpen(true);
@@ -591,18 +596,21 @@ export default function App() {
               </p>
             </div>
 
-            {authError && (
+            {(authError || inlineRoomError) && (
               <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 rounded-xl text-center">
                 <p className="text-xs text-rose-700 dark:text-rose-300 font-bold whitespace-pre-line">
-                  {authError}
+                  {inlineRoomError || authError}
                 </p>
               </div>
             )}
 
             <div className="space-y-3">
               <button
-                onClick={() => signInWithGoogle()}
-                disabled={isAuthenticating}
+                onClick={() => {
+                  setInlineRoomError(null);
+                  signInWithGoogle();
+                }}
+                disabled={isAuthenticating || isInlineCheckingRoom}
                 className="w-full flex items-center justify-center gap-3 h-12 px-5 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-2xl font-extrabold text-sm sm:text-base transition-all shadow-md hover:shadow-lg cursor-pointer disabled:opacity-60 group"
               >
                 {isAuthenticating ? (
@@ -620,6 +628,67 @@ export default function App() {
                 <span>{isAuthenticating ? t("header.signingIn") : t("auth.signInGoogle")}</span>
               </button>
             </div>
+
+            <div className="relative my-5">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200 dark:border-slate-700" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-white dark:bg-slate-900 px-3 font-extrabold text-slate-400 dark:text-slate-500 text-xs">
+                  {t("auth.or")}
+                </span>
+              </div>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setInlineRoomError(null);
+                const cleaned = inlineRoomCode.replace(/[^0-9A-Za-z]/g, "").toUpperCase().trim().slice(0, 6);
+                if (cleaned.length < 6) {
+                  setInlineRoomError("Please enter the complete 6-character code from your host.");
+                  return;
+                }
+                setIsInlineCheckingRoom(true);
+                try {
+                  const res = await verifyMultiplayerRoomCode(cleaned);
+                  if (res.valid && res.gameView) {
+                    setInlineRoomCode("");
+                    handleViewChange(res.gameView, { roomCode: res.roomCode, isStudentJoin: true });
+                  } else {
+                    setInlineRoomError(
+                      res.error || `Incorrect room code "${cleaned}". No host is currently hosting a game with this code.`
+                    );
+                  }
+                } finally {
+                  setIsInlineCheckingRoom(false);
+                }
+              }}
+              className={`w-full flex items-center gap-2 bg-slate-100 dark:bg-slate-900/90 p-1.5 pl-3.5 rounded-2xl border-2 shadow-sm transition-colors ${
+                inlineRoomError ? "border-rose-400" : "border-lime-400/80"
+              }`}
+            >
+              <QrCode size={18} className="text-lime-600 dark:text-lime-400 shrink-0" />
+              <input
+                type="text"
+                maxLength={6}
+                value={inlineRoomCode}
+                onChange={(e) => {
+                  setInlineRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, "").toUpperCase().slice(0, 6));
+                  if (inlineRoomError) setInlineRoomError(null);
+                }}
+                placeholder={t("home.roomCodePlaceholder")}
+                className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-black font-mono tracking-wider uppercase text-slate-800 dark:text-white placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:normal-case placeholder:text-slate-400 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!inlineRoomCode.trim() || isInlineCheckingRoom || isAuthenticating}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-600 hover:from-lime-400 hover:to-emerald-500 disabled:opacity-40 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {isInlineCheckingRoom ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
+                <span>{isInlineCheckingRoom ? "..." : t("home.joinLobby")}</span>
+              </button>
+            </form>
           </div>
         </div>
       );
@@ -750,6 +819,11 @@ export default function App() {
       <AuthSliderModal 
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)} 
+        onJoinRoom={(view, data) => {
+          setPendingAction(null);
+          setIsAuthModalOpen(false);
+          handleViewChange(view, data);
+        }}
         onSuccess={() => {
           if (pendingAction) {
             setCurrentView(pendingAction.view);
@@ -762,6 +836,11 @@ export default function App() {
         isOpen={isGoogleAuthModalOpen}
         onClose={() => setIsGoogleAuthModalOpen(false)}
         featureName={googleAuthFeature}
+        onJoinRoom={(view, data) => {
+          setPendingAction(null);
+          setIsGoogleAuthModalOpen(false);
+          handleViewChange(view, data);
+        }}
         onSuccess={() => {
           if (pendingAction) {
             setCurrentView(pendingAction.view);
