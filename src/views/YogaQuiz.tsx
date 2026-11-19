@@ -41,7 +41,7 @@ import { collection, query, where, getDocs, doc, addDoc, updateDoc } from "fireb
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
-import { drawSuperheroHands } from "../utils/superheroHands";
+import { drawSuperheroHands, toPx } from "../utils/superheroHands";
 import { SetupCurriculumHeader, SmartQuestionInput, SmartOptionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, getInstantCartoonPng, fetchRecommendedCartoonPng, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay, normalizeChaseQuestions } from "./CityPoseChase";
@@ -93,6 +93,7 @@ export interface StandingPoseConfig {
   shortHint: string;
   category: 'classic' | 'hand' | 'both';
   family: string;
+  twoHands?: boolean;
 }
 
 // Classic Yoga Poses (retrieved for Classic Studio Mode)
@@ -111,18 +112,34 @@ export const CLASSIC_YOGA_POSES: StandingPoseConfig[] = [
   { id: 'power-fist', type: 'emoji', value: '💪', name: 'Hero Flex', shortHint: 'Strong superhero double bicep flex', category: 'both', family: 'fist-family' },
 ];
 
-// Pure Hand Gestures for Camera Mode (1 finger, 2 finger, 3 finger, fist, rock, etc.)
+// One-Hand & Two-Hand Gestures for Camera Mode (rotates fresh distinct poses on every question!)
 export const CAMERA_HAND_POSES: StandingPoseConfig[] = [
+  // One-Hand Poses (11)
   { id: '1-finger', type: 'emoji', value: '☝️', name: '1 Finger', shortHint: 'Hold up 1 index finger', category: 'hand', family: 'finger-1' },
   { id: '2-finger', type: 'emoji', value: '✌️', name: '2 Fingers', shortHint: 'Hold up 2 fingers (peace sign)', category: 'hand', family: 'finger-2' },
-  { id: '3-finger', type: 'emoji', value: '🤟', name: '3 Fingers', shortHint: 'Hold up 3 fingers', category: 'hand', family: 'finger-3' },
+  { id: '3-finger', type: 'emoji', value: '🤟', name: '3 Fingers', shortHint: 'Hold up 3 fingers', category: 'hand', family: 'rock' },
   { id: 'fist', type: 'emoji', value: '✊', name: 'Fist', shortHint: 'Make a closed fist', category: 'hand', family: 'fist' },
   { id: 'rock', type: 'emoji', value: '🤘', name: 'Rock On', shortHint: 'Index & pinky fingers up', category: 'hand', family: 'rock' },
-  { id: '5-finger', type: 'emoji', value: '🖐️', name: '5 Fingers', shortHint: 'Open all 5 fingers wide', category: 'hand', family: 'finger-5' },
+  { id: '5-finger', type: 'emoji', value: '🖐️', name: '5 Fingers', shortHint: 'Open all 5 fingers wide', category: 'hand', family: 'open-palm' },
   { id: 'thumbs-up', type: 'emoji', value: '👍', name: 'Thumbs Up', shortHint: 'Show a clear thumbs up', category: 'hand', family: 'thumb' },
+  { id: 'thumbs-down', type: 'emoji', value: '👎', name: 'Thumbs Down', shortHint: 'Point thumb downward with fingers curled', category: 'hand', family: 'thumb-down' },
   { id: 'ok-sign', type: 'emoji', value: '👌', name: 'OK Sign', shortHint: 'Touch thumb & index in a circle', category: 'hand', family: 'ok' },
   { id: '4-finger', type: 'emoji', value: '🖖', name: '4 Fingers', shortHint: 'Hold up 4 fingers', category: 'hand', family: 'finger-4' },
   { id: 'shaka', type: 'emoji', value: '🤙', name: 'Shaka', shortHint: 'Thumb and pinky extended', category: 'hand', family: 'shaka' },
+  // Two-Hand Poses (13)
+  { id: 'two-open-hands', type: 'emoji', value: '🙌', name: 'Two Hands Up', shortHint: 'Raise BOTH open palms high!', category: 'hand', family: 'open-palm', twoHands: true },
+  { id: 'namaste-hands', type: 'emoji', value: '🙏', name: 'Prayer Hands', shortHint: 'Press BOTH palms together in front of you', category: 'hand', family: 'namaste', twoHands: true },
+  { id: 'heart-hands', type: 'emoji', value: '🫶', name: 'Heart Hands', shortHint: 'Touch BOTH thumbs & index fingers into a heart', category: 'hand', family: 'heart', twoHands: true },
+  { id: 'x-hands', type: 'emoji', value: '🙅', name: 'X-Cross Hands', shortHint: 'Cross BOTH wrists with fingers fanned wide like an X!', category: 'hand', family: 'x-cross', twoHands: true },
+  { id: 'two-peace', type: 'emoji', value: '✌️✌️', name: 'Double Peace', shortHint: 'Show Peace Sign with BOTH hands!', category: 'hand', family: 'finger-2', twoHands: true },
+  { id: 'two-fists', type: 'emoji', value: '✊✊', name: 'Double Fists', shortHint: 'Raise BOTH closed fists together!', category: 'hand', family: 'fist', twoHands: true },
+  { id: 'two-thumbs-up', type: 'emoji', value: '👍👍', name: 'Double Thumbs', shortHint: 'Show Thumbs Up with BOTH hands!', category: 'hand', family: 'thumb', twoHands: true },
+  { id: 'two-thumbs-down', type: 'emoji', value: '👎👎', name: 'Double Down', shortHint: 'Show Thumbs Down with BOTH hands!', category: 'hand', family: 'thumb-down', twoHands: true },
+  { id: 'two-point-up', type: 'emoji', value: '☝️☝️', name: 'Double 1 Finger', shortHint: 'Point 1 index finger up with BOTH hands!', category: 'hand', family: 'finger-1', twoHands: true },
+  { id: 'two-rock', type: 'emoji', value: '🤘🤘', name: 'Double Rock', shortHint: 'Shoot Web / Rock On with BOTH hands!', category: 'hand', family: 'rock', twoHands: true },
+  { id: 'two-ok', type: 'emoji', value: '👌👌', name: 'Double OK', shortHint: 'Make the OK Sign with BOTH hands!', category: 'hand', family: 'ok', twoHands: true },
+  { id: 'two-shaka', type: 'emoji', value: '🤙🤙', name: 'Double Shaka', shortHint: 'Show Shaka with BOTH hands!', category: 'hand', family: 'shaka', twoHands: true },
+  { id: 'two-4-finger', type: 'emoji', value: '🖖🖖', name: 'Double 4 Fingers', shortHint: 'Hold up 4 fingers on BOTH hands!', category: 'hand', family: 'finger-4', twoHands: true },
 ];
 
 export const AVAILABLE_POSES: StandingPoseConfig[] = [
@@ -149,9 +166,23 @@ export const getPoseName = (poseId?: string | null, poseValue?: string | null): 
     if (poseValue === '🤘') return 'Rock On';
     if (poseValue === '🖐️') return '5 Fingers';
     if (poseValue === '👍') return 'Thumbs Up';
+    if (poseValue === '👎') return 'Thumbs Down';
     if (poseValue === '👌') return 'OK Sign';
     if (poseValue === '🖖') return '4 Fingers';
     if (poseValue === '🤙') return 'Shaka';
+    if (poseValue === '🙌') return 'Two Hands Up';
+    if (poseValue === '🙏') return 'Prayer Hands';
+    if (poseValue === '🫶') return 'Heart Hands';
+    if (poseValue === '🙅') return 'X-Cross Hands';
+    if (poseValue === '✌️✌️') return 'Double Peace';
+    if (poseValue === '✊✊') return 'Double Fists';
+    if (poseValue === '👍👍') return 'Double Thumbs';
+    if (poseValue === '👎👎') return 'Double Down';
+    if (poseValue === '☝️☝️') return 'Double 1 Finger';
+    if (poseValue === '🤘🤘') return 'Double Rock';
+    if (poseValue === '👌👌') return 'Double OK';
+    if (poseValue === '🤙🤙') return 'Double Shaka';
+    if (poseValue === '🖖🖖') return 'Double 4 Fingers';
   }
   return 'Pose';
 };
@@ -204,11 +235,23 @@ function StandingPoseFigure({
     );
   }
 
-  const textClass = size === 'sm' ? 'text-2xl sm:text-3xl' : size === 'lg' ? 'text-4xl sm:text-5xl' : 'text-3xl sm:text-4xl';
+  const isDoubleGlyph = Array.from(emoji.replace(/\uFE0F/g, '')).length >= 2;
+  const textClass =
+    size === 'sm'
+      ? isDoubleGlyph
+        ? 'text-lg sm:text-xl tracking-tight'
+        : 'text-2xl sm:text-3xl'
+      : size === 'lg'
+      ? isDoubleGlyph
+        ? 'text-3xl sm:text-4xl tracking-tight'
+        : 'text-4xl sm:text-5xl'
+      : isDoubleGlyph
+      ? 'text-2xl sm:text-3xl tracking-tight'
+      : 'text-3xl sm:text-4xl';
 
   return (
     <div className="relative flex items-center justify-center select-none p-1">
-      <span className={`${textClass} leading-none drop-shadow-xs transform transition-transform hover:scale-110`}>
+      <span className={`${textClass} leading-none whitespace-nowrap drop-shadow-xs transform transition-transform hover:scale-110`}>
         {emoji}
       </span>
     </div>
@@ -247,7 +290,7 @@ function getOrPrewarmYogaHands(): Promise<any> {
         });
 
         hands.setOptions({
-          maxNumHands: 2,
+          maxNumHands: 4,
           modelComplexity: 1,
           minDetectionConfidence: 0.45,
           minTrackingConfidence: 0.45,
@@ -282,16 +325,16 @@ function getOrPrewarmYogaHands(): Promise<any> {
 /**
  * Scale-invariant & aspect-corrected biomechanical hand gesture detector.
  * Evaluates MediaPipe 21-point hand landmarks using phalanx joint angles (PIP cosine curl),
- * tip-to-wrist vs PIP/DIP distances, tip-to-MCP span, and relative finger dominance.
- * Supports: 1 Finger, 2 Fingers, 3 Fingers, Fist, Rock, 5 Fingers, Thumbs Up, OK Sign, 4 Fingers, Shaka.
+ * tip-to-wrist vs PIP/DIP distances, tip-to-MCP span, relative finger dominance, and two-hand geometry.
+ * Supports 11 single-hand poses + 9 two-hand poses (🙌, 🙏, 🫶, ✌️✌️, ✊✊, 👍👍, ☝️☝️, 🤘🤘, 👌👌) + middle-finger penalty.
  */
 function detectStandingPoseFromHands(
   hands: Array<Array<{ x: number; y: number; z?: number }>>,
   candidatePoseIds: string[],
   videoAspect = 1.5
-): { poseId: string | null; confidence: number } {
+): { poseId: string | null; confidence: number; needsSecondHandFor?: string | null } {
   if (!hands || hands.length === 0) {
-    return { poseId: null, confidence: 0 };
+    return { poseId: null, confidence: 0, needsSecondHandFor: null };
   }
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -331,6 +374,11 @@ function detectStandingPoseFromHands(
     const palmLength = dist(lm[9], wrist);
     const knuckleWidth = dist(lm[5], lm[17]);
     const palmSize = Math.max(0.04, Math.max(palmLength, knuckleWidth * 1.15));
+    const palmCenter = {
+      x: (wrist.x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) * 0.2,
+      y: (wrist.y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) * 0.2,
+      z: ((wrist.z ?? 0) + (lm[9].z ?? 0)) * 0.5,
+    };
 
     const computeFingerScore = (
       mcpIdx: number,
@@ -406,6 +454,12 @@ function detectStandingPoseFromHands(
       thumbTip.y < lm[5].y - palmSize * 0.12 &&
       thumbToIndexMcp > 0.48;
 
+    // Distinct vertical thumbs-down (thumb pointing well below curled knuckles)
+    const thumbDownVertical =
+      thumbTip.y > thumbIp.y + palmSize * 0.08 &&
+      thumbTip.y > lm[5].y + palmSize * 0.12 &&
+      thumbToIndexMcp > 0.45;
+
     const fourFingersCount =
       (indexExtended ? 1 : 0) +
       (middleExtended ? 1 : 0) +
@@ -414,6 +468,7 @@ function detectStandingPoseFromHands(
 
     const totalOpenCount = fourFingersCount + (thumbSpread ? 1 : 0);
     const maxFourScore = Math.max(indexScore, middleScore, ringScore, pinkyScore);
+    const minAll4 = Math.min(indexScore, middleScore, ringScore, pinkyScore);
     const avgFourScore = (indexScore + middleScore + ringScore + pinkyScore) * 0.25;
 
     // Closed fist: all 4 fingers curled down
@@ -450,7 +505,39 @@ function detectStandingPoseFromHands(
       dMidTip > dRngTip * 1.15 &&
       dMidTip > dPnkTip * 1.18;
 
+    // Reusable per-hand gesture booleans for both single-hand and two-hand poses
+    const othersMaxFor1 = Math.max(middleScore, ringScore, pinkyScore);
+    const isOneFinger =
+      !isOkPinch &&
+      indexScore >= 0.50 &&
+      ((othersMaxFor1 < 0.48 && pointDominance >= 0.16) ||
+        (indexScore >= 0.62 && othersMaxFor1 < 0.53 && pointDominance >= 0.24));
+
+    const minIdxMid = Math.min(indexScore, middleScore);
+    const maxRingPinky = Math.max(ringScore, pinkyScore);
+    const isPeace =
+      minIdxMid >= 0.50 &&
+      ((maxRingPinky < 0.48 && peaceDominance >= 0.14) ||
+        (minIdxMid >= 0.60 && maxRingPinky < 0.53 && peaceDominance >= 0.22));
+
+    const isRockOrIly =
+      Math.min(indexScore, pinkyScore) >= 0.48 &&
+      Math.max(middleScore, ringScore) < 0.49 &&
+      rockDominance >= 0.12;
+
+    const isThumbsUp = thumbUpVertical && maxFourScore < 0.50;
+    const isThumbsDown = thumbDownVertical && maxFourScore < 0.50;
+    const isOpenPalm = minAll4 >= 0.42 && (fourFingersCount >= 4 || avgFourScore >= 0.56);
+    const isFourFingers = minAll4 >= 0.48 && !thumbSpread;
+    const isShaka = thumbSpread && pinkyScore >= 0.48 && Math.max(indexScore, middleScore, ringScore) < 0.48;
+
     return {
+      wrist,
+      palmCenter,
+      palmSize,
+      thumbTip,
+      indexTip: lm[8],
+      middleTip: lm[12],
       indexScore,
       middleScore,
       ringScore,
@@ -461,9 +548,11 @@ function detectStandingPoseFromHands(
       pinkyExtended,
       thumbSpread,
       thumbUpVertical,
+      thumbDownVertical,
       fourFingersCount,
       totalOpenCount,
       maxFourScore,
+      minAll4,
       avgFourScore,
       fingersCurled,
       isOkPinch,
@@ -473,6 +562,14 @@ function detectStandingPoseFromHands(
       peaceDominance,
       rockDominance,
       classic3Dominance,
+      isOneFinger,
+      isPeace,
+      isRockOrIly,
+      isThumbsUp,
+      isThumbsDown,
+      isOpenPalm,
+      isFourFingers,
+      isShaka,
     };
   };
 
@@ -481,55 +578,188 @@ function detectStandingPoseFromHands(
   // Immediate priority check for bad action (middle finger gesture)
   for (const h of analyzed) {
     if (h.isMiddleFingerOnly) {
-      return { poseId: 'dirty-finger', confidence: 0.96 };
+      return { poseId: 'dirty-finger', confidence: 0.96, needsSecondHandFor: null };
     }
   }
 
-  const scores: Record<string, number> = {};
-  const expectsThumbsUp = candidatePoseIds.includes('thumbs-up');
+  const expectsThumbsUp =
+    candidatePoseIds.includes('thumbs-up') || candidatePoseIds.includes('two-thumbs-up');
+  const expectsThumbsDown =
+    candidatePoseIds.includes('thumbs-down') || candidatePoseIds.includes('two-thumbs-down');
+  const expectsNamaste = candidatePoseIds.includes('namaste-hands');
+  const expectsHeart = candidatePoseIds.includes('heart-hands');
+  const expectsXCross = candidatePoseIds.includes('x-hands');
+
+  // --- TWO-HAND POSE DETECTION (Highest Priority when 2 hands are visible!) ---
+  const twoHandScores: Record<string, number> = {};
+  if (analyzed.length >= 2) {
+    for (let i = 0; i < analyzed.length; i++) {
+      for (let j = i + 1; j < analyzed.length; j++) {
+        const a = analyzed[i];
+        const b = analyzed[j];
+        const avgPalm = Math.max(0.04, (a.palmSize + b.palmSize) * 0.5);
+        const palmDist = dist(a.palmCenter, b.palmCenter) / avgPalm;
+        const wristDist = dist(a.wrist, b.wrist) / avgPalm;
+        const indexTipDist = dist(a.indexTip, b.indexTip) / avgPalm;
+        const thumbTipDist = dist(a.thumbTip, b.thumbTip) / avgPalm;
+        const middleTipDist = dist(a.middleTip, b.middleTip) / avgPalm;
+
+        // 1. Heart Hands (🫶): thumbs touching at bottom + index/middle tips touching above thumbs
+        const avgThumbY = (a.thumbTip.y + b.thumbTip.y) * 0.5;
+        const avgIndexY = (a.indexTip.y + b.indexTip.y) * 0.5;
+        const topTipsClose = indexTipDist < 1.25 || middleTipDist < 1.25;
+        const isHeartArch =
+          palmDist < 2.6 &&
+          thumbTipDist < 1.25 &&
+          topTipsClose &&
+          avgThumbY > avgIndexY + avgPalm * 0.04;
+        if (isHeartArch) {
+          twoHandScores['heart-hands'] = Math.max(twoHandScores['heart-hands'] || 0, 0.97);
+        }
+
+        // 2. X-Cross Hands (🙅): wrists crossed close together while fingertips fan wide apart
+        const isXCross =
+          wristDist < 1.35 &&
+          middleTipDist > Math.max(1.38, wristDist * 1.32) &&
+          a.avgFourScore >= 0.42 &&
+          b.avgFourScore >= 0.42;
+        if (isXCross) {
+          twoHandScores['x-hands'] = Math.max(twoHandScores['x-hands'] || 0, 0.96);
+        }
+
+        // 3. Prayer / Namaste Hands (🙏): both hands pressed close together upright
+        const handsClose = palmDist < 1.55 || wristDist < 1.65 || middleTipDist < 1.30;
+        const tipsAligned = middleTipDist < 1.35;
+        const fingersPointingUp =
+          a.middleTip.y < a.wrist.y - avgPalm * 0.08 &&
+          b.middleTip.y < b.wrist.y - avgPalm * 0.08;
+        const notCurledFists = a.avgFourScore >= 0.25 && b.avgFourScore >= 0.25;
+        if (
+          handsClose &&
+          tipsAligned &&
+          fingersPointingUp &&
+          notCurledFists &&
+          (!expectsHeart || !isHeartArch) &&
+          (!expectsXCross || !isXCross)
+        ) {
+          twoHandScores['namaste-hands'] = Math.max(twoHandScores['namaste-hands'] || 0, 0.96);
+        }
+
+        // 4. Two Hands Up / Double Open Palms (🙌): both hands open with 4+ fingers extended
+        const separatedForHighFive = (!expectsNamaste || palmDist >= 1.15) && (!expectsXCross || !isXCross);
+        if (a.isOpenPalm && b.isOpenPalm && separatedForHighFive) {
+          twoHandScores['two-open-hands'] = Math.max(twoHandScores['two-open-hands'] || 0, 0.95);
+        }
+
+        // 5. Double Peace (✌️✌️) - forgiving on non-dominant second hand
+        const aLoosePeace = a.isPeace || (Math.min(a.indexScore, a.middleScore) >= 0.46 && a.peaceDominance >= 0.12);
+        const bLoosePeace = b.isPeace || (Math.min(b.indexScore, b.middleScore) >= 0.46 && b.peaceDominance >= 0.12);
+        if ((a.isPeace && bLoosePeace) || (b.isPeace && aLoosePeace)) {
+          twoHandScores['two-peace'] = Math.max(twoHandScores['two-peace'] || 0, 0.96);
+        }
+
+        // 6. Double Fists (✊✊)
+        const aIsPureFist =
+          a.fingersCurled &&
+          !a.isOkPinch &&
+          (!expectsThumbsUp || !a.thumbUpVertical) &&
+          (!expectsThumbsDown || !a.thumbDownVertical);
+        const bIsPureFist =
+          b.fingersCurled &&
+          !b.isOkPinch &&
+          (!expectsThumbsUp || !b.thumbUpVertical) &&
+          (!expectsThumbsDown || !b.thumbDownVertical);
+        if (aIsPureFist && bIsPureFist) {
+          twoHandScores['two-fists'] = Math.max(twoHandScores['two-fists'] || 0, 0.95);
+        }
+
+        // 7. Double Thumbs Up (👍👍)
+        if (a.isThumbsUp && b.isThumbsUp) {
+          twoHandScores['two-thumbs-up'] = Math.max(twoHandScores['two-thumbs-up'] || 0, 0.97);
+        }
+
+        // 8. Double Thumbs Down (👎👎)
+        if (a.isThumbsDown && b.isThumbsDown) {
+          twoHandScores['two-thumbs-down'] = Math.max(twoHandScores['two-thumbs-down'] || 0, 0.97);
+        }
+
+        // 9. Double 1 Finger (☝️☝️) - forgiving on non-dominant second hand
+        const aLoose1 = a.isOneFinger || (!a.isOkPinch && a.indexScore >= 0.46 && a.pointDominance >= 0.14);
+        const bLoose1 = b.isOneFinger || (!b.isOkPinch && b.indexScore >= 0.46 && b.pointDominance >= 0.14);
+        if ((a.isOneFinger && bLoose1) || (b.isOneFinger && aLoose1)) {
+          twoHandScores['two-point-up'] = Math.max(twoHandScores['two-point-up'] || 0, 0.96);
+        }
+
+        // 10. Double Rock On / Double Web (🤘🤘)
+        const aLooseRock = a.isRockOrIly || (Math.min(a.indexScore, a.pinkyScore) >= 0.44 && a.rockDominance >= 0.10);
+        const bLooseRock = b.isRockOrIly || (Math.min(b.indexScore, b.pinkyScore) >= 0.44 && b.rockDominance >= 0.10);
+        if ((a.isRockOrIly && bLooseRock) || (b.isRockOrIly && aLooseRock)) {
+          twoHandScores['two-rock'] = Math.max(twoHandScores['two-rock'] || 0, 0.96);
+        }
+
+        // 11. Double OK (👌👌)
+        if (a.isOkPinch && b.isOkPinch) {
+          twoHandScores['two-ok'] = Math.max(twoHandScores['two-ok'] || 0, 0.97);
+        }
+
+        // 12. Double Shaka (🤙🤙)
+        if (a.isShaka && b.isShaka) {
+          twoHandScores['two-shaka'] = Math.max(twoHandScores['two-shaka'] || 0, 0.97);
+        }
+
+        // 13. Double 4 Fingers (🖖🖖)
+        if (a.isFourFingers && b.isFourFingers && separatedForHighFive) {
+          twoHandScores['two-4-finger'] = Math.max(twoHandScores['two-4-finger'] || 0, 0.95);
+        }
+      }
+    }
+
+    // If a two-hand pose matches one of the current screen's candidate options, return it immediately!
+    let bestTwoHand: string | null = null;
+    let bestTwoHandScore = 0;
+    for (const cid of candidatePoseIds) {
+      const s = twoHandScores[cid] || 0;
+      if (s > bestTwoHandScore) {
+        bestTwoHandScore = s;
+        bestTwoHand = cid;
+      }
+    }
+    if (bestTwoHand && bestTwoHandScore >= 0.78) {
+      return { poseId: bestTwoHand, confidence: bestTwoHandScore, needsSecondHandFor: null };
+    }
+  }
+
+  // --- SINGLE-HAND POSE DETECTION ---
+  const scores: Record<string, number> = { ...twoHandScores };
 
   for (const h of analyzed) {
     // 1. Closed Fist (✊) - all 4 fingers curled
-    if (h.fingersCurled && !h.isOkPinch && (!expectsThumbsUp || !h.thumbUpVertical)) {
+    if (
+      h.fingersCurled &&
+      !h.isOkPinch &&
+      (!expectsThumbsUp || !h.thumbUpVertical) &&
+      (!expectsThumbsDown || !h.thumbDownVertical)
+    ) {
       const fistConf = clamp01(0.88 + (0.48 - h.avgFourScore) * 0.25);
       scores['fist'] = Math.max(scores['fist'] || 0, fistConf);
       scores['power-fist'] = Math.max(scores['power-fist'] || 0, fistConf * 0.98);
     }
 
     // 2. 1 Finger / Point Up (☝️) - index extended, middle/ring/pinky curled
-    const othersMaxFor1 = Math.max(h.middleScore, h.ringScore, h.pinkyScore);
-    if (
-      !h.isOkPinch &&
-      h.indexScore >= 0.50 &&
-      ((othersMaxFor1 < 0.48 && h.pointDominance >= 0.16) ||
-        (h.indexScore >= 0.62 && othersMaxFor1 < 0.53 && h.pointDominance >= 0.24))
-    ) {
+    if (h.isOneFinger) {
       const oneConf = clamp01(0.86 + h.pointDominance * 0.22);
       scores['1-finger'] = Math.max(scores['1-finger'] || 0, oneConf);
       scores['point-up'] = Math.max(scores['point-up'] || 0, oneConf);
     }
 
     // 3. 2 Fingers / Peace (✌️) - index & middle extended, ring & pinky curled
-    const minIdxMid = Math.min(h.indexScore, h.middleScore);
-    const maxRingPinky = Math.max(h.ringScore, h.pinkyScore);
-    if (
-      minIdxMid >= 0.50 &&
-      ((maxRingPinky < 0.48 && h.peaceDominance >= 0.14) ||
-        (minIdxMid >= 0.60 && maxRingPinky < 0.53 && h.peaceDominance >= 0.22))
-    ) {
+    if (h.isPeace) {
       const twoConf = clamp01(0.86 + h.peaceDominance * 0.22);
       scores['2-finger'] = Math.max(scores['2-finger'] || 0, twoConf);
       scores['peace'] = Math.max(scores['peace'] || 0, twoConf);
     }
 
-    // 4. 3 Fingers / Sign (🤟) - supports:
-    //    a) ASL 🤟 / Rock 🤘: Index + Pinky extended, Middle + Ring curled
-    //    b) Classic 3 Fingers: Index + Middle + Ring extended, Pinky curled
-    //    c) Middle + Ring + Pinky extended, Index curled (non-pinch 3 fingers)
-    const isRockOrIly =
-      Math.min(h.indexScore, h.pinkyScore) >= 0.48 &&
-      Math.max(h.middleScore, h.ringScore) < 0.49 &&
-      h.rockDominance >= 0.12;
+    // 4. 3 Fingers / Sign (🤟) & Rock On (🤘)
     const isClassic3 =
       Math.min(h.indexScore, h.middleScore, h.ringScore) >= 0.50 &&
       h.pinkyScore < 0.47 &&
@@ -539,28 +769,27 @@ function detectStandingPoseFromHands(
       Math.min(h.middleScore, h.ringScore, h.pinkyScore) >= 0.50 &&
       h.indexScore < 0.45;
 
-    if (isRockOrIly || isClassic3 || isOuter3) {
+    if (h.isRockOrIly || isClassic3 || isOuter3) {
       const dom3 = Math.max(
-        isRockOrIly ? h.rockDominance : 0,
+        h.isRockOrIly ? h.rockDominance : 0,
         isClassic3 ? h.classic3Dominance : 0,
         isOuter3 ? Math.min(h.middleScore, h.ringScore, h.pinkyScore) - h.indexScore : 0
       );
       const threeConf = clamp01(0.86 + dom3 * 0.22);
       scores['3-finger'] = Math.max(scores['3-finger'] || 0, threeConf);
-      if (isRockOrIly) {
+      if (h.isRockOrIly) {
         scores['rock'] = Math.max(scores['rock'] || 0, threeConf);
         scores['rock-on'] = Math.max(scores['rock-on'] || 0, threeConf);
       }
     }
 
     // 5. 4 Fingers (🖖) - all 4 fingers extended, thumb tucked
-    const minAll4 = Math.min(h.indexScore, h.middleScore, h.ringScore, h.pinkyScore);
-    if (minAll4 >= 0.52 && !h.thumbSpread) {
-      scores['4-finger'] = Math.max(scores['4-finger'] || 0, clamp01(0.85 + minAll4 * 0.14));
+    if (h.minAll4 >= 0.52 && !h.thumbSpread) {
+      scores['4-finger'] = Math.max(scores['4-finger'] || 0, clamp01(0.85 + h.minAll4 * 0.14));
     }
 
     // 6. 5 Fingers / Open Palm (🖐️) - all 4 fingers + thumb open wide
-    if (minAll4 >= 0.50 && (h.thumbSpread || h.totalOpenCount >= 5)) {
+    if (h.minAll4 >= 0.50 && (h.thumbSpread || h.totalOpenCount >= 5)) {
       const fiveConf = clamp01(0.87 + h.avgFourScore * 0.12);
       scores['5-finger'] = Math.max(scores['5-finger'] || 0, fiveConf);
       scores['star-hands'] = Math.max(scores['star-hands'] || 0, fiveConf);
@@ -568,8 +797,13 @@ function detectStandingPoseFromHands(
     }
 
     // 7. Thumbs Up (👍) - thumb pointing up and fingers curled
-    if (h.thumbUpVertical && h.maxFourScore < 0.50) {
+    if (h.isThumbsUp) {
       scores['thumbs-up'] = Math.max(scores['thumbs-up'] || 0, 0.94);
+    }
+
+    // 7b. Thumbs Down (👎) - thumb pointing down and fingers curled
+    if (h.isThumbsDown) {
+      scores['thumbs-down'] = Math.max(scores['thumbs-down'] || 0, 0.94);
     }
 
     // 8. OK Sign (👌) - thumb and index pinched into circle with outer fingers extended
@@ -619,7 +853,33 @@ function detectStandingPoseFromHands(
   }
 
   if (bestCandidate && bestCandidateScore >= 0.72) {
-    return { poseId: bestCandidate, confidence: bestCandidateScore };
+    return { poseId: bestCandidate, confidence: bestCandidateScore, needsSecondHandFor: null };
+  }
+
+  // If the player only has 1 hand raised and it matches HALF of a 2-HANDS candidate on screen,
+  // guide them immediately to raise their second hand!
+  let needsSecondHandFor: string | null = null;
+  if (analyzed.length === 1) {
+    const h = analyzed[0];
+    const halfMatchMap: Array<[string, boolean]> = [
+      ['two-point-up', h.isOneFinger],
+      ['two-peace', h.isPeace],
+      ['two-fists', h.fingersCurled && !h.isOkPinch && !h.isThumbsUp && !h.isThumbsDown],
+      ['two-thumbs-up', h.isThumbsUp],
+      ['two-thumbs-down', h.isThumbsDown],
+      ['two-rock', h.isRockOrIly],
+      ['two-ok', h.isOkPinch],
+      ['two-shaka', h.isShaka],
+      ['two-4-finger', h.isFourFingers],
+      ['two-open-hands', h.isOpenPalm],
+      ['namaste-hands', h.isOpenPalm || h.isFourFingers],
+    ];
+    for (const [twoId, matchedHalf] of halfMatchMap) {
+      if (matchedHalf && candidatePoseIds.includes(twoId)) {
+        needsSecondHandFor = twoId;
+        break;
+      }
+    }
   }
 
   let bestOverall: string | null = null;
@@ -631,7 +891,11 @@ function detectStandingPoseFromHands(
     }
   }
 
-  return { poseId: bestOverallScore >= 0.75 ? bestOverall : null, confidence: bestOverallScore };
+  return {
+    poseId: bestOverallScore >= 0.75 ? bestOverall : null,
+    confidence: bestOverallScore,
+    needsSecondHandFor,
+  };
 }
 
 
@@ -1661,6 +1925,7 @@ interface PlayerCameraDetectionState {
   frozenRemainingSec: number;
   lastWrongOptionIdx: number | null;
   penaltyType?: 'freeze' | 'bad-action' | null;
+  needsSecondHandPoseId?: string | null;
 }
 
 interface RoundWinnerInfo {
@@ -1815,7 +2080,7 @@ function getInitialClassicPoses(): string[] {
 
 function getInitialCameraHandPoses(): string[] {
   try {
-    const raw = localStorage.getItem('yogaCameraHandPoses_v7');
+    const raw = localStorage.getItem('yogaCameraHandPoses_v9');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -1842,7 +2107,7 @@ function YogaGame({
   const [playMode, setPlayMode] = useState<'studio' | 'camera' | 'pose-chase'>('camera');
   const [yogaTimerMinutes, setYogaTimerMinutes] = useState<number>(3);
 
-  // Persisted pose selections: Classic Mode uses previous yoga poses; Camera Mode uses pure hand gestures
+  // Persisted pose selections: Classic Mode uses previous yoga poses; Camera Mode uses one-hand & two-hand gestures
   const [classicPoses, setClassicPoses] = useState<string[]>(getInitialClassicPoses);
   const [cameraHandPoses, setCameraHandPoses] = useState<string[]>(getInitialCameraHandPoses);
 
@@ -1856,7 +2121,7 @@ function YogaGame({
 
   useEffect(() => {
     try {
-      localStorage.setItem('yogaCameraHandPoses_v7', JSON.stringify(cameraHandPoses));
+      localStorage.setItem('yogaCameraHandPoses_v9', JSON.stringify(cameraHandPoses));
     } catch (e) {}
   }, [cameraHandPoses]);
 
@@ -1875,9 +2140,13 @@ function YogaGame({
     }
   };
 
-  const applyPosePreset = (preset: 'classic' | 'hand') => {
+  const applyPosePreset = (preset: 'classic' | 'hand' | 'two-hands' | 'one-hand') => {
     if (preset === 'classic') {
       setClassicPoses(DEFAULT_CLASSIC_POSE_VALUES);
+    } else if (preset === 'two-hands') {
+      setCameraHandPoses(CAMERA_HAND_POSES.filter(p => p.twoHands).map(p => p.value));
+    } else if (preset === 'one-hand') {
+      setCameraHandPoses(CAMERA_HAND_POSES.filter(p => !p.twoHands).map(p => p.value));
     } else {
       setCameraHandPoses(DEFAULT_CAMERA_HAND_VALUES);
     }
@@ -2053,8 +2322,9 @@ function YogaGame({
     isCorrect: boolean;
     poseId: string;
     poseValue: string;
+    isTwoHands?: boolean;
   }[]>([]);
-  // Cache each question's assigned options/poses per mode so Classic Mode can retrieve previous poses cleanly
+  // Cache each question's assigned options/poses per mode so previous poses can be retrieved cleanly
   const questionOptionsCacheRef = useRef<
     Record<
       string,
@@ -2064,9 +2334,15 @@ function YogaGame({
         isCorrect: boolean;
         poseId: string;
         poseValue: string;
+        isTwoHands?: boolean;
       }>
     >
   >({});
+  // Track recently used poses & usage counts so EVERY question gets a fresh, different set of poses!
+  const lastQuestionPoseIdsRef = useRef<Set<string>>(new Set());
+  const poseUsageCountRef = useRef<Record<string, number>>({});
+  // Brief ready gate (650ms) when a new question loads so leftover hand poses never accidentally misfire
+  const questionReadyAtRef = useRef<number>(0);
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -2283,13 +2559,14 @@ function YogaGame({
     setRoundWinnerInfo(null);
     setWinningPlayerIdx(null);
     const now = performance.now();
+    questionReadyAtRef.current = now + 650;
     holdStateRef.current = [
       { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
       { optionIdx: null, poseId: null, progress: 0, lastUpdateTime: now, lastMatchedTime: 0, recentPoses: [], cooldownUntil: 0, wrongBannerUntil: 0, lastWrongOptionIdx: null, penaltyType: null },
     ];
     setPlayerDetections([
-      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null },
-      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null },
+      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null, needsSecondHandPoseId: null },
+      { detectedPoseId: null, matchedOptionIdx: null, holdProgress: 0, wrongFeedbackText: null, frozenUntil: 0, frozenRemainingSec: 0, lastWrongOptionIdx: null, penaltyType: null, needsSecondHandPoseId: null },
     ]);
 
     const currentItem = quiz.questions[idx];
@@ -2339,22 +2616,81 @@ function YogaGame({
 
     let computedOptions;
     if (playMode === 'camera') {
-      const handPriorityOrder = ['1-finger', '2-finger', '3-finger', 'fist', 'rock', '5-finger', 'thumbs-up', 'ok-sign', '4-finger', 'shaka'];
       const activeHandCatalog = CAMERA_HAND_POSES.filter(p => cameraHandPoses.includes(p.value));
       const sourceCatalog = activeHandCatalog.length >= opts.length ? activeHandCatalog : CAMERA_HAND_POSES;
+      const prevIds = lastQuestionPoseIdsRef.current;
+      const usageMap = poseUsageCountRef.current;
+
+      // Helper: pick least-used poses that were NOT on the previous question, with random variety & unique families
+      const rankPool = (pool: StandingPoseConfig[]) =>
+        [...pool]
+          .map(p => ({
+            pose: p,
+            wasPrev: prevIds.has(p.id) ? 1 : 0,
+            usedCount: usageMap[p.id] || 0,
+            jitter: Math.random(),
+          }))
+          .sort((a, b) => {
+            if (a.wasPrev !== b.wasPrev) return a.wasPrev - b.wasPrev;
+            if (a.usedCount !== b.usedCount) return a.usedCount - b.usedCount;
+            return a.jitter - b.jitter;
+          })
+          .map(item => item.pose);
+
+      const twoHandPool = rankPool(sourceCatalog.filter(p => p.twoHands));
+      const oneHandPool = rankPool(sourceCatalog.filter(p => !p.twoHands));
+      const allRanked = rankPool(sourceCatalog);
 
       const chosenHands: StandingPoseConfig[] = [];
-      for (const hid of handPriorityOrder) {
-        const found = sourceCatalog.find(p => p.id === hid);
-        if (found && !chosenHands.some(c => c.id === found.id)) {
-          chosenHands.push(found);
-        }
+      const usedFamilies = new Set<string>();
+      const tryPick = (candidate: StandingPoseConfig, allowSameFamily = false) => {
+        if (chosenHands.length >= opts.length) return false;
+        if (chosenHands.some(c => c.id === candidate.id)) return false;
+        if (!allowSameFamily && usedFamilies.has(candidate.family)) return false;
+        chosenHands.push(candidate);
+        usedFamilies.add(candidate.family);
+        return true;
+      };
+
+      // Mix 1 to 2 two-hand poses on each question (when both 1-hand & 2-hand poses are enabled)
+      const desiredTwoHandCount =
+        twoHandPool.length > 0 && oneHandPool.length > 0
+          ? Math.min(twoHandPool.length, opts.length >= 4 ? (idx % 2 === 0 ? 2 : 1) : 1)
+          : twoHandPool.length > 0
+          ? Math.min(twoHandPool.length, opts.length)
+          : 0;
+
+      for (const p of twoHandPool) {
+        if (chosenHands.filter(c => c.twoHands).length >= desiredTwoHandCount) break;
+        tryPick(p, false);
       }
-      for (const p of sourceCatalog) {
-        if (!chosenHands.some(c => c.id === p.id)) {
-          chosenHands.push(p);
-        }
+
+      // Fill remaining slots with fresh one-hand poses from distinct families
+      for (const p of oneHandPool) {
+        if (chosenHands.length >= opts.length) break;
+        tryPick(p, false);
       }
+
+      // Fallback pass 1: any remaining pose from distinct families
+      for (const p of allRanked) {
+        if (chosenHands.length >= opts.length) break;
+        tryPick(p, false);
+      }
+
+      // Fallback pass 2: allow same family only if user enabled < 4 distinct families
+      for (const p of allRanked) {
+        if (chosenHands.length >= opts.length) break;
+        tryPick(p, true);
+      }
+
+      // Shuffle positions so two-hand poses appear on different answer cards each question
+      chosenHands.sort(() => Math.random() - 0.5);
+
+      // Update usage counters & remember this question's poses so the next question is completely different
+      lastQuestionPoseIdsRef.current = new Set(chosenHands.map(p => p.id));
+      chosenHands.forEach(p => {
+        usageMap[p.id] = (usageMap[p.id] || 0) + 1;
+      });
 
       computedOptions = opts.map((opt, i) => {
         const assignedPose = chosenHands[i % chosenHands.length] || CAMERA_HAND_POSES[i % CAMERA_HAND_POSES.length];
@@ -2362,10 +2698,11 @@ function YogaGame({
           ...opt,
           poseId: assignedPose.id,
           poseValue: assignedPose.value,
+          isTwoHands: Boolean(assignedPose.twoHands),
         };
       });
     } else {
-      // Classic Studio Mode: classic full-body yoga poses
+      // Classic Studio Mode: classic full-body yoga poses rotated freshly per question
       const availableClassic: StandingPoseConfig[] = [];
       for (const val of classicPoses) {
         const found = CLASSIC_YOGA_POSES.find(p => p.value === val);
@@ -2383,12 +2720,22 @@ function YogaGame({
         }
       }
       const pool = availableClassic.length >= opts.length ? availableClassic : CLASSIC_YOGA_POSES;
+      const prevIds = lastQuestionPoseIdsRef.current;
+      const rotatedPool = [...pool].sort((a, b) => {
+        const aPrev = prevIds.has(a.id) ? 1 : 0;
+        const bPrev = prevIds.has(b.id) ? 1 : 0;
+        if (aPrev !== bPrev) return aPrev - bPrev;
+        return Math.random() - 0.5;
+      });
+      const pickedClassic = rotatedPool.slice(0, opts.length);
+      lastQuestionPoseIdsRef.current = new Set(pickedClassic.map(p => p.id));
       computedOptions = opts.map((opt, i) => {
-        const assignedPose = pool[i % pool.length];
+        const assignedPose = pickedClassic[i % pickedClassic.length];
         return {
           ...opt,
           poseId: assignedPose.id,
           poseValue: assignedPose.value,
+          isTwoHands: false,
         };
       });
     }
@@ -2396,6 +2743,14 @@ function YogaGame({
     questionOptionsCacheRef.current[cacheKey] = computedOptions;
     setShuffledOptions(computedOptions);
   }, [quiz.questions, activePoses, playMode, cameraHandPoses, classicPoses]);
+
+  // One-click live pose reshuffle for the current question without losing scores or question progress
+  const rerollCurrentQuestionPoses = useCallback(() => {
+    if (isAnsweringRef.current) return;
+    const cacheKey = `${playMode}-${currentIdx}`;
+    delete questionOptionsCacheRef.current[cacheKey];
+    loadQuestion(currentIdx, false);
+  }, [playMode, currentIdx, loadQuestion]);
 
   // Automatically read the current question naturally when a question loads during gameplay
   useEffect(() => {
@@ -2721,15 +3076,26 @@ function YogaGame({
         const candidatePoseIds = currentOptions.map(o => o.poseId);
 
         // Partition hands into Player 1 (left half) and Player 2 (right half) WITHOUT distorting aspect ratio!
+        // Keep up to the 2 largest hands (closest to camera) per player zone so two-hand poses stay super accurate.
+        const keepTopTwoHands = (group: Array<Array<{ x: number; y: number; z?: number }>>) => {
+          if (group.length <= 2) return group;
+          const handSize = (h: Array<{ x: number; y: number; z?: number }>) => {
+            const dx = ((h[9]?.x ?? 0) - (h[0]?.x ?? 0)) * videoAspect;
+            const dy = (h[9]?.y ?? 0) - (h[0]?.y ?? 0);
+            return Math.hypot(dx, dy);
+          };
+          return [...group].sort((a, b) => handSize(b) - handSize(a)).slice(0, 2);
+        };
+
         const playerHandGroups: [
           Array<Array<{ x: number; y: number; z?: number }>>,
           Array<Array<{ x: number; y: number; z?: number }>>
         ] = isTwoPlayers
           ? [
-              mirroredHands.filter(h => ((h[9]?.x ?? h[0]?.x ?? 0.5) < 0.5)),
-              mirroredHands.filter(h => ((h[9]?.x ?? h[0]?.x ?? 0.5) >= 0.5)),
+              keepTopTwoHands(mirroredHands.filter(h => ((h[9]?.x ?? h[0]?.x ?? 0.5) < 0.5))),
+              keepTopTwoHands(mirroredHands.filter(h => ((h[9]?.x ?? h[0]?.x ?? 0.5) >= 0.5))),
             ]
-          : [mirroredHands, []];
+          : [keepTopTwoHands(mirroredHands), []];
 
         const numActiveZones = isTwoPlayers ? 2 : 1;
         const nextUiStates: [PlayerCameraDetectionState, PlayerCameraDetectionState] = [
@@ -2742,6 +3108,7 @@ function YogaGame({
             frozenRemainingSec: 0,
             lastWrongOptionIdx: null,
             penaltyType: null,
+            needsSecondHandPoseId: null,
           },
           {
             detectedPoseId: null,
@@ -2752,8 +3119,11 @@ function YogaGame({
             frozenRemainingSec: 0,
             lastWrongOptionIdx: null,
             penaltyType: null,
+            needsSecondHandPoseId: null,
           },
         ];
+
+        const inQuestionReadyGate = now < questionReadyAtRef.current;
 
         for (let pIdx = 0; pIdx < numActiveZones; pIdx++) {
           const pHold = holdStateRef.current[pIdx];
@@ -2774,6 +3144,7 @@ function YogaGame({
               frozenRemainingSec: remSec,
               lastWrongOptionIdx: pHold.lastWrongOptionIdx,
               penaltyType: pHold.penaltyType,
+              needsSecondHandPoseId: null,
             };
             continue;
           } else if (pHold.lastWrongOptionIdx !== null || pHold.penaltyType !== null) {
@@ -2781,7 +3152,7 @@ function YogaGame({
             pHold.penaltyType = null;
           }
 
-          const { poseId, confidence } = detectStandingPoseFromHands(
+          const { poseId, confidence, needsSecondHandFor } = detectStandingPoseFromHands(
             playerHandGroups[pIdx],
             candidatePoseIds,
             videoAspect
@@ -2808,6 +3179,26 @@ function YogaGame({
               frozenRemainingSec: penaltyRem,
               lastWrongOptionIdx: null,
               penaltyType: 'bad-action',
+              needsSecondHandPoseId: null,
+            };
+            continue;
+          }
+
+          // During the 0.65s new-question grace gate, show detected pose smoothly but don't lock answers yet
+          if (inQuestionReadyGate) {
+            pHold.progress = 0;
+            pHold.optionIdx = null;
+            pHold.poseId = null;
+            nextUiStates[pIdx] = {
+              detectedPoseId: validFramePose,
+              matchedOptionIdx: null,
+              holdProgress: 0,
+              wrongFeedbackText: null,
+              frozenUntil: 0,
+              frozenRemainingSec: 0,
+              lastWrongOptionIdx: null,
+              penaltyType: null,
+              needsSecondHandPoseId: needsSecondHandFor || null,
             };
             continue;
           }
@@ -2857,6 +3248,92 @@ function YogaGame({
             }
           }
 
+          // Draw live canvas Two-Hand Energy Beam & Radial Lock-In Ring right over the player's hands!
+          const pHands = playerHandGroups[pIdx];
+          const primaryColor = isTwoPlayers
+            ? pIdx === 0
+              ? '#fb7185'
+              : '#fbbf24'
+            : '#a855f7';
+          const secondaryColor = isTwoPlayers
+            ? pIdx === 0
+              ? '#38bdf8'
+              : '#fde047'
+            : '#2dd4bf';
+
+          if (pHands.length >= 2) {
+            const c1 = toPx(pHands[0][9] || pHands[0][0], cw, ch, videoW, videoH);
+            const c2 = toPx(pHands[1][9] || pHands[1][0], cw, ch, videoW, videoH);
+            const midX = (c1.x + c2.x) * 0.5;
+            const midY = (c1.y + c2.y) * 0.5;
+            const isLockingTwoHand =
+              pHold.optionIdx !== null && Boolean(currentOptions[pHold.optionIdx]?.isTwoHands) && pHold.progress > 0;
+
+            ctx.save();
+            const beamGrad = ctx.createLinearGradient(c1.x, c1.y, c2.x, c2.y);
+            beamGrad.addColorStop(0, primaryColor);
+            beamGrad.addColorStop(0.5, '#ffffff');
+            beamGrad.addColorStop(1, secondaryColor);
+            ctx.strokeStyle = beamGrad;
+            ctx.shadowColor = primaryColor;
+            ctx.shadowBlur = isLockingTwoHand ? 24 : 12;
+            ctx.lineWidth = isLockingTwoHand ? 6 : 3;
+            ctx.globalAlpha = isLockingTwoHand ? 0.92 : 0.48;
+
+            // Animated cosmic energy wave connecting both palms
+            const segs = 12;
+            ctx.beginPath();
+            for (let s = 0; s <= segs; s++) {
+              const t = s / segs;
+              const bx = c1.x + (c2.x - c1.x) * t;
+              const by = c1.y + (c2.y - c1.y) * t;
+              const waveAmp = isLockingTwoHand ? 14 : 6;
+              const offset = Math.sin(t * Math.PI) * Math.sin(now * 0.02 + t * 8) * waveAmp;
+              if (s === 0) ctx.moveTo(bx, by);
+              else ctx.lineTo(bx, by + offset);
+            }
+            ctx.stroke();
+
+            // Glowing radial lock-in ring at the midpoint between both hands
+            if (isLockingTwoHand && pHold.optionIdx !== null) {
+              const ringR = 34;
+              ctx.globalAlpha = 0.95;
+              ctx.beginPath();
+              ctx.arc(midX, midY, ringR, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+              ctx.fill();
+              ctx.lineWidth = 5;
+              ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+              ctx.stroke();
+
+              ctx.beginPath();
+              ctx.arc(midX, midY, ringR, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * pHold.progress) / 100);
+              ctx.strokeStyle = primaryColor;
+              ctx.lineWidth = 6;
+              ctx.lineCap = 'round';
+              ctx.stroke();
+
+              ctx.font = 'bold 24px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = '#ffffff';
+              ctx.fillText(currentOptions[pHold.optionIdx]?.poseValue || '🙌', midX, midY + 1);
+            }
+            ctx.restore();
+          } else if (pHands.length === 1 && pHold.optionIdx !== null && pHold.progress > 0) {
+            const c1 = toPx(pHands[0][9] || pHands[0][0], cw, ch, videoW, videoH);
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(c1.x, c1.y, 44, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * pHold.progress) / 100);
+            ctx.strokeStyle = primaryColor;
+            ctx.shadowColor = primaryColor;
+            ctx.shadowBlur = 16;
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            ctx.restore();
+          }
+
           nextUiStates[pIdx] = {
             detectedPoseId: smoothedPoseId || poseId,
             matchedOptionIdx: pHold.optionIdx,
@@ -2866,6 +3343,7 @@ function YogaGame({
             frozenRemainingSec: 0,
             lastWrongOptionIdx: null,
             penaltyType: null,
+            needsSecondHandPoseId: pHold.optionIdx === null ? (needsSecondHandFor || null) : null,
           };
 
           // Check if player completed holding the pose (100%)
@@ -2964,6 +3442,8 @@ function YogaGame({
 
   const startGame = () => {
     questionOptionsCacheRef.current = {};
+    lastQuestionPoseIdsRef.current = new Set();
+    poseUsageCountRef.current = {};
     setCurrentIdx(0);
     setTeams(teams.map(t => ({ ...t, score: 0 })));
     setTeamStreaks({});
@@ -3153,10 +3633,10 @@ function YogaGame({
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                   <div>
                     <label className="block text-teal-800 font-black text-lg">
-                      ✋ Hand Gestures for Camera Mode (1 Finger, 2 Fingers, 3 Fingers, Fist, Rock...)
+                      🙌 Hand Gestures for Camera Mode (1-Hand & 2-Hand Poses)
                     </label>
                     <p className="text-xs text-slate-500 font-semibold">
-                      Camera Mode uses hand gestures for fast, accurate AI detection.
+                      Every question automatically rotates to a fresh, different set of one-hand & two-hand poses!
                     </p>
                   </div>
                   <span className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
@@ -3164,17 +3644,29 @@ function YogaGame({
                   </span>
                 </div>
 
-                {/* Quick Preset Filter */}
+                {/* Quick Preset Filters */}
                 <div className="flex flex-wrap gap-2 mb-3">
                   <button
                     onClick={() => applyPosePreset('hand')}
                     className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs cursor-pointer shadow-xs"
                   >
-                    ✋ Restore All Hand Gestures (1, 2, 3, Fist, Rock...)
+                    🙌 All Poses ({CAMERA_HAND_POSES.length})
+                  </button>
+                  <button
+                    onClick={() => applyPosePreset('two-hands')}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs cursor-pointer shadow-xs"
+                  >
+                    🫶 Two-Hand Poses Only ({CAMERA_HAND_POSES.filter(p => p.twoHands).length})
+                  </button>
+                  <button
+                    onClick={() => applyPosePreset('one-hand')}
+                    className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs cursor-pointer shadow-xs"
+                  >
+                    ☝️ One-Hand Poses Only ({CAMERA_HAND_POSES.filter(p => !p.twoHands).length})
                   </button>
                 </div>
 
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
                   {CAMERA_HAND_POSES.map((pose) => {
                     const isSelected = activePoses.includes(pose.value);
                     return (
@@ -3182,18 +3674,25 @@ function YogaGame({
                         key={pose.id}
                         onClick={() => togglePose(pose.value)}
                         title={pose.shortHint}
-                        className={`rounded-2xl flex flex-col items-center justify-center border-3 transition-all relative overflow-hidden p-2 cursor-pointer ${
+                        className={`rounded-2xl flex flex-col items-center justify-center border-3 transition-all relative overflow-hidden p-2 pt-3 cursor-pointer ${
                           isSelected
-                            ? 'border-teal-500 bg-teal-50/90 shadow-sm'
+                            ? pose.twoHands
+                              ? 'border-purple-500 bg-purple-50/90 shadow-sm'
+                              : 'border-teal-500 bg-teal-50/90 shadow-sm'
                             : 'border-slate-200 bg-slate-50 opacity-55 grayscale hover:grayscale-0 hover:opacity-90'
                         }`}
                       >
+                        {pose.twoHands && (
+                          <span className="absolute top-1 left-1.5 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-purple-600 text-white">
+                            2 Hands
+                          </span>
+                        )}
                         <StandingPoseFigure poseId={pose.id} emoji={pose.value} size="sm" />
                         <span className="text-[10px] font-black text-teal-900 truncate max-w-full mt-1">
                           {pose.name}
                         </span>
                         {isSelected && (
-                          <div className="absolute top-1.5 right-1.5 bg-teal-500 text-white rounded-full p-0.5">
+                          <div className={`absolute top-1.5 right-1.5 text-white rounded-full p-0.5 ${pose.twoHands ? 'bg-purple-500' : 'bg-teal-500'}`}>
                             <CheckCircle2 size={12} />
                           </div>
                         )}
@@ -3306,20 +3805,23 @@ function YogaGame({
             <div className="p-4 rounded-3xl bg-teal-50/90 border-2 border-teal-200 border-b-4 border-b-teal-300 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-sm sm:text-base font-black uppercase tracking-wider text-teal-950">
-                  📷 HAND AI GESTURES
+                  🙌 1-HAND & 2-HAND AI POSES
                 </span>
                 <span className="px-2.5 py-1 rounded-xl bg-teal-600 text-white font-black text-xs uppercase">
-                  POSES ({activePoses.length})
+                  NEW POSES EVERY QUESTION ({activePoses.length})
                 </span>
               </div>
 
               {/* Active Pose Preview Strip */}
-              <div className="flex items-center justify-center gap-3 sm:gap-5 bg-white/90 px-4 py-2.5 rounded-2xl border-2 border-teal-200">
+              <div className="flex items-center justify-center flex-wrap gap-2.5 sm:gap-4 bg-white/90 px-4 py-2.5 rounded-2xl border-2 border-teal-200">
                 <StandingPoseFigure poseId="1-finger" emoji="☝️" size="sm" />
                 <StandingPoseFigure poseId="2-finger" emoji="✌️" size="sm" />
-                <StandingPoseFigure poseId="3-finger" emoji="🤟" size="sm" />
-                <StandingPoseFigure poseId="fist" emoji="✊" size="sm" />
-                <StandingPoseFigure poseId="rock" emoji="🤘" size="sm" />
+                <StandingPoseFigure poseId="two-open-hands" emoji="🙌" size="sm" />
+                <StandingPoseFigure poseId="namaste-hands" emoji="🙏" size="sm" />
+                <StandingPoseFigure poseId="heart-hands" emoji="🫶" size="sm" />
+                <StandingPoseFigure poseId="two-peace" emoji="✌️✌️" size="sm" />
+                <StandingPoseFigure poseId="two-fists" emoji="✊✊" size="sm" />
+                <StandingPoseFigure poseId="two-rock" emoji="🤘🤘" size="sm" />
               </div>
             </div>
           </UnifiedGameSetup>
@@ -3361,12 +3863,20 @@ function YogaGame({
                       }`}
                     >
                       <div className="flex items-center justify-end gap-2">
-                        {playerDetections[0].matchedOptionIdx !== null && playerDetections[0].frozenRemainingSec <= 0 && (
+                        {playerDetections[0].matchedOptionIdx !== null && playerDetections[0].frozenRemainingSec <= 0 ? (
                           <span className="bg-white/95 text-rose-950 font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-rose-400 animate-pulse">
                             <span className="text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
                             <span>Locking Answer</span>
                           </span>
-                        )}
+                        ) : playerDetections[0].needsSecondHandPoseId && playerDetections[0].frozenRemainingSec <= 0 ? (
+                          <span className="bg-purple-600/95 text-white font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-purple-200 animate-bounce">
+                            <span>🙌</span>
+                            <span>
+                              Raise BOTH hands for{' '}
+                              {CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].needsSecondHandPoseId)?.value || '2-Hand Pose'}!
+                            </span>
+                          </span>
+                        ) : null}
                       </div>
 
                       {/* Icy Freeze or Bad Action Penalty Overlay for Player 1 */}
@@ -3477,12 +3987,20 @@ function YogaGame({
                       }`}
                     >
                       <div className="flex items-center justify-start gap-2">
-                        {playerDetections[1].matchedOptionIdx !== null && playerDetections[1].frozenRemainingSec <= 0 && (
+                        {playerDetections[1].matchedOptionIdx !== null && playerDetections[1].frozenRemainingSec <= 0 ? (
                           <span className="bg-white/95 text-amber-950 font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-amber-400 animate-pulse">
                             <span className="text-xl leading-none">{shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue}</span>
                             <span>Locking Answer</span>
                           </span>
-                        )}
+                        ) : playerDetections[1].needsSecondHandPoseId && playerDetections[1].frozenRemainingSec <= 0 ? (
+                          <span className="bg-purple-600/95 text-white font-black text-xs sm:text-sm px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border-2 border-purple-200 animate-bounce">
+                            <span>🙌</span>
+                            <span>
+                              Raise BOTH hands for{' '}
+                              {CAMERA_HAND_POSES.find(p => p.id === playerDetections[1].needsSecondHandPoseId)?.value || '2-Hand Pose'}!
+                            </span>
+                          </span>
+                        ) : null}
                       </div>
 
                       {/* Icy Freeze or Bad Action Penalty Overlay for Player 2 */}
@@ -3599,12 +4117,20 @@ function YogaGame({
                         <span className="text-slate-400">|</span>
                         <span>🥊 Right: Thanos Gauntlet</span>
                       </span>
-                      {playerDetections[0].matchedOptionIdx !== null && playerDetections[0].frozenRemainingSec <= 0 && (
+                      {playerDetections[0].matchedOptionIdx !== null && playerDetections[0].frozenRemainingSec <= 0 ? (
                         <span className="bg-white/95 text-teal-950 font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border-2 border-teal-400 animate-pulse">
                           <span className="text-xl leading-none">{shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue}</span>
                           <span>Locking Answer</span>
                         </span>
-                      )}
+                      ) : playerDetections[0].needsSecondHandPoseId && playerDetections[0].frozenRemainingSec <= 0 ? (
+                        <span className="bg-purple-600/95 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border-2 border-purple-200 animate-bounce">
+                          <span>🙌</span>
+                          <span>
+                            Raise BOTH hands for{' '}
+                            {CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].needsSecondHandPoseId)?.value || '2-Hand Pose'}!
+                          </span>
+                        </span>
+                      ) : null}
                     </div>
 
                     {playerDetections[0].frozenRemainingSec > 0 && (
@@ -3755,6 +4281,18 @@ function YogaGame({
                     {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
                     <span className="hidden md:inline">{voiceEnabled ? 'Voice ON' : 'Voice OFF'}</span>
                   </button>
+
+                  {/* Quick Shuffle Poses button for current question */}
+                  {!isAnswering && (
+                    <button
+                      onClick={rerollCurrentQuestionPoses}
+                      className="px-3 py-1.5 bg-white/95 hover:bg-purple-50 text-purple-900 rounded-2xl font-black text-xs sm:text-sm border border-purple-200 shadow-sm cursor-pointer flex items-center gap-1.5 transition-all active:scale-95"
+                      title="Assign a brand-new set of 1-hand & 2-hand poses for this question"
+                    >
+                      <RefreshCw size={14} className="text-purple-600" />
+                      <span className="hidden sm:inline">New Poses</span>
+                    </button>
+                  )}
 
                   {/* Retrieve Previous Question / Pose button */}
                   {currentIdx > 0 && (
@@ -4313,19 +4851,47 @@ function YogaGame({
                     }
                   } else if (isFrozenWrongCard) {
                     btnClasses += "bg-cyan-50/95 border-cyan-400 text-cyan-950 ring-4 ring-cyan-300/70 shadow-[0_0_25px_rgba(34,211,238,0.6)]";
-                  } else if (p1Locking || p2Locking) {
-                    btnClasses += "border-teal-500 bg-teal-50/95 scale-[1.02] shadow-2xl ring-4 ring-teal-400/50 cursor-pointer";
+                  } else if (p1Locking && p2Locking) {
+                    btnClasses += "border-purple-500 bg-purple-50/95 scale-[1.03] shadow-2xl ring-4 ring-purple-400/60 cursor-pointer";
+                  } else if (p1Locking) {
+                    btnClasses += isTwoPlayerCamera
+                      ? "border-rose-500 bg-rose-50/95 scale-[1.03] shadow-[0_0_25px_rgba(244,63,94,0.5)] ring-4 ring-rose-400/60 cursor-pointer"
+                      : "border-teal-500 bg-teal-50/95 scale-[1.03] shadow-[0_0_25px_rgba(20,184,166,0.5)] ring-4 ring-teal-400/60 cursor-pointer";
+                  } else if (p2Locking) {
+                    btnClasses += "border-amber-500 bg-amber-50/95 scale-[1.03] shadow-[0_0_25px_rgba(245,158,11,0.5)] ring-4 ring-amber-400/60 cursor-pointer";
                   } else {
                     btnClasses += "hover:border-teal-400 hover:bg-teal-50/60 hover:shadow-xl hover:scale-[1.01] cursor-pointer";
                   }
 
                   return (
                     <button
-                      key={index}
+                      key={`${currentIdx}-${opt.poseId}-${index}`}
                       disabled={isAnswering}
                       onClick={() => handleAnswer(index, opt.isCorrect)}
                       className={btnClasses}
                     >
+                      {/* Live Player Locking Pill Badge */}
+                      {(p1Locking || p2Locking) && !isAnswering && (
+                        <div className="absolute top-2 left-2 flex items-center gap-1 z-30">
+                          {p1Locking && (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-white text-[11px] font-black shadow-md flex items-center gap-1 ${
+                                isTwoPlayerCamera ? 'bg-rose-600' : 'bg-teal-600'
+                              }`}
+                            >
+                              <span>{isTwoPlayerCamera ? '🕷️' : '⚡'}</span>
+                              <span>{playerDetections[0].holdProgress}%</span>
+                            </span>
+                          )}
+                          {p2Locking && (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[11px] font-black shadow-md flex items-center gap-1">
+                              <span>🥊</span>
+                              <span>{playerDetections[1].holdProgress}%</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {/* Correct / Incorrect / Frozen Wrong Indicator */}
                       {isAnswering && opt.isCorrect && (
                         <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-emerald-500 text-white text-xs sm:text-sm font-black shadow-md z-30 flex items-center gap-1 animate-bounce">
@@ -4363,9 +4929,28 @@ function YogaGame({
                         </span>
                       ) : null}
 
-                      {/* Gesture Emoji: BIGGER & NO WORDS */}
-                      <div className="mt-1.5 inline-flex items-center justify-center p-2 sm:p-2.5 bg-gradient-to-b from-teal-50 to-teal-100/90 border-2 border-teal-200/90 rounded-2xl shadow-xs shrink-0 select-none group-hover:scale-110 transition-transform">
-                        <span className="text-3xl sm:text-4xl md:text-5xl leading-none">{opt.poseValue}</span>
+                      {/* Gesture Emoji: BIGGER & DISTINCT 2-HAND STYLING */}
+                      <div
+                        className={`mt-1.5 inline-flex flex-col items-center justify-center px-3 py-2 sm:px-3.5 sm:py-2.5 border-2 rounded-2xl shadow-xs shrink-0 select-none group-hover:scale-110 transition-transform ${
+                          opt.isTwoHands
+                            ? 'bg-gradient-to-b from-purple-50 to-indigo-100/90 border-purple-300'
+                            : 'bg-gradient-to-b from-teal-50 to-teal-100/90 border-teal-200/90'
+                        }`}
+                      >
+                        <span
+                          className={`${
+                            Array.from(opt.poseValue.replace(/\uFE0F/g, '')).length >= 2
+                              ? 'text-2xl sm:text-3xl md:text-4xl tracking-tight'
+                              : 'text-3xl sm:text-4xl md:text-5xl'
+                          } leading-none whitespace-nowrap`}
+                        >
+                          {opt.poseValue}
+                        </span>
+                        {opt.isTwoHands && (
+                          <span className="mt-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-purple-700 leading-none">
+                            2 HANDS
+                          </span>
+                        )}
                       </div>
 
                       {/* Live Camera Hold-to-Select Bar on the Card */}
