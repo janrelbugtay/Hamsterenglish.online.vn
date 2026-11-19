@@ -89,6 +89,14 @@ export const isImageUrl = (url: string | undefined | null): boolean => {
   if (!url || typeof url !== 'string') return false;
   const trimmed = url.trim();
   if (trimmed.startsWith('data:image/')) return true;
+  if (
+    trimmed.startsWith('/src/assets/') ||
+    trimmed.startsWith('/assets/') ||
+    trimmed.startsWith('/images/') ||
+    (!trimmed.includes(' ') && /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(trimmed))
+  ) {
+    return true;
+  }
   if (/^https?:\/\/.+/i.test(trimmed)) {
     if (/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(trimmed)) return true;
     if (trimmed.includes('giphy.com') || trimmed.includes('unsplash.com') || trimmed.includes('googleusercontent.com') || trimmed.includes('drive.google.com/thumbnail')) return true;
@@ -126,16 +134,16 @@ export const CLASSIC_YOGA_POSES: StandingPoseConfig[] = [
   { id: 'power-fist', type: 'emoji', value: '💪', name: 'Hero Flex', shortHint: 'Strong superhero double bicep flex', category: 'both', family: 'fist-family' },
 ];
 
-// One-Hand, Two-Hand & On-Head Animal/Hero Gestures for Camera Mode (rotates fresh distinct poses on every question!)
+// One-Hand, Two-Hand & Custom 3D Emoji On-Head Gestures for Camera Mode (rotates fresh distinct poses on every question!)
 export const CAMERA_HAND_POSES: StandingPoseConfig[] = [
-  // Two-Hand On-Head / Animal / Hero Poses (7)
-  { id: 'bunny-ears', type: 'emoji', value: '🐰✌️', name: 'Bunny Ears', shortHint: 'Put 2 fingers (✌️) on BOTH sides of your head like bunny ears!', category: 'hand', family: 'finger-2', twoHands: true, headPose: true },
-  { id: 'deer-antlers', type: 'emoji', value: '🦌🖐️', name: 'Deer Antlers', shortHint: 'Spread 5 fingers wide (🖐️) on BOTH sides of your head like antlers!', category: 'hand', family: 'open-palm', twoHands: true, headPose: true },
-  { id: 'bull-horns', type: 'emoji', value: '🐂☝️', name: 'Bull Horns', shortHint: 'Point 1 index finger up (☝️) on BOTH sides of your head like horns!', category: 'hand', family: 'finger-1', twoHands: true, headPose: true },
-  { id: 'royal-crown', type: 'emoji', value: '👑🙌', name: 'Crown on Head', shortHint: 'Arch BOTH hands together high above your head like a royal crown!', category: 'hand', family: 'crown', twoHands: true, headPose: true },
-  { id: 'cat-ears', type: 'emoji', value: '🐱🤘', name: 'Cat Ears', shortHint: 'Hold Rock-On horns (🤘) on BOTH sides of your head like cat ears!', category: 'hand', family: 'rock', twoHands: true, headPose: true },
-  { id: 'hero-goggles', type: 'emoji', value: '🦸👌', name: 'Hero Goggles', shortHint: 'Make OK circles (👌) with BOTH hands over your eyes like goggles!', category: 'hand', family: 'ok', twoHands: true, headPose: true },
-  { id: 'bear-ears', type: 'emoji', value: '🐻✊', name: 'Bear Ears', shortHint: 'Put BOTH closed fists (✊) on top of your head like round bear ears!', category: 'hand', family: 'fist', twoHands: true, headPose: true },
+  // Two-Hand On-Head Unified 3D Emoji Poses (7)
+  { id: 'bunny-ears', type: 'image', value: '/src/assets/images/emoji_bunny_ears_1795109899253.jpg', name: 'Bunny Ears', shortHint: 'Put 2 fingers on BOTH sides of your head like the Bunny Emoji!', category: 'hand', family: 'finger-2', twoHands: true, headPose: true },
+  { id: 'deer-antlers', type: 'image', value: '/src/assets/images/emoji_deer_antlers_1795109899579.jpg', name: 'Deer Antlers', shortHint: 'Spread 5 fingers wide on BOTH sides of your head like the Antler Emoji!', category: 'hand', family: 'open-palm', twoHands: true, headPose: true },
+  { id: 'bull-horns', type: 'image', value: '/src/assets/images/emoji_bull_horns_1795109899793.jpg', name: 'Bull Horns', shortHint: 'Point 1 index finger up on BOTH sides of your head like the Horns Emoji!', category: 'hand', family: 'finger-1', twoHands: true, headPose: true },
+  { id: 'royal-crown', type: 'image', value: '/src/assets/images/emoji_royal_crown_1795109906854.jpg', name: 'Crown on Head', shortHint: 'Arch BOTH hands together high above your head like the Royal Crown Emoji!', category: 'hand', family: 'crown', twoHands: true, headPose: true },
+  { id: 'cat-ears', type: 'image', value: '/src/assets/images/emoji_cat_ears_1795109900070.jpg', name: 'Cat Ears', shortHint: 'Hold Rock-On horns on BOTH sides of your head like the Cat Ears Emoji!', category: 'hand', family: 'rock', twoHands: true, headPose: true },
+  { id: 'hero-goggles', type: 'image', value: '/src/assets/images/emoji_hero_goggles_1795109899965.jpg', name: 'Hero Goggles', shortHint: 'Make OK circles with BOTH hands over your eyes like the Goggles Emoji!', category: 'hand', family: 'ok', twoHands: true, headPose: true },
+  { id: 'bear-ears', type: 'image', value: '/src/assets/images/emoji_bear_ears_1795109899605.jpg', name: 'Bear Ears', shortHint: 'Put BOTH closed fists on top of your head like the Bear Ears Emoji!', category: 'hand', family: 'fist', twoHands: true, headPose: true },
   // One-Hand Poses (11)
   { id: '1-finger', type: 'emoji', value: '☝️', name: '1 Finger', shortHint: 'Hold up 1 index finger', category: 'hand', family: 'finger-1' },
   { id: '2-finger', type: 'emoji', value: '✌️', name: '2 Fingers', shortHint: 'Hold up 2 fingers (peace sign)', category: 'hand', family: 'finger-2' },
@@ -181,13 +189,6 @@ export const getPoseName = (poseId?: string | null, poseValue?: string | null): 
   if (poseValue) {
     const found = AVAILABLE_POSES.find(p => p.value === poseValue);
     if (found) return found.name;
-    if (poseValue === '🐰✌️') return 'Bunny Ears';
-    if (poseValue === '🦌🖐️') return 'Deer Antlers';
-    if (poseValue === '🐂☝️') return 'Bull Horns';
-    if (poseValue === '👑🙌') return 'Crown on Head';
-    if (poseValue === '🐱🤘') return 'Cat Ears';
-    if (poseValue === '🦸👌') return 'Hero Goggles';
-    if (poseValue === '🐻✊') return 'Bear Ears';
     if (poseValue === '☝️') return '1 Finger';
     if (poseValue === '✌️') return '2 Fingers';
     if (poseValue === '🤟') return '3 Fingers';
@@ -217,6 +218,21 @@ export const getPoseName = (poseId?: string | null, poseValue?: string | null): 
 };
 
 /**
+ * Returns a clean text badge for canvas fillText or single-line text HUD readouts
+ * so image paths are never printed as raw URL text.
+ */
+export const getPoseInlineBadge = (poseId?: string | null, poseValue?: string | null): string => {
+  if (poseValue && !isImageUrl(poseValue)) return poseValue;
+  const found = poseId
+    ? AVAILABLE_POSES.find(p => p.id === poseId)
+    : poseValue
+    ? AVAILABLE_POSES.find(p => p.value === poseValue)
+    : undefined;
+  if (found && !isImageUrl(found.value)) return found.value;
+  return '✨';
+};
+
+/**
  * Animated Floating Score Badge when points are awarded (+1, +5, etc.)
  */
 function FloatingScoreBadge({ delta, idKey }: { delta: number; idKey: number }) {
@@ -243,8 +259,8 @@ function FloatingScoreBadge({ delta, idKey }: { delta: number; idKey: number }) 
 }
 
 /**
- * Clean Pose & Hand Emoji Display (No person cartoon images).
- * Displays pure vibrant emojis or custom image assets.
+ * Clean Pose & Hand Emoji Display.
+ * Displays pure vibrant emojis or custom 3D emoji character illustrations.
  */
 function StandingPoseFigure({
   poseId,
@@ -256,10 +272,20 @@ function StandingPoseFigure({
   size?: 'sm' | 'md' | 'lg';
 }) {
   if (isImageUrl(emoji)) {
-    const dimClass = size === 'sm' ? 'w-8 h-8' : size === 'lg' ? 'w-16 h-16' : 'w-11 h-11';
+    const dimClass =
+      size === 'sm'
+        ? 'w-11 h-11 sm:w-12 sm:h-12'
+        : size === 'lg'
+        ? 'w-20 h-20 sm:w-24 sm:h-24'
+        : 'w-14 h-14 sm:w-16 sm:h-16';
     return (
       <div className={`relative flex items-center justify-center select-none ${dimClass}`}>
-        <img src={emoji} alt={poseId} className="w-full h-full object-contain rounded-lg drop-shadow-xs" />
+        <img
+          src={emoji}
+          alt={poseId}
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover rounded-2xl shadow-md border border-white/25 transform transition-transform hover:scale-105"
+        />
       </div>
     );
   }
@@ -1015,9 +1041,8 @@ function detectStandingPoseFromHands(
   const expectsHeart = candidatePoseIds.includes('heart-hands');
   const expectsXCross = candidatePoseIds.includes('x-hands');
 
-  // --- TWO-HAND POSE DETECTION (Highest Priority when 2 hands are visible!) ---
+  // --- TWO-HAND & ON-HEAD POSE DETECTION (Full-Frame Height-Independent Priority when 2 hands are visible!) ---
   const twoHandScores: Record<string, number> = {};
-  let headPoseHeightHint: string | null = null;
   if (analyzed.length >= 2) {
     for (let i = 0; i < analyzed.length; i++) {
       for (let j = i + 1; j < analyzed.length; j++) {
@@ -1029,17 +1054,6 @@ function detectStandingPoseFromHands(
         const indexTipDist = dist2D(a.indexTip, b.indexTip) / avgPalm;
         const thumbTipDist = dist2D(a.thumbTip, b.thumbTip) / avgPalm;
         const middleTipDist = dist2D(a.middleTip, b.middleTip) / avgPalm;
-
-        // Upper/Head-Zone metrics (y=0.0 is top of camera frame, y=1.0 is bottom)
-        const avgTopY =
-          (Math.min(a.indexTip.y, a.middleTip.y, a.wrist.y) +
-            Math.min(b.indexTip.y, b.middleTip.y, b.wrist.y)) *
-          0.5;
-        const avgPalmY = (a.palmCenter.y + b.palmCenter.y) * 0.5;
-        const horizontalSpan = Math.abs(a.palmCenter.x - b.palmCenter.x) / avgPalm;
-        const isInHeadZone = avgTopY < 0.65 || avgPalmY < 0.69;
-        const isForgivingHeadZone = avgTopY < 0.75 || avgPalmY < 0.78;
-        const isSeparatedOnHeadSides = palmDist >= 0.82 && horizontalSpan >= 0.58;
 
         // 1. Heart Hands (🫶): thumbs touching at bottom + index/middle tips arching together at top, space between palms
         const avgThumbY = (a.thumbTip.y + b.thumbTip.y) * 0.5;
@@ -1102,83 +1116,72 @@ function detectStandingPoseFromHands(
           twoHandScores['namaste-hands'] = Math.max(twoHandScores['namaste-hands'] || 0, prayerConf);
         }
 
-        // 3b. Royal Crown on Head (👑🙌): both hands arched/brought together high above the head
-        const crownTipsClose = indexTipDist < 2.40 || middleTipDist < 2.40 || palmDist < 2.50;
-        if (
-          crownTipsClose &&
-          fingersPointingUp &&
-          notFistsOrPinch &&
-          (isInHeadZone || (candidatePoseIds.includes('royal-crown') && isForgivingHeadZone))
-        ) {
-          const crownConf = isInHeadZone ? 0.97 : 0.91;
-          twoHandScores['royal-crown'] = Math.max(twoHandScores['royal-crown'] || 0, crownConf);
-        } else if (candidatePoseIds.includes('royal-crown') && crownTipsClose && !isForgivingHeadZone) {
-          headPoseHeightHint = 'Raise BOTH hands high above your head for 👑🙌 Crown on Head!';
-        }
-
-        // 4. Two Hands Up / Double Open Palms (🙌) & Deer Antlers on Head (🦌🖐️)
+        // 4. Deer Antlers (🦌🖐️), Royal Crown (👑🙌), and Two Hands Up (🙌) — detected at any camera height!
         const separatedForHighFive =
           (!expectsNamaste || (palmDist >= 1.35 && wristDist >= 1.35)) &&
           (!expectsXCross || !isXCross);
+        const aOpenOrFour = a.isOpenPalm || a.isFourFingers || a.minAll4 >= 0.36;
+        const bOpenOrFour = b.isOpenPalm || b.isFourFingers || b.minAll4 >= 0.36;
         const bothOpenOrFour =
-          (a.isOpenPalm || a.isFourFingers) && (b.isOpenPalm || b.isFourFingers);
-        if (a.isOpenPalm && b.isOpenPalm && separatedForHighFive) {
-          const openHandsConf = palmDist >= 1.35 ? 0.96 : 0.92;
-          twoHandScores['two-open-hands'] = Math.max(twoHandScores['two-open-hands'] || 0, openHandsConf);
-        }
-        if (bothOpenOrFour && isSeparatedOnHeadSides) {
-          if (isInHeadZone || (candidatePoseIds.includes('deer-antlers') && isForgivingHeadZone)) {
-            twoHandScores['deer-antlers'] = Math.max(
-              twoHandScores['deer-antlers'] || 0,
-              isInHeadZone ? 0.98 : 0.92
-            );
-          } else if (candidatePoseIds.includes('deer-antlers')) {
-            headPoseHeightHint = 'Put BOTH open hands up on the sides of your head for 🦌🖐️ Deer Antlers!';
-          }
+          (aOpenOrFour && bOpenOrFour) ||
+          (candidatePoseIds.some(id => id === 'deer-antlers' || id === 'royal-crown' || id === 'two-open-hands') &&
+            ((aOpenOrFour && b.avgFourScore >= 0.30) || (bOpenOrFour && a.avgFourScore >= 0.30)));
+
+        const crownTipsClose = indexTipDist < 2.65 || middleTipDist < 2.65 || palmDist < 2.75;
+        if ((crownTipsClose || bothOpenOrFour) && notFistsOrPinch && (!expectsXCross || !isXCross)) {
+          const crownConf = crownTipsClose ? 0.97 : 0.94;
+          twoHandScores['royal-crown'] = Math.max(twoHandScores['royal-crown'] || 0, crownConf);
         }
 
-        // 5. Double Peace (✌️✌️) & Bunny Ears on Head (🐰✌️)
-        const aLoosePeace = a.isPeace || (Math.min(a.indexScore, a.middleScore) >= 0.42 && a.peaceDominance >= 0.10);
-        const bLoosePeace = b.isPeace || (Math.min(b.indexScore, b.middleScore) >= 0.42 && b.peaceDominance >= 0.10);
-        if ((a.isPeace && bLoosePeace) || (b.isPeace && aLoosePeace)) {
-          twoHandScores['two-peace'] = Math.max(twoHandScores['two-peace'] || 0, 0.95);
-          if (
-            (isInHeadZone && isSeparatedOnHeadSides) ||
-            (candidatePoseIds.includes('bunny-ears') && isForgivingHeadZone)
-          ) {
-            twoHandScores['bunny-ears'] = Math.max(
-              twoHandScores['bunny-ears'] || 0,
-              isInHeadZone ? 0.98 : 0.92
-            );
-          } else if (candidatePoseIds.includes('bunny-ears')) {
-            headPoseHeightHint = 'Put BOTH 2-finger hands up on your head for 🐰✌️ Bunny Ears!';
-          }
+        if (bothOpenOrFour && separatedForHighFive) {
+          const antlerConf = palmDist >= 0.75 ? 0.98 : 0.94;
+          twoHandScores['deer-antlers'] = Math.max(twoHandScores['deer-antlers'] || 0, antlerConf);
+          twoHandScores['two-open-hands'] = Math.max(twoHandScores['two-open-hands'] || 0, 0.96);
         }
 
-        // 6. Double Fists (✊✊) & Bear Ears on Head (🐻✊)
+        // 5. Bunny Ears (🐰✌️) & Double Peace (✌️✌️) — detected at any camera height!
+        const aLoosePeace =
+          a.isPeace ||
+          (Math.min(a.indexScore, a.middleScore) >= 0.35 &&
+            a.peaceDominance >= 0.05 &&
+            !a.isOpenPalm &&
+            !a.isFourFingers);
+        const bLoosePeace =
+          b.isPeace ||
+          (Math.min(b.indexScore, b.middleScore) >= 0.35 &&
+            b.peaceDominance >= 0.05 &&
+            !b.isOpenPalm &&
+            !b.isFourFingers);
+        const isBunnyCandidate =
+          candidatePoseIds.includes('bunny-ears') || candidatePoseIds.includes('two-peace');
+        const bunnyForgivingSecond =
+          isBunnyCandidate &&
+          ((aLoosePeace && Math.max(b.indexScore, b.middleScore) >= 0.34 && !b.isOpenPalm) ||
+            (bLoosePeace && Math.max(a.indexScore, a.middleScore) >= 0.34 && !a.isOpenPalm));
+        if ((aLoosePeace && bLoosePeace) || bunnyForgivingSecond) {
+          const bunnyConf = aLoosePeace && bLoosePeace ? 0.98 : 0.93;
+          twoHandScores['bunny-ears'] = Math.max(twoHandScores['bunny-ears'] || 0, bunnyConf);
+          twoHandScores['two-peace'] = Math.max(twoHandScores['two-peace'] || 0, bunnyConf - 0.02);
+        }
+
+        // 6. Bear Ears (🐻✊) & Double Fists (✊✊) — detected at any camera height!
         const aIsPureFist =
-          a.fingersCurled &&
+          (a.fingersCurled || a.avgFourScore < 0.52) &&
+          !a.isOneFinger &&
+          !a.isPeace &&
           !a.isOkPinch &&
           (!expectsThumbsUp || !a.thumbUpVertical) &&
           (!expectsThumbsDown || !a.thumbDownVertical);
         const bIsPureFist =
-          b.fingersCurled &&
+          (b.fingersCurled || b.avgFourScore < 0.52) &&
+          !b.isOneFinger &&
+          !b.isPeace &&
           !b.isOkPinch &&
           (!expectsThumbsUp || !b.thumbUpVertical) &&
           (!expectsThumbsDown || !b.thumbDownVertical);
         if (aIsPureFist && bIsPureFist) {
-          twoHandScores['two-fists'] = Math.max(twoHandScores['two-fists'] || 0, 0.95);
-          if (
-            (isInHeadZone && isSeparatedOnHeadSides) ||
-            (candidatePoseIds.includes('bear-ears') && isForgivingHeadZone)
-          ) {
-            twoHandScores['bear-ears'] = Math.max(
-              twoHandScores['bear-ears'] || 0,
-              isInHeadZone ? 0.97 : 0.91
-            );
-          } else if (candidatePoseIds.includes('bear-ears')) {
-            headPoseHeightHint = 'Put BOTH fists up on your head for 🐻✊ Bear Ears!';
-          }
+          twoHandScores['bear-ears'] = Math.max(twoHandScores['bear-ears'] || 0, 0.98);
+          twoHandScores['two-fists'] = Math.max(twoHandScores['two-fists'] || 0, 0.96);
         }
 
         // 7. Double Thumbs Up (👍👍) - forgiving on non-dominant second hand
@@ -1195,56 +1198,59 @@ function detectStandingPoseFromHands(
           twoHandScores['two-thumbs-down'] = Math.max(twoHandScores['two-thumbs-down'] || 0, 0.97);
         }
 
-        // 9. Double 1 Finger (☝️☝️) & Bull Horns on Head (🐂☝️)
-        const aLoose1 = a.isOneFinger || (!a.isOkPinch && a.indexScore >= 0.42 && a.pointDominance >= 0.12);
-        const bLoose1 = b.isOneFinger || (!b.isOkPinch && b.indexScore >= 0.42 && b.pointDominance >= 0.12);
-        if ((a.isOneFinger && bLoose1) || (b.isOneFinger && aLoose1)) {
-          twoHandScores['two-point-up'] = Math.max(twoHandScores['two-point-up'] || 0, 0.95);
-          if (
-            (isInHeadZone && isSeparatedOnHeadSides) ||
-            (candidatePoseIds.includes('bull-horns') && isForgivingHeadZone)
-          ) {
-            twoHandScores['bull-horns'] = Math.max(
-              twoHandScores['bull-horns'] || 0,
-              isInHeadZone ? 0.98 : 0.92
-            );
-          } else if (candidatePoseIds.includes('bull-horns')) {
-            headPoseHeightHint = 'Put BOTH 1-finger hands up on your head for 🐂☝️ Bull Horns!';
-          }
+        // 9. Bull Horns (🐂☝️) & Double 1 Finger (☝️☝️) — detected at any camera height!
+        const aLoose1 =
+          a.isOneFinger || (!a.isOkPinch && a.indexScore >= 0.36 && a.pointDominance >= 0.07);
+        const bLoose1 =
+          b.isOneFinger || (!b.isOkPinch && b.indexScore >= 0.36 && b.pointDominance >= 0.07);
+        const isHornsCandidate =
+          candidatePoseIds.includes('bull-horns') || candidatePoseIds.includes('two-point-up');
+        const hornsForgivingSecond =
+          isHornsCandidate &&
+          ((aLoose1 && b.indexScore >= 0.32 && !b.isOpenPalm) ||
+            (bLoose1 && a.indexScore >= 0.32 && !a.isOpenPalm));
+        if ((aLoose1 && bLoose1) || hornsForgivingSecond) {
+          const hornsConf = aLoose1 && bLoose1 ? 0.98 : 0.93;
+          twoHandScores['bull-horns'] = Math.max(twoHandScores['bull-horns'] || 0, hornsConf);
+          twoHandScores['two-point-up'] = Math.max(twoHandScores['two-point-up'] || 0, hornsConf - 0.02);
         }
 
-        // 10. Double Rock On / Double Web (🤘🤘) & Cat Ears on Head (🐱🤘)
-        const aLooseRock = a.isRockOrIly || (a.indexScore >= 0.40 && a.pinkyScore >= 0.36 && a.rockDominance >= 0.08);
-        const bLooseRock = b.isRockOrIly || (b.indexScore >= 0.40 && b.pinkyScore >= 0.36 && b.rockDominance >= 0.08);
-        if ((a.isRockOrIly && bLooseRock) || (b.isRockOrIly && aLooseRock)) {
-          twoHandScores['two-rock'] = Math.max(twoHandScores['two-rock'] || 0, 0.95);
-          if (
-            (isInHeadZone && isSeparatedOnHeadSides) ||
-            (candidatePoseIds.includes('cat-ears') && isForgivingHeadZone)
-          ) {
-            twoHandScores['cat-ears'] = Math.max(
-              twoHandScores['cat-ears'] || 0,
-              isInHeadZone ? 0.98 : 0.92
-            );
-          } else if (candidatePoseIds.includes('cat-ears')) {
-            headPoseHeightHint = 'Put BOTH Rock-On hands up on your head for 🐱🤘 Cat Ears!';
-          }
+        // 10. Cat Ears (🐱🤘) & Double Rock On (🤘🤘) — detected at any camera height!
+        const aLooseRock =
+          a.isRockOrIly || (a.indexScore >= 0.35 && a.pinkyScore >= 0.31 && a.rockDominance >= 0.04);
+        const bLooseRock =
+          b.isRockOrIly || (b.indexScore >= 0.35 && b.pinkyScore >= 0.31 && b.rockDominance >= 0.04);
+        const isCatCandidate =
+          candidatePoseIds.includes('cat-ears') || candidatePoseIds.includes('two-rock');
+        const catForgivingSecond =
+          isCatCandidate &&
+          ((aLooseRock && (b.indexScore >= 0.32 || b.pinkyScore >= 0.30) && !b.isOpenPalm) ||
+            (bLooseRock && (a.indexScore >= 0.32 || a.pinkyScore >= 0.30) && !a.isOpenPalm));
+        if ((aLooseRock && bLooseRock) || catForgivingSecond) {
+          const catConf = aLooseRock && bLooseRock ? 0.98 : 0.93;
+          twoHandScores['cat-ears'] = Math.max(twoHandScores['cat-ears'] || 0, catConf);
+          twoHandScores['two-rock'] = Math.max(twoHandScores['two-rock'] || 0, catConf - 0.02);
         }
 
-        // 11. Double OK (👌👌) & Hero Goggles on Eyes/Head (🦸👌)
-        if (a.isOkPinch && b.isOkPinch) {
-          twoHandScores['two-ok'] = Math.max(twoHandScores['two-ok'] || 0, 0.96);
-          if (
-            isInHeadZone ||
-            (candidatePoseIds.includes('hero-goggles') && isForgivingHeadZone)
-          ) {
-            twoHandScores['hero-goggles'] = Math.max(
-              twoHandScores['hero-goggles'] || 0,
-              isInHeadZone ? 0.98 : 0.92
-            );
-          } else if (candidatePoseIds.includes('hero-goggles')) {
-            headPoseHeightHint = 'Hold BOTH OK circles up to your eyes for 🦸👌 Hero Goggles!';
-          }
+        // 11. Hero Goggles (🦸👌) & Double OK (👌👌) — detected at any camera height!
+        const aLooseOk =
+          a.isOkPinch ||
+          (dist2D(a.thumbTip, a.indexTip) / Math.max(0.04, a.palmSize) < 0.72 &&
+            Math.max(a.middleScore, a.ringScore, a.pinkyScore) >= 0.34);
+        const bLooseOk =
+          b.isOkPinch ||
+          (dist2D(b.thumbTip, b.indexTip) / Math.max(0.04, b.palmSize) < 0.72 &&
+            Math.max(b.middleScore, b.ringScore, b.pinkyScore) >= 0.34);
+        const isGogglesCandidate =
+          candidatePoseIds.includes('hero-goggles') || candidatePoseIds.includes('two-ok');
+        const gogglesForgivingSecond =
+          isGogglesCandidate &&
+          ((aLooseOk && dist2D(b.thumbTip, b.indexTip) / Math.max(0.04, b.palmSize) < 0.86) ||
+            (bLooseOk && dist2D(a.thumbTip, a.indexTip) / Math.max(0.04, a.palmSize) < 0.86));
+        if ((aLooseOk && bLooseOk) || gogglesForgivingSecond) {
+          const gogglesConf = aLooseOk && bLooseOk ? 0.98 : 0.93;
+          twoHandScores['hero-goggles'] = Math.max(twoHandScores['hero-goggles'] || 0, gogglesConf);
+          twoHandScores['two-ok'] = Math.max(twoHandScores['two-ok'] || 0, gogglesConf - 0.02);
         }
 
         // 12. Double Shaka (🤙🤙)
@@ -1259,17 +1265,35 @@ function detectStandingPoseFromHands(
       }
     }
 
-    // If a two-hand pose matches one of the current screen's candidate options, return it immediately!
+    // Cross-alias lookup between 3D Head Emoji poses and their paired 2-hand gesture family
+    const resolveTwoHandScore = (cid: string): number =>
+      twoHandScores[cid] ||
+      (cid === 'bunny-ears' ? twoHandScores['two-peace'] : 0) ||
+      (cid === 'two-peace' ? twoHandScores['bunny-ears'] : 0) ||
+      (cid === 'deer-antlers' ? twoHandScores['two-open-hands'] : 0) ||
+      (cid === 'two-open-hands' ? twoHandScores['deer-antlers'] : 0) ||
+      (cid === 'bull-horns' ? twoHandScores['two-point-up'] : 0) ||
+      (cid === 'two-point-up' ? twoHandScores['bull-horns'] : 0) ||
+      (cid === 'royal-crown' ? twoHandScores['two-open-hands'] || twoHandScores['deer-antlers'] : 0) ||
+      (cid === 'cat-ears' ? twoHandScores['two-rock'] : 0) ||
+      (cid === 'two-rock' ? twoHandScores['cat-ears'] : 0) ||
+      (cid === 'hero-goggles' ? twoHandScores['two-ok'] : 0) ||
+      (cid === 'two-ok' ? twoHandScores['hero-goggles'] : 0) ||
+      (cid === 'bear-ears' ? twoHandScores['two-fists'] : 0) ||
+      (cid === 'two-fists' ? twoHandScores['bear-ears'] : 0) ||
+      0;
+
+    // If a two-hand or head pose matches one of the current screen's candidate options, return it immediately!
     let bestTwoHand: string | null = null;
     let bestTwoHandScore = 0;
     for (const cid of candidatePoseIds) {
-      const s = twoHandScores[cid] || 0;
+      const s = resolveTwoHandScore(cid);
       if (s > bestTwoHandScore) {
         bestTwoHandScore = s;
         bestTwoHand = cid;
       }
     }
-    if (bestTwoHand && bestTwoHandScore >= 0.78) {
+    if (bestTwoHand && bestTwoHandScore >= 0.75) {
       return { poseId: bestTwoHand, confidence: bestTwoHandScore, needsSecondHandFor: null };
     }
   }
@@ -1393,6 +1417,19 @@ function detectStandingPoseFromHands(
   for (const cid of candidatePoseIds) {
     const s =
       scores[cid] ||
+      (cid === 'bunny-ears' ? scores['two-peace'] : 0) ||
+      (cid === 'two-peace' ? scores['bunny-ears'] : 0) ||
+      (cid === 'deer-antlers' ? scores['two-open-hands'] : 0) ||
+      (cid === 'two-open-hands' ? scores['deer-antlers'] : 0) ||
+      (cid === 'bull-horns' ? scores['two-point-up'] : 0) ||
+      (cid === 'two-point-up' ? scores['bull-horns'] : 0) ||
+      (cid === 'royal-crown' ? scores['two-open-hands'] || scores['deer-antlers'] : 0) ||
+      (cid === 'cat-ears' ? scores['two-rock'] : 0) ||
+      (cid === 'two-rock' ? scores['cat-ears'] : 0) ||
+      (cid === 'hero-goggles' ? scores['two-ok'] : 0) ||
+      (cid === 'two-ok' ? scores['hero-goggles'] : 0) ||
+      (cid === 'bear-ears' ? scores['two-fists'] : 0) ||
+      (cid === 'two-fists' ? scores['bear-ears'] : 0) ||
       (cid === '1-finger' ? scores['point-up'] : 0) ||
       (cid === 'point-up' ? scores['1-finger'] : 0) ||
       (cid === '2-finger' ? scores['peace'] : 0) ||
@@ -1458,22 +1495,35 @@ function detectStandingPoseFromHands(
     }
   }
 
+  // When 2 hands are visible, prioritize 2-hand and 3D head emoji poses in bestOverall so a single-hand fallback never masks a 2-hand gesture!
   let bestOverall: string | null = null;
   let bestOverallScore = 0;
-  for (const [pid, s] of Object.entries(scores)) {
-    if (s > bestOverallScore) {
-      bestOverallScore = s;
-      bestOverall = pid;
+  const twoHandEntries = Object.entries(twoHandScores);
+  if (analyzed.length >= 2 && twoHandEntries.length > 0) {
+    for (const [pid, s] of twoHandEntries) {
+      if (s > bestOverallScore) {
+        bestOverallScore = s;
+        bestOverall = pid;
+      }
+    }
+  }
+  if (!bestOverall) {
+    for (const [pid, s] of Object.entries(scores)) {
+      if (s > bestOverallScore) {
+        bestOverallScore = s;
+        bestOverall = pid;
+      }
     }
   }
 
-  let coachingHint: string | null = headPoseHeightHint;
-  if (!coachingHint && needsSecondHandFor) {
+  let coachingHint: string | null = null;
+  if (needsSecondHandFor) {
     const targetPose = CAMERA_HAND_POSES.find(p => p.id === needsSecondHandFor);
+    const badge = getPoseInlineBadge(targetPose?.id, targetPose?.value);
     coachingHint = targetPose?.headPose
-      ? `Put BOTH hands on your head for ${targetPose.value} ${targetPose.name}`
-      : `Raise BOTH hands for ${targetPose?.value || '🙌'} ${targetPose?.name || '2-Hand Pose'}`;
-  } else if (!coachingHint && analyzed.length >= 2) {
+      ? `Raise BOTH hands for ${badge} ${targetPose.name}`
+      : `Raise BOTH hands for ${badge} ${targetPose?.name || '2-Hand Pose'}`;
+  } else if (analyzed.length >= 2) {
     const a = analyzed[0];
     const b = analyzed[1];
     const avgPalm = Math.max(0.04, (a.palmSize + b.palmSize) * 0.5);
@@ -1491,7 +1541,7 @@ function detectStandingPoseFromHands(
   if (!coachingHint && resolvedOverallPose) {
     const seenPose = CAMERA_HAND_POSES.find(p => p.id === resolvedOverallPose);
     if (seenPose) {
-      coachingHint = `Seeing ${seenPose.value} ${seenPose.name} · Try a quiz pose`;
+      coachingHint = `Seeing ${getPoseInlineBadge(seenPose.id, seenPose.value)} ${seenPose.name} · Try a quiz pose`;
     }
   } else if (!coachingHint && analyzed.length > 0) {
     coachingHint = 'Open fingers clearly toward camera';
@@ -2721,7 +2771,7 @@ function getInitialClassicPoses(): string[] {
 
 function getInitialCameraHandPoses(): string[] {
   try {
-    const raw = localStorage.getItem('yogaCameraHandPoses_v10');
+    const raw = localStorage.getItem('yogaCameraHandPoses_v11');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -2749,7 +2799,7 @@ function YogaLobbyPoseTester({
   onUpdateCalibration: (patch: Partial<YogaCalibrationConfig>) => void;
   onRegisterStopTest: (stopFn: (() => void) | null) => void;
 }) {
-  const [poseTab, setPoseTab] = useState<'head-pose' | 'two-hand' | 'one-hand'>('head-pose');
+  const [poseTab, setPoseTab] = useState<'all' | 'head-pose' | 'two-hand' | 'one-hand'>('all');
   const [selectedPoseId, setSelectedPoseId] = useState<string>('bunny-ears');
   const [isTesting, setIsTesting] = useState(false);
   const [isCamReady, setIsCamReady] = useState(false);
@@ -2787,6 +2837,7 @@ function YogaLobbyPoseTester({
 
   const filteredPoses = React.useMemo(() => {
     const allInTab = CAMERA_HAND_POSES.filter(p => {
+      if (poseTab === 'all') return true;
       if (poseTab === 'head-pose') return Boolean(p.headPose);
       if (poseTab === 'two-hand') return Boolean(p.twoHands) && !p.headPose;
       return !p.twoHands;
@@ -2915,10 +2966,12 @@ function YogaLobbyPoseTester({
 
         const cal = calibrationRef.current;
         const targetId = selectedPoseRef.current;
+        const headPoseIds = CAMERA_HAND_POSES.filter(p => p.headPose).map(p => p.id);
 
+        // Pass targetId first plus all head poses so free-testing any head pose on camera tracks immediately
         const det = detectStandingPoseFromHands(
           mirroredHands,
-          [targetId],
+          Array.from(new Set([targetId, ...headPoseIds])),
           videoAspect,
           rawHandedness,
           cal.sensitivity
@@ -2929,7 +2982,29 @@ function YogaLobbyPoseTester({
         testerHoldRef.current.lastUpdate = now;
 
         const threshold = SENSITIVITY_CONFIG[cal.sensitivity].threshold;
-        const isMatched = det.poseId === targetId && det.confidence >= threshold;
+        const detectedConfig = det.poseId
+          ? CAMERA_HAND_POSES.find(p => p.id === det.poseId)
+          : undefined;
+        const targetConfig = CAMERA_HAND_POSES.find(p => p.id === targetId);
+        const isTargetOrFamilyMatch =
+          Boolean(det.poseId) &&
+          det.confidence >= threshold &&
+          (det.poseId === targetId ||
+            (Boolean(detectedConfig?.twoHands) &&
+              Boolean(targetConfig?.twoHands) &&
+              detectedConfig?.family === targetConfig?.family));
+        const isFreeHeadPoseMatch =
+          Boolean(detectedConfig?.headPose) &&
+          mirroredHands.length >= 2 &&
+          det.confidence >= threshold;
+
+        // If the student performs a 2-hand head pose while testing, automatically focus that head pose card
+        if (isFreeHeadPoseMatch && det.poseId && det.poseId !== targetId) {
+          selectedPoseRef.current = det.poseId;
+          setSelectedPoseId(det.poseId);
+        }
+
+        const isMatched = isTargetOrFamilyMatch || isFreeHeadPoseMatch;
         if (isMatched) {
           const rate = HOLD_SPEED_RATE[cal.holdSpeed];
           testerHoldRef.current.progress = Math.min(
@@ -2967,7 +3042,7 @@ function YogaLobbyPoseTester({
         // Draw live AR Head Costume overlay when practicing a head pose with 2 hands
         drawHeadPoseArEffect(
           ctx,
-          isMatched ? targetId : det.poseId,
+          isMatched ? selectedPoseRef.current : det.poseId,
           mirroredHands,
           cw,
           ch,
@@ -2977,7 +3052,7 @@ function YogaLobbyPoseTester({
         );
 
         setLiveState({
-          detectedPoseId: det.poseId,
+          detectedPoseId: isMatched ? selectedPoseRef.current : det.poseId,
           confidence: det.confidence,
           holdProgress: testerHoldRef.current.progress,
           matchedTarget: testerHoldRef.current.progress >= 80 || isMatched,
@@ -3038,8 +3113,8 @@ function YogaLobbyPoseTester({
 
   const confPct = Math.round(liveState.confidence * 100);
   const detectedName = liveState.detectedPoseId ? getPoseName(liveState.detectedPoseId) : null;
-  const detectedEmoji = liveState.detectedPoseId
-    ? CAMERA_HAND_POSES.find(p => p.id === liveState.detectedPoseId)?.value || '✋'
+  const detectedPoseObj = liveState.detectedPoseId
+    ? CAMERA_HAND_POSES.find(p => p.id === liveState.detectedPoseId)
     : null;
 
   return (
@@ -3108,16 +3183,49 @@ function YogaLobbyPoseTester({
                 <div className="flex items-center justify-between gap-2 text-xs font-black">
                   <span className="flex items-center gap-1.5 truncate">
                     {liveState.matchedTarget ? (
-                      <span className="text-emerald-300 flex items-center gap-1">
-                        <CheckCircle2 size={14} /> Matched {selectedPose.value} {selectedPose.name}!
+                      <span className="text-emerald-300 flex items-center gap-1.5">
+                        <CheckCircle2 size={14} />
+                        {isImageUrl(selectedPose.value) ? (
+                          <img
+                            src={selectedPose.value}
+                            alt={selectedPose.name}
+                            referrerPolicy="no-referrer"
+                            className="w-5 h-5 rounded-md object-cover inline-block shrink-0"
+                          />
+                        ) : (
+                          <span>{selectedPose.value}</span>
+                        )}
+                        <span>Matched {selectedPose.name}!</span>
                       </span>
                     ) : detectedName ? (
-                      <span className="text-slate-100">
-                        Seeing: {detectedEmoji} {detectedName}
+                      <span className="text-slate-100 flex items-center gap-1.5">
+                        <span>Seeing:</span>
+                        {detectedPoseObj && isImageUrl(detectedPoseObj.value) ? (
+                          <img
+                            src={detectedPoseObj.value}
+                            alt={detectedName}
+                            referrerPolicy="no-referrer"
+                            className="w-5 h-5 rounded-md object-cover inline-block shrink-0"
+                          />
+                        ) : (
+                          <span>{detectedPoseObj?.value || '✋'}</span>
+                        )}
+                        <span>{detectedName}</span>
                       </span>
                     ) : (
-                      <span className="text-slate-300">
-                        Target: {selectedPose.value} {selectedPose.name}
+                      <span className="text-slate-300 flex items-center gap-1.5">
+                        <span>Target:</span>
+                        {isImageUrl(selectedPose.value) ? (
+                          <img
+                            src={selectedPose.value}
+                            alt={selectedPose.name}
+                            referrerPolicy="no-referrer"
+                            className="w-5 h-5 rounded-md object-cover inline-block shrink-0"
+                          />
+                        ) : (
+                          <span>{selectedPose.value}</span>
+                        )}
+                        <span>{selectedPose.name}</span>
                       </span>
                     )}
                   </span>
@@ -3143,7 +3251,7 @@ function YogaLobbyPoseTester({
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-5 text-center gap-2.5">
-              <div className="text-5xl leading-none select-none">{selectedPose.value}</div>
+              <StandingPoseFigure poseId={selectedPose.id} emoji={selectedPose.value} size="lg" />
               <div className="text-base font-black text-white">{selectedPose.name}</div>
               <p className="text-xs font-semibold text-slate-300 max-w-xs">{selectedPose.shortHint}</p>
               <span className="text-[11px] font-bold text-teal-300 uppercase tracking-wider">
@@ -3164,50 +3272,61 @@ function YogaLobbyPoseTester({
           )}
         </div>
 
-        {/* Right: Pose Guide Tabs + Grid */}
+        {/* Right: Unified Combined Pose Guide + Quick Filters */}
         <div className="lg:col-span-7 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="inline-flex rounded-xl bg-teal-100/80 p-1 border border-teal-200 flex-wrap">
               <button
                 type="button"
+                onClick={() => setPoseTab('all')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all whitespace-nowrap ${
+                  poseTab === 'all'
+                    ? 'bg-white text-teal-950 shadow-xs'
+                    : 'text-teal-800 hover:text-teal-950'
+                }`}
+              >
+                All Poses ({CAMERA_HAND_POSES.length})
+              </button>
+              <button
+                type="button"
                 onClick={() => setPoseTab('head-pose')}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all whitespace-nowrap ${
                   poseTab === 'head-pose'
                     ? 'bg-white text-rose-950 shadow-xs'
                     : 'text-teal-800 hover:text-teal-950'
                 }`}
               >
-                🐰 Head Poses
+                Head Poses ({CAMERA_HAND_POSES.filter(p => p.headPose).length})
               </button>
               <button
                 type="button"
                 onClick={() => setPoseTab('two-hand')}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all whitespace-nowrap ${
                   poseTab === 'two-hand'
                     ? 'bg-white text-purple-950 shadow-xs'
                     : 'text-teal-800 hover:text-teal-950'
                 }`}
               >
-                🙏 2-Hand Poses
+                2-Hand ({CAMERA_HAND_POSES.filter(p => p.twoHands && !p.headPose).length})
               </button>
               <button
                 type="button"
                 onClick={() => setPoseTab('one-hand')}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all whitespace-nowrap ${
                   poseTab === 'one-hand'
                     ? 'bg-white text-teal-950 shadow-xs'
                     : 'text-teal-800 hover:text-teal-950'
                 }`}
               >
-                ☝️ 1-Hand Poses
+                1-Hand ({CAMERA_HAND_POSES.filter(p => !p.twoHands).length})
               </button>
             </div>
             <span className="text-[11px] font-bold text-slate-500">
-              Click any pose to practice &amp; see its cue
+              Combined pose list · Click any pose or show it to camera
             </span>
           </div>
 
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[195px] overflow-y-auto pr-1 custom-scrollbar">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[215px] overflow-y-auto pr-1 custom-scrollbar">
             {filteredPoses.map(pose => {
               const isSelected = pose.id === selectedPose.id;
               return (
@@ -3229,11 +3348,17 @@ function YogaLobbyPoseTester({
                       : 'border-slate-200 bg-slate-50/70 hover:border-teal-300 hover:bg-white'
                   }`}
                 >
-                  {pose.headPose && (
-                    <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-500 text-white mb-0.5">
-                      ON HEAD
-                    </span>
-                  )}
+                  <span
+                    className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded text-white mb-0.5 ${
+                      pose.headPose
+                        ? 'bg-rose-500'
+                        : pose.twoHands
+                        ? 'bg-purple-500'
+                        : 'bg-teal-600'
+                    }`}
+                  >
+                    {pose.headPose ? 'ON HEAD' : pose.twoHands ? '2 HANDS' : '1 HAND'}
+                  </span>
                   <StandingPoseFigure poseId={pose.id} emoji={pose.value} size="sm" />
                   <span className="text-[11px] font-black text-slate-900 truncate w-full mt-0.5">
                     {pose.name}
@@ -3350,7 +3475,7 @@ function YogaGame({
 
   useEffect(() => {
     try {
-      localStorage.setItem('yogaCameraHandPoses_v10', JSON.stringify(cameraHandPoses));
+      localStorage.setItem('yogaCameraHandPoses_v11', JSON.stringify(cameraHandPoses));
     } catch (e) {}
   }, [cameraHandPoses]);
 
@@ -4010,7 +4135,7 @@ function YogaGame({
           .map(item => item.pose);
 
       const headPosePool = rankPool(sourceCatalog.filter(p => p.headPose));
-      const twoHandPool = rankPool(sourceCatalog.filter(p => p.twoHands));
+      const twoHandOnlyPool = rankPool(sourceCatalog.filter(p => p.twoHands && !p.headPose));
       const oneHandPool = rankPool(sourceCatalog.filter(p => !p.twoHands));
       const allRanked = rankPool(sourceCatalog);
 
@@ -4025,31 +4150,35 @@ function YogaGame({
         return true;
       };
 
-      // Always include at least 1 On-Head Animal/Hero pose (like Bunny Ears, Antlers, Crown, Horns) when available!
+      // Combine 3D Head Emoji Poses, 2-Hand Poses, and 1-Hand Poses on every question!
+      // 1. Pick 1-2 custom 3D Head Emoji poses (Bunny Ears, Antlers, Horns, Crown, Cat Ears, Goggles, Bear Ears)
       if (headPosePool.length > 0) {
-        const desiredHeadCount = oneHandPool.length === 0 && twoHandPool.length === headPosePool.length
-          ? Math.min(headPosePool.length, opts.length)
-          : 1;
+        const desiredHeadCount =
+          oneHandPool.length === 0 && twoHandOnlyPool.length === 0
+            ? Math.min(headPosePool.length, opts.length)
+            : opts.length >= 4 && headPosePool.length >= 2 && Math.random() < 0.55
+            ? 2
+            : 1;
         for (const hp of headPosePool) {
           if (chosenHands.filter(c => c.headPose).length >= desiredHeadCount) break;
           tryPick(hp, false);
         }
       }
 
-      // Mix 1 to 2 two-hand poses on each question (when both 1-hand & 2-hand poses are enabled)
-      const desiredTwoHandCount =
-        twoHandPool.length > 0 && oneHandPool.length > 0
-          ? Math.min(twoHandPool.length, opts.length >= 4 ? 2 : 1)
-          : twoHandPool.length > 0
-          ? Math.min(twoHandPool.length, opts.length)
-          : 0;
-
-      for (const p of twoHandPool) {
-        if (chosenHands.filter(c => c.twoHands).length >= desiredTwoHandCount) break;
-        tryPick(p, false);
+      // 2. Pick 1 non-head two-hand pose (Prayer Hands, Heart Hands, X-Cross, Double Thumbs, etc.)
+      if (twoHandOnlyPool.length > 0) {
+        const desiredTwoHandOnly =
+          oneHandPool.length === 0 && headPosePool.length === 0
+            ? Math.min(twoHandOnlyPool.length, opts.length)
+            : 1;
+        let pickedTwoHandOnly = 0;
+        for (const p of twoHandOnlyPool) {
+          if (pickedTwoHandOnly >= desiredTwoHandOnly || chosenHands.length >= opts.length) break;
+          if (tryPick(p, false)) pickedTwoHandOnly++;
+        }
       }
 
-      // Fill remaining slots with fresh one-hand poses from distinct families
+      // 3. Fill remaining slots with fresh one-hand poses from distinct families
       for (const p of oneHandPool) {
         if (chosenHands.length >= opts.length) break;
         tryPick(p, false);
@@ -4854,7 +4983,14 @@ function YogaGame({
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillStyle = '#ffffff';
-              ctx.fillText(currentOptions[pHold.optionIdx]?.poseValue || '🙌', midX, midY + 1);
+              ctx.fillText(
+                getPoseInlineBadge(
+                  currentOptions[pHold.optionIdx]?.poseId,
+                  currentOptions[pHold.optionIdx]?.poseValue
+                ),
+                midX,
+                midY + 1
+              );
             }
             ctx.restore();
 
@@ -5610,11 +5746,11 @@ function YogaGame({
                               : isWaitingForQuestionRead
                               ? '🔊 Listen to the question first...'
                               : playerDetections[0].holdProgress > 0 && playerDetections[0].matchedOptionIdx !== null
-                              ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || ''} ${getPoseName(shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId)} · ${playerDetections[0].holdProgress}%`
+                              ? `Locking ${getPoseInlineBadge(shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId, shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue)} ${getPoseName(shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId)} · ${playerDetections[0].holdProgress}%`
                               : playerDetections[0].needsSecondHandPoseId
-                              ? `🙌 Raise BOTH hands for ${CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].needsSecondHandPoseId)?.value || '2-Hand Pose'}`
+                              ? `🙌 Raise BOTH hands for ${getPoseName(playerDetections[0].needsSecondHandPoseId)}`
                               : playerDetections[0].detectedPoseId
-                              ? `Seeing: ${CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].detectedPoseId)?.value || ''} ${getPoseName(playerDetections[0].detectedPoseId)} · ${Math.round((playerDetections[0].confidence || 0) * 100)}%`
+                              ? `Seeing: ${getPoseInlineBadge(playerDetections[0].detectedPoseId)} ${getPoseName(playerDetections[0].detectedPoseId)} · ${Math.round((playerDetections[0].confidence || 0) * 100)}%`
                               : playerDetections[0].coachingHint || '🕷️ Left Side · Show Hand Pose'}
                           </span>
                         </div>
@@ -5727,11 +5863,11 @@ function YogaGame({
                               : isWaitingForQuestionRead
                               ? '🔊 Listen to the question first...'
                               : playerDetections[1].holdProgress > 0 && playerDetections[1].matchedOptionIdx !== null
-                              ? `Locking ${shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue || ''} ${getPoseName(shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseId)} · ${playerDetections[1].holdProgress}%`
+                              ? `Locking ${getPoseInlineBadge(shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseId, shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseValue)} ${getPoseName(shuffledOptions[playerDetections[1].matchedOptionIdx]?.poseId)} · ${playerDetections[1].holdProgress}%`
                               : playerDetections[1].needsSecondHandPoseId
-                              ? `🙌 Raise BOTH hands for ${CAMERA_HAND_POSES.find(p => p.id === playerDetections[1].needsSecondHandPoseId)?.value || '2-Hand Pose'}`
+                              ? `🙌 Raise BOTH hands for ${getPoseName(playerDetections[1].needsSecondHandPoseId)}`
                               : playerDetections[1].detectedPoseId
-                              ? `Seeing: ${CAMERA_HAND_POSES.find(p => p.id === playerDetections[1].detectedPoseId)?.value || ''} ${getPoseName(playerDetections[1].detectedPoseId)} · ${Math.round((playerDetections[1].confidence || 0) * 100)}%`
+                              ? `Seeing: ${getPoseInlineBadge(playerDetections[1].detectedPoseId)} ${getPoseName(playerDetections[1].detectedPoseId)} · ${Math.round((playerDetections[1].confidence || 0) * 100)}%`
                               : playerDetections[1].coachingHint || '🥊 Right Side · Show Hand Pose'}
                           </span>
                         </div>
@@ -5828,11 +5964,11 @@ function YogaGame({
                             : isWaitingForQuestionRead
                             ? '🔊 Listen to the question — Hand detection unlocks when finished!'
                             : playerDetections[0].holdProgress > 0 && playerDetections[0].matchedOptionIdx !== null
-                            ? `Locking ${shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue || ''} ${getPoseName(shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId)} · ${playerDetections[0].holdProgress}%`
+                            ? `Locking ${getPoseInlineBadge(shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId, shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseValue)} ${getPoseName(shuffledOptions[playerDetections[0].matchedOptionIdx]?.poseId)} · ${playerDetections[0].holdProgress}%`
                             : playerDetections[0].needsSecondHandPoseId
-                            ? `🙌 Raise BOTH hands for ${CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].needsSecondHandPoseId)?.value || '2-Hand Pose'}`
+                            ? `🙌 Raise BOTH hands for ${getPoseName(playerDetections[0].needsSecondHandPoseId)}`
                             : playerDetections[0].detectedPoseId
-                            ? `Seeing: ${CAMERA_HAND_POSES.find(p => p.id === playerDetections[0].detectedPoseId)?.value || ''} ${getPoseName(playerDetections[0].detectedPoseId)} · ${Math.round((playerDetections[0].confidence || 0) * 100)}%`
+                            ? `Seeing: ${getPoseInlineBadge(playerDetections[0].detectedPoseId)} ${getPoseName(playerDetections[0].detectedPoseId)} · ${Math.round((playerDetections[0].confidence || 0) * 100)}%`
                             : playerDetections[0].coachingHint || 'Show hand gesture of the right answer!'}
                         </span>
                       </div>
@@ -6706,7 +6842,7 @@ function YogaGame({
                         </span>
                       ) : null}
 
-                      {/* Gesture Emoji: BIGGER & DISTINCT 2-HAND / ON-HEAD STYLING */}
+                      {/* Gesture Emoji / Custom 3D Emoji Illustration: BIGGER & DISTINCT 2-HAND / ON-HEAD STYLING */}
                       <div
                         className={`mt-1.5 inline-flex flex-col items-center justify-center px-3 py-2 sm:px-3.5 sm:py-2.5 border-2 rounded-2xl shadow-xs shrink-0 select-none group-hover:scale-110 transition-transform ${
                           opt.isHeadPose
@@ -6716,15 +6852,24 @@ function YogaGame({
                             : 'bg-gradient-to-b from-teal-50 to-teal-100/90 border-teal-200/90'
                         }`}
                       >
-                        <span
-                          className={`${
-                            Array.from(opt.poseValue.replace(/\uFE0F/g, '')).length >= 2
-                              ? 'text-2xl sm:text-3xl md:text-4xl tracking-tight'
-                              : 'text-3xl sm:text-4xl md:text-5xl'
-                          } leading-none whitespace-nowrap`}
-                        >
-                          {opt.poseValue}
-                        </span>
+                        {isImageUrl(opt.poseValue) ? (
+                          <img
+                            src={opt.poseValue}
+                            alt={getPoseName(opt.poseId, opt.poseValue)}
+                            referrerPolicy="no-referrer"
+                            className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 object-cover rounded-2xl shadow-md border border-white/60"
+                          />
+                        ) : (
+                          <span
+                            className={`${
+                              Array.from(opt.poseValue.replace(/\uFE0F/g, '')).length >= 2
+                                ? 'text-2xl sm:text-3xl md:text-4xl tracking-tight'
+                                : 'text-3xl sm:text-4xl md:text-5xl'
+                            } leading-none whitespace-nowrap`}
+                          >
+                            {opt.poseValue}
+                          </span>
+                        )}
                         {opt.isHeadPose ? (
                           <span className="mt-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-rose-700 leading-none">
                             2 HANDS • ON HEAD
