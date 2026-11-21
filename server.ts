@@ -5200,11 +5200,11 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
   }) {
     const now = Date.now();
     entry.events = entry.events.filter(ev => now - (ev.serverTs || now) < 8000);
-    // Prune stale disconnected players who haven't updated in > 45 seconds
+    // Prune stale disconnected players who haven't updated in > 120 seconds
     entry.players.forEach((p, id) => {
       if (p.kicked && now - (p.updatedAt || 0) > 5000) {
         entry.players.delete(id);
-      } else if (now - (p.updatedAt || 0) > 45000) {
+      } else if (now - (p.updatedAt || 0) > 120000) {
         entry.players.delete(id);
       }
     });
@@ -5215,6 +5215,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
           : 0;
       return {
         ...p,
+        role: p.role || "player",
         immuneRemainingMs: immuneRemMs
       };
     });
@@ -5304,6 +5305,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         entry.players.set(pPatch.id, {
           ...existing,
           ...pPatch,
+          role: pPatch.role || existing.role || "player",
           lastStartedAt: Math.max(existing.lastStartedAt || 0, resetEpoch),
           serverImmuneUntil: 0,
           hostOverrideAt: now,
@@ -5344,11 +5346,19 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       });
     }
 
-    const playerData = body.player || body;
-    const playerId = String(playerData.id || "").trim();
+    const rawPlayerData = body.player || body;
+    const playerId = String(rawPlayerData.id || "").trim();
     if (!playerId) {
       return res.status(400).json({ error: "Player id is required" });
     }
+
+    // Strip undefined fields so partial packets never overwrite existing coordinates
+    const playerData: Record<string, any> = {};
+    Object.keys(rawPlayerData).forEach(k => {
+      if (rawPlayerData[k] !== undefined) {
+        playerData[k] = rawPlayerData[k];
+      }
+    });
 
     const now = Date.now();
     const existing = entry.players.get(playerId) || {};
@@ -5371,12 +5381,6 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
 
     const incomingSeq = typeof playerData.seq === "number" ? playerData.seq : 0;
     const existingSeq = typeof existing.seq === "number" ? existing.seq : 0;
-    const incomingEpoch =
-      typeof playerData.matchEpoch === "number" && playerData.matchEpoch > 0
-        ? playerData.matchEpoch
-        : typeof playerData.lastStartedAt === "number"
-        ? playerData.lastStartedAt
-        : 0;
     const existingPlayerEpoch = Math.max(
       existing.matchEpoch || 0,
       existing.lastStartedAt || 0,
@@ -5386,6 +5390,12 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       existingPlayerEpoch,
       entry.room.matchStatus === "playing" ? entry.room.matchEpoch || 0 : 0
     );
+    const incomingEpoch =
+      typeof playerData.matchEpoch === "number" && playerData.matchEpoch > 0
+        ? playerData.matchEpoch
+        : typeof playerData.lastStartedAt === "number" && playerData.lastStartedAt > 0
+        ? playerData.lastStartedAt
+        : existingPlayerEpoch || activeEpoch;
 
     const hasExistingPlayer = Boolean(existing && existing.id);
 
@@ -5395,6 +5405,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       !isHostAction &&
       hasExistingPlayer &&
       activeEpoch > 1000 &&
+      incomingEpoch > 0 &&
       incomingEpoch < activeEpoch;
     const isNewerMatchEpoch = incomingEpoch > existingPlayerEpoch && incomingEpoch > 1000;
     const sameMatchSession = !isNewerMatchEpoch && incomingEpoch === existingPlayerEpoch;
@@ -5404,11 +5415,10 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       hasExistingPlayer &&
       sameMatchSession &&
       recentExistingMs < 1500 &&
-      ((incomingSeq > 0 &&
-        existingSeq > 0 &&
-        incomingSeq < existingSeq &&
-        existingSeq - incomingSeq < 5000) ||
-        (existingSeq > 0 && incomingSeq === 0));
+      incomingSeq > 0 &&
+      existingSeq > 0 &&
+      incomingSeq < existingSeq &&
+      existingSeq - incomingSeq < 5000;
 
     const isStaleStudentPacket = isOlderMatchEpoch || isStaleSeqPacket;
 
@@ -5419,15 +5429,15 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       nextServerImmuneUntil = 0;
     } else if (typeof playerData.immuneRemainingMs === "number") {
       nextServerImmuneUntil =
-        playerData.immuneRemainingMs > 0 ? now + Math.min(12000, playerData.immuneRemainingMs) : 0;
+        playerData.immuneRemainingMs > 0 ? now + Math.min(18000, playerData.immuneRemainingMs) : 0;
     } else if (typeof playerData.immuneUntil === "number" && playerData.immuneUntil > now) {
-      nextServerImmuneUntil = Math.min(now + 12000, playerData.immuneUntil);
+      nextServerImmuneUntil = Math.min(now + 18000, playerData.immuneUntil);
     }
 
     const resolvedSeq =
       isHostAction && playerData.matchStartResetAt
         ? 0
-        : isNewerMatchEpoch || recentExistingMs >= 1500
+        : incomingSeq > 0 && (isNewerMatchEpoch || recentExistingMs >= 1500)
         ? incomingSeq
         : Math.max(incomingSeq, existingSeq);
 
@@ -5439,6 +5449,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
     const mergedPlayer: Record<string, any> = isStaleStudentPacket
       ? {
           ...existing,
+          role: existing.role || "player",
           // Keep connection alive while preserving authoritative match-start reset & latest coordinates
           updatedAt: now
         }
@@ -5446,6 +5457,13 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
           ...existing,
           ...playerData,
           id: playerId,
+          role: playerData.role || existing.role || "player",
+          x: typeof playerData.x === "number" ? playerData.x : existing.x,
+          y: typeof playerData.y === "number" ? playerData.y : existing.y,
+          z: typeof playerData.z === "number" ? playerData.z : existing.z,
+          vx: typeof playerData.vx === "number" ? playerData.vx : existing.vx ?? 0,
+          vz: typeof playerData.vz === "number" ? playerData.vz : existing.vz ?? 0,
+          rotY: typeof playerData.rotY === "number" ? playerData.rotY : existing.rotY ?? 0,
           seq: resolvedSeq,
           matchEpoch: resolvedEpoch,
           lastStartedAt: resolvedEpoch,

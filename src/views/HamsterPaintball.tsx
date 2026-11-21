@@ -76,6 +76,12 @@ import paintballHamsterMocha from '../assets/images/mocha_gun_portrait_179493106
 import paintballHamsterCaramel from '../assets/images/caramel_gun_portrait_1794931061424.jpg';
 import paintballHamsterPudding from '../assets/images/pudding_gun_portrait_1794931062731.jpg';
 import {
+  ERA_TEAM_PALETTE,
+  buildTeamRecoloredPortrait,
+  getCachedTeamPortrait,
+  prewarmTeamPortraits
+} from '../utils/hamsterTeamAvatar';
+import {
   collection,
   query,
   where,
@@ -464,12 +470,12 @@ const TEAM_CONFIG: Record<TeamId, TeamThemeConfig> = {
   solo: {
     label: 'Solo FFA',
     shortLabel: 'SOLO',
-    colorHex: '#10b981',
-    colorNum: 0xa3e635,
+    colorHex: '#00B982',
+    colorNum: 0x00b982,
     bgClass: 'bg-emerald-100 text-emerald-800',
-    borderClass: 'border-emerald-400',
-    textClass: 'text-emerald-600',
-    dotClass: 'bg-emerald-500',
+    borderClass: 'border-[#00B982]',
+    textClass: 'text-[#00B982]',
+    dotClass: 'bg-[#00B982]',
     ringClass: 'ring-1 ring-slate-200 border-white',
     activeBtnClass: 'bg-slate-900 text-white border-slate-900 shadow-xs',
     softBtnClass: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -479,78 +485,78 @@ const TEAM_CONFIG: Record<TeamId, TeamThemeConfig> = {
     cardBgClass: 'bg-emerald-50 border-emerald-200'
   },
   red: {
-    label: 'Red Squad',
+    label: 'Red Team',
     shortLabel: 'RED',
-    colorHex: '#ef4444',
-    colorNum: 0xef4444,
-    bgClass: 'bg-rose-100 text-rose-700',
-    borderClass: 'border-rose-400',
-    textClass: 'text-rose-600',
-    dotClass: 'bg-rose-500',
-    ringClass: 'ring-2 ring-rose-500 border-white',
-    activeBtnClass: 'bg-rose-600 text-white border-rose-600 shadow-xs',
-    softBtnClass: 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200',
-    bannerGradientClass: 'from-rose-600 to-rose-700 text-white',
-    hudBorderClass: 'border-rose-200',
-    solidBgClass: 'bg-rose-600',
+    colorHex: '#F20D45',
+    colorNum: 0xf20d45,
+    bgClass: 'bg-rose-100 text-[#F20D45]',
+    borderClass: 'border-[#F20D45]',
+    textClass: 'text-[#F20D45]',
+    dotClass: 'bg-[#F20D45]',
+    ringClass: 'ring-2 ring-[#F20D45] border-white',
+    activeBtnClass: 'bg-[#F20D45] text-white border-[#F20D45] shadow-xs',
+    softBtnClass: 'bg-rose-50 hover:bg-rose-100 text-[#F20D45] border-rose-200',
+    bannerGradientClass: 'from-[#F20D45] to-rose-700 text-white',
+    hudBorderClass: 'border-[#F20D45]/35',
+    solidBgClass: 'bg-[#F20D45]',
     cardBgClass: 'bg-rose-50 border-rose-200'
   },
   blue: {
-    label: 'Blue Squad',
+    label: 'Blue Team',
     shortLabel: 'BLUE',
-    colorHex: '#2563eb',
-    colorNum: 0x2563eb,
-    bgClass: 'bg-sky-100 text-sky-700',
-    borderClass: 'border-sky-400',
-    textClass: 'text-sky-600',
-    dotClass: 'bg-sky-600',
-    ringClass: 'ring-2 ring-sky-600 border-white',
-    activeBtnClass: 'bg-sky-600 text-white border-sky-600 shadow-xs',
-    softBtnClass: 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200',
-    bannerGradientClass: 'from-sky-600 to-indigo-700 text-white',
-    hudBorderClass: 'border-sky-200',
-    solidBgClass: 'bg-sky-600',
+    colorHex: '#2583F5',
+    colorNum: 0x2583f5,
+    bgClass: 'bg-sky-100 text-[#2583F5]',
+    borderClass: 'border-[#2583F5]',
+    textClass: 'text-[#2583F5]',
+    dotClass: 'bg-[#2583F5]',
+    ringClass: 'ring-2 ring-[#2583F5] border-white',
+    activeBtnClass: 'bg-[#2583F5] text-white border-[#2583F5] shadow-xs',
+    softBtnClass: 'bg-sky-50 hover:bg-sky-100 text-[#2583F5] border-sky-200',
+    bannerGradientClass: 'from-[#2583F5] to-blue-700 text-white',
+    hudBorderClass: 'border-[#2583F5]/35',
+    solidBgClass: 'bg-[#2583F5]',
     cardBgClass: 'bg-sky-50 border-sky-200'
   },
   green: {
-    label: 'Green Squad',
+    label: 'Green Team',
     shortLabel: 'GREEN',
-    colorHex: '#10b981',
-    colorNum: 0x10b981,
-    bgClass: 'bg-emerald-100 text-emerald-700',
-    borderClass: 'border-emerald-400',
-    textClass: 'text-emerald-600',
-    dotClass: 'bg-emerald-500',
-    ringClass: 'ring-2 ring-emerald-500 border-white',
-    activeBtnClass: 'bg-emerald-600 text-white border-emerald-600 shadow-xs',
-    softBtnClass: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200',
-    bannerGradientClass: 'from-emerald-600 to-teal-700 text-white',
-    hudBorderClass: 'border-emerald-200',
-    solidBgClass: 'bg-emerald-600',
+    colorHex: '#00B982',
+    colorNum: 0x00b982,
+    bgClass: 'bg-emerald-100 text-[#00B982]',
+    borderClass: 'border-[#00B982]',
+    textClass: 'text-[#00B982]',
+    dotClass: 'bg-[#00B982]',
+    ringClass: 'ring-2 ring-[#00B982] border-white',
+    activeBtnClass: 'bg-[#00B982] text-white border-[#00B982] shadow-xs',
+    softBtnClass: 'bg-emerald-50 hover:bg-emerald-100 text-[#00B982] border-emerald-200',
+    bannerGradientClass: 'from-[#00B982] to-teal-700 text-white',
+    hudBorderClass: 'border-[#00B982]/35',
+    solidBgClass: 'bg-[#00B982]',
     cardBgClass: 'bg-emerald-50 border-emerald-200'
   },
   gold: {
-    label: 'Gold Squad',
+    label: 'Gold Team',
     shortLabel: 'GOLD',
-    colorHex: '#d97706',
-    colorNum: 0xfacc15,
+    colorHex: '#FFAD18',
+    colorNum: 0xffad18,
     bgClass: 'bg-amber-100 text-amber-800',
-    borderClass: 'border-amber-400',
-    textClass: 'text-amber-600',
-    dotClass: 'bg-amber-500',
-    ringClass: 'ring-2 ring-amber-500 border-white',
-    activeBtnClass: 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs',
+    borderClass: 'border-[#FFAD18]',
+    textClass: 'text-[#D98200]',
+    dotClass: 'bg-[#FFAD18]',
+    ringClass: 'ring-2 ring-[#FFAD18] border-white',
+    activeBtnClass: 'bg-[#FFAD18] text-slate-950 border-[#FFAD18] shadow-xs',
     softBtnClass: 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200',
-    bannerGradientClass: 'from-amber-500 to-orange-600 text-white',
-    hudBorderClass: 'border-amber-200',
-    solidBgClass: 'bg-amber-500',
+    bannerGradientClass: 'from-[#FFAD18] to-amber-600 text-slate-950',
+    hudBorderClass: 'border-[#FFAD18]/45',
+    solidBgClass: 'bg-[#FFAD18]',
     cardBgClass: 'bg-amber-50 border-amber-200'
   }
 };
 
 function getActiveTeamIds(mode: 'solo' | 'teams', count: number): TeamId[] {
   if (mode === 'solo') return [];
-  const clamped = Math.max(2, Math.min(ALL_TEAM_ORDER.length, Math.round(count || 2)));
+  const clamped = Math.max(2, Math.min(ALL_TEAM_ORDER.length, Math.round(count || 4)));
   return ALL_TEAM_ORDER.slice(0, clamped);
 }
 
@@ -592,25 +598,61 @@ function getTeamBaseCenter(
 function HamsterCharacterAvatar({
   skin,
   size = 64,
-  team = 'solo'
+  team = 'solo',
+  showGlow = false,
+  className = ''
 }: {
   skin: HamsterSkin;
   size?: number;
   team?: TeamId;
+  showGlow?: boolean;
+  className?: string;
 }) {
-  void team;
+  const safeTeam: TeamId =
+    team === 'red' || team === 'blue' || team === 'green' || team === 'gold' ? team : 'solo';
+  const [resolvedSrc, setResolvedSrc] = useState<string>(
+    () => getCachedTeamPortrait(skin.id, safeTeam) || skin.portraitUrl
+  );
+
+  useEffect(() => {
+    const immediate = getCachedTeamPortrait(skin.id, safeTeam);
+    if (immediate) {
+      setResolvedSrc(immediate);
+      return;
+    }
+    let cancelled = false;
+    buildTeamRecoloredPortrait(skin.id, skin.portraitUrl, safeTeam).then(url => {
+      if (!cancelled) {
+        setResolvedSrc(url);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [skin.id, skin.portraitUrl, safeTeam]);
+
+  const teamSpec = ERA_TEAM_PALETTE[safeTeam];
 
   return (
     <div
-      className="relative overflow-hidden bg-transparent shrink-0 select-none flex items-center justify-center"
+      className={`relative shrink-0 select-none flex items-center justify-center ${className}`}
       style={{ width: size, height: size }}
     >
+      {showGlow && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-1 rounded-full pointer-events-none transition-all duration-300"
+          style={{
+            background: `radial-gradient(circle at 50% 54%, ${teamSpec.glowRgba} 0%, ${teamSpec.softGlowRgba} 46%, rgba(255,255,255,0) 74%)`
+          }}
+        />
+      )}
       <img
-        src={skin.portraitUrl}
+        src={resolvedSrc}
         alt={skin.name}
         draggable={false}
         referrerPolicy="no-referrer"
-        className="w-full h-full object-contain object-center"
+        className="relative z-10 w-full h-full object-contain object-center transition-transform duration-200"
       />
     </div>
   );
@@ -1665,7 +1707,7 @@ export default function HamsterPaintball({
       const parsedTeamCount =
         Number.isFinite(parsedTeamsNum) && parsedTeamsNum >= 2
           ? Math.min(ALL_TEAM_ORDER.length, Math.round(parsedTeamsNum))
-          : 2;
+          : 4;
       const parsedCam: 'close' | 'balanced' | 'tactical' =
         camParam === 'close' || camParam === 'tactical' ? camParam : 'balanced';
       if (urlRoom && /^[0-9A-Za-z]{4,8}$/.test(urlRoom.trim())) {
@@ -1683,7 +1725,7 @@ export default function HamsterPaintball({
         code: String(initialGame.roomCode).trim().toUpperCase().slice(0, 6),
         isJoiningStudent: true,
         initialMode: 'teams',
-        initialTeamCount: 2,
+        initialTeamCount: 4,
         initialCam: 'balanced'
       };
     }
@@ -1696,7 +1738,7 @@ export default function HamsterPaintball({
       code: generated,
       isJoiningStudent: false,
       initialMode: 'teams',
-      initialTeamCount: 2,
+      initialTeamCount: 4,
       initialCam: 'balanced'
     };
   };
@@ -1885,13 +1927,42 @@ export default function HamsterPaintball({
   const [playerName, setPlayerName] = useState<string>(() => {
     if (initialSetup.current.isJoiningStudent) {
       if (initialGame?.playerName) return String(initialGame.playerName).slice(0, 16);
+      if (typeof window !== 'undefined') {
+        const savedName = sessionStorage.getItem('hamster_pb_student_name');
+        if (savedName && savedName.trim() && savedName !== 'Teacher Jan') {
+          return savedName.slice(0, 16);
+        }
+      }
       return '';
     }
     return 'Teacher Jan';
   });
 
-  const [selectedSkinIdx, setSelectedSkinIdx] = useState<number>(0);
-  const [myTeam, setMyTeam] = useState<TeamId>('red');
+  const [selectedSkinIdx, setSelectedSkinIdx] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const raw = Number(sessionStorage.getItem('hamster_pb_skin_idx'));
+      if (Number.isFinite(raw) && raw >= 0 && raw < HAMSTER_SKINS.length) {
+        return Math.floor(raw);
+      }
+    }
+    return 0;
+  });
+
+  const [myTeam, setMyTeam] = useState<TeamId>(() => {
+    if (typeof window !== 'undefined') {
+      const savedTeam = sessionStorage.getItem('hamster_pb_my_team');
+      if (
+        savedTeam === 'red' ||
+        savedTeam === 'blue' ||
+        savedTeam === 'green' ||
+        savedTeam === 'gold'
+      ) {
+        return savedTeam;
+      }
+    }
+    return 'red';
+  });
+
   const [roomCode, setRoomCode] = useState<string>(initialSetup.current.code);
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
   const [isJoiningRoomModal, setIsJoiningRoomModal] = useState<boolean>(false);
@@ -2508,7 +2579,46 @@ export default function HamsterPaintball({
     return 0;
   };
 
-  const hasManualTeamChoiceRef = useRef<boolean>(false);
+  const hasManualTeamChoiceRef = useRef<boolean>(
+    typeof window !== 'undefined' && sessionStorage.getItem('hamster_pb_manual_team') === '1'
+  );
+
+  // Persist selected character, team color, and student nickname across modal reopens
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem('hamster_pb_skin_idx', String(selectedSkinIdx));
+    } catch {}
+  }, [selectedSkinIdx]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (myTeam === 'red' || myTeam === 'blue' || myTeam === 'green' || myTeam === 'gold') {
+      try {
+        sessionStorage.setItem('hamster_pb_my_team', myTeam);
+      } catch {}
+    }
+  }, [myTeam]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || role !== 'player') return;
+    const trimmed = playerName.trim();
+    if (trimmed && trimmed !== 'Teacher Jan') {
+      try {
+        sessionStorage.setItem('hamster_pb_student_name', trimmed.slice(0, 16));
+      } catch {}
+    }
+  }, [playerName, role]);
+
+  useEffect(() => {
+    if (screen === 'join' || screen === 'lobby') {
+      const priority: TeamId =
+        myTeam === 'red' || myTeam === 'blue' || myTeam === 'green' || myTeam === 'gold'
+          ? myTeam
+          : 'red';
+      prewarmTeamPortraits(HAMSTER_SKINS, priority);
+    }
+  }, [screen, myTeam]);
 
   const [aimReticlePct, setAimReticlePct] = useState<{ x: number; y: number }>({ x: 50, y: 46 });
   const aimReticlePctRef = useRef<{ x: number; y: number }>({ x: 50, y: 46 });
@@ -3580,14 +3690,67 @@ export default function HamsterPaintball({
   const lastDamageAppliedAtRef = useRef<number>(0);
   const lastFirestoreSentSigRef = useRef<string>('');
   const lastFirestoreSentAtRef = useRef<number>(0);
+  const lastRoomPlayersUiSyncAtRef = useRef<number>(0);
+  const lastRoomPlayersUiSigRef = useRef<string>('');
+  const questionShieldActiveRef = useRef<boolean>(false);
   const mergedPlayersMapRef = useRef<
-    Map<string, { state: PlayerNetworkState; lastSeenLocalAt: number }>
+    Map<
+      string,
+      {
+        state: PlayerNetworkState;
+        lastSeenLocalAt: number;
+        lastFastSeenAt?: number;
+        lastSource?: 'api' | 'bc' | 'firestore';
+      }
+    >
   >(new Map());
   const lastNetActionRef = useRef<{
     lastShot?: PlayerNetworkState['lastShot'];
     lastHit?: PlayerNetworkState['lastHit'];
     lastKo?: PlayerNetworkState['lastKo'];
   }>({});
+
+  // Open Question Modal cleanly: releases cursor/aim lock & grants temporary Question Shield Immunity while answering
+  const openQuestionModal = () => {
+    const snap = stateSnapRef.current;
+    if (snap.matchStatus === 'results') return;
+    if (gameRef.current) {
+      gameRef.current.virtualMouseLock = false;
+      gameRef.current.mouseDown = false;
+      gameRef.current.shootButtonHeld = false;
+      gameRef.current.isCameraDragging = false;
+      gameRef.current.joyX = 0;
+      gameRef.current.joyZ = 0;
+    }
+    if (typeof document !== 'undefined' && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
+    const nowServer = getServerNow();
+    const shieldTargetUntil = Math.max(snap.immuneUntil || 0, nowServer + 16500);
+    questionShieldActiveRef.current = true;
+    stateSnapRef.current.immuneUntil = shieldTargetUntil;
+    stateSnapRef.current.isQuestionModalOpen = true;
+    setIsAimLocked(false);
+    setImmuneUntil(shieldTargetUntil);
+    setIsQuestionModalOpen(true);
+  };
+
+  // Close Question Modal cleanly: leaves a brief 1.5s exit shield grace period so player isn't ambushed on close
+  const closeQuestionModal = () => {
+    stateSnapRef.current.isQuestionModalOpen = false;
+    setIsQuestionModalOpen(false);
+    if (questionShieldActiveRef.current) {
+      questionShieldActiveRef.current = false;
+      const nowServer = getServerNow();
+      const graceUntil = nowServer + 1500;
+      if (stateSnapRef.current.immuneUntil > graceUntil) {
+        stateSnapRef.current.immuneUntil = graceUntil;
+        setImmuneUntil(graceUntil);
+      }
+    }
+  };
 
   // Fast timeout-guarded fetch so an unreachable cross-origin host never stalls the sync loop
   const fetchWithTimeout = async (
@@ -3662,6 +3825,54 @@ export default function HamsterPaintball({
     const clean = normalizeCode(code);
     if (!clean) return null;
     const snap = stateSnapRef.current;
+    const g = gameRef.current;
+    const nowServer = getServerNow();
+
+    // Always enrich local student packets with current authoritative position, role, and sequence so partial event calls never reset state!
+    let enrichedPayload = playerPayload;
+    if (
+      !options?.isHostAction &&
+      snap.role === 'player' &&
+      playerPayload &&
+      playerPayload.id === clientIdRef.current
+    ) {
+      const basePos = getTeamBaseCenter(snap.myTeam, snap.matchMode, snap.teamCount);
+      const effectiveImmuneUntil = snap.isQuestionModalOpen
+        ? Math.max(snap.immuneUntil || 0, nowServer + 8000)
+        : snap.immuneUntil || 0;
+      const immuneRem = Math.max(0, effectiveImmuneUntil - nowServer);
+      enrichedPayload = {
+        id: clientIdRef.current,
+        name: snap.playerName || 'Student',
+        role: 'player',
+        team: snap.matchMode === 'solo' ? 'solo' : snap.myTeam,
+        skinIdx: snap.selectedSkinIdx,
+        x: g ? Number(g.x.toFixed(2)) : basePos.x,
+        y: g ? Number(g.y.toFixed(2)) : 0,
+        z: g ? Number(g.z.toFixed(2)) : basePos.z,
+        vx: g ? Number(g.vx.toFixed(2)) : 0,
+        vz: g ? Number(g.vz.toFixed(2)) : 0,
+        rotY: g ? Number(g.rotY.toFixed(2)) : basePos.rotY,
+        stance: snap.playerStance,
+        hp: snap.hp,
+        shield: snap.shield,
+        immuneUntil: effectiveImmuneUntil,
+        immuneRemainingMs: immuneRem,
+        score: snap.score,
+        kos: snap.kos,
+        hitsLanded: snap.hitsLanded,
+        bestStreak: snap.bestStreak,
+        questionsAnswered: snap.questionsAnswered,
+        questionsCorrect: snap.questionsCorrect,
+        questionsWrong: snap.questionsWrong,
+        seq: typeof playerPayload.seq === 'number' && playerPayload.seq > 0 ? playerPayload.seq : nextPlayerSeq(),
+        matchEpoch: lastStartedAtRef.current,
+        lastStartedAt: lastStartedAtRef.current,
+        updatedAt: nowServer,
+        ...playerPayload
+      };
+    }
+
     const roomStatePatch =
       snap.matchStatus === 'playing' && lastStartedAtRef.current > 1000
         ? {
@@ -3691,7 +3902,7 @@ export default function HamsterPaintball({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              player: playerPayload,
+              player: enrichedPayload,
               isHostAction: Boolean(options?.isHostAction),
               verifiedFirestoreHost: verifiedFirestoreHostRef.current,
               ackHostOverrideAt: ackHostOverrideAtRef.current,
@@ -4360,7 +4571,10 @@ export default function HamsterPaintball({
     };
 
     // Unified Multi-Source Players Roster Processor (merges across Firestore, Server API & BroadcastChannel!)
-    const processPlayersList = (rawList: Array<Record<string, any>>) => {
+    const processPlayersList = (
+      rawList: Array<Record<string, any>>,
+      source: 'api' | 'bc' | 'firestore' = 'api'
+    ) => {
       const localNow = Date.now();
       const nowServer = getServerNow();
 
@@ -4393,9 +4607,15 @@ export default function HamsterPaintball({
           return;
         }
 
-        if (data.role === 'player' && !data.kicked) {
+        const existingEntry = mergedPlayersMapRef.current.get(playerId);
+        const resolvedRole = data.role || existingEntry?.state.role || 'player';
+
+        if (resolvedRole === 'player' && !data.kicked) {
+          const prev = existingEntry?.state;
           const resolvedPlayerTeam =
-            data.team && TEAM_CONFIG[data.team as TeamId] ? (data.team as TeamId) : 'red';
+            data.team && TEAM_CONFIG[data.team as TeamId]
+              ? (data.team as TeamId)
+              : prev?.team || 'red';
           const baseCenter = getTeamBaseCenter(
             resolvedPlayerTeam,
             stateSnapRef.current.matchMode,
@@ -4406,11 +4626,11 @@ export default function HamsterPaintball({
           const incomingStartedAt =
             typeof data.matchEpoch === 'number' && data.matchEpoch > 0
               ? data.matchEpoch
-              : typeof data.lastStartedAt === 'number'
+              : typeof data.lastStartedAt === 'number' && data.lastStartedAt > 0
               ? data.lastStartedAt
-              : typeof data.matchStartResetAt === 'number'
+              : typeof data.matchStartResetAt === 'number' && data.matchStartResetAt > 0
               ? data.matchStartResetAt
-              : 0;
+              : prev?.matchEpoch || prev?.lastStartedAt || 0;
 
           // Resolve immunity clock skew across devices using `immuneRemainingMs` when present
           let resolvedImmuneUntil = 0;
@@ -4419,16 +4639,28 @@ export default function HamsterPaintball({
               data.immuneRemainingMs > 0 ? nowServer + data.immuneRemainingMs : 0;
           } else if (typeof data.immuneUntil === 'number' && data.immuneUntil > 0) {
             resolvedImmuneUntil = data.immuneUntil;
+          } else if (prev?.immuneUntil && prev.immuneUntil > nowServer) {
+            resolvedImmuneUntil = prev.immuneUntil;
           }
 
-          // Clamp legacy coordinates inside the compact 76m x 64m arena
+          // Preserve last known coordinates when partial packets omit x/z so enemies NEVER snap back to baseCenter!
           const clampedX =
-            typeof data.x === 'number'
+            typeof data.x === 'number' && Number.isFinite(data.x)
               ? Math.max(-ARENA_HALF_W, Math.min(ARENA_HALF_W, data.x))
+              : typeof prev?.x === 'number'
+              ? prev.x
               : baseCenter.x;
+          const clampedY =
+            typeof data.y === 'number' && Number.isFinite(data.y)
+              ? Math.max(0, Math.min(24, data.y))
+              : typeof prev?.y === 'number'
+              ? prev.y
+              : 0;
           const clampedZ =
-            typeof data.z === 'number'
+            typeof data.z === 'number' && Number.isFinite(data.z)
               ? Math.max(-ARENA_HALF_D, Math.min(ARENA_HALF_D, data.z))
+              : typeof prev?.z === 'number'
+              ? prev.z
               : baseCenter.z;
 
           const isLocalSelf =
@@ -4439,29 +4671,48 @@ export default function HamsterPaintball({
 
           const pState: PlayerNetworkState = {
             id: playerId,
-            name: data.name || (isLocalSelf ? localSnap.playerName : 'Student') || 'Student',
+            name:
+              data.name ||
+              prev?.name ||
+              (isLocalSelf ? localSnap.playerName : 'Student') ||
+              'Student',
             role: 'player',
             team: resolvedPlayerTeam,
-            skinIdx: typeof data.skinIdx === 'number' ? data.skinIdx : 0,
+            skinIdx:
+              typeof data.skinIdx === 'number'
+                ? data.skinIdx
+                : typeof prev?.skinIdx === 'number'
+                ? prev.skinIdx
+                : 0,
             x: clampedX,
+            y: clampedY,
             z: clampedZ,
-            vx: typeof data.vx === 'number' ? data.vx : 0,
-            vz: typeof data.vz === 'number' ? data.vz : 0,
-            rotY: typeof data.rotY === 'number' ? data.rotY : baseCenter.rotY,
-            hp: typeof data.hp === 'number' ? data.hp : 100,
-            shield: typeof data.shield === 'number' ? data.shield : 100,
+            vx: typeof data.vx === 'number' ? data.vx : prev?.vx ?? 0,
+            vz: typeof data.vz === 'number' ? data.vz : prev?.vz ?? 0,
+            rotY:
+              typeof data.rotY === 'number'
+                ? data.rotY
+                : typeof prev?.rotY === 'number'
+                ? prev.rotY
+                : baseCenter.rotY,
+            stance:
+              data.stance === 'crouch' || data.stance === 'crawl' || data.stance === 'stand'
+                ? data.stance
+                : prev?.stance || 'stand',
+            hp: typeof data.hp === 'number' ? data.hp : prev?.hp ?? 100,
+            shield: typeof data.shield === 'number' ? data.shield : prev?.shield ?? 100,
             score:
               isLocalSelf && isSameOrCurrentEpoch
                 ? Math.max(typeof data.score === 'number' ? data.score : 0, localSnap.score)
                 : typeof data.score === 'number'
                 ? data.score
-                : 0,
+                : prev?.score ?? 0,
             kos:
               isLocalSelf && isSameOrCurrentEpoch
                 ? Math.max(typeof data.kos === 'number' ? data.kos : 0, localSnap.kos)
                 : typeof data.kos === 'number'
                 ? data.kos
-                : 0,
+                : prev?.kos ?? 0,
             hitsLanded:
               isLocalSelf && isSameOrCurrentEpoch
                 ? Math.max(
@@ -4470,7 +4721,7 @@ export default function HamsterPaintball({
                   )
                 : typeof data.hitsLanded === 'number'
                 ? data.hitsLanded
-                : 0,
+                : prev?.hitsLanded ?? 0,
             bestStreak:
               isLocalSelf && isSameOrCurrentEpoch
                 ? Math.max(
@@ -4479,7 +4730,7 @@ export default function HamsterPaintball({
                   )
                 : typeof data.bestStreak === 'number'
                 ? data.bestStreak
-                : 0,
+                : prev?.bestStreak ?? 0,
             immuneUntil: resolvedImmuneUntil,
             questionsAnswered:
               isLocalSelf && isSameOrCurrentEpoch
@@ -4489,7 +4740,7 @@ export default function HamsterPaintball({
                   )
                 : typeof data.questionsAnswered === 'number'
                 ? data.questionsAnswered
-                : 0,
+                : prev?.questionsAnswered ?? 0,
             questionsCorrect:
               isLocalSelf && isSameOrCurrentEpoch
                 ? Math.max(
@@ -4504,7 +4755,7 @@ export default function HamsterPaintball({
                 ? data.questionsCorrect
                 : typeof data.questionsAnswered === 'number'
                 ? data.questionsAnswered
-                : 0,
+                : prev?.questionsCorrect ?? 0,
             questionsWrong:
               isLocalSelf && isSameOrCurrentEpoch
                 ? Math.max(
@@ -4513,46 +4764,59 @@ export default function HamsterPaintball({
                   )
                 : typeof data.questionsWrong === 'number'
                 ? data.questionsWrong
-                : 0,
-            seq: incomingSeq,
+                : prev?.questionsWrong ?? 0,
+            seq: incomingSeq > 0 ? incomingSeq : prev?.seq || 0,
             matchEpoch: incomingStartedAt,
             lastStartedAt: incomingStartedAt,
             updatedAt: incomingUpdatedAt
           };
 
-          const existingEntry = mergedPlayersMapRef.current.get(playerId);
           let shouldUpdateState = true;
-          if (existingEntry) {
-            const prev = existingEntry.state;
+          if (existingEntry && prev) {
             const prevSeq = prev.seq || 0;
             const prevStartedAt = prev.matchEpoch || prev.lastStartedAt || 0;
             const sincePrevSeenMs = localNow - existingEntry.lastSeenLocalAt;
+            const sinceFastSeenMs = localNow - (existingEntry.lastFastSeenAt || 0);
 
-            if (incomingStartedAt > 0 && prevStartedAt > 0 && incomingStartedAt < prevStartedAt) {
+            // Prevent slow Firestore fallback snapshots from overwriting active real-time API/BroadcastChannel coordinates!
+            if (source === 'firestore' && sinceFastSeenMs < 10000) {
+              shouldUpdateState = false;
+            } else if (
+              incomingStartedAt > 0 &&
+              prevStartedAt > 0 &&
+              incomingStartedAt < prevStartedAt
+            ) {
               shouldUpdateState = false;
             } else if (incomingStartedAt > prevStartedAt && incomingStartedAt > 1000) {
-              shouldUpdateState = true;
-            } else if (sincePrevSeenMs >= 1500) {
-              // Never freeze remote player updates if their sequence restarted or drifted across sources!
               shouldUpdateState = true;
             } else if (
               incomingSeq > 0 &&
               prevSeq > 0 &&
               incomingStartedAt === prevStartedAt
             ) {
-              shouldUpdateState = incomingSeq >= prevSeq;
+              shouldUpdateState = incomingSeq >= prevSeq || sincePrevSeenMs >= 2500;
             } else if (prevSeq > 0 && incomingSeq === 0) {
-              shouldUpdateState = incomingUpdatedAt > (prev.updatedAt || 0) + 1200;
+              shouldUpdateState =
+                source !== 'firestore' && incomingUpdatedAt > (prev.updatedAt || 0) + 1500;
             } else {
-              shouldUpdateState = incomingUpdatedAt >= (prev.updatedAt || 0);
+              shouldUpdateState = incomingUpdatedAt >= (prev.updatedAt || 0) || sincePrevSeenMs >= 2500;
             }
           }
 
           if (shouldUpdateState) {
             mergedPlayersMapRef.current.set(playerId, {
               state: pState,
-              lastSeenLocalAt: localNow
+              lastSeenLocalAt: localNow,
+              lastFastSeenAt:
+                source === 'api' || source === 'bc'
+                  ? localNow
+                  : existingEntry?.lastFastSeenAt || 0,
+              lastSource: source
             });
+          } else if (existingEntry && (source === 'api' || source === 'bc')) {
+            // Keep heartbeat timestamp fresh even on out-of-order packet so active enemy is never pruned
+            existingEntry.lastSeenLocalAt = localNow;
+            existingEntry.lastFastSeenAt = localNow;
           }
 
           if (playerId === clientIdRef.current) {
@@ -4696,9 +4960,9 @@ export default function HamsterPaintball({
         }
       });
 
-      // Prune stale disconnected players after 30s
+      // Prune stale disconnected players after 90s (prevents active enemies from vanishing during question pauses)
       mergedPlayersMapRef.current.forEach((val, key) => {
-        if (localNow - val.lastSeenLocalAt > 30000) {
+        if (localNow - val.lastSeenLocalAt > 90000) {
           mergedPlayersMapRef.current.delete(key);
         }
       });
@@ -4722,7 +4986,28 @@ export default function HamsterPaintball({
             (a.questionsCorrect || a.questionsAnswered || 0) ||
           a.id.localeCompare(b.id)
       );
-      setRoomPlayers(activePlayers);
+      // Always update synchronous snapshot ref for 3D scoreboard & logic without triggering React re-renders
+      stateSnapRef.current.roomPlayers = activePlayers;
+
+      // Throttle React state updates (`setRoomPlayers`) so 7Hz network ticks never lag the UI or drop Question Modal clicks!
+      const uiRosterSig = activePlayers
+        .map(
+          p =>
+            `${p.id}:${p.name}:${p.team}:${p.skinIdx ?? 0}:${p.score || 0}:${p.kos || 0}:${
+              p.questionsCorrect || 0
+            }:${(p.hp ?? 100) <= 0 ? 0 : 1}`
+        )
+        .join('|');
+      const rosterSigChanged = uiRosterSig !== lastRoomPlayersUiSigRef.current;
+      const elapsedSinceUiSync = localNow - lastRoomPlayersUiSyncAtRef.current;
+      if (
+        !stateSnapRef.current.isQuestionModalOpen &&
+        (rosterSigChanged || elapsedSinceUiSync >= 550)
+      ) {
+        lastRoomPlayersUiSigRef.current = uiRosterSig;
+        lastRoomPlayersUiSyncAtRef.current = localNow;
+        setRoomPlayers(activePlayers);
+      }
 
       // Auto-balance joining player onto least-populated active team if they haven't picked one manually yet
       if (
@@ -4773,7 +5058,7 @@ export default function HamsterPaintball({
               ...(d.data() as Record<string, any>),
               id: (d.data() as any).id || d.id.replace(/^player_/, '')
             }));
-            if (fsList.length > 0) processPlayersList(fsList);
+            if (fsList.length > 0) processPlayersList(fsList, 'firestore');
           })
           .catch(err => {
             if (isFirestoreQuotaError(err)) markFirestoreQuotaExhausted(err);
@@ -4781,7 +5066,7 @@ export default function HamsterPaintball({
       }
       fetchPaintballRoomApi(targetClean).then(apiData => {
         if (apiData?.room) processRoomData(apiData.room);
-        if (Array.isArray(apiData?.players)) processPlayersList(apiData.players);
+        if (Array.isArray(apiData?.players)) processPlayersList(apiData.players, 'api');
       });
     };
     forceResyncCallbackRef.current = runImmediateRoomPull;
@@ -4829,7 +5114,7 @@ export default function HamsterPaintball({
         if (msg.type === 'player_update') {
           const pState = msg.payload as PlayerNetworkState;
           if (pState && pState.role === 'player' && !pState.kicked) {
-            processPlayersList([pState]);
+            processPlayersList([pState], 'bc');
           }
         } else if (msg.type === 'fire_shot' && gameRef.current) {
           spawnNetworkProjectile(
@@ -4993,7 +5278,7 @@ export default function HamsterPaintball({
             matchEndedEpochRef.current,
             lastStartedAtRef.current || getServerNow()
           );
-          setIsQuestionModalOpen(false);
+          closeQuestionModal();
           setMatchStatus('results');
           setScreen('results');
         }
@@ -5009,7 +5294,7 @@ export default function HamsterPaintball({
           id: (d.data() as any).id || d.id.replace(/^player_/, '')
         }));
         if (list.length > 0) {
-          processPlayersList(list);
+          processPlayersList(list, 'firestore');
         }
       },
       err => {
@@ -5028,11 +5313,8 @@ export default function HamsterPaintball({
       const localNowForApi = Date.now();
       const apiHealthy = localNowForApi - lastApiHealthyAt < 4000;
 
-      // Fallback Firestore polling ONLY when API is unavailable or very low-frequency (~10s), never spamming quota
-      if (
-        !isFirestoreQuotaExhausted() &&
-        ((!apiHealthy && pollTickCount % 20 === 0) || (apiHealthy && pollTickCount % 75 === 0))
-      ) {
+      // Fallback Firestore polling ONLY when API is unavailable (never overwrite live API positions with stale Firestore docs!)
+      if (!isFirestoreQuotaExhausted() && !apiHealthy && pollTickCount % 20 === 0) {
         getDocs(playersCol)
           .then(snap => {
             const fsList = snap.docs.map(d => ({
@@ -5040,7 +5322,7 @@ export default function HamsterPaintball({
               id: (d.data() as any).id || d.id.replace(/^player_/, '')
             }));
             if (fsList.length > 0) {
-              processPlayersList(fsList);
+              processPlayersList(fsList, 'firestore');
             }
           })
           .catch(err => {
@@ -5083,7 +5365,7 @@ export default function HamsterPaintball({
               lastApiHealthyAt = Date.now();
               processRoomData(resData.room);
             }
-            if (Array.isArray(resData?.players)) processPlayersList(resData.players);
+            if (Array.isArray(resData?.players)) processPlayersList(resData.players, 'api');
           } else if (pollTickCount % 25 === 0) {
             const resData = await syncPaintballRoomApi(cleanCode, {
               hostHeartbeatAt: getServerNow(),
@@ -5094,14 +5376,14 @@ export default function HamsterPaintball({
               if (!resData.room.isUninitialized) lastApiHealthyAt = Date.now();
               processRoomData(resData.room);
             }
-            if (Array.isArray(resData?.players)) processPlayersList(resData.players);
+            if (Array.isArray(resData?.players)) processPlayersList(resData.players, 'api');
           } else {
             const data = await fetchPaintballRoomApi(cleanCode);
             if (data?.room) {
               if (!data.room.isUninitialized) lastApiHealthyAt = Date.now();
               processRoomData(data.room);
             }
-            if (Array.isArray(data?.players)) processPlayersList(data.players);
+            if (Array.isArray(data?.players)) processPlayersList(data.players, 'api');
           }
           return;
         }
@@ -5114,7 +5396,7 @@ export default function HamsterPaintball({
               if (!data.room.isUninitialized) lastApiHealthyAt = Date.now();
               processRoomData(data.room);
             }
-            if (Array.isArray(data?.players)) processPlayersList(data.players);
+            if (Array.isArray(data?.players)) processPlayersList(data.players, 'api');
             if ((!data?.room || data.room.isUninitialized) && !isFirestoreQuotaExhausted()) {
               getDoc(roomDocRef)
                 .then(rSnap => {
@@ -5135,7 +5417,10 @@ export default function HamsterPaintball({
           snapState.matchMode,
           snapState.teamCount
         );
-        const immuneRem = Math.max(0, snapState.immuneUntil - nowServer);
+        const effectiveImmuneUntil = snapState.isQuestionModalOpen
+          ? Math.max(snapState.immuneUntil || 0, nowServer + 8000)
+          : snapState.immuneUntil || 0;
+        const immuneRem = Math.max(0, effectiveImmuneUntil - nowServer);
         const curX = g ? Number(g.x.toFixed(2)) : basePos.x;
         const curY = g ? Number(g.y.toFixed(2)) : 0;
         const curZ = g ? Number(g.z.toFixed(2)) : basePos.z;
@@ -5158,7 +5443,7 @@ export default function HamsterPaintball({
           stance: snapState.playerStance,
           hp: snapState.hp,
           shield: snapState.shield,
-          immuneUntil: snapState.immuneUntil,
+          immuneUntil: effectiveImmuneUntil,
           immuneRemainingMs: immuneRem,
           score: snapState.score,
           kos: snapState.kos,
@@ -5193,7 +5478,7 @@ export default function HamsterPaintball({
         if (apiRes) {
           lastApiHealthyAt = Date.now();
           if (apiRes.room) processRoomData(apiRes.room);
-          if (Array.isArray(apiRes.players)) processPlayersList(apiRes.players);
+          if (Array.isArray(apiRes.players)) processPlayersList(apiRes.players, 'api');
         }
 
         // Firestore fallback ONLY when Express Server API is unreachable, throttled to >= 4s (never burn daily write quota!)
@@ -5236,7 +5521,7 @@ export default function HamsterPaintball({
     };
   }, [roomCode, role]);
 
-  // Apply incoming paintball damage to local student player (Respects 10-Second Respawn Immunity!)
+  // Apply incoming paintball damage to local student player (Respects Respawn Immunity & Question Modal Shield Immunity!)
   const applyIncomingDamage = (
     damage: number,
     attackerName: string,
@@ -5245,7 +5530,10 @@ export default function HamsterPaintball({
     attackerZ?: number
   ) => {
     const nowServer = getServerNow();
-    if (nowServer < stateSnapRef.current.immuneUntil) {
+    if (
+      stateSnapRef.current.isQuestionModalOpen ||
+      nowServer < stateSnapRef.current.immuneUntil
+    ) {
       return;
     }
     const localMs = Date.now();
@@ -5483,9 +5771,11 @@ export default function HamsterPaintball({
         ? `[${rState.team.toUpperCase()}] ${rState.name}`
         : rState.name;
 
+    const initialY = typeof rState.y === 'number' && Number.isFinite(rState.y) ? rState.y : 0;
+
     if (!entry) {
       const mesh = buildHighDefHamster(rState.skinIdx, label, false, rState.team);
-      mesh.position.set(rState.x, 0, rState.z);
+      mesh.position.set(rState.x, initialY, rState.z);
       mesh.rotation.y = rState.rotY;
       g.scene.add(mesh);
       entry = { data: rState, mesh, walkPhase: 0, lastLocalRecvAt: Date.now() };
@@ -5538,21 +5828,22 @@ export default function HamsterPaintball({
         g.scene.remove(entry.mesh);
         disposeObject3D(entry.mesh);
         const mesh = buildHighDefHamster(rState.skinIdx, label, false, rState.team);
-        mesh.position.set(rState.x, 0, rState.z);
+        mesh.position.set(rState.x, initialY, rState.z);
         mesh.rotation.y = rState.rotY;
         g.scene.add(mesh);
         entry.mesh = mesh;
       } else if (
         isNewMatchEpoch ||
-        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 9.5
+        Math.hypot(rState.x - entry.mesh.position.x, rState.z - entry.mesh.position.z) > 22.0
       ) {
-        // Snap immediately when player teleports to Red/Blue Spawn at match start or respawn!
-        entry.mesh.position.set(rState.x, 0, rState.z);
+        // Snap immediately ONLY on true match-start or base-respawn teleport (>22m), preserving elevation Y!
+        entry.mesh.position.set(rState.x, initialY, rState.z);
         entry.mesh.rotation.y = rState.rotY;
       }
 
       const transformChanged =
         entry.data.x !== rState.x ||
+        entry.data.y !== rState.y ||
         entry.data.z !== rState.z ||
         entry.data.rotY !== rState.rotY ||
         incomingSeq > existingSeq ||
@@ -5564,14 +5855,12 @@ export default function HamsterPaintball({
     }
   };
 
-  // Resolve Strict Team Paint Color: Red Team ALWAYS fires Red Paint (0xef4444), Blue Team ALWAYS fires Blue Paint (0x2563eb)
+  // Resolve Strict Team Paint Color (#F20D45 Red, #2583F5 Blue, #00B982 Green, #FFAD18 Gold)
   const resolveTeamPaintColor = (
     team: TeamId | undefined,
     fallbackColor?: number,
     skinIdx: number = 0
   ): number => {
-    if (team === 'red') return 0xef4444;
-    if (team === 'blue') return 0x2563eb;
     if (team && team !== 'solo' && TEAM_CONFIG[team]) return TEAM_CONFIG[team].colorNum;
     if (typeof fallbackColor === 'number' && fallbackColor > 0) return fallbackColor;
     const skin = HAMSTER_SKINS[skinIdx % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
@@ -5679,6 +5968,7 @@ export default function HamsterPaintball({
     projTailMatCacheRef.current.forEach(m => protectedMats.add(m));
     const protectedTexs = new Set<THREE.Texture>();
     furTextureCacheRef.current.forEach(t => protectedTexs.add(t));
+    outfitTextureCacheRef.current.forEach(t => protectedTexs.add(t));
 
     root.traverse(obj => {
       const anyObj = obj as any;
@@ -6034,6 +6324,7 @@ export default function HamsterPaintball({
   // 5. HIGH-DEFINITION 3D HAMSTER & POWER-UP CRATE BUILDERS
   // =============================================================
   const furTextureCacheRef = useRef<Map<string, THREE.CanvasTexture>>(new Map());
+  const outfitTextureCacheRef = useRef<Map<string, THREE.CanvasTexture>>(new Map());
 
   function createFurTexture(baseHex: string): THREE.CanvasTexture {
     const cached = furTextureCacheRef.current.get(baseHex);
@@ -6236,13 +6527,25 @@ export default function HamsterPaintball({
     (sprite.userData.tex as THREE.CanvasTexture).needsUpdate = true;
   }
 
-  function createOutfitTexture(skin: HamsterSkin): THREE.CanvasTexture | null {
+  function createOutfitTexture(
+    skin: HamsterSkin,
+    team: TeamId = 'solo'
+  ): THREE.CanvasTexture | null {
     if (skin.outfitStyle !== 'argyle' && skin.outfitStyle !== 'varsity') return null;
+    const cacheKey = `${skin.id}|${team}`;
+    const cached = outfitTextureCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+
+    const isTeamStyled = team === 'red' || team === 'blue' || team === 'green' || team === 'gold';
+    const teamSpec = isTeamStyled ? ERA_TEAM_PALETTE[team] : null;
+    const baseHex = teamSpec ? teamSpec.hex : skin.outfitHex;
+    const accentHex = teamSpec ? teamSpec.outfitSecondaryHex : '#2dd4bf';
+
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 128;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = skin.outfitHex;
+    ctx.fillStyle = baseHex;
     ctx.fillRect(0, 0, 256, 128);
 
     if (skin.outfitStyle === 'argyle') {
@@ -6254,7 +6557,7 @@ export default function HamsterPaintball({
         for (let c = 0; c < cols; c++) {
           const cx = c * w + w / 2;
           const cy = r * h + h / 2;
-          ctx.fillStyle = (r + c) % 2 === 0 ? '#f8fafc' : '#2dd4bf';
+          ctx.fillStyle = (r + c) % 2 === 0 ? '#f8fafc' : accentHex;
           ctx.beginPath();
           ctx.moveTo(cx, cy - h * 0.44);
           ctx.lineTo(cx + w * 0.44, cy);
@@ -6264,11 +6567,11 @@ export default function HamsterPaintball({
           ctx.fill();
         }
       }
-      ctx.fillStyle = '#5eead4';
+      ctx.fillStyle = accentHex;
       ctx.fillRect(0, 0, 256, 10);
       ctx.fillRect(0, 116, 256, 12);
     } else if (skin.outfitStyle === 'varsity') {
-      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.16)';
       ctx.lineWidth = 2;
       for (let x = 0; x < 256; x += 8) {
         ctx.beginPath();
@@ -6284,6 +6587,7 @@ export default function HamsterPaintball({
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = THREE.RepeatWrapping;
+    outfitTextureCacheRef.current.set(cacheKey, tex);
     return tex;
   }
 
@@ -6295,19 +6599,28 @@ export default function HamsterPaintball({
     showNameTag: boolean = true
   ): THREE.Group {
     const skin = HAMSTER_SKINS[Math.abs(skinIdx || 0) % HAMSTER_SKINS.length] || HAMSTER_SKINS[0];
-    const teamColorNum =
-      isHostReferee
-        ? 0xfacc15
-        : team !== 'solo'
-        ? TEAM_CONFIG[team].colorNum
-        : skin.paintColor;
+    const isTeamStyled =
+      !isHostReferee &&
+      (team === 'red' || team === 'blue' || team === 'green' || team === 'gold');
+    const teamSpec = isTeamStyled ? ERA_TEAM_PALETTE[team] : null;
+    const teamColorNum = isHostReferee
+      ? 0xfacc15
+      : teamSpec
+      ? teamSpec.colorNum
+      : skin.paintColor;
 
     const root = new THREE.Group();
     root.scale.setScalar(HAMSTER_HERO_SCALE);
 
-    const furTex = createFurTexture(skin.furHex);
+    // Subtle team-themed fur harmony accent while preserving each breed's natural fur texture & identity
+    const resolvedFurColor = teamSpec
+      ? new THREE.Color(skin.furColor).lerp(new THREE.Color(teamSpec.colorNum), 0.14)
+      : new THREE.Color(skin.furColor);
+    const resolvedFurHex = `#${resolvedFurColor.getHexString()}`;
+
+    const furTex = createFurTexture(resolvedFurHex);
     const furMat = new THREE.MeshStandardMaterial({
-      color: skin.furColor,
+      color: resolvedFurColor,
       map: furTex,
       roughness: 0.74,
       metalness: 0.02
@@ -6322,27 +6635,34 @@ export default function HamsterPaintball({
       roughness: 0.6,
       metalness: 0.02
     });
-    const outfitTex = createOutfitTexture(skin);
+
+    const resolvedOutfitColorNum = teamSpec ? teamSpec.outfitPrimaryNum : skin.outfitColor;
+    const resolvedSecondaryColorNum = teamSpec
+      ? teamSpec.outfitSecondaryNum
+      : skin.shirtColor || skin.outfitAccentColor;
+    const resolvedDarkTrimNum = teamSpec ? teamSpec.outfitDarkTrimNum : 0x166534;
+
+    const outfitTex = createOutfitTexture(skin, isHostReferee ? 'solo' : team);
     const outfitMat = new THREE.MeshStandardMaterial({
-      color: outfitTex ? 0xffffff : skin.outfitColor,
+      color: outfitTex ? 0xffffff : resolvedOutfitColorNum,
       map: outfitTex || undefined,
-      roughness: 0.78,
-      metalness: 0.04
+      roughness: 0.72,
+      metalness: 0.06
     });
     const accentMat = new THREE.MeshStandardMaterial({
-      color: skin.outfitAccentColor,
-      roughness: 0.35,
-      metalness: 0.35
+      color: teamSpec && team !== 'gold' ? teamSpec.outfitSecondaryNum : skin.outfitAccentColor,
+      roughness: 0.32,
+      metalness: 0.38
     });
     const teamMat = new THREE.MeshStandardMaterial({
       color: teamColorNum,
       emissive: teamColorNum,
-      emissiveIntensity: team !== 'solo' ? 0.24 : 0.08,
-      roughness: 0.38,
-      metalness: 0.12
+      emissiveIntensity: team !== 'solo' ? 0.26 : 0.08,
+      roughness: 0.36,
+      metalness: 0.14
     });
 
-    // 1. Cute Plush Hamster Legs & Little Paws
+    // 1. Cute Plush Hamster Legs & Team-Accented Sneakers / Paws
     const leftLeg = new THREE.Group();
     leftLeg.position.set(-0.4, 0.38, 0);
     const rightLeg = new THREE.Group();
@@ -6354,12 +6674,25 @@ export default function HamsterPaintball({
       thigh.castShadow = true;
       fg.add(thigh);
 
-      const pawPadMat = new THREE.MeshStandardMaterial({ color: 0xf5b7b1, roughness: 0.55 });
-      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 12), pawPadMat);
+      const shoeMat = new THREE.MeshStandardMaterial({
+        color: teamSpec ? teamSpec.outfitPrimaryNum : 0xf5b7b1,
+        roughness: teamSpec ? 0.45 : 0.55
+      });
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 12), shoeMat);
       foot.scale.set(0.95, 0.45, 1.45);
       foot.position.set(0, -0.26, 0.16);
       foot.castShadow = true;
       fg.add(foot);
+
+      if (teamSpec) {
+        const sole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.2, 0.21, 0.05, 14),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 })
+        );
+        sole.scale.set(0.95, 1, 1.42);
+        sole.position.set(0, -0.34, 0.16);
+        fg.add(sole);
+      }
       return fg;
     };
     leftLeg.add(buildFoot());
@@ -6385,11 +6718,14 @@ export default function HamsterPaintball({
     tail.castShadow = true;
     bodyGroup.add(tail);
 
-    // 3. Signature Cozy Outfit Matching Each Profile Portrait
+    // 3. Signature Cozy Outfit Dynamically Recolored to Selected Team
     if (skin.outfitStyle === 'overalls') {
       const teeShirt = new THREE.Mesh(
         new THREE.CylinderGeometry(0.91, 0.95, 0.54, 28),
-        new THREE.MeshStandardMaterial({ color: skin.shirtColor || 0xfacc15, roughness: 0.75 })
+        new THREE.MeshStandardMaterial({
+          color: teamSpec ? resolvedSecondaryColorNum : skin.shirtColor || 0xfacc15,
+          roughness: 0.72
+        })
       );
       teeShirt.position.y = 1.12;
       teeShirt.castShadow = true;
@@ -6409,7 +6745,10 @@ export default function HamsterPaintball({
 
       const bibPocket = new THREE.Mesh(
         new THREE.BoxGeometry(0.46, 0.26, 0.06),
-        new THREE.MeshStandardMaterial({ color: 0x355880, roughness: 0.8 })
+        new THREE.MeshStandardMaterial({
+          color: teamSpec ? resolvedDarkTrimNum : 0x355880,
+          roughness: 0.78
+        })
       );
       bibPocket.position.set(0, 1.07, 0.96);
       bodyGroup.add(bibPocket);
@@ -6436,7 +6775,7 @@ export default function HamsterPaintball({
       if (skin.outfitStyle === 'cardigan') {
         const placket = new THREE.Mesh(
           new THREE.BoxGeometry(0.12, 0.62, 0.08),
-          new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.75 })
+          new THREE.MeshStandardMaterial({ color: resolvedDarkTrimNum, roughness: 0.72 })
         );
         placket.position.set(0, 0.94, 0.94);
         bodyGroup.add(placket);
@@ -6446,7 +6785,7 @@ export default function HamsterPaintball({
           btn.position.set(0, by, 0.98);
           bodyGroup.add(btn);
         });
-        const crest = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.2, 0.05), accentMat);
+        const crest = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.2, 0.05), teamSpec ? teamMat : accentMat);
         crest.position.set(0.38, 1.08, 0.88);
         bodyGroup.add(crest);
       } else if (skin.outfitStyle === 'varsity') {
@@ -6468,7 +6807,11 @@ export default function HamsterPaintball({
         crossBar.position.set(0, 0.98, 0.95);
         bodyGroup.add(crossBar);
       } else if (skin.outfitStyle === 'blazer') {
-        const lapelMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.35, metalness: 0.45 });
+        const lapelMat = new THREE.MeshStandardMaterial({
+          color: teamSpec ? resolvedDarkTrimNum : 0xd97706,
+          roughness: 0.35,
+          metalness: 0.45
+        });
         [-0.2, 0.2].forEach(lx => {
           const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.38, 0.06), lapelMat);
           lapel.position.set(lx, 1.18, 0.88);
@@ -6637,13 +6980,13 @@ export default function HamsterPaintball({
     goggleGroup.add(goggleStrap);
 
     const goggleFrameMat = new THREE.MeshStandardMaterial({
-      color: isHostReferee ? 0xfacc15 : skin.goggleColor,
-      roughness: 0.32,
-      metalness: 0.25
+      color: isHostReferee ? 0xfacc15 : teamSpec ? teamSpec.colorNum : skin.goggleColor,
+      roughness: 0.3,
+      metalness: 0.28
     });
     const goggleLensMat = new THREE.MeshPhysicalMaterial({
-      color: 0x7dd3fc,
-      emissive: 0x0ea5e9,
+      color: teamSpec ? teamSpec.outfitSecondaryNum : 0x7dd3fc,
+      emissive: teamSpec ? teamSpec.colorNum : 0x0ea5e9,
       emissiveIntensity: 0.22,
       roughness: 0.06,
       metalness: 0.2,
@@ -6696,12 +7039,18 @@ export default function HamsterPaintball({
 
     bodyGroup.add(headGroup);
 
-    // 5. Articulated 3D Arms with Matching Sleeves & Paws
+    // 5. Articulated 3D Arms with Matching Team-Colored Sleeves & Paws
     const armMat =
-      skin.outfitStyle === 'cardigan' || skin.outfitStyle === 'blazer' || skin.outfitStyle === 'hoodie'
+      skin.outfitStyle === 'cardigan' ||
+      skin.outfitStyle === 'blazer' ||
+      skin.outfitStyle === 'hoodie' ||
+      (teamSpec && skin.outfitStyle === 'varsity')
         ? outfitMat
         : skin.outfitStyle === 'overalls'
-        ? new THREE.MeshStandardMaterial({ color: skin.shirtColor || 0xfacc15, roughness: 0.75 })
+        ? new THREE.MeshStandardMaterial({
+            color: teamSpec ? resolvedSecondaryColorNum : skin.shirtColor || 0xfacc15,
+            roughness: 0.72
+          })
         : furMat;
 
     const leftArmGroup = new THREE.Group();
@@ -7924,10 +8273,10 @@ export default function HamsterPaintball({
     };
 
     const spawnBases: Partial<Record<TeamId, THREE.Group>> = {
-      red: createTeamSpawnBase(-TEAM_SPAWN_X, 0, Math.PI / 2, 0xf43f5e),
-      blue: createTeamSpawnBase(TEAM_SPAWN_X, 0, -Math.PI / 2, 0x2563eb),
-      green: createTeamSpawnBase(0, TEAM_SPAWN_Z, Math.PI, 0x10b981),
-      gold: createTeamSpawnBase(0, -TEAM_SPAWN_Z, 0, 0xf59e0b)
+      red: createTeamSpawnBase(-TEAM_SPAWN_X, 0, Math.PI / 2, 0xf20d45),
+      blue: createTeamSpawnBase(TEAM_SPAWN_X, 0, -Math.PI / 2, 0x2583f5),
+      green: createTeamSpawnBase(0, TEAM_SPAWN_Z, Math.PI, 0x00b982),
+      gold: createTeamSpawnBase(0, -TEAM_SPAWN_Z, 0, 0xffad18)
     };
 
     const syncSpawnBaseVisibility = (mode: 'solo' | 'teams', count: number) => {
@@ -10739,7 +11088,7 @@ export default function HamsterPaintball({
 
       if (k === 'escape') {
         if (snap.isQuestionModalOpen) {
-          setIsQuestionModalOpen(false);
+          closeQuestionModal();
           return;
         }
         g.virtualMouseLock = false;
@@ -10762,12 +11111,12 @@ export default function HamsterPaintball({
       ) {
         e.preventDefault();
         if (snap.isQuestionModalOpen) {
-          setIsQuestionModalOpen(false);
+          closeQuestionModal();
           return;
         }
         if (!snap.isAnyModalOpen) {
           resetAllActiveInputs();
-          setIsQuestionModalOpen(true);
+          openQuestionModal();
           return;
         }
       }
@@ -10857,8 +11206,11 @@ export default function HamsterPaintball({
 
     // Track recent touch activity so mobile browsers' synthetic mousemove events never cause sudden camera rotation
     let lastTouchEventTime = 0;
+    let lastReticleUiSyncAt = 0;
+    let lastReticleUiX = 50;
+    let lastReticleUiY = 46;
 
-    // PUBG 360° Free Mouse-Look Aiming (Pointer Lock + Seamless Virtual Lock Fallback) + Separate Free-Cursor Mode
+    // PUBG 360° Free Mouse-Look Aiming with Always-Free & Clickable Cursor (Never traps cursor via requestPointerLock!)
     const handleMouseMove = (e: MouseEvent) => {
       const g = gameRef.current;
       if (!g) return;
@@ -10869,19 +11221,8 @@ export default function HamsterPaintball({
       }
 
       const snap = stateSnapRef.current;
-      const isNativePointerLocked = document.pointerLockElement === renderer.domElement;
-      const rawDx =
-        isNativePointerLocked && typeof e.movementX === 'number'
-          ? e.movementX
-          : g.mouseInitialized
-          ? e.clientX - g.lastMouseX
-          : 0;
-      const rawDy =
-        isNativePointerLocked && typeof e.movementY === 'number'
-          ? e.movementY
-          : g.mouseInitialized
-          ? e.clientY - g.lastMouseY
-          : 0;
+      const rawDx = g.mouseInitialized ? e.clientX - g.lastMouseX : 0;
+      const rawDy = g.mouseInitialized ? e.clientY - g.lastMouseY : 0;
 
       g.lastMouseX = e.clientX;
       g.lastMouseY = e.clientY;
@@ -10897,6 +11238,14 @@ export default function HamsterPaintball({
         (snap.role === 'host' && snap.screen === 'lobby');
       if (!isControllingCharacter) return;
 
+      // Keep cursor completely calm & clickable when hovering over any HUD button (Question Box, Cans, Settings, etc.)
+      const hoverTarget = e.target as HTMLElement | null;
+      const isHoveringHudButton = Boolean(
+        hoverTarget &&
+          hoverTarget.tagName !== 'CANVAS' &&
+          hoverTarget.closest('button, input, select, textarea, a, .host-lobby-interactive-panel')
+      );
+
       // Update Separate Aim Reticle coordinates smoothly when in 'separate' mode!
       if (snap.role === 'player' && snap.aimControlMode === 'separate' && !g.isCameraDragging) {
         const rect = renderer.domElement.getBoundingClientRect();
@@ -10908,12 +11257,25 @@ export default function HamsterPaintball({
           const nextX = aimReticlePctRef.current.x + (rawXPct - aimReticlePctRef.current.x) * blend;
           const nextY = aimReticlePctRef.current.y + (rawYPct - aimReticlePctRef.current.y) * blend;
           aimReticlePctRef.current = { x: nextX, y: nextY };
-          setAimReticlePct({ x: nextX, y: nextY });
+          const nowPerf = performance.now();
+          if (
+            nowPerf - lastReticleUiSyncAt >= 32 &&
+            Math.hypot(nextX - lastReticleUiX, nextY - lastReticleUiY) >= 0.5
+          ) {
+            lastReticleUiSyncAt = nowPerf;
+            lastReticleUiX = nextX;
+            lastReticleUiY = nextY;
+            setAimReticlePct({ x: nextX, y: nextY });
+          }
         }
       }
 
+      if (isHoveringHudButton && !g.isCameraDragging && !g.mouseDown) {
+        return;
+      }
+
       // Guard against sudden large cursor jumps when mouse re-enters window or closes a modal
-      if (!isNativePointerLocked && (Math.abs(rawDx) > 55 || Math.abs(rawDy) > 55)) {
+      if (Math.abs(rawDx) > 55 || Math.abs(rawDy) > 55) {
         return;
       }
 
@@ -10921,12 +11283,11 @@ export default function HamsterPaintball({
       const clampedDy = THREE.MathUtils.clamp(rawDy, -65, 65);
 
       const isPubgMouseAimActive =
-        isNativePointerLocked ||
-        (snap.role === 'player' &&
-          snap.screen === 'game' &&
-          snap.aimControlMode === 'shoulder' &&
-          !snap.isTouchHudVisible &&
-          g.virtualMouseLock);
+        snap.role === 'player' &&
+        snap.screen === 'game' &&
+        snap.aimControlMode === 'shoulder' &&
+        !snap.isTouchHudVisible &&
+        g.virtualMouseLock;
 
       const isActivelyRotatingCamera =
         isPubgMouseAimActive ||
@@ -10943,8 +11304,8 @@ export default function HamsterPaintball({
         const aimSens = snap.aimSensitivity || 1.0;
         const adsMult = snap.isAdsScoped ? 0.62 : 1.0;
         const combinedSens = camSens * (0.65 + aimSens * 0.35) * adsMult;
-        const yawSpeed = isNativePointerLocked ? 0.0029 : 0.0045;
-        const pitchSpeed = isNativePointerLocked ? 0.0023 : 0.0034;
+        const yawSpeed = 0.0042;
+        const pitchSpeed = 0.0032;
         g.camYaw -= clampedDx * yawSpeed * combinedSens;
         // Full 3D PUBG vertical pitch: look high up (-0.44 rad) or down at prone targets (+0.52 rad)!
         g.camPitch = THREE.MathUtils.clamp(
@@ -10978,13 +11339,6 @@ export default function HamsterPaintball({
           toggleAdsScope();
           if (!snap.isTouchHudVisible) {
             g.virtualMouseLock = true;
-            setIsAimLocked(true);
-            if (!document.pointerLockElement && renderer.domElement.requestPointerLock) {
-              try {
-                const lockRes = renderer.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
-                if (lockRes && typeof lockRes.catch === 'function') lockRes.catch(() => {});
-              } catch {}
-            }
           }
           return;
         }
@@ -11000,7 +11354,7 @@ export default function HamsterPaintball({
       if (e.button !== 0) return;
       g.mouseDown = true;
 
-      // Engage PUBG Mouse Aim Lock on Laptop when clicking the 3D Arena Canvas (unless out of ammo so cursor stays free for Question Box!)
+      // Enable smooth hover/drag aim while keeping the mouse cursor 100% free and clickable for the Question Box!
       if (
         snap.role === 'player' &&
         snap.screen === 'game' &&
@@ -11009,13 +11363,6 @@ export default function HamsterPaintball({
         snap.ammo > 0
       ) {
         g.virtualMouseLock = true;
-        setIsAimLocked(true);
-        if (!document.pointerLockElement && renderer.domElement.requestPointerLock) {
-          try {
-            const lockRes = renderer.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
-            if (lockRes && typeof lockRes.catch === 'function') lockRes.catch(() => {});
-          } catch {}
-        }
       }
 
       if (snap.role === 'player' && snap.screen === 'game' && snap.aimControlMode === 'separate') {
@@ -11053,9 +11400,11 @@ export default function HamsterPaintball({
     // Mobile / Tablet Touch-Drag on Arena (PUBG Free-Look Swipe + Separate Aim Tap Support)
     const handleWindowTouchStart = (e: TouchEvent) => {
       lastTouchEventTime = performance.now();
-      setDetectedTouchDevice(true);
       const g = gameRef.current;
       const snap = stateSnapRef.current;
+      if (!snap.isTouchHudVisible) {
+        setDetectedTouchDevice(true);
+      }
       if (g) {
         g.usingMouseAim = false;
         g.virtualMouseLock = false;
@@ -11858,7 +12207,10 @@ export default function HamsterPaintball({
         const nextSpreadRounded = Math.round(
           THREE.MathUtils.damp(crosshairSpreadRef.current, targetSpread, 15, dt)
         );
-        if (Math.abs(nextSpreadRounded - crosshairSpreadRef.current) >= 1) {
+        if (
+          !snapState.isAnyModalOpen &&
+          Math.abs(nextSpreadRounded - crosshairSpreadRef.current) >= 2
+        ) {
           crosshairSpreadRef.current = nextSpreadRounded;
           setCrosshairSpreadPx(nextSpreadRounded);
         }
@@ -11948,7 +12300,7 @@ export default function HamsterPaintball({
         });
 
         const hasTargetLock = lockedEnemyT < Infinity;
-        if (hasTargetLock !== isEnemyTargetedRef.current) {
+        if (!snapState.isAnyModalOpen && hasTargetLock !== isEnemyTargetedRef.current) {
           isEnemyTargetedRef.current = hasTargetLock;
           setIsEnemyTargeted(hasTargetLock);
           if (hasTargetLock && snapState.role === 'player' && snapState.screen === 'game') {
@@ -12017,9 +12369,10 @@ export default function HamsterPaintball({
           computedAimPitch
         );
 
-        // Update 3D 10-Second Respawn Immunity Forcefield Shield on Local Hamster
+        // Update 3D Respawn & Question Immunity Forcefield Shield on Local Hamster
         if (ud && ud.immunityShieldGroup) {
-          const isLocalImmune = serverNowMs < snapState.immuneUntil;
+          const isLocalImmune =
+            snapState.isQuestionModalOpen || serverNowMs < snapState.immuneUntil;
           ud.immunityShieldGroup.visible = isLocalImmune;
           if (isLocalImmune) {
             ud.immunityShieldGroup.rotation.y += dt * 3.4;
@@ -12155,7 +12508,7 @@ export default function HamsterPaintball({
                   Math.ceil((entry.data.immuneUntil - serverNowMs) / 1000)
                 );
                 showPickupBanner(
-                  `🛡️ ${entry.data.name.toUpperCase()} HAS RESPAWN IMMUNITY (${remSec}s LEFT)!`,
+                  `🛡️ ${entry.data.name.toUpperCase()} HAS SHIELD IMMUNITY (${remSec}s LEFT)!`,
                   1500
                 );
                 return;
@@ -12232,7 +12585,7 @@ export default function HamsterPaintball({
           });
         }
 
-        // Check Swept Hits on Local Student Player (Stance- & Jump-Aware 3D Hitbox!)
+        // Check Swept Hits on Local Student Player (Stance- & Jump-Aware 3D Hitbox + Question Shield Immunity!)
         if (
           !hit &&
           p.ownerId !== clientIdRef.current &&
@@ -12265,7 +12618,7 @@ export default function HamsterPaintball({
             Math.hypot(localHitX - g.x, localHitZ - g.z) < 1.9
           ) {
             hit = true;
-            if (serverNowMs < snapState.immuneUntil) {
+            if (snapState.isQuestionModalOpen || serverNowMs < snapState.immuneUntil) {
               sfx.playDamageHit();
             } else {
               spawnPaintSplatEffect(
@@ -12382,14 +12735,14 @@ export default function HamsterPaintball({
         }
       }
 
-      // Guarantee All Remote Players in `mergedPlayersMapRef` and `roomPlayers` are Always Visible & Up-to-Date in the 3D Arena!
+      // Ensure any remote player in `mergedPlayersMapRef` not yet instantiated in 3D scene is created immediately
       mergedPlayersMapRef.current.forEach(({ state: rp }) => {
-        if (rp.id !== clientIdRef.current && rp.role === 'player' && !rp.kicked) {
-          upsertRemotePlayer(rp);
-        }
-      });
-      snapState.roomPlayers.forEach(rp => {
-        if (rp.id !== clientIdRef.current && rp.role === 'player' && !rp.kicked) {
+        if (
+          rp.id !== clientIdRef.current &&
+          rp.role === 'player' &&
+          !rp.kicked &&
+          !g.remotePlayers.has(rp.id)
+        ) {
           upsertRemotePlayer(rp);
         }
       });
@@ -12477,8 +12830,13 @@ export default function HamsterPaintball({
         );
       });
 
-      // Throttled 120ms Tactical Mini-Radar Snapshot for Student Players (Active Cans, Teammates & Recent Shot Pings)
-      if (snapState.role === 'player' && snapState.screen === 'game' && now - lastRadarSyncAt >= 120) {
+      // Throttled 250ms Tactical Mini-Radar Snapshot for Student Players (Skipped while any modal is open to prevent DOM re-renders!)
+      if (
+        !snapState.isAnyModalOpen &&
+        snapState.role === 'player' &&
+        snapState.screen === 'game' &&
+        now - lastRadarSyncAt >= 250
+      ) {
         lastRadarSyncAt = now;
         g.radarPings = g.radarPings.filter(ping => ping.expiresAt > now);
         const myNormTeam = normalizeTeamForMatch(
@@ -12517,7 +12875,9 @@ export default function HamsterPaintball({
         });
       }
 
-      renderer.render(scene, camera);
+      if (!snapState.isQuestionModalOpen) {
+        renderer.render(scene, camera);
+      }
       afterDraw(animate);
     };
 
@@ -12560,6 +12920,8 @@ export default function HamsterPaintball({
       envTarget.dispose();
       furTextureCacheRef.current.forEach(t => t.dispose());
       furTextureCacheRef.current.clear();
+      outfitTextureCacheRef.current.forEach(t => t.dispose());
+      outfitTextureCacheRef.current.clear();
       basicColorMatCacheRef.current.forEach(m => m.dispose());
       basicColorMatCacheRef.current.clear();
       splatPhysMatCacheRef.current.forEach(m => m.dispose());
@@ -12586,10 +12948,8 @@ export default function HamsterPaintball({
     };
   }, []);
 
-  // Keep Local Student Hamster's 3D Name Tag, Team Headband & Aim Laser synced when team, skin, role, or screen changes
+  // Keep Local Student Hamster's 3D Outfit, Team Accents, Name Tag & Spawn Bases synced immediately when team, character, role, or screen changes
   useEffect(() => {
-    // Do not rebuild 60-mesh 3D hamster on every keystroke while typing name in the Join modal!
-    if (screen === 'join') return;
     const g = gameRef.current;
     if (!g) return;
     const isHostRole = role === 'host';
@@ -13396,14 +13756,30 @@ export default function HamsterPaintball({
     }
   };
 
+  const answeringDeckIdxRef = useRef<number | null>(null);
+
   // Trivia Answer Handler (Works during Live Match and Warm-Up practice)
   const handleTriviaAnswer = (optIdx: number) => {
-    if (matchStatus === 'results' || triviaFeedback !== null) return;
+    if (
+      matchStatus === 'results' ||
+      triviaFeedback !== null ||
+      selectedOptionIdx !== null ||
+      answeringDeckIdxRef.current === triviaDeckIndex
+    ) {
+      return;
+    }
     const qList = effectiveQuestions;
     const currentQ = qList[triviaDeckIndex % qList.length];
     if (!currentQ) return;
 
+    answeringDeckIdxRef.current = triviaDeckIndex;
     setSelectedOptionIdx(optIdx);
+
+    // Refresh temporary Question Shield Immunity while student is answering questions
+    const nextQuestionShield = Math.max(stateSnapRef.current.immuneUntil || 0, getServerNow() + 16500);
+    stateSnapRef.current.immuneUntil = nextQuestionShield;
+    setImmuneUntil(nextQuestionShield);
+
     const correctIdx =
       typeof currentQ.answerIndex === 'number' && !Number.isNaN(currentQ.answerIndex)
         ? currentQ.answerIndex
@@ -13465,6 +13841,7 @@ export default function HamsterPaintball({
       }
 
       setTimeout(() => {
+        answeringDeckIdxRef.current = null;
         setTriviaFeedback(null);
         setSelectedOptionIdx(null);
         setTriviaDeckIndex(i => i + 1);
@@ -13481,6 +13858,7 @@ export default function HamsterPaintball({
         `❌ Incorrect! Streak reset. Correct answer: ${OPTION_LETTERS[correctIdx]}. ${rightLabel}`
       );
       setTimeout(() => {
+        answeringDeckIdxRef.current = null;
         setTriviaFeedback(null);
         setSelectedOptionIdx(null);
         setTriviaDeckIndex(i => i + 1);
@@ -13728,6 +14106,70 @@ export default function HamsterPaintball({
   const activeTeamIds = getActiveTeamIds(matchMode, teamCount);
   const resolvedMyTeam = normalizeTeamForMatch(myTeam, matchMode, teamCount);
   const myTeamTheme = TEAM_CONFIG[resolvedMyTeam] || TEAM_CONFIG.solo;
+  const activePreviewTeam: TeamId = matchMode === 'teams' ? resolvedMyTeam : 'solo';
+  const activeTeamSpec = ERA_TEAM_PALETTE[activePreviewTeam] || ERA_TEAM_PALETTE.red;
+  const maxTeamCapacity = 16;
+  const cleanNicknameValue = playerName === 'Teacher Jan' ? '' : playerName;
+
+  const syncJoinedLoadoutLive = (nextSkinIdx: number, nextTeam: TeamId, nextNameOverride?: string) => {
+    stateSnapRef.current.selectedSkinIdx = nextSkinIdx;
+    stateSnapRef.current.myTeam = nextTeam;
+    const cleanCode = roomCode.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
+    if (!hasJoinedRoomRef.current || role !== 'player' || cleanCode.length !== 6) return;
+
+    const effectiveName =
+      (nextNameOverride ?? playerName).trim() && (nextNameOverride ?? playerName).trim() !== 'Teacher Jan'
+        ? (nextNameOverride ?? playerName).trim()
+        : stateSnapRef.current.playerName || 'Hamster';
+
+    let nextX = gameRef.current?.x ?? 0;
+    let nextZ = gameRef.current?.z ?? 0;
+    let nextRotY = gameRef.current?.rotY ?? 0;
+
+    if (matchStatus === 'lobby') {
+      const sp = getTeamSpawnPosition(nextTeam, matchMode, undefined, teamCount);
+      nextX = sp.x;
+      nextZ = sp.z;
+      nextRotY = sp.rotY;
+      if (gameRef.current) {
+        gameRef.current.x = sp.x;
+        gameRef.current.z = sp.z;
+        gameRef.current.rotY = sp.rotY;
+        gameRef.current.camYaw = sp.rotY;
+        gameRef.current.localHamster.position.set(sp.x, 0, sp.z);
+        gameRef.current.localHamster.rotation.y = sp.rotY;
+      }
+    }
+
+    const livePatch: Partial<PlayerNetworkState> & { id: string } = {
+      id: clientIdRef.current,
+      name: effectiveName,
+      role: 'player',
+      team: nextTeam,
+      skinIdx: nextSkinIdx,
+      x: nextX,
+      z: nextZ,
+      rotY: nextRotY,
+      seq: nextPlayerSeq(),
+      updatedAt: getServerNow()
+    };
+
+    syncPaintballPlayerApi(cleanCode, livePatch).then(apiRes => {
+      if (!apiRes) {
+        safeFirestoreWrite(() =>
+          setDoc(
+            getPlayerDocRef(cleanCode, clientIdRef.current),
+            stripUndefinedFields({
+              ...livePatch,
+              lastSeen: serverTimestamp()
+            }),
+            { merge: true }
+          )
+        );
+      }
+    });
+  };
+
   const durationMinutesInput = Math.floor(configuredDurationSec / 60);
   const durationSecondsInput = configuredDurationSec % 60;
   const updateDurationFromInputs = (nextMins: number, nextSecs: number) => {
@@ -14183,50 +14625,140 @@ export default function HamsterPaintball({
           SCREEN 2: PLAYER JOIN & CHARACTER SELECTOR
          ------------------------------------------------------------- */}
       {screen === 'join' && (
-        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/50 flex items-center justify-center p-3 sm:p-5 pt-14 pb-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[560px] max-h-[90dvh] overflow-y-auto p-5 sm:p-6 flex flex-col gap-4 border border-slate-200 relative text-slate-900 my-auto">
-            {/* Selected Hamster Spotlight */}
-            <div className="flex items-center justify-between gap-4 pb-3.5 border-b border-slate-100">
-              <div className="flex items-center gap-3.5 min-w-0">
-                <HamsterCharacterAvatar
-                  skin={selectedHeroSkin}
-                  size={74}
-                  team={matchMode === 'teams' ? resolvedMyTeam : 'solo'}
-                />
-                <div className="min-w-0">
-                  <h1 className="font-['Poppins',sans-serif] font-bold text-lg sm:text-xl tracking-tight text-slate-900 truncate">
+        <div className="absolute inset-0 z-40 w-full h-full bg-slate-950/55 flex items-center justify-center p-3 sm:p-5 pt-13 pb-4 overflow-y-auto">
+          <div
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-[650px] max-h-[92dvh] overflow-y-auto p-5 sm:p-6 flex flex-col gap-4 border border-slate-200/90 relative text-slate-900 my-auto transition-shadow duration-200"
+            style={{
+              boxShadow: `0 24px 60px -16px rgba(15, 23, 42, 0.34), 0 0 0 1px rgba(226, 232, 240, 0.92)`
+            }}
+          >
+            {/* Top Team Accent Hairline */}
+            <div
+              className="pointer-events-none absolute inset-x-8 top-0 h-[3px] rounded-b-full transition-colors duration-200"
+              style={{ backgroundColor: activeTeamSpec.hex }}
+            />
+
+            {/* Optional Close Button When Reopening Loadout From Warm-Up Lobby */}
+            {hasJoinedRoomRef.current && (
+              <button
+                type="button"
+                onClick={() => setScreen('game')}
+                className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition cursor-pointer"
+                title="Return to Lobby"
+                aria-label="Return to Lobby"
+              >
+                <X size={16} />
+              </button>
+            )}
+
+            {/* 1. Top Character Preview Section */}
+            <div
+              className="rounded-2xl p-3.5 sm:p-4 border transition-colors duration-200 flex items-center justify-between gap-4"
+              style={{
+                background: `linear-gradient(135deg, ${activeTeamSpec.softGlowRgba} 0%, rgba(255, 255, 255, 0.96) 58%, ${activeTeamSpec.softGlowRgba} 100%)`,
+                borderColor: activeTeamSpec.borderRgba
+              }}
+            >
+              <div className="flex items-center gap-4 min-w-0">
+                {/* Large Team-Illuminated Character Illustration */}
+                <div
+                  className="relative w-[96px] h-[96px] sm:w-[108px] sm:h-[108px] rounded-2xl bg-white/95 border flex items-center justify-center shrink-0 overflow-hidden transition-transform duration-200"
+                  style={{
+                    borderColor: activeTeamSpec.borderRgba,
+                    boxShadow: `0 10px 26px -10px ${activeTeamSpec.glowRgba}`
+                  }}
+                >
+                  <div
+                    className="pointer-events-none absolute inset-0 transition-opacity duration-200"
+                    style={{
+                      background: `radial-gradient(circle at 50% 54%, ${activeTeamSpec.glowRgba} 0%, transparent 72%)`,
+                      opacity: 0.42
+                    }}
+                  />
+                  <HamsterCharacterAvatar
+                    skin={selectedHeroSkin}
+                    size={98}
+                    team={activePreviewTeam}
+                    showGlow={true}
+                    className="transition-transform duration-200 scale-[1.03]"
+                  />
+                </div>
+
+                {/* Character Name & Clean Unboxed Room / Team Metadata */}
+                <div className="min-w-0 flex flex-col gap-1">
+                  <h1 className="font-['Poppins',sans-serif] font-bold text-xl sm:text-2xl tracking-tight text-slate-900 truncate">
                     {selectedHeroSkin.name}
                   </h1>
-                  <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 mt-0.5 tabular-nums">
-                    {roomCode && <span>Room {roomCode}</span>}
-                    <span>·</span>
-                    <span>{roomPlayers.length} Online</span>
+
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px] font-semibold tabular-nums">
+                    <span
+                      className="inline-flex items-center gap-1 font-bold whitespace-nowrap transition-colors duration-200"
+                      style={{
+                        color:
+                          activePreviewTeam === 'gold'
+                            ? '#B45309'
+                            : activeTeamSpec.hex
+                      }}
+                    >
+                      {activePreviewTeam === 'red' && <Zap size={13} className="shrink-0" />}
+                      {activePreviewTeam === 'blue' && <Shield size={13} className="shrink-0" />}
+                      {activePreviewTeam === 'green' && <Crosshair size={13} className="shrink-0" />}
+                      {activePreviewTeam === 'gold' && <Trophy size={13} className="shrink-0" />}
+                      {activePreviewTeam === 'solo' && <Sparkles size={13} className="shrink-0" />}
+                      <span>{activeTeamSpec.name}</span>
+                    </span>
+
+                    <span className="text-slate-300" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="text-slate-600 whitespace-nowrap">
+                      {roomCode ? `Room ${roomCode}` : 'Enter Room Code'}
+                    </span>
+
+                    <span className="text-slate-300" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="text-slate-600 whitespace-nowrap">
+                      {roomPlayers.length} Online
+                    </span>
+
                     {joinRoomStatus === 'checking' && (
-                      <span className="text-slate-500 font-semibold">· Checking host...</span>
+                      <>
+                        <span className="text-slate-300" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="text-slate-500 whitespace-nowrap">Checking host...</span>
+                      </>
                     )}
                     {joinRoomStatus === 'valid' && (
-                      <span className="text-emerald-600 font-semibold">
-                        · {matchStatus === 'playing' ? 'Live' : 'Host Active'}
-                      </span>
+                      <>
+                        <span className="text-slate-300" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="text-emerald-600 font-bold whitespace-nowrap">
+                          {matchStatus === 'playing' ? 'Live Match' : 'Host Active'}
+                        </span>
+                      </>
                     )}
                     {joinRoomStatus === 'invalid' && (
-                      <span className="text-rose-600 font-semibold">· Room Not Found</span>
+                      <>
+                        <span className="text-slate-300" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="text-rose-600 font-bold whitespace-nowrap">
+                          Room Not Found
+                        </span>
+                      </>
                     )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 6-Hamster Portrait Grid */}
-            <div className="grid grid-cols-3 gap-2.5">
+            {/* 2. Six Redesigned Character Selection Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
               {HAMSTER_SKINS.map((skin, idx) => {
                 const isSelected = idx === selectedSkinIdx;
-                const activeClasses =
-                  matchMode === 'teams'
-                    ? `${myTeamTheme.borderClass} bg-white ring-2 ring-slate-900/10`
-                    : 'border-slate-900 bg-white ring-2 ring-slate-900/15';
-                const checkBgClass =
-                  matchMode === 'teams' ? myTeamTheme.solidBgClass : 'bg-slate-900';
                 return (
                   <button
                     key={skin.id}
@@ -14234,26 +14766,61 @@ export default function HamsterPaintball({
                     onClick={() => {
                       setSelectedSkinIdx(idx);
                       sfx.playCorrect();
+                      syncJoinedLoadoutLive(idx, resolvedMyTeam);
                     }}
-                    className={`py-2.5 px-2 rounded-xl border flex flex-col items-center justify-center transition cursor-pointer relative ${
+                    style={
                       isSelected
-                        ? activeClasses
-                        : 'border-slate-200 bg-white hover:bg-slate-50/60 hover:border-slate-300'
+                        ? {
+                            background: activeTeamSpec.cardTintBg,
+                            borderColor: activeTeamSpec.hex,
+                            boxShadow: `0 0 0 1.5px ${activeTeamSpec.hex}, 0 12px 24px -8px ${activeTeamSpec.glowRgba}`
+                          }
+                        : undefined
+                    }
+                    className={`group relative py-3 px-2.5 rounded-2xl border flex flex-col items-center justify-center cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                      isSelected
+                        ? 'scale-[1.01]'
+                        : 'border-slate-200/90 bg-white shadow-2xs hover:-translate-y-0.5 hover:scale-[1.015] hover:border-slate-300 hover:shadow-md'
                     }`}
                   >
-                    {isSelected && (
-                      <span
-                        className={`absolute top-1.5 right-1.5 w-4 h-4 rounded-full ${checkBgClass} text-white flex items-center justify-center text-[9px] font-bold`}
-                      >
-                        ✓
-                      </span>
-                    )}
-                    <HamsterCharacterAvatar
-                      skin={skin}
-                      size={72}
-                      team={matchMode === 'teams' ? resolvedMyTeam : 'solo'}
-                    />
-                    <span className="mt-1.5 font-semibold text-xs text-slate-900 leading-tight text-center truncate w-full">
+                    {/* Animated Selected Checkmark Badge */}
+                    <span
+                      style={
+                        isSelected
+                          ? {
+                              backgroundColor: activeTeamSpec.hex,
+                              color: activeTeamSpec.buttonTextHex,
+                              boxShadow: `0 4px 10px -2px ${activeTeamSpec.glowRgba}`
+                            }
+                          : undefined
+                      }
+                      className={`absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center transition-all duration-150 ${
+                        isSelected
+                          ? 'opacity-100 scale-100'
+                          : 'opacity-0 scale-75 pointer-events-none bg-slate-200 text-slate-600'
+                      }`}
+                      aria-hidden={!isSelected}
+                    >
+                      <Check size={12} strokeWidth={3} />
+                    </span>
+
+                    {/* Character Illustration With Team Glow & Hover Bounce */}
+                    <div
+                      className={`relative flex items-center justify-center transition-transform duration-150 ${
+                        isSelected
+                          ? 'scale-[1.07] -translate-y-0.5'
+                          : 'group-hover:-translate-y-1 group-hover:scale-[1.05]'
+                      }`}
+                    >
+                      <HamsterCharacterAvatar
+                        skin={skin}
+                        size={84}
+                        team={activePreviewTeam}
+                        showGlow={isSelected}
+                      />
+                    </div>
+
+                    <span className="mt-1.5 font-['Poppins',sans-serif] font-semibold text-xs sm:text-[13px] tracking-tight text-slate-900 leading-tight text-center truncate w-full">
                       {skin.name}
                     </span>
                   </button>
@@ -14261,100 +14828,232 @@ export default function HamsterPaintball({
               })}
             </div>
 
-            {/* Dynamic Team Selector */}
+            {/* 3. Four Attractive Team Selection Cards */}
             {matchMode === 'teams' && activeTeamIds.length > 0 && (
               <div
-                className={`w-full grid gap-2 ${
+                className={`w-full grid gap-2.5 ${
                   activeTeamIds.length === 2
                     ? 'grid-cols-2'
-                    : activeTeamIds.length === 4
-                    ? 'grid-cols-2 sm:grid-cols-4'
-                    : 'grid-cols-2 sm:grid-cols-3'
+                    : activeTeamIds.length === 3
+                    ? 'grid-cols-3'
+                    : 'grid-cols-2 sm:grid-cols-4'
                 }`}
               >
                 {activeTeamIds.map(tId => {
-                  const tTheme = TEAM_CONFIG[tId];
+                  const cardSpec = ERA_TEAM_PALETTE[tId] || ERA_TEAM_PALETTE.red;
                   const active = resolvedMyTeam === tId;
                   const count = teamTotals[tId]?.count || 0;
+                  const fillPct = Math.min(100, Math.round((count / maxTeamCapacity) * 100));
+
                   return (
                     <button
                       key={tId}
                       type="button"
                       onClick={() => {
                         hasManualTeamChoiceRef.current = true;
+                        try {
+                          sessionStorage.setItem('hamster_pb_manual_team', '1');
+                        } catch {
+                          // ignore storage quota errors
+                        }
                         setMyTeam(tId);
+                        sfx.playCorrect();
+                        syncJoinedLoadoutLive(selectedSkinIdx, tId);
                       }}
-                      className={`py-2 px-3 rounded-xl font-semibold text-xs sm:text-sm border transition cursor-pointer flex items-center justify-between gap-2 whitespace-nowrap ${
+                      style={
                         active
-                          ? tTheme.activeBtnClass
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          ? {
+                              background: cardSpec.cardTintBg,
+                              borderColor: cardSpec.hex,
+                              boxShadow: `0 0 0 1.5px ${cardSpec.hex}, 0 10px 22px -8px ${cardSpec.glowRgba}`
+                            }
+                          : undefined
+                      }
+                      className={`group relative p-2.5 sm:p-3 rounded-2xl border text-left cursor-pointer transition-all duration-150 flex flex-col gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                        active
+                          ? 'scale-[1.01]'
+                          : 'bg-slate-50/75 border-slate-200/90 hover:bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'
                       }`}
                     >
-                      <span className="flex items-center gap-1.5 truncate">
+                      {/* Top Row: Team Emblem + Color Indicator + Selected Check */}
+                      <div className="flex items-center justify-between gap-1.5">
                         <span
-                          className={`w-2 h-2 rounded-full shrink-0 ${
-                            active ? 'bg-white' : tTheme.dotClass
-                          }`}
+                          className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105"
+                          style={{
+                            backgroundColor: active ? cardSpec.hex : cardSpec.softGlowRgba,
+                            color: active
+                              ? cardSpec.buttonTextHex
+                              : tId === 'gold'
+                              ? '#B45309'
+                              : cardSpec.hex
+                          }}
+                        >
+                          {tId === 'red' && <Zap size={14} strokeWidth={2.4} />}
+                          {tId === 'blue' && <Shield size={14} strokeWidth={2.4} />}
+                          {tId === 'green' && <Crosshair size={14} strokeWidth={2.4} />}
+                          {tId === 'gold' && <Trophy size={14} strokeWidth={2.4} />}
+                        </span>
+
+                        {active ? (
+                          <span
+                            className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-transform duration-150"
+                            style={{
+                              backgroundColor: cardSpec.hex,
+                              color: cardSpec.buttonTextHex
+                            }}
+                          >
+                            <Check size={11} strokeWidth={3} />
+                          </span>
+                        ) : (
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0 opacity-75 group-hover:opacity-100 transition-opacity"
+                            style={{ backgroundColor: cardSpec.hex }}
+                          />
+                        )}
+                      </div>
+
+                      {/* Middle Row: Full Single-Line Team Name */}
+                      <div className="min-w-0">
+                        <div className="font-['Poppins',sans-serif] font-bold text-xs sm:text-[13px] text-slate-900 whitespace-nowrap truncate">
+                          {cardSpec.name}
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 mt-0.5 font-mono tabular-nums whitespace-nowrap">
+                          <span>Players</span>
+                          <span className="font-bold text-slate-700">
+                            {count}/{maxTeamCapacity}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Bottom Row: Subtle Team Capacity Bar */}
+                      <div className="w-full h-1.5 rounded-full bg-slate-200/80 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-200"
+                          style={{
+                            width: `${Math.max(count > 0 ? 10 : 0, fillPct)}%`,
+                            backgroundColor: cardSpec.hex
+                          }}
                         />
-                        <span className="truncate">{tTheme.label}</span>
-                      </span>
-                      <span
-                        className={`text-[11px] font-mono tabular-nums px-1.5 py-0.5 rounded-md ${
-                          active ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'
-                        }`}
-                      >
-                        {count}
-                      </span>
+                      </div>
                     </button>
                   );
                 })}
               </div>
             )}
 
-            {/* Nickname & Room Code */}
-            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input
-                type="text"
-                maxLength={16}
-                value={playerName === 'Teacher Jan' ? '' : playerName}
-                onChange={e => setPlayerName(e.target.value)}
-                placeholder="Nickname"
-                className="sm:col-span-2 h-11 px-3.5 text-center sm:text-left text-base font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-900 focus:bg-white transition"
-              />
-              <input
-                type="text"
-                maxLength={6}
-                value={roomCode}
-                onChange={e => {
-                  setJoinRoomError(null);
-                  setRoomCode(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6));
-                }}
-                placeholder="CODE"
-                className={`h-11 px-2 text-center font-mono tabular-nums text-base font-bold tracking-widest text-slate-900 bg-slate-50 border rounded-xl focus:outline-none focus:bg-white ${
-                  joinRoomError
-                    ? 'border-rose-400 focus:border-rose-500'
-                    : 'border-slate-200 focus:border-slate-900'
-                }`}
-              />
+            {/* 4. Redesigned Nickname Input & Copyable Room Code */}
+            <div className="w-full grid grid-cols-1 sm:grid-cols-12 gap-3">
+              {/* Nickname Input */}
+              <div className="sm:col-span-7 flex flex-col gap-1">
+                <div className="flex items-center justify-between px-0.5">
+                  <label
+                    htmlFor="era-paintball-nickname"
+                    className="text-xs font-semibold text-slate-600"
+                  >
+                    Nickname
+                  </label>
+                  <span className="text-[11px] font-mono tabular-nums text-slate-400">
+                    {cleanNicknameValue.trim().length}/16
+                  </span>
+                </div>
+                <input
+                  id="era-paintball-nickname"
+                  type="text"
+                  maxLength={16}
+                  value={cleanNicknameValue}
+                  onChange={e => {
+                    const sanitized = e.target.value.replace(/[\r\n\t]/g, '').slice(0, 16);
+                    setPlayerName(sanitized);
+                  }}
+                  placeholder="Enter your nickname"
+                  style={{
+                    borderColor:
+                      cleanNicknameValue.trim().length > 0 ? activeTeamSpec.borderRgba : undefined
+                  }}
+                  className="h-12 px-4 text-left text-sm sm:text-base font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-normal bg-slate-50/90 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-all duration-150"
+                />
+              </div>
+
+              {/* Copyable Room Code Field */}
+              <div className="sm:col-span-5 flex flex-col gap-1">
+                <div className="flex items-center justify-between px-0.5">
+                  <label
+                    htmlFor="era-paintball-room-code"
+                    className="text-xs font-semibold text-slate-600"
+                  >
+                    Room Code
+                  </label>
+                  <span
+                    className={`text-[11px] font-semibold transition-colors ${
+                      copiedType === 'code' ? 'text-emerald-600' : 'text-slate-400'
+                    }`}
+                  >
+                    {copiedType === 'code' ? 'Copied!' : '6 digits'}
+                  </span>
+                </div>
+                <div
+                  className={`h-12 pl-3.5 pr-1.5 bg-slate-50/90 border rounded-xl flex items-center justify-between gap-1.5 focus-within:bg-white transition-all duration-150 ${
+                    joinRoomError
+                      ? 'border-rose-400 focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/15'
+                      : 'border-slate-200 focus-within:border-slate-900 focus-within:ring-2 focus-within:ring-slate-900/10'
+                  }`}
+                >
+                  <input
+                    id="era-paintball-room-code"
+                    type="text"
+                    maxLength={6}
+                    value={roomCode}
+                    onChange={e => {
+                      setJoinRoomError(null);
+                      setRoomCode(
+                        e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6)
+                      );
+                    }}
+                    placeholder="CODE"
+                    className="w-full min-w-0 bg-transparent font-mono tabular-nums text-base font-bold tracking-[0.18em] text-slate-900 placeholder:text-slate-400 placeholder:tracking-normal focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={!roomCode}
+                    onClick={handleCopyRoomCode}
+                    className="h-9 px-2.5 rounded-lg bg-white hover:bg-slate-100 disabled:opacity-45 border border-slate-200/90 text-slate-700 font-semibold text-xs flex items-center gap-1 shrink-0 cursor-pointer disabled:cursor-not-allowed transition whitespace-nowrap"
+                    title="Copy Room Code"
+                  >
+                    {copiedType === 'code' ? (
+                      <>
+                        <Check size={13} className="text-emerald-600" />
+                        <span className="text-emerald-700">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} className="text-slate-500" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {joinRoomError && (
-              <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700">
+              <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700">
                 <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-600" />
                 <span>{joinRoomError}</span>
               </div>
             )}
 
-            {/* Join Arena Button */}
+            {/* 5. Dynamic Team-Colored Join Lobby Button */}
             <button
               type="button"
-              disabled={isValidatingJoinRoom}
+              disabled={isValidatingJoinRoom || roomCode.trim().length === 0}
               onClick={async () => {
                 const cleanCode = roomCode.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
                 if (cleanCode.length < 6) {
                   sfx.playWrong();
                   setJoinRoomStatus('invalid');
-                  setJoinRoomError('Please enter the complete 6-character code shown on your host screen.');
+                  setJoinRoomError(
+                    'Please enter the complete 6-character code shown on your host screen.'
+                  );
                   return;
                 }
                 if (document.activeElement instanceof HTMLElement) {
@@ -14422,6 +15121,14 @@ export default function HamsterPaintball({
                 const isAlreadyPlaying =
                   stateSnapRef.current.matchStatus === 'playing' ||
                   verifiedRoomData?.matchStatus === 'playing';
+
+                // Lock manual team preference so reopening the modal or receiving room polls never resets team color
+                hasManualTeamChoiceRef.current = true;
+                try {
+                  sessionStorage.setItem('hamster_pb_manual_team', '1');
+                } catch {
+                  // ignore storage quota errors
+                }
 
                 // Synchronously prime stateSnapRef so triggerStudentMatchStart keeps exact chosen nickname & squad
                 stateSnapRef.current.role = 'player';
@@ -14509,17 +15216,29 @@ export default function HamsterPaintball({
 
                 handleForceResyncRoom(cleanCode);
               }}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/70 active:scale-[0.99] text-white font-['Poppins',sans-serif] font-semibold text-sm sm:text-base rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+              style={{
+                backgroundColor: activeTeamSpec.hex,
+                color: activeTeamSpec.buttonTextHex,
+                borderBottom: `3px solid ${activeTeamSpec.darkEdgeHex}`,
+                boxShadow: `0 12px 24px -6px ${activeTeamSpec.glowRgba}`
+              }}
+              className="w-full h-12 sm:h-13 px-6 font-['Poppins',sans-serif] font-bold text-sm sm:text-base rounded-2xl transition-all duration-150 hover:brightness-105 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] disabled:opacity-55 disabled:pointer-events-none flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap"
             >
               {isValidatingJoinRoom ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>Checking Room...</span>
+                  <Loader2 size={18} className="animate-spin shrink-0" />
+                  <span>Joining Room...</span>
                 </>
               ) : (
                 <>
-                  <Play size={16} fill="currentColor" />
-                  <span>{matchStatus === 'playing' ? 'Join Match' : 'Join Lobby'}</span>
+                  <Play size={17} fill="currentColor" className="shrink-0" />
+                  <span>
+                    {hasJoinedRoomRef.current && matchStatus === 'lobby'
+                      ? 'Save & Return to Lobby'
+                      : matchStatus === 'playing'
+                      ? 'Join Match'
+                      : 'Join Lobby'}
+                  </span>
                 </>
               )}
             </button>
@@ -15136,20 +15855,35 @@ export default function HamsterPaintball({
             {role === 'player' ? (
               /* STUDENT TOP-LEFT VITALS */
               <div
-                className={`relative pointer-events-auto shrink-0 bg-white/95 rounded-xl p-2 sm:p-2.5 w-[140px] min-[390px]:w-[152px] sm:w-52 md:w-56 border shadow-sm ${
-                  matchMode === 'teams' ? myTeamTheme.hudBorderClass : 'border-slate-200'
-                }`}
+                style={
+                  matchMode === 'teams'
+                    ? { borderColor: activeTeamSpec.borderRgba }
+                    : undefined
+                }
+                className="relative pointer-events-auto shrink-0 bg-white/95 rounded-xl p-2 sm:p-2.5 w-[144px] min-[390px]:w-[158px] sm:w-54 md:w-58 border border-slate-200 shadow-sm"
               >
-                <div className="flex items-center justify-between gap-1 pb-1 mb-1.5 border-b border-slate-100 min-w-0">
-                  <div className="flex items-center gap-1 min-w-0">
-                    {matchMode === 'teams' && (
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${myTeamTheme.dotClass}`}
-                      />
-                    )}
-                    <span className="font-bold text-slate-900 text-[11px] sm:text-xs truncate">
-                      {playerName}
-                    </span>
+                <div className="flex items-center justify-between gap-1.5 pb-1 mb-1.5 border-b border-slate-100 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <HamsterCharacterAvatar
+                      skin={selectedHeroSkin}
+                      size={24}
+                      team={activePreviewTeam}
+                    />
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 text-[11px] sm:text-xs truncate leading-tight">
+                        {playerName}
+                      </div>
+                      {matchMode === 'teams' && (
+                        <div
+                          className="text-[9px] font-bold leading-none truncate mt-0.5"
+                          style={{
+                            color: resolvedMyTeam === 'gold' ? '#B45309' : activeTeamSpec.hex
+                          }}
+                        >
+                          {activeTeamSpec.name}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <span className="font-mono tabular-nums text-[10px] font-bold text-slate-600 shrink-0">
                     {kos} KO
@@ -15304,6 +16038,20 @@ export default function HamsterPaintball({
                   <span className="text-[11px] sm:text-xs font-semibold text-slate-700 whitespace-nowrap tabular-nums">
                     Warm-Up · {roomPlayers.length} Joined
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => setScreen('join')}
+                    style={{
+                      borderColor: activeTeamSpec.borderRgba,
+                      backgroundColor: activeTeamSpec.softTintHex,
+                      color: resolvedMyTeam === 'gold' ? '#92400E' : activeTeamSpec.hex
+                    }}
+                    className="px-2 py-0.5 rounded-md border font-semibold text-[10px] flex items-center gap-1 cursor-pointer transition hover:brightness-95 whitespace-nowrap"
+                    title="Change Character or Team"
+                  >
+                    <Edit3 size={10} />
+                    <span>Character &amp; Team</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleForceResyncRoom(roomCode)}
@@ -15719,8 +16467,15 @@ export default function HamsterPaintball({
                   <div className="flex sm:hidden items-center justify-center w-full">
                     <button
                       type="button"
-                      onTouchStart={e => e.stopPropagation()}
-                      onClick={() => setIsQuestionModalOpen(true)}
+                      onTouchStart={e => {
+                        e.stopPropagation();
+                        openQuestionModal();
+                      }}
+                      onPointerDown={e => {
+                        e.stopPropagation();
+                        openQuestionModal();
+                      }}
+                      onClick={() => openQuestionModal()}
                       className={`pointer-events-auto px-4 py-2 rounded-2xl font-extrabold text-xs shadow-xl border-2 border-b-4 transition flex items-center gap-2 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
                         ammo === 0
                           ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500 border-b-amber-600'
@@ -15785,8 +16540,15 @@ export default function HamsterPaintball({
                     <div className="hidden sm:flex pointer-events-auto items-center justify-center shrink-0 pb-1">
                       <button
                         type="button"
-                        onTouchStart={e => e.stopPropagation()}
-                        onClick={() => setIsQuestionModalOpen(true)}
+                        onTouchStart={e => {
+                          e.stopPropagation();
+                          openQuestionModal();
+                        }}
+                        onPointerDown={e => {
+                          e.stopPropagation();
+                          openQuestionModal();
+                        }}
+                        onClick={() => openQuestionModal()}
                         className={`px-4 py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl border-2 border-b-4 transition flex items-center gap-2 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
                           ammo === 0
                             ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500 border-b-amber-600'
@@ -15959,20 +16721,15 @@ export default function HamsterPaintball({
                 {matchStatus !== 'results' && (
                   <button
                     type="button"
+                    onPointerDown={e => {
+                      e.stopPropagation();
+                      openQuestionModal();
+                    }}
                     onMouseDown={e => {
                       e.stopPropagation();
-                      if (gameRef.current) {
-                        gameRef.current.virtualMouseLock = false;
-                        gameRef.current.mouseDown = false;
-                      }
-                      setIsAimLocked(false);
-                      if (typeof document !== 'undefined' && document.pointerLockElement) {
-                        try {
-                          document.exitPointerLock();
-                        } catch {}
-                      }
+                      openQuestionModal();
                     }}
-                    onClick={() => setIsQuestionModalOpen(true)}
+                    onClick={() => openQuestionModal()}
                     className={`pointer-events-auto px-4 py-2 rounded-2xl border-2 border-b-4 shadow-xl transition flex items-center gap-2.5 cursor-pointer active:translate-y-0.5 whitespace-nowrap ${
                       ammo === 0
                         ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500 border-b-amber-600'
@@ -16578,6 +17335,14 @@ export default function HamsterPaintball({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              {/* Question Shield Immunity Badge */}
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 font-bold text-xs whitespace-nowrap"
+                title="You are protected by temporary Question Shield Immunity while answering questions"
+              >
+                <span>🛡️ SHIELD ACTIVE</span>
+              </div>
+
               {/* Live HP & Shield indicator inside Question Box */}
               <div
                 className={`hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg font-mono tabular-nums font-bold text-xs border ${
@@ -16610,7 +17375,11 @@ export default function HamsterPaintball({
 
               <button
                 type="button"
-                onClick={() => setIsQuestionModalOpen(false)}
+                onPointerDown={e => {
+                  e.stopPropagation();
+                  closeQuestionModal();
+                }}
+                onClick={() => closeQuestionModal()}
                 className={`px-3.5 py-1.5 rounded-lg font-semibold text-xs sm:text-sm cursor-pointer whitespace-nowrap tabular-nums flex items-center gap-1.5 transition ${
                   underAttackAlert || damageVignetteColor
                     ? 'bg-white text-red-700 hover:bg-red-50 shadow-md font-bold'
@@ -16647,7 +17416,11 @@ export default function HamsterPaintball({
               </div>
               <button
                 type="button"
-                onClick={() => setIsQuestionModalOpen(false)}
+                onPointerDown={e => {
+                  e.stopPropagation();
+                  closeQuestionModal();
+                }}
+                onClick={() => closeQuestionModal()}
                 className="px-2.5 py-1 rounded-md bg-white text-red-700 hover:bg-red-50 font-extrabold text-xs whitespace-nowrap cursor-pointer shrink-0 shadow-xs"
               >
                 Back to Arena [Q]
@@ -16728,8 +17501,14 @@ export default function HamsterPaintball({
                         key={idx}
                         type="button"
                         disabled={isAnswered}
+                        onPointerDown={e => {
+                          if (e.button === 0 || e.pointerType === 'touch' || e.pointerType === 'pen') {
+                            e.preventDefault();
+                            handleTriviaAnswer(idx);
+                          }
+                        }}
                         onClick={() => handleTriviaAnswer(idx)}
-                        className={`p-4 rounded-xl border font-semibold text-base sm:text-lg text-left transition shadow-2xs cursor-pointer active:scale-[0.99] flex items-center gap-3.5 ${btnClasses}`}
+                        className={`p-4 rounded-xl border font-semibold text-base sm:text-lg text-left transition shadow-2xs cursor-pointer active:scale-[0.99] flex items-center gap-3.5 select-none ${btnClasses}`}
                       >
                         <span
                           className={`w-9 h-9 rounded-lg flex items-center justify-center font-['Poppins',sans-serif] font-bold text-sm shrink-0 ${
