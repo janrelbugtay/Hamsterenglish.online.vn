@@ -8376,14 +8376,14 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         if (activeGame === 'coconut') {
             const targetsToPick = selectUnpredictableTargets(roster, effectivePickCount);
             setGameState({
-                phase: 'SLOW_SPIN',
-                msg: '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹',
+                phase: 'COCONUT_READY',
+                msg: '',
                 eliminatedThisRound: [],
-                isMusicPlaying: true,
+                isMusicPlaying: false,
                 activeCount: roster.length,
                 chaseSecondsLeft: coconutDuration
             });
-            coconutStageRef.current?.startRound(roster, targetsToPick, coconutDuration);
+            coconutStageRef.current?.prepareRound(roster, targetsToPick, coconutDuration);
             return;
         }
 
@@ -8450,15 +8450,19 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     };
 
     
-    const continueGame = () => {
+    const handleWinnerModalAction = (shouldRemoveFromRoster: boolean) => {
         stopAnnounce();
-        // Remove eliminated players from the students roster
-        const remainingStudents = students.filter(s => !chosenOnes.includes(s));
-        setStudents(remainingStudents);
-        localStorage.setItem('squid_roster', JSON.stringify(remainingStudents));
+        const nextStudents = shouldRemoveFromRoster
+            ? students.filter(s => !chosenOnes.includes(s))
+            : [...students];
+
+        if (shouldRemoveFromRoster) {
+            setStudents(nextStudents);
+            localStorage.setItem('squid_roster', JSON.stringify(nextStudents));
+        }
         
         if (gameMode === 'picker') {
-            startGameWith(remainingStudents);
+            startGameWith(cryptoShuffle(nextStudents));
         } else {
             // Reset the game back to the home screen ready for the next round
             setGameState({ phase: 'IDLE', msg: '', eliminatedThisRound: [], isMusicPlaying: false });
@@ -8466,12 +8470,12 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             setChosenOnes([]);
             setTotalEliminated(0);
             if (activeGame === 'coconut') {
-                coconutStageRef.current?.resetToIdle(remainingStudents);
+                coconutStageRef.current?.resetToIdle(nextStudents);
             } else if (threeManagerRef.current) {
                 threeManagerRef.current.lastCaughtPlayer = null;
                 threeManagerRef.current.tagRoundCount = 0;
                 threeManagerRef.current.setGameType(activeGame);
-                threeManagerRef.current.spawnPlayers(remainingStudents);
+                threeManagerRef.current.spawnPlayers(nextStudents);
             }
         }
     };
@@ -8697,21 +8701,6 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 <div className="text-rose-500 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase">Eliminated</div>
                                 <div className="text-2xl sm:text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
                                     {totalEliminated}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    {(activeGame === 'tag' || activeGame === 'redlight' || activeGame === 'coconut') && gameState.chaseSecondsLeft !== undefined && (
-                        <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-amber-500/70 shadow-[0_0_25px_rgba(245,158,11,0.35)] flex items-center gap-2 sm:gap-4">
-                            <div className="text-center">
-                                <div className="text-amber-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase flex items-center justify-center gap-1">
-                                    <Clock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-400'}`} />
-                                    {activeGame === 'redlight' || activeGame === 'coconut' ? 'Match Timer' : 'Chase Timer'}
-                                </div>
-                                <div className={`text-2xl sm:text-4xl font-bold leading-none ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-300'}`} style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                    {gameState.chaseSecondsLeft >= 60 
-                                        ? `${Math.floor(gameState.chaseSecondsLeft / 60)}:${(gameState.chaseSecondsLeft % 60).toString().padStart(2, '0')}` 
-                                        : `${gameState.chaseSecondsLeft}s`}
                                 </div>
                             </div>
                         </div>
@@ -8972,6 +8961,20 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 </div>
             )}
 
+            {/* Coconut Boat in-game manual spin button: waits for click before starting boat spin & tropical music */}
+            {activeGame === 'coconut' && gameState.phase === 'COCONUT_READY' && (
+                <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 pointer-events-auto z-30 flex flex-col items-center">
+                    <button
+                        onClick={() => coconutStageRef.current?.beginSpin()}
+                        className="px-10 py-4 bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-500 hover:from-amber-400 hover:to-cyan-400 text-white rounded-2xl font-black text-2xl tracking-wider shadow-[0_0_50px_rgba(16,185,129,0.75)] border-4 border-amber-200/90 flex items-center gap-3 active:scale-95 hover:scale-105 transition-all cursor-pointer animate-pulse"
+                        style={{ fontFamily: "'Fredoka', sans-serif" }}
+                    >
+                        <Play className="w-8 h-8 fill-white text-white" />
+                        CLICK TO SPIN
+                    </button>
+                </div>
+            )}
+
             {/* Intermission button: between rounds, click to advance to the next round */}
             {gameState.phase === 'ROUND_INTERMISSION' && (
                 <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 pointer-events-auto z-30 flex flex-col items-center">
@@ -9056,9 +9059,22 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             })}
                         </div>
                         
-                        <div className="pt-4 mt-auto relative z-10 shrink-0">
-                            <Button size="lg" variant={gameMode === 'picker' ? 'primary' : 'success'} onClick={continueGame} className="mx-auto w-full shadow-[0_0_30px_rgba(16,185,129,0.5)] uppercase tracking-widest text-lg sm:text-xl h-14 sm:h-16 rounded-2xl font-black">
-                                <RotateCcw className="w-6 h-6 mr-3" /> CONTINUE
+                        <div className="pt-4 mt-auto relative z-10 shrink-0 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <Button
+                                size="lg"
+                                variant="secondary"
+                                onClick={() => handleWinnerModalAction(false)}
+                                className="w-full uppercase tracking-widest text-lg sm:text-xl h-14 sm:h-16 rounded-2xl font-black cursor-pointer"
+                            >
+                                <X className="w-6 h-6 mr-2" /> CLOSE
+                            </Button>
+                            <Button
+                                size="lg"
+                                variant={gameMode === 'picker' ? 'primary' : 'success'}
+                                onClick={() => handleWinnerModalAction(true)}
+                                className="w-full shadow-[0_0_30px_rgba(244,63,94,0.45)] uppercase tracking-widest text-lg sm:text-xl h-14 sm:h-16 rounded-2xl font-black cursor-pointer"
+                            >
+                                <Trash2 className="w-6 h-6 mr-2" /> REMOVE
                             </Button>
                         </div>
                     </div>

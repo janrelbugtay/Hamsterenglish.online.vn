@@ -986,16 +986,16 @@ const WinnerModal = ({ isOpen, winner, onClose, onRemove }: any) => {
         
         <div className="flex gap-4 w-full mt-4">
           <button 
+            onClick={onClose} 
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-xl shadow-lg transition-transform hover:scale-105 uppercase tracking-wide border-b-4 border-indigo-800 active:border-b-0 active:translate-y-1 text-lg"
+          >
+            CLOSE
+          </button>
+          <button 
             onClick={onRemove} 
             className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-xl shadow-lg transition-transform hover:scale-105 uppercase tracking-wide border-b-4 border-red-700 active:border-b-0 active:translate-y-1 text-lg"
           >
             REMOVE
-          </button>
-          <button 
-            onClick={onClose} 
-            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-xl shadow-lg transition-transform hover:scale-105 uppercase tracking-wide border-b-4 border-indigo-800 active:border-b-0 active:translate-y-1 text-lg"
-          >
-            DONE
           </button>
         </div>
       </div>
